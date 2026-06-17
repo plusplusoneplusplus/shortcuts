@@ -10,6 +10,7 @@ import { useCocClient } from '../../repos/cloneRouting';
 import { ALLOWED_PARENT_TYPES } from '@plusplusoneplusplus/coc-client';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
+import { resolveWorkItemOriginId } from './workItemOriginScope';
 
 const TYPE_PREFIX: Record<WorkItemTypeLabel, string> = {
     epic: 'E',
@@ -32,6 +33,7 @@ export interface WorkItemParentPickerProps {
     open: boolean;
     onClose: () => void;
     workspaceId: string;
+    originId?: string;
     itemId: string;
     itemType: WorkItemTypeLabel;
     currentParentId?: string;
@@ -49,6 +51,7 @@ export function WorkItemParentPicker({
     open,
     onClose,
     workspaceId,
+    originId,
     itemId,
     itemType,
     currentParentId,
@@ -56,6 +59,7 @@ export function WorkItemParentPicker({
     onlyPick = false,
 }: WorkItemParentPickerProps) {
     const cloneClient = useCocClient(workspaceId); // AC-07: list/update parent on the selected clone's server.
+    const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
     const [searchQuery, setSearchQuery] = useState('');
     const [candidates, setCandidates] = useState<ParentCandidate[]>([]);
     const [loading, setLoading] = useState(false);
@@ -72,11 +76,11 @@ export function WorkItemParentPicker({
         try {
             const results: ParentCandidate[] = [];
             for (const parentType of validParentTypes) {
-                const resp = await cloneClient.workItems.list(workspaceId, {
+                const resp = await cloneClient.workItems.listForOrigin(workItemOriginId, {
                     type: parentType,
                     q: searchQuery || undefined,
                     limit: 50,
-                });
+                }, { workspaceId });
                 for (const wi of resp.items) {
                     if (wi.id === itemId) continue; // exclude self
                     results.push({
@@ -94,7 +98,7 @@ export function WorkItemParentPicker({
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, itemId, validParentTypes, searchQuery, cloneClient]);
+    }, [workspaceId, workItemOriginId, itemId, validParentTypes, searchQuery, cloneClient]);
 
     useEffect(() => {
         if (open) {
@@ -121,7 +125,7 @@ export function WorkItemParentPicker({
         setSaving(true);
         setError(null);
         try {
-            await cloneClient.workItems.update(workspaceId, itemId, { parentId: selectedId ?? undefined });
+            await cloneClient.workItems.updateForOrigin(workItemOriginId, itemId, { parentId: selectedId ?? undefined }, { workspaceId });
             onParentChanged(selectedId);
             onClose();
         } catch (err: any) {
@@ -135,7 +139,7 @@ export function WorkItemParentPicker({
         setSaving(true);
         setError(null);
         try {
-            await cloneClient.workItems.update(workspaceId, itemId, { parentId: null });
+            await cloneClient.workItems.updateForOrigin(workItemOriginId, itemId, { parentId: null }, { workspaceId });
             onParentChanged(null);
             onClose();
         } catch (err: any) {

@@ -38,6 +38,12 @@ const mockBuildModeSystemMessage = vi.fn().mockReturnValue({ mode: 'replace', co
 const mockWithRepoInstructions = vi.fn().mockImplementation(async (sm: any) => sm);
 const mockBuildConversationHistoryContext = vi.fn().mockReturnValue(undefined);
 const mockBuildFollowUpSuggestionsAddon = vi.fn().mockReturnValue({ tools: [], suffix: '' });
+const SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE = `\
+When citing source code locations, format each location as a Markdown link.
+
+Use:
+- [src/file.ts:42](src/file.ts:42)
+- [src/file.ts:42-58](src/file.ts:42-58)`;
 const mockApplyLlmToolPreferences = vi.fn().mockImplementation((addons: Array<{ tools: any[]; suffix: string }>, disabled?: string[]) => {
     const tools: any[] = [];
     let toolGuidance = '';
@@ -88,6 +94,10 @@ vi.mock('../../../src/server/executors/prompt-builder', () => ({
     withRepoInstructions: (...args: any[]) => mockWithRepoInstructions(...args),
     buildConversationHistoryContext: (...args: any[]) => mockBuildConversationHistoryContext(...args),
     buildFollowUpSuggestionsAddon: (...args: any[]) => mockBuildFollowUpSuggestionsAddon(...args),
+    buildSourceLocationMarkdownLinkSystemMessage: (provider: string | undefined) =>
+        provider === 'copilot' || provider === 'claude'
+            ? { mode: 'append', content: SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE }
+            : undefined,
     applyLlmToolPreferences: (...args: any[]) => mockApplyLlmToolPreferences(...args),
     assertNoAskUserConflict: () => {},
     resolveSelectedSkillReferences: () => [],
@@ -382,14 +392,11 @@ describe('FollowUpExecutor', () => {
 
         expect(resolveAiServiceForProvider).toHaveBeenCalledWith('claude');
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
-        expect(callArg).toMatchObject({
-            prompt: 'msg',
-            sessionId: 'claude-sdk-session',
-            systemMessage: {
-                mode: 'append',
-                content: 'Claude follow-up system instructions',
-            },
-        });
+        expect(callArg.prompt).toBe('msg');
+        expect(callArg.sessionId).toBe('claude-sdk-session');
+        expect(callArg.systemMessage.mode).toBe('append');
+        expect(callArg.systemMessage.content).toContain('Claude follow-up system instructions');
+        expect(callArg.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
     });
 
     it('passes infiniteSessions enabled to sendMessage', async () => {
@@ -1169,6 +1176,23 @@ describe('FollowUpExecutor', () => {
         expect(final?.metadata?.systemPrompt).toBeDefined();
     });
 
+    it('does not append the ask auto-folder block for Copilot autopilot follow-ups', async () => {
+        mockBuildModeSystemMessage.mockReturnValueOnce(undefined);
+        const proc = makeProcess({
+            id: 'proc-autopilot-source-prompt',
+            workingDirectory: '/fake/ws',
+            metadata: { type: 'chat', mode: 'autopilot', provider: 'copilot' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-autopilot-source-prompt', 'msg', undefined, 'autopilot');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
+        expect(callArg.systemMessage.content).not.toContain('<chosen-folder>');
+    });
+
     // -------------------------------------------------------------------------
     // turnSource — loop/wakeup follow-up user turn creation
     // -------------------------------------------------------------------------
@@ -1284,6 +1308,8 @@ describe('FollowUpExecutor', () => {
         await executor.executeFollowUp('proc-ac04-copilot', 'follow-up');
 
         expect(resolveAiServiceForProvider).toHaveBeenCalledWith('copilot');
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
     });
 
     it('uses codex service when process was created with codex provider', async () => {
@@ -1299,6 +1325,8 @@ describe('FollowUpExecutor', () => {
         await executor.executeFollowUp('proc-ac04-codex', 'follow-up');
 
         expect(resolveAiServiceForProvider).toHaveBeenCalledWith('codex');
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.systemMessage.content).not.toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
     });
 
     it('defaults to copilot when process has no provider metadata (legacy processes)', async () => {

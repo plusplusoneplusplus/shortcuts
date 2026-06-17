@@ -10,12 +10,14 @@ import { useCocClient } from '../../repos/cloneRouting';
 import { RunSkillPanel } from '../../shared/RunSkillPanel';
 import type { SkillItem } from '../../shared/RunSkillPanel';
 import { ModalJobAiControls, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
+import { resolveWorkItemOriginId } from './workItemOriginScope';
 
 type WorkItemExecutionMode = 'one-shot' | 'ralph';
 
 export interface WorkItemExecuteDialogProps {
     open: boolean;
     workspaceId: string;
+    originId?: string;
     workItemId: string;
     workItemTitle: string;
     defaultExecutionMode?: WorkItemExecutionMode;
@@ -27,6 +29,7 @@ export interface WorkItemExecuteDialogProps {
 export function WorkItemExecuteDialog({
     open,
     workspaceId,
+    originId,
     workItemId,
     workItemTitle,
     defaultExecutionMode = 'one-shot',
@@ -35,6 +38,7 @@ export function WorkItemExecuteDialog({
     onExecuted,
 }: WorkItemExecuteDialogProps) {
     const cloneClient = useCocClient(workspaceId); // AC-07: execute on the selected clone's server.
+    const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
     const { recentItems, trackUsage } = useRecentSkills(workspaceId);
     const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'autopilot' });
 
@@ -84,7 +88,7 @@ export function WorkItemExecuteDialog({
         setSubmitting(true);
         setError(null);
         try {
-            await cloneClient.workItems.execute(workspaceId, workItemId, {
+            await cloneClient.workItems.executeForOrigin(workItemOriginId, workItemId, {
                 ...(allowExecutionModeSelection ? { executionMode } : {}),
                 skillNames,
                 ...(aiSelection.resolved.provider ? { provider: aiSelection.resolved.provider } : {}),
@@ -92,7 +96,7 @@ export function WorkItemExecuteDialog({
                 ...(aiSelection.resolved.reasoningEffort ? { reasoningEffort: aiSelection.resolved.reasoningEffort } : {}),
                 ...(aiSelection.resolved.effortTier ? { effortTier: aiSelection.resolved.effortTier } : {}),
                 ...(aiSelection.resolved.autoProviderRouting ? { autoProviderRouting: true } : {}),
-            });
+            }, { workspaceId });
 
             // Track skill usage (fire-and-forget)
             for (const name of skillNames) {
@@ -107,7 +111,7 @@ export function WorkItemExecuteDialog({
         } finally {
             setSubmitting(false);
         }
-    }, [workspaceId, workItemId, allowExecutionModeSelection, executionMode, aiSelection.resolved, trackUsage, onExecuted, onClose, cloneClient]);
+    }, [workspaceId, workItemOriginId, workItemId, allowExecutionModeSelection, executionMode, aiSelection.resolved, trackUsage, onExecuted, onClose, cloneClient]);
 
     if (!open) return null;
 

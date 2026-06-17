@@ -1,8 +1,8 @@
 /**
  * FileWorkItemStore — file-backed implementation of WorkItemStore.
  *
- * Storage layout (per workspace):
- *   <dataDir>/repos/<workspaceId>/work-items/
+ * Storage layout (per origin when a scope resolver is configured):
+ *   <dataDir>/repos/<originId>/work-items/
  *     index.json              — WorkItemIndexEntry[] (lightweight listing)
  *     <workItemId>.json       — Full WorkItem data
  *     plans/<workItemId>/
@@ -14,7 +14,13 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { getRepoDataPath } from '@plusplusoneplusplus/forge';
+import {
+    detectRemoteUrl,
+    getRepoDataPath,
+    resolveCanonicalOriginId,
+    type ProcessStore,
+    type WorkspaceInfo,
+} from '@plusplusoneplusplus/forge';
 import type {
     WorkItem,
     WorkItemGitHubMirrorMetadata,
@@ -41,6 +47,67 @@ import { getOwnWorkItemTrackerKind, toIndexEntry, WORK_ITEM_STATUSES } from './t
 export interface FileWorkItemStoreOptions {
     /** Base data directory (default: ~/.coc). */
     dataDir: string;
+    /**
+     * Resolve a caller-facing workspace/repo ID to the storage scope used for
+     * Work Item persistence. Server wiring uses canonical git origin IDs so
+     * same-origin clones share one store.
+     */
+    scopeResolver?: WorkItemStorageScopeResolver;
+}
+
+export interface WorkItemStorageScope {
+    /** Directory key under <dataDir>/repos/ used for persistent Work Item state. */
+    storageRepoId: string;
+    /** Legacy workspace/repo directories to migrate into storageRepoId. */
+    legacyRepoIds?: readonly string[];
+}
+
+export type WorkItemStorageScopeResolver = (
+    repoId: string,
+) => WorkItemStorageScope | string | undefined | Promise<WorkItemStorageScope | string | undefined>;
+
+function isCanonicalOriginId(value: string): boolean {
+    return /^(gh|ado|git|local)_/.test(value);
+}
+
+async function resolveWorkspaceOriginId(
+    workspace: WorkspaceInfo,
+    processStore: Pick<ProcessStore, 'updateWorkspace'>,
+): Promise<string> {
+    let remoteUrl = workspace.remoteUrl;
+    if (!remoteUrl && workspace.rootPath) {
+        remoteUrl = await detectRemoteUrl(workspace.rootPath);
+        if (remoteUrl) {
+            await processStore.updateWorkspace(workspace.id, { remoteUrl });
+        }
+    }
+    return resolveCanonicalOriginId({ remoteUrl, workspaceId: workspace.id });
+}
+
+export function createWorkItemStorageScopeResolver(
+    processStore: Pick<ProcessStore, 'getWorkspaces' | 'updateWorkspace'>,
+): WorkItemStorageScopeResolver {
+    return async (repoId: string) => {
+        const workspaces = await processStore.getWorkspaces();
+        const originIdsByWorkspace = new Map<string, string>();
+        for (const workspace of workspaces) {
+            originIdsByWorkspace.set(
+                workspace.id,
+                await resolveWorkspaceOriginId(workspace, processStore),
+            );
+        }
+
+        const storageRepoId = originIdsByWorkspace.get(repoId)
+            ?? (isCanonicalOriginId(repoId) ? repoId : undefined);
+        if (!storageRepoId) return undefined;
+
+        return {
+            storageRepoId,
+            legacyRepoIds: workspaces
+                .filter(workspace => originIdsByWorkspace.get(workspace.id) === storageRepoId)
+                .map(workspace => workspace.id),
+        };
+    };
 }
 
 interface LegacyWorkItemSyncLink {
@@ -96,11 +163,14 @@ function githubMirrorFromLegacySyncLink(link: LegacyWorkItemSyncLink): WorkItemG
 
 export class FileWorkItemStore implements WorkItemStore {
     private readonly dataDir: string;
+    private readonly scopeResolver?: WorkItemStorageScopeResolver;
     private writeQueue: Promise<void> = Promise.resolve();
     private repairedRepos = new Set<string>();
+    private migratedLegacyScopes = new Set<string>();
 
     constructor(options: FileWorkItemStoreOptions) {
         this.dataDir = options.dataDir;
+        this.scopeResolver = options.scopeResolver;
     }
 
     // ── Path helpers ────────────────────────────────────────────
@@ -127,6 +197,106 @@ export class FileWorkItemStore implements WorkItemStore {
 
     private counterPath(repoId: string): string {
         return path.join(this.workItemsDir(repoId), 'counter.json');
+    }
+
+    private async exists(targetPath: string): Promise<boolean> {
+        try {
+            await fs.access(targetPath);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    private async resolveStorageScope(repoId: string): Promise<WorkItemStorageScope> {
+        const resolved = await this.scopeResolver?.(repoId);
+        const baseScope = typeof resolved === 'string'
+            ? { storageRepoId: resolved }
+            : resolved;
+        const storageRepoId = baseScope?.storageRepoId?.trim() || repoId;
+        const legacyRepoIds = new Set<string>([repoId, ...(baseScope?.legacyRepoIds ?? [])]);
+        for (const legacyRepoId of legacyRepoIds) {
+            await this.migrateLegacyWorkspaceScope(legacyRepoId, storageRepoId);
+        }
+        return { storageRepoId, legacyRepoIds: [...legacyRepoIds] };
+    }
+
+    private async readRawIndex(repoId: string): Promise<LegacyWorkItemIndexEntry[]> {
+        const raw = await this.readJSON<unknown>(this.indexPath(repoId), []);
+        if (raw && !Array.isArray(raw)) {
+            return [raw as LegacyWorkItemIndexEntry];
+        }
+        return raw as LegacyWorkItemIndexEntry[];
+    }
+
+    private async migrateLegacyWorkspaceScope(legacyRepoId: string, storageRepoId: string): Promise<void> {
+        if (legacyRepoId === storageRepoId) return;
+        const migrationKey = `${legacyRepoId}\u0000${storageRepoId}`;
+        if (this.migratedLegacyScopes.has(migrationKey)) return;
+
+        const legacyDir = this.workItemsDir(legacyRepoId);
+        if (!await this.exists(this.indexPath(legacyRepoId))) {
+            this.migratedLegacyScopes.add(migrationKey);
+            return;
+        }
+
+        const storageDir = this.workItemsDir(storageRepoId);
+        if (!await this.exists(storageDir)) {
+            await fs.mkdir(path.dirname(storageDir), { recursive: true });
+            await fs.rename(legacyDir, storageDir);
+            this.repairedRepos.delete(storageRepoId);
+            this.migratedLegacyScopes.add(migrationKey);
+            return;
+        }
+
+        await fs.mkdir(storageDir, { recursive: true });
+        const targetIndex = await this.readRawIndex(storageRepoId);
+        const legacyIndex = await this.readRawIndex(legacyRepoId);
+        const targetIds = new Set(targetIndex.map(entry => entry.id));
+        const mergedIndex = [...targetIndex];
+        for (const entry of legacyIndex) {
+            if (targetIds.has(entry.id)) continue;
+            mergedIndex.push(entry);
+            targetIds.add(entry.id);
+        }
+
+        const legacyFiles = await fs.readdir(legacyDir);
+        for (const file of legacyFiles) {
+            if (!file.endsWith('.json') || file === 'index.json' || file === 'counter.json') continue;
+            const targetFile = path.join(storageDir, file);
+            if (await this.exists(targetFile)) continue;
+            await fs.copyFile(path.join(legacyDir, file), targetFile);
+        }
+
+        const legacyPlansDir = path.join(legacyDir, 'plans');
+        if (await this.exists(legacyPlansDir)) {
+            await fs.cp(legacyPlansDir, path.join(storageDir, 'plans'), {
+                recursive: true,
+                force: false,
+                errorOnExist: false,
+            });
+        }
+
+        if (mergedIndex.length !== targetIndex.length) {
+            await this.writeIndex(storageRepoId, mergedIndex);
+        }
+
+        const maxWorkItemNumber = mergedIndex.reduce(
+            (max, entry) => Math.max(max, entry.workItemNumber ?? 0),
+            0,
+        );
+        const nextCounter = Math.max(
+            await this.readCounter(storageRepoId),
+            await this.readCounter(legacyRepoId),
+            maxWorkItemNumber > 0 ? maxWorkItemNumber + 1 : 0,
+        );
+        if (nextCounter > 0) {
+            await this.writeCounter(storageRepoId, nextCounter);
+        }
+
+        await fs.rm(legacyDir, { recursive: true, force: true });
+        this.repairedRepos.delete(storageRepoId);
+        this.migratedLegacyScopes.add(migrationKey);
     }
 
     private sanitize(id: string): string {
@@ -292,20 +462,21 @@ export class FileWorkItemStore implements WorkItemStore {
 
     async addWorkItem(item: WorkItem): Promise<void> {
         return this.enqueueWrite(async () => {
-            const index = await this.readIndex(item.repoId);
+            const { storageRepoId } = await this.resolveStorageScope(item.repoId);
+            const index = await this.readIndex(storageRepoId);
             if (index.some(e => e.id === item.id)) {
                 throw new Error(`Work item already exists: ${item.id}`);
             }
             // Assign sequential work item number
             if (item.workItemNumber == null) {
-                item.workItemNumber = await this.nextWorkItemNumber(item.repoId);
+                item.workItemNumber = await this.nextWorkItemNumber(storageRepoId);
             }
             if (item.plan) {
                 const currentVersion = item.plan.currentVersion ?? item.plan.version;
                 item.plan = { ...item.plan, currentVersion };
                 item.currentContentVersion = item.currentContentVersion ?? currentVersion;
             }
-            await this.writeItem(item.repoId, item);
+            await this.writeItem(storageRepoId, item);
             // Save initial plan version if present
             if (item.plan) {
                 const source = item.plan.source ?? item.plan.resolvedBy ?? 'user';
@@ -319,17 +490,18 @@ export class FileWorkItemStore implements WorkItemStore {
                     reason: item.plan.reason,
                     restoredFromVersion: item.plan.restoredFromVersion,
                 };
-                await this.writePlanVersionFile(item.repoId, item.id, planVersion);
+                await this.writePlanVersionFile(storageRepoId, item.id, planVersion);
             }
             index.push(toIndexEntry(item));
-            await this.writeIndex(item.repoId, index);
+            await this.writeIndex(storageRepoId, index);
         });
     }
 
     async getWorkItem(id: string, repoId?: string): Promise<WorkItem | undefined> {
         if (repoId) {
-            await this.readIndex(repoId);
-            return this.readItem(repoId, id);
+            const { storageRepoId } = await this.resolveStorageScope(repoId);
+            await this.readIndex(storageRepoId);
+            return this.readItem(storageRepoId, id);
         }
         // Scan all repos (expensive but needed for cross-repo lookup)
         const repos = await this.listRepoIds();
@@ -344,12 +516,11 @@ export class FileWorkItemStore implements WorkItemStore {
     async updateWorkItem(
         id: string,
         updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>>,
+        repoId?: string,
     ): Promise<WorkItem | undefined> {
         let updated: WorkItem | undefined;
         await this.enqueueWrite(async () => {
-            const repos = updates.status !== undefined
-                ? await this.findRepoForItem(id)
-                : await this.findRepoForItem(id);
+            const repos = await this.findRepoForItem(id, repoId);
             if (!repos) return;
 
             const item = await this.readItem(repos, id);
@@ -377,13 +548,13 @@ export class FileWorkItemStore implements WorkItemStore {
         return updated;
     }
 
-    async removeWorkItem(id: string): Promise<boolean> {
+    async removeWorkItem(id: string, repoId?: string): Promise<boolean> {
         let removed = false;
         await this.enqueueWrite(async () => {
-            const repoId = await this.findRepoForItem(id);
-            if (!repoId) return;
+            const storageRepoId = await this.findRepoForItem(id, repoId);
+            if (!storageRepoId) return;
 
-            const index = await this.readIndex(repoId);
+            const index = await this.readIndex(storageRepoId);
 
             // Block deletion if children exist
             const childCount = index.filter(e => e.parentId === id).length;
@@ -396,17 +567,17 @@ export class FileWorkItemStore implements WorkItemStore {
 
             // Remove item file
             try {
-                await fs.unlink(this.itemPath(repoId, id));
+                await fs.unlink(this.itemPath(storageRepoId, id));
             } catch { /* ignore */ }
 
             // Remove plan versions directory
             try {
-                await fs.rm(this.planDir(repoId, id), { recursive: true, force: true });
+                await fs.rm(this.planDir(storageRepoId, id), { recursive: true, force: true });
             } catch { /* ignore */ }
 
             // Remove from index
             const filtered = index.filter(e => e.id !== id);
-            await this.writeIndex(repoId, filtered);
+            await this.writeIndex(storageRepoId, filtered);
 
             removed = index.length !== filtered.length;
         });
@@ -418,7 +589,8 @@ export class FileWorkItemStore implements WorkItemStore {
         let entries: WorkItemIndexEntry[];
 
         if (repoId) {
-            entries = await this.readIndex(repoId);
+            const { storageRepoId } = await this.resolveStorageScope(repoId);
+            entries = await this.readIndex(storageRepoId);
         } else {
             // Aggregate across all repos
             const repos = await this.listRepoIds();
@@ -458,7 +630,8 @@ export class FileWorkItemStore implements WorkItemStore {
         let entries: WorkItemIndexEntry[];
 
         if (repoId) {
-            entries = await this.readIndex(repoId);
+            const { storageRepoId } = await this.resolveStorageScope(repoId);
+            entries = await this.readIndex(storageRepoId);
         } else {
             const repos = await this.listRepoIds();
             entries = [];
@@ -509,11 +682,11 @@ export class FileWorkItemStore implements WorkItemStore {
 
     // ── Plan versioning ─────────────────────────────────────────
 
-    async getPlanVersions(workItemId: string): Promise<WorkItemPlanVersion[]> {
-        const repoId = await this.findRepoForItem(workItemId);
-        if (!repoId) return [];
+    async getPlanVersions(workItemId: string, repoId?: string): Promise<WorkItemPlanVersion[]> {
+        const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+        if (!storageRepoId) return [];
 
-        const dir = this.planDir(repoId, workItemId);
+        const dir = this.planDir(storageRepoId, workItemId);
         try {
             const files = await fs.readdir(dir);
             const versions: WorkItemPlanVersion[] = [];
@@ -531,11 +704,11 @@ export class FileWorkItemStore implements WorkItemStore {
         }
     }
 
-    async getPlanVersion(workItemId: string, version: number): Promise<WorkItemPlanVersion | undefined> {
-        const repoId = await this.findRepoForItem(workItemId);
-        if (!repoId) return undefined;
+    async getPlanVersion(workItemId: string, version: number, repoId?: string): Promise<WorkItemPlanVersion | undefined> {
+        const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+        if (!storageRepoId) return undefined;
 
-        const filePath = this.planVersionPath(repoId, workItemId, version);
+        const filePath = this.planVersionPath(storageRepoId, workItemId, version);
         try {
             const content = await fs.readFile(filePath, 'utf-8');
             return this.parsePlanFile(content, version);
@@ -544,22 +717,22 @@ export class FileWorkItemStore implements WorkItemStore {
         }
     }
 
-    async savePlanVersion(workItemId: string, plan: WorkItemPlanVersion): Promise<void> {
+    async savePlanVersion(workItemId: string, plan: WorkItemPlanVersion, repoId?: string): Promise<void> {
         return this.enqueueWrite(async () => {
-            const repoId = await this.findRepoForItem(workItemId);
-            if (!repoId) return;
-            await this.writePlanVersionFile(repoId, workItemId, plan);
+            const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+            if (!storageRepoId) return;
+            await this.writePlanVersionFile(storageRepoId, workItemId, plan);
         });
     }
 
     // ── Execution history ───────────────────────────────────────
 
-    async addExecution(workItemId: string, execution: WorkItemExecution): Promise<void> {
+    async addExecution(workItemId: string, execution: WorkItemExecution, repoId?: string): Promise<void> {
         return this.enqueueWrite(async () => {
-            const repoId = await this.findRepoForItem(workItemId);
-            if (!repoId) return;
+            const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+            if (!storageRepoId) return;
 
-            const item = await this.readItem(repoId, workItemId);
+            const item = await this.readItem(storageRepoId, workItemId);
             if (!item) return;
 
             const history = item.executionHistory ?? [];
@@ -569,10 +742,10 @@ export class FileWorkItemStore implements WorkItemStore {
             item.processId = execution.processId;
             item.updatedAt = new Date().toISOString();
 
-            await this.writeItem(repoId, item);
+            await this.writeItem(storageRepoId, item);
 
             // Keep index in sync (lastRunAt, updatedAt)
-            await this.refreshIndexEntry(repoId, item);
+            await this.refreshIndexEntry(storageRepoId, item);
         });
     }
 
@@ -580,12 +753,13 @@ export class FileWorkItemStore implements WorkItemStore {
         workItemId: string,
         taskId: string,
         updates: Partial<WorkItemExecution>,
+        repoId?: string,
     ): Promise<void> {
         return this.enqueueWrite(async () => {
-            const repoId = await this.findRepoForItem(workItemId);
-            if (!repoId) return;
+            const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+            if (!storageRepoId) return;
 
-            const item = await this.readItem(repoId, workItemId);
+            const item = await this.readItem(storageRepoId, workItemId);
             if (!item?.executionHistory) return;
 
             const execIdx = item.executionHistory.findIndex(e => e.taskId === taskId);
@@ -594,45 +768,45 @@ export class FileWorkItemStore implements WorkItemStore {
             item.executionHistory[execIdx] = { ...item.executionHistory[execIdx], ...updates };
             item.updatedAt = new Date().toISOString();
 
-            await this.writeItem(repoId, item);
+            await this.writeItem(storageRepoId, item);
 
             // Keep index in sync (lastRunAt, updatedAt)
-            await this.refreshIndexEntry(repoId, item);
+            await this.refreshIndexEntry(storageRepoId, item);
         });
     }
 
     // ── Change tracking ─────────────────────────────────────────────
 
-    async addChange(workItemId: string, change: WorkItemChange): Promise<void> {
+    async addChange(workItemId: string, change: WorkItemChange, repoId?: string): Promise<void> {
         return this.enqueueWrite(async () => {
-            const repoId = await this.findRepoForItem(workItemId);
-            if (!repoId) return;
-            const item = await this.readItem(repoId, workItemId);
+            const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+            if (!storageRepoId) return;
+            const item = await this.readItem(storageRepoId, workItemId);
             if (!item) return;
             item.changes = [...(item.changes ?? []), change];
             item.updatedAt = new Date().toISOString();
-            await this.writeItem(repoId, item);
+            await this.writeItem(storageRepoId, item);
         });
     }
 
-    async updateChange(workItemId: string, changeId: string, updates: Partial<WorkItemChange>): Promise<void> {
+    async updateChange(workItemId: string, changeId: string, updates: Partial<WorkItemChange>, repoId?: string): Promise<void> {
         return this.enqueueWrite(async () => {
-            const repoId = await this.findRepoForItem(workItemId);
-            if (!repoId) return;
-            const item = await this.readItem(repoId, workItemId);
+            const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+            if (!storageRepoId) return;
+            const item = await this.readItem(storageRepoId, workItemId);
             if (!item?.changes) return;
             const idx = item.changes.findIndex(c => c.id === changeId);
             if (idx === -1) return;
             item.changes[idx] = { ...item.changes[idx], ...updates };
             item.updatedAt = new Date().toISOString();
-            await this.writeItem(repoId, item);
+            await this.writeItem(storageRepoId, item);
         });
     }
 
-    async getChanges(workItemId: string): Promise<WorkItemChange[]> {
-        const repoId = await this.findRepoForItem(workItemId);
-        if (!repoId) return [];
-        const item = await this.readItem(repoId, workItemId);
+    async getChanges(workItemId: string, repoId?: string): Promise<WorkItemChange[]> {
+        const storageRepoId = await this.findRepoForItem(workItemId, repoId);
+        if (!storageRepoId) return [];
+        const item = await this.readItem(storageRepoId, workItemId);
         return item?.changes ?? [];
     }
 
@@ -641,7 +815,8 @@ export class FileWorkItemStore implements WorkItemStore {
      * Used by hierarchy routes to enumerate direct children.
      */
     async listChildren(parentId: string, repoId: string): Promise<WorkItemIndexEntry[]> {
-        const index = await this.readIndex(repoId);
+        const { storageRepoId } = await this.resolveStorageScope(repoId);
+        const index = await this.readIndex(storageRepoId);
         return index.filter(e => e.parentId === parentId);
     }
 
@@ -827,7 +1002,13 @@ export class FileWorkItemStore implements WorkItemStore {
         return nextEntries;
     }
 
-    private async findRepoForItem(id: string): Promise<string | undefined> {
+    private async findRepoForItem(id: string, repoId?: string): Promise<string | undefined> {
+        if (repoId) {
+            const { storageRepoId } = await this.resolveStorageScope(repoId);
+            const index = await this.readIndex(storageRepoId);
+            return index.some(e => e.id === id) ? storageRepoId : undefined;
+        }
+
         const repos = await this.listRepoIds();
         for (const repo of repos) {
             const index = await this.readIndex(repo);

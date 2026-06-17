@@ -45,6 +45,18 @@ import {
     getOrRefreshWorkItemResponseCacheEntry,
     makeWorkItemSyncStatusResponseCacheKey,
 } from '../work-items/work-item-response-cache';
+import {
+    queryWorkspaceId,
+    resolveWorkItemRouteScope,
+    type WorkItemRouteScope,
+    type WorkItemRouteScopeKind,
+} from './work-item-route-scope';
+
+const WORK_ITEM_SYNC_STATUS_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/sync\/status$/;
+const WORK_ITEM_IMPORT_FROM_GITHUB_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/import-from-github$/;
+const WORK_ITEM_IMPORT_FROM_AZURE_BOARDS_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/import-from-azure-boards$/;
+const WORK_ITEM_CONVERT_TO_GITHUB_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/convert-to-github$/;
+const WORK_ITEM_CONVERT_TO_LOCAL_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/convert-to-local$/;
 
 export interface WorkItemSyncRouteContext {
     routes: Route[];
@@ -104,6 +116,39 @@ async function parseJsonObjectBody(req: http.IncomingMessage): Promise<Record<st
         throw badRequest('Request body must be a JSON object');
     }
     return body;
+}
+
+function bodyWorkspaceId(body: unknown): string | undefined {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
+    const raw = (body as Record<string, unknown>).workspaceId;
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+}
+
+async function resolveSyncRouteScope(
+    ctx: Pick<WorkItemSyncRouteContext, 'processStore'>,
+    req: http.IncomingMessage,
+    kind: WorkItemRouteScopeKind,
+    routeScopeId: string,
+    body?: unknown,
+): Promise<WorkItemRouteScope> {
+    const workspaceId = bodyWorkspaceId(body) ?? queryWorkspaceId(req);
+    const scope = await resolveWorkItemRouteScope(
+        { processStore: ctx.processStore },
+        kind,
+        routeScopeId,
+        workspaceId,
+    );
+    if (kind === 'origins' && !scope.workspaceId) {
+        throw badRequest('workspaceId is required for origin-scoped Work Item sync routes');
+    }
+    return scope;
+}
+
+function concreteWorkspaceId(scope: WorkItemRouteScope): string {
+    if (!scope.workspaceId) {
+        throw badRequest('Work Item sync routes require a concrete workspaceId');
+    }
+    return scope.workspaceId;
 }
 
 function disabledReason(ctx: Pick<WorkItemSyncRouteContext, 'getHierarchyEnabled' | 'getSyncEnabled'>): WorkItemSyncDisabledReason | undefined {
@@ -294,13 +339,16 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         return { context: providerContext, project };
     }
 
-    // GET /api/workspaces/:id/work-items/sync/status
+    // GET /api/origins/:originId/work-items/sync/status?workspaceId=:workspaceId
     ctx.routes.push({
         method: 'GET',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/sync\/status$/,
+        pattern: WORK_ITEM_SYNC_STATUS_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
             try {
-                const workspaceId = decodeURIComponent(match![1]);
+                const routeKind = match![1] as WorkItemRouteScopeKind;
+                const routeScopeId = decodeURIComponent(match![2]);
+                const scope = await resolveSyncRouteScope(ctx, req, routeKind, routeScopeId);
+                const workspaceId = concreteWorkspaceId(scope);
                 const reason = disabledReason(ctx);
                 if (reason) {
                     return sendJSON(res, 200, statusResponseForDisabled(reason));
@@ -324,14 +372,18 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         },
     });
 
-    // POST /api/workspaces/:id/work-items/import-from-github
+    // POST /api/origins/:originId/work-items/import-from-github
     ctx.routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/import-from-github$/,
+        pattern: WORK_ITEM_IMPORT_FROM_GITHUB_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
             try {
-                const workspaceId = decodeURIComponent(match![1]);
+                const routeKind = match![1] as WorkItemRouteScopeKind;
+                const routeScopeId = decodeURIComponent(match![2]);
                 const body = await parseJsonObjectBody(req);
+                const scope = await resolveSyncRouteScope(ctx, req, routeKind, routeScopeId, body);
+                const workspaceId = concreteWorkspaceId(scope);
+                const storageRepoId = scope.storageRepoId;
 
                 const { repo } = await resolveAvailableGitHubRepo(workspaceId);
                 const configuredOwner = repo.owner;
@@ -371,7 +423,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     throw badRequest('Either issueUrl or issueNumber is required');
                 }
 
-                const allItems = await ctx.workItemStore.listWorkItems({ repoId: workspaceId });
+                const allItems = await ctx.workItemStore.listWorkItems({ repoId: storageRepoId });
                 const duplicate = allItems.items.find(item =>
                     item.githubMirror?.issueNumber === resolvedIssueNumber ||
                     (
@@ -400,12 +452,12 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
 
                 const candidateIssues = await transport.listIssues(repo, { limit: WORK_ITEM_SYNC_MAX_ITEMS });
                 const result = await importGitHubEpicTreeAsWorkItems(
-                    { workspaceId, workItemStore: ctx.workItemStore },
+                    { workspaceId: storageRepoId, workItemStore: ctx.workItemStore },
                     repo,
                     issue,
                     candidateIssues,
                 );
-                clearWorkItemResponseCacheForWorkspace(workspaceId);
+                clearWorkItemResponseCacheForWorkspace(storageRepoId);
                 notifyGitHubBackedEpicTreeChanged(workspaceId);
 
                 return sendJSON(res, 201, result.root);
@@ -415,14 +467,18 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         },
     });
 
-    // POST /api/workspaces/:id/work-items/import-from-azure-boards
+    // POST /api/origins/:originId/work-items/import-from-azure-boards
     ctx.routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/import-from-azure-boards$/,
+        pattern: WORK_ITEM_IMPORT_FROM_AZURE_BOARDS_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
             try {
-                const workspaceId = decodeURIComponent(match![1]);
+                const routeKind = match![1] as WorkItemRouteScopeKind;
+                const routeScopeId = decodeURIComponent(match![2]);
                 const body = await parseJsonObjectBody(req);
+                const scope = await resolveSyncRouteScope(ctx, req, routeKind, routeScopeId, body);
+                const workspaceId = concreteWorkspaceId(scope);
+                const storageRepoId = scope.storageRepoId;
                 const { project } = await resolveAvailableAzureBoardsProject(workspaceId);
 
                 const workItemUrl = optionalString(body.workItemUrl, 'workItemUrl');
@@ -449,7 +505,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     throw badRequest('Either workItemUrl or workItemId is required');
                 }
 
-                const allItems = await ctx.workItemStore.listWorkItems({ repoId: workspaceId });
+                const allItems = await ctx.workItemStore.listWorkItems({ repoId: storageRepoId });
                 const duplicate = allItems.items.find(item =>
                     item.azureBoardsMirror?.workItemId === resolvedWorkItemId ||
                     (
@@ -475,11 +531,11 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                 }
 
                 const result = await importAzureBoardsEpicTreeAsWorkItems(
-                    { workspaceId, workItemStore: ctx.workItemStore },
+                    { workspaceId: storageRepoId, workItemStore: ctx.workItemStore },
                     rootWorkItem,
                     tree,
                 );
-                clearWorkItemResponseCacheForWorkspace(workspaceId);
+                clearWorkItemResponseCacheForWorkspace(storageRepoId);
                 notifyAzureBoardsBackedEpicTreeChanged(workspaceId);
 
                 return sendJSON(res, 201, result.root);
@@ -489,15 +545,19 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         },
     });
 
-    // POST /api/workspaces/:id/work-items/:workItemId/convert-to-github
+    // POST /api/origins/:originId/work-items/:workItemId/convert-to-github
     ctx.routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/convert-to-github$/,
-        handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+        pattern: WORK_ITEM_CONVERT_TO_GITHUB_PATTERN,
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
             try {
-                const workspaceId = decodeURIComponent(match![1]);
-                const workItemId = decodeURIComponent(match![2]);
-                const root = await loadRootEpic(workspaceId, workItemId, 'Local-to-GitHub conversion');
+                const routeKind = match![1] as WorkItemRouteScopeKind;
+                const routeScopeId = decodeURIComponent(match![2]);
+                const workItemId = decodeURIComponent(match![3]);
+                const scope = await resolveSyncRouteScope(ctx, req, routeKind, routeScopeId);
+                const workspaceId = concreteWorkspaceId(scope);
+                const storageRepoId = scope.storageRepoId;
+                const root = await loadRootEpic(storageRepoId, workItemId, 'Local-to-GitHub conversion');
                 if (root.tracker?.kind === 'github-backed') {
                     throw badRequest('Work item is already a GitHub-backed Epic root.');
                 }
@@ -505,12 +565,12 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                 const { repo } = await resolveAvailableGitHubRepo(workspaceId);
                 const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
                 const result = await convertLocalEpicTreeToGitHubBacked(
-                    { workspaceId, workItemStore: ctx.workItemStore },
+                    { workspaceId: storageRepoId, workItemStore: ctx.workItemStore },
                     repo,
                     transport,
                     root.id,
                 );
-                clearWorkItemResponseCacheForWorkspace(workspaceId);
+                clearWorkItemResponseCacheForWorkspace(storageRepoId);
                 notifyGitHubBackedEpicTreeChanged(workspaceId);
                 return sendJSON(res, 200, result);
             } catch (error) {
@@ -519,24 +579,28 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         },
     });
 
-    // POST /api/workspaces/:id/work-items/:workItemId/convert-to-local
+    // POST /api/origins/:originId/work-items/:workItemId/convert-to-local
     ctx.routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/convert-to-local$/,
-        handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+        pattern: WORK_ITEM_CONVERT_TO_LOCAL_PATTERN,
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
             try {
-                const workspaceId = decodeURIComponent(match![1]);
-                const workItemId = decodeURIComponent(match![2]);
-                const root = await loadRootEpic(workspaceId, workItemId, 'GitHub-to-local conversion');
+                const routeKind = match![1] as WorkItemRouteScopeKind;
+                const routeScopeId = decodeURIComponent(match![2]);
+                const workItemId = decodeURIComponent(match![3]);
+                const scope = await resolveSyncRouteScope(ctx, req, routeKind, routeScopeId);
+                const workspaceId = concreteWorkspaceId(scope);
+                const storageRepoId = scope.storageRepoId;
+                const root = await loadRootEpic(storageRepoId, workItemId, 'GitHub-to-local conversion');
                 if (root.tracker?.kind !== 'github-backed' || root.tracker.provider !== 'github') {
                     throw badRequest('Work item is not a GitHub-backed Epic root.');
                 }
 
                 const result = await detachGitHubEpicTreeToLocalOnly(
-                    { workspaceId, workItemStore: ctx.workItemStore },
+                    { workspaceId: storageRepoId, workItemStore: ctx.workItemStore },
                     root.id,
                 );
-                clearWorkItemResponseCacheForWorkspace(workspaceId);
+                clearWorkItemResponseCacheForWorkspace(storageRepoId);
                 notifyGitHubBackedEpicTreeChanged(workspaceId);
                 return sendJSON(res, 200, result);
             } catch (error) {

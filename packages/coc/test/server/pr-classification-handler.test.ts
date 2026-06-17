@@ -1,10 +1,8 @@
 /**
- * Tests for pr-classification-handler — unit tests for prompt and tag helpers,
- * plus enqueue payload shape verification.
+ * Tests for pr-classification-handler — unit tests for the PR prompt helper.
  *
- * Route-level behavior (POST/GET) is covered indirectly via the file-based
- * classification-store tests. The legacy `extractClassificationFromResult`
- * has been removed in favour of the `saveClassification` LLM tool.
+ * Route-level behavior lives in generic-classification-handler; classification
+ * persistence is handled by the `saveClassification` LLM tool.
  */
 
 import { describe, it, expect } from 'vitest';

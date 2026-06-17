@@ -165,7 +165,13 @@ async function renderDetail(props: Partial<any> = {}) {
     );
     const onBack = props.onBack ?? vi.fn();
     return render(
-        <PullRequestDetail repoId="repo-1" prId={142} onBack={onBack} {...props} />
+        <PullRequestDetail
+            repoId="repo-1"
+            remoteUrl="https://github.com/octo/repo.git"
+            prId={142}
+            onBack={onBack}
+            {...props}
+        />
     );
 }
 
@@ -202,6 +208,24 @@ describe('successful render', () => {
         await waitFor(() => expect(screen.getByTestId('pr-title')).toBeInTheDocument());
         expect(screen.getByTestId('pr-title').textContent).toContain('Add retry logic for transient failures');
         expect(screen.getByTestId('pr-status-badge').textContent).toMatch(/Open/i);
+    });
+
+    it('loads provider-backed PR resources through origin APIs with selected workspace metadata', async () => {
+        mockFetchDetail(makePr());
+
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-title')).toBeInTheDocument());
+
+        const urls = vi.mocked(global.fetch).mock.calls
+            .map(([input]) => String(input))
+            .filter(url => /\/pull-requests\/142(?:[/?]|$)/.test(url));
+        expect(urls).toEqual([
+            '/origins/gh_octo_repo/pull-requests/142?workspaceId=repo-1&repoId=repo-1',
+            '/origins/gh_octo_repo/pull-requests/142/threads?workspaceId=repo-1&repoId=repo-1',
+            '/origins/gh_octo_repo/pull-requests/142/diff?workspaceId=repo-1&repoId=repo-1',
+            '/origins/gh_octo_repo/pull-requests/142/commits?workspaceId=repo-1&repoId=repo-1',
+            '/origins/gh_octo_repo/pull-requests/142/checks?workspaceId=repo-1&repoId=repo-1',
+        ]);
     });
 
     it('renders branch info', async () => {
@@ -406,6 +430,22 @@ describe('tabs', () => {
         expect(screen.queryByText(/AI annotation/i)).not.toBeInTheDocument();
         expect(screen.queryByText(/AI focus file/i)).not.toBeInTheDocument();
         expect(screen.getByTestId('tab-files').textContent).toContain('2');
+    });
+
+    it('opens PR review pop-out URLs with the resolved origin ID', async () => {
+        const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
+        mockFetchDetail(makePr(), [], SAMPLE_DIFF);
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-files'));
+        fireEvent.click(screen.getAllByTestId('pr-file-row')[0]);
+
+        expect(openSpy).toHaveBeenCalledWith(
+            '/?workspace=repo-1&repo=repo-1&origin=gh_octo_repo#popout/git-review/pr/142',
+            'coc-git-review-pr-142',
+            'width=1200,height=800',
+        );
+        openSpy.mockRestore();
     });
 
     it('renders the minimal file list without inline diff in the Files tab', async () => {

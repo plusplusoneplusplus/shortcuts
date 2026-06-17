@@ -34,6 +34,7 @@ import { PullRequestChatPlacementFrame } from './PullRequestChatPlacementFrame';
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
 import type { ClassificationKey } from '../git/diff/diffSource';
 import { buildGitPrPopOutUrl } from '../../layout/Router';
+import { resolveCanonicalOriginId } from '../../repos/originScope';
 import { useGitReviewPopOut, gitReviewPrPopOutKey } from '../../contexts/GitReviewPopOutContext';
 import { useReviewChatPresentation } from '../git/hooks/useReviewChatPresentation';
 import type { ReviewChatTarget } from '../git/commits/commitChatPlacement';
@@ -67,6 +68,7 @@ const descMarked = new Marked({ gfm: true, breaks: true, renderer: descRenderer 
 
 export interface PullRequestDetailProps {
     repoId: string;
+    remoteUrl?: string | null;
     prId: number | string;
     onBack: () => void;
     /** When true (mobile), renders the back button. Hidden on desktop. */
@@ -82,7 +84,7 @@ const TAB_DEFINITIONS: Array<{ id: PrDetailTab; label: string }> = [
 
 const EMPTY_FILES: FileChange[] = [];
 
-export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: PullRequestDetailProps) {
+export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = false }: PullRequestDetailProps) {
     const { state, dispatch } = useApp();
     const [pr, setPr] = useState<PullRequest | null>(null);
     const [threads, setThreads] = useState<CommentThread[]>([]);
@@ -105,13 +107,23 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const { markPoppedOut } = useGitReviewPopOut();
     const workspaceId = state.workspace ?? String(repoId);
     const placementWorkspaceId = state.selectedRepoId ?? String(repoId);
+    const originId = useMemo(
+        () => resolveCanonicalOriginId({ workspaceId, remoteUrl }),
+        [workspaceId, remoteUrl],
+    );
 
     // Classification hook — passes undefined key when feature flag is off or no real headSha yet.
     // Never fall back to sourceBranch: two PRs on the same branch would alias to the same key.
     const headSha = pr?.headSha;
     const classificationKey: ClassificationKey | undefined =
         SHOW_FOCUSED_DIFF && repoId && prId && headSha
-            ? { type: 'pr', repoId: String(repoId), identifier: `${prId}:${headSha}` }
+            ? {
+                type: 'pr',
+                repoId: String(repoId),
+                originId,
+                workspaceId,
+                identifier: `${prId}:${headSha}`,
+            }
             : undefined;
     const prChatTarget = useMemo<ReviewChatTarget>(() => ({
         type: 'pr',
@@ -139,12 +151,12 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     }, [assistantOpen, toggleAssistant]);
 
     const handleFileClick = useCallback((filePath: string) => {
-        const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId));
+        const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId), originId);
         const win = window.open(url, `coc-git-review-pr-${prId}`, 'width=1200,height=800');
         if (win) {
             markPoppedOut(gitReviewPrPopOutKey(workspaceId, String(prId)));
         }
-    }, [workspaceId, repoId, prId, markPoppedOut]);
+    }, [workspaceId, originId, repoId, prId, markPoppedOut]);
 
     const switchTab = useCallback(
         (tab: PrDetailTab) => {
@@ -168,31 +180,32 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         const client = getSpaCocClient();
         const prIdStr = String(prId);
         const repoIdStr = String(repoId);
+        const providerOptions = { workspaceId, repoId: repoIdStr };
 
         Promise.all([
             client.pullRequests
-                .get(repoIdStr, prIdStr, { force })
+                .getForOrigin(originId, prIdStr, { ...providerOptions, force })
                 .then(body => body as PullRequest),
             client.pullRequests
-                .getThreads(repoIdStr, prIdStr)
+                .getThreadsForOrigin(originId, prIdStr, providerOptions)
                 .then(body => (body.threads ?? []) as CommentThread[])
                 .catch(() => [] as CommentThread[]),
             client.pullRequests
-                .getDiff(repoIdStr, prIdStr)
+                .getDiffForOrigin(originId, prIdStr, providerOptions)
                 .then(text => ({ kind: 'ok' as const, parsed: parseDiffFileList(text) }))
                 .catch((err: unknown) => ({
                     kind: 'err' as const,
                     message: getSpaCocClientErrorMessage(err, 'Failed to load diff'),
                 })),
             client.pullRequests
-                .getCommits(repoIdStr, prIdStr)
+                .getCommitsForOrigin(originId, prIdStr, providerOptions)
                 .then(body => ({ kind: 'ok' as const, commits: (body.commits ?? []) as PullRequestCommit[] }))
                 .catch((err: unknown) => ({
                     kind: 'err' as const,
                     message: getSpaCocClientErrorMessage(err, 'Failed to load commits'),
                 })),
             client.pullRequests
-                .getChecks(repoIdStr, prIdStr)
+                .getChecksForOrigin(originId, prIdStr, providerOptions)
                 .then(body => ({ kind: 'ok' as const, checks: (body.checks ?? []) as PullRequestCheck[] }))
                 .catch((err: unknown) => ({
                     kind: 'err' as const,
@@ -223,7 +236,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 setLoading(false);
                 setRefreshing(false);
             });
-    }, [repoId, prId]);
+    }, [repoId, prId, originId, workspaceId]);
 
     useEffect(() => {
         fetchAll();
@@ -636,6 +649,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
             {assistantOpen && assistantPresentation === 'lens' && (
                 <PullRequestChatPlacementFrame
                     workspaceId={String(repoId)}
+                    remoteUrl={remoteUrl}
                     repoId={String(repoId)}
                     prId={String(prId)}
                     prNumber={pr.number}
@@ -654,6 +668,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                     open={assistantOpen}
                     onClose={closeAssistant}
                     workspaceId={String(repoId)}
+                    remoteUrl={remoteUrl}
                     repoId={String(repoId)}
                     prId={String(prId)}
                     prNumber={pr.number}

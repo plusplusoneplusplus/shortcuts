@@ -84,6 +84,7 @@ describe('PullRequestChatPanel', () => {
 
     const defaultProps = {
         workspaceId: 'ws1',
+        remoteUrl: 'https://github.com/octo/repo.git',
         prId: '142',
         prNumber: 142,
         prTitle: 'Add retry logic',
@@ -228,6 +229,7 @@ describe('PullRequestChatPanel', () => {
             render(
                 <PullRequestChatPanel
                     workspaceId="ws1"
+                    remoteUrl="https://github.com/octo/repo.git"
                     prId="PR-ABC"
                     repoId="ws1"
                     onClose={vi.fn()}
@@ -280,6 +282,7 @@ describe('PullRequestChatPanel', () => {
             render(
                 <PullRequestChatPanel
                     workspaceId="ws-test"
+                    remoteUrl="https://github.com/octo/repo.git"
                     prId="999"
                     prNumber={999}
                     prTitle="My PR"
@@ -291,6 +294,7 @@ describe('PullRequestChatPanel', () => {
 
         expect(mockUsePullRequestChatBinding).toHaveBeenCalledWith({
             workspaceId: 'ws-test',
+            remoteUrl: 'https://github.com/octo/repo.git',
             prId: '999',
             prNumber: 999,
             prTitle: 'My PR',

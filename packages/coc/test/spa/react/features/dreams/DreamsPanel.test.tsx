@@ -48,9 +48,9 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
             createFact: mocks.createMemoryFact,
         },
         workItems: {
-            create: mocks.createWorkItem,
-            get: mocks.getWorkItem,
-            update: mocks.updateWorkItem,
+            createForOrigin: mocks.createWorkItem,
+            getForOrigin: mocks.getWorkItem,
+            updateForOrigin: mocks.updateWorkItem,
         },
     }),
     getSpaCocClientErrorMessage: (error: unknown, fallback: string) =>
@@ -160,7 +160,7 @@ describe('DreamsPanel', () => {
     it('shows the disabled-by-flag state without calling Dreams routes', () => {
         mocks.isDreamsEnabled.mockReturnValue(false);
 
-        render(<DreamsPanel workspaceId="ws-1" />);
+        render(<DreamsPanel workspaceId="ws-1" originId="gh_example_repo" />);
 
         expect(screen.getByTestId('dreams-disabled-by-flag')).toBeTruthy();
         expect(mocks.getRepo).not.toHaveBeenCalled();
@@ -171,7 +171,7 @@ describe('DreamsPanel', () => {
         mocks.getRepo.mockResolvedValue({ dreams: { enabled: false } });
         mocks.listCards.mockResolvedValue([]);
 
-        render(<DreamsPanel workspaceId="ws-1" />);
+        render(<DreamsPanel workspaceId="ws-1" originId="gh_example_repo" />);
 
         await screen.findByTestId('dreams-workspace-disabled');
         expect(mocks.listCards).not.toHaveBeenCalled();
@@ -326,13 +326,13 @@ describe('DreamsPanel', () => {
         };
         mocks.listCards.mockResolvedValue([approvedProductCard]);
 
-        render(<DreamsPanel workspaceId="ws-1" />);
+        render(<DreamsPanel workspaceId="ws-1" originId="gh_example_repo" />);
 
         await screen.findByTestId('dream-card-dream-1');
         fireEvent.click(screen.getByTestId('dream-next-action-dream-1'));
         fireEvent.click(screen.getByTestId('dream-next-action-submit'));
 
-        await waitFor(() => expect(mocks.createWorkItem).toHaveBeenCalledWith('ws-1', expect.objectContaining({
+        await waitFor(() => expect(mocks.createWorkItem).toHaveBeenCalledWith('gh_example_repo', expect.objectContaining({
             title: sampleCard.recommendation,
             type: 'work-item',
             priority: 'normal',
@@ -340,7 +340,7 @@ describe('DreamsPanel', () => {
             source: 'manual',
             sourceId: 'dream-1',
             description: expect.stringContaining('Dream card dream-1'),
-        })));
+        }), { workspaceId: 'ws-1' }));
         await waitFor(() => expect(mocks.convert).toHaveBeenCalledWith('ws-1', 'dream-1', {
             artifactType: 'work-item',
             artifactId: 'WI-456',
@@ -356,7 +356,7 @@ describe('DreamsPanel', () => {
         };
         mocks.listCards.mockResolvedValue([approvedProductCard]);
 
-        render(<DreamsPanel workspaceId="ws-1" />);
+        render(<DreamsPanel workspaceId="ws-1" originId="gh_example_repo" />);
 
         await screen.findByTestId('dream-card-dream-1');
         fireEvent.click(screen.getByTestId('dream-next-action-dream-1'));
@@ -364,11 +364,11 @@ describe('DreamsPanel', () => {
         fireEvent.change(screen.getByTestId('dream-next-action-existing-work-item-id'), { target: { value: 'WI-123' } });
         fireEvent.click(screen.getByTestId('dream-next-action-submit'));
 
-        await waitFor(() => expect(mocks.getWorkItem).toHaveBeenCalledWith('ws-1', 'WI-123'));
-        await waitFor(() => expect(mocks.updateWorkItem).toHaveBeenCalledWith('ws-1', 'WI-123', {
+        await waitFor(() => expect(mocks.getWorkItem).toHaveBeenCalledWith('gh_example_repo', 'WI-123', { workspaceId: 'ws-1' }));
+        await waitFor(() => expect(mocks.updateWorkItem).toHaveBeenCalledWith('gh_example_repo', 'WI-123', {
             description: expect.stringContaining('Existing description'),
             tags: ['existing', 'dream'],
-        }));
+        }, { workspaceId: 'ws-1' }));
         expect(mocks.updateWorkItem.mock.calls[0][2].description).toContain('Dream recommendation dream-1');
         await waitFor(() => expect(mocks.convert).toHaveBeenCalledWith('ws-1', 'dream-1', {
             artifactType: 'work-item',

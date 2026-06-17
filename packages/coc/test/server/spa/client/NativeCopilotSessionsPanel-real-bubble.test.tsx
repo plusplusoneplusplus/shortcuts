@@ -54,6 +54,27 @@ vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useDisplaySet
     useDisplaySettings: () => ({ showReportIntent: false }),
 }));
 
+// Keep ConversationArea + ConversationTurnBubble REAL (the path this suite
+// exists to prove), but stub the surrounding chat chrome so the test stays
+// focused on the transcript: the header renders its title + the native-session
+// metadata rows it receives, the minimap and disabled composer are inert.
+vi.mock('../../../../src/server/spa/client/react/features/chat/ChatHeader', () => ({
+    ChatHeader: ({ title, metadataExtraRows, viewToggle }: any) => (
+        <div data-testid="chat-header" data-title={title}>
+            {viewToggle}
+            {(metadataExtraRows ?? []).map((r: any, i: number) => (
+                <div key={i} data-testid="chat-header-meta-row">{r.label}: {r.value}</div>
+            ))}
+        </div>
+    ),
+}));
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMiniMap', () => ({
+    ConversationMiniMap: () => <div data-testid="conversation-minimap" />,
+}));
+// FollowUpInputArea is rendered REAL here (not stubbed) so this suite also
+// proves AC-05: chat's actual composer mounts disabled for a native session
+// with the panel's inert stub props, without crashing.
+
 import { NativeCopilotSessionsPanel } from '../../../../src/server/spa/client/react/features/native-copilot-sessions/NativeCopilotSessionsPanel';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -208,9 +229,11 @@ describe('NativeCopilotSessionsPanel — real ConversationTurnBubble integration
         const detail = await openDetail();
         expect(mockGet).toHaveBeenCalledWith('ws-1', 'session-rich-1', 'codex');
 
-        // Metadata header preserved alongside the transcript.
+        // Session metadata (stored summary) is surfaced through the chat header's
+        // metadata rows; the transcript renders in the chat conversation area.
         expect(detail.textContent).toContain('Inspect the native session store and report its schema.');
-        expect(screen.getByTestId('native-session-conversation').textContent).toContain('Conversation (3)');
+        const conversation = screen.getByTestId('native-session-conversation');
+        expect(conversation.textContent).toContain('can you check the session-store.db');
 
         // The GENUINE ToolCallView surface rendered (not the panel suite's stub):
         // both bash calls render as full cards with their names.
@@ -256,5 +279,16 @@ describe('NativeCopilotSessionsPanel — real ConversationTurnBubble integration
             const pattern = new RegExp(`^${action}$`, 'i');
             expect(screen.queryByRole('button', { name: pattern })).toBeNull();
         }
+    });
+
+    it('renders the real follow-up composer blocked, with a read-only note (AC-05)', async () => {
+        await openDetail();
+        // The genuine chat composer mounts (its disabled contenteditable input is
+        // present) rather than being stubbed.
+        const input = screen.getByTestId('activity-chat-input');
+        expect(input).toBeTruthy();
+        expect(input.getAttribute('contenteditable')).toBe('false');
+        // A read-only note explains why follow-up is unavailable.
+        expect(screen.getByTestId('native-session-readonly-helper').textContent ?? '').toMatch(/disabled/i);
     });
 });

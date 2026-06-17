@@ -6,9 +6,9 @@
  * `payload.context.classifyDiff`.
  *
  * Extends ChatBaseExecutor to inject a per-invocation `saveClassification`
- * tool pre-bound with the (workspaceId, repoId, prId, headSha) tuple. The
- * AI calls the tool with the final per-hunk classifications and the handler
- * writes them to the file-based classification store.
+ * tool pre-bound with the (workspaceId, repoId, origin storage scope, prId,
+ * headSha) tuple. The AI calls the tool with the final per-hunk classifications
+ * and the handler writes them to the file-based classification store.
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -31,6 +31,7 @@ import {
     buildTavilyWebSearchAddon,
     buildModeSystemMessage,
     applyLlmToolPreferences,
+    buildSourceLocationMarkdownLinkSystemMessage,
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
@@ -71,6 +72,7 @@ export class ClassificationExecutor extends ChatBaseExecutor {
                 prId: ctx.prId,
                 headSha: ctx.headSha,
                 processId,
+                storageScope: ctx.classificationStorageOriginId,
             });
             tools.push(tool);
             toolGuidance += SAVE_CLASSIFICATION_SUFFIX;
@@ -99,6 +101,7 @@ export class ClassificationExecutor extends ChatBaseExecutor {
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage('ask')?.content)
             .withRepoInstructions(workingDirectory, 'ask')
+            .append(buildSourceLocationMarkdownLinkSystemMessage(readProvider(task.payload, this.provider))?.content)
             .appendToolGuidance(toolGuidance)
             .build();
 
@@ -119,13 +122,21 @@ export class ClassificationExecutor extends ChatBaseExecutor {
 function resolveClassificationContext(payload: Record<string, unknown>): {
     workspaceId?: string;
     repoId?: string;
+    classificationStorageOriginId?: string;
     prId?: string;
     headSha?: string;
 } {
     if (isPrClassificationPayload(payload)) {
         const p = payload as unknown as PrClassificationPayload;
-        return { workspaceId: p.workspaceId, repoId: p.repoId, prId: p.prId, headSha: p.headSha };
+        return {
+            workspaceId: p.workspaceId,
+            repoId: p.repoId,
+            classificationStorageOriginId: p.classificationStorageOriginId,
+            prId: p.prId,
+            headSha: p.headSha,
+        };
     }
+
     if (isChatPayload(payload)) {
         const p = payload as unknown as ChatPayload;
         return {
@@ -136,4 +147,14 @@ function resolveClassificationContext(payload: Record<string, unknown>): {
         };
     }
     return {};
+}
+
+function readProvider(payload: unknown, fallback: 'copilot' | 'codex' | 'claude'): 'copilot' | 'codex' | 'claude' {
+    if (payload && typeof payload === 'object') {
+        const provider = (payload as { provider?: unknown }).provider;
+        if (provider === 'copilot' || provider === 'codex' || provider === 'claude') {
+            return provider;
+        }
+    }
+    return fallback;
 }

@@ -68,6 +68,8 @@ vi.mock('../../src/server/llm-tools/get-work-item-tool', () => ({
 import {
     buildForEachGenerationSystemMessage,
     buildModeSystemMessage,
+    buildSourceLocationMarkdownLinkSystemMessage,
+    SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE,
     appendAutoFolderBlock,
     withRepoInstructions,
     findContextFileSuffix,
@@ -124,6 +126,22 @@ describe('buildModeSystemMessage', () => {
         expect(realMsg).toContain('read-only');
         // Must not grant blanket write access
         expect(realMsg).not.toMatch(/you may (create|write|modify) any file/i);
+    });
+});
+
+describe('buildSourceLocationMarkdownLinkSystemMessage', () => {
+    it.each(['copilot', 'claude'] as const)('returns source-location Markdown-link instructions for %s', (provider) => {
+        const result = buildSourceLocationMarkdownLinkSystemMessage(provider);
+        expect(result).toEqual({
+            mode: 'append',
+            content: SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE,
+        });
+        expect(result!.content).toContain('[src/file.ts:42](src/file.ts:42)');
+        expect(result!.content).toContain('[src/file.ts:42-58](src/file.ts:42-58)');
+    });
+
+    it.each(['codex', undefined] as const)('omits source-location instructions for %s', (provider) => {
+        expect(buildSourceLocationMarkdownLinkSystemMessage(provider)).toBeUndefined();
     });
 });
 

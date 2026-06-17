@@ -15,12 +15,14 @@ import { Button, Card, Spinner, cn } from '../../ui';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { isDreamsEnabled } from '../../utils/config';
 import { toQueueProcessId } from '../../utils/queue-process-id';
+import { resolveWorkItemOriginId } from '../work-items/workItemOriginScope';
 
 type DreamFilterId = 'visible' | 'approved' | 'dismissed' | 'converted' | 'superseded' | 'all';
 type DreamNextActionKind = 'skill-hardening-task' | 'note' | 'memory' | 'work-item-create' | 'work-item-update';
 
 interface DreamsPanelProps {
     workspaceId: string;
+    originId?: string;
 }
 
 const FILTERS: Array<{ id: DreamFilterId; label: string; statuses?: DreamCardStatus[]; includeHidden?: boolean }> = [
@@ -425,11 +427,13 @@ function ConvertDialog({ card, onClose, onSubmit }: ConvertDialogProps) {
 interface NextActionDialogProps {
     card: DreamCard;
     workspaceId: string;
+    originId?: string;
     onClose: () => void;
     onConverted: (request: ConvertDreamCardRequest) => Promise<void>;
 }
 
-function NextActionDialog({ card, workspaceId, onClose, onConverted }: NextActionDialogProps) {
+function NextActionDialog({ card, workspaceId, originId, onClose, onConverted }: NextActionDialogProps) {
+    const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
     const [actionKind, setActionKind] = useState<DreamNextActionKind>(defaultNextActionKind(card));
     const [skillPrompt, setSkillPrompt] = useState(renderSkillHardeningPrompt(card));
     const [notePath, setNotePath] = useState(`Dreams/${card.id}.md`);
@@ -500,7 +504,7 @@ function NextActionDialog({ card, workspaceId, onClose, onConverted }: NextActio
             } else if (actionKind === 'work-item-create') {
                 const title = workItemTitle.trim();
                 if (!title) throw new Error('Work item title is required.');
-                const item = await client.workItems.create(workspaceId, {
+                const item = await client.workItems.createForOrigin(workItemOriginId, {
                     title,
                     description: workItemDescription.trim() || undefined,
                     type: workItemType,
@@ -508,7 +512,7 @@ function NextActionDialog({ card, workspaceId, onClose, onConverted }: NextActio
                     tags: ['dream'],
                     source: 'manual',
                     sourceId: card.id,
-                });
+                }, { workspaceId });
                 await onConverted({
                     artifactType: 'work-item',
                     artifactId: item.id,
@@ -517,16 +521,16 @@ function NextActionDialog({ card, workspaceId, onClose, onConverted }: NextActio
             } else {
                 const workItemId = existingWorkItemId.trim();
                 if (!workItemId) throw new Error('Existing work item ID is required.');
-                const existing = await client.workItems.get(workspaceId, workItemId);
+                const existing = await client.workItems.getForOrigin(workItemOriginId, workItemId, { workspaceId });
                 const appendix = renderWorkItemUpdateAppendix(card);
                 const description = existing.description.trim()
                     ? `${existing.description.trim()}\n\n---\n\n${appendix}`
                     : appendix;
                 const tags = Array.from(new Set([...(existing.tags ?? []), 'dream']));
-                const item = await client.workItems.update(workspaceId, workItemId, {
+                const item = await client.workItems.updateForOrigin(workItemOriginId, workItemId, {
                     description,
                     tags,
-                });
+                }, { workspaceId });
                 await onConverted({
                     artifactType: 'work-item',
                     artifactId: item.id,
@@ -865,7 +869,7 @@ function DreamCardView({
     );
 }
 
-export function DreamsPanel({ workspaceId }: DreamsPanelProps) {
+export function DreamsPanel({ workspaceId, originId }: DreamsPanelProps) {
     const globalEnabled = isDreamsEnabled();
     const [preferencesLoading, setPreferencesLoading] = useState(globalEnabled);
     const [preferencesError, setPreferencesError] = useState<string | null>(null);
@@ -1168,6 +1172,7 @@ export function DreamsPanel({ workspaceId }: DreamsPanelProps) {
                 <NextActionDialog
                     card={nextActionCard}
                     workspaceId={workspaceId}
+                    originId={originId}
                     onClose={() => setNextActionCard(null)}
                     onConverted={async request => {
                         await performCardAction(

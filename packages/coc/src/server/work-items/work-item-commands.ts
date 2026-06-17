@@ -156,6 +156,8 @@ export interface UpdateWorkItemCommandInput {
     tracker?: unknown;
     plan?: { content?: unknown; resolvedBy?: unknown; reason?: unknown; summary?: unknown };
     syncConflictResolution?: unknown;
+    /** Internal route-scope hint for origin-scoped auto-execute task payloads. */
+    storageRepoId?: string;
     /**
      * Skip the status-transition validity check while still validating the
      * status value itself. The AI tool forces `planning` on plan updates
@@ -1025,7 +1027,7 @@ export async function createWorkItemCommand(
             authorType: planResolvedBy,
             reason: input.plan.reason,
             summary: input.plan.summary,
-        });
+        }, repoId);
     }
 
     clearWorkItemResponseCacheForWorkspace(repoId);
@@ -1198,9 +1200,9 @@ export async function updateWorkItemCommand(
     );
 
     if (pendingPlanVersion) {
-        await ctx.workItemStore.savePlanVersion(workItemId, pendingPlanVersion);
+        await ctx.workItemStore.savePlanVersion(workItemId, pendingPlanVersion, repoId);
     }
-    const updated = await ctx.workItemStore.updateWorkItem(workItemId, remoteReadyUpdates);
+    const updated = await ctx.workItemStore.updateWorkItem(workItemId, remoteReadyUpdates, repoId);
     if (!updated) {
         throw notFound('Work item');
     }
@@ -1213,7 +1215,7 @@ export async function updateWorkItemCommand(
             startedAt: updates.plan.updatedAt ?? new Date().toISOString(),
             status: 'open',
         };
-        ctx.workItemStore.addChange(workItemId, change).catch(() => { /* non-fatal */ });
+        ctx.workItemStore.addChange(workItemId, change, repoId).catch(() => { /* non-fatal */ });
     }
 
     // Auto-execute if status transitioned to 'readyToExecute' and autoExecute is enabled
@@ -1229,8 +1231,12 @@ export async function updateWorkItemCommand(
                 }
             } catch { /* non-fatal */ }
 
-            await executeWorkItem(workItemId, ctx.workItemStore, ctx.enqueue, { headBefore });
-            const afterExec = await ctx.workItemStore.getWorkItem(workItemId);
+            await executeWorkItem(workItemId, ctx.workItemStore, ctx.enqueue, {
+                headBefore,
+                repoId: input.storageRepoId ?? repoId,
+                workspaceId: repoId,
+            });
+            const afterExec = await ctx.workItemStore.getWorkItem(workItemId, repoId);
             if (afterExec) {
                 clearWorkItemResponseCacheForWorkspace(repoId);
                 ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: afterExec });

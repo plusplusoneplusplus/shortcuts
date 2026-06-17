@@ -36,6 +36,7 @@ import { buildNotificationEntry } from './utils/build-notification-entry';
 import { WelcomeTour } from './welcome/WelcomeTour';
 import { SHOW_WELCOME_TUTORIAL } from './featureFlags';
 import { ErrorBoundary } from './ui/ErrorBoundary';
+import { resolveWorkItemOriginId } from './features/work-items/workItemOriginScope';
 
 import { ContainerAgentProvider } from './contexts/ContainerAgentContext';
 
@@ -184,6 +185,15 @@ function AppInner() {
         }
     }, [loadGlobalPreferences, queueDispatch]);
 
+    const getWorkItemEventScopeIds = useCallback((scopeId: string): string[] => {
+        const ids = new Set<string>([scopeId]);
+        const workspace = (appState.workspaces as Array<WorkspaceLike & { remoteUrl?: string | null }>).find(w => w.id === scopeId);
+        if (workspace) {
+            ids.add(resolveWorkItemOriginId({ workspaceId: workspace.id, remoteUrl: workspace.remoteUrl ?? null }));
+        }
+        return [...ids];
+    }, [appState.workspaces]);
+
     const onMessage = useCallback((msg: any) => {
         if (!msg || !msg.type) return;
 
@@ -285,19 +295,31 @@ function AppInner() {
                 });
                 break;
             case 'work-item-added':
-                if (msg.workspaceId && msg.item) workItemDispatch({ type: 'WORK_ITEM_ADDED', repoId: msg.workspaceId, item: msg.item });
+                if (msg.workspaceId && msg.item) {
+                    for (const scopeId of getWorkItemEventScopeIds(String(msg.workspaceId))) {
+                        workItemDispatch({ type: 'WORK_ITEM_ADDED', repoId: scopeId, item: msg.item });
+                    }
+                }
                 break;
             case 'work-item-updated':
-                if (msg.workspaceId && msg.item) workItemDispatch({ type: 'WORK_ITEM_UPDATED', repoId: msg.workspaceId, item: msg.item });
+                if (msg.workspaceId && msg.item) {
+                    for (const scopeId of getWorkItemEventScopeIds(String(msg.workspaceId))) {
+                        workItemDispatch({ type: 'WORK_ITEM_UPDATED', repoId: scopeId, item: msg.item });
+                    }
+                }
                 break;
             case 'work-item-removed':
-                if (msg.workspaceId && msg.itemId) workItemDispatch({ type: 'WORK_ITEM_REMOVED', repoId: msg.workspaceId, id: msg.itemId });
+                if (msg.workspaceId && msg.itemId) {
+                    for (const scopeId of getWorkItemEventScopeIds(String(msg.workspaceId))) {
+                        workItemDispatch({ type: 'WORK_ITEM_REMOVED', repoId: scopeId, id: msg.itemId });
+                    }
+                }
                 break;
             case 'ralph-session-complete':
                 window.dispatchEvent(new CustomEvent('ralph-session-complete', { detail: { repoId: msg.repoId } }));
                 break;
         }
-    }, [appDispatch, queueDispatch, workItemDispatch, appState.workspaces, addNotification]);
+    }, [appDispatch, queueDispatch, workItemDispatch, appState.workspaces, addNotification, getWorkItemEventScopeIds]);
 
     const { connect, status: wsStatus } = useWebSocket({ onMessage, onConnect: handleConnect });
 

@@ -672,7 +672,7 @@
 .agent-canvas .agent-inspector .ai-cstate[data-status="failed"] { background: var(--danger); }
 .agent-canvas .agent-inspector .ai-cstate[data-status="queued"] { background: var(--faint); }
 
-.agent-canvas .agent-inspector .ai-open-thread {
+.agent-canvas .agent-inspector .ai-open-detail {
     margin: 4px 14px 16px;
     display: inline-flex;
     align-items: center;
@@ -688,7 +688,7 @@
     cursor: pointer;
 }
 
-.agent-canvas .agent-inspector .ai-open-thread:hover {
+.agent-canvas .agent-inspector .ai-open-detail:hover {
     background: var(--hover);
     border-color: var(--border-strong);
 }

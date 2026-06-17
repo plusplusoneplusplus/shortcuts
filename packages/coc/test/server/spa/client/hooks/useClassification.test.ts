@@ -55,7 +55,13 @@ import type { ClassificationKey } from '../../../../../src/server/spa/client/rea
 import type { ResolvedModalJobAiSelection } from '../../../../../src/server/spa/client/react/shared/ModalJobAiControls';
 
 function makeKey(prId: string, sha: string): ClassificationKey {
-    return { type: 'pr', repoId: 'repo-1', identifier: `${prId}:${sha}` };
+    return {
+        type: 'pr',
+        repoId: 'repo-1',
+        originId: 'gh_owner_repo',
+        workspaceId: 'ws-1',
+        identifier: `${prId}:${sha}`,
+    };
 }
 
 function makeAiSelection(overrides?: Partial<ResolvedModalJobAiSelection>): ResolvedModalJobAiSelection {
@@ -106,6 +112,9 @@ describe('useClassification', () => {
 
         await waitFor(() => expect(result.current.state.status).toBe('ready'));
         expect(result.current.state.result).toEqual(RESULT_A);
+        expect(mocks.requestSpaApi.mock.calls[0][0]).toBe(
+            '/origins/gh_owner_repo/classify-diff?type=pr&identifier=1%3Asha1&workspaceId=ws-1&repoId=repo-1',
+        );
     });
 
     // ── Initial fetch: running → loading ──────────────────────────────────
@@ -404,8 +413,33 @@ describe('useClassification', () => {
         expect(postCall).toBeDefined();
         const body = JSON.parse((postCall![1] as any).body);
         expect(body.provider).toBe('copilot');
+        expect(body.workspaceId).toBe('ws-1');
+        expect(body.repoId).toBe('repo-1');
         expect(body.model).toBeUndefined();
         expect(body.reasoningEffort).toBeUndefined();
+    });
+
+    it('classify() posts PR classifications to the origin route', async () => {
+        const useClassification = await importHook();
+        mocks.requestSpaApi.mockResolvedValueOnce({ status: 'none' }); // initial GET
+        mocks.requestSpaApi.mockResolvedValueOnce({ status: 'started' }); // POST
+
+        const { result } = renderHook(() => useClassification(makeKey('7', 'headsha'), makeAiSelection()));
+
+        await waitFor(() => expect(result.current.state.status).toBe('idle'));
+        act(() => { result.current.classify(); });
+
+        await waitFor(() => expect(result.current.state.status).toBe('loading'));
+        const postCall = mocks.requestSpaApi.mock.calls.find(
+            c => typeof c[1] === 'object' && (c[1] as any)?.method === 'POST',
+        );
+        expect(postCall?.[0]).toBe('/origins/gh_owner_repo/classify-diff');
+        expect(JSON.parse((postCall![1] as any).body)).toMatchObject({
+            type: 'pr',
+            identifier: '7:headsha',
+            workspaceId: 'ws-1',
+            repoId: 'repo-1',
+        });
     });
 
     it('classify() sends model from aiSelection in POST body', async () => {

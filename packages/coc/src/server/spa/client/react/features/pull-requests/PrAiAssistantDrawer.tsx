@@ -15,6 +15,7 @@ export interface PrAiAssistantDrawerProps {
     open: boolean;
     onClose: () => void;
     workspaceId: string;
+    remoteUrl?: string | null;
     /** Stringified PR identifier — stable per provider. */
     prId: string;
     prNumber?: number;
@@ -30,6 +31,7 @@ export function PrAiAssistantDrawer({
     open,
     onClose,
     workspaceId,
+    remoteUrl,
     prId,
     prNumber,
     prTitle,
@@ -41,6 +43,7 @@ export function PrAiAssistantDrawer({
         open ? (
             <PullRequestChatPlacementFrame
                 workspaceId={workspaceId}
+                remoteUrl={remoteUrl}
                 prId={prId}
                 prNumber={prNumber}
                 prTitle={prTitle}
@@ -69,6 +72,7 @@ export function PrAiAssistantDrawer({
             <div className="flex-1 min-h-0">
                 <PullRequestChatPanel
                     workspaceId={workspaceId}
+                    remoteUrl={remoteUrl}
                     prId={prId}
                     prNumber={prNumber}
                     prTitle={prTitle}

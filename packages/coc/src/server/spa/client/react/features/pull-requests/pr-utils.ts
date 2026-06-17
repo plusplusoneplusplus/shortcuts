@@ -66,7 +66,7 @@ export interface CommentThread {
 
 /**
  * Provider-agnostic check status as returned by
- * /api/repos/:id/pull-requests/:prId/checks. Mirrors `CheckStatus` in
+ * /api/origins/:originId/pull-requests/:prId/checks. Mirrors `CheckStatus` in
  * `@plusplusoneplusplus/forge`'s provider abstraction.
  */
 export type PullRequestCheckStatus =
@@ -95,7 +95,7 @@ export interface PullRequestCheck {
     durationMs?: number;
 }
 
-/** Shape of a single commit as returned by the /api/repos/:id/pull-requests/:prId/commits endpoint. */
+/** Shape of a single commit as returned by the /api/origins/:originId/pull-requests/:prId/commits endpoint. */
 export interface PullRequestCommit {
     id: string;
     shortId: string;
@@ -121,7 +121,7 @@ export interface QueueRiskSignals {
     hasUnresolvedBlockingThread?: boolean;
 }
 
-/** Shape of a pull request as returned by the /api/repos/:id/pull-requests endpoint. */
+/** Shape of a pull request as returned by the /api/origins/:originId/pull-requests endpoint. */
 export interface PullRequest {
     id: number | string;
     number?: number;

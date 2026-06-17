@@ -31,6 +31,8 @@ import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
 import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/useChatSSE';
 import { CanvasPanel } from '../canvas/CanvasPanel';
+import { SourceCanvasPanel, useSourceCanvasState, useSourceCanvasContent } from './source-canvas';
+import { BottomSheet } from '../../ui/BottomSheet';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
@@ -45,7 +47,7 @@ import { buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { ConversationMiniMap } from './conversation/ConversationMiniMap';
-import { AgentCanvas, AgentCascadeMenu, SubAgentDetailView, ChatViewToggle, buildAgentRunTreeFromTurns, buildSubAgentTurns, flattenAgentLevels, findAgentNode, pathToAgent, findTurnIndexForRun, readChatViewFromHash, applyChatViewToHash, readAgentFromHash, applyAgentToHash } from './agent-canvas';
+import { AgentCanvas, AgentCascadeMenu, SubAgentDetailView, ChatViewToggle, buildAgentRunTreeFromTurns, buildSubAgentTurns, flattenAgentLevels, findAgentNode, pathToAgent, readChatViewFromHash, applyChatViewToHash, readAgentFromHash, applyAgentToHash } from './agent-canvas';
 import type { AgentRunNode, ChatView } from './agent-canvas';
 import { useConversationSelection } from './hooks/useConversationSelection';
 import { snapshotConversation } from '../../utils/snapshot-copy-utils';
@@ -194,7 +196,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // Selected sub-agent for the in-place read-only detail view. Rides the chat
     // hash as `?agent=<id>` alongside `?view=agents`.
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(() => (hashViewSync ? readAgentFromHash(window.location.hash) : null));
-    const [pendingScrollTurn, setPendingScrollTurn] = useState<number | null>(null);
     const [noteEdits, setNoteEdits] = useState<Array<{
         editId: string; notePath: string; preEditContent: string;
         postEditContent?: string; timestamp: string; turnIndex: number; tooLarge?: boolean;
@@ -291,6 +292,47 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
 
+    // ── Docked source-file canvas (right panel) ─────────────────────────────
+    // Mutually exclusive with the scratchpad and the agent canvas: opening it
+    // closes those, and opening either of those closes it (one right panel at
+    // a time). Declared before useChatSSE so the canvas-updated handler below
+    // can close it when a live agent canvas opens.
+    const sourceCanvas = useSourceCanvasState({
+        onOpen: () => {
+            scratchpad.close();
+            setCanvasPanelClosed(true);
+        },
+    });
+    const sourceCanvasResize = useResizablePanel({
+        initialWidth: 560,
+        minWidth: 320,
+        maxWidth: 1100,
+        storageKey: `coc.sourceCanvasPanel.width${workspaceId ? `.${encodeURIComponent(workspaceId)}` : ''}`,
+        direction: 'right',
+    });
+
+    // Chat AI-response file-path links (feature flag default ON) dispatch
+    // `coc-open-source-canvas` to open the docked source-file canvas. The bare
+    // path is what the canvas resolves + fetches; any `:line`/`:start-end` info
+    // travels in the event for scroll + highlight.
+    const openSourceCanvas = sourceCanvas.open;
+    useEffect(() => {
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent).detail || {};
+            const filePath = typeof detail.filePath === 'string' ? detail.filePath : '';
+            if (!filePath) return;
+            openSourceCanvas({
+                fullPath: filePath,
+                wsId: typeof detail.wsId === 'string' ? detail.wsId : undefined,
+                line: typeof detail.line === 'number' ? detail.line : undefined,
+                endLine: typeof detail.endLine === 'number' ? detail.endLine : undefined,
+                sourceFilePath: typeof detail.sourceFilePath === 'string' ? detail.sourceFilePath : undefined,
+            });
+        };
+        window.addEventListener('coc-open-source-canvas', handler as EventListener);
+        return () => window.removeEventListener('coc-open-source-canvas', handler as EventListener);
+    }, [openSourceCanvas]);
+
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
     selectedModeRef.current = selectedMode;
@@ -359,28 +401,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         }
     }, []);
 
-    // The inspector's "Open in thread" action: switch to the thread and scroll
-    // to the run's turn.
-    const openAgentInThread = useCallback((node: AgentRunNode) => {
-        const idx = node.isRoot
-            ? (turnsRef.current[0]?.turnIndex ?? 0)
-            : findTurnIndexForRun(turnsRef.current, node.id);
-        if (idx != null) {
-            setView('thread');
-            setPendingScrollTurn(idx);
-        }
-    }, []);
-
-    // After switching to the thread, scroll to the turn a canvas node pointed at.
-    useEffect(() => {
-        if (pendingScrollTurn == null || view !== 'thread') return;
-        const container = conversationContainerRef.current;
-        const target = container?.querySelector<HTMLElement>(`[data-turn-index="${pendingScrollTurn}"]`);
-        if (target) {
-            target.scrollIntoView({ block: 'start', behavior: 'smooth' });
-            setPendingScrollTurn(null);
-        }
-    }, [pendingScrollTurn, view, turns]);
+    const openAgentDetail = useCallback((node: AgentRunNode) => {
+        handleSelectAgent(node.isRoot ? null : node.id);
+    }, [handleSelectAgent]);
 
     // Compute the follow-up mode pill set, optionally appending Ralph when
     // the chat is eligible for in-place promotion. Eligibility:
@@ -518,7 +541,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         }
         setView(hashViewSync ? (readChatViewFromHash(window.location.hash) ?? 'thread') : 'thread');
         setSelectedAgentId(hashViewSync ? readAgentFromHash(window.location.hash) : null);
-        setPendingScrollTurn(null);
     }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Mirror the active view + selected sub-agent into the chat hash
@@ -925,6 +947,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             setActiveCanvasId(data.canvasId);
             setCanvasLiveEvent(data);
             setCanvasPanelClosed(false);
+            sourceCanvas.close();
         },
     });
 
@@ -940,7 +963,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setActiveCanvasId(null);
         setCanvasLiveEvent(null);
         setCanvasPanelClosed(false);
-    }, [taskId]);
+        sourceCanvas.close();
+    }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (!isCanvasEnabled() || !workspaceId) return;
@@ -987,7 +1011,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 <button
                     type="button"
                     className="inline-flex items-center justify-center w-7 h-7 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
-                    onClick={() => setCanvasPanelClosed(false)}
+                    onClick={() => { sourceCanvas.close(); setCanvasPanelClosed(false); }}
                     aria-label="Open canvas"
                     title="Open canvas"
                     data-testid="canvas-reopen"
@@ -1032,6 +1056,53 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 />
             </div>
         </>
+        )
+    ) : null;
+
+    // Docked source-file canvas: a full-height sibling column on desktop, a
+    // full-height BottomSheet on mobile. Mutually exclusive with the agent
+    // canvas above (only one of these columns is ever non-null at a time).
+    const sourceCanvasFileRef = sourceCanvas.fileRef;
+    const sourceCanvasWsId = sourceCanvasFileRef?.wsId ?? workspaceId ?? null;
+    const sourceCanvasContent = useSourceCanvasContent(sourceCanvasFileRef);
+    const sourceCanvasColumn = (sourceCanvas.isOpen && sourceCanvasFileRef) ? (
+        isMobile ? (
+            <BottomSheet
+                isOpen
+                onClose={sourceCanvas.close}
+                title={(sourceCanvasFileRef.displayPath || sourceCanvasFileRef.fullPath).replace(/\\/g, '/').split('/').pop() || 'Source'}
+                height={90}
+            >
+                <SourceCanvasPanel
+                    fileRef={sourceCanvasFileRef}
+                    wsId={sourceCanvasWsId}
+                    content={sourceCanvasContent}
+                    onClose={sourceCanvas.close}
+                />
+            </BottomSheet>
+        ) : (
+            <>
+                <div
+                    className="hidden lg:flex items-center justify-center w-1 cursor-col-resize shrink-0 hover:bg-[#d0d0d0] dark:hover:bg-[#3a3a3c]"
+                    onMouseDown={sourceCanvasResize.handleMouseDown}
+                    onTouchStart={sourceCanvasResize.handleTouchStart}
+                    role="separator"
+                    aria-label="Resize source canvas panel"
+                    data-testid="source-canvas-resize-handle"
+                />
+                <div
+                    style={{ width: sourceCanvasResize.width }}
+                    className="hidden lg:block shrink-0 h-full border-l border-[#e0e0e0] dark:border-[#474749]"
+                    data-testid="source-canvas-column"
+                >
+                    <SourceCanvasPanel
+                        fileRef={sourceCanvasFileRef}
+                        wsId={sourceCanvasWsId}
+                        content={sourceCanvasContent}
+                        onClose={sourceCanvas.close}
+                    />
+                </div>
+            </>
         )
     ) : null;
 
@@ -1597,8 +1668,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         && scratchpadCandidates.length > 0;
 
     const handleOpenScratchpad = useCallback(() => {
+        sourceCanvas.close();
         scratchpad.open(scratchpadCandidates[0]);
-    }, [scratchpad, scratchpadCandidates]);
+    }, [sourceCanvas, scratchpad, scratchpadCandidates]);
 
     const handleScratchpadNotFound = useCallback(() => {
         const missingPath = scratchpad.linkedNotePath;
@@ -1777,7 +1849,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         variant={variant}
                     />
                     ) : effectiveView === 'agents' ? (
-                    <AgentCanvas root={agentRoot} onOpenInThread={openAgentInThread} />
+                    <AgentCanvas root={agentRoot} onOpenAgentDetail={openAgentDetail} />
                     ) : (
                     <>
                     <ConversationArea
@@ -2121,6 +2193,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             )}
             </div>{/* /left stack */}
             {canvasColumn}
+            {sourceCanvasColumn}
             </div>{/* /canvas split row */}
             <RenameDialog
                 open={renameOpen}

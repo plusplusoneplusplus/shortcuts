@@ -55,4 +55,9 @@ describe('buildGitPrPopOutUrl', () => {
         const url = buildGitPrPopOutUrl('ws-1', 'my-repo', 123);
         expect(url).toBe('/?workspace=ws-1&repo=my-repo#popout/git-review/pr/123');
     });
+
+    it('includes the origin ID when provided', () => {
+        const url = buildGitPrPopOutUrl('ws-1', 'repo-1', '42', 'gh_owner_repo');
+        expect(url).toBe('/?workspace=ws-1&repo=repo-1&origin=gh_owner_repo#popout/git-review/pr/42');
+    });
 });

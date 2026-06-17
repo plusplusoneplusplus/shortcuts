@@ -4,18 +4,25 @@
  * Plan versioning and AI-assisted refinement for work items.
  *
  * Routes:
- *   GET  /api/workspaces/:id/work-items/:wid/plan             — Get current plan
- *   PUT  /api/workspaces/:id/work-items/:wid/plan             — Update plan (auto-versions)
- *   GET  /api/workspaces/:id/work-items/:wid/plan/versions    — List plan versions
- *   GET  /api/workspaces/:id/work-items/:wid/plan/versions/:v — Get specific version
- *   POST /api/workspaces/:id/work-items/:wid/plan/refine      — AI-assisted refinement
+ *   GET  /api/origins/:originId/work-items/:wid/plan             — Get current plan
+ *   PUT  /api/origins/:originId/work-items/:wid/plan             — Update plan (auto-versions)
+ *   GET  /api/origins/:originId/work-items/:wid/plan/versions    — List plan versions
+ *   GET  /api/origins/:originId/work-items/:wid/plan/versions/:v — Get specific version
+ *   POST /api/origins/:originId/work-items/:wid/plan/refine      — AI-assisted refinement
  */
 
 import * as http from 'http';
 import * as crypto from 'crypto';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest, forbidden } from '../errors';
+import {
+    queryWorkspaceId,
+    resolveWorkItemRouteScope,
+    type WorkItemRouteScope,
+    type WorkItemRouteScopeKind,
+} from './work-item-route-scope';
 import type {
     WorkItem,
     WorkItemStore,
@@ -30,6 +37,7 @@ import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-
 export interface WorkItemPlanRouteContext {
     routes: Route[];
     workItemStore: WorkItemStore;
+    processStore?: Pick<ProcessStore, 'getWorkspaces' | 'updateWorkspace'>;
     getWsServer?: () => ProcessWebSocketServer;
     /** Returns true when the durable Work Items/Goals workflow flag is enabled. */
     getWorkflowEnabled?: () => boolean;
@@ -38,6 +46,12 @@ export interface WorkItemPlanRouteContext {
 }
 
 const WORKFLOW_VERSION_TYPES = new Set(['work-item', 'goal']);
+const WORK_ITEM_PLAN_BASE_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/plan$/;
+const WORK_ITEM_PLAN_VERSIONS_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/plan\/versions$/;
+const WORK_ITEM_PLAN_VERSION_COMPARE_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/plan\/versions\/compare$/;
+const WORK_ITEM_PLAN_VERSION_BY_ID_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/plan\/versions\/(\d+)$/;
+const WORK_ITEM_PLAN_VERSION_RESTORE_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/plan\/versions\/(\d+)\/restore$/;
+const WORK_ITEM_PLAN_REFINE_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/plan\/refine$/;
 
 function isLocalOnlyWorkItemOrGoal(item: WorkItem): boolean {
     const effectiveType = item.type ?? 'work-item';
@@ -98,29 +112,82 @@ function parsePositiveVersion(value: string | null, field: string): number {
     return version;
 }
 
+function bodyWorkspaceId(body: unknown): string | undefined {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
+    const raw = (body as Record<string, unknown>).workspaceId;
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+}
+
+async function resolvePlanRouteScope(
+    ctx: WorkItemPlanRouteContext,
+    req: http.IncomingMessage,
+    kind: WorkItemRouteScopeKind,
+    routeScopeId: string,
+    body?: unknown,
+): Promise<WorkItemRouteScope> {
+    const workspaceId = bodyWorkspaceId(body) ?? queryWorkspaceId(req);
+    if (ctx.processStore) {
+        return resolveWorkItemRouteScope(
+            { processStore: ctx.processStore as ProcessStore },
+            kind,
+            routeScopeId,
+            workspaceId,
+        );
+    }
+
+    return {
+        kind,
+        routeScopeId,
+        storageRepoId: routeScopeId,
+        commandRepoId: workspaceId ?? routeScopeId,
+        workspaceId: kind === 'workspaces' ? routeScopeId : workspaceId,
+    };
+}
+
+async function getPlanRouteItem(
+    workItemStore: WorkItemStore,
+    workItemId: string,
+    scope: WorkItemRouteScope,
+): Promise<WorkItem> {
+    const item = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
+    if (!item) {
+        throw notFound('Work item');
+    }
+    return item;
+}
+
+function invalidateAndBroadcastPlanUpdate(
+    scope: WorkItemRouteScope,
+    getWsServer: WorkItemPlanRouteContext['getWsServer'],
+    item: WorkItem,
+): void {
+    clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
+    getWsServer?.()?.broadcastProcessEvent({
+        type: 'work-item-updated',
+        workspaceId: scope.storageRepoId,
+        item,
+    });
+}
+
 export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void {
     const { routes, workItemStore, getWsServer, refineWithAI } = ctx;
     const isWorkflowEnabled = () => ctx.getWorkflowEnabled?.() ?? false;
 
-    // Regex for plan routes: /api/workspaces/:repoId/work-items/:workItemId/plan
-    const planBase = /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/plan$/;
-    const planVersions = /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/plan\/versions$/;
-    const planVersionCompare = /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/plan\/versions\/compare$/;
-    const planVersionById = /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/plan\/versions\/(\d+)$/;
-    const planVersionRestore = /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/plan\/versions\/(\d+)\/restore$/;
-    const planRefine = /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/plan\/refine$/;
-
-    // GET /api/workspaces/:id/work-items/:wid/plan — Get current plan
+    // GET /api/origins/:originId/work-items/:wid/plan — Get current plan
     routes.push({
         method: 'GET',
-        pattern: planBase,
+        pattern: WORK_ITEM_PLAN_BASE_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
-
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
-            if (!item) {
-                return handleAPIError(res, notFound('Work item'));
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
+            let item: WorkItem;
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolvePlanRouteScope(ctx, req, routeKind, routeScopeId);
+                item = await getPlanRouteItem(workItemStore, workItemId, scope);
+            } catch (err) {
+                return handleAPIError(res, err);
             }
 
             if (!item.plan) {
@@ -128,7 +195,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 return;
             }
 
-            const versions = await workItemStore.getPlanVersions(workItemId);
+            const versions = await workItemStore.getPlanVersions(workItemId, scope.storageRepoId);
             sendJSON(res, 200, {
                 plan: item.plan,
                 versions: versions.length,
@@ -136,13 +203,14 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
         },
     });
 
-    // PUT /api/workspaces/:id/work-items/:wid/plan — Update plan (auto-version)
+    // PUT /api/origins/:originId/work-items/:wid/plan — Update plan (auto-version)
     routes.push({
         method: 'PUT',
-        pattern: planBase,
+        pattern: WORK_ITEM_PLAN_BASE_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
 
             let body: any;
             try {
@@ -155,9 +223,13 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 return handleAPIError(res, badRequest('Missing required field: content'));
             }
 
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
-            if (!item) {
-                return handleAPIError(res, notFound('Work item'));
+            let item: WorkItem;
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolvePlanRouteScope(ctx, req, routeKind, routeScopeId, body);
+                item = await getPlanRouteItem(workItemStore, workItemId, scope);
+            } catch (err) {
+                return handleAPIError(res, err);
             }
 
             const now = new Date().toISOString();
@@ -174,7 +246,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 summary: body.summary,
             };
 
-            await workItemStore.savePlanVersion(workItemId, planVersion);
+            await workItemStore.savePlanVersion(workItemId, planVersion, scope.storageRepoId);
             const updated = await workItemStore.updateWorkItem(workItemId, {
                 currentContentVersion: newVersion,
                 plan: {
@@ -186,10 +258,9 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                     source: planVersion.source,
                     reason: planVersion.reason,
                 },
-            });
+            }, scope.storageRepoId);
             if (updated) {
-                clearWorkItemResponseCacheForWorkspace(repoId);
-                getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+                invalidateAndBroadcastPlanUpdate(scope, getWsServer, updated);
             }
 
             // Open a new Change entry linked to this plan version (fire-and-forget)
@@ -200,45 +271,53 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 startedAt: now,
                 status: 'open',
             };
-            workItemStore.addChange(workItemId, change).catch(() => { /* non-fatal */ });
+            workItemStore.addChange(workItemId, change, scope.storageRepoId).catch(() => { /* non-fatal */ });
 
             sendJSON(res, 200, { plan: planVersion, version: newVersion });
         },
     });
 
-    // GET /api/workspaces/:id/work-items/:wid/plan/versions — List plan versions
+    // GET /api/origins/:originId/work-items/:wid/plan/versions — List plan versions
     routes.push({
         method: 'GET',
-        pattern: planVersions,
+        pattern: WORK_ITEM_PLAN_VERSIONS_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
-
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
-            if (!item) {
-                return handleAPIError(res, notFound('Work item'));
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolvePlanRouteScope(ctx, req, routeKind, routeScopeId);
+                await getPlanRouteItem(workItemStore, workItemId, scope);
+            } catch (err) {
+                return handleAPIError(res, err);
             }
 
-            const versions = await workItemStore.getPlanVersions(workItemId);
+            const versions = await workItemStore.getPlanVersions(workItemId, scope.storageRepoId);
             sendJSON(res, 200, versions);
         },
     });
 
-    // GET /api/workspaces/:id/work-items/:wid/plan/versions/compare?base=1&target=2 — Compare two immutable versions
+    // GET /api/origins/:originId/work-items/:wid/plan/versions/compare?base=1&target=2 — Compare two immutable versions
     routes.push({
         method: 'GET',
-        pattern: planVersionCompare,
+        pattern: WORK_ITEM_PLAN_VERSION_COMPARE_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
             if (!isWorkflowEnabled()) {
                 return handleAPIError(res, forbidden('workItems.workflow feature flag is not enabled'));
             }
 
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
 
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
-            if (!item) {
-                return handleAPIError(res, notFound('Work item'));
+            let item: WorkItem;
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolvePlanRouteScope(ctx, req, routeKind, routeScopeId);
+                item = await getPlanRouteItem(workItemStore, workItemId, scope);
+            } catch (err) {
+                return handleAPIError(res, err);
             }
             if (!isLocalOnlyWorkItemOrGoal(item)) {
                 return handleAPIError(res, badRequest('Version compare is only available for local-only work-item and goal items'));
@@ -254,11 +333,11 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 return handleAPIError(res, err);
             }
 
-            const base = await workItemStore.getPlanVersion(workItemId, baseVersion);
+            const base = await workItemStore.getPlanVersion(workItemId, baseVersion, scope.storageRepoId);
             if (!base) {
                 return handleAPIError(res, notFound(`Plan version ${baseVersion}`));
             }
-            const target = await workItemStore.getPlanVersion(workItemId, targetVersion);
+            const target = await workItemStore.getPlanVersion(workItemId, targetVersion, scope.storageRepoId);
             if (!target) {
                 return handleAPIError(res, notFound(`Plan version ${targetVersion}`));
             }
@@ -271,21 +350,24 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
         },
     });
 
-    // GET /api/workspaces/:id/work-items/:wid/plan/versions/:v — Get specific version
+    // GET /api/origins/:originId/work-items/:wid/plan/versions/:v — Get specific version
     routes.push({
         method: 'GET',
-        pattern: planVersionById,
+        pattern: WORK_ITEM_PLAN_VERSION_BY_ID_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
-            const version = parseInt(match![3], 10);
-
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
-            if (!item) {
-                return handleAPIError(res, notFound('Work item'));
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
+            const version = parseInt(match![4], 10);
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolvePlanRouteScope(ctx, req, routeKind, routeScopeId);
+                await getPlanRouteItem(workItemStore, workItemId, scope);
+            } catch (err) {
+                return handleAPIError(res, err);
             }
 
-            const planVersion = await workItemStore.getPlanVersion(workItemId, version);
+            const planVersion = await workItemStore.getPlanVersion(workItemId, version, scope.storageRepoId);
             if (!planVersion) {
                 return handleAPIError(res, notFound(`Plan version ${version}`));
             }
@@ -294,18 +376,19 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
         },
     });
 
-    // POST /api/workspaces/:id/work-items/:wid/plan/versions/:v/restore — Restore by creating a new current version
+    // POST /api/origins/:originId/work-items/:wid/plan/versions/:v/restore — Restore by creating a new current version
     routes.push({
         method: 'POST',
-        pattern: planVersionRestore,
+        pattern: WORK_ITEM_PLAN_VERSION_RESTORE_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
             if (!isWorkflowEnabled()) {
                 return handleAPIError(res, forbidden('workItems.workflow feature flag is not enabled'));
             }
 
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
-            const restoreVersion = parseInt(match![3], 10);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
+            const restoreVersion = parseInt(match![4], 10);
 
             let body: any;
             try {
@@ -314,20 +397,24 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 body = {};
             }
 
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
-            if (!item) {
-                return handleAPIError(res, notFound('Work item'));
+            let item: WorkItem;
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolvePlanRouteScope(ctx, req, routeKind, routeScopeId, body);
+                item = await getPlanRouteItem(workItemStore, workItemId, scope);
+            } catch (err) {
+                return handleAPIError(res, err);
             }
             if (!isLocalOnlyWorkItemOrGoal(item)) {
                 return handleAPIError(res, badRequest('Version restore is only available for local-only work-item and goal items'));
             }
 
-            const restored = await workItemStore.getPlanVersion(workItemId, restoreVersion);
+            const restored = await workItemStore.getPlanVersion(workItemId, restoreVersion, scope.storageRepoId);
             if (!restored) {
                 return handleAPIError(res, notFound(`Plan version ${restoreVersion}`));
             }
 
-            const versions = await workItemStore.getPlanVersions(workItemId);
+            const versions = await workItemStore.getPlanVersions(workItemId, scope.storageRepoId);
             const latestVersion = Math.max(item.plan?.version ?? 0, ...versions.map(version => version.version));
             const now = new Date().toISOString();
             const newVersion = latestVersion + 1;
@@ -349,7 +436,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 summary,
             };
 
-            await workItemStore.savePlanVersion(workItemId, planVersion);
+            await workItemStore.savePlanVersion(workItemId, planVersion, scope.storageRepoId);
             const updated = await workItemStore.updateWorkItem(workItemId, {
                 currentContentVersion: newVersion,
                 plan: {
@@ -362,7 +449,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                     reason,
                     restoredFromVersion: restoreVersion,
                 },
-            });
+            }, scope.storageRepoId);
             if (!updated) {
                 return handleAPIError(res, notFound('Work item'));
             }
@@ -374,33 +461,24 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 startedAt: now,
                 status: 'open',
             };
-            workItemStore.addChange(workItemId, change).catch(() => { /* non-fatal */ });
+            workItemStore.addChange(workItemId, change, scope.storageRepoId).catch(() => { /* non-fatal */ });
 
-            clearWorkItemResponseCacheForWorkspace(repoId);
-            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+            invalidateAndBroadcastPlanUpdate(scope, getWsServer, updated);
             sendJSON(res, 200, { plan: planVersion, version: newVersion, restoredFromVersion: restoreVersion });
         },
     });
 
-    // POST /api/workspaces/:id/work-items/:wid/plan/refine — AI-assisted refinement
+    // POST /api/origins/:originId/work-items/:wid/plan/refine — AI-assisted refinement
     routes.push({
         method: 'POST',
-        pattern: planRefine,
+        pattern: WORK_ITEM_PLAN_REFINE_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
-            const workItemId = decodeURIComponent(match![2]);
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            const workItemId = decodeURIComponent(match![3]);
 
             if (!refineWithAI) {
                 return handleAPIError(res, badRequest('AI refinement is not available'));
-            }
-
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
-            if (!item) {
-                return handleAPIError(res, notFound('Work item'));
-            }
-
-            if (!item.plan?.content) {
-                return handleAPIError(res, badRequest('Work item has no plan to refine'));
             }
 
             let body: any;
@@ -408,6 +486,19 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 body = await parseBody(req);
             } catch {
                 body = {};
+            }
+
+            let item: WorkItem;
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolvePlanRouteScope(ctx, req, routeKind, routeScopeId, body);
+                item = await getPlanRouteItem(workItemStore, workItemId, scope);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+
+            if (!item.plan?.content) {
+                return handleAPIError(res, badRequest('Work item has no plan to refine'));
             }
 
             const refinedContent = await refineWithAI(
@@ -431,7 +522,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 summary: body.summary || (body.instructions ? `AI resolved: ${String(body.instructions).slice(0, 80)}` : 'AI-refined plan'),
             };
 
-            await workItemStore.savePlanVersion(workItemId, planVersion);
+            await workItemStore.savePlanVersion(workItemId, planVersion, scope.storageRepoId);
             const updated = await workItemStore.updateWorkItem(workItemId, {
                 currentContentVersion: newVersion,
                 plan: {
@@ -443,10 +534,9 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                     source: 'ai',
                     reason: planVersion.reason,
                 },
-            });
+            }, scope.storageRepoId);
             if (updated) {
-                clearWorkItemResponseCacheForWorkspace(repoId);
-                getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+                invalidateAndBroadcastPlanUpdate(scope, getWsServer, updated);
             }
 
             // Open a new Change for the refined plan version (fire-and-forget)
@@ -457,7 +547,7 @@ export function registerWorkItemPlanRoutes(ctx: WorkItemPlanRouteContext): void 
                 startedAt: now,
                 status: 'open',
             };
-            workItemStore.addChange(workItemId, refineChange).catch(() => { /* non-fatal */ });
+            workItemStore.addChange(workItemId, refineChange, scope.storageRepoId).catch(() => { /* non-fatal */ });
 
             sendJSON(res, 200, {
                 plan: planVersion,

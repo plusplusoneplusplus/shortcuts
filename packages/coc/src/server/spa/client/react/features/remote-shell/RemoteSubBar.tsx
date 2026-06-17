@@ -35,6 +35,7 @@ import {
 import { useShellNavigation } from './useShellNavigation';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab } from '../../types/dashboard';
+import { resolveRepoWorkItemOriginScope } from '../work-items/workItemOriginScope';
 
 interface RemoteSubBarProps {
     repo: RepoData;
@@ -67,10 +68,11 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
     const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
     const [uiLayoutMode] = useUiLayoutMode();
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
+    const workItemOriginId = useMemo(() => resolveRepoWorkItemOriginScope(repo).originId, [repo]);
 
     const { running: runningCount, queued: queuedCount } = useRepoQueueStats(cloneId);
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(cloneId);
-    const unseenWorkItemCount = (workItemState.unseenByRepo[cloneId] || []).length;
+    const unseenWorkItemCount = (workItemState.unseenByRepo[workItemOriginId] || []).length;
     const activeTab = state.activeRepoSubTab;
 
     const tabs = useMemo(() => computeVisibleSubTabs({
@@ -156,7 +158,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
     const overflowActive = hiddenCloneTabs.some(t => t.key === activeTab);
 
     const onTab = (key: RepoSubTab) => {
-        if (key === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: cloneId });
+        if (key === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: workItemOriginId });
         switchSubTab(key);
         setOvOpen(false);
     };

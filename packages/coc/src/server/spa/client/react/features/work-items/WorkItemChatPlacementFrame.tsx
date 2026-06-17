@@ -4,6 +4,7 @@ import { WorkItemChatPanel, getWorkItemChatIdentifier } from './WorkItemChatPane
 
 export interface WorkItemChatPlacementFrameProps {
     workspaceId: string;
+    originId?: string;
     workItemId: string;
     workItemNumber?: number;
     title?: string;
@@ -21,6 +22,7 @@ export interface WorkItemChatPlacementFrameProps {
 
 export function WorkItemChatPlacementFrame({
     workspaceId,
+    originId,
     workItemId,
     workItemNumber,
     title,
@@ -50,6 +52,7 @@ export function WorkItemChatPlacementFrame({
         >
             <WorkItemChatPanel
                 workspaceId={workspaceId}
+                originId={originId}
                 workItemId={workItemId}
                 workItemNumber={workItemNumber}
                 title={title}

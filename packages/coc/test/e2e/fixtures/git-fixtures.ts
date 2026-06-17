@@ -33,7 +33,7 @@ function addLocalOrigin(tmpDir: string, repoDir: string): void {
     runGit(repoDir, 'remote', 'add', 'origin', remoteDir);
     runGit(repoDir, 'push', '-u', 'origin', 'HEAD');
     if (currentBranch) {
-        runGit(remoteDir, 'symbolic-ref', 'HEAD', `refs/heads/${currentBranch}`);
+        execFileSync('git', ['--git-dir', remoteDir, 'symbolic-ref', 'HEAD', `refs/heads/${currentBranch}`], { stdio: 'ignore' });
     }
 }
 

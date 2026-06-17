@@ -21,7 +21,7 @@ function hasArchiveProcess(store: ProcessStore): store is ArchiveCapableProcessS
     return typeof candidate.archiveProcess === 'function';
 }
 
-export async function startFreshLensChat(options: StartFreshLensChatOptions): Promise<string> {
+export async function startFreshLensChat(options: StartFreshLensChatOptions): Promise<string | null> {
     const { store, workspaceId, binding, unbind } = options;
     if (!binding) {
         throw notFound('Binding');
@@ -30,9 +30,11 @@ export async function startFreshLensChat(options: StartFreshLensChatOptions): Pr
         throw badRequest('Fresh lens chat is not supported by this process store');
     }
 
-    const process = await store.getProcess(binding.taskId, workspaceId);
+    const process = await store.getProcess(binding.taskId, workspaceId)
+        ?? await store.getProcess(binding.taskId);
     if (!process) {
-        throw notFound('Bound process');
+        unbind();
+        return null;
     }
 
     store.archiveProcess(binding.taskId);

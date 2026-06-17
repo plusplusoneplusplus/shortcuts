@@ -22,6 +22,7 @@ interface WorkflowDraftItem {
 export interface WorkItemAiDraftApplyDialogProps {
     open: boolean;
     workspaceId: string;
+    originId: string;
     item: WorkflowDraftItem;
     onClose: () => void;
     onApplied: (item: WorkItem) => void;
@@ -45,7 +46,7 @@ function isAbortError(error: unknown): boolean {
     return maybe?.code === 'ABORTED' || maybe?.name === 'AbortError';
 }
 
-export function WorkItemAiDraftApplyDialog({ open, workspaceId, item, onClose, onApplied }: WorkItemAiDraftApplyDialogProps) {
+export function WorkItemAiDraftApplyDialog({ open, workspaceId, originId, item, onClose, onApplied }: WorkItemAiDraftApplyDialogProps) {
     const cloneClient = useCocClient(workspaceId); // AC-07: apply AI draft on the selected clone's server.
     const [phase, setPhase] = useState<DraftPhase>('idle');
     const [questions, setQuestions] = useState<string[]>([]);
@@ -69,8 +70,8 @@ export function WorkItemAiDraftApplyDialog({ open, workspaceId, item, onClose, o
             const effectiveClarificationCount = options.forceDraft
                 ? MAX_CLARIFICATION_ROUNDS
                 : options.clarificationCount ?? clarificationCount;
-            const response = await cloneClient.workItems.applyAiDraft(
-                workspaceId,
+            const response = await cloneClient.workItems.applyAiDraftForOrigin(
+                originId,
                 item.id,
                 {
                     prompt,
@@ -82,6 +83,7 @@ export function WorkItemAiDraftApplyDialog({ open, workspaceId, item, onClose, o
                     summary: isRevision ? 'AI revised implementation plan' : 'AI drafted implementation plan',
                     reason: isRevision ? 'User requested AI revision' : 'User requested AI draft',
                 },
+                { workspaceId },
                 { signal: controller.signal },
             );
             if (requestSeq !== requestSeqRef.current || controller.signal.aborted) return;
@@ -106,7 +108,7 @@ export function WorkItemAiDraftApplyDialog({ open, workspaceId, item, onClose, o
                 abortRef.current = null;
             }
         }
-    }, [clarificationCount, isRevision, item, onApplied, onClose, prompt, workspaceId, cloneClient]);
+    }, [clarificationCount, isRevision, item, onApplied, onClose, originId, prompt, workspaceId, cloneClient]);
 
     useEffect(() => {
         if (!open) return;

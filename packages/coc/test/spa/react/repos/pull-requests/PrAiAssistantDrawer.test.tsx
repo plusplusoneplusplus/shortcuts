@@ -17,6 +17,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/pull-requests/PullR
             <div
                 data-testid="pr-chat-panel-stub"
                 data-workspace-id={props.workspaceId}
+                data-remote-url={props.remoteUrl}
                 data-pr-id={props.prId}
                 data-pr-number={props.prNumber}
                 data-pr-title={props.prTitle}
@@ -41,6 +42,7 @@ describe('PrAiAssistantDrawer', () => {
                 open
                 onClose={vi.fn()}
                 workspaceId="repo-1"
+                remoteUrl="https://github.com/octo/repo.git"
                 repoId="repo-1"
                 prId="142"
                 prNumber={142}
@@ -50,6 +52,7 @@ describe('PrAiAssistantDrawer', () => {
 
         const panel = screen.getByTestId('pr-chat-panel-stub');
         expect(panel.getAttribute('data-workspace-id')).toBe('repo-1');
+        expect(panel.getAttribute('data-remote-url')).toBe('https://github.com/octo/repo.git');
         expect(panel.getAttribute('data-pr-id')).toBe('142');
         expect(panel.getAttribute('data-pr-number')).toBe('142');
         expect(panel.getAttribute('data-pr-title')).toBe('Add retry logic');
@@ -136,6 +139,7 @@ describe('PrAiAssistantDrawer', () => {
                 onClose={vi.fn()}
                 onUnpin={onUnpin}
                 workspaceId="repo-1"
+                remoteUrl="https://github.com/octo/repo.git"
                 repoId="repo-1"
                 prId="142"
                 prNumber={142}
@@ -159,6 +163,7 @@ describe('PullRequestChatPlacementFrame', () => {
         render(
             <PullRequestChatPlacementFrame
                 workspaceId="repo-1"
+                remoteUrl="https://github.com/octo/repo.git"
                 repoId="repo-1"
                 prId="142"
                 prNumber={142}

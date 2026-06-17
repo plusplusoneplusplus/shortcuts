@@ -1,13 +1,15 @@
 /**
  * Classification Store
  *
- * File-based persistence for PR diff classification results. One JSON file
- * per (workspace, repo, pr, headSha) tuple, with a sibling `.pending` marker
- * while a classification task is in flight.
+ * File-based persistence for PR diff classification results. One JSON file per
+ * (origin, pr, headSha) tuple when an origin scope is supplied, with a sibling
+ * `.pending` marker while a classification task is in flight. Legacy
+ * (workspace, repo, pr, headSha) files are migrated into the origin directory
+ * on access.
  *
  * Layout:
- *   ~/.coc/repos/<workspaceId>/classifications/<repoId>_<prId>_<headSha>.json
- *   ~/.coc/repos/<workspaceId>/classifications/<repoId>_<prId>_<headSha>.json.pending
+ *   ~/.coc/repos/<originId>/classifications/<prId>_<headSha>.json
+ *   ~/.coc/repos/<originId>/classifications/<prId>_<headSha>.json.pending
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -16,6 +18,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getRepoDataPath } from '../paths';
+import {
+    isPullRequestOriginScoped,
+    resolvePullRequestLegacyScopes,
+    resolvePullRequestStorageId,
+    type PullRequestStorageScopeInput,
+} from './pr-origin-scope';
 import type {
     CriticalCallPathFrame,
     CriticalHunkMetadata,
@@ -53,6 +61,17 @@ export interface ClassificationPaths {
     dir: string;
 }
 
+export interface ClassificationWriteOptions {
+    processId?: string;
+    createdAt?: string;
+    storageScope?: PullRequestStorageScopeInput;
+}
+
+export interface ClassificationPendingOptions {
+    startedAt?: string;
+    storageScope?: PullRequestStorageScopeInput;
+}
+
 // ============================================================================
 // Path helpers
 // ============================================================================
@@ -72,12 +91,120 @@ export function classificationPaths(
     repoId: string,
     prId: string,
     headSha: string,
+    scope?: PullRequestStorageScopeInput,
 ): ClassificationPaths {
-    const dir = getRepoDataPath(dataDir, workspaceId, 'classifications');
-    const base = `${sanitizeKeyPart(repoId)}_${sanitizeKeyPart(prId)}_${sanitizeKeyPart(headSha)}`;
+    const storageId = resolvePullRequestStorageId(workspaceId, scope);
+    const dir = getRepoDataPath(dataDir, storageId, 'classifications');
+    const base = isPullRequestOriginScoped(workspaceId, scope)
+        ? `${sanitizeKeyPart(prId)}_${sanitizeKeyPart(headSha)}`
+        : `${sanitizeKeyPart(repoId)}_${sanitizeKeyPart(prId)}_${sanitizeKeyPart(headSha)}`;
     const resultPath = path.join(dir, `${base}.json`);
     const pendingPath = path.join(dir, `${base}.json.pending`);
     return { resultPath, pendingPath, dir };
+}
+
+function normalizeClassificationRecord(
+    parsed: Partial<ClassificationRecord> | undefined,
+    headSha: string,
+): ClassificationRecord | undefined {
+    if (!parsed || !parsed.result || !Array.isArray(parsed.result.classifications)) {
+        return undefined;
+    }
+    return {
+        result: parsed.result,
+        processId: typeof parsed.processId === 'string' ? parsed.processId : undefined,
+        createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : new Date(0).toISOString(),
+        headSha: typeof parsed.headSha === 'string' ? parsed.headSha : headSha,
+    };
+}
+
+function readClassificationFile(filePath: string, headSha: string): ClassificationRecord | undefined {
+    try {
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        return normalizeClassificationRecord(JSON.parse(raw) as Partial<ClassificationRecord>, headSha);
+    } catch {
+        return undefined;
+    }
+}
+
+function writeClassificationFile(resultPath: string, dir: string, record: ClassificationRecord): void {
+    fs.mkdirSync(dir, { recursive: true });
+    const tmpPath = `${resultPath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(record, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, resultPath);
+}
+
+function readPendingFile(pendingPath: string): ClassificationPending | undefined {
+    try {
+        const raw = fs.readFileSync(pendingPath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.processId === 'string' && typeof parsed.startedAt === 'string') {
+            return parsed as ClassificationPending;
+        }
+    } catch {
+        /* missing or unreadable */
+    }
+    return undefined;
+}
+
+function writePendingFile(pendingPath: string, dir: string, pending: ClassificationPending): void {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(pendingPath, JSON.stringify(pending, null, 2), 'utf-8');
+}
+
+function removePendingFile(pendingPath: string): void {
+    try {
+        fs.unlinkSync(pendingPath);
+    } catch {
+        /* ok */
+    }
+}
+
+function migrateClassification(
+    dataDir: string,
+    workspaceId: string,
+    repoId: string,
+    prId: string,
+    headSha: string,
+    scope?: PullRequestStorageScopeInput,
+): void {
+    if (!isPullRequestOriginScoped(workspaceId, scope)) return;
+
+    const target = classificationPaths(dataDir, workspaceId, repoId, prId, headSha, scope);
+    const targetRecord = readClassificationFile(target.resultPath, headSha);
+    let newestRecord = targetRecord;
+    for (const legacy of resolvePullRequestLegacyScopes(workspaceId, repoId, scope)) {
+        const legacyPath = classificationPaths(dataDir, legacy.workspaceId, legacy.repoId, prId, headSha);
+        if (legacyPath.resultPath === target.resultPath) continue;
+        const candidate = readClassificationFile(legacyPath.resultPath, headSha);
+        if (!candidate) continue;
+        if (!newestRecord || candidate.createdAt > newestRecord.createdAt) {
+            newestRecord = candidate;
+        }
+    }
+
+    if (newestRecord) {
+        if (JSON.stringify(newestRecord) !== JSON.stringify(targetRecord)) {
+            writeClassificationFile(target.resultPath, target.dir, newestRecord);
+        }
+        removePendingFile(target.pendingPath);
+        return;
+    }
+
+    const targetPending = readPendingFile(target.pendingPath);
+    let newestPending = targetPending;
+    for (const legacy of resolvePullRequestLegacyScopes(workspaceId, repoId, scope)) {
+        const legacyPath = classificationPaths(dataDir, legacy.workspaceId, legacy.repoId, prId, headSha);
+        if (legacyPath.pendingPath === target.pendingPath) continue;
+        const candidate = readPendingFile(legacyPath.pendingPath);
+        if (!candidate) continue;
+        if (!newestPending || candidate.startedAt > newestPending.startedAt) {
+            newestPending = candidate;
+        }
+    }
+    if (newestPending && JSON.stringify(newestPending) !== JSON.stringify(targetPending)) {
+        writePendingFile(target.pendingPath, target.dir, newestPending);
+    }
 }
 
 // ============================================================================
@@ -91,18 +218,11 @@ export function readClassification(
     repoId: string,
     prId: string,
     headSha: string,
+    scope?: PullRequestStorageScopeInput,
 ): ClassificationRecord | undefined {
-    const { resultPath } = classificationPaths(dataDir, workspaceId, repoId, prId, headSha);
-    try {
-        const raw = fs.readFileSync(resultPath, 'utf-8');
-        const parsed = JSON.parse(raw) as ClassificationRecord;
-        if (!parsed || !parsed.result || !Array.isArray(parsed.result.classifications)) {
-            return undefined;
-        }
-        return parsed;
-    } catch {
-        return undefined;
-    }
+    migrateClassification(dataDir, workspaceId, repoId, prId, headSha, scope);
+    const { resultPath } = classificationPaths(dataDir, workspaceId, repoId, prId, headSha, scope);
+    return readClassificationFile(resultPath, headSha);
 }
 
 /**
@@ -116,15 +236,14 @@ export function writeClassification(
     prId: string,
     headSha: string,
     result: DiffClassificationResult,
-    options?: { processId?: string; createdAt?: string },
+    options?: ClassificationWriteOptions,
 ): ClassificationRecord {
     const validation = validateClassificationResult(result);
     if (!validation.ok) {
         throw new Error(validation.error);
     }
 
-    const { resultPath, pendingPath, dir } = classificationPaths(dataDir, workspaceId, repoId, prId, headSha);
-    fs.mkdirSync(dir, { recursive: true });
+    const { resultPath, pendingPath, dir } = classificationPaths(dataDir, workspaceId, repoId, prId, headSha, options?.storageScope);
 
     const record: ClassificationRecord = {
         result: { classifications: validation.classifications },
@@ -133,16 +252,10 @@ export function writeClassification(
         headSha,
     };
 
-    const tmpPath = `${resultPath}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(record, null, 2), 'utf-8');
-    fs.renameSync(tmpPath, resultPath);
+    writeClassificationFile(resultPath, dir, record);
 
     // Best-effort cleanup of the pending marker.
-    try {
-        fs.unlinkSync(pendingPath);
-    } catch {
-        /* no pending marker — ok */
-    }
+    removePendingFile(pendingPath);
 
     return record;
 }
@@ -155,15 +268,14 @@ export function writePending(
     prId: string,
     headSha: string,
     processId: string,
-    options?: { startedAt?: string },
+    options?: ClassificationPendingOptions,
 ): ClassificationPending {
-    const { pendingPath, dir } = classificationPaths(dataDir, workspaceId, repoId, prId, headSha);
-    fs.mkdirSync(dir, { recursive: true });
+    const { pendingPath, dir } = classificationPaths(dataDir, workspaceId, repoId, prId, headSha, options?.storageScope);
     const pending: ClassificationPending = {
         processId,
         startedAt: options?.startedAt ?? new Date().toISOString(),
     };
-    fs.writeFileSync(pendingPath, JSON.stringify(pending, null, 2), 'utf-8');
+    writePendingFile(pendingPath, dir, pending);
     return pending;
 }
 
@@ -174,18 +286,11 @@ export function readPending(
     repoId: string,
     prId: string,
     headSha: string,
+    scope?: PullRequestStorageScopeInput,
 ): ClassificationPending | undefined {
-    const { pendingPath } = classificationPaths(dataDir, workspaceId, repoId, prId, headSha);
-    try {
-        const raw = fs.readFileSync(pendingPath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed.processId === 'string' && typeof parsed.startedAt === 'string') {
-            return parsed as ClassificationPending;
-        }
-    } catch {
-        /* missing or unreadable */
-    }
-    return undefined;
+    migrateClassification(dataDir, workspaceId, repoId, prId, headSha, scope);
+    const { pendingPath } = classificationPaths(dataDir, workspaceId, repoId, prId, headSha, scope);
+    return readPendingFile(pendingPath);
 }
 
 /** Best-effort removal of the `.pending` marker. */
@@ -195,12 +300,17 @@ export function clearPending(
     repoId: string,
     prId: string,
     headSha: string,
+    scope?: PullRequestStorageScopeInput,
 ): void {
-    const { pendingPath } = classificationPaths(dataDir, workspaceId, repoId, prId, headSha);
-    try {
-        fs.unlinkSync(pendingPath);
-    } catch {
-        /* ok */
+    const { pendingPath } = classificationPaths(dataDir, workspaceId, repoId, prId, headSha, scope);
+    removePendingFile(pendingPath);
+    if (isPullRequestOriginScoped(workspaceId, scope)) {
+        for (const legacy of resolvePullRequestLegacyScopes(workspaceId, repoId, scope)) {
+            const legacyPath = classificationPaths(dataDir, legacy.workspaceId, legacy.repoId, prId, headSha);
+            if (legacyPath.pendingPath !== pendingPath) {
+                removePendingFile(legacyPath.pendingPath);
+            }
+        }
     }
 }
 

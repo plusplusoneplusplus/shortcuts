@@ -175,7 +175,7 @@ export interface PullRequestChatBindingListResponse {
 
 export interface PullRequestChatFreshResponse {
   prId: string;
-  archivedTaskId: string;
+  archivedTaskId: string | null;
 }
 
 // ── Classification (focused-diff) ───────────────────────────────────
@@ -243,7 +243,7 @@ export interface DiffClassificationResult {
   classifications: HunkClassification[];
 }
 
-/** Body for POST /repos/:repoId/pull-requests/:prId/classify. */
+/** Body for PR classification via POST /origins/:originId/classify-diff. */
 export interface ClassifyDiffRequest {
   headSha: string;
   model?: string;
@@ -272,6 +272,7 @@ export interface ClassificationBatchStatusQuery {
   type: ClassificationTargetType;
   identifiers: string[];
   workspaceId?: string;
+  repoId?: string;
 }
 
 export interface ClassificationBatchStatusResponse {
@@ -280,6 +281,7 @@ export interface ClassificationBatchStatusResponse {
 
 export interface TeamPrAutoClassificationRequest {
   workspaceId?: string;
+  repoId?: string;
   pullRequests: PullRequestListItem[];
 }
 
@@ -293,6 +295,26 @@ export interface TeamPrAutoClassificationResponse {
   started: number;
   notFound: number;
   errors: Array<{ identifier?: string; message: string }>;
+}
+
+// ── PR review progress ───────────────────────────────────────────────
+
+export interface PullRequestReviewProgressRecord {
+  repoId: string;
+  prId: string;
+  headSha: string;
+  reviewedFiles: string[];
+  visitedFiles: string[];
+  lastSelectedFile: string | null;
+  /** ISO 8601 string. */
+  updatedAt: string;
+}
+
+export interface SavePullRequestReviewProgressRequest {
+  headSha: string;
+  reviewedFiles?: string[];
+  visitedFiles?: string[];
+  lastSelectedFile?: string | null;
 }
 
 // ── PR review suggestions ──────────────────────────────────────────

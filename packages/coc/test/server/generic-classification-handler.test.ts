@@ -18,10 +18,17 @@ import { writeClassification, writePending } from '../../src/server/repos/classi
 import type { Route } from '../../src/server/types';
 import type { DiffClassificationResult } from '../../src/server/spa/client/react/features/pull-requests/classification-types';
 
-// ── Minimal fake bridge (read-only batch-status never calls bridge.getTask) ──
+// ── Minimal fake bridge ──────────────────────────────────────────────────────
 
+let enqueuedTasks: any[] = [];
+const fakeQueue = {
+    enqueue: (task: any) => {
+        enqueuedTasks.push(task);
+        return '1';
+    },
+};
 const fakeBridge: any = {
-    registry: { getQueueForRepo: () => ({ enqueue: () => '1' }) },
+    registry: { getQueueForRepo: () => fakeQueue },
     getOrCreateBridge: () => {},
     getRepoIdForPath: () => 'ws-test',
     getTask: () => null,
@@ -63,6 +70,36 @@ function get(server: http.Server, path: string): Promise<{ status: number; body:
     });
 }
 
+function post(server: http.Server, path: string, body: unknown): Promise<{ status: number; body: any }> {
+    return new Promise((resolve, reject) => {
+        const addr = server.address() as { port: number };
+        const raw = JSON.stringify(body);
+        const req = http.request(
+            {
+                hostname: '127.0.0.1',
+                port: addr.port,
+                path,
+                method: 'POST',
+                headers: {
+                    'content-type': 'application/json',
+                    'content-length': Buffer.byteLength(raw),
+                },
+            },
+            res => {
+                let responseRaw = '';
+                res.on('data', c => { responseRaw += c; });
+                res.on('end', () => {
+                    try { resolve({ status: res.statusCode ?? 0, body: JSON.parse(responseRaw) }); }
+                    catch { resolve({ status: res.statusCode ?? 0, body: responseRaw }); }
+                });
+            },
+        );
+        req.on('error', reject);
+        req.write(raw);
+        req.end();
+    });
+}
+
 // ── Test setup ─────────────────────────────────────────────────────────────
 
 let tmpDir: string;
@@ -83,11 +120,18 @@ const validResult: DiffClassificationResult = {
 
 beforeEach(() => new Promise<void>(resolve => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gchr-test-'));
+    enqueuedTasks = [];
     const routes: Route[] = [];
     registerGenericClassificationRoutes(routes, {
         dataDir: tmpDir,
         store: fakeStore,
         bridge: fakeBridge,
+        repoTreeService: {
+            resolveRepo: async () => ({
+                localPath: path.join(tmpDir, 'repo'),
+                remoteUrl: 'https://github.com/org/repo.git',
+            }),
+        } as any,
     });
     server = makeServer(routes);
     server.listen(0, '127.0.0.1', resolve);
@@ -103,6 +147,7 @@ afterEach(() => new Promise<void>((resolve, reject) => {
 describe('GET /api/repos/:repoId/classify-diff/batch-status', () => {
     const repoId = 'ws-test';
     const ws = 'ws-test';
+    const originId = 'gh_org_repo';
 
     it('returns ready for a stored classification', async () => {
         const hash = 'aaabbbccc';
@@ -173,6 +218,93 @@ describe('GET /api/repos/:repoId/classify-diff/batch-status', () => {
         const res = await get(server, `/api/repos/${encodeURIComponent(repoId)}/classify-diff?type=commit&identifier=unknownabc`);
         expect(res.status).toBe(200);
         expect(res.body.status).toBe('none');
+    });
+
+    it('returns PR statuses from the origin-scoped batch-status endpoint', async () => {
+        writeClassification(tmpDir, ws, repoId, '42', 'head123', validResult, {
+            storageScope: { storageOriginId: originId },
+        });
+
+        const res = await get(
+            server,
+            `/api/origins/${originId}/classify-diff/batch-status?type=pr&identifiers=42:head123,43:missing&workspaceId=${ws}&repoId=${repoId}`,
+        );
+
+        expect(res.status).toBe(200);
+        expect(res.body.statuses).toEqual({
+            '42:head123': 'ready',
+            '43:missing': 'none',
+        });
+    });
+
+    it('rejects non-PR status reads on the origin-scoped batch-status endpoint', async () => {
+        const res = await get(server, `/api/origins/${originId}/classify-diff/batch-status?type=commit&identifiers=abc`);
+
+        expect(res.status).toBe(400);
+    });
+
+    it('returns PR classification results from the origin-scoped single status endpoint', async () => {
+        writeClassification(tmpDir, ws, repoId, '42', 'head123', validResult, {
+            storageScope: { storageOriginId: originId },
+        });
+
+        const res = await get(
+            server,
+            `/api/origins/${originId}/classify-diff?type=pr&identifier=42:head123&workspaceId=${ws}&repoId=${repoId}`,
+        );
+
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('ready');
+        expect(res.body.result).toEqual(validResult);
+    });
+
+    it('enqueues PR classifications through the origin-scoped trigger endpoint', async () => {
+        const res = await post(server, `/api/origins/${originId}/classify-diff`, {
+            type: 'pr',
+            identifier: '42:head123',
+            workspaceId: ws,
+            repoId,
+            model: 'haiku',
+        });
+
+        expect(res.status).toBe(202);
+        expect(res.body).toEqual({ status: 'started', taskId: '1' });
+        expect(enqueuedTasks).toHaveLength(1);
+        expect(enqueuedTasks[0].payload).toMatchObject({
+            workspaceId: ws,
+            repoId,
+            classificationStorageOriginId: originId,
+            classificationType: 'pr',
+            classificationIdentifier: '42:head123',
+            prId: '42',
+            headSha: 'head123',
+        });
+        expect(enqueuedTasks[0].config).toEqual({ model: 'haiku' });
+    });
+
+    it('requires workspaceId for origin-scoped PR classification triggers', async () => {
+        const res = await post(server, `/api/origins/${originId}/classify-diff`, {
+            type: 'pr',
+            identifier: '42:head123',
+            repoId,
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('workspaceId is required for origin-scoped PR classification');
+    });
+
+    it('rejects PR status reads on repo-scoped classify-diff routes', async () => {
+        const res = await get(server, `/api/repos/${encodeURIComponent(repoId)}/classify-diff?type=pr&identifier=42:head123`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('PR classification status must use /api/origins/:originId/classify-diff');
+    });
+
+    it('rejects PR batch-status reads on repo-scoped classify-diff routes', async () => {
+        const res = await get(server, `/api/repos/${encodeURIComponent(repoId)}/classify-diff/batch-status?type=pr&identifiers=42:head123`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('PR classification status must use /api/origins/:originId/classify-diff/batch-status');
     });
 });
 

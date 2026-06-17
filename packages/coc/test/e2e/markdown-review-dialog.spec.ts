@@ -2,7 +2,7 @@
  * MarkdownReviewDialog E2E Tests
  *
  * Tests the full lifecycle of the MarkdownReviewDialog opened by clicking
- * a `.file-path-link` in a process conversation bubble: open → display →
+ * a `.file-path-link` outside an assistant response: open → display →
  * minimize → chip (pill) → restore → close.
  */
 
@@ -74,7 +74,7 @@ async function setupAndNavigate(
 
     const task = await seedQueueTask(serverUrl, {
         repoId: wsId,
-        payload: { workspaceId: wsId, prompt: 'Review the docs' },
+        payload: { workspaceId: wsId, prompt: `Review ${FILE_PATH}` },
     });
     const taskId = task.id as string;
 
@@ -104,9 +104,9 @@ async function setupAndNavigate(
     return taskId;
 }
 
-/** Click the file-path-link in the assistant bubble to open the dialog. */
+/** Click the file-path-link in the user bubble to open the dialog. */
 async function openDialog(page: Page): Promise<void> {
-    const link = page.locator('.chat-message.assistant .file-path-link');
+    const link = page.locator('.chat-message.user .file-path-link');
     await expect(link).toHaveCount(1);
     await link.click();
 }

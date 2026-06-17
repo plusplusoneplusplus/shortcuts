@@ -31,7 +31,7 @@ function truncate(value: string, max: number): string {
     return value.slice(0, max - 1) + '…';
 }
 
-interface MetaRow {
+export interface MetaRow {
     label: string;
     value: string;
     breakAll?: boolean;
@@ -528,9 +528,17 @@ export interface ConversationMetadataPopoverProps {
     /** When provided, a fresh same-context lens chat action is shown at the bottom of the popover. */
     onStartFreshSameContext?: () => Promise<boolean> | boolean | void;
     startingFreshSameContext?: boolean;
+    /**
+     * Extra metadata rows appended after the standard compact rows. Used by
+     * read-only surfaces (e.g. native CLI sessions) to surface fields that have
+     * no built-in slot in {@link buildRows} — repository, branch, working
+     * directory, host, created/updated, stored summary — without forking the
+     * popover. Absent for CoC chats, which keep their existing rows unchanged.
+     */
+    extraRows?: MetaRow[];
 }
 
-export function ConversationMetadataPopover({ process, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume, onFork, forking, onStartFreshSameContext, startingFreshSameContext }: ConversationMetadataPopoverProps) {
+export function ConversationMetadataPopover({ process, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume, onFork, forking, onStartFreshSameContext, startingFreshSameContext, extraRows }: ConversationMetadataPopoverProps) {
     const [open, setOpen] = useState(false);
     const [systemPromptOpen, setSystemPromptOpen] = useState(false);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
@@ -538,7 +546,10 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
     const popoverRef = useRef<HTMLDivElement | null>(null);
     const rows = useMemo(() => buildRows(process, turnsCount), [process, turnsCount]);
     const summaryItems = useMemo(() => buildSummaryItems(rows), [rows]);
-    const compactRows = useMemo(() => buildCompactRows(rows), [rows]);
+    const compactRows = useMemo(() => {
+        const base = buildCompactRows(rows);
+        return extraRows && extraRows.length > 0 ? [...base, ...extraRows] : base;
+    }, [rows, extraRows]);
     const { isMobile } = useBreakpoint();
 
     const handleToggle = useCallback(() => {
@@ -605,7 +616,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
         return () => document.removeEventListener('keydown', handler);
     }, [open]);
 
-    if (rows.length === 0) return null;
+    if (rows.length === 0 && (!extraRows || extraRows.length === 0)) return null;
 
     const popoverContent = (
         <>

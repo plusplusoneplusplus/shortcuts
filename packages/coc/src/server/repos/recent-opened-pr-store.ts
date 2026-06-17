@@ -4,15 +4,21 @@
  * File-based persistence for the Pull Requests tab's "Recently opened" list.
  *
  * Layout:
- *   ~/.coc/repos/<workspaceId>/recent-opened-pull-requests/<repoId>.json
+ *   ~/.coc/repos/<originId>/recent-opened-pull-requests/index.json
  *
- * The file contains only minimal display metadata and is scoped by the target
- * workspace/repo tuple so multi-repo dashboards never share recent entries.
+ * Legacy workspace/repo tuple files are migrated into the origin file on access
+ * when an origin storage scope is supplied.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { getRepoDataPath } from '../paths';
+import {
+    isPullRequestOriginScoped,
+    resolvePullRequestLegacyScopes,
+    resolvePullRequestStorageId,
+    type PullRequestStorageScopeInput,
+} from './pr-origin-scope';
 
 export const MAX_RECENT_OPENED_PULL_REQUESTS = 10;
 export const MAX_RECENT_PR_TITLE_LENGTH = 500;
@@ -51,9 +57,14 @@ export function recentOpenedPullRequestsPaths(
     dataDir: string,
     workspaceId: string,
     repoId: string,
+    scope?: PullRequestStorageScopeInput,
 ): RecentOpenedPullRequestsPaths {
-    const dir = getRepoDataPath(dataDir, workspaceId, 'recent-opened-pull-requests');
-    const filePath = path.join(dir, `${sanitizeKeyPart(repoId)}.json`);
+    const storageId = resolvePullRequestStorageId(workspaceId, scope);
+    const dir = getRepoDataPath(dataDir, storageId, 'recent-opened-pull-requests');
+    const fileName = isPullRequestOriginScoped(workspaceId, scope)
+        ? 'index.json'
+        : `${sanitizeKeyPart(repoId)}.json`;
+    const filePath = path.join(dir, fileName);
     return { filePath, dir };
 }
 
@@ -132,12 +143,7 @@ function isRecentEntry(value: unknown): value is RecentOpenedPullRequestEntry {
     );
 }
 
-export function listRecentOpenedPullRequests(
-    dataDir: string,
-    workspaceId: string,
-    repoId: string,
-): RecentOpenedPullRequestEntry[] {
-    const { filePath } = recentOpenedPullRequestsPaths(dataDir, workspaceId, repoId);
+function readRecentOpenedPullRequestsFile(filePath: string): RecentOpenedPullRequestEntry[] {
     let raw: string;
     try {
         raw = fs.readFileSync(filePath, 'utf-8');
@@ -160,9 +166,62 @@ export function listRecentOpenedPullRequests(
         ? (parsed as { entries: unknown[] }).entries
         : [];
 
-    return entries
-        .filter(isRecentEntry)
-        .filter(entry => entry.workspaceId === workspaceId && entry.repoId === repoId)
+    return entries.filter(isRecentEntry);
+}
+
+function mergeRecentOpenedEntries(
+    current: readonly RecentOpenedPullRequestEntry[],
+    incoming: readonly RecentOpenedPullRequestEntry[],
+): RecentOpenedPullRequestEntry[] {
+    const byNumber = new Map<number, RecentOpenedPullRequestEntry>();
+    for (const entry of [...current, ...incoming]) {
+        const existing = byNumber.get(entry.number);
+        if (!existing || entry.openedAt > existing.openedAt) {
+            byNumber.set(entry.number, entry);
+        }
+    }
+    return [...byNumber.values()]
+        .sort((a, b) => b.openedAt.localeCompare(a.openedAt))
+        .slice(0, MAX_RECENT_OPENED_PULL_REQUESTS);
+}
+
+function persistRecentOpenedPullRequests(filePath: string, dir: string, entries: RecentOpenedPullRequestEntry[]): void {
+    fs.mkdirSync(dir, { recursive: true });
+    const tmpPath = `${filePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify({ entries }, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, filePath);
+}
+
+function migrateRecentOpenedPullRequests(
+    dataDir: string,
+    workspaceId: string,
+    repoId: string,
+    scope?: PullRequestStorageScopeInput,
+): void {
+    if (!isPullRequestOriginScoped(workspaceId, scope)) return;
+    const target = recentOpenedPullRequestsPaths(dataDir, workspaceId, repoId, scope);
+    let merged = readRecentOpenedPullRequestsFile(target.filePath);
+    const before = JSON.stringify(merged);
+    for (const legacy of resolvePullRequestLegacyScopes(workspaceId, repoId, scope)) {
+        const legacyPath = recentOpenedPullRequestsPaths(dataDir, legacy.workspaceId, legacy.repoId);
+        if (legacyPath.filePath === target.filePath) continue;
+        merged = mergeRecentOpenedEntries(merged, readRecentOpenedPullRequestsFile(legacyPath.filePath));
+    }
+    if (merged.length > 0 && JSON.stringify(merged) !== before) {
+        persistRecentOpenedPullRequests(target.filePath, target.dir, merged);
+    }
+}
+
+export function listRecentOpenedPullRequests(
+    dataDir: string,
+    workspaceId: string,
+    repoId: string,
+    scope?: PullRequestStorageScopeInput,
+): RecentOpenedPullRequestEntry[] {
+    migrateRecentOpenedPullRequests(dataDir, workspaceId, repoId, scope);
+    const { filePath } = recentOpenedPullRequestsPaths(dataDir, workspaceId, repoId, scope);
+    return readRecentOpenedPullRequestsFile(filePath)
+        .filter(entry => isPullRequestOriginScoped(workspaceId, scope) || (entry.workspaceId === workspaceId && entry.repoId === repoId))
         .slice(0, MAX_RECENT_OPENED_PULL_REQUESTS);
 }
 
@@ -171,13 +230,11 @@ function writeRecentOpenedPullRequests(
     workspaceId: string,
     repoId: string,
     entries: RecentOpenedPullRequestEntry[],
+    scope?: PullRequestStorageScopeInput,
 ): RecentOpenedPullRequestEntry[] {
-    const { filePath, dir } = recentOpenedPullRequestsPaths(dataDir, workspaceId, repoId);
-    fs.mkdirSync(dir, { recursive: true });
+    const { filePath, dir } = recentOpenedPullRequestsPaths(dataDir, workspaceId, repoId, scope);
     const bounded = entries.slice(0, MAX_RECENT_OPENED_PULL_REQUESTS);
-    const tmpPath = `${filePath}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify({ entries: bounded }, null, 2), 'utf-8');
-    fs.renameSync(tmpPath, filePath);
+    persistRecentOpenedPullRequests(filePath, dir, bounded);
     return bounded;
 }
 
@@ -191,9 +248,10 @@ export function recordRecentOpenedPullRequest(
         webUrl?: string;
     },
     options?: { openedAt?: string },
+    scope?: PullRequestStorageScopeInput,
 ): RecentOpenedPullRequestEntry[] {
     const openedAt = options?.openedAt ?? new Date().toISOString();
-    const existing = listRecentOpenedPullRequests(dataDir, workspaceId, repoId);
+    const existing = listRecentOpenedPullRequests(dataDir, workspaceId, repoId, scope);
     const next: RecentOpenedPullRequestEntry[] = [
         {
             workspaceId,
@@ -205,7 +263,7 @@ export function recordRecentOpenedPullRequest(
         },
         ...existing.filter(candidate => candidate.number !== entry.number),
     ];
-    return writeRecentOpenedPullRequests(dataDir, workspaceId, repoId, next);
+    return writeRecentOpenedPullRequests(dataDir, workspaceId, repoId, next, scope);
 }
 
 export function removeRecentOpenedPullRequest(
@@ -213,12 +271,14 @@ export function removeRecentOpenedPullRequest(
     workspaceId: string,
     repoId: string,
     number: number,
+    scope?: PullRequestStorageScopeInput,
 ): RecentOpenedPullRequestEntry[] {
-    const existing = listRecentOpenedPullRequests(dataDir, workspaceId, repoId);
+    const existing = listRecentOpenedPullRequests(dataDir, workspaceId, repoId, scope);
     return writeRecentOpenedPullRequests(
         dataDir,
         workspaceId,
         repoId,
         existing.filter(entry => entry.number !== number),
+        scope,
     );
 }

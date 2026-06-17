@@ -77,6 +77,16 @@ async function openPrTab(page: any, serverUrl: string, wsId: string): Promise<vo
     await page.click('button[data-subtab="pull-requests"]');
 }
 
+function isOriginPullRequestRoute(url: string): boolean {
+    const pathname = new URL(url).pathname;
+    return pathname.startsWith('/api/origins/') && pathname.includes('/pull-requests');
+}
+
+function isOriginPullRequestListRoute(url: string): boolean {
+    const pathname = new URL(url).pathname;
+    return pathname.startsWith('/api/origins/') && pathname.endsWith('/pull-requests');
+}
+
 // ---------------------------------------------------------------------------
 // Unconfigured provider
 // ---------------------------------------------------------------------------
@@ -97,10 +107,7 @@ test.describe('Pull Requests — unconfigured provider', () => {
         page,
         serverUrl,
     }) => {
-        // Intercept ALL pull-request routes for this repo with an unconfigured 401.
-        // Using ** so query-param URLs (list) and sub-path URLs (detail) are both covered.
-        const prApiBase = `${serverUrl}/api/repos/${repoId}/pull-requests`;
-        await page.route(`${prApiBase}**`, (route) => {
+        await page.route(isOriginPullRequestRoute, (route) => {
             route.fulfill({
                 status: 401,
                 contentType: 'application/json',
@@ -127,8 +134,7 @@ test.describe('Pull Requests — unconfigured provider', () => {
         page,
         serverUrl,
     }) => {
-        const prApiBase = `${serverUrl}/api/repos/${repoId}/pull-requests`;
-        await page.route(`${prApiBase}**`, (route) => {
+        await page.route(isOriginPullRequestRoute, (route) => {
             route.fulfill({
                 status: 401,
                 contentType: 'application/json',
@@ -216,10 +222,9 @@ test.describe('Pull Requests — cache edge cases', () => {
     test('error responses are not cached (re-fetch on return)', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-pr-cache-err', 'cache-err-repo');
         let fetchCount = 0;
-        const prApiBase = `${serverUrl}/api/repos/${repoId}/pull-requests`;
 
         // Return an error for PR list requests
-        await page.route(`${prApiBase}?*`, (route) => {
+        await page.route(isOriginPullRequestListRoute, (route) => {
             fetchCount++;
             route.fulfill({
                 status: 500,
@@ -245,7 +250,7 @@ test.describe('Pull Requests — cache edge cases', () => {
             await expect(page.locator('[data-testid="error-message"]')).toBeVisible({ timeout: 10000 });
             expect(fetchCount).toBe(2);
         } finally {
-            await page.unroute(`${prApiBase}?*`);
+            await page.unroute(isOriginPullRequestListRoute);
             cleanup();
         }
     });

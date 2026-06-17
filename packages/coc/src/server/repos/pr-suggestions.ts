@@ -2,12 +2,12 @@
  * PR Review Suggestions — Review History & LLM-Based Ranking (AC-01 + AC-02)
  *
  * AC-01: Fetches the user's last 50 reviewed PRs from the forge provider,
- * caches the result to disk at `~/.coc/repos/<workspaceId>/pr-review-history.json`.
+ * caches the result to disk at `~/.coc/repos/<originId>/pr-review-history.json`.
  * Re-fetch only on explicit manual refresh.
  *
  * AC-02: Sends cached review history + current open PR metadata to an LLM,
  * which returns a ranked top-5 list of suggested PRs. The ranking is cached
- * to disk at `~/.coc/repos/<workspaceId>/pr-suggestions-cache.json` and
+ * to disk at `~/.coc/repos/<originId>/pr-suggestions-cache.json` and
  * persists across server restarts. Re-ranked only on manual refresh.
  */
 
@@ -15,6 +15,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getRepoDataPath } from '../paths';
 import type { IPullRequestsService, ReviewedPullRequest, ISDKService, ProviderPullRequest } from '@plusplusoneplusplus/forge';
+import {
+    isPullRequestOriginScoped,
+    resolvePullRequestLegacyScopes,
+    resolvePullRequestStorageId,
+    type PullRequestStorageScopeInput,
+} from './pr-origin-scope';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -66,16 +72,15 @@ function serializeReview(r: ReviewedPullRequest): SerializedReviewedPullRequest 
 
 // ── File I/O ─────────────────────────────────────────────────
 
-function getHistoryPath(dataDir: string, workspaceId: string): string {
-    return getRepoDataPath(dataDir, workspaceId, REVIEW_HISTORY_FILENAME);
+function getHistoryPath(dataDir: string, workspaceId: string, scope?: PullRequestStorageScopeInput): string {
+    return getRepoDataPath(dataDir, resolvePullRequestStorageId(workspaceId, scope), REVIEW_HISTORY_FILENAME);
 }
 
 /**
  * Read cached review history from disk.
  * Returns null if no cache exists or the file is corrupt.
  */
-export function readReviewHistoryCache(dataDir: string, workspaceId: string): ReviewHistoryCache | null {
-    const filePath = getHistoryPath(dataDir, workspaceId);
+function readReviewHistoryCacheFile(filePath: string): ReviewHistoryCache | null {
     try {
         const raw = fs.readFileSync(filePath, 'utf-8');
         const parsed = JSON.parse(raw);
@@ -88,6 +93,52 @@ export function readReviewHistoryCache(dataDir: string, workspaceId: string): Re
     }
 }
 
+function writeJsonCacheFile<T>(filePath: string, cache: T): void {
+    const dir = path.dirname(filePath);
+    fs.mkdirSync(dir, { recursive: true });
+    const tmpPath = `${filePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(cache, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, filePath);
+}
+
+function migrateReviewHistoryCache(
+    dataDir: string,
+    workspaceId: string,
+    repoId: string | undefined,
+    scope?: PullRequestStorageScopeInput,
+): void {
+    if (!repoId || !isPullRequestOriginScoped(workspaceId, scope)) return;
+
+    const targetPath = getHistoryPath(dataDir, workspaceId, scope);
+    const target = readReviewHistoryCacheFile(targetPath);
+    let newest = target;
+    let shouldWrite = false;
+    for (const legacy of resolvePullRequestLegacyScopes(workspaceId, repoId, scope)) {
+        const legacyPath = getHistoryPath(dataDir, legacy.workspaceId);
+        if (legacyPath === targetPath) continue;
+        const candidate = readReviewHistoryCacheFile(legacyPath);
+        if (!candidate) continue;
+        if (!newest || candidate.fetchedAt > newest.fetchedAt) {
+            newest = candidate;
+            shouldWrite = true;
+        }
+    }
+
+    if (newest && (!target || shouldWrite)) {
+        writeJsonCacheFile(targetPath, newest);
+    }
+}
+
+export function readReviewHistoryCache(
+    dataDir: string,
+    workspaceId: string,
+    repoId?: string,
+    scope?: PullRequestStorageScopeInput,
+): ReviewHistoryCache | null {
+    migrateReviewHistoryCache(dataDir, workspaceId, repoId, scope);
+    return readReviewHistoryCacheFile(getHistoryPath(dataDir, workspaceId, scope));
+}
+
 /**
  * Write review history cache to disk.
  */
@@ -95,11 +146,9 @@ export function writeReviewHistoryCache(
     dataDir: string,
     workspaceId: string,
     cache: ReviewHistoryCache,
+    scope?: PullRequestStorageScopeInput,
 ): void {
-    const filePath = getHistoryPath(dataDir, workspaceId);
-    const dir = path.dirname(filePath);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(cache, null, 2), 'utf-8');
+    writeJsonCacheFile(getHistoryPath(dataDir, workspaceId, scope), cache);
 }
 
 // ── Fetch & Cache ────────────────────────────────────────────
@@ -114,6 +163,7 @@ export async function fetchAndCacheReviewHistory(
     prService: IPullRequestsService,
     repositoryId: string,
     top: number = DEFAULT_TOP,
+    scope?: PullRequestStorageScopeInput,
 ): Promise<ReviewHistoryCache> {
     if (!prService.getReviewedPullRequests) {
         throw new Error('Provider does not support fetching reviewed pull requests');
@@ -125,7 +175,7 @@ export async function fetchAndCacheReviewHistory(
         reviews: reviews.map(serializeReview),
     };
 
-    writeReviewHistoryCache(dataDir, workspaceId, cache);
+    writeReviewHistoryCache(dataDir, workspaceId, cache, scope);
     return cache;
 }
 
@@ -162,16 +212,15 @@ export interface PrMetadataForRanking {
 
 // ── File I/O ─────────────────────────────────────────────────
 
-function getSuggestionsPath(dataDir: string, workspaceId: string): string {
-    return getRepoDataPath(dataDir, workspaceId, SUGGESTIONS_CACHE_FILENAME);
+function getSuggestionsPath(dataDir: string, workspaceId: string, scope?: PullRequestStorageScopeInput): string {
+    return getRepoDataPath(dataDir, resolvePullRequestStorageId(workspaceId, scope), SUGGESTIONS_CACHE_FILENAME);
 }
 
 /**
  * Read cached PR suggestions from disk.
  * Returns null if no cache exists or the file is corrupt.
  */
-export function readSuggestionsCache(dataDir: string, workspaceId: string): SuggestionsCache | null {
-    const filePath = getSuggestionsPath(dataDir, workspaceId);
+function readSuggestionsCacheFile(filePath: string): SuggestionsCache | null {
     try {
         const raw = fs.readFileSync(filePath, 'utf-8');
         const parsed = JSON.parse(raw);
@@ -184,6 +233,44 @@ export function readSuggestionsCache(dataDir: string, workspaceId: string): Sugg
     }
 }
 
+function migrateSuggestionsCache(
+    dataDir: string,
+    workspaceId: string,
+    repoId: string | undefined,
+    scope?: PullRequestStorageScopeInput,
+): void {
+    if (!repoId || !isPullRequestOriginScoped(workspaceId, scope)) return;
+
+    const targetPath = getSuggestionsPath(dataDir, workspaceId, scope);
+    const target = readSuggestionsCacheFile(targetPath);
+    let newest = target;
+    let shouldWrite = false;
+    for (const legacy of resolvePullRequestLegacyScopes(workspaceId, repoId, scope)) {
+        const legacyPath = getSuggestionsPath(dataDir, legacy.workspaceId);
+        if (legacyPath === targetPath) continue;
+        const candidate = readSuggestionsCacheFile(legacyPath);
+        if (!candidate) continue;
+        if (!newest || candidate.rankedAt > newest.rankedAt) {
+            newest = candidate;
+            shouldWrite = true;
+        }
+    }
+
+    if (newest && (!target || shouldWrite)) {
+        writeJsonCacheFile(targetPath, newest);
+    }
+}
+
+export function readSuggestionsCache(
+    dataDir: string,
+    workspaceId: string,
+    repoId?: string,
+    scope?: PullRequestStorageScopeInput,
+): SuggestionsCache | null {
+    migrateSuggestionsCache(dataDir, workspaceId, repoId, scope);
+    return readSuggestionsCacheFile(getSuggestionsPath(dataDir, workspaceId, scope));
+}
+
 /**
  * Write PR suggestions cache to disk.
  */
@@ -191,11 +278,9 @@ export function writeSuggestionsCache(
     dataDir: string,
     workspaceId: string,
     cache: SuggestionsCache,
+    scope?: PullRequestStorageScopeInput,
 ): void {
-    const filePath = getSuggestionsPath(dataDir, workspaceId);
-    const dir = path.dirname(filePath);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(cache, null, 2), 'utf-8');
+    writeJsonCacheFile(getSuggestionsPath(dataDir, workspaceId, scope), cache);
 }
 
 // ── Prompt Building ──────────────────────────────────────────
@@ -356,13 +441,14 @@ export async function rankAndCacheSuggestions(
     aiService: ISDKService,
     reviewHistory: ReviewHistoryCache,
     openPrs: PrMetadataForRanking[],
+    scope?: PullRequestStorageScopeInput,
 ): Promise<SuggestionsCache> {
     if (openPrs.length === 0) {
         const cache: SuggestionsCache = {
             rankedAt: new Date().toISOString(),
             suggestions: [],
         };
-        writeSuggestionsCache(dataDir, workspaceId, cache);
+        writeSuggestionsCache(dataDir, workspaceId, cache, scope);
         return cache;
     }
 
@@ -378,6 +464,6 @@ export async function rankAndCacheSuggestions(
         suggestions,
     };
 
-    writeSuggestionsCache(dataDir, workspaceId, cache);
+    writeSuggestionsCache(dataDir, workspaceId, cache, scope);
     return cache;
 }

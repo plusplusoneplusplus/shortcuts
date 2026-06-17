@@ -158,6 +158,18 @@ posts `canvas-state` on ready and on every live update, services
 the revision-checked `canvases.save`, so human UI actions and AI capability
 calls share one gate. Edit mode shows the raw JSON shared state.
 
+`features/chat/source-canvas/` renders the docked, read-only source-file canvas
+for local file references clicked inside assistant chat responses. The global
+file-path delegation normalizes bare `.file-path-link` spans, shared renderer
+`.md-link` spans, and local Markdown `<a href>` anchors from chat's markdown
+renderer into one file-reference path; when `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS`
+is enabled, assistant-response clicks dispatch `coc-open-source-canvas` with the
+bare path, workspace hint, optional `sourceFilePath`, and optional line/range
+metadata. `ChatDetail` owns the listener, closes sibling right-side panels, and
+mounts `SourceCanvasPanel` as the right column on desktop or a bottom sheet on
+mobile. Flag-off, user-message, and non-chat file references continue to route
+to the floating `MarkdownReviewDialog`.
+
 ## Key Contexts
 
 | Context | Purpose |
@@ -196,11 +208,28 @@ leaf rows. Remote/Synced trees keep the type avatar, title, remote mirror badge,
 and container rollups, but omit local work-item numbers and leaf status chips so
 remote identifiers remain the primary row metadata. Compact GitHub mirror badges
 render the issue number only; full detail-page badges keep the provider label and
-link title. `work-item-added`, `work-item-updated`, and `work-item-removed`
-WebSocket events update `WorkItemContext` for the matching workspace and advance
-a workspace-scoped realtime revision used by `WorkItemHierarchyTree` to refetch
-its tree data. The hierarchy toolbar exposes a Refresh control that calls the
-same tree fetch path and is disabled while the tree request is in flight.
+link title. Core Work Item list/detail/create/update/pin/archive/delete, hierarchy-tree, plan
+history, parent re-linking, sync status, remote import/convert, execution, Submit PR, AI review, Dreams work-item next actions, and comment-resolve UI paths compute a
+canonical origin ID from the selected workspace remote (`gh_*`, `ado_*`,
+`git_*`, or `local_*`) and call the origin-scoped coc-client methods while still
+passing `workspaceId` when the route needs a concrete clone for provider,
+queue, or filesystem semantics. PR list/detail, provider
+subresources (threads, reviewers, commits, checks, combined/per-file diffs), and
+chat bindings use the same browser-safe origin resolver and call origin-scoped
+APIs while passing the selected `workspaceId`/`repoId` to choose the concrete
+clone; fresh-chat reset still passes the selected `workspaceId` so
+archiving/process actions run against a concrete clone. `WorkItemContext` keys persistent Work Item lists, pagination, unseen IDs,
+and realtime revisions by that origin ID so same-origin clones share the same
+list state and remote-shell Work Items badges.
+`work-item-added`, `work-item-updated`, and `work-item-removed` WebSocket events
+update the raw event scope and the resolved origin scope for known workspaces;
+origin-scoped events update the origin scope directly. `WorkItemHierarchyTree`
+uses the origin-scoped realtime revision and `client.workItems.treeForOrigin(...)`
+to refetch tree data, passing the selected `workspaceId` only for clone metadata
+validation. Work Item chat bindings use origin-scoped client methods and pass
+the selected `workspaceId` only for fresh-chat archive/reset actions.
+The hierarchy toolbar exposes a Refresh control that calls the same tree fetch
+path and is disabled while the tree request is in flight.
 
 `workItems.workflow.enabled` is the disabled-by-default durable workflow gate for
 turning local Work Items and Goals into the command-center planning/execution
@@ -348,9 +377,10 @@ nodes. Clicking a sub-agent node opens `AgentInspector` — a right-side panel
 with the run's name/type/status/elapsed, a details list (model, mode, summary),
 the task prompt, its result, and its children (clickable to drill in); clicking
 the orchestrator root closes it.
-`AgentCanvas` owns the selection; the inspector's "Open in thread" button calls
-`onOpenInThread`, which `ChatDetail` maps back to the issuing turn via
-`findTurnIndexForRun`, switching to the thread and scrolling there.
+`AgentCanvas` owns the inspector selection; the inspector's "Open sub-agent
+detail" button calls `onOpenAgentDetail`, which `ChatDetail` routes through the
+same `handleSelectAgent` path as the cascade menu so the read-only
+`SubAgentDetailView` opens for that node.
 
 **Cascading dropdown + in-place sub-agent detail.** Beside the toggle,
 `AgentCascadeMenu` lists the tree's depth levels (`flattenAgentLevels` → L0…Ln,
@@ -752,7 +782,9 @@ the input:
   `useCommitCommentTotals`) use `useCocClient(workspaceId)` for their REST git
   calls (their `/ws` subscriptions stay on `cloneWsUrl` unchanged);
   `useClassification` / `useCommitClassificationStatus` route the
-  `/api/repos/:id/classify-diff*` calls through `useCocClient(workspaceId)`. The
+  PR classify-diff calls through `/api/origins/:originId/classify-diff*` with
+  workspace/repo metadata and commit classify-diff calls through
+  `/api/repos/:id/classify-diff*`, both via `useCocClient(workspaceId)`. The
   `DiffSource` factories (`createCommitDiffSource`/`createBranchRangeDiffSource`/
   `createPrDiffSource` in `git/diff/diffSource.ts`) resolve their path-builder
   client via `getCocClientForWorkspace(id)`, and `fetchDiffFromSource(workspaceId,
@@ -830,7 +862,7 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 The Work Items list, grouped list, hierarchy tree, and remote sync-status routes are backed by a server-side response cache that can be proactively warmed for the currently active workspace. Background warming refreshes the default local list/grouped responses, the Local tracker tree, the Remote sync status, and the detected Remote provider tree when hierarchy and sync are enabled. Failed background refreshes do not clear stale cached responses, and explicit GETs can pass `force=true` to bypass and replace the cached response.
 
-`WorkItemDetail` is an always-editable inline form: title, description, priority, tags, status, parent, success criteria, and plan content remain editable without an Edit-mode toggle. Description and plan use per-field Source/Preview markdown controls. The view tracks a unified dirty draft; Ctrl+S/Cmd+S and the Save button send one `workItems.update` PATCH containing every dirty metadata field plus `plan.content` when changed. There is no instant status save and no standalone plan save from the detail screen. If a remote-backed save returns `WORK_ITEM_SYNC_CONFLICT`, the detail view renders an inline warning panel near the save/error area with per-field "Your draft" versus provider value cards and retries the same PATCH path with `syncConflictResolution` after the user applies choices. Dirty work-item detail pages show an unsaved-changes indicator, install a `beforeunload` warning, guard the local back breadcrumb, block dirty hash route changes when the user cancels, and intercept hash links before navigation. When `workItems.workflow.enabled` is on and the selected item is a local-only `work-item` or `goal`, legacy `aiDone` is presented as the user-facing **Review** state, Goal `drafting`/`planning` is presented as **Grilling**, and the execution history becomes a compact command-center timeline that shows the selected content version, execution mode, Ralph session ID, AI settings, selected skills, linked commits, PR linkage, errors, and the latest Review run summary. The Review section shows **Submit PR** only when the latest completed change has commits and no recorded PR; clicking it calls the explicit Work Items PR submission endpoint, and successful submission records branch/PR metadata before the item moves to Done. The plan version tabs expose workflow-only **Compare to current** and **Restore as latest** actions for historical versions. Compare opens a diff modal backed by the immutable version compare API. Restore is disabled while the detail has unsaved edits and calls the restore API, which creates a new current version rather than overwriting the historical version or the current record in place.
+`WorkItemDetail` is an always-editable inline form: title, description, priority, tags, status, parent, success criteria, and plan content remain editable without an Edit-mode toggle. Description and plan use per-field Source/Preview markdown controls. The view tracks a unified dirty draft; Ctrl+S/Cmd+S and the Save button send one origin-scoped `workItems.updateForOrigin` PATCH containing every dirty metadata field plus `plan.content` when changed. There is no instant status save and no standalone plan save from the detail screen. If a remote-backed save returns `WORK_ITEM_SYNC_CONFLICT`, the detail view renders an inline warning panel near the save/error area with per-field "Your draft" versus provider value cards and retries the same PATCH path with `syncConflictResolution` after the user applies choices. Dirty work-item detail pages show an unsaved-changes indicator, install a `beforeunload` warning, guard the local back breadcrumb, block dirty hash route changes when the user cancels, and intercept hash links before navigation. When `workItems.workflow.enabled` is on and the selected item is a local-only `work-item` or `goal`, legacy `aiDone` is presented as the user-facing **Review** state, Goal `drafting`/`planning` is presented as **Grilling**, and the execution history becomes a compact command-center timeline that shows the selected content version, execution mode, Ralph session ID, AI settings, selected skills, linked commits, PR linkage, errors, and the latest Review run summary. The Review section shows **Submit PR** only when the latest completed change has commits and no recorded PR; clicking it calls the explicit Work Items PR submission endpoint, and successful submission records branch/PR metadata before the item moves to Done. The plan version tabs load history through origin-scoped `workItems.planVersionsForOrigin`/`getPlanVersionForOrigin` calls and expose workflow-only **Compare to current** and **Restore as latest** actions for historical versions. Compare opens a diff modal backed by the origin immutable version compare API. Restore is disabled while the detail has unsaved edits and calls the origin restore API, which creates a new current version rather than overwriting the historical version or the current record in place.
 Detail fetch and draft state are scoped to the current `workspaceId` + `workItemId`; stale responses from prior selections are ignored, and drafts initialize or save only when the loaded detail item matches the active selection.
 
 With both `workItems.workflow.enabled` and `workItems.aiAuthoring.enabled` on,
@@ -838,8 +870,8 @@ saved local-only `work-item` details show **Draft with AI** for items without
 plan content and **Revise with AI** for items with an existing plan. The action is
 hidden for remote-backed items and non-`work-item` types, disabled while the
 inline draft is dirty, opens `WorkItemAiDraftApplyDialog`, and auto-starts the
-typed `workItems.applyAiDraft(...)` call with the loaded `updatedAt` plus current
-content-version guard. The dialog surfaces generating, clarification, retry,
+typed `workItems.applyAiDraftForOrigin(...)` call with `workspaceId`, the loaded
+`updatedAt`, and current content-version guard. The dialog surfaces generating, clarification, retry,
 failure, and cancel states; successful apply refreshes the detail and updates the
 Work Items context with the returned immutable AI-authored version.
 
@@ -857,9 +889,9 @@ Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client f
 
 ## Pull Requests Tab
 
-The Pull Requests tab is enabled by default through `pullRequests.enabled`. Admin -> Configure -> Features exposes both `pullRequests.suggestions` and `pullRequests.autoClassifyTeam`; both are disabled by default and flow through runtime config helpers. When Pull Requests, focused diff, and Team auto-classification are enabled, PR list load/refresh and active-workspace background warming ask the server to enqueue at most 10 missing low-priority classifications for loaded open Team PRs with `headSha`, skipping cached or running classifications through the existing classify-diff store/pending markers. The Team toolbar reads `classify-diff/batch-status` for loaded Team PR identifiers, shows disabled/idle/queueing/running/ready status text plus cached/running/missing counts, and adds row-level AI classification badges without changing filters, grouping, ordering, or deterministic risk tiers. Its "Classify now" control posts to the bounded Team auto-classification endpoint, so manual requests use the same server cap/skip logic instead of client-side POST loops. The left queue rail starts with the "Open PR by # or URL" input; successful opens from that input are validated through the PR detail API, recorded through the repo-scoped recent-opened PR API, and shown in a compact "Recently opened" list directly below the input. Recent entries stay hidden when empty or when the rail is collapsed, open through the same overview navigation path, and confirmed 404s remove the stale entry from the list.
+The Pull Requests tab is enabled by default through `pullRequests.enabled`. Admin -> Configure -> Features exposes both `pullRequests.suggestions` and `pullRequests.autoClassifyTeam`; both are disabled by default and flow through runtime config helpers. PR list load/refresh and open-by-number validation use `client.pullRequests.listForOrigin` / `getForOrigin` against `/api/origins/:originId/pull-requests...`, passing the selected workspace/repo metadata so provider calls run against a concrete clone while cache identity remains the canonical origin. When Pull Requests, focused diff, and Team auto-classification are enabled, PR list load/refresh and active-workspace background warming ask the server to enqueue at most 10 missing low-priority classifications for loaded open Team PRs with `headSha`, skipping cached or running classifications through the origin-scoped classify-diff store/pending markers and reading the origin-scoped Team roster. PR file-list and pop-out classify controls build classification keys with the selected workspace, repo, and canonical origin, then trigger/poll `/api/origins/:originId/classify-diff` so on-demand PR classifications share state across same-origin clones. The Team toolbar reads `/api/origins/:originId/classify-diff/batch-status` for loaded Team PR identifiers, shows disabled/idle/queueing/running/ready status text plus cached/running/missing counts, and adds row-level AI classification badges without changing filters, grouping, ordering, or deterministic risk tiers. Its "Classify now" control posts to `/api/origins/:originId/pull-requests/team-auto-classification` with the selected workspace/repo metadata, so manual requests use the same server cap/skip logic instead of client-side POST loops while still selecting a concrete clone for queue routing. The left queue rail starts with the "Open PR by # or URL" input; successful opens from that input are validated through the origin PR detail API, recorded through the `/api/origins/:originId/pull-requests/recent-opened` API, and shown in a compact "Recently opened" list directly below the input. Recent entries stay hidden when empty or when the rail is collapsed, open through the same overview navigation path, and confirmed 404s remove the stale entry from the origin list. PR review pop-outs carry the selected workspace's resolved origin ID in the pop-out URL, load PR title/head metadata through the origin detail API, and hydrate/persist reviewed/visited file progress through `client.pullRequests.getReviewProgressForOrigin` / `saveReviewProgressForOrigin` against `/api/origins/:originId/pull-requests/:prId/review-progress`, while still passing workspaceId/repoId metadata for legacy migration only.
 
-Queue filters include All, Mine, Team, Blocked, Ready, and the optional For You pill. Team reads the repo-scoped coworker roster through `coc-client`, maps to the existing `scope=all` PR list fetch, and filters the loaded open PRs client-side by provider author id with a displayName fallback. When Team is active, the rail shows roster chips that can be toggled for transient in-session narrowing, removed through the roster API, and extended with an Add coworker picker sourced from distinct authors in the loaded `scope=all` PRs. Its count badge reflects the loaded PR set, so additional roster matches beyond the current page appear after Load more fetches them.
+Queue filters include All, Mine, Team, Blocked, Ready, and the optional For You pill. Team reads the origin-scoped coworker roster through `coc-client`, maps to the existing `scope=all` PR list fetch, and filters the loaded open PRs client-side by provider author id with a displayName fallback. When Team is active, the rail shows roster chips that can be toggled for transient in-session narrowing, removed through the roster API, and extended with an Add coworker picker sourced from distinct authors in the loaded `scope=all` PRs. Its count badge reflects the loaded PR set, so additional roster matches beyond the current page appear after Load more fetches them.
 
 Queue rows use server-enriched provider/git diff stats for file count, review-minute estimates, and deterministic risk tiers: low below 200 changed lines, medium from 200 through 800, and high above 800. Missing diff stats render unavailable queue metadata instead of falling back to mock data.
 
@@ -867,11 +899,11 @@ The PR list route is backed by a server-side cache that can be proactively warme
 for the currently active workspace. Background warming uses the same provider
 list and diff-stat enrichment path as the tab load, refreshes the default
 `open`/`mine` list without clearing stale data on failure, and reads the
-workspace/repo-scoped recently opened list, Team roster, and cached suggestions
-when PR suggestions are enabled.
+origin-scoped recently opened list, origin-scoped Team roster, and origin-scoped
+cached suggestions when PR suggestions are enabled.
 
 The PR detail overview renders a deterministic review-summary card from the PR description, parsed/provider diff stats, checks, reviewers, and comment threads. Findings are derived from failing checks and unresolved threads, and the former persona-lens grid is not rendered.
 
 PR popout file views expose a Full context toggle that calls the PR per-file diff endpoint with `fullContext=true`. The server first tries a full-file-context git diff from PR `baseSha` to `headSha`, fetches missing PR commits into the requested repo checkout when possible, and only then returns the hunk-only diff with `fullContextUnavailable: true`; the banner is shown only for that fallback response.
 
-PR review suggestions remain behind the separate `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes review history, then asks the server to rank open PRs. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.
+PR review suggestions remain behind the separate `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes origin-scoped review history through `/api/origins/:originId/pull-requests/review-history/refresh`, then asks the server to rank open PRs through `/api/origins/:originId/pull-requests/suggestions/refresh` and cache the result under the same origin. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.

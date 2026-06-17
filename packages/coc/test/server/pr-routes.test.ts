@@ -13,7 +13,7 @@ import { createRouter } from '../../src/server/shared/router';
 import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrDiffCache, clearPrThreadsCache, clearPrCommitsCache, clearPrReviewersCache, clearPrChecksCache, warmPullRequestWorkspaceCache } from '../../src/server/repos/pr-routes';
 import { addPullRequestCoworkerToRoster } from '../../src/server/repos/pr-coworker-roster-store';
 import type { Route } from '../../src/server/types';
-import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
+import { resolveCanonicalOriginId, type IPullRequestsService } from '@plusplusoneplusplus/forge';
 import type { ProviderPullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
 import type { ProviderPullRequestCheck, ProviderPullRequestCommit } from '@plusplusoneplusplus/forge';
 
@@ -43,6 +43,7 @@ import { RepoTreeService } from '../../src/server/repos/tree-service';
 
 const REPO_ID = 'repo-abc123';
 const REMOTE_URL = 'https://github.com/org/repo.git';
+const ORIGIN_ID = 'gh_org_repo';
 
 const mockRepoInfo = {
     id: REPO_ID,
@@ -52,6 +53,15 @@ const mockRepoInfo = {
     clonedAt: new Date().toISOString(),
     remoteUrl: REMOTE_URL,
 };
+
+function makeMockRepoInfo(repoId: string, remoteUrl = REMOTE_URL): typeof mockRepoInfo {
+    return {
+        ...mockRepoInfo,
+        id: repoId,
+        name: repoId,
+        remoteUrl,
+    };
+}
 
 const mockPr: ProviderPullRequest = {
     id: 42,
@@ -136,9 +146,13 @@ async function initGitRepo(repoPath: string): Promise<void> {
     await git(repoPath, ['config', 'user.name', 'Test User']);
 }
 
-function makeServer(dir: string, autoClassification?: Parameters<typeof registerPrRoutes>[5]): http.Server {
+function makeServer(
+    dir: string,
+    autoClassification?: Parameters<typeof registerPrRoutes>[5],
+    aiService?: Parameters<typeof registerPrRoutes>[4],
+): http.Server {
     const routes: Route[] = [];
-    registerPrRoutes(routes, dir, undefined, undefined, undefined, autoClassification);
+    registerPrRoutes(routes, dir, undefined, undefined, aiService, autoClassification);
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
@@ -158,10 +172,24 @@ async function stopServer(): Promise<void> {
     return new Promise(resolve => server.close(() => resolve()));
 }
 
-async function restartServer(autoClassification?: Parameters<typeof registerPrRoutes>[5]): Promise<void> {
+async function restartServer(
+    autoClassification?: Parameters<typeof registerPrRoutes>[5],
+    aiService?: Parameters<typeof registerPrRoutes>[4],
+): Promise<void> {
     await stopServer();
-    server = makeServer(dataDir, autoClassification);
+    server = makeServer(dataDir, autoClassification, aiService);
     await startServer();
+}
+
+function originPullRequestsUrl(pathAndQuery = '', repoId = REPO_ID, originId = ORIGIN_ID): string {
+    const separatorIndex = pathAndQuery.indexOf('?');
+    const pathPart = separatorIndex === -1 ? pathAndQuery : pathAndQuery.slice(0, separatorIndex);
+    const queryPart = separatorIndex === -1 ? '' : pathAndQuery.slice(separatorIndex + 1);
+    const params = new URLSearchParams(queryPart);
+    if (!params.has('workspaceId')) params.set('workspaceId', repoId);
+    if (!params.has('repoId')) params.set('repoId', repoId);
+    const query = params.toString();
+    return `${baseUrl}/api/origins/${originId}/pull-requests${pathPart}${query ? `?${query}` : ''}`;
 }
 
 function makeAutoClassificationBridge(options?: { throwOnEnqueue?: boolean }) {
@@ -227,11 +255,11 @@ afterEach(async () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-// ── GET /api/repos/:id/pull-requests ─────────────────────────────────────────
+// ── GET /api/origins/:originId/pull-requests ─────────────────────────────────────────
 
-describe('GET /api/repos/:id/pull-requests', () => {
+describe('GET /api/origins/:originId/pull-requests', () => {
     it('returns pullRequests array on success', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const res = await fetch(originPullRequestsUrl(``, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { pullRequests: unknown[]; total: number; fetchedAt?: number };
         expect(Array.isArray(body.pullRequests)).toBe(true);
@@ -261,7 +289,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
         ]);
         (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(diff);
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const res = await fetch(originPullRequestsUrl(``, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { pullRequests: Array<{ diffStats?: { additions: number; deletions: number; changedFiles: number } }> };
         expect(body.pullRequests[0].diffStats).toEqual({
@@ -285,8 +313,8 @@ describe('GET /api/repos/:id/pull-requests', () => {
             '+added',
         ].join('\n'));
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?force=true`);
+        await fetch(originPullRequestsUrl(``, REPO_ID));
+        await fetch(originPullRequestsUrl(`?force=true`, REPO_ID));
 
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
@@ -319,7 +347,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
                 '+new',
             ].join('\n'));
 
-        const first = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const first = await fetch(originPullRequestsUrl(``, REPO_ID));
         const firstBody = await first.json() as { pullRequests: Array<{ diffStats?: { additions: number; deletions: number; changedFiles: number } }> };
         expect(firstBody.pullRequests[0].diffStats).toEqual({
             additions: 1,
@@ -327,7 +355,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
             changedFiles: 1,
         });
 
-        const second = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?force=true`);
+        const second = await fetch(originPullRequestsUrl(`?force=true`, REPO_ID));
         const secondBody = await second.json() as { pullRequests: Array<{ diffStats?: { additions: number; deletions: number; changedFiles: number } }> };
         expect(secondBody.pullRequests[0].diffStats).toEqual({
             additions: 1,
@@ -342,24 +370,24 @@ describe('GET /api/repos/:id/pull-requests', () => {
         delete (svcWithoutDiff as any).getDiff;
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(svcWithoutDiff);
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const res = await fetch(originPullRequestsUrl(``, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { pullRequests: Array<{ diffStats?: unknown }> };
         expect(body.pullRequests[0].diffStats).toBeUndefined();
     });
 
     it('passes status to upstream and always fetches top 100', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=closed&top=10&skip=5`);
+        await fetch(originPullRequestsUrl(`?status=closed&top=10&skip=5`, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'closed', top: 100, scope: 'mine' });
     });
 
     it('always fetches top 100 from upstream regardless of client top', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?top=200`);
+        await fetch(originPullRequestsUrl(`?top=200`, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'mine' });
     });
 
     it('defaults status=open and fetches top 100 from upstream', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        await fetch(originPullRequestsUrl(``, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'mine' });
     });
 
@@ -367,7 +395,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
         (ProviderFactory.detectProviderType as ReturnType<typeof vi.fn>).mockReturnValue('github');
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const res = await fetch(originPullRequestsUrl(``, REPO_ID));
         expect(res.status).toBe(401);
         const body = await res.json() as { error: string; detected: string; remoteUrl: string };
         expect(body.error).toBe('unconfigured');
@@ -378,7 +406,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
     it('returns 401 with no-ado-credentials when ADO az CLI fails', async () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue({ error: 'no-ado-credentials' });
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const res = await fetch(originPullRequestsUrl(``, REPO_ID));
         expect(res.status).toBe(401);
         const body = await res.json() as { error: string };
         expect(body.error).toBe('no-ado-credentials');
@@ -386,7 +414,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
 
     it('returns 404 when repo not found', async () => {
         mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests`);
+        const res = await fetch(originPullRequestsUrl(``, 'unknown'));
         expect(res.status).toBe(404);
         const body = await res.json() as { error: string };
         expect(body.error).toMatch(/unknown/);
@@ -396,7 +424,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
         const pr2 = { ...mockPr, id: 43, number: 43, title: 'PR by Bob', author: { id: 'user2', displayName: 'Bob' } };
         (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([mockPr, pr2]);
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?author=alice`);
+        const res = await fetch(originPullRequestsUrl(`?author=alice`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { pullRequests: unknown[]; total: number };
         expect(body.pullRequests).toHaveLength(1);
@@ -407,7 +435,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
         const pr2 = { ...mockPr, id: 43, number: 43, title: 'Fix bug Y' };
         (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([mockPr, pr2]);
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?search=feature`);
+        const res = await fetch(originPullRequestsUrl(`?search=feature`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { pullRequests: unknown[]; total: number };
         expect(body.pullRequests).toHaveLength(1);
@@ -415,15 +443,15 @@ describe('GET /api/repos/:id/pull-requests', () => {
 
     it('returns 500 on unexpected error', async () => {
         (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network failure'));
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const res = await fetch(originPullRequestsUrl(``, REPO_ID));
         expect(res.status).toBe(500);
     });
 
     it('serves from cache on second call without hitting upstream', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        await fetch(originPullRequestsUrl(``, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
 
-        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const res2 = await fetch(originPullRequestsUrl(``, REPO_ID));
         expect(res2.status).toBe(200);
         const body = await res2.json() as { pullRequests: unknown[] };
         expect(body.pullRequests).toHaveLength(1);
@@ -431,25 +459,62 @@ describe('GET /api/repos/:id/pull-requests', () => {
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
     });
 
+    it('shares PR list cache entries across same-origin repo ids', async () => {
+        const cloneRepoId = 'repo-clone-same-origin';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(repoId, REMOTE_URL));
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => [
+            { ...mockPr, repositoryId: repoId, title: `from ${repoId}` },
+        ]);
+
+        const first = await fetch(originPullRequestsUrl(``, REPO_ID));
+        const firstBody = await first.json() as { pullRequests: Array<{ title: string }> };
+        expect(firstBody.pullRequests[0].title).toBe(`from ${REPO_ID}`);
+
+        const second = await fetch(originPullRequestsUrl(``, cloneRepoId));
+        const secondBody = await second.json() as { pullRequests: Array<{ title: string }> };
+        expect(second.status).toBe(200);
+        expect(secondBody.pullRequests[0].title).toBe(`from ${REPO_ID}`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps PR list cache entries isolated for distinct origins', async () => {
+        const otherRepoId = 'repo-other-origin';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(
+            repoId,
+            repoId === otherRepoId ? 'https://github.com/org/other.git' : REMOTE_URL,
+        ));
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => [
+            { ...mockPr, repositoryId: repoId, title: `from ${repoId}` },
+        ]);
+
+        await fetch(originPullRequestsUrl(``, REPO_ID));
+        const other = await fetch(originPullRequestsUrl(``, otherRepoId, 'gh_org_other'));
+        const otherBody = await other.json() as { pullRequests: Array<{ title: string }> };
+
+        expect(other.status).toBe(200);
+        expect(otherBody.pullRequests[0].title).toBe(`from ${otherRepoId}`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+    });
+
     it('force=true bypasses cache and repopulates', async () => {
         // Warm the cache
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        await fetch(originPullRequestsUrl(``, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
 
         // Force refresh
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?force=true`);
+        const res = await fetch(originPullRequestsUrl(`?force=true`, REPO_ID));
         expect(res.status).toBe(200);
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
     });
 
     it('re-fetches PR lists after the 60-minute cache TTL expires', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        await fetch(originPullRequestsUrl(``, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
 
         const realNow = Date.now;
         Date.now = () => realNow() + 61 * 60 * 1000;
         try {
-            const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+            const res = await fetch(originPullRequestsUrl(``, REPO_ID));
             expect(res.status).toBe(200);
             expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
         } finally {
@@ -467,7 +532,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
         });
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const res = await fetch(originPullRequestsUrl(``, REPO_ID));
 
         expect(res.status).toBe(200);
         const body = await res.json() as { pullRequests: unknown[]; fetchedAt?: number };
@@ -493,7 +558,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
             service: new RepoTreeService(dataDir),
         })).rejects.toThrow('provider down');
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const res = await fetch(originPullRequestsUrl(``, REPO_ID));
 
         expect(res.status).toBe(200);
         const body = await res.json() as { pullRequests: Array<{ number: number }> };
@@ -517,7 +582,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
             getEnabled: () => false,
         });
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?workspaceId=${REPO_ID}`);
+        const res = await fetch(originPullRequestsUrl(`?workspaceId=${REPO_ID}`, REPO_ID));
 
         expect(res.status).toBe(200);
         expect(queue.enqueue).not.toHaveBeenCalled();
@@ -538,7 +603,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
             getEnabled: () => true,
         });
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?workspaceId=${REPO_ID}`);
+        const res = await fetch(originPullRequestsUrl(`?workspaceId=${REPO_ID}`, REPO_ID));
 
         expect(res.status).toBe(200);
         expect(queue.enqueue).toHaveBeenCalledTimes(1);
@@ -547,6 +612,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
             payload: expect.objectContaining({
                 workspaceId: REPO_ID,
                 repoId: REPO_ID,
+                classificationStorageOriginId: ORIGIN_ID,
                 classificationIdentifier: '42:head-auto',
                 skills: ['classify-diff'],
             }),
@@ -568,7 +634,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
             getEnabled: () => true,
         });
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?workspaceId=${REPO_ID}`);
+        const res = await fetch(originPullRequestsUrl(`?workspaceId=${REPO_ID}`, REPO_ID));
         const body = await res.json() as { pullRequests: unknown[] };
 
         expect(res.status).toBe(200);
@@ -584,7 +650,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
             getEnabled: () => false,
         });
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/team-auto-classification`, {
+        const res = await fetch(originPullRequestsUrl(`/team-auto-classification`, REPO_ID), {
             method: 'POST',
             body: JSON.stringify({
                 workspaceId: REPO_ID,
@@ -608,7 +674,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
             getEnabled: () => true,
         });
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/team-auto-classification`, {
+        const res = await fetch(originPullRequestsUrl(`/team-auto-classification`, REPO_ID), {
             method: 'POST',
             body: JSON.stringify({
                 workspaceId: REPO_ID,
@@ -625,10 +691,64 @@ describe('GET /api/repos/:id/pull-requests', () => {
             payload: expect.objectContaining({
                 workspaceId: REPO_ID,
                 repoId: REPO_ID,
+                classificationStorageOriginId: ORIGIN_ID,
                 classificationIdentifier: '42:head-manual',
                 skills: ['classify-diff'],
             }),
         }));
+    });
+
+    it('manual Team auto-classification can target the canonical origin with an explicit workspace', async () => {
+        const { bridge, queue } = makeAutoClassificationBridge();
+        addPullRequestCoworkerToRoster(dataDir, REPO_ID, REPO_ID, {
+            id: 'user1',
+            displayName: 'Alice',
+        });
+        await restartServer({
+            store: {} as any,
+            bridge,
+            getEnabled: () => true,
+        });
+
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/team-auto-classification`, {
+            method: 'POST',
+            body: JSON.stringify({
+                workspaceId: REPO_ID,
+                repoId: REPO_ID,
+                pullRequests: [{ ...mockPr, headSha: 'head-origin-manual' }],
+            }),
+        });
+        const body = await res.json() as { eligible: number; started: number };
+
+        expect(res.status).toBe(200);
+        expect(body).toMatchObject({ eligible: 1, started: 1 });
+        expect(queue.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+            payload: expect.objectContaining({
+                workspaceId: REPO_ID,
+                repoId: REPO_ID,
+                classificationStorageOriginId: ORIGIN_ID,
+                classificationIdentifier: '42:head-origin-manual',
+            }),
+        }));
+    });
+
+    it('rejects origin Team auto-classification without a concrete workspace', async () => {
+        const { bridge } = makeAutoClassificationBridge();
+        await restartServer({
+            store: {} as any,
+            bridge,
+            getEnabled: () => true,
+        });
+
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/team-auto-classification`, {
+            method: 'POST',
+            body: JSON.stringify({
+                pullRequests: [{ ...mockPr, headSha: 'head-origin-manual' }],
+            }),
+        });
+
+        expect(res.status).toBe(400);
+        await expect(res.text()).resolves.toContain('workspaceId is required');
     });
 
     it('background warm can request Team auto-classification only when enabled', async () => {
@@ -698,6 +818,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
             payload: expect.objectContaining({
                 workspaceId,
                 repoId: REPO_ID,
+                classificationStorageOriginId: ORIGIN_ID,
                 classificationIdentifier: '42:head-workspace-scoped',
             }),
         }));
@@ -708,13 +829,13 @@ describe('GET /api/repos/:id/pull-requests', () => {
         (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue(prs);
 
         // First call warms cache
-        const res1 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?top=25&skip=0`);
+        const res1 = await fetch(originPullRequestsUrl(`?top=25&skip=0`, REPO_ID));
         expect(res1.status).toBe(200);
         const body1 = await res1.json() as { pullRequests: any[] };
         expect(body1.pullRequests).toHaveLength(25);
 
         // Second page from cache
-        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?top=25&skip=25`);
+        const res2 = await fetch(originPullRequestsUrl(`?top=25&skip=25`, REPO_ID));
         expect(res2.status).toBe(200);
         const body2 = await res2.json() as { pullRequests: any[] };
         expect(body2.pullRequests).toHaveLength(25);
@@ -725,48 +846,89 @@ describe('GET /api/repos/:id/pull-requests', () => {
     });
 
     it('uses separate cache entries per status filter', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=open`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=closed`);
+        await fetch(originPullRequestsUrl(`?status=open`, REPO_ID));
+        await fetch(originPullRequestsUrl(`?status=closed`, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
 
         // Both are now cached — no additional calls
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=open`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=closed`);
+        await fetch(originPullRequestsUrl(`?status=open`, REPO_ID));
+        await fetch(originPullRequestsUrl(`?status=closed`, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
     });
 
     it('passes scope=all to upstream when requested', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?scope=all`);
+        await fetch(originPullRequestsUrl(`?scope=all`, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'all' });
     });
 
     it('defaults scope to mine when not specified', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        await fetch(originPullRequestsUrl(``, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'mine' });
     });
 
     it('ignores invalid scope values and defaults to mine', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?scope=invalid`);
+        await fetch(originPullRequestsUrl(`?scope=invalid`, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'mine' });
     });
 
     it('uses separate cache entries per scope', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?scope=mine`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?scope=all`);
+        await fetch(originPullRequestsUrl(`?scope=mine`, REPO_ID));
+        await fetch(originPullRequestsUrl(`?scope=all`, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
 
         // Both are now cached
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?scope=mine`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?scope=all`);
+        await fetch(originPullRequestsUrl(`?scope=mine`, REPO_ID));
+        await fetch(originPullRequestsUrl(`?scope=all`, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
     });
 });
 
-// ── GET /api/repos/:id/pull-requests/:prId ───────────────────────────────────
+describe('GET /api/origins/:originId/pull-requests', () => {
+    it('does not register repo-scoped pull request aliases', async () => {
+        const list = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        const detail = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        const diff = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
 
-describe('GET /api/repos/:id/pull-requests/:prId', () => {
+        expect(list.status).toBe(404);
+        expect(detail.status).toBe(404);
+        expect(diff.status).toBe(404);
+        expect(mockSvc.listPullRequests).not.toHaveBeenCalled();
+        expect(mockSvc.getPullRequest).not.toHaveBeenCalled();
+        expect(mockSvc.getDiff).not.toHaveBeenCalled();
+    });
+
+    it('lists PRs through an explicit workspace that resolves to the origin', async () => {
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests?workspaceId=${REPO_ID}&repoId=${REPO_ID}&scope=all`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { pullRequests: unknown[]; total: number; fetchedAt?: number };
+        expect(body.pullRequests).toHaveLength(1);
+        expect(body.total).toBe(1);
+        expect(body.fetchedAt).toEqual(expect.any(Number));
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'all' });
+    });
+
+    it('rejects origin list requests without a concrete workspace', async () => {
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests`);
+        expect(res.status).toBe(400);
+        await expect(res.text()).resolves.toContain('workspaceId is required');
+        expect(mockSvc.listPullRequests).not.toHaveBeenCalled();
+    });
+
+    it('rejects origin list requests when the workspace resolves to a different origin', async () => {
+        mockResolveRepo.mockResolvedValueOnce(makeMockRepoInfo(REPO_ID, 'https://github.com/other/repo.git'));
+
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests?workspaceId=${REPO_ID}&repoId=${REPO_ID}`);
+        expect(res.status).toBe(400);
+        await expect(res.text()).resolves.toContain('not gh_org_repo');
+        expect(mockSvc.listPullRequests).not.toHaveBeenCalled();
+    });
+});
+
+// ── GET /api/origins/:originId/pull-requests/:prId ───────────────────────────────────
+
+describe('GET /api/origins/:originId/pull-requests/:prId', () => {
     it('returns single PR on success', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        const res = await fetch(originPullRequestsUrl(`/42`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { number: number };
         expect(body.number).toBe(42);
@@ -774,19 +936,19 @@ describe('GET /api/repos/:id/pull-requests/:prId', () => {
 
     it('returns 404 when repo not found', async () => {
         mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42`);
+        const res = await fetch(originPullRequestsUrl(`/42`, 'unknown'));
         expect(res.status).toBe(404);
     });
 
     it('returns 404 when PR not found', async () => {
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('PR 999 not found'));
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/999`);
+        const res = await fetch(originPullRequestsUrl(`/999`, REPO_ID));
         expect(res.status).toBe(404);
     });
 
     it('returns 401 when unconfigured', async () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        const res = await fetch(originPullRequestsUrl(`/42`, REPO_ID));
         expect(res.status).toBe(401);
         const body = await res.json() as { error: string };
         expect(body.error).toBe('unconfigured');
@@ -794,16 +956,103 @@ describe('GET /api/repos/:id/pull-requests/:prId', () => {
 
     it('returns 500 on unexpected error', async () => {
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('oops'));
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        const res = await fetch(originPullRequestsUrl(`/42`, REPO_ID));
         expect(res.status).toBe(500);
     });
 });
 
-// ── GET /api/repos/:id/pull-requests/:prId/threads ───────────────────────────
+describe('GET /api/origins/:originId/pull-requests/:prId', () => {
+    it('gets a single PR through an explicit workspace that resolves to the origin', async () => {
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42?workspaceId=${REPO_ID}&repoId=${REPO_ID}`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { number: number };
+        expect(body.number).toBe(42);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledWith(REPO_ID, '42');
+    });
 
-describe('GET /api/repos/:id/pull-requests/:prId/threads', () => {
+    it('rejects origin detail requests without a concrete workspace', async () => {
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42`);
+        expect(res.status).toBe(400);
+        await expect(res.text()).resolves.toContain('workspaceId is required');
+        expect(mockSvc.getPullRequest).not.toHaveBeenCalled();
+    });
+});
+
+describe('GET /api/origins/:originId/pull-requests/:prId provider subresources', () => {
+    it('serves threads, reviewers, commits, and checks through an explicit workspace', async () => {
+        const query = `workspaceId=${REPO_ID}&repoId=${REPO_ID}`;
+        const threads = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/threads?${query}`);
+        const reviewers = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/reviewers?${query}`);
+        const commits = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/commits?${query}`);
+        const checks = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/checks?${query}`);
+
+        expect(threads.status).toBe(200);
+        expect(reviewers.status).toBe(200);
+        expect(commits.status).toBe(200);
+        expect(checks.status).toBe(200);
+        const threadsBody = await threads.json() as { threads: Array<{ id: number }> };
+        const reviewersBody = await reviewers.json() as { reviewers: unknown[] };
+        const commitsBody = await commits.json() as { commits: Array<{ id: string }> };
+        const checksBody = await checks.json() as { checks: Array<{ id: string }> };
+        expect(threadsBody.threads).toHaveLength(1);
+        expect(threadsBody.threads[0].id).toBe(1);
+        expect(reviewersBody.reviewers).toHaveLength(1);
+        expect(commitsBody.commits).toHaveLength(1);
+        expect(commitsBody.commits[0].id).toBe(mockCommit.id);
+        expect(checksBody.checks).toHaveLength(1);
+        expect(checksBody.checks[0].id).toBe(mockCheck.id);
+        expect(mockSvc.getThreads).toHaveBeenCalledWith(REPO_ID, '42');
+        expect(mockSvc.getReviewers).toHaveBeenCalledWith(REPO_ID, '42');
+        expect(mockSvc.getCommits).toHaveBeenCalledWith(REPO_ID, '42');
+        expect(mockSvc.getChecks).toHaveBeenCalledWith(REPO_ID, '42');
+    });
+
+    it('serves combined and per-file diffs through origin routes using the same origin cache', async () => {
+        const combinedDiff = [
+            'diff --git a/src/foo.ts b/src/foo.ts',
+            '--- a/src/foo.ts',
+            '+++ b/src/foo.ts',
+            '@@ -1 +1 @@',
+            '-old',
+            '+new',
+        ].join('\n');
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
+
+        const query = `workspaceId=${REPO_ID}&repoId=${REPO_ID}`;
+        const diffRes = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/diff?${query}`);
+        const fileRes = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?${query}`);
+
+        expect(diffRes.status).toBe(200);
+        await expect(diffRes.text()).resolves.toBe(combinedDiff);
+        expect(fileRes.status).toBe(200);
+        const fileBody = await fileRes.json() as { diff: string };
+        expect(fileBody.diff).toContain('diff --git a/src/foo.ts b/src/foo.ts');
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects origin subresource requests without a concrete workspace', async () => {
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/threads`);
+        expect(res.status).toBe(400);
+        await expect(res.text()).resolves.toContain('workspaceId is required');
+        expect(mockSvc.getThreads).not.toHaveBeenCalled();
+    });
+
+    it('rejects origin subresource requests when the workspace resolves to another origin', async () => {
+        mockResolveRepo.mockResolvedValueOnce(makeMockRepoInfo(REPO_ID, 'https://github.com/other/repo.git'));
+
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/42/checks?workspaceId=${REPO_ID}&repoId=${REPO_ID}`);
+
+        expect(res.status).toBe(400);
+        await expect(res.text()).resolves.toContain('not gh_org_repo');
+        expect(mockSvc.getChecks).not.toHaveBeenCalled();
+    });
+});
+
+// ── GET /api/origins/:originId/pull-requests/:prId/threads ───────────────────────────
+
+describe('GET /api/origins/:originId/pull-requests/:prId/threads', () => {
     it('returns threads array on success', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        const res = await fetch(originPullRequestsUrl(`/42/threads`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { threads: unknown[] };
         expect(Array.isArray(body.threads)).toBe(true);
@@ -812,22 +1061,22 @@ describe('GET /api/repos/:id/pull-requests/:prId/threads', () => {
 
     it('returns 404 when repo not found', async () => {
         mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/threads`);
+        const res = await fetch(originPullRequestsUrl(`/42/threads`, 'unknown'));
         expect(res.status).toBe(404);
     });
 
     it('returns 500 on unexpected error', async () => {
         (mockSvc.getThreads as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        const res = await fetch(originPullRequestsUrl(`/42/threads`, REPO_ID));
         expect(res.status).toBe(500);
     });
 });
 
-// ── GET /api/repos/:id/pull-requests/:prId/reviewers ─────────────────────────
+// ── GET /api/origins/:originId/pull-requests/:prId/reviewers ─────────────────────────
 
-describe('GET /api/repos/:id/pull-requests/:prId/reviewers', () => {
+describe('GET /api/origins/:originId/pull-requests/:prId/reviewers', () => {
     it('returns reviewers array on success', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        const res = await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { reviewers: unknown[] };
         expect(Array.isArray(body.reviewers)).toBe(true);
@@ -836,22 +1085,22 @@ describe('GET /api/repos/:id/pull-requests/:prId/reviewers', () => {
 
     it('returns 404 when repo not found', async () => {
         mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/reviewers`);
+        const res = await fetch(originPullRequestsUrl(`/42/reviewers`, 'unknown'));
         expect(res.status).toBe(404);
     });
 
     it('returns 500 on unexpected error', async () => {
         (mockSvc.getReviewers as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        const res = await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
         expect(res.status).toBe(500);
     });
 });
 
-// ── GET /api/repos/:id/pull-requests/:prId/commits ──────────────────────────
+// ── GET /api/origins/:originId/pull-requests/:prId/commits ──────────────────────────
 
-describe('GET /api/repos/:id/pull-requests/:prId/commits', () => {
+describe('GET /api/origins/:originId/pull-requests/:prId/commits', () => {
     it('returns commits array on success', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        const res = await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { commits: unknown[] };
         expect(Array.isArray(body.commits)).toBe(true);
@@ -864,7 +1113,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/commits', () => {
         delete (svcWithoutCommits as any).getCommits;
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(svcWithoutCommits);
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        const res = await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { commits: unknown[] };
         expect(body.commits).toEqual([]);
@@ -872,13 +1121,13 @@ describe('GET /api/repos/:id/pull-requests/:prId/commits', () => {
 
     it('returns 404 when repo not found', async () => {
         mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/commits`);
+        const res = await fetch(originPullRequestsUrl(`/42/commits`, 'unknown'));
         expect(res.status).toBe(404);
     });
 
     it('returns 401 when unconfigured', async () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        const res = await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(res.status).toBe(401);
         const body = await res.json() as { error: string };
         expect(body.error).toBe('unconfigured');
@@ -886,16 +1135,16 @@ describe('GET /api/repos/:id/pull-requests/:prId/commits', () => {
 
     it('returns 500 on unexpected error', async () => {
         (mockSvc.getCommits as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        const res = await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(res.status).toBe(500);
     });
 });
 
-// ── GET /api/repos/:id/pull-requests/:prId/diff ───────────────────────────────
+// ── GET /api/origins/:originId/pull-requests/:prId/diff ───────────────────────────────
 
-describe('GET /api/repos/:id/pull-requests/:prId/diff', () => {
+describe('GET /api/origins/:originId/pull-requests/:prId/diff', () => {
     it('returns diff text on success', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(res.status).toBe(200);
         const text = await res.text();
         expect(text).toContain('diff --git');
@@ -906,7 +1155,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff', () => {
         delete (svcWithoutDiff as any).getDiff;
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(svcWithoutDiff);
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(res.status).toBe(200);
         const text = await res.text();
         expect(text).toBe('');
@@ -914,13 +1163,13 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff', () => {
 
     it('returns 404 when repo not found', async () => {
         mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/diff`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff`, 'unknown'));
         expect(res.status).toBe(404);
     });
 
     it('returns 401 when unconfigured', async () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(res.status).toBe(401);
         const body = await res.json() as { error: string };
         expect(body.error).toBe('unconfigured');
@@ -928,16 +1177,16 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff', () => {
 
     it('returns 500 on unexpected error', async () => {
         (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(res.status).toBe(500);
     });
 });
 
-// ── GET /api/repos/:id/pull-requests/:prId/commits ────────────────────────────
+// ── GET /api/origins/:originId/pull-requests/:prId/commits ────────────────────────────
 
-describe('GET /api/repos/:id/pull-requests/:prId/commits', () => {
+describe('GET /api/origins/:originId/pull-requests/:prId/commits', () => {
     it('returns commits array on success', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        const res = await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { commits: Array<{ id: string; shortId: string; subject: string }> };
         expect(Array.isArray(body.commits)).toBe(true);
@@ -951,7 +1200,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/commits', () => {
         delete (svcWithoutCommits as any).getCommits;
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(svcWithoutCommits);
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        const res = await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { commits: unknown[] };
         expect(body.commits).toEqual([]);
@@ -959,13 +1208,13 @@ describe('GET /api/repos/:id/pull-requests/:prId/commits', () => {
 
     it('returns 404 when repo not found', async () => {
         mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/commits`);
+        const res = await fetch(originPullRequestsUrl(`/42/commits`, 'unknown'));
         expect(res.status).toBe(404);
     });
 
     it('returns 401 when unconfigured', async () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        const res = await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(res.status).toBe(401);
         const body = await res.json() as { error: string };
         expect(body.error).toBe('unconfigured');
@@ -973,7 +1222,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/commits', () => {
 
     it('returns 401 with no-ado-credentials when ADO az CLI fails', async () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue({ error: 'no-ado-credentials' });
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        const res = await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(res.status).toBe(401);
         const body = await res.json() as { error: string };
         expect(body.error).toBe('no-ado-credentials');
@@ -981,14 +1230,14 @@ describe('GET /api/repos/:id/pull-requests/:prId/commits', () => {
 
     it('returns 500 on unexpected error', async () => {
         (mockSvc.getCommits as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        const res = await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(res.status).toBe(500);
     });
 });
 
-// ── GET /api/repos/:id/pull-requests/:prId/diff/files/:filePath ─────────────
+// ── GET /api/origins/:originId/pull-requests/:prId/diff/files/:filePath ─────────────
 
-describe('GET /api/repos/:id/pull-requests/:prId/diff/files/:filePath', () => {
+describe('GET /api/origins/:originId/pull-requests/:prId/diff/files/:filePath', () => {
     const combinedDiff = [
         'diff --git a/src/foo.ts b/src/foo.ts',
         '--- a/src/foo.ts',
@@ -1006,7 +1255,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff/files/:filePath', () => {
 
     it('returns extracted file diff as JSON on success', async () => {
         (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { diff: string };
         expect(body.diff).toContain('diff --git a/src/foo.ts b/src/foo.ts');
@@ -1016,7 +1265,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff/files/:filePath', () => {
 
     it('returns empty diff when file not found in combined diff', async () => {
         (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/missing.ts')}`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/missing.ts')}`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { diff: string };
         expect(body.diff).toBe('');
@@ -1027,7 +1276,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff/files/:filePath', () => {
         delete (svcWithoutDiff as any).getDiff;
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(svcWithoutDiff);
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { diff: string };
         expect(body.diff).toBe('');
@@ -1035,13 +1284,13 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff/files/:filePath', () => {
 
     it('returns 404 when repo not found', async () => {
         mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, 'unknown'));
         expect(res.status).toBe(404);
     });
 
     it('returns 401 when unconfigured', async () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
         expect(res.status).toBe(401);
         const body = await res.json() as { error: string };
         expect(body.error).toBe('unconfigured');
@@ -1049,7 +1298,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff/files/:filePath', () => {
 
     it('returns 401 with no-ado-credentials when ADO az CLI fails', async () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue({ error: 'no-ado-credentials' });
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
         expect(res.status).toBe(401);
         const body = await res.json() as { error: string };
         expect(body.error).toBe('no-ado-credentials');
@@ -1057,21 +1306,21 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff/files/:filePath', () => {
 
     it('returns 500 on unexpected error', async () => {
         (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
         expect(res.status).toBe(500);
     });
 
     it('decodes URL-encoded file paths', async () => {
         const diffWithSpaces = 'diff --git a/path with spaces/file.ts b/path with spaces/file.ts\n--- a/path with spaces/file.ts\n+++ b/path with spaces/file.ts\n@@ -1 +1 @@\n-old\n+new\n';
         (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(diffWithSpaces);
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('path with spaces/file.ts')}`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('path with spaces/file.ts')}`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { diff: string };
         expect(body.diff).toContain('path with spaces/file.ts');
     });
 });
 
-// ── GET /api/repos/:id/pull-requests/:prId/diff/files/:path?fullContext=true (AC-02) ──
+// ── GET /api/origins/:originId/pull-requests/:prId/diff/files/:path?fullContext=true (AC-02) ──
 
 describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
     const combinedDiff = [
@@ -1088,7 +1337,7 @@ describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
     });
 
     it('without ?fullContext: returns normal diff, no fullContextUnavailable field', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { diff: string; fullContextUnavailable?: boolean };
         expect(body.diff).toContain('diff --git a/src/foo.ts');
@@ -1097,7 +1346,7 @@ describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
 
     it('with ?fullContext=true and no cached PR detail: returns hunk diff with fullContextUnavailable=true', async () => {
         // No prior GET /pull-requests/42 call, so prDetailCache is empty
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { diff: string; fullContextUnavailable: boolean };
         expect(body.fullContextUnavailable).toBe(true);
@@ -1108,9 +1357,9 @@ describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
 
     it('with ?fullContext=true and cached PR detail missing SHAs: returns fullContextUnavailable=true', async () => {
         // Warm the PR detail cache (mockPr has no baseSha/headSha)
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        await fetch(originPullRequestsUrl(`/42`, REPO_ID));
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { diff: string; fullContextUnavailable: boolean };
         expect(body.fullContextUnavailable).toBe(true);
@@ -1124,10 +1373,10 @@ describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValue(prWithShas);
 
         // Warm the PR detail cache with SHAs
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        await fetch(originPullRequestsUrl(`/42`, REPO_ID));
 
         // The repo.localPath is /tmp/repo which is not a real git repo, so git diff fails
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { diff: string; fullContextUnavailable: boolean };
         expect(body.fullContextUnavailable).toBe(true);
@@ -1137,7 +1386,7 @@ describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
     it('with ?fullContext=true and PR detail fetch fails: returns hunk diff fallback', async () => {
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('detail unavailable'));
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { diff: string; fullContextUnavailable: boolean; fullContextUnavailableReason?: string };
         expect(body.fullContextUnavailable).toBe(true);
@@ -1186,7 +1435,8 @@ describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
             targetBranch: 'main',
         });
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        const localOriginId = resolveCanonicalOriginId({ workspaceId: REPO_ID, remoteUrl: remotePath });
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`, REPO_ID, localOriginId));
         expect(res.status).toBe(200);
         const body = await res.json() as { diff: string; fullContextUnavailable: boolean; fullContextUnavailableReason?: string };
         expect(body.fullContextUnavailable).toBe(false);
@@ -1225,27 +1475,27 @@ describe('PR diff cache (AC-01)', () => {
     });
 
     it('caches the combined diff so /diff endpoint hits once on second request', async () => {
-        const r1 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const r1 = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(r1.status).toBe(200);
 
-        const r2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const r2 = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(r2.status).toBe(200);
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
     });
 
     it('caches the combined diff so /diff/files endpoint hits once on second request', async () => {
-        const r1 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        const r1 = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
         expect(r1.status).toBe(200);
 
-        const r2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/bar.ts')}`);
+        const r2 = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/bar.ts')}`, REPO_ID));
         expect(r2.status).toBe(200);
         // Both per-file requests share one upstream fetch
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
     });
 
     it('full /diff and /diff/files requests share the same cached combined diff', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
+        await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
         // Second call should reuse the cache set by the first
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
     });
@@ -1254,13 +1504,13 @@ describe('PR diff cache (AC-01)', () => {
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mockPr, headSha: 'stable-head' });
         (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
 
         const realNow = Date.now;
         Date.now = () => realNow() + 24 * 60 * 60 * 1000;
         try {
-            const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+            const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
             expect(res.status).toBe(200);
             const body = await res.json() as { diff: string };
             expect(body.diff).toContain('diff --git a/src/foo.ts b/src/foo.ts');
@@ -1280,33 +1530,33 @@ describe('PR diff cache (AC-01)', () => {
             .mockResolvedValueOnce(oldDiff)
             .mockResolvedValueOnce(newDiff);
 
-        const first = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const first = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(await first.text()).toContain('src/old.ts');
 
-        const second = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const second = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(await second.text()).toContain('src/new.ts');
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
     });
 
-    it('falls back to the repo/PR combined-diff key when PR head SHA is unavailable', async () => {
+    it('falls back to the origin/PR combined-diff key when PR head SHA is unavailable', async () => {
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mockPr, headSha: undefined });
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
+        await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
 
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
     });
 
     it('force-refreshing PR detail clears the diff cache and the next diff request refetches', async () => {
         // Warm the diff cache via /diff
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
 
         // Force-refresh PR detail
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+        await fetch(originPullRequestsUrl(`/42?force=true`, REPO_ID));
 
         // Next diff request must refetch from provider
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
     });
 
@@ -1318,12 +1568,12 @@ describe('PR diff cache (AC-01)', () => {
             .mockResolvedValueOnce(firstDiff)
             .mockResolvedValueOnce(refreshedDiff);
 
-        const first = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const first = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(await first.text()).toContain('src/first.ts');
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+        await fetch(originPullRequestsUrl(`/42?force=true`, REPO_ID));
 
-        const refreshed = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const refreshed = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(await refreshed.text()).toContain('src/refreshed.ts');
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
     });
@@ -1334,8 +1584,8 @@ describe('PR diff cache (AC-01)', () => {
             .mockResolvedValueOnce(combinedDiff)  // PR 42
             .mockResolvedValueOnce(pr2Diff);        // PR 99
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
-        const r99 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/99/diff`);
+        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
+        const r99 = await fetch(originPullRequestsUrl(`/99/diff`, REPO_ID));
         const text99 = await r99.text();
         expect(text99).toContain('other.ts');
         expect(text99).not.toContain('src/foo.ts');
@@ -1348,22 +1598,48 @@ describe('PR diff cache (AC-01)', () => {
             .mockResolvedValueOnce(combinedDiff) // PR 42 initial
             .mockResolvedValueOnce(pr2Diff);     // PR 99
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/99/diff`);
+        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
+        await fetch(originPullRequestsUrl(`/99/diff`, REPO_ID));
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
 
         // Force-refresh PR 42 detail only
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+        await fetch(originPullRequestsUrl(`/42?force=true`, REPO_ID));
 
         // PR 99 diff still cached
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/99/diff`);
+        await fetch(originPullRequestsUrl(`/99/diff`, REPO_ID));
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
     });
 
-    it('uses separate combined-diff cache entries per repo even for the same PR and head', async () => {
-        const otherRepoId = 'repo-other';
+    it('shares combined-diff cache entries across same-origin repo ids for the same PR and head', async () => {
+        const cloneRepoId = 'repo-clone-same-origin';
+        const repoDiff = 'diff --git a/src/repo.ts b/src/repo.ts\n';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(repoId, REMOTE_URL));
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => ({
+            ...mockPr,
+            repositoryId: repoId,
+            headSha: 'shared-head',
+        }));
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(repoDiff);
+
+        const repoRes = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
+        expect(await repoRes.text()).toContain('src/repo.ts');
+
+        const cloneRepoRes = await fetch(originPullRequestsUrl(`/42/diff`, cloneRepoId));
+        expect(await cloneRepoRes.text()).toContain('src/repo.ts');
+
+        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
+        await fetch(originPullRequestsUrl(`/42/diff`, cloneRepoId));
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps combined-diff cache entries isolated for distinct origins', async () => {
+        const otherRepoId = 'repo-other-origin';
         const repoDiff = 'diff --git a/src/repo.ts b/src/repo.ts\n';
         const otherRepoDiff = 'diff --git a/src/other-repo.ts b/src/other-repo.ts\n';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(
+            repoId,
+            repoId === otherRepoId ? 'https://github.com/org/other.git' : REMOTE_URL,
+        ));
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => ({
             ...mockPr,
             repositoryId: repoId,
@@ -1373,23 +1649,23 @@ describe('PR diff cache (AC-01)', () => {
             repoId === otherRepoId ? otherRepoDiff : repoDiff,
         );
 
-        const repoRes = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const repoRes = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
         expect(await repoRes.text()).toContain('src/repo.ts');
 
-        const otherRepoRes = await fetch(`${baseUrl}/api/repos/${otherRepoId}/pull-requests/42/diff`);
+        const otherRepoRes = await fetch(originPullRequestsUrl(`/42/diff`, otherRepoId, 'gh_org_other'));
         expect(await otherRepoRes.text()).toContain('src/other-repo.ts');
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
-        await fetch(`${baseUrl}/api/repos/${otherRepoId}/pull-requests/42/diff`);
+        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
+        await fetch(originPullRequestsUrl(`/42/diff`, otherRepoId, 'gh_org_other'));
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
     });
 });
 
-// ── GET /api/repos/:id/pull-requests/:prId/checks ─────────────────────────────
+// ── GET /api/origins/:originId/pull-requests/:prId/checks ─────────────────────────────
 
-describe('GET /api/repos/:id/pull-requests/:prId/checks', () => {
+describe('GET /api/origins/:originId/pull-requests/:prId/checks', () => {
     it('returns checks array on success', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        const res = await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { checks: Array<{ id: string; name: string; status: string; source: string }> };
         expect(Array.isArray(body.checks)).toBe(true);
@@ -1405,7 +1681,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/checks', () => {
         delete (svcWithoutChecks as any).getChecks;
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(svcWithoutChecks);
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        const res = await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { checks: unknown[] };
         expect(body.checks).toEqual([]);
@@ -1413,13 +1689,13 @@ describe('GET /api/repos/:id/pull-requests/:prId/checks', () => {
 
     it('returns 404 when repo not found', async () => {
         mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/checks`);
+        const res = await fetch(originPullRequestsUrl(`/42/checks`, 'unknown'));
         expect(res.status).toBe(404);
     });
 
     it('returns 401 when unconfigured', async () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        const res = await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(res.status).toBe(401);
         const body = await res.json() as { error: string };
         expect(body.error).toBe('unconfigured');
@@ -1427,7 +1703,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/checks', () => {
 
     it('returns 401 with no-ado-credentials when ADO az CLI fails', async () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue({ error: 'no-ado-credentials' });
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        const res = await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(res.status).toBe(401);
         const body = await res.json() as { error: string };
         expect(body.error).toBe('no-ado-credentials');
@@ -1435,40 +1711,56 @@ describe('GET /api/repos/:id/pull-requests/:prId/checks', () => {
 
     it('returns 500 on unexpected error', async () => {
         (mockSvc.getChecks as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        const res = await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(res.status).toBe(500);
     });
 });
 
 // ── threads cache tests ───────────────────────────────────────────────────────
 
-describe('threads cache (GET /api/repos/:id/pull-requests/:prId/threads)', () => {
+describe('threads cache (GET /api/origins/:originId/pull-requests/:prId/threads)', () => {
     it('cache miss calls provider', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        const res = await fetch(originPullRequestsUrl(`/42/threads`, REPO_ID));
         expect(res.status).toBe(200);
         expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
     });
 
     it('cache hit does not call provider', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        await fetch(originPullRequestsUrl(`/42/threads`, REPO_ID));
         expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
 
-        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        const res2 = await fetch(originPullRequestsUrl(`/42/threads`, REPO_ID));
         expect(res2.status).toBe(200);
         const body = await res2.json() as { threads: unknown[] };
         expect(body.threads).toHaveLength(1);
         expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
     });
 
+    it('shares thread cache entries across same-origin repo ids', async () => {
+        const cloneRepoId = 'repo-clone-same-origin';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(repoId, REMOTE_URL));
+        (mockSvc.getThreads as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => [
+            { ...mockThread, id: repoId === cloneRepoId ? 2 : 1 },
+        ]);
+
+        await fetch(originPullRequestsUrl(`/42/threads`, REPO_ID));
+        const res = await fetch(originPullRequestsUrl(`/42/threads`, cloneRepoId));
+        const body = await res.json() as { threads: Array<{ id: number }> };
+
+        expect(res.status).toBe(200);
+        expect(body.threads[0].id).toBe(1);
+        expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
+    });
+
     it('expired TTL refetches from provider', async () => {
         vi.useFakeTimers();
         try {
-            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+            await fetch(originPullRequestsUrl(`/42/threads`, REPO_ID));
             expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
 
             vi.advanceTimersByTime(11 * 60 * 1000); // 11 minutes
 
-            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+            await fetch(originPullRequestsUrl(`/42/threads`, REPO_ID));
             expect(mockSvc.getThreads).toHaveBeenCalledTimes(2);
         } finally {
             vi.useRealTimers();
@@ -1476,32 +1768,32 @@ describe('threads cache (GET /api/repos/:id/pull-requests/:prId/threads)', () =>
     });
 
     it('force=true on PR detail evicts threads cache', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        await fetch(originPullRequestsUrl(`/42/threads`, REPO_ID));
         expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
 
         // Force-refresh the detail endpoint
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+        await fetch(originPullRequestsUrl(`/42?force=true`, REPO_ID));
 
         // Next threads call must hit upstream again
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
+        await fetch(originPullRequestsUrl(`/42/threads`, REPO_ID));
         expect(mockSvc.getThreads).toHaveBeenCalledTimes(2);
     });
 });
 
 // ── commits cache tests ───────────────────────────────────────────────────────
 
-describe('commits cache (GET /api/repos/:id/pull-requests/:prId/commits)', () => {
+describe('commits cache (GET /api/origins/:originId/pull-requests/:prId/commits)', () => {
     it('cache miss calls provider', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        const res = await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(res.status).toBe(200);
         expect(mockSvc.getCommits).toHaveBeenCalledTimes(1);
     });
 
     it('cache hit does not call provider', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(mockSvc.getCommits).toHaveBeenCalledTimes(1);
 
-        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        const res2 = await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(res2.status).toBe(200);
         const body = await res2.json() as { commits: unknown[] };
         expect(body.commits).toHaveLength(1);
@@ -1511,12 +1803,12 @@ describe('commits cache (GET /api/repos/:id/pull-requests/:prId/commits)', () =>
     it('expired TTL refetches from provider', async () => {
         vi.useFakeTimers();
         try {
-            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+            await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
             expect(mockSvc.getCommits).toHaveBeenCalledTimes(1);
 
             vi.advanceTimersByTime(31 * 60 * 1000); // 31 minutes
 
-            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+            await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
             expect(mockSvc.getCommits).toHaveBeenCalledTimes(2);
         } finally {
             vi.useRealTimers();
@@ -1524,30 +1816,30 @@ describe('commits cache (GET /api/repos/:id/pull-requests/:prId/commits)', () =>
     });
 
     it('force=true on PR detail evicts commits cache', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(mockSvc.getCommits).toHaveBeenCalledTimes(1);
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+        await fetch(originPullRequestsUrl(`/42?force=true`, REPO_ID));
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
         expect(mockSvc.getCommits).toHaveBeenCalledTimes(2);
     });
 });
 
 // ── reviewers cache tests ─────────────────────────────────────────────────────
 
-describe('reviewers cache (GET /api/repos/:id/pull-requests/:prId/reviewers)', () => {
+describe('reviewers cache (GET /api/origins/:originId/pull-requests/:prId/reviewers)', () => {
     it('cache miss calls provider', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        const res = await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
         expect(res.status).toBe(200);
         expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
     });
 
     it('cache hit does not call provider', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
         expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
 
-        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        const res2 = await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
         expect(res2.status).toBe(200);
         const body = await res2.json() as { reviewers: unknown[] };
         expect(body.reviewers).toHaveLength(1);
@@ -1557,12 +1849,12 @@ describe('reviewers cache (GET /api/repos/:id/pull-requests/:prId/reviewers)', (
     it('expired TTL refetches from provider', async () => {
         vi.useFakeTimers();
         try {
-            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+            await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
             expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
 
             vi.advanceTimersByTime(31 * 60 * 1000); // 31 minutes
 
-            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+            await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
             expect(mockSvc.getReviewers).toHaveBeenCalledTimes(2);
         } finally {
             vi.useRealTimers();
@@ -1570,30 +1862,30 @@ describe('reviewers cache (GET /api/repos/:id/pull-requests/:prId/reviewers)', (
     });
 
     it('force=true on PR detail evicts reviewers cache', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
         expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+        await fetch(originPullRequestsUrl(`/42?force=true`, REPO_ID));
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
         expect(mockSvc.getReviewers).toHaveBeenCalledTimes(2);
     });
 });
 
 // ── checks cache tests ────────────────────────────────────────────────────────
 
-describe('checks cache (GET /api/repos/:id/pull-requests/:prId/checks)', () => {
+describe('checks cache (GET /api/origins/:originId/pull-requests/:prId/checks)', () => {
     it('cache miss calls provider', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        const res = await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(res.status).toBe(200);
         expect(mockSvc.getChecks).toHaveBeenCalledTimes(1);
     });
 
     it('cache hit does not call provider', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(mockSvc.getChecks).toHaveBeenCalledTimes(1);
 
-        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        const res2 = await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(res2.status).toBe(200);
         const body = await res2.json() as { checks: unknown[] };
         expect(body.checks).toHaveLength(1);
@@ -1603,12 +1895,12 @@ describe('checks cache (GET /api/repos/:id/pull-requests/:prId/checks)', () => {
     it('expired TTL refetches from provider', async () => {
         vi.useFakeTimers();
         try {
-            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+            await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
             expect(mockSvc.getChecks).toHaveBeenCalledTimes(1);
 
             vi.advanceTimersByTime(11 * 60 * 1000); // 11 minutes
 
-            await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+            await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
             expect(mockSvc.getChecks).toHaveBeenCalledTimes(2);
         } finally {
             vi.useRealTimers();
@@ -1616,24 +1908,24 @@ describe('checks cache (GET /api/repos/:id/pull-requests/:prId/checks)', () => {
     });
 
     it('force=true on PR detail evicts checks cache', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(mockSvc.getChecks).toHaveBeenCalledTimes(1);
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+        await fetch(originPullRequestsUrl(`/42?force=true`, REPO_ID));
 
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(mockSvc.getChecks).toHaveBeenCalledTimes(2);
     });
 });
 
 // ── PR detail cache tests ─────────────────────────────────────────────────────
 
-describe('PR detail cache (GET /api/repos/:id/pull-requests/:prId)', () => {
+describe('PR detail cache (GET /api/origins/:originId/pull-requests/:prId)', () => {
     it('serves from cache on second call without hitting upstream', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        await fetch(originPullRequestsUrl(`/42`, REPO_ID));
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
 
-        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        const res2 = await fetch(originPullRequestsUrl(`/42`, REPO_ID));
         expect(res2.status).toBe(200);
         const body = await res2.json() as { number: number };
         expect(body.number).toBe(42);
@@ -1641,27 +1933,66 @@ describe('PR detail cache (GET /api/repos/:id/pull-requests/:prId)', () => {
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
     });
 
+    it('shares detail cache entries across same-origin repo ids', async () => {
+        const cloneRepoId = 'repo-clone-same-origin';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(repoId, REMOTE_URL));
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => ({
+            ...mockPr,
+            repositoryId: repoId,
+            title: `detail ${repoId}`,
+        }));
+
+        await fetch(originPullRequestsUrl(`/42`, REPO_ID));
+        const res = await fetch(originPullRequestsUrl(`/42`, cloneRepoId));
+        const body = await res.json() as { title: string };
+
+        expect(res.status).toBe(200);
+        expect(body.title).toBe(`detail ${REPO_ID}`);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps detail cache entries isolated for distinct origins', async () => {
+        const otherRepoId = 'repo-other-origin';
+        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(
+            repoId,
+            repoId === otherRepoId ? 'https://github.com/org/other.git' : REMOTE_URL,
+        ));
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => ({
+            ...mockPr,
+            repositoryId: repoId,
+            title: `detail ${repoId}`,
+        }));
+
+        await fetch(originPullRequestsUrl(`/42`, REPO_ID));
+        const res = await fetch(originPullRequestsUrl(`/42`, otherRepoId, 'gh_org_other'));
+        const body = await res.json() as { title: string };
+
+        expect(res.status).toBe(200);
+        expect(body.title).toBe(`detail ${otherRepoId}`);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
+    });
+
     it('force=true bypasses cache and repopulates', async () => {
         // Warm the cache
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        await fetch(originPullRequestsUrl(`/42`, REPO_ID));
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
 
         // Force refresh
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+        const res = await fetch(originPullRequestsUrl(`/42?force=true`, REPO_ID));
         expect(res.status).toBe(200);
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
     });
 
     it('re-fetches after TTL expiry', async () => {
         // Warm the cache
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        await fetch(originPullRequestsUrl(`/42`, REPO_ID));
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
 
         // Expire the cache by manipulating Date.now
         const realNow = Date.now;
         Date.now = () => realNow() + 11 * 60 * 1000; // 11 minutes into the future
         try {
-            const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+            const res = await fetch(originPullRequestsUrl(`/42`, REPO_ID));
             expect(res.status).toBe(200);
             expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
         } finally {
@@ -1669,60 +2000,60 @@ describe('PR detail cache (GET /api/repos/:id/pull-requests/:prId)', () => {
         }
     });
 
-    it('uses separate cache entries per repo and PR', async () => {
-        // Fetch PR 42 for repo-abc123
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
-        // Fetch PR 99 for repo-abc123
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/99`);
+    it('uses separate cache entries per origin and PR', async () => {
+        // Fetch PR 42 for the resolved origin
+        await fetch(originPullRequestsUrl(`/42`, REPO_ID));
+        // Fetch PR 99 for the same resolved origin
+        await fetch(originPullRequestsUrl(`/99`, REPO_ID));
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
 
         // Both are now cached — no additional calls
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/99`);
+        await fetch(originPullRequestsUrl(`/42`, REPO_ID));
+        await fetch(originPullRequestsUrl(`/99`, REPO_ID));
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
     });
 
     it('does not cache 404 errors', async () => {
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('PR 999 not found'));
-        const res1 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/999`);
+        const res1 = await fetch(originPullRequestsUrl(`/999`, REPO_ID));
         expect(res1.status).toBe(404);
 
         // Retry should hit upstream again (not serve cached error)
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockPr);
-        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/999`);
+        const res2 = await fetch(originPullRequestsUrl(`/999`, REPO_ID));
         expect(res2.status).toBe(200);
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
     });
 
     it('does not cache auth errors', async () => {
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('401 unauthorized'));
-        const res1 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        const res1 = await fetch(originPullRequestsUrl(`/42`, REPO_ID));
         expect(res1.status).toBe(401);
 
         // Retry should hit upstream again
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockPr);
-        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        const res2 = await fetch(originPullRequestsUrl(`/42`, REPO_ID));
         expect(res2.status).toBe(200);
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
     });
 
     it('clearPrDetailCache() clears all detail entries', async () => {
         // Warm the cache
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        await fetch(originPullRequestsUrl(`/42`, REPO_ID));
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
 
         // Clear and verify re-fetch
         clearPrDetailCache();
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        await fetch(originPullRequestsUrl(`/42`, REPO_ID));
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
     });
 
     it('clearPrDetailCache() also clears threads/commits/reviewers/checks caches', async () => {
         // Warm all sub-endpoint caches
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        await fetch(originPullRequestsUrl(`/42/threads`, REPO_ID));
+        await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
+        await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
+        await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(mockSvc.getThreads).toHaveBeenCalledTimes(1);
         expect(mockSvc.getCommits).toHaveBeenCalledTimes(1);
         expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
@@ -1731,10 +2062,10 @@ describe('PR detail cache (GET /api/repos/:id/pull-requests/:prId)', () => {
         clearPrDetailCache();
 
         // All sub-endpoint caches must be evicted
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/threads`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        await fetch(originPullRequestsUrl(`/42/threads`, REPO_ID));
+        await fetch(originPullRequestsUrl(`/42/commits`, REPO_ID));
+        await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
+        await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(mockSvc.getThreads).toHaveBeenCalledTimes(2);
         expect(mockSvc.getCommits).toHaveBeenCalledTimes(2);
         expect(mockSvc.getReviewers).toHaveBeenCalledTimes(2);
@@ -1742,19 +2073,19 @@ describe('PR detail cache (GET /api/repos/:id/pull-requests/:prId)', () => {
     });
 });
 
-// ── GET /api/repos/:id/pull-requests/review-history ──────────────────────────
+// ── GET /api/origins/:originId/pull-requests/review-history ──────────────────────────
 
-describe('GET /api/repos/:id/pull-requests/review-history', () => {
+describe('GET /api/origins/:originId/pull-requests/review-history', () => {
     it('returns empty reviews when no cache exists', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history`);
+        const res = await fetch(originPullRequestsUrl(`/review-history`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { reviews: unknown[]; fetchedAt: string | null };
         expect(body.reviews).toEqual([]);
         expect(body.fetchedAt).toBeNull();
     });
 
-    it('returns cached review history from disk', async () => {
-        // Write a cache file
+    it('returns cached review history from legacy disk cache and migrates it to origin storage', async () => {
+        // Write a legacy workspace cache file
         const repoDir = path.join(dataDir, 'repos', REPO_ID);
         fs.mkdirSync(repoDir, { recursive: true });
         const cache = {
@@ -1763,52 +2094,210 @@ describe('GET /api/repos/:id/pull-requests/review-history', () => {
         };
         fs.writeFileSync(path.join(repoDir, 'pr-review-history.json'), JSON.stringify(cache), 'utf-8');
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history`);
+        const res = await fetch(originPullRequestsUrl(`/review-history`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { reviews: unknown[]; fetchedAt: string };
         expect(body.reviews).toHaveLength(1);
         expect(body.fetchedAt).toBe('2024-06-01T12:00:00.000Z');
+        const originFile = path.join(dataDir, 'repos', ORIGIN_ID, 'pr-review-history.json');
+        expect(fs.existsSync(originFile)).toBe(true);
     });
 
-    it('returns 404 when repo not found', async () => {
+    it('serves review history from the shared origin for a same-remote clone', async () => {
+        const originDir = path.join(dataDir, 'repos', ORIGIN_ID);
+        fs.mkdirSync(originDir, { recursive: true });
+        fs.writeFileSync(path.join(originDir, 'pr-review-history.json'), JSON.stringify({
+            fetchedAt: '2024-06-02T12:00:00.000Z',
+            reviews: [{ number: 2, title: 'Clone PR', author: { id: 'u2', displayName: 'Bob' }, filesChanged: [], labels: [], reviewedAt: '2024-06-02T10:00:00.000Z', targetBranch: 'main', url: 'https://example.com/pr/2' }],
+        }), 'utf-8');
+
+        const cloneRepoId = 'repo-clone';
+        mockResolveRepo.mockResolvedValueOnce(makeMockRepoInfo(cloneRepoId));
+        const res = await fetch(originPullRequestsUrl(`/review-history?workspaceId=${cloneRepoId}`, cloneRepoId));
+
+        expect(res.status).toBe(200);
+        const body = await res.json() as { reviews: Array<{ number: number }>; fetchedAt: string };
+        expect(body.fetchedAt).toBe('2024-06-02T12:00:00.000Z');
+        expect(body.reviews[0].number).toBe(2);
+    });
+
+    it('serves review history directly from the canonical origin route', async () => {
+        const originDir = path.join(dataDir, 'repos', ORIGIN_ID);
+        fs.mkdirSync(originDir, { recursive: true });
+        fs.writeFileSync(path.join(originDir, 'pr-review-history.json'), JSON.stringify({
+            fetchedAt: '2024-06-03T12:00:00.000Z',
+            reviews: [{ number: 3, title: 'Origin PR', author: { id: 'u3', displayName: 'Cara' }, filesChanged: [], labels: [], reviewedAt: '2024-06-03T10:00:00.000Z', targetBranch: 'main', url: 'https://example.com/pr/3' }],
+        }), 'utf-8');
+
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/review-history?workspaceId=${REPO_ID}&repoId=${REPO_ID}`);
+
+        expect(res.status).toBe(200);
+        const body = await res.json() as { reviews: Array<{ number: number }>; fetchedAt: string };
+        expect(body.fetchedAt).toBe('2024-06-03T12:00:00.000Z');
+        expect(body.reviews[0].number).toBe(3);
+    });
+
+    it('returns empty review history even when optional legacy repo metadata cannot resolve', async () => {
         mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/review-history`);
-        expect(res.status).toBe(404);
+        const res = await fetch(originPullRequestsUrl(`/review-history`, 'unknown'));
+        expect(res.status).toBe(200);
+        const body = await res.json() as { reviews: unknown[]; fetchedAt: string | null };
+        expect(body).toEqual({ reviews: [], fetchedAt: null });
     });
 });
 
-// ── POST /api/repos/:id/pull-requests/review-history/refresh ─────────────────
+// ── POST /api/origins/:originId/pull-requests/review-history/refresh ─────────────────
 
-describe('POST /api/repos/:id/pull-requests/review-history/refresh', () => {
+describe('POST /api/origins/:originId/pull-requests/review-history/refresh', () => {
     it('fetches review history and caches to disk', async () => {
         const mockReviews = [
             { number: 10, title: 'PR 10', author: { id: 'u1', displayName: 'Alice' }, filesChanged: ['a.ts'], labels: [], reviewedAt: new Date('2024-01-01'), targetBranch: 'main', url: 'https://example.com/pr/10' },
         ];
         mockSvc.getReviewedPullRequests = vi.fn().mockResolvedValue(mockReviews);
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history/refresh`, { method: 'POST' });
+        const res = await fetch(originPullRequestsUrl(`/review-history/refresh`, REPO_ID), { method: 'POST' });
         expect(res.status).toBe(200);
         const body = await res.json() as { reviews: unknown[]; fetchedAt: string };
         expect(body.reviews).toHaveLength(1);
         expect(body.fetchedAt).toBeTruthy();
 
-        // Verify written to disk
-        const cached = fs.readFileSync(path.join(dataDir, 'repos', REPO_ID, 'pr-review-history.json'), 'utf-8');
+        // Verify written to origin storage
+        const cached = fs.readFileSync(path.join(dataDir, 'repos', ORIGIN_ID, 'pr-review-history.json'), 'utf-8');
         expect(JSON.parse(cached).reviews).toHaveLength(1);
+    });
+
+    it('refreshes review history through the canonical origin route using a concrete workspace', async () => {
+        const mockReviews = [
+            { number: 11, title: 'PR 11', author: { id: 'u1', displayName: 'Alice' }, filesChanged: ['b.ts'], labels: [], reviewedAt: new Date('2024-01-02'), targetBranch: 'main', url: 'https://example.com/pr/11' },
+        ];
+        mockSvc.getReviewedPullRequests = vi.fn().mockResolvedValue(mockReviews);
+
+        const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/review-history/refresh?workspaceId=${REPO_ID}&repoId=${REPO_ID}`, { method: 'POST' });
+
+        expect(res.status).toBe(200);
+        const body = await res.json() as { reviews: Array<{ number: number }>; fetchedAt: string };
+        expect(body.reviews[0].number).toBe(11);
+        expect(body.fetchedAt).toBeTruthy();
+
+        const cached = fs.readFileSync(path.join(dataDir, 'repos', ORIGIN_ID, 'pr-review-history.json'), 'utf-8');
+        expect(JSON.parse(cached).reviews[0].number).toBe(11);
     });
 
     it('returns 501 when provider does not support review history', async () => {
         // Ensure getReviewedPullRequests is NOT present
         delete (mockSvc as any).getReviewedPullRequests;
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history/refresh`, { method: 'POST' });
+        const res = await fetch(originPullRequestsUrl(`/review-history/refresh`, REPO_ID), { method: 'POST' });
         expect(res.status).toBe(501);
+    });
+
+    // ── GET /api/origins/:originId/pull-requests/suggestions ─────────────────────────────
+
+    describe('GET /api/origins/:originId/pull-requests/suggestions', () => {
+        it('returns empty suggestions when no cache exists', async () => {
+            const res = await fetch(originPullRequestsUrl(`/suggestions`, REPO_ID));
+
+            expect(res.status).toBe(200);
+            const body = await res.json() as { suggestions: unknown[]; rankedAt: string | null };
+            expect(body.suggestions).toEqual([]);
+            expect(body.rankedAt).toBeNull();
+        });
+
+        it('returns cached suggestions from legacy disk cache and migrates them to origin storage', async () => {
+            const repoDir = path.join(dataDir, 'repos', REPO_ID);
+            fs.mkdirSync(repoDir, { recursive: true });
+            const cache = {
+                rankedAt: '2024-06-01T14:00:00.000Z',
+                suggestions: [{ prNumber: 42, score: 95 }],
+            };
+            fs.writeFileSync(path.join(repoDir, 'pr-suggestions-cache.json'), JSON.stringify(cache), 'utf-8');
+
+            const res = await fetch(originPullRequestsUrl(`/suggestions`, REPO_ID));
+
+            expect(res.status).toBe(200);
+            const body = await res.json() as { suggestions: Array<{ prNumber: number }>; rankedAt: string };
+            expect(body.rankedAt).toBe('2024-06-01T14:00:00.000Z');
+            expect(body.suggestions[0].prNumber).toBe(42);
+            const originFile = path.join(dataDir, 'repos', ORIGIN_ID, 'pr-suggestions-cache.json');
+            expect(fs.existsSync(originFile)).toBe(true);
+        });
+
+        it('serves cached suggestions directly from the canonical origin route', async () => {
+            const originDir = path.join(dataDir, 'repos', ORIGIN_ID);
+            fs.mkdirSync(originDir, { recursive: true });
+            fs.writeFileSync(path.join(originDir, 'pr-suggestions-cache.json'), JSON.stringify({
+                rankedAt: '2024-06-02T14:00:00.000Z',
+                suggestions: [{ prNumber: 7, score: 91 }],
+            }), 'utf-8');
+
+            const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/suggestions?workspaceId=${REPO_ID}&repoId=${REPO_ID}`);
+
+            expect(res.status).toBe(200);
+            const body = await res.json() as { suggestions: Array<{ prNumber: number; score: number }>; rankedAt: string };
+            expect(body.rankedAt).toBe('2024-06-02T14:00:00.000Z');
+            expect(body.suggestions).toEqual([{ prNumber: 7, score: 91 }]);
+        });
+    });
+
+    // ── POST /api/origins/:originId/pull-requests/suggestions/refresh ────────────────────
+
+    describe('POST /api/origins/:originId/pull-requests/suggestions/refresh', () => {
+        it('ranks PRs using origin-scoped review history and caches suggestions by origin', async () => {
+            const originDir = path.join(dataDir, 'repos', ORIGIN_ID);
+            fs.mkdirSync(originDir, { recursive: true });
+            fs.writeFileSync(path.join(originDir, 'pr-review-history.json'), JSON.stringify({
+                fetchedAt: '2024-06-01T12:00:00.000Z',
+                reviews: [{ number: 1, title: 'Test PR', author: { id: 'u1', displayName: 'Alice' }, filesChanged: [], labels: [], reviewedAt: '2024-06-01T10:00:00.000Z', targetBranch: 'main', url: 'https://example.com/pr/1' }],
+            }), 'utf-8');
+            const aiService = {
+                transform: vi.fn().mockResolvedValue({
+                    success: true,
+                    text: '[{"prNumber":42,"score":88}]',
+                }),
+            } as Parameters<typeof registerPrRoutes>[4];
+            await restartServer(undefined, aiService);
+
+            const res = await fetch(originPullRequestsUrl(`/suggestions/refresh`, REPO_ID), { method: 'POST' });
+
+            expect(res.status).toBe(200);
+            const body = await res.json() as { suggestions: Array<{ prNumber: number; score: number }> };
+            expect(body.suggestions).toEqual([{ prNumber: 42, score: 88 }]);
+            expect(aiService?.transform).toHaveBeenCalledTimes(1);
+            const cached = fs.readFileSync(path.join(originDir, 'pr-suggestions-cache.json'), 'utf-8');
+            expect(JSON.parse(cached).suggestions).toEqual([{ prNumber: 42, score: 88 }]);
+            expect(fs.existsSync(path.join(dataDir, 'repos', REPO_ID, 'pr-suggestions-cache.json'))).toBe(false);
+        });
+
+        it('ranks PRs through the canonical origin route using a concrete workspace', async () => {
+            const originDir = path.join(dataDir, 'repos', ORIGIN_ID);
+            fs.mkdirSync(originDir, { recursive: true });
+            fs.writeFileSync(path.join(originDir, 'pr-review-history.json'), JSON.stringify({
+                fetchedAt: '2024-06-01T12:00:00.000Z',
+                reviews: [{ number: 1, title: 'Test PR', author: { id: 'u1', displayName: 'Alice' }, filesChanged: [], labels: [], reviewedAt: '2024-06-01T10:00:00.000Z', targetBranch: 'main', url: 'https://example.com/pr/1' }],
+            }), 'utf-8');
+            const aiService = {
+                transform: vi.fn().mockResolvedValue({
+                    success: true,
+                    text: '[{"prNumber":43,"score":89}]',
+                }),
+            } as Parameters<typeof registerPrRoutes>[4];
+            await restartServer(undefined, aiService);
+
+            const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests/suggestions/refresh?workspaceId=${REPO_ID}&repoId=${REPO_ID}`, { method: 'POST' });
+
+            expect(res.status).toBe(200);
+            const body = await res.json() as { suggestions: Array<{ prNumber: number; score: number }> };
+            expect(body.suggestions).toEqual([{ prNumber: 43, score: 89 }]);
+            expect(aiService?.transform).toHaveBeenCalledTimes(1);
+            const cached = fs.readFileSync(path.join(originDir, 'pr-suggestions-cache.json'), 'utf-8');
+            expect(JSON.parse(cached).suggestions).toEqual([{ prNumber: 43, score: 89 }]);
+        });
     });
 
     it('returns an informational empty cache when provider has review history support but no reviews', async () => {
         mockSvc.getReviewedPullRequests = vi.fn().mockResolvedValue([]);
 
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history/refresh`, { method: 'POST' });
+        const res = await fetch(originPullRequestsUrl(`/review-history/refresh`, REPO_ID), { method: 'POST' });
 
         expect(res.status).toBe(200);
         const body = await res.json() as { reviews: unknown[]; fetchedAt: string };
@@ -1819,13 +2308,13 @@ describe('POST /api/repos/:id/pull-requests/review-history/refresh', () => {
 
     it('returns 404 when repo not found', async () => {
         mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/review-history/refresh`, { method: 'POST' });
+        const res = await fetch(originPullRequestsUrl(`/review-history/refresh`, 'unknown'), { method: 'POST' });
         expect(res.status).toBe(404);
     });
 
     it('returns 401 when no credentials', async () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history/refresh`, { method: 'POST' });
+        const res = await fetch(originPullRequestsUrl(`/review-history/refresh`, REPO_ID), { method: 'POST' });
         expect(res.status).toBe(401);
     });
 });

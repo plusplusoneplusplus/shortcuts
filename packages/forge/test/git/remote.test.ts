@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { normalizeRemoteUrl, computeRemoteHash, detectRemoteUrl } from '../../src/git/remote';
+import {
+    normalizeRemoteUrl,
+    computeRemoteHash,
+    detectRemoteUrl,
+    resolveCanonicalOrigin,
+    resolveCanonicalOriginId,
+} from '../../src/git/remote';
 import { execGitAsync } from '../../src/git/exec';
 
 vi.mock('../../src/git/exec', async (importOriginal) => {
@@ -86,6 +92,73 @@ describe('computeRemoteHash', () => {
     it('produces different hashes for different repositories', () => {
         expect(computeRemoteHash('https://github.com/owner/repo-a'))
             .not.toBe(computeRemoteHash('https://github.com/owner/repo-b'));
+    });
+});
+
+describe('resolveCanonicalOrigin', () => {
+    it('resolves GitHub HTTPS remotes to gh_owner_repo IDs', () => {
+        const origin = resolveCanonicalOrigin({
+            remoteUrl: 'https://github.com/Owner/Repo.git',
+            workspaceId: 'ws-a',
+        });
+
+        expect(origin).toMatchObject({
+            originId: 'gh_owner_repo',
+            provider: 'github',
+            owner: 'owner',
+            repo: 'repo',
+            workspaceId: 'ws-a',
+            normalizedRemoteUrl: 'github.com/owner/repo',
+        });
+    });
+
+    it('resolves GitHub HTTPS and SSH clones of the same repository to the same ID', () => {
+        expect(resolveCanonicalOriginId({ remoteUrl: 'https://github.com/Owner/Repo.git' }))
+            .toBe(resolveCanonicalOriginId({ remoteUrl: 'git@github.com:owner/repo.git' }));
+    });
+
+    it('keeps distinct GitHub repositories isolated', () => {
+        expect(resolveCanonicalOriginId({ remoteUrl: 'https://github.com/owner/repo-a' }))
+            .not.toBe(resolveCanonicalOriginId({ remoteUrl: 'https://github.com/owner/repo-b' }));
+    });
+
+    it('resolves Azure DevOps HTTPS, SSH, and Visual Studio remotes to ado_org_project IDs', () => {
+        const expected = 'ado_org_my_x20project';
+
+        expect(resolveCanonicalOriginId({ remoteUrl: 'https://dev.azure.com/Org/My%20Project/_git/Repo' }))
+            .toBe(expected);
+        expect(resolveCanonicalOriginId({ remoteUrl: 'git@ssh.dev.azure.com:v3/Org/My%20Project/Repo' }))
+            .toBe(expected);
+        expect(resolveCanonicalOriginId({ remoteUrl: 'https://Org.visualstudio.com/My%20Project/_git/Repo' }))
+            .toBe(expected);
+    });
+
+    it('keeps distinct Azure DevOps projects isolated', () => {
+        expect(resolveCanonicalOriginId({ remoteUrl: 'https://dev.azure.com/org/project-a/_git/repo' }))
+            .not.toBe(resolveCanonicalOriginId({ remoteUrl: 'https://dev.azure.com/org/project-b/_git/repo' }));
+    });
+
+    it('uses a git hash fallback for unknown Git providers', () => {
+        const origin = resolveCanonicalOrigin({ remoteUrl: 'https://git.example.com/org/repo.git' });
+
+        expect(origin.provider).toBe('git');
+        expect(origin.originId).toMatch(/^git_[0-9a-f]{16}$/);
+        expect(origin.remoteHash).toHaveLength(16);
+    });
+
+    it('normalizes credentials, casing, and suffixes for Git fallback IDs', () => {
+        expect(resolveCanonicalOriginId({ remoteUrl: 'https://USER:TOKEN@git.example.com/Org/Repo.git' }))
+            .toBe(resolveCanonicalOriginId({ remoteUrl: 'https://git.example.com/org/repo/' }));
+    });
+
+    it('falls back to a local workspace origin when no remote URL is available', () => {
+        expect(resolveCanonicalOriginId({ remoteUrl: undefined, workspaceId: 'ws-local' }))
+            .toBe('local_ws-local');
+    });
+
+    it('requires workspaceId for local origins without a remote URL', () => {
+        expect(() => resolveCanonicalOrigin({ remoteUrl: null }))
+            .toThrow('workspaceId is required');
     });
 });
 

@@ -2,6 +2,7 @@ import { expect, test } from './fixtures/server-fixture';
 import { createMultiCommitRepo } from './fixtures/git-fixtures';
 import { request, seedWorkspace } from './fixtures/seed';
 import { execFileSync } from 'child_process';
+import { resolveCanonicalOriginId } from '@plusplusoneplusplus/forge';
 
 const WORKSPACE_ID = 'ws-commit-chat-lens';
 const WORK_ITEM_ID = 'wi-commit-chat-lens';
@@ -17,8 +18,10 @@ function placementStorageKey(workspaceId: string, commitHash: string): string {
     return `coc.reviewChat.placement.commit.${encodeURIComponent(workspaceId)}.${encodeURIComponent(commitHash)}`;
 }
 
-async function seedWorkItemCommit(serverUrl: string, commit: { hash: string; subject: string }): Promise<void> {
-    const createRes = await request(`${serverUrl}/api/workspaces/${encodeURIComponent(WORKSPACE_ID)}/work-items`, {
+async function seedWorkItemCommit(serverUrl: string, repoDir: string, commit: { hash: string; subject: string }): Promise<void> {
+    const remoteUrl = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: repoDir, encoding: 'utf8' }).trim();
+    const originId = resolveCanonicalOriginId({ workspaceId: WORKSPACE_ID, remoteUrl });
+    const createRes = await request(`${serverUrl}/api/origins/${encodeURIComponent(originId)}/work-items`, {
         method: 'POST',
         body: JSON.stringify({
             id: WORK_ITEM_ID,
@@ -27,20 +30,22 @@ async function seedWorkItemCommit(serverUrl: string, commit: { hash: string; sub
             priority: 'normal',
             source: 'manual',
             plan: { content: 'Review the linked commit in the embedded work item pane.' },
+            workspaceId: WORKSPACE_ID,
         }),
     });
     expect(createRes.status).toBe(201);
 
-    const changeRes = await request(`${serverUrl}/api/workspaces/${encodeURIComponent(WORKSPACE_ID)}/work-items/${encodeURIComponent(WORK_ITEM_ID)}/changes`, {
+    const changeRes = await request(`${serverUrl}/api/origins/${encodeURIComponent(originId)}/work-items/${encodeURIComponent(WORK_ITEM_ID)}/changes`, {
         method: 'POST',
-        body: JSON.stringify({ planVersion: 1 }),
+        body: JSON.stringify({ workspaceId: WORKSPACE_ID, planVersion: 1 }),
     });
     expect(changeRes.status).toBe(201);
     const change = JSON.parse(changeRes.body);
 
-    const patchRes = await request(`${serverUrl}/api/workspaces/${encodeURIComponent(WORKSPACE_ID)}/work-items/${encodeURIComponent(WORK_ITEM_ID)}/changes/${encodeURIComponent(change.id)}`, {
+    const patchRes = await request(`${serverUrl}/api/origins/${encodeURIComponent(originId)}/work-items/${encodeURIComponent(WORK_ITEM_ID)}/changes/${encodeURIComponent(change.id)}`, {
         method: 'PATCH',
         body: JSON.stringify({
+            workspaceId: WORKSPACE_ID,
             status: 'closed',
             completedAt: new Date('2026-03-07T12:00:00Z').toISOString(),
             commits: [
@@ -172,7 +177,7 @@ test.describe('feature-flagged commit chat lens', () => {
         const storageKey = placementStorageKey(WORKSPACE_ID, commit.hash);
 
         await seedWorkspace(serverUrl, WORKSPACE_ID, 'Commit Chat Lens', repoDir);
-        await seedWorkItemCommit(serverUrl, commit);
+        await seedWorkItemCommit(serverUrl, repoDir, commit);
         await enableCommitChatLensFeature(serverUrl);
 
         await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}#repos/${encodeURIComponent(WORKSPACE_ID)}/git/${encodeURIComponent(commit.hash)}`);

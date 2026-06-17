@@ -2797,3 +2797,17 @@
     background: linear-gradient(90deg, #3c3c3c 30%, #4a4a4a 50%, #3c3c3c 70%);
     background-size: 200% 100%;
 }
+
+/* ── Source canvas line highlight (AC-05) ──────────────────────────────
+   Applied to a `.source-canvas-line` row (highlighted source) or a
+   `.md-line` row (rendered markdown) referenced by a `:line`/`:start-end`
+   suffix, after the canvas auto-scrolls it into view. */
+
+.source-canvas-line-highlight {
+    background: rgba(255, 221, 87, 0.32);
+    border-radius: 2px;
+}
+
+.dark .source-canvas-line-highlight {
+    background: rgba(120, 110, 40, 0.42);
+}

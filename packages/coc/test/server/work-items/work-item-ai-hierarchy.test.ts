@@ -28,7 +28,7 @@ import type {
     AiDraftResponse,
     NewItemDraftContext,
 } from '../../../src/server/routes/work-item-ai-routes';
-import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import { FileWorkItemStore, createWorkItemStorageScopeResolver } from '../../../src/server/work-items/work-item-store';
 
 // ============================================================================
 // Helpers
@@ -40,14 +40,28 @@ let server: http.Server;
 let baseUrl: string;
 let hierarchyEnabled = true;
 
+const WS = 'hierarchy-test-ws';
+const ORIGIN_ID = `local_${WS}`;
+const AI_DRAFT_PATH = `/api/origins/${ORIGIN_ID}/work-items/ai-draft`;
+
+function testProcessStore() {
+    const workspaceIds = [WS, 'ws-A', 'ws-B'];
+    return {
+        getWorkspaces: async () => workspaceIds.map(id => ({ id, name: id })),
+        updateWorkspace: async (id: string, updates: Record<string, unknown>) => ({ id, name: id, ...updates }),
+    } as any;
+}
+
 function makeServer(
     generateNewItemDraft?: GenerateNewItemDraftFn,
     generateImproveItemDraft?: GenerateImproveItemDraftFn,
 ): http.Server {
     const routes: Route[] = [];
+    const processStore = testProcessStore();
     registerWorkItemAiRoutes({
         routes,
         workItemStore: store,
+        processStore,
         getAiAuthoringEnabled: () => true,
         getHierarchyEnabled: () => hierarchyEnabled,
         generateNewItemDraft,
@@ -57,7 +71,7 @@ function makeServer(
     registerWorkItemRoutes({
         routes,
         workItemStore: store,
-        processStore: { getWorkspaces: async () => [] } as any,
+        processStore,
         getHierarchyEnabled: () => hierarchyEnabled,
     });
     const handler = createRouter({ routes, spaHtml: '' });
@@ -104,12 +118,20 @@ async function request(
             });
         });
         req.on('error', reject);
-        if (body) req.write(JSON.stringify(body));
+        const requestBody = (
+            method === 'POST' &&
+            urlPath === AI_DRAFT_PATH &&
+            body &&
+            typeof body === 'object' &&
+            !Array.isArray(body) &&
+            !Object.prototype.hasOwnProperty.call(body, 'workspaceId')
+        )
+            ? { ...(body as Record<string, unknown>), workspaceId: WS }
+            : body;
+        if (requestBody) req.write(JSON.stringify(requestBody));
         req.end();
     });
 }
-
-const WS = 'hierarchy-test-ws';
 
 // Draft response with child tasks (simulates hierarchy-aware AI output)
 const DRAFT_WITH_CHILDREN: AiDraftResponse = {
@@ -136,7 +158,10 @@ describe('AI Authoring — hierarchy-enabled route acceptance', () => {
     beforeEach(async () => {
         hierarchyEnabled = true;
         tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-ai-hierarchy-'));
-        store = new FileWorkItemStore({ dataDir: tmpDir });
+        store = new FileWorkItemStore({
+            dataDir: tmpDir,
+            scopeResolver: createWorkItemStorageScopeResolver(testProcessStore()),
+        });
         server = makeServer(async () => DRAFT_WITH_CHILDREN, async () => DRAFT_WITH_CHILDREN);
         await startServer();
     });
@@ -147,7 +172,7 @@ describe('AI Authoring — hierarchy-enabled route acceptance', () => {
     });
 
     it('accepts "pbi" type when hierarchy is enabled', async () => {
-        const res = await request('POST', `/api/workspaces/${WS}/work-items/ai-draft`, {
+        const res = await request('POST', AI_DRAFT_PATH, {
             prompt: 'Add user authentication',
             type: 'pbi',
         });
@@ -156,7 +181,7 @@ describe('AI Authoring — hierarchy-enabled route acceptance', () => {
     });
 
     it('accepts "feature" type when hierarchy is enabled', async () => {
-        const res = await request('POST', `/api/workspaces/${WS}/work-items/ai-draft`, {
+        const res = await request('POST', AI_DRAFT_PATH, {
             prompt: 'Create a user management feature',
             type: 'feature',
         });
@@ -165,7 +190,7 @@ describe('AI Authoring — hierarchy-enabled route acceptance', () => {
     });
 
     it('accepts "epic" type when hierarchy is enabled', async () => {
-        const res = await request('POST', `/api/workspaces/${WS}/work-items/ai-draft`, {
+        const res = await request('POST', AI_DRAFT_PATH, {
             prompt: 'Build the entire authentication epic',
             type: 'epic',
         });
@@ -179,7 +204,7 @@ describe('AI Authoring — hierarchy-enabled route acceptance', () => {
         server = makeServer(async () => DRAFT_WITH_CHILDREN, async () => DRAFT_WITH_CHILDREN);
         await startServer();
 
-        const res = await request('POST', `/api/workspaces/${WS}/work-items/ai-draft`, {
+        const res = await request('POST', AI_DRAFT_PATH, {
             prompt: 'Build an epic',
             type: 'epic',
         });
@@ -193,7 +218,7 @@ describe('AI Authoring — hierarchy-enabled route acceptance', () => {
         server = makeServer(async () => DRAFT_WITH_CHILDREN, async () => DRAFT_WITH_CHILDREN);
         await startServer();
 
-        const res = await request('POST', `/api/workspaces/${WS}/work-items/ai-draft`, {
+        const res = await request('POST', AI_DRAFT_PATH, {
             prompt: 'Build a PBI',
             type: 'pbi',
         });
@@ -202,7 +227,7 @@ describe('AI Authoring — hierarchy-enabled route acceptance', () => {
     });
 
     it('returns childTasks in the draft when generator provides them', async () => {
-        const res = await request('POST', `/api/workspaces/${WS}/work-items/ai-draft`, {
+        const res = await request('POST', AI_DRAFT_PATH, {
             prompt: 'Add user authentication',
             type: 'pbi',
         });
@@ -222,7 +247,7 @@ describe('AI Authoring — hierarchy-enabled route acceptance', () => {
         );
         await startServer();
 
-        await request('POST', `/api/workspaces/${WS}/work-items/ai-draft`, {
+        await request('POST', AI_DRAFT_PATH, {
             prompt: 'Add auth',
             type: 'pbi',
         });
@@ -238,7 +263,7 @@ describe('AI Authoring — hierarchy-enabled route acceptance', () => {
         );
         await startServer();
 
-        await request('POST', `/api/workspaces/${WS}/work-items/ai-draft`, {
+        await request('POST', AI_DRAFT_PATH, {
             prompt: 'Add auth PBI under feature',
             type: 'pbi',
             parentId: 'feature-123',
@@ -255,7 +280,10 @@ describe('AI Authoring — full hierarchy-enabled approval round-trip (AC-04 DoD
     beforeEach(async () => {
         hierarchyEnabled = true;
         tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-ai-roundtrip-'));
-        store = new FileWorkItemStore({ dataDir: tmpDir });
+        store = new FileWorkItemStore({
+            dataDir: tmpDir,
+            scopeResolver: createWorkItemStorageScopeResolver(testProcessStore()),
+        });
         server = makeServer(async () => DRAFT_WITH_CHILDREN, async () => DRAFT_WITH_CHILDREN);
         await startServer();
     });
@@ -273,7 +301,7 @@ describe('AI Authoring — full hierarchy-enabled approval round-trip (AC-04 DoD
      */
     it('round-trip: ai-draft → create parent → create children in same workspace', async () => {
         // Step 1: Generate draft
-        const draftRes = await request('POST', `/api/workspaces/${WS}/work-items/ai-draft`, {
+        const draftRes = await request('POST', AI_DRAFT_PATH, {
             prompt: 'Add user authentication system',
             type: 'pbi',
         });
@@ -355,6 +383,7 @@ describe('AI Authoring — full hierarchy-enabled approval round-trip (AC-04 DoD
         registerWorkItemAiRoutes({
             routes,
             workItemStore: store,
+            processStore: testProcessStore(),
             getAiAuthoringEnabled: () => true,
             getHierarchyEnabled: () => true,
             generateNewItemDraft: async () => DRAFT_WITH_CHILDREN,
@@ -362,7 +391,7 @@ describe('AI Authoring — full hierarchy-enabled approval round-trip (AC-04 DoD
         registerWorkItemRoutes({
             routes,
             workItemStore: store,
-            processStore: { getWorkspaces: async () => [] } as any,
+            processStore: testProcessStore(),
             getHierarchyEnabled: () => true,
         });
         const baseHandler = createRouter({ routes, spaHtml: '' });
@@ -382,7 +411,7 @@ describe('AI Authoring — full hierarchy-enabled approval round-trip (AC-04 DoD
         });
 
         // Simulate the approval flow: draft → create parent → create children
-        const draftRes = await request('POST', `/api/workspaces/${WS}/work-items/ai-draft`, {
+        const draftRes = await request('POST', AI_DRAFT_PATH, {
             prompt: 'Add auth',
         });
         expect(draftRes.body.kind).toBe('draft');
@@ -416,7 +445,10 @@ describe('AI Authoring — hierarchy-disabled checklist fallback (AC-04 DoD 2)',
     beforeEach(async () => {
         hierarchyEnabled = false;
         tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-ai-checklist-'));
-        store = new FileWorkItemStore({ dataDir: tmpDir });
+        store = new FileWorkItemStore({
+            dataDir: tmpDir,
+            scopeResolver: createWorkItemStorageScopeResolver(testProcessStore()),
+        });
         server = makeServer(async () => DRAFT_WITH_CHILDREN, async () => DRAFT_WITH_CHILDREN);
         await startServer();
     });
@@ -430,7 +462,7 @@ describe('AI Authoring — hierarchy-disabled checklist fallback (AC-04 DoD 2)',
         // The server returns the raw draft — it's the client (WorkItemAiComposer) that
         // folds childTasks into a plan checklist when hierarchy is disabled.
         // The route should not strip childTasks from the response.
-        const res = await request('POST', `/api/workspaces/${WS}/work-items/ai-draft`, {
+        const res = await request('POST', AI_DRAFT_PATH, {
             prompt: 'Add auth',
         });
         expect(res.status).toBe(200);
@@ -447,7 +479,7 @@ describe('AI Authoring — hierarchy-disabled checklist fallback (AC-04 DoD 2)',
         );
         await startServer();
 
-        await request('POST', `/api/workspaces/${WS}/work-items/ai-draft`, {
+        await request('POST', AI_DRAFT_PATH, {
             prompt: 'Add auth',
         });
         expect(capturedCtx[0].hierarchyEnabled).toBe(false);

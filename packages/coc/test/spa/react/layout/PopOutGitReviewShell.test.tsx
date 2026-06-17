@@ -65,13 +65,14 @@ describe('parsePopOutGitReviewRoute', () => {
     it('parses PR review route', () => {
         const result = parsePopOutGitReviewRoute(
             '#popout/git-review/pr/42',
-            '?workspace=ws1&repo=myrepo'
+            '?workspace=ws1&repo=myrepo&origin=gh_org_repo'
         );
         expect(result).toEqual({
             workspaceId: 'ws1',
             reviewType: 'pr',
             prId: '42',
             repoId: 'myrepo',
+            originId: 'gh_org_repo',
         });
     });
 
@@ -170,6 +171,12 @@ describe('PopOutGitReviewShell: typed client loading', () => {
     it('does not own git endpoint strings for shell data loading', () => {
         expect(SOURCE).not.toContain('/git/branch-range/files');
         expect(SOURCE).not.toContain('/git/commits/${encodeURIComponent(commitHash)}');
+    });
+
+    it('loads PR diff data through origin-scoped client APIs', () => {
+        expect(SOURCE).toContain('getDiffForOrigin(progressOriginId, prId');
+        expect(SOURCE).toContain('originId: progressOriginId');
+        expect(SOURCE).not.toContain('getDiff(repoId, prId)');
     });
 });
 

@@ -202,7 +202,7 @@ describe('AC-02 — Bounded wizard + chat drafting flow', () => {
         it('create API call is inside handleApprove only', () => {
             const generateFnStart = composerSrc.indexOf('const handleGenerate');
             const approveFnStart = composerSrc.indexOf('const handleApprove');
-            const createCallIdx = composerSrc.indexOf('workItems.create(workspaceId');
+            const createCallIdx = composerSrc.indexOf('workItems.createForOrigin(workItemOriginId');
             expect(createCallIdx).toBeGreaterThan(approveFnStart);
             // create call must NOT be inside handleGenerate
             const generateFnEnd = composerSrc.indexOf('\n    };', generateFnStart);
@@ -213,7 +213,7 @@ describe('AC-02 — Bounded wizard + chat drafting flow', () => {
 
         it('update/patch API call is inside handleApprove only', () => {
             const approveFnStart = composerSrc.indexOf('const handleApprove');
-            const updateCallIdx = composerSrc.indexOf('workItems.update(workspaceId');
+            const updateCallIdx = composerSrc.indexOf('workItems.updateForOrigin(workItemOriginId');
             expect(updateCallIdx).toBeGreaterThan(approveFnStart);
         });
     });
@@ -240,24 +240,25 @@ describe('AC-03 — Persist through existing work item APIs', () => {
         workItemRoutesSrc = read(WORK_ITEM_ROUTES_PATH);
     });
 
-    describe('DoD 1: New item via POST /api/workspaces/:workspaceId/work-items', () => {
+    describe('DoD 1: New item via POST /api/origins/:originId/work-items', () => {
         it('approval calls workItems.create for new items', () => {
-            expect(composerSrc).toContain('workItems.create(workspaceId');
+            expect(composerSrc).toContain('workItems.createForOrigin(workItemOriginId');
         });
 
-        it('work-item route is workspace-scoped (URL has :id segment)', () => {
-            expect(workItemRoutesSrc).toContain('/api/workspaces/');
+        it('work-item route is origin-scoped (URL has :originId segment)', () => {
+            expect(workItemRoutesSrc).toContain('/api/origins/');
+            expect(workItemRoutesSrc).toContain(':originId');
             expect(workItemRoutesSrc).toContain('work-items');
         });
     });
 
     describe('DoD 2: Existing item updates via existing update/plan-version model', () => {
         it('approval calls workItems.update for improve mode', () => {
-            expect(composerSrc).toContain('workItems.update(workspaceId, existingItem!.id');
+            expect(composerSrc).toContain('workItems.updateForOrigin(workItemOriginId, existingItem!.id');
         });
 
-        it('approval calls workItems.updatePlan when goal/plan content changed', () => {
-            expect(composerSrc).toContain('workItems.updatePlan(workspaceId, existingItem!.id');
+        it('approval sends plan content through the origin update payload when changed', () => {
+            expect(composerSrc).toContain('plan: { content: draftGoal }');
         });
 
         it('plan is updated only when content differs from current', () => {
@@ -332,11 +333,8 @@ describe('AC-04 — Child task breakdowns and hierarchy flag', () => {
                 composerSrc.indexOf('const handleApprove'),
                 composerSrc.indexOf('const isBusy ='),
             );
-            // All workItems.create calls in handleApprove use the same workspaceId
-            const createMatches = approveSection.match(/workItems\.create\(([^,]+),/g) ?? [];
-            for (const match of createMatches) {
-                expect(match).toContain('workspaceId');
-            }
+            expect(approveSection).toContain('workItems.createForOrigin(workItemOriginId');
+            expect(approveSection).toContain('}, { workspaceId });');
         });
     });
 });

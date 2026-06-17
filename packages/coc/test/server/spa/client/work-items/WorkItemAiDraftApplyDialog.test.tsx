@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         workItems: {
-            applyAiDraft: mocks.applyAiDraft,
+            applyAiDraftForOrigin: mocks.applyAiDraft,
         },
     }),
     getSpaCocClientErrorMessage: (error: unknown, fallback: string) =>
@@ -45,6 +45,7 @@ function renderDialog(props: Partial<ComponentProps<typeof WorkItemAiDraftApplyD
         <WorkItemAiDraftApplyDialog
             open={true}
             workspaceId="ws-1"
+            originId="origin-1"
             item={BASE_ITEM}
             onClose={onClose}
             onApplied={onApplied}
@@ -76,8 +77,8 @@ describe('WorkItemAiDraftApplyDialog', () => {
         await waitFor(() => expect(onApplied).toHaveBeenCalledWith(UPDATED_ITEM));
         expect(onClose).toHaveBeenCalledTimes(1);
         expect(mocks.applyAiDraft).toHaveBeenCalledTimes(1);
-        const [workspaceId, workItemId, request, options] = mocks.applyAiDraft.mock.calls[0];
-        expect(workspaceId).toBe('ws-1');
+        const [originId, workItemId, request, scope, options] = mocks.applyAiDraft.mock.calls[0];
+        expect(originId).toBe('origin-1');
         expect(workItemId).toBe('wi-1');
         expect(request).toMatchObject({
             targets: ['fields', 'goal'],
@@ -87,6 +88,7 @@ describe('WorkItemAiDraftApplyDialog', () => {
             reason: 'User requested AI draft',
         });
         expect(request.prompt).toMatch(/title-only Work Item/i);
+        expect(scope).toEqual({ workspaceId: 'ws-1' });
         expect(options.signal).toBeInstanceOf(AbortSignal);
     });
 
@@ -123,7 +125,7 @@ describe('WorkItemAiDraftApplyDialog', () => {
         const { onClose } = renderDialog();
 
         await waitFor(() => expect(screen.getByTestId('wi-ai-draft-progress')).toBeTruthy());
-        const signal = mocks.applyAiDraft.mock.calls[0][3].signal as AbortSignal;
+        const signal = mocks.applyAiDraft.mock.calls[0][4].signal as AbortSignal;
         expect(signal.aborted).toBe(false);
 
         fireEvent.click(screen.getByTestId('wi-ai-draft-cancel-btn'));

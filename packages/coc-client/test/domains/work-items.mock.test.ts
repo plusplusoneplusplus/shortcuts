@@ -69,6 +69,11 @@ describe('WorkItemsClient mock coverage', () => {
       tracker: 'github-backed',
       includeDone: true,
     });
+    await client.treeForOrigin('gh_owner_repo', {
+      q: 'remote epic',
+      tracker: 'github-backed',
+      includeDone: true,
+    }, { workspaceId: 'repo/a' });
 
     expect(adapter.calls[0]).toEqual({
       path: '/workspaces/repo%2Fa/work-items',
@@ -105,6 +110,17 @@ describe('WorkItemsClient mock coverage', () => {
           q: 'epic',
           tracker: 'github-backed',
           includeDone: true,
+        },
+      },
+    });
+    expect(adapter.calls[3]).toEqual({
+      path: '/origins/gh_owner_repo/work-items/tree',
+      options: {
+        query: {
+          q: 'remote epic',
+          tracker: 'github-backed',
+          includeDone: true,
+          workspaceId: 'repo/a',
         },
       },
     });
@@ -153,6 +169,102 @@ describe('WorkItemsClient mock coverage', () => {
       {
         path: '/workspaces/repo%2Fa/work-items/wi%2F1',
         options: { method: 'DELETE' },
+      },
+    ]);
+  });
+
+  it('sends core origin-scoped persistent Work Item requests', async () => {
+    const adapter = createMockAdapter(workItem);
+    const client = new WorkItemsClient(adapter);
+
+    await client.listForOrigin('gh_owner_repo', {
+      status: ['created', 'planning'],
+      tags: ['frontend', 'triage'],
+    }, { workspaceId: 'repo/a' });
+    await client.groupedForOrigin('gh_owner_repo', { priority: 'high' }, { workspaceId: 'repo/a' });
+    await client.createForOrigin('gh_owner_repo', { title: 'Task', priority: 'normal' }, { workspaceId: 'repo/a' });
+    await client.getForOrigin('gh_owner_repo', 'wi/1', { workspaceId: 'repo/a' });
+    await client.updateForOrigin('gh_owner_repo', 'wi/1', { status: 'planning' }, { workspaceId: 'repo/a' });
+    await client.updateStatusForOrigin('gh_owner_repo', 'wi/1', 'done', { completedAt: '2026-01-02T00:00:00.000Z' }, { workspaceId: 'repo/a' });
+    await client.pinForOrigin('gh_owner_repo', 'wi/1', true, { workspaceId: 'repo/a' });
+    await client.archiveForOrigin('gh_owner_repo', 'wi/1', false, { workspaceId: 'repo/a' });
+    await client.requestChangesForOrigin('gh_owner_repo', 'wi/1', { comments: ['Fix this'] }, { workspaceId: 'repo/a' });
+    await client.deleteForOrigin('gh_owner_repo', 'wi/1', { workspaceId: 'repo/a' });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/work-items',
+        options: {
+          query: {
+            status: 'created,planning',
+            tags: 'frontend,triage',
+            workspaceId: 'repo/a',
+          },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/grouped',
+        options: {
+          query: {
+            priority: 'high',
+            workspaceId: 'repo/a',
+          },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items',
+        options: {
+          method: 'POST',
+          body: { title: 'Task', priority: 'normal', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1',
+        options: {
+          query: { workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1',
+        options: {
+          method: 'PATCH',
+          body: { status: 'planning', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1',
+        options: {
+          method: 'PATCH',
+          body: { status: 'done', completedAt: '2026-01-02T00:00:00.000Z', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/pin',
+        options: {
+          method: 'PATCH',
+          body: { pinned: true, workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/archive',
+        options: {
+          method: 'PATCH',
+          body: { archived: false, workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/request-changes',
+        options: {
+          method: 'POST',
+          body: { comments: ['Fix this'], workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1',
+        options: {
+          method: 'DELETE',
+          query: { workspaceId: 'repo/a' },
+        },
       },
     ]);
   });
@@ -359,7 +471,18 @@ describe('WorkItemsClient mock coverage', () => {
     await client.comparePlanVersions('repo/a', 'wi/1', 1, 3);
     await client.restorePlanVersion('repo/a', 'wi/1', 1, { reason: 'Restore v1' });
     await client.refinePlan('repo/a', 'wi/1', { instructions: 'Tighten scope', summary: 'Refine' });
+    await client.getPlanForOrigin('gh_owner_repo', 'wi/1', { workspaceId: 'repo/a' });
+    await client.updatePlanForOrigin('gh_owner_repo', 'wi/1', 'origin plan', { resolvedBy: 'user' }, { workspaceId: 'repo/a' });
+    await client.planVersionsForOrigin('gh_owner_repo', 'wi/1', { workspaceId: 'repo/a' });
+    await client.getPlanVersionForOrigin('gh_owner_repo', 'wi/1', 3, { workspaceId: 'repo/a' });
+    await client.comparePlanVersionsForOrigin('gh_owner_repo', 'wi/1', 1, 3, { workspaceId: 'repo/a' });
+    await client.restorePlanVersionForOrigin('gh_owner_repo', 'wi/1', 1, { reason: 'Restore v1' }, { workspaceId: 'repo/a' });
+    await client.refinePlanForOrigin('gh_owner_repo', 'wi/1', { instructions: 'Tighten scope' }, { workspaceId: 'repo/a' });
     await client.resolveComments('repo/a', 'wi/1', { type: 'commit', commitSha: 'abc123', sourceRunIndex: 2, model: 'gpt-5.5' });
+    await client.executeForOrigin('gh_owner_repo', 'wi/1', { skillNames: ['impl'] }, { workspaceId: 'repo/a' });
+    await client.submitPullRequestForOrigin('gh_owner_repo', 'wi/1', { changeId: 'change-1' }, { workspaceId: 'repo/a' });
+    await client.startAiReviewForOrigin('gh_owner_repo', 'wi/1', { provider: 'claude' }, { workspaceId: 'repo/a' });
+    await client.resolveCommentsForOrigin('gh_owner_repo', 'wi/1', { type: 'plan' }, { workspaceId: 'repo/a' });
 
     expect(adapter.calls).toEqual([
       {
@@ -391,20 +514,93 @@ describe('WorkItemsClient mock coverage', () => {
         },
       },
       {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan',
+        options: {
+          query: { workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan',
+        options: {
+          method: 'PUT',
+          body: { content: 'origin plan', resolvedBy: 'user', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan/versions',
+        options: {
+          query: { workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan/versions/3',
+        options: {
+          query: { workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan/versions/compare',
+        options: {
+          query: { base: 1, target: 3, workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan/versions/1/restore',
+        options: {
+          method: 'POST',
+          body: { reason: 'Restore v1', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/plan/refine',
+        options: {
+          method: 'POST',
+          body: { instructions: 'Tighten scope', workspaceId: 'repo/a' },
+        },
+      },
+      {
         path: '/workspaces/repo%2Fa/work-items/wi%2F1/resolve-comments',
         options: {
           method: 'POST',
           body: { type: 'commit', commitSha: 'abc123', sourceRunIndex: 2, model: 'gpt-5.5' },
         },
       },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/execute',
+        options: {
+          method: 'POST',
+          body: { skillNames: ['impl'], workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/submit-pr',
+        options: {
+          method: 'POST',
+          body: { changeId: 'change-1', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/ai-review',
+        options: {
+          method: 'POST',
+          body: { provider: 'claude', workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/resolve-comments',
+        options: {
+          method: 'POST',
+          body: { type: 'plan', workspaceId: 'repo/a' },
+        },
+      },
     ]);
   });
 
-  it('sends explicit AI draft apply requests with optimistic base metadata', async () => {
+  it('sends explicit origin-scoped AI draft apply requests with optimistic base metadata', async () => {
     const adapter = createMockAdapter({ kind: 'applied', version: 2 });
     const client = new WorkItemsClient(adapter);
 
-    await client.applyAiDraft('repo/a', 'wi/1', {
+    await client.applyAiDraftForOrigin('gh_owner_repo', 'wi/1', {
       prompt: 'Draft implementation details',
       targets: ['fields', 'goal'],
       clarificationAnswers: ['Use the existing dashboard'],
@@ -413,11 +609,11 @@ describe('WorkItemsClient mock coverage', () => {
       baseContentVersion: 1,
       summary: 'AI draft v2',
       reason: 'User clicked Draft with AI',
-    });
+    }, { workspaceId: 'repo/a' });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/workspaces/repo%2Fa/work-items/wi%2F1/ai-draft/apply',
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/ai-draft/apply',
         options: {
           method: 'POST',
           body: {
@@ -429,6 +625,7 @@ describe('WorkItemsClient mock coverage', () => {
             baseContentVersion: 1,
             summary: 'AI draft v2',
             reason: 'User clicked Draft with AI',
+            workspaceId: 'repo/a',
           },
         },
       },
@@ -475,7 +672,7 @@ describe('WorkItemsClient mock coverage', () => {
     });
   });
 
-  it('sends Work Item chat binding requests to workspace-scoped endpoints', async () => {
+  it('sends Work Item chat binding requests to workspace and origin endpoints', async () => {
     const adapter = createMockAdapter({ bindings: {} });
     const client = new WorkItemsClient(adapter);
 
@@ -483,6 +680,12 @@ describe('WorkItemsClient mock coverage', () => {
     await client.getChatBinding('repo/a', 'wi/1');
     await client.createChatBinding('repo/a', 'wi/1', 'task/1');
     await client.deleteChatBinding('repo/a', 'wi/1');
+    await client.startFreshChat('repo/a', 'wi/1');
+    await client.listChatBindingsForOrigin('gh_owner_repo');
+    await client.getChatBindingForOrigin('gh_owner_repo', 'wi/1');
+    await client.createChatBindingForOrigin('gh_owner_repo', 'wi/1', 'task/1');
+    await client.deleteChatBindingForOrigin('gh_owner_repo', 'wi/1');
+    await client.startFreshChatForOrigin('gh_owner_repo', 'wi/1', 'repo/a');
 
     expect(adapter.calls).toEqual([
       {
@@ -504,23 +707,59 @@ describe('WorkItemsClient mock coverage', () => {
         path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
         options: { method: 'DELETE' },
       },
+      {
+        path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1/fresh',
+        options: { method: 'POST', body: {} },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-item-chat-bindings',
+        options: undefined,
+      },
+      {
+        path: '/origins/gh_owner_repo/work-item-chat-bindings/wi%2F1',
+        options: undefined,
+      },
+      {
+        path: '/origins/gh_owner_repo/work-item-chat-bindings',
+        options: {
+          method: 'POST',
+          body: { workItemId: 'wi/1', taskId: 'task/1' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-item-chat-bindings/wi%2F1',
+        options: { method: 'DELETE' },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-item-chat-bindings/wi%2F1/fresh',
+        options: { method: 'POST', body: {}, query: { workspaceId: 'repo/a' } },
+      },
     ]);
   });
 
-  it('sends sync status, import, and conversion requests to workspace-scoped endpoints', async () => {
+  it('sends sync status, import, and conversion requests to workspace and origin endpoints', async () => {
     const adapter = createMockAdapter({ provider: 'github' });
     const client = new WorkItemsClient(adapter);
 
     await client.syncStatus('repo/a', 'azure-boards');
+    await client.syncStatusForOrigin('gh_owner_repo', { workspaceId: 'repo/a' }, 'github');
     await client.importFromGitHub('repo/a', { issueUrl: 'https://github.com/org/repo/issues/42' });
     await client.importFromGitHub('repo/a', { issueNumber: 42 });
+    await client.importFromGitHubForOrigin('gh_owner_repo', { issueNumber: 42 }, { workspaceId: 'repo/a' });
+    await client.importFromAzureBoardsForOrigin('gh_owner_repo', { workItemId: 123 }, { workspaceId: 'repo/a' });
     await client.convertLocalEpicToGitHub('repo/a', 'epic/1');
     await client.convertGitHubEpicToLocal('repo/a', 'epic/1');
+    await client.convertLocalEpicToGitHubForOrigin('gh_owner_repo', 'epic/1', { workspaceId: 'repo/a' });
+    await client.convertGitHubEpicToLocalForOrigin('gh_owner_repo', 'epic/1', { workspaceId: 'repo/a' });
 
     expect(adapter.calls).toEqual([
       {
         path: '/workspaces/repo%2Fa/work-items/sync/status',
         options: { query: { provider: 'azure-boards' } },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/sync/status',
+        options: { query: { provider: 'github', workspaceId: 'repo/a' } },
       },
       {
         path: '/workspaces/repo%2Fa/work-items/import-from-github',
@@ -537,12 +776,34 @@ describe('WorkItemsClient mock coverage', () => {
         },
       },
       {
+        path: '/origins/gh_owner_repo/work-items/import-from-github',
+        options: {
+          method: 'POST',
+          body: { issueNumber: 42, workspaceId: 'repo/a' },
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/import-from-azure-boards',
+        options: {
+          method: 'POST',
+          body: { workItemId: 123, workspaceId: 'repo/a' },
+        },
+      },
+      {
         path: '/workspaces/repo%2Fa/work-items/epic%2F1/convert-to-github',
         options: { method: 'POST' },
       },
       {
         path: '/workspaces/repo%2Fa/work-items/epic%2F1/convert-to-local',
         options: { method: 'POST' },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/epic%2F1/convert-to-github',
+        options: { method: 'POST', query: { workspaceId: 'repo/a' } },
+      },
+      {
+        path: '/origins/gh_owner_repo/work-items/epic%2F1/convert-to-local',
+        options: { method: 'POST', query: { workspaceId: 'repo/a' } },
       },
     ]);
   });

@@ -8,6 +8,7 @@ export interface ImportFromGitHubDialogProps {
     open: boolean;
     onClose: () => void;
     workspaceId: string;
+    originId?: string;
     initialProvider?: WorkItemSyncProvider;
     providerOptions?: readonly WorkItemSyncProvider[];
     onImported?: (item: any, provider: WorkItemSyncProvider) => void;
@@ -22,11 +23,13 @@ export function ImportFromGitHubDialog({
     open,
     onClose,
     workspaceId,
+    originId,
     initialProvider = 'github',
     providerOptions,
     onImported,
 }: ImportFromGitHubDialogProps) {
     const cloneClient = useCocClient(workspaceId); // AC-07: import onto the selected clone's server.
+    const workItemOriginId = originId ?? workspaceId;
     const providerOptionsKey = providerOptions?.join('|') ?? 'all';
     const allowedProviders = useMemo(() => {
         if (providerOptionsKey === 'all') return undefined;
@@ -66,13 +69,13 @@ export function ImportFromGitHubDialog({
                 const request = /^\d+$/.test(trimmedInput)
                     ? { issueNumber: Number(trimmedInput) }
                     : { issueUrl: trimmedInput };
-                const item = await cloneClient.workItems.importFromGitHub(workspaceId, request);
+                const item = await cloneClient.workItems.importFromGitHubForOrigin(workItemOriginId, request, { workspaceId });
                 onImported?.(item, provider);
             } else {
                 const request = /^\d+$/.test(trimmedInput)
                     ? { workItemId: Number(trimmedInput) }
                     : { workItemUrl: trimmedInput };
-                const item = await cloneClient.workItems.importFromAzureBoards(workspaceId, request);
+                const item = await cloneClient.workItems.importFromAzureBoardsForOrigin(workItemOriginId, request, { workspaceId });
                 onImported?.(item, provider);
             }
             onClose();
@@ -85,7 +88,7 @@ export function ImportFromGitHubDialog({
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, provider, remoteInput, onImported, onClose, cloneClient]);
+    }, [workspaceId, workItemOriginId, provider, remoteInput, onImported, onClose, cloneClient]);
 
     const isGitHub = provider === 'github';
     const inputTestId = isGitHub ? 'import-github-issue-input' : 'import-azure-boards-work-item-input';

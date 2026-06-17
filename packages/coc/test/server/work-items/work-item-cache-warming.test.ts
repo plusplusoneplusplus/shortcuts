@@ -6,7 +6,7 @@ import type { WorkItemSyncStatusResponse } from '@plusplusoneplusplus/coc-client
 import { warmWorkItemWorkspaceCache } from '../../../src/server/routes/work-item-cache-warming';
 import type { WorkItemGroupedRouteResponse, WorkItemListRouteResponse } from '../../../src/server/routes/work-item-routes';
 import type { WorkItemTreeRouteResponse } from '../../../src/server/routes/work-item-hierarchy-routes';
-import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import { createWorkItemStorageScopeResolver, FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import type { WorkItemSyncProviderAdapter } from '../../../src/server/work-items';
 import {
     clearWorkItemResponseCache,
@@ -19,6 +19,7 @@ import {
 } from '../../../src/server/work-items/work-item-response-cache';
 
 const REPO_ID = 'cache-warm-repo';
+const ORIGIN_ID = 'gh_plusplusoneplusplus_shortcuts';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
@@ -58,7 +59,10 @@ function makeGitHubProvider(): WorkItemSyncProviderAdapter {
 beforeEach(async () => {
     clearWorkItemResponseCache();
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-cache-'));
-    store = new FileWorkItemStore({ dataDir: tmpDir });
+    store = new FileWorkItemStore({
+        dataDir: tmpDir,
+        scopeResolver: createWorkItemStorageScopeResolver(makeProcessStore()),
+    });
 });
 
 afterEach(async () => {
@@ -107,17 +111,17 @@ describe('warmWorkItemWorkspaceCache', () => {
         });
 
         const list = getWorkItemResponseCacheEntry<WorkItemListRouteResponse>(
-            makeWorkItemListResponseCacheKey({ repoId: REPO_ID, limit: 20 }),
+            makeWorkItemListResponseCacheKey({ repoId: ORIGIN_ID, limit: 20 }),
         );
         expect(list?.data.total).toBe(2);
 
         const grouped = getWorkItemResponseCacheEntry<WorkItemGroupedRouteResponse>(
-            makeWorkItemGroupedResponseCacheKey({ repoId: REPO_ID, limit: 20 }),
+            makeWorkItemGroupedResponseCacheKey({ repoId: ORIGIN_ID, limit: 20 }),
         );
         expect(grouped?.data.groups.created.total).toBe(2);
 
         const localTree = getWorkItemResponseCacheEntry<WorkItemTreeRouteResponse>(
-            makeWorkItemTreeResponseCacheKey(REPO_ID, { tracker: 'local-only', includeArchived: false, includeDone: false }),
+            makeWorkItemTreeResponseCacheKey(ORIGIN_ID, { tracker: 'local-only', includeArchived: false, includeDone: false }),
         );
         expect(localTree?.data.roots.map(root => root.item.id)).toEqual(['local-epic']);
 
@@ -128,7 +132,7 @@ describe('warmWorkItemWorkspaceCache', () => {
         expect(syncStatus?.data.provider?.available).toBe(true);
 
         const remoteTree = getWorkItemResponseCacheEntry<WorkItemTreeRouteResponse>(
-            makeWorkItemTreeResponseCacheKey(REPO_ID, { tracker: 'github-backed', includeArchived: false, includeDone: false }),
+            makeWorkItemTreeResponseCacheKey(ORIGIN_ID, { tracker: 'github-backed', includeArchived: false, includeDone: false }),
         );
         expect(remoteTree?.data.roots.map(root => root.item.id)).toEqual(['github-epic']);
     });

@@ -106,7 +106,12 @@ describe('Lens chat fresh binding API endpoints', () => {
     });
 
     const base = () => `http://127.0.0.1:${port}`;
-    const api = (workspaceId: string, path: string) => `${base()}/api/workspaces/${workspaceId}/${path}`;
+    const workspaceApi = (workspaceId: string, path: string) => `${base()}/api/workspaces/${workspaceId}/${path}`;
+    const localOriginId = (workspaceId: string) => `local_${workspaceId}`;
+    const bindingApi = (workspaceId: string, lens: { originScoped: boolean }, path: string) => {
+        if (!lens.originScoped) return workspaceApi(workspaceId, path);
+        return `${base()}/api/origins/${localOriginId(workspaceId)}/${path}?workspaceId=${encodeURIComponent(workspaceId)}`;
+    };
 
     async function seedProcess(workspaceId: string, taskId: string): Promise<void> {
         await store.addProcess({
@@ -127,6 +132,7 @@ describe('Lens chat fresh binding API endpoints', () => {
     it.each([
         {
             name: 'Commit',
+            originScoped: false,
             createPath: 'commit-chat-bindings',
             targetPath: 'commit-chat-bindings/abcd1234',
             createBody: { commitHash: 'abcd1234', taskId: 'task-commit-old' },
@@ -135,6 +141,7 @@ describe('Lens chat fresh binding API endpoints', () => {
         },
         {
             name: 'Pull Request',
+            originScoped: true,
             createPath: 'pull-request-chat-bindings',
             targetPath: 'pull-request-chat-bindings/PR-42',
             createBody: { prId: 'PR-42', taskId: 'task-pr-old' },
@@ -143,6 +150,7 @@ describe('Lens chat fresh binding API endpoints', () => {
         },
         {
             name: 'Work Item',
+            originScoped: false,
             createPath: 'work-item-chat-bindings',
             targetPath: 'work-item-chat-bindings/WI%2F42',
             createBody: { workItemId: 'WI/42', taskId: 'task-work-item-old' },
@@ -151,12 +159,12 @@ describe('Lens chat fresh binding API endpoints', () => {
         },
     ])('archives and clears the current $name binding without creating a copied conversation', async (lens) => {
         await seedProcess(WORKSPACE_A, lens.taskId);
-        await request(api(WORKSPACE_A, lens.createPath), {
+        await request(bindingApi(WORKSPACE_A, lens, lens.createPath), {
             method: 'POST',
             body: JSON.stringify(lens.createBody),
         });
 
-        const res = await request(api(WORKSPACE_A, `${lens.targetPath}/fresh`), { method: 'POST', body: '{}' });
+        const res = await request(bindingApi(WORKSPACE_A, lens, `${lens.targetPath}/fresh`), { method: 'POST', body: '{}' });
 
         expect(res.status).toBe(200);
         expect(res.json()).toEqual(lens.archivedResponse);
@@ -164,13 +172,14 @@ describe('Lens chat fresh binding API endpoints', () => {
         expect(store.processes.get(lens.taskId)?.conversationTurns).toHaveLength(2);
         expect(store.processes).toHaveLength(1);
 
-        const bindingRes = await request(api(WORKSPACE_A, lens.targetPath));
+        const bindingRes = await request(bindingApi(WORKSPACE_A, lens, lens.targetPath));
         expect(bindingRes.status).toBe(404);
     });
 
     it.each([
         {
             name: 'Commit',
+            originScoped: false,
             createPath: 'commit-chat-bindings',
             targetPath: 'commit-chat-bindings/deadbeef',
             bodyA: { commitHash: 'deadbeef', taskId: 'task-a' },
@@ -178,6 +187,7 @@ describe('Lens chat fresh binding API endpoints', () => {
         },
         {
             name: 'Pull Request',
+            originScoped: true,
             createPath: 'pull-request-chat-bindings',
             targetPath: 'pull-request-chat-bindings/777',
             bodyA: { prId: '777', taskId: 'task-a' },
@@ -185,33 +195,92 @@ describe('Lens chat fresh binding API endpoints', () => {
         },
         {
             name: 'Work Item',
+            originScoped: false,
             createPath: 'work-item-chat-bindings',
             targetPath: 'work-item-chat-bindings/WI-777',
             bodyA: { workItemId: 'WI-777', taskId: 'task-a' },
             bodyB: { workItemId: 'WI-777', taskId: 'task-b' },
         },
-    ])('keeps same-target $name bindings isolated by workspace', async (lens) => {
+    ])('keeps same-target $name bindings isolated by workspace or origin', async (lens) => {
         await seedProcess(WORKSPACE_A, 'task-a');
         await seedProcess(WORKSPACE_B, 'task-b');
-        await request(api(WORKSPACE_A, lens.createPath), {
+        await request(bindingApi(WORKSPACE_A, lens, lens.createPath), {
             method: 'POST',
             body: JSON.stringify(lens.bodyA),
         });
-        await request(api(WORKSPACE_B, lens.createPath), {
+        await request(bindingApi(WORKSPACE_B, lens, lens.createPath), {
             method: 'POST',
             body: JSON.stringify(lens.bodyB),
         });
 
-        const res = await request(api(WORKSPACE_A, `${lens.targetPath}/fresh`), { method: 'POST', body: '{}' });
+        const res = await request(bindingApi(WORKSPACE_A, lens, `${lens.targetPath}/fresh`), { method: 'POST', body: '{}' });
 
         expect(res.status).toBe(200);
         expect(store.processes.get('task-a')?.archived).toBe(true);
         expect(store.processes.get('task-b')?.archived).toBeUndefined();
 
-        const bindingA = await request(api(WORKSPACE_A, lens.targetPath));
-        const bindingB = await request(api(WORKSPACE_B, lens.targetPath));
+        const bindingA = await request(bindingApi(WORKSPACE_A, lens, lens.targetPath));
+        const bindingB = await request(bindingApi(WORKSPACE_B, lens, lens.targetPath));
         expect(bindingA.status).toBe(404);
         expect(bindingB.status).toBe(200);
         expect(bindingB.json().taskId).toBe('task-b');
+    });
+
+    it.each([
+        {
+            name: 'Commit',
+            originScoped: false,
+            createPath: 'commit-chat-bindings',
+            targetPath: 'commit-chat-bindings/badf00d',
+            staleBody: { commitHash: 'badf00d', taskId: 'missing-commit-task' },
+            freshResponse: { commitHash: 'badf00d', archivedTaskId: null },
+            replacementTaskId: 'replacement-commit-task',
+            replacementBody: { commitHash: 'badf00d', taskId: 'replacement-commit-task' },
+        },
+        {
+            name: 'Pull Request',
+            originScoped: true,
+            createPath: 'pull-request-chat-bindings',
+            targetPath: 'pull-request-chat-bindings/stale-pr',
+            staleBody: { prId: 'stale-pr', taskId: 'missing-pr-task' },
+            freshResponse: { prId: 'stale-pr', archivedTaskId: null },
+            replacementTaskId: 'replacement-pr-task',
+            replacementBody: { prId: 'stale-pr', taskId: 'replacement-pr-task' },
+        },
+        {
+            name: 'Work Item',
+            originScoped: false,
+            createPath: 'work-item-chat-bindings',
+            targetPath: 'work-item-chat-bindings/WI%2Fstale',
+            staleBody: { workItemId: 'WI/stale', taskId: 'missing-work-item-task' },
+            freshResponse: { workItemId: 'WI/stale', archivedTaskId: null },
+            replacementTaskId: 'replacement-work-item-task',
+            replacementBody: { workItemId: 'WI/stale', taskId: 'replacement-work-item-task' },
+        },
+    ])('clears a stale $name binding whose process is already missing', async (lens) => {
+        await request(bindingApi(WORKSPACE_A, lens, lens.createPath), {
+            method: 'POST',
+            body: JSON.stringify(lens.staleBody),
+        });
+
+        const res = await request(bindingApi(WORKSPACE_A, lens, `${lens.targetPath}/fresh`), { method: 'POST', body: '{}' });
+
+        expect(res.status).toBe(200);
+        expect(res.json()).toEqual(lens.freshResponse);
+        expect(store.archiveProcess).not.toHaveBeenCalled();
+
+        const clearedBinding = await request(bindingApi(WORKSPACE_A, lens, lens.targetPath));
+        expect(clearedBinding.status).toBe(404);
+
+        await seedProcess(WORKSPACE_A, lens.replacementTaskId);
+        const replacement = await request(bindingApi(WORKSPACE_A, lens, lens.createPath), {
+            method: 'POST',
+            body: JSON.stringify(lens.replacementBody),
+        });
+        expect(replacement.status).toBe(201);
+
+        const reboundBinding = await request(bindingApi(WORKSPACE_A, lens, lens.targetPath));
+        expect(reboundBinding.status).toBe(200);
+        expect(reboundBinding.json().taskId).toBe(lens.replacementTaskId);
     });
 });

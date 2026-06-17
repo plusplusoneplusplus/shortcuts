@@ -575,8 +575,8 @@ export interface WorkItemStore {
     // CRUD
     addWorkItem(item: WorkItem): Promise<void>;
     getWorkItem(id: string, repoId?: string): Promise<WorkItem | undefined>;
-    updateWorkItem(id: string, updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>>): Promise<WorkItem | undefined>;
-    removeWorkItem(id: string): Promise<boolean>;
+    updateWorkItem(id: string, updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>>, repoId?: string): Promise<WorkItem | undefined>;
+    removeWorkItem(id: string, repoId?: string): Promise<boolean>;
     listWorkItems(filter?: WorkItemFilter): Promise<WorkItemListResult>;
     /** List work items grouped by status with per-group pagination. */
     listWorkItemsGrouped(filter?: WorkItemFilter): Promise<WorkItemGroupedResult>;
@@ -584,18 +584,18 @@ export interface WorkItemStore {
     listChildren(parentId: string, repoId: string): Promise<WorkItemIndexEntry[]>;
 
     // Plan versioning
-    getPlanVersions(workItemId: string): Promise<WorkItemPlanVersion[]>;
-    getPlanVersion(workItemId: string, version: number): Promise<WorkItemPlanVersion | undefined>;
-    savePlanVersion(workItemId: string, plan: WorkItemPlanVersion): Promise<void>;
+    getPlanVersions(workItemId: string, repoId?: string): Promise<WorkItemPlanVersion[]>;
+    getPlanVersion(workItemId: string, version: number, repoId?: string): Promise<WorkItemPlanVersion | undefined>;
+    savePlanVersion(workItemId: string, plan: WorkItemPlanVersion, repoId?: string): Promise<void>;
 
     // Execution history
-    addExecution(workItemId: string, execution: WorkItemExecution): Promise<void>;
-    updateExecution(workItemId: string, taskId: string, updates: Partial<WorkItemExecution>): Promise<void>;
+    addExecution(workItemId: string, execution: WorkItemExecution, repoId?: string): Promise<void>;
+    updateExecution(workItemId: string, taskId: string, updates: Partial<WorkItemExecution>, repoId?: string): Promise<void>;
 
     // Change tracking
-    addChange(workItemId: string, change: WorkItemChange): Promise<void>;
-    updateChange(workItemId: string, changeId: string, updates: Partial<WorkItemChange>): Promise<void>;
-    getChanges(workItemId: string): Promise<WorkItemChange[]>;
+    addChange(workItemId: string, change: WorkItemChange, repoId?: string): Promise<void>;
+    updateChange(workItemId: string, changeId: string, updates: Partial<WorkItemChange>, repoId?: string): Promise<void>;
+    getChanges(workItemId: string, repoId?: string): Promise<WorkItemChange[]>;
 
     // Pin/archive
     pinWorkItem(id: string, pinnedAt: string): Promise<WorkItem | undefined>;
