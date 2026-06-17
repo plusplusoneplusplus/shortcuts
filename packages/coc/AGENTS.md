@@ -198,6 +198,10 @@ all have their own `references/*.md`.
   New callers must use `/api/origins/:originId/work-items/:itemId/plan...` or
   `client.workItems.*Plan*ForOrigin(...)`; pass `workspaceId` only as clone
   metadata for origin validation.
+- **Work-item change records** (plan-version/commit bundles) are persistent
+  origin state. New callers must use
+  `/api/origins/:originId/work-items/:itemId/changes...`; pass `workspaceId`
+  only as clone metadata for origin validation.
 - **Work-item sync/import/convert actions** are origin-scoped persistent state
   but require a concrete clone for provider configuration and transport. New
   callers must use `/api/origins/:originId/work-items/sync/status`,

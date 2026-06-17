@@ -967,7 +967,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     registerWorkItemPlanRoutes({ routes, workItemStore, processStore: store, getWsServer, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
     registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
-    registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });
+    registerWorkItemChangesRoutes({ routes, workItemStore, processStore: store, getWsServer });
 
     const activeWorkspaceBackgroundRefresher = new ActiveWorkspaceBackgroundRefresher({
         tracker: activeWorkspaceTracker,

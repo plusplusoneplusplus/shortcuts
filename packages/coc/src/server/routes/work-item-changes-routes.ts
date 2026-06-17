@@ -5,44 +5,89 @@
  * the corresponding execution cycle.
  *
  * Routes:
- *   GET   /api/workspaces/:id/work-items/:wid/changes             — List changes
- *   POST  /api/workspaces/:id/work-items/:wid/changes             — Create change
- *   PATCH /api/workspaces/:id/work-items/:wid/changes/:changeId   — Update change
+ *   GET   /api/origins/:originId/work-items/:wid/changes             — List changes
+ *   POST  /api/origins/:originId/work-items/:wid/changes             — Create change
+ *   PATCH /api/origins/:originId/work-items/:wid/changes/:changeId   — Update change
  */
 
 import * as http from 'http';
 import * as crypto from 'crypto';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItemChange } from '../work-items/types';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
+import {
+    queryWorkspaceId,
+    resolveWorkItemRouteScope,
+    type WorkItemRouteScope,
+} from './work-item-route-scope';
 
 export interface WorkItemChangesRouteContext {
     routes: Route[];
     workItemStore: WorkItemStore;
+    processStore?: Pick<ProcessStore, 'getWorkspaces' | 'updateWorkspace'>;
     getWsServer?: () => ProcessWebSocketServer;
+}
+
+const changesBase = /^\/api\/origins\/([^/]+)\/work-items\/([^/]+)\/changes$/;
+const changesById = /^\/api\/origins\/([^/]+)\/work-items\/([^/]+)\/changes\/([^/]+)$/;
+
+function bodyWorkspaceId(body: unknown): string | undefined {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
+    const raw = (body as Record<string, unknown>).workspaceId;
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+}
+
+async function resolveChangesRouteScope(
+    ctx: WorkItemChangesRouteContext,
+    req: http.IncomingMessage,
+    originId: string,
+    body?: unknown,
+): Promise<WorkItemRouteScope> {
+    const workspaceId = bodyWorkspaceId(body) ?? queryWorkspaceId(req);
+    if (ctx.processStore) {
+        return resolveWorkItemRouteScope(
+            { processStore: ctx.processStore as ProcessStore },
+            'origins',
+            originId,
+            workspaceId,
+        );
+    }
+
+    return {
+        kind: 'origins',
+        routeScopeId: originId,
+        storageRepoId: originId,
+        commandRepoId: workspaceId ?? originId,
+        workspaceId,
+    };
 }
 
 export function registerWorkItemChangesRoutes(ctx: WorkItemChangesRouteContext): void {
     const { routes, workItemStore } = ctx;
-
-    const changesBase = /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/changes$/;
-    const changesById = /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/changes\/([^/]+)$/;
 
     // GET — list changes
     routes.push({
         method: 'GET',
         pattern: changesBase,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
+            const originId = decodeURIComponent(match![1]);
             const workItemId = decodeURIComponent(match![2]);
 
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveChangesRouteScope(ctx, req, originId);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+
+            const item = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
             if (!item) return handleAPIError(res, notFound('Work item'));
 
-            const changes = await workItemStore.getChanges(workItemId);
+            const changes = await workItemStore.getChanges(workItemId, scope.storageRepoId);
             sendJSON(res, 200, changes);
         },
     });
@@ -52,13 +97,20 @@ export function registerWorkItemChangesRoutes(ctx: WorkItemChangesRouteContext):
         method: 'POST',
         pattern: changesBase,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
+            const originId = decodeURIComponent(match![1]);
             const workItemId = decodeURIComponent(match![2]);
 
             let body: any;
             try { body = await parseBody(req); } catch { return handleAPIError(res, badRequest('Invalid JSON body')); }
 
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveChangesRouteScope(ctx, req, originId, body);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+
+            const item = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
             if (!item) return handleAPIError(res, notFound('Work item'));
 
             const now = new Date().toISOString();
@@ -72,8 +124,8 @@ export function registerWorkItemChangesRoutes(ctx: WorkItemChangesRouteContext):
                 ...(body.headBefore ? { headBefore: body.headBefore } : {}),
             };
 
-            await workItemStore.addChange(workItemId, change);
-            clearWorkItemResponseCacheForWorkspace(repoId);
+            await workItemStore.addChange(workItemId, change, scope.storageRepoId);
+            clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
             sendJSON(res, 201, change);
         },
     });
@@ -83,17 +135,24 @@ export function registerWorkItemChangesRoutes(ctx: WorkItemChangesRouteContext):
         method: 'PATCH',
         pattern: changesById,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            const repoId = decodeURIComponent(match![1]);
+            const originId = decodeURIComponent(match![1]);
             const workItemId = decodeURIComponent(match![2]);
             const changeId = decodeURIComponent(match![3]);
 
             let body: any;
             try { body = await parseBody(req); } catch { return handleAPIError(res, badRequest('Invalid JSON body')); }
 
-            const item = await workItemStore.getWorkItem(workItemId, repoId);
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveChangesRouteScope(ctx, req, originId, body);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+
+            const item = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
             if (!item) return handleAPIError(res, notFound('Work item'));
 
-            const changes = await workItemStore.getChanges(workItemId);
+            const changes = await workItemStore.getChanges(workItemId, scope.storageRepoId);
             const existing = changes.find(c => c.id === changeId);
             if (!existing) return handleAPIError(res, notFound('Change'));
 
@@ -109,10 +168,10 @@ export function registerWorkItemChangesRoutes(ctx: WorkItemChangesRouteContext):
             if (body.taskId !== undefined) updates.taskId = body.taskId;
             if (body.headBefore !== undefined) updates.headBefore = body.headBefore;
 
-            await workItemStore.updateChange(workItemId, changeId, updates);
-            clearWorkItemResponseCacheForWorkspace(repoId);
+            await workItemStore.updateChange(workItemId, changeId, updates, scope.storageRepoId);
+            clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
 
-            const updatedItem = await workItemStore.getWorkItem(workItemId);
+            const updatedItem = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
             const updatedChange = updatedItem?.changes?.find(c => c.id === changeId);
             sendJSON(res, 200, updatedChange ?? { ...existing, ...updates });
         },
