@@ -54,7 +54,7 @@ import {
     removePullRequestCoworkerFromRoster,
     validatePullRequestCoworkerRosterInput,
 } from './pr-coworker-roster-store';
-import { authorMatchesPrTeamRosterEntry, getPrTeamIdentityKey } from '../shared/pr-team-matching';
+import { authorMatchesPrTeamRosterEntry, filterPullRequestsByPrTeamRoster, getPrTeamIdentityKey } from '../shared/pr-team-matching';
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
@@ -1063,12 +1063,16 @@ export function registerPrRoutes(
     ): Promise<void> {
         const query = url.parse(req.url ?? '', true).query;
         const status = typeof query.status === 'string' ? query.status : 'open';
-        const scope = typeof query.scope === 'string' && (query.scope === 'mine' || query.scope === 'all') ? query.scope : 'mine';
+        const requestedScope = typeof query.scope === 'string' ? query.scope : 'mine';
+        const isTeamScope = requestedScope === 'team';
+        const providerScope: 'mine' | 'all' = isTeamScope
+            ? 'all'
+            : (requestedScope === 'mine' || requestedScope === 'all') ? requestedScope : 'mine';
         const top = Math.min(+(query.top ?? 25), 100);
         const skip = +(query.skip ?? 0);
         const force = query.force === 'true';
         const cacheScopeId = options.storageScope.storageOriginId;
-        const cacheKey = makePrCacheKey(cacheScopeId, status, scope);
+        const cacheKey = makePrCacheKey(cacheScopeId, status, providerScope);
 
         let entry: PrCacheEntry;
 
@@ -1078,10 +1082,16 @@ export function registerPrRoutes(
         if (cached && cached.expiresAt > Date.now()) {
             entry = cached;
         } else {
-            entry = await refreshPullRequestListCache(dataDir, svc, options.repoId, cacheScopeId, status, scope);
+            entry = await refreshPullRequestListCache(dataDir, svc, options.repoId, cacheScopeId, status, providerScope);
         }
 
-        let page = entry.data.slice(skip, skip + top);
+        let pool = entry.data;
+        if (isTeamScope) {
+            const roster = listPullRequestCoworkerRoster(dataDir, options.workspaceId, options.repoId, options.storageScope);
+            pool = filterPullRequestsByPrTeamRoster(pool, roster);
+        }
+
+        let page = pool.slice(skip, skip + top);
 
         if (typeof query.author === 'string' && query.author) {
             const authorFilter = query.author.toLowerCase();
@@ -1109,7 +1119,7 @@ export function registerPrRoutes(
             });
         }
 
-        sendJson(res, { pullRequests: page, total: page.length, fetchedAt: entry.fetchedAt });
+        sendJson(res, { pullRequests: page, total: isTeamScope ? pool.length : page.length, fetchedAt: entry.fetchedAt });
     }
 
     async function sendPullRequestDetail(

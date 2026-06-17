@@ -377,12 +377,12 @@ describe('queue helpers', () => {
         expect(ids).not.toContain('foryou');
     });
 
-    it('maps Team and For You filters to the all-PR server scope', () => {
+    it('maps filters to the correct server scope', () => {
         expect(scopeForFilter('mine')).toBe('mine');
         expect(scopeForFilter('blocked')).toBe('mine');
         expect(scopeForFilter('ready')).toBe('mine');
         expect(scopeForFilter('all')).toBe('all');
-        expect(scopeForFilter('team')).toBe('all');
+        expect(scopeForFilter('team')).toBe('team');
         expect(scopeForFilter('foryou')).toBe('all');
     });
 

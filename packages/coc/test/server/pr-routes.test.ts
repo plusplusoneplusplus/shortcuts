@@ -881,6 +881,94 @@ describe('GET /api/origins/:originId/pull-requests', () => {
         await fetch(originPullRequestsUrl(`?scope=all`, REPO_ID));
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
     });
+
+    it('scope=team fetches with scope=all and filters by coworker roster', async () => {
+        const prAlice = { ...mockPr, id: 1, number: 1, title: 'PR by Alice', author: { id: 'user1', displayName: 'Alice' } };
+        const prBob = { ...mockPr, id: 2, number: 2, title: 'PR by Bob', author: { id: 'user2', displayName: 'Bob' } };
+        const prCharlie = { ...mockPr, id: 3, number: 3, title: 'PR by Charlie', author: { id: 'user3', displayName: 'Charlie' } };
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([prAlice, prBob, prCharlie]);
+
+        // Add only Alice and Charlie to the roster
+        addPullRequestCoworkerToRoster(dataDir, REPO_ID, REPO_ID, { id: 'user1', displayName: 'Alice' });
+        addPullRequestCoworkerToRoster(dataDir, REPO_ID, REPO_ID, { id: 'user3', displayName: 'Charlie' });
+
+        const res = await fetch(originPullRequestsUrl(`?scope=team`, REPO_ID));
+        expect(res.status).toBe(200);
+        const body = await res.json() as { pullRequests: Array<{ title: string }>; total: number };
+        expect(body.pullRequests).toHaveLength(2);
+        expect(body.pullRequests.map(pr => pr.title)).toEqual(['PR by Alice', 'PR by Charlie']);
+        expect(body.total).toBe(2);
+        // Internally fetches with scope=all
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'all' });
+    });
+
+    it('scope=team returns empty list when no roster entries exist', async () => {
+        const prAlice = { ...mockPr, id: 1, number: 1, title: 'PR by Alice', author: { id: 'user1', displayName: 'Alice' } };
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([prAlice]);
+
+        const res = await fetch(originPullRequestsUrl(`?scope=team`, REPO_ID));
+        expect(res.status).toBe(200);
+        const body = await res.json() as { pullRequests: unknown[]; total: number };
+        expect(body.pullRequests).toHaveLength(0);
+        expect(body.total).toBe(0);
+    });
+
+    it('scope=team reuses cached scope=all data', async () => {
+        const prAlice = { ...mockPr, id: 1, number: 1, title: 'PR by Alice', author: { id: 'user1', displayName: 'Alice' } };
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([prAlice]);
+        addPullRequestCoworkerToRoster(dataDir, REPO_ID, REPO_ID, { id: 'user1', displayName: 'Alice' });
+
+        // First call with scope=all populates cache
+        await fetch(originPullRequestsUrl(`?scope=all`, REPO_ID));
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+
+        // scope=team reuses the scope=all cache
+        const res = await fetch(originPullRequestsUrl(`?scope=team`, REPO_ID));
+        expect(res.status).toBe(200);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1); // no additional fetch
+        const body = await res.json() as { pullRequests: Array<{ title: string }> };
+        expect(body.pullRequests).toHaveLength(1);
+    });
+
+    it('scope=team paginates the filtered roster results', async () => {
+        // Create 5 PRs from team members
+        const teamPrs = Array.from({ length: 5 }, (_, i) => ({
+            ...mockPr,
+            id: i + 1,
+            number: i + 1,
+            title: `Team PR ${i + 1}`,
+            author: { id: 'team-user', displayName: 'TeamUser' },
+        }));
+        // Intersperse with non-team PRs
+        const otherPrs = Array.from({ length: 5 }, (_, i) => ({
+            ...mockPr,
+            id: i + 100,
+            number: i + 100,
+            title: `Other PR ${i + 1}`,
+            author: { id: 'other-user', displayName: 'OtherUser' },
+        }));
+        // Interleave: other, team, other, team, ...
+        const allPrs = [];
+        for (let i = 0; i < 5; i++) {
+            allPrs.push(otherPrs[i], teamPrs[i]);
+        }
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue(allPrs);
+        addPullRequestCoworkerToRoster(dataDir, REPO_ID, REPO_ID, { id: 'team-user', displayName: 'TeamUser' });
+
+        // Request page of 3
+        const res = await fetch(originPullRequestsUrl(`?scope=team&top=3&skip=0`, REPO_ID));
+        const body = await res.json() as { pullRequests: Array<{ title: string }>; total: number };
+        expect(body.pullRequests).toHaveLength(3);
+        expect(body.total).toBe(5); // total team PRs
+        expect(body.pullRequests.map(pr => pr.title)).toEqual(['Team PR 1', 'Team PR 2', 'Team PR 3']);
+
+        // Second page
+        const res2 = await fetch(originPullRequestsUrl(`?scope=team&top=3&skip=3`, REPO_ID));
+        const body2 = await res2.json() as { pullRequests: Array<{ title: string }>; total: number };
+        expect(body2.pullRequests).toHaveLength(2);
+        expect(body2.total).toBe(5);
+        expect(body2.pullRequests.map(pr => pr.title)).toEqual(['Team PR 4', 'Team PR 5']);
+    });
 });
 
 describe('GET /api/origins/:originId/pull-requests/coworker-candidates', () => {

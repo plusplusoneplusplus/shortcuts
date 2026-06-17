@@ -30,7 +30,7 @@ export interface SanitizedProviderConfigResponse {
 export interface PullRequestListQuery {
   workspaceId?: string;
   status?: string;
-  scope?: 'mine' | 'all';
+  scope?: 'mine' | 'all' | 'team';
   top?: number;
   skip?: number;
   force?: boolean;

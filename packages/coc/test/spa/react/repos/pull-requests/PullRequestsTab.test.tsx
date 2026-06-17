@@ -294,7 +294,7 @@ describe('queue filter pills', () => {
         expect(screen.getByTestId('pr-queue-filter-all').getAttribute('data-active')).toBe('true');
     });
 
-    it('selecting the "Team" pill fetches scope=all and filters to roster authors', async () => {
+    it('selecting the "Team" pill fetches scope=team and shows team-filtered PRs', async () => {
         const fetchMock = vi.fn()
             .mockResolvedValueOnce(jsonResponse({
                 pullRequests: [makePr({ id: 1, number: 1, title: 'Mine PR', author: { id: 'me', displayName: 'Me' } })],
@@ -306,11 +306,11 @@ describe('queue filter pills', () => {
                     makeCoworkerEntry({ id: '', displayName: 'Cara' }),
                 ],
             }))
+            // Server returns only team PRs when scope=team (server-side filtering)
             .mockResolvedValueOnce(jsonResponse({
                 pullRequests: [
                     makePr({ id: 2, number: 2, title: 'Bob PR', author: { id: 'github-123', displayName: 'Robert' } }),
                     makePr({ id: 3, number: 3, title: 'Cara PR', author: { displayName: 'cara' } }),
-                    makePr({ id: 4, number: 4, title: 'Stranger PR', author: { id: 'stranger', displayName: 'Stranger' } }),
                 ],
             }));
         global.fetch = fetchMock;
@@ -324,11 +324,10 @@ describe('queue filter pills', () => {
         });
 
         await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
-        expect(String(fetchMock.mock.calls[3][0])).toContain('scope=all');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('scope=team');
         await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(2));
         expect(screen.getByText('Bob PR')).toBeInTheDocument();
         expect(screen.getByText('Cara PR')).toBeInTheDocument();
-        expect(screen.queryByText('Stranger PR')).not.toBeInTheDocument();
         expect(screen.getByTestId('pr-queue-filter-team')).toHaveTextContent('2');
     });
 
@@ -371,7 +370,7 @@ describe('queue filter pills', () => {
                 return Promise.resolve(jsonResponse({ entries: [] }));
             }
 
-            if (url.includes('scope=all')) {
+            if (url.includes('scope=team') || url.includes('scope=all')) {
                 return Promise.resolve(jsonResponse({ pullRequests: allPrs }));
             }
 
@@ -446,7 +445,7 @@ describe('queue filter pills', () => {
             if (url.includes('/recent-opened')) {
                 return Promise.resolve(jsonResponse({ entries: [] }));
             }
-            if (url.includes('scope=all')) {
+            if (url.includes('scope=team') || url.includes('scope=all')) {
                 return Promise.resolve(jsonResponse({ pullRequests: allPrs }));
             }
             return Promise.resolve(jsonResponse({
@@ -486,7 +485,7 @@ describe('queue filter pills', () => {
             if (url.includes('/recent-opened')) {
                 return Promise.resolve(jsonResponse({ entries: [] }));
             }
-            if (url.includes('scope=all')) {
+            if (url.includes('scope=team') || url.includes('scope=all')) {
                 return Promise.resolve(jsonResponse({
                     pullRequests: [
                         makePr({ id: 2, number: 2, title: 'Alice PR', author: { id: 'alice-1', displayName: 'Alice Dev' } }),
@@ -528,7 +527,7 @@ describe('queue filter pills', () => {
             if (url.includes('/recent-opened')) {
                 return Promise.resolve(jsonResponse({ entries: [] }));
             }
-            if (url.includes('scope=all')) {
+            if (url.includes('scope=team') || url.includes('scope=all')) {
                 return Promise.resolve(jsonResponse({
                     pullRequests: [
                         makePr({ id: 2, number: 2, title: 'Bob PR', author: { id: 'bob-1', displayName: 'Bob Dev' } }),
@@ -575,7 +574,7 @@ describe('queue filter pills', () => {
             if (url.includes('/recent-opened')) {
                 return Promise.resolve(jsonResponse({ entries: [] }));
             }
-            if (url.includes('scope=all')) {
+            if (url.includes('scope=team') || url.includes('scope=all')) {
                 return Promise.resolve(jsonResponse({
                     pullRequests: [makePr({ id: 2, number: 2, title: 'Bob PR', author: { id: 'bob-1', displayName: 'Bob Dev' }, headSha: 'head-2' })],
                 }));
@@ -603,7 +602,7 @@ describe('queue filter pills', () => {
             if (url.includes('/recent-opened')) {
                 return Promise.resolve(jsonResponse({ entries: [] }));
             }
-            if (url.includes('scope=all')) {
+            if (url.includes('scope=team') || url.includes('scope=all')) {
                 return Promise.resolve(jsonResponse({
                     pullRequests: [makePr({ id: 2, number: 2, title: 'Alice PR', author: { id: 'alice-1', displayName: 'Alice Dev' }, headSha: 'head-2' })],
                 }));
@@ -645,7 +644,7 @@ describe('queue filter pills', () => {
             if (url.includes('/recent-opened')) {
                 return Promise.resolve(jsonResponse({ entries: [] }));
             }
-            if (url.includes('scope=all')) {
+            if (url.includes('scope=team') || url.includes('scope=all')) {
                 return Promise.resolve(jsonResponse({ pullRequests: allPrs }));
             }
             return Promise.resolve(jsonResponse({ pullRequests: [makePr({ id: 1, number: 1, title: 'Mine PR' })] }));
@@ -692,7 +691,7 @@ describe('queue filter pills', () => {
             if (url.includes('/recent-opened')) {
                 return Promise.resolve(jsonResponse({ entries: [] }));
             }
-            if (url.includes('scope=all')) {
+            if (url.includes('scope=team') || url.includes('scope=all')) {
                 return Promise.resolve(jsonResponse({ pullRequests: allPrs }));
             }
             return Promise.resolve(jsonResponse({ pullRequests: [makePr()] }));
@@ -750,7 +749,7 @@ describe('queue filter pills', () => {
             if (url.includes('/recent-opened')) {
                 return Promise.resolve(jsonResponse({ entries: [] }));
             }
-            if (url.includes('scope=all')) {
+            if (url.includes('scope=team') || url.includes('scope=all')) {
                 return Promise.resolve(jsonResponse({ pullRequests: allPrs }));
             }
             return Promise.resolve(jsonResponse({ pullRequests: [makePr()] }));
