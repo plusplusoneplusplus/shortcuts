@@ -15,10 +15,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         workItems: {
-            planVersions: mocks.planVersions,
-            getPlanVersion: mocks.getPlanVersion,
-            comparePlanVersions: mocks.comparePlanVersions,
-            restorePlanVersion: mocks.restorePlanVersion,
+            planVersionsForOrigin: mocks.planVersions,
+            getPlanVersionForOrigin: mocks.getPlanVersion,
+            comparePlanVersionsForOrigin: mocks.comparePlanVersions,
+            restorePlanVersionForOrigin: mocks.restorePlanVersion,
         },
     }),
 }));
@@ -63,6 +63,7 @@ function renderSection(props: Partial<ComponentProps<typeof WorkItemPlanSection>
     render(
         <WorkItemPlanSection
             workspaceId="ws-1"
+            originId="origin-1"
             workItemId="wi-1"
             plan={CURRENT_PLAN}
             canEdit={true}
@@ -145,11 +146,11 @@ describe('WorkItemPlanSection version actions', () => {
         renderSection();
 
         fireEvent.click(await screen.findByTestId('plan-version-tab-1'));
-        await waitFor(() => expect(mocks.getPlanVersion).toHaveBeenCalledWith('ws-1', 'wi-1', 1));
+        await waitFor(() => expect(mocks.getPlanVersion).toHaveBeenCalledWith('origin-1', 'wi-1', 1, { workspaceId: 'ws-1' }));
 
         fireEvent.click(screen.getByTestId('plan-version-compare-btn'));
 
-        await waitFor(() => expect(mocks.comparePlanVersions).toHaveBeenCalledWith('ws-1', 'wi-1', 1, 2));
+        await waitFor(() => expect(mocks.comparePlanVersions).toHaveBeenCalledWith('origin-1', 'wi-1', 1, 2, { workspaceId: 'ws-1' }));
         expect(screen.getByTestId('plan-version-compare-body').textContent).toContain('Base v1');
         expect(screen.getByTestId('plan-version-compare-body').textContent).toContain('Current v2');
         expect(screen.getByTestId('plan-version-compare-diff').textContent).toContain('- two');
@@ -164,10 +165,10 @@ describe('WorkItemPlanSection version actions', () => {
         await screen.findByText('"Initial AI draft"');
         fireEvent.click(screen.getByTestId('plan-version-restore-btn'));
 
-        await waitFor(() => expect(mocks.restorePlanVersion).toHaveBeenCalledWith('ws-1', 'wi-1', 1, {
+        await waitFor(() => expect(mocks.restorePlanVersion).toHaveBeenCalledWith('origin-1', 'wi-1', 1, {
             reason: 'Restored plan v1 from version history',
             summary: 'Restored plan v1',
-        }));
+        }, { workspaceId: 'ws-1' }));
         expect(confirmSpy).toHaveBeenCalledWith('Restore plan v1 as a new current version?');
         expect(onUpdated).toHaveBeenCalledTimes(1);
     });

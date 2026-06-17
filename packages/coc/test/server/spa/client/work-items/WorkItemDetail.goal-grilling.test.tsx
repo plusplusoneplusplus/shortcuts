@@ -26,9 +26,9 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         workItems: {
-            get: mocks.get,
-            update: mocks.update,
-            createChatBinding: mocks.createChatBinding,
+            getForOrigin: mocks.get,
+            updateForOrigin: mocks.update,
+            createChatBindingForOrigin: mocks.createChatBinding,
             delete: mocks.delete,
         },
         queue: {
@@ -170,11 +170,11 @@ describe('WorkItemDetail Goal grilling', () => {
         });
         expect(enqueueRequest.payload.prompt).toContain('Goal title: Ship durable goals');
         expect(enqueueRequest.payload.prompt).toContain('Current success criteria');
-        expect(mocks.createChatBinding).toHaveBeenCalledWith('ws-1', 'goal-1', 'grill-task-1');
-        expect(mocks.update).toHaveBeenCalledWith('ws-1', 'goal-1', {
+        expect(mocks.createChatBinding).toHaveBeenCalledWith('local_ws-1', 'goal-1', 'grill-task-1');
+        expect(mocks.update).toHaveBeenCalledWith('local_ws-1', 'goal-1', {
             grillSessionId: 'queue_grill-task-1',
             status: 'drafting',
-        });
+        }, { workspaceId: 'ws-1' });
         expect(mocks.toggleChat).toHaveBeenCalledTimes(1);
     });
 

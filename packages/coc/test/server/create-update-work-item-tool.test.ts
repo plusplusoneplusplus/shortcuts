@@ -300,7 +300,7 @@ describe('createCreateUpdateWorkItemTool', () => {
 
         expect(mockListWorkItems).toHaveBeenCalledWith({ repoId });
         expect(mockGetWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, repoId);
-        expect(mockUpdateWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, expect.any(Object));
+        expect(mockUpdateWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, expect.any(Object), repoId);
     });
 
     it('update-plan mode resolves an existing item by workItemNumber', async () => {
@@ -310,7 +310,7 @@ describe('createCreateUpdateWorkItemTool', () => {
 
         expect(mockListWorkItems).toHaveBeenCalledWith({ repoId });
         expect(mockGetWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, repoId);
-        expect(mockUpdateWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, expect.any(Object));
+        expect(mockUpdateWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, expect.any(Object), repoId);
     });
 
     it('update-plan mode returns an error when the target is not found', async () => {
@@ -366,7 +366,7 @@ describe('createCreateUpdateWorkItemTool', () => {
             description: '',
             priority: 'high',
             tags: ['triaged', 'chat'],
-        });
+        }, repoId);
         expect(mockSavePlanVersion).not.toHaveBeenCalled();
         expect(mockAddChange).not.toHaveBeenCalled();
         expect(result).toMatchObject({
@@ -394,7 +394,7 @@ describe('createCreateUpdateWorkItemTool', () => {
         expect(mockUpdateWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, {
             description: 'Updated bug details',
             priority: 'low',
-        });
+        }, repoId);
         expect(mockSavePlanVersion).not.toHaveBeenCalled();
         expect(mockAddChange).not.toHaveBeenCalled();
     });

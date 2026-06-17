@@ -29,14 +29,14 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         workItems: {
-            get: mocks.get,
-            update: mocks.update,
-            updateStatus: mocks.updateStatus,
-            requestChanges: mocks.requestChanges,
-            submitPullRequest: mocks.submitPullRequest,
-            startAiReview: mocks.startAiReview,
-            createChatBinding: mocks.createChatBinding,
-            delete: mocks.delete,
+            getForOrigin: mocks.get,
+            updateForOrigin: mocks.update,
+            updateStatusForOrigin: mocks.updateStatus,
+            requestChangesForOrigin: mocks.requestChanges,
+            submitPullRequestForOrigin: mocks.submitPullRequest,
+            startAiReviewForOrigin: mocks.startAiReview,
+            createChatBindingForOrigin: mocks.createChatBinding,
+            deleteForOrigin: mocks.delete,
         },
         queue: {
             enqueue: mocks.queueEnqueue,
@@ -231,9 +231,9 @@ describe('WorkItemDetail workflow review command center', () => {
         fireEvent.click(submitButton);
 
         await waitFor(() => {
-            expect(mocks.submitPullRequest).toHaveBeenCalledWith('ws-1', 'wi-review-1', {
+            expect(mocks.submitPullRequest).toHaveBeenCalledWith('local_ws-1', 'wi-review-1', {
                 changeId: 'change-review-1',
-            });
+            }, { workspaceId: 'ws-1' });
         });
     });
 
@@ -262,7 +262,7 @@ describe('WorkItemDetail workflow review command center', () => {
         fireEvent.click(reviewButton);
 
         await waitFor(() => {
-            expect(mocks.startAiReview).toHaveBeenCalledWith('ws-1', 'wi-review-1');
+            expect(mocks.startAiReview).toHaveBeenCalledWith('local_ws-1', 'wi-review-1', {}, { workspaceId: 'ws-1' });
         });
     });
 

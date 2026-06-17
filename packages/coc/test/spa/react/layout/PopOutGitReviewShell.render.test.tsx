@@ -61,8 +61,8 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             listBranchRangeFiles: (...args: unknown[]) => mocks.listBranchRangeFiles(...args),
         },
         pullRequests: {
-            get: (...args: unknown[]) => mocks.getPr(...args),
-            getDiff: (...args: unknown[]) => mocks.getPrDiff(...args),
+            getForOrigin: (...args: unknown[]) => mocks.getPr(...args),
+            getDiffForOrigin: (...args: unknown[]) => mocks.getPrDiff(...args),
             getReviewProgressForOrigin: vi.fn().mockResolvedValue({
                 repoId: 'repo1',
                 prId: '42',
@@ -447,8 +447,8 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         render(<PopOutGitReviewShell />);
 
         await screen.findByTestId('popout-file-panel');
-        expect(mocks.getPr).toHaveBeenCalledWith('repo1', '42');
-        expect(mocks.getPrDiff).toHaveBeenCalledWith('repo1', '42');
+        expect(mocks.getPr).toHaveBeenCalledWith('local_ws1', '42', { workspaceId: 'ws1', repoId: 'repo1' });
+        expect(mocks.getPrDiff).toHaveBeenCalledWith('local_ws1', '42', { workspaceId: 'ws1', repoId: 'repo1' });
         fireEvent.click(screen.getByText('src/pr.ts'));
 
         await screen.findByTestId('file-diff-panel');

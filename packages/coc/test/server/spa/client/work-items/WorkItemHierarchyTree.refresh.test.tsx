@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         workItems: {
-            tree: mocks.tree,
+            treeForOrigin: mocks.tree,
         },
     }),
     getSpaCocClientErrorMessage: (error: unknown, fallback: string) =>
@@ -98,11 +98,12 @@ describe('WorkItemHierarchyTree refresh behavior', () => {
         expect(mocks.tree).toHaveBeenCalledTimes(1);
 
         act(() => {
-            dispatchWorkItemAction?.({ type: 'WORK_ITEM_ADDED', repoId: 'ws-1', item: makeItem('tool-created', 'Created by tool') });
+            dispatchWorkItemAction?.({ type: 'WORK_ITEM_ADDED', repoId: 'local_ws-1', item: makeItem('tool-created', 'Created by tool') });
         });
 
         await waitFor(() => expect(mocks.tree).toHaveBeenCalledTimes(2));
-        expect(mocks.tree.mock.calls[1][0]).toBe('ws-1');
+        expect(mocks.tree.mock.calls[1][0]).toBe('local_ws-1');
+        expect(mocks.tree.mock.calls[1][2]).toEqual({ workspaceId: 'ws-1' });
         expect(await screen.findByText('Created by tool')).toBeInTheDocument();
     });
 
@@ -118,7 +119,8 @@ describe('WorkItemHierarchyTree refresh behavior', () => {
         fireEvent.click(refreshButton);
 
         await waitFor(() => expect(mocks.tree).toHaveBeenCalledTimes(2));
-        expect(mocks.tree.mock.calls[1][0]).toBe('ws-1');
+        expect(mocks.tree.mock.calls[1][0]).toBe('local_ws-1');
+        expect(mocks.tree.mock.calls[1][2]).toEqual({ workspaceId: 'ws-1' });
         expect(await screen.findByText('Manual refresh item')).toBeInTheDocument();
     });
 });

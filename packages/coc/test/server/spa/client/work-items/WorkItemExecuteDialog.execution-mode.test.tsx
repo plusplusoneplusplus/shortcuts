@@ -27,7 +27,7 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         request: mocks.request,
         workItems: {
-            execute: mocks.execute,
+            executeForOrigin: mocks.execute,
         },
         preferences: {
             recordSkillUsage: mocks.recordSkillUsage,
@@ -80,10 +80,10 @@ describe('WorkItemExecuteDialog execution modes', () => {
         fireEvent.click(screen.getByTestId('wi-execute-submit'));
 
         await waitFor(() => expect(mocks.execute).toHaveBeenCalledTimes(1));
-        expect(mocks.execute).toHaveBeenCalledWith('ws-1', 'goal-1', {
+        expect(mocks.execute).toHaveBeenCalledWith('local_ws-1', 'goal-1', {
             executionMode: 'ralph',
             skillNames: ['impl'],
-        });
+        }, { workspaceId: 'ws-1' });
         expect(onExecuted).toHaveBeenCalledTimes(1);
         expect(onClose).toHaveBeenCalledTimes(1);
     });
@@ -111,5 +111,6 @@ describe('WorkItemExecuteDialog execution modes', () => {
             executionMode: 'one-shot',
             skillNames: ['impl'],
         });
+        expect(mocks.execute.mock.calls[0][3]).toEqual({ workspaceId: 'ws-1' });
     });
 });

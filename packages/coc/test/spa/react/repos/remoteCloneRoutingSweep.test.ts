@@ -46,8 +46,8 @@ describe('remote-clone routing sweep', () => {
     });
 
     it('RepoDetail routes the work-items badge preview to the clone', () => {
-        expect(repoDetail).toContain('requestForWorkspace');
-        expect(repoDetail).toContain('/work-items?limit=20');
+        expect(repoDetail).toContain('getCocClientForWorkspace(ws.id).workItems.listForOrigin(workItemOriginId');
+        expect(repoDetail).toContain('{ limit: 20 }');
         expect(repoDetail).not.toContain('fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/work-items');
     });
 
