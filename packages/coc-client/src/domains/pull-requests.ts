@@ -454,24 +454,42 @@ export class PullRequestsClient {
     );
   }
 
-  /** Trigger on-demand AI classification of a PR's diff hunks. */
-  classify(repoId: string, prId: string, body: ClassifyDiffRequest, options?: Pick<CocRequestOptions, 'signal'>): Promise<ClassifyDiffResponse> {
+  /** Trigger on-demand AI classification of a PR's diff hunks under a canonical origin. */
+  classifyForOrigin(
+    originId: string,
+    prId: string,
+    body: ClassifyDiffRequest,
+    options?: OriginPrProviderOptions,
+  ): Promise<ClassifyDiffResponse> {
     return this.transport.request<ClassifyDiffResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/classify`,
+      `/origins/${encodePathSegment(originId)}/classify-diff`,
       {
         method: 'POST',
-        body: { ...body },
+        body: withOriginPrStateBody({
+          type: 'pr',
+          identifier: `${prId}:${body.headSha}`,
+          ...(body.model ? { model: body.model } : {}),
+        }, options),
         signal: options?.signal,
       },
     );
   }
 
-  /** Get cached classification result for a PR. */
-  getClassification(repoId: string, prId: string, headSha: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<ClassificationStatusResponse> {
+  /** Get cached classification result for a PR under a canonical origin. */
+  getClassificationForOrigin(
+    originId: string,
+    prId: string,
+    headSha: string,
+    options?: OriginPrStateOptions,
+  ): Promise<ClassificationStatusResponse> {
     return this.transport.request<ClassificationStatusResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/classification`,
+      `/origins/${encodePathSegment(originId)}/classify-diff`,
       {
-        query: { headSha },
+        query: {
+          type: 'pr',
+          identifier: `${prId}:${headSha}`,
+          ...serializeOriginPrStateQuery(options),
+        },
         signal: options?.signal,
       },
     );

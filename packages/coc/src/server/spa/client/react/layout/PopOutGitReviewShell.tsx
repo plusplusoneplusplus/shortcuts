@@ -593,15 +593,15 @@ function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLoaded }:
         isDesktop: chatIsDesktop,
     } = useReviewChatPresentation({ target: prChatTarget });
 
-    // Classification hook for PR diff
-    const classificationKey: ClassificationKey | undefined =
-        headSha ? { type: 'pr', repoId, identifier: `${prId}:${headSha}` } : undefined;
-    const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ask' });
-    const classification = useClassification(classificationKey, aiSelection.resolved, { workspaceId });
     const progressOriginId = useMemo(
         () => originId ?? resolveCanonicalOriginId({ workspaceId }),
         [originId, workspaceId],
     );
+    // Classification hook for PR diff
+    const classificationKey: ClassificationKey | undefined =
+        headSha ? { type: 'pr', repoId, originId: progressOriginId, workspaceId, identifier: `${prId}:${headSha}` } : undefined;
+    const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ask' });
+    const classification = useClassification(classificationKey, aiSelection.resolved, { workspaceId });
     const reviewProgress = usePrReviewProgress(headSha, {
         persistence: { originId: progressOriginId, workspaceId, repoId, prId },
     });

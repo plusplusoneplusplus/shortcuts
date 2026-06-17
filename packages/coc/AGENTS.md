@@ -127,6 +127,11 @@ all have their own `references/*.md`.
   reads. The Team toolbar status UI reads origin batch status and routes manual
   "Classify now" actions through origin APIs backed by the same bounded server
   helper, passing workspace/repo metadata only to select the concrete clone.
+- **Pull Request on-demand diff classification** must use
+  `/api/origins/:originId/classify-diff` or
+  `client.pullRequests.*Classification*ForOrigin(...)`, passing explicit
+  workspace/repo metadata for queue routing and legacy migration. Repo-scoped
+  `classify-diff` remains only for commit and branch-range classification.
 - **Pull Request provider list/detail/subresource callers** must use
   `/api/origins/:originId/pull-requests...` or
   `client.pullRequests.*ForOrigin(...)`, passing `workspaceId` and optional

@@ -326,6 +326,21 @@ describe('createPrDiffSource', () => {
         });
     });
 
+    it('classificationKey carries origin metadata when originId is provided', () => {
+        const source = createPrDiffSource(ws, repoId, prId, {
+            originId: 'gh_owner_repo',
+            headSha: 'abc123',
+        });
+
+        expect(source.classificationKey).toEqual({
+            type: 'pr',
+            repoId: 'repo1',
+            originId: 'gh_owner_repo',
+            workspaceId: 'ws1',
+            identifier: '42:abc123',
+        });
+    });
+
     it('classificationKey is undefined when headSha not provided', () => {
         const source = createPrDiffSource(ws, repoId, prId);
         expect(source.classificationKey).toBeUndefined();

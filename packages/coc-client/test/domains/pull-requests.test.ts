@@ -433,69 +433,92 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
-  it('classify sends POST with headSha, model, and encoded IDs', async () => {
+  it('classifyForOrigin sends POST with origin metadata and encoded PR identifier', async () => {
     const adapter = createMockAdapter({ status: 'started', taskId: 'task-1' });
     const client = new PullRequestsClient(adapter);
 
-    await client.classify('repo/a', 'pr/1', { headSha: 'abc123', model: 'haiku' });
+    await client.classifyForOrigin('gh_owner_repo', 'pr/1', { headSha: 'abc123', model: 'haiku' }, {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests/pr%2F1/classify',
+        path: '/origins/gh_owner_repo/classify-diff',
         options: {
           method: 'POST',
-          body: { headSha: 'abc123', model: 'haiku' },
+          body: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            type: 'pr',
+            identifier: 'pr/1:abc123',
+            model: 'haiku',
+          },
           signal: undefined,
         },
       },
     ]);
   });
 
-  it('classify forwards abort signal', async () => {
+  it('classifyForOrigin forwards abort signal', async () => {
     const adapter = createMockAdapter({ status: 'started' });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.classify('r1', '10', { headSha: 'sha1' }, { signal: controller.signal });
+    await client.classifyForOrigin('gh_owner_repo', '10', { headSha: 'sha1' }, {
+      workspaceId: 'ws1',
+      signal: controller.signal,
+    });
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });
 
-  it('getClassification sends GET with headSha query param', async () => {
+  it('getClassificationForOrigin sends GET with origin metadata and PR identifier', async () => {
     const adapter = createMockAdapter({ status: 'none' });
     const client = new PullRequestsClient(adapter);
 
-    await client.getClassification('repo/a', 'pr/1', 'abc123');
+    await client.getClassificationForOrigin('gh_owner_repo', 'pr/1', 'abc123', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests/pr%2F1/classification',
+        path: '/origins/gh_owner_repo/classify-diff',
         options: {
-          query: { headSha: 'abc123' },
+          query: {
+            type: 'pr',
+            identifier: 'pr/1:abc123',
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+          },
           signal: undefined,
         },
       },
     ]);
   });
 
-  it('getClassification forwards abort signal', async () => {
+  it('getClassificationForOrigin forwards abort signal', async () => {
     const adapter = createMockAdapter({ status: 'ready' });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.getClassification('r1', '10', 'sha1', { signal: controller.signal });
+    await client.getClassificationForOrigin('gh_owner_repo', '10', 'sha1', {
+      workspaceId: 'ws1',
+      signal: controller.signal,
+    });
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });
 
-  it('getClassificationBatchStatus sends encoded batch-status query params', async () => {
+  it('getClassificationBatchStatus sends encoded commit batch-status query params', async () => {
     const adapter = createMockAdapter({ statuses: {} });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
     await client.getClassificationBatchStatus('repo/a', {
-      type: 'pr',
-      identifiers: ['1:abc', '2:def'],
+      type: 'commit',
+      identifiers: ['abc', 'def'],
       workspaceId: 'ws/a',
       repoId: 'repo/a',
     }, { signal: controller.signal });
@@ -505,8 +528,8 @@ describe('PullRequestsClient', () => {
         path: '/repos/repo%2Fa/classify-diff/batch-status',
         options: {
           query: {
-            type: 'pr',
-            identifiers: '1:abc,2:def',
+            type: 'commit',
+            identifiers: 'abc,def',
             workspaceId: 'ws/a',
             repoId: 'repo/a',
           },

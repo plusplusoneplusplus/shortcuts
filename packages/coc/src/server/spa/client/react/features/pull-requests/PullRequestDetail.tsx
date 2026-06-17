@@ -117,7 +117,13 @@ export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = 
     const headSha = pr?.headSha;
     const classificationKey: ClassificationKey | undefined =
         SHOW_FOCUSED_DIFF && repoId && prId && headSha
-            ? { type: 'pr', repoId: String(repoId), identifier: `${prId}:${headSha}` }
+            ? {
+                type: 'pr',
+                repoId: String(repoId),
+                originId,
+                workspaceId,
+                identifier: `${prId}:${headSha}`,
+            }
             : undefined;
     const prChatTarget = useMemo<ReviewChatTarget>(() => ({
         type: 'pr',

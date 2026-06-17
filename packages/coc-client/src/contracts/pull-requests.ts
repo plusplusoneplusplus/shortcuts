@@ -243,7 +243,7 @@ export interface DiffClassificationResult {
   classifications: HunkClassification[];
 }
 
-/** Body for POST /repos/:repoId/pull-requests/:prId/classify. */
+/** Body for PR classification via POST /origins/:originId/classify-diff. */
 export interface ClassifyDiffRequest {
   headSha: string;
   model?: string;

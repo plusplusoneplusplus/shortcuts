@@ -45,6 +45,10 @@ export interface PrChatContext {
 export interface ClassificationKey {
     type: 'pr' | 'commit' | 'branch-range';
     repoId: string;
+    /** Canonical origin for PR classification state; omitted for workspace-local commit/branch classification. */
+    originId?: string;
+    /** Concrete workspace used to route provider-backed PR classification work. */
+    workspaceId?: string;
     /**
      * For PR: `prId:headSha` (new push auto-invalidates).
      * For commit: hash.
@@ -309,7 +313,12 @@ export function createPrDiffSource(
         },
 
         classificationKey: options?.headSha
-            ? { type: 'pr', repoId, identifier: `${prId}:${options.headSha}` }
+            ? {
+                type: 'pr',
+                repoId,
+                identifier: `${prId}:${options.headSha}`,
+                ...(options.originId ? { originId: options.originId, workspaceId } : {}),
+            }
             : undefined,
     };
 }
