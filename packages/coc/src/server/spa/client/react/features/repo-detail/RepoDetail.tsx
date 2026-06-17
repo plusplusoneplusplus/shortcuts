@@ -784,7 +784,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         )}
                         {dreamsEnabled && (
                             <div style={{ display: activeSubTab === 'dreams' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                                {wasVisited('dreams') && <DreamsPanel key={ws.id} workspaceId={ws.id} />}
+                                {wasVisited('dreams') && <DreamsPanel key={ws.id} workspaceId={ws.id} originId={workItemOriginId} />}
                             </div>
                         )}
                         {nativeCliSessionsEnabled && (

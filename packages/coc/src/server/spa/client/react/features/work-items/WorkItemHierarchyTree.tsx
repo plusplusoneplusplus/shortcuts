@@ -403,12 +403,12 @@ export function WorkItemHierarchyTree({
     const handleDelete = useCallback(async (id: string) => {
         if (!confirm('Delete this work item? Children must be moved or deleted first.')) return;
         try {
-            await client.workItems.delete(workspaceId, id);
+            await client.workItems.deleteForOrigin(workItemOriginId, id, { workspaceId });
             fetchTree();
         } catch (err: any) {
             alert(err.message ?? 'Failed to delete');
         }
-    }, [workspaceId, fetchTree, client]);
+    }, [workspaceId, workItemOriginId, fetchTree, client]);
 
     const buildContextMenuItems = useCallback((node: WorkItemTreeNode): ContextMenuItem[] => {
         const effectiveType = (node.item.type ?? 'work-item') as WorkItemTypeLabel;
@@ -457,7 +457,7 @@ export function WorkItemHierarchyTree({
                     icon: '🔓',
                     onClick: async () => {
                         try {
-                            await client.workItems.update(workspaceId, node.item.id, { parentId: null });
+                            await client.workItems.updateForOrigin(workItemOriginId, node.item.id, { parentId: null }, { workspaceId });
                             fetchTree();
                         } catch (err: any) {
                             alert(err.message ?? 'Failed to unlink');
@@ -474,7 +474,7 @@ export function WorkItemHierarchyTree({
             separator: true,
             onClick: async () => {
                 try {
-                    await client.workItems.pin(workspaceId, node.item.id, !node.item.pinnedAt);
+                    await client.workItems.pinForOrigin(workItemOriginId, node.item.id, !node.item.pinnedAt, { workspaceId });
                     fetchTree();
                 } catch (err: any) {
                     alert(err.message ?? 'Failed to pin');
@@ -486,7 +486,7 @@ export function WorkItemHierarchyTree({
             icon: '🗄️',
             onClick: async () => {
                 try {
-                    await client.workItems.archive(workspaceId, node.item.id, !node.item.archivedAt);
+                    await client.workItems.archiveForOrigin(workItemOriginId, node.item.id, !node.item.archivedAt, { workspaceId });
                     fetchTree();
                 } catch (err: any) {
                     alert(err.message ?? 'Failed to archive');
@@ -500,7 +500,7 @@ export function WorkItemHierarchyTree({
         });
 
         return items;
-    }, [workspaceId, onCreateItem, fetchTree, handleDelete, client]);
+    }, [workspaceId, workItemOriginId, onCreateItem, fetchTree, handleDelete, client]);
 
     /** Recursively render a tree node and its children. */
     const renderNode = useCallback((node: WorkItemTreeNode, depth: number): React.ReactNode => {
@@ -824,6 +824,7 @@ export function WorkItemHierarchyTree({
                     open={true}
                     onClose={() => setParentPicker(null)}
                     workspaceId={workspaceId}
+                    originId={workItemOriginId}
                     itemId={parentPicker.itemId}
                     itemType={parentPicker.itemType}
                     currentParentId={parentPicker.currentParentId}

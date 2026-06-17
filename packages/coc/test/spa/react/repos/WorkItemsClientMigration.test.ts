@@ -60,8 +60,24 @@ describe('work items SPA client migration', () => {
     it('loads hierarchy trees through the origin-scoped work item client', () => {
         const tree = readWorkItemComponent('WorkItemHierarchyTree.tsx');
         expect(tree).toContain('workItems.treeForOrigin(workItemOriginId');
+        expect(tree).toContain('workItems.deleteForOrigin(workItemOriginId');
+        expect(tree).toContain('workItems.updateForOrigin(workItemOriginId');
+        expect(tree).toContain('workItems.pinForOrigin(workItemOriginId');
+        expect(tree).toContain('workItems.archiveForOrigin(workItemOriginId');
         expect(tree).toContain('{ workspaceId }');
         expect(tree).not.toContain('workItems.tree(workspaceId');
+        expect(tree).not.toContain('workItems.delete(workspaceId');
+        expect(tree).not.toContain('workItems.update(workspaceId');
+        expect(tree).not.toContain('workItems.pin(workspaceId');
+        expect(tree).not.toContain('workItems.archive(workspaceId');
+    });
+
+    it('loads and updates parent-picker state through origin-scoped work item APIs', () => {
+        const parentPicker = readWorkItemComponent('WorkItemParentPicker.tsx');
+        expect(parentPicker).toContain('workItems.listForOrigin(workItemOriginId');
+        expect(parentPicker).toContain('workItems.updateForOrigin(workItemOriginId');
+        expect(parentPicker).not.toContain('workItems.list(workspaceId');
+        expect(parentPicker).not.toContain('workItems.update(workspaceId');
     });
 
     it('loads plan versions through client.workItems and persists plan via the detail Ctrl+S batch', () => {

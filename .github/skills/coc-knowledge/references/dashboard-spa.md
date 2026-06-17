@@ -209,7 +209,7 @@ and container rollups, but omit local work-item numbers and leaf status chips so
 remote identifiers remain the primary row metadata. Compact GitHub mirror badges
 render the issue number only; full detail-page badges keep the provider label and
 link title. Core Work Item list/detail/create/update/pin/archive/delete, hierarchy-tree, plan
-history, sync status, remote import/convert, execution, Submit PR, AI review, and comment-resolve UI paths compute a
+history, parent re-linking, sync status, remote import/convert, execution, Submit PR, AI review, Dreams work-item next actions, and comment-resolve UI paths compute a
 canonical origin ID from the selected workspace remote (`gh_*`, `ado_*`,
 `git_*`, or `local_*`) and call the origin-scoped coc-client methods while still
 passing `workspaceId` when the route needs a concrete clone for provider,
@@ -228,10 +228,8 @@ uses the origin-scoped realtime revision and `client.workItems.treeForOrigin(...
 to refetch tree data, passing the selected `workspaceId` only for clone metadata
 validation. Work Item chat bindings use origin-scoped client methods and pass
 the selected `workspaceId` only for fresh-chat archive/reset actions.
-Sync/import/convert, execution, and provider flows remain routed
-through workspace APIs until their server routes expose origin contracts. The
-hierarchy toolbar exposes a Refresh control that calls the same tree fetch path
-and is disabled while the tree request is in flight.
+The hierarchy toolbar exposes a Refresh control that calls the same tree fetch
+path and is disabled while the tree request is in flight.
 
 `workItems.workflow.enabled` is the disabled-by-default durable workflow gate for
 turning local Work Items and Goals into the command-center planning/execution

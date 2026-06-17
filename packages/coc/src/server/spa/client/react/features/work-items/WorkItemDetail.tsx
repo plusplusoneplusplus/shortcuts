@@ -1930,13 +1930,15 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
             )}
             {showParentPicker && (
                 <WorkItemParentPicker
+                    open={showParentPicker}
+                    onClose={() => setShowParentPicker(false)}
                     workspaceId={workspaceId}
-                    workItemId={workItemId}
-                    workItemType={effectiveType as any}
+                    originId={workItemOriginId}
+                    itemId={workItemId}
+                    itemType={effectiveType as any}
                     currentParentId={d.parentId ?? undefined}
                     onlyPick={true}
                     onParentChanged={(newParentId) => updateDraft('parentId', newParentId)}
-                    onClose={() => setShowParentPicker(false)}
                 />
             )}
         </div>
