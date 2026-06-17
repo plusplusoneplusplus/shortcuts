@@ -2,8 +2,7 @@
  * Pull-Request-Chat Binding REST API Routes
  *
  * CRUD operations on pullRequest -> chat bindings. Persistent bindings are
- * scoped by canonical origin; workspace URLs are migration-compatible callers
- * that resolve their workspace to an origin first.
+ * scoped by canonical origin. Legacy workspace rows migrate on origin access.
  */
 
 import {
@@ -23,11 +22,9 @@ import { startFreshLensChat } from '../processes/fresh-lens-chat-binding';
 // in the future. Allow URL-safe characters (alphanumerics, hyphen, underscore)
 // with a reasonable length cap.
 const PR_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
-const PR_CHAT_COLLECTION_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/pull-request-chat-bindings$/;
-const PR_CHAT_DETAIL_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/pull-request-chat-bindings\/([A-Za-z0-9_-]{1,64})$/;
-const PR_CHAT_FRESH_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/pull-request-chat-bindings\/([A-Za-z0-9_-]{1,64})\/fresh$/;
-
-type PrChatRouteScopeKind = 'workspaces' | 'origins';
+const PR_CHAT_COLLECTION_PATTERN = /^\/api\/origins\/([^/]+)\/pull-request-chat-bindings$/;
+const PR_CHAT_DETAIL_PATTERN = /^\/api\/origins\/([^/]+)\/pull-request-chat-bindings\/([A-Za-z0-9_-]{1,64})$/;
+const PR_CHAT_FRESH_PATTERN = /^\/api\/origins\/([^/]+)\/pull-request-chat-bindings\/([A-Za-z0-9_-]{1,64})\/fresh$/;
 
 interface ResolvedPrChatBindingScope {
     scopeId: string;
@@ -76,36 +73,22 @@ async function legacyWorkspaceIdsForOrigin(
 
 async function resolvePrChatBindingScope(
     ctx: ApiRouteContext,
-    kind: PrChatRouteScopeKind,
-    routeScopeId: string,
+    originId: string,
     workspaceId: string | undefined,
     requireWorkspace: boolean,
 ): Promise<ResolvedPrChatBindingScope> {
-    if (kind === 'workspaces') {
-        const workspace = (await ctx.store.getWorkspaces()).find(entry => entry.id === routeScopeId);
-        if (!workspace) {
-            throw notFound('Workspace');
-        }
-        const originId = await workspaceOriginId(workspace, ctx.store);
-        return {
-            scopeId: originId,
-            legacyScopeIds: await legacyWorkspaceIdsForOrigin(ctx.store, originId),
-            workspace,
-        };
-    }
-
     if (workspaceId) {
         const workspace = (await ctx.store.getWorkspaces()).find(entry => entry.id === workspaceId);
         if (!workspace) {
             throw badRequest(`workspaceId '${workspaceId}' is not registered`);
         }
         const resolvedOriginId = await workspaceOriginId(workspace, ctx.store);
-        if (resolvedOriginId !== routeScopeId) {
-            throw badRequest(`workspaceId '${workspaceId}' resolves to origin '${resolvedOriginId}', not '${routeScopeId}'`);
+        if (resolvedOriginId !== originId) {
+            throw badRequest(`workspaceId '${workspaceId}' resolves to origin '${resolvedOriginId}', not '${originId}'`);
         }
         return {
-            scopeId: routeScopeId,
-            legacyScopeIds: await legacyWorkspaceIdsForOrigin(ctx.store, routeScopeId),
+            scopeId: originId,
+            legacyScopeIds: await legacyWorkspaceIdsForOrigin(ctx.store, originId),
             workspace,
         };
     }
@@ -115,8 +98,8 @@ async function resolvePrChatBindingScope(
     }
 
     return {
-        scopeId: routeScopeId,
-        legacyScopeIds: await legacyWorkspaceIdsForOrigin(ctx.store, routeScopeId),
+        scopeId: originId,
+        legacyScopeIds: await legacyWorkspaceIdsForOrigin(ctx.store, originId),
     };
 }
 
@@ -129,11 +112,10 @@ export function registerPrChatRoutes(ctx: ApiRouteContext): void {
         method: 'POST',
         pattern: PR_CHAT_FRESH_PATTERN,
         handler: async (req, res, match) => {
-            const kind = match![1] as PrChatRouteScopeKind;
-            const routeScopeId = decodeURIComponent(match![2]);
-            const prId = match![3];
+            const originId = decodeURIComponent(match![1]);
+            const prId = match![2];
             try {
-                const scope = await resolvePrChatBindingScope(ctx, kind, routeScopeId, queryWorkspaceId(req), true);
+                const scope = await resolvePrChatBindingScope(ctx, originId, queryWorkspaceId(req), true);
                 if (!scope.workspace) {
                     return handleAPIError(res, badRequest('workspaceId is required for origin-scoped fresh pull request chat bindings'));
                 }
@@ -155,10 +137,9 @@ export function registerPrChatRoutes(ctx: ApiRouteContext): void {
         method: 'GET',
         pattern: PR_CHAT_COLLECTION_PATTERN,
         handler: async (req, res, match) => {
-            const kind = match![1] as PrChatRouteScopeKind;
-            const routeScopeId = decodeURIComponent(match![2]);
+            const originId = decodeURIComponent(match![1]);
             try {
-                const scope = await resolvePrChatBindingScope(ctx, kind, routeScopeId, queryWorkspaceId(req), false);
+                const scope = await resolvePrChatBindingScope(ctx, originId, queryWorkspaceId(req), false);
                 sendJSON(res, 200, { bindings: bindingStore.list(scope.scopeId, scope.legacyScopeIds) });
             } catch (error) {
                 handleAPIError(res, error);
@@ -171,11 +152,10 @@ export function registerPrChatRoutes(ctx: ApiRouteContext): void {
         method: 'GET',
         pattern: PR_CHAT_DETAIL_PATTERN,
         handler: async (req, res, match) => {
-            const kind = match![1] as PrChatRouteScopeKind;
-            const routeScopeId = decodeURIComponent(match![2]);
-            const prId = match![3];
+            const originId = decodeURIComponent(match![1]);
+            const prId = match![2];
             try {
-                const scope = await resolvePrChatBindingScope(ctx, kind, routeScopeId, queryWorkspaceId(req), false);
+                const scope = await resolvePrChatBindingScope(ctx, originId, queryWorkspaceId(req), false);
                 const binding = bindingStore.get(scope.scopeId, prId, scope.legacyScopeIds);
                 if (!binding) {
                     return handleAPIError(res, notFound('Binding'));
@@ -195,8 +175,7 @@ export function registerPrChatRoutes(ctx: ApiRouteContext): void {
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const kind = match![1] as PrChatRouteScopeKind;
-            const routeScopeId = decodeURIComponent(match![2]);
+            const originId = decodeURIComponent(match![1]);
             const { prId, taskId } = body;
             if (typeof prId !== 'string' || !PR_ID_RE.test(prId)) {
                 return handleAPIError(res, badRequest('Missing or invalid field: prId'));
@@ -206,7 +185,7 @@ export function registerPrChatRoutes(ctx: ApiRouteContext): void {
             }
 
             try {
-                const scope = await resolvePrChatBindingScope(ctx, kind, routeScopeId, bodyWorkspaceId(body) ?? queryWorkspaceId(req), false);
+                const scope = await resolvePrChatBindingScope(ctx, originId, bodyWorkspaceId(body) ?? queryWorkspaceId(req), false);
                 bindingStore.bind(scope.scopeId, prId, taskId, scope.legacyScopeIds);
                 sendJSON(res, 201, { prId, taskId });
             } catch (error) {
@@ -220,11 +199,10 @@ export function registerPrChatRoutes(ctx: ApiRouteContext): void {
         method: 'DELETE',
         pattern: PR_CHAT_DETAIL_PATTERN,
         handler: async (req, res, match) => {
-            const kind = match![1] as PrChatRouteScopeKind;
-            const routeScopeId = decodeURIComponent(match![2]);
-            const prId = match![3];
+            const originId = decodeURIComponent(match![1]);
+            const prId = match![2];
             try {
-                const scope = await resolvePrChatBindingScope(ctx, kind, routeScopeId, queryWorkspaceId(req), false);
+                const scope = await resolvePrChatBindingScope(ctx, originId, queryWorkspaceId(req), false);
                 bindingStore.unbind(scope.scopeId, prId, scope.legacyScopeIds);
                 res.writeHead(204);
                 res.end();

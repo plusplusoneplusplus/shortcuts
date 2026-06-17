@@ -421,39 +421,6 @@ export class PullRequestsClient {
 
   // ── Pull-request chat bindings ──────────────────────────────────
 
-  listChatBindings(workspaceId: string): Promise<PullRequestChatBindingListResponse> {
-    return this.transport.request<PullRequestChatBindingListResponse>(
-      `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings`,
-    );
-  }
-
-  getChatBinding(workspaceId: string, prId: string): Promise<PullRequestChatBinding> {
-    return this.transport.request<PullRequestChatBinding>(
-      `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings/${encodePathSegment(prId)}`,
-    );
-  }
-
-  createChatBinding(workspaceId: string, prId: string, taskId: string): Promise<PullRequestChatBinding> {
-    return this.transport.request<PullRequestChatBinding>(
-      `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings`,
-      { method: 'POST', body: { prId, taskId } },
-    );
-  }
-
-  deleteChatBinding(workspaceId: string, prId: string): Promise<void> {
-    return this.transport.request<void>(
-      `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings/${encodePathSegment(prId)}`,
-      { method: 'DELETE' },
-    );
-  }
-
-  startFreshChat(workspaceId: string, prId: string): Promise<PullRequestChatFreshResponse> {
-    return this.transport.request<PullRequestChatFreshResponse>(
-      `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings/${encodePathSegment(prId)}/fresh`,
-      { method: 'POST', body: {} },
-    );
-  }
-
   listChatBindingsForOrigin(originId: string): Promise<PullRequestChatBindingListResponse> {
     return this.transport.request<PullRequestChatBindingListResponse>(
       `/origins/${encodePathSegment(originId)}/pull-request-chat-bindings`,

@@ -1,11 +1,11 @@
 /**
  * Pull-Request-Chat Binding API Route Tests
  *
- * HTTP-level tests for the 4 pull-request-chat API endpoints:
- *   - GET    /api/workspaces/:id/pull-request-chat-bindings          (list)
- *   - GET    /api/workspaces/:id/pull-request-chat-bindings/:prId    (get)
- *   - POST   /api/workspaces/:id/pull-request-chat-bindings          (create)
- *   - DELETE /api/workspaces/:id/pull-request-chat-bindings/:prId    (delete)
+ * HTTP-level tests for the origin-scoped pull-request-chat API endpoints:
+ *   - GET    /api/origins/:originId/pull-request-chat-bindings          (list)
+ *   - GET    /api/origins/:originId/pull-request-chat-bindings/:prId    (get)
+ *   - POST   /api/origins/:originId/pull-request-chat-bindings          (create)
+ *   - DELETE /api/origins/:originId/pull-request-chat-bindings/:prId    (delete)
  *
  * Uses a real http.Server with registerApiRoutes + a temp dataDir.
  * Cross-platform (Linux/Mac/Windows).
@@ -110,12 +110,11 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
     });
 
     const base = () => `http://127.0.0.1:${port}`;
-    const api = (wsPath: string) => `${base()}/api/workspaces/${WORKSPACE_ID}/${wsPath}`;
-    const cloneApi = (wsPath: string) => `${base()}/api/workspaces/${WORKSPACE_CLONE_ID}/${wsPath}`;
     const originApi = (originPath: string) => `${base()}/api/origins/${ORIGIN_ID}/${originPath}`;
+    const api = originApi;
 
     // ========================================================================
-    // GET /api/workspaces/:id/pull-request-chat-bindings/:prId
+    // GET /api/origins/:originId/pull-request-chat-bindings/:prId
     // ========================================================================
 
     describe('GET /pull-request-chat-bindings/:prId', () => {
@@ -137,14 +136,14 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
             expect(res.status).toBe(404);
         });
 
-        it('returns 404 for unknown workspace', async () => {
-            const res = await request(`${base()}/api/workspaces/unknown-ws/pull-request-chat-bindings/142`);
+        it('does not expose the legacy workspace detail alias', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/pull-request-chat-bindings/142`);
             expect(res.status).toBe(404);
         });
     });
 
     // ========================================================================
-    // POST /api/workspaces/:id/pull-request-chat-bindings
+    // POST /api/origins/:originId/pull-request-chat-bindings
     // ========================================================================
 
     describe('POST /pull-request-chat-bindings', () => {
@@ -163,14 +162,14 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
             expect(verify.json().taskId).toBe('task-new');
         });
 
-        it('shares workspace route bindings across same-origin clones', async () => {
-            const res = await request(api('pull-request-chat-bindings'), {
+        it('validates optional workspace metadata against the route origin', async () => {
+            const res = await request(`${api('pull-request-chat-bindings')}?workspaceId=${WORKSPACE_CLONE_ID}`, {
                 method: 'POST',
                 body: JSON.stringify({ prId: 'same-origin-1', taskId: 'task-same-origin' }),
             });
             expect(res.status).toBe(201);
 
-            const verify = await request(cloneApi('pull-request-chat-bindings/same-origin-1'));
+            const verify = await request(api('pull-request-chat-bindings/same-origin-1'));
             expect(verify.status).toBe(200);
             expect(verify.json().taskId).toBe('task-same-origin');
         });
@@ -208,8 +207,8 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
             expect(res.json().prId).toBe('PR-1234');
         });
 
-        it('returns 404 for unknown workspace', async () => {
-            const res = await request(`${base()}/api/workspaces/unknown-ws/pull-request-chat-bindings`, {
+        it('does not expose the legacy workspace collection alias', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/pull-request-chat-bindings`, {
                 method: 'POST',
                 body: JSON.stringify({ prId: '142', taskId: 'task-1' }),
             });
@@ -218,7 +217,7 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
     });
 
     // ========================================================================
-    // DELETE /api/workspaces/:id/pull-request-chat-bindings/:prId
+    // DELETE /api/origins/:originId/pull-request-chat-bindings/:prId
     // ========================================================================
 
     describe('DELETE /pull-request-chat-bindings/:prId', () => {
@@ -240,8 +239,8 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
             expect(res.status).toBe(204);
         });
 
-        it('returns 404 for unknown workspace', async () => {
-            const res = await request(`${base()}/api/workspaces/unknown-ws/pull-request-chat-bindings/142`, {
+        it('does not expose the legacy workspace delete alias', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/pull-request-chat-bindings/142`, {
                 method: 'DELETE',
             });
             expect(res.status).toBe(404);
@@ -249,7 +248,7 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
     });
 
     // ========================================================================
-    // GET /api/workspaces/:id/pull-request-chat-bindings
+    // GET /api/origins/:originId/pull-request-chat-bindings
     // ========================================================================
 
     describe('GET /pull-request-chat-bindings', () => {
@@ -271,8 +270,8 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
             expect(data.bindings['1002']).toBeDefined();
         });
 
-        it('returns 404 for unknown workspace', async () => {
-            const res = await request(`${base()}/api/workspaces/unknown-ws/pull-request-chat-bindings`);
+        it('does not expose the legacy workspace list alias', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/pull-request-chat-bindings`);
             expect(res.status).toBe(404);
         });
     });
@@ -293,10 +292,6 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
             const list = await request(originApi('pull-request-chat-bindings'));
             expect(list.status).toBe(200);
             expect(list.json().bindings['origin-1'].taskId).toBe('task-origin-1');
-
-            const workspaceRead = await request(api('pull-request-chat-bindings/origin-1'));
-            expect(workspaceRead.status).toBe(200);
-            expect(workspaceRead.json().taskId).toBe('task-origin-1');
 
             const remove = await request(originApi('pull-request-chat-bindings/origin-1'), { method: 'DELETE' });
             expect(remove.status).toBe(204);

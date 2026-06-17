@@ -405,41 +405,22 @@ describe('PullRequestsClient', () => {
     }
   });
 
-  it('exposes CRUD methods for pull-request chat bindings', async () => {
+  it('exposes origin-scoped CRUD methods for pull-request chat bindings', async () => {
     const adapter = createMockAdapter({ bindings: {} });
     const client = new PullRequestsClient(adapter);
 
-    await client.listChatBindings('ws/a');
-    await client.getChatBinding('ws/a', '142');
-    await client.createChatBinding('ws/a', '142', 'task-1');
-    await client.deleteChatBinding('ws/a', '142');
-    await client.startFreshChat('ws/a', '142');
     await client.listChatBindingsForOrigin('gh_owner_repo');
     await client.getChatBindingForOrigin('gh_owner_repo', '142');
-    await client.createChatBindingForOrigin('gh_owner_repo', '142', 'task-2');
+    await client.createChatBindingForOrigin('gh_owner_repo', '142', 'task-1');
     await client.deleteChatBindingForOrigin('gh_owner_repo', '142');
     await client.startFreshChatForOrigin('gh_owner_repo', '142', 'ws/a');
 
     expect(adapter.calls).toEqual([
-      { path: '/workspaces/ws%2Fa/pull-request-chat-bindings', options: undefined },
-      { path: '/workspaces/ws%2Fa/pull-request-chat-bindings/142', options: undefined },
-      {
-        path: '/workspaces/ws%2Fa/pull-request-chat-bindings',
-        options: { method: 'POST', body: { prId: '142', taskId: 'task-1' } },
-      },
-      {
-        path: '/workspaces/ws%2Fa/pull-request-chat-bindings/142',
-        options: { method: 'DELETE' },
-      },
-      {
-        path: '/workspaces/ws%2Fa/pull-request-chat-bindings/142/fresh',
-        options: { method: 'POST', body: {} },
-      },
       { path: '/origins/gh_owner_repo/pull-request-chat-bindings', options: undefined },
       { path: '/origins/gh_owner_repo/pull-request-chat-bindings/142', options: undefined },
       {
         path: '/origins/gh_owner_repo/pull-request-chat-bindings',
-        options: { method: 'POST', body: { prId: '142', taskId: 'task-2' } },
+        options: { method: 'POST', body: { prId: '142', taskId: 'task-1' } },
       },
       {
         path: '/origins/gh_owner_repo/pull-request-chat-bindings/142',
