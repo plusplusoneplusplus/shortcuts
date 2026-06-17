@@ -5,6 +5,7 @@ import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { setupPrRoutes } from './fixtures/pr-mock';
+import { resolveCanonicalOriginId } from '@plusplusoneplusplus/forge';
 import {
     MOCK_PR_LIST,
     MOCK_PR_LIST_WITH_DIFF_STATS,
@@ -84,7 +85,9 @@ async function expectRosterEntryPersisted(
     repoId: string,
     expected: { id: string; displayName: string },
 ): Promise<void> {
-    const res = await request(`${serverUrl}/api/repos/${repoId}/pull-requests/coworker-roster?workspaceId=${repoId}`);
+    const originId = resolveCanonicalOriginId({ workspaceId: repoId });
+    const params = new URLSearchParams({ workspaceId: repoId, repoId });
+    const res = await request(`${serverUrl}/api/origins/${encodeURIComponent(originId)}/pull-requests/coworker-roster?${params.toString()}`);
     expect(res.status).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.entries).toEqual(expect.arrayContaining([
@@ -336,9 +339,12 @@ test.describe('Pull Requests tab — list', () => {
     test('uses cached data when navigating away and back (no second fetch)', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-cache-1', 'My Repo');
         let fetchCount = 0;
-        const prApiBase = `${serverUrl}/api/repos/${repoId}/pull-requests`;
+        const prListPattern = (url: string) => {
+            const parsed = new URL(url);
+            return parsed.pathname.startsWith('/api/origins/') && parsed.pathname.endsWith('/pull-requests');
+        };
 
-        await page.route(`${prApiBase}?*`, (route) => {
+        await page.route(prListPattern, (route) => {
             fetchCount++;
             route.fulfill({
                 status: 200,
@@ -363,7 +369,7 @@ test.describe('Pull Requests tab — list', () => {
             // No additional fetch — cache was used
             expect(fetchCount).toBe(1);
         } finally {
-            await page.unroute(`${prApiBase}?*`);
+            await page.unroute(prListPattern);
             cleanup();
         }
     });
@@ -371,9 +377,12 @@ test.describe('Pull Requests tab — list', () => {
     test('refresh button triggers a fetch even with cached data', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-cache-2', 'My Repo');
         let fetchCount = 0;
-        const prApiBase = `${serverUrl}/api/repos/${repoId}/pull-requests`;
+        const prListPattern = (url: string) => {
+            const parsed = new URL(url);
+            return parsed.pathname.startsWith('/api/origins/') && parsed.pathname.endsWith('/pull-requests');
+        };
 
-        await page.route(`${prApiBase}?*`, (route) => {
+        await page.route(prListPattern, (route) => {
             fetchCount++;
             route.fulfill({
                 status: 200,
@@ -391,7 +400,7 @@ test.describe('Pull Requests tab — list', () => {
 
             expect(fetchCount).toBe(2);
         } finally {
-            await page.unroute(`${prApiBase}?*`);
+            await page.unroute(prListPattern);
             cleanup();
         }
     });
