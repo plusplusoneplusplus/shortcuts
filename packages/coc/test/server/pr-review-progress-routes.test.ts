@@ -2,7 +2,7 @@
  * Tests for the PR review-progress HTTP routes (AC-04).
  *
  * Verifies GET/PUT semantics, headSha stale-head behavior, validation, and
- * repo-scoped multi-workspace storage isolation.
+ * origin-scoped multi-workspace storage isolation.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -90,16 +90,20 @@ afterEach(async () => {
 });
 
 const progressUrl = (workspaceId: string, headSha: string) =>
-    `${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress?workspaceId=${encodeURIComponent(workspaceId)}&headSha=${encodeURIComponent(headSha)}`;
+    originProgressUrl(originScopeForRepo(), headSha, workspaceId, REPO_ID);
 const progressUrlFor = (repoId: string, workspaceId: string, headSha: string) =>
-    `${baseUrl}/api/repos/${repoId}/pull-requests/${PR_ID}/review-progress?workspaceId=${encodeURIComponent(workspaceId)}&headSha=${encodeURIComponent(headSha)}`;
+    originProgressUrl(originScopeForRepo(repoId), headSha, workspaceId, repoId);
+const legacyProgressUrl = (headSha?: string) => {
+    const query = headSha ? `?headSha=${encodeURIComponent(headSha)}` : '';
+    return `${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress${query}`;
+};
 const originProgressUrl = (originId: string, headSha: string, workspaceId = 'ws-1', repoId = REPO_ID) =>
     `${baseUrl}/api/origins/${encodeURIComponent(originId)}/pull-requests/${PR_ID}/review-progress?workspaceId=${encodeURIComponent(workspaceId)}&repoId=${encodeURIComponent(repoId)}&headSha=${encodeURIComponent(headSha)}`;
 function originScopeForRepo(repoId = REPO_ID): string {
     return resolveCanonicalOriginId({ remoteUrl: `https://github.com/org/${repoId}.git`, workspaceId: 'ws-1' });
 }
 
-describe('GET /api/repos/:repoId/pull-requests/:prId/review-progress', () => {
+describe('GET /api/origins/:originId/pull-requests/:prId/review-progress', () => {
     it('returns an empty record when no progress is stored', async () => {
         const res = await fetch(progressUrl('ws-1', 'sha-aaa'));
         expect(res.status).toBe(200);
@@ -110,35 +114,22 @@ describe('GET /api/repos/:repoId/pull-requests/:prId/review-progress', () => {
     });
 
     it('400s when headSha query parameter is missing', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress?workspaceId=ws-1`);
+        const res = await fetch(`${baseUrl}/api/origins/${encodeURIComponent(originScopeForRepo())}/pull-requests/${PR_ID}/review-progress?workspaceId=ws-1&repoId=${REPO_ID}`);
         expect(res.status).toBe(400);
     });
 
-    it('defaults workspaceId to repoId when omitted and migrates the legacy fallback file', async () => {
-        // Pre-write a record keyed by the repoId-as-workspace fallback.
-        const { dir, filePath } = reviewProgressPaths(dataDir, REPO_ID, REPO_ID, PR_ID);
-        fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(filePath, JSON.stringify({
-            repoId: REPO_ID, prId: PR_ID, headSha: 'sha-aaa',
-            reviewedFiles: ['a.ts'], visitedFiles: ['a.ts'],
-            lastSelectedFile: 'a.ts', updatedAt: new Date().toISOString(),
-        }), 'utf-8');
-
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress?headSha=sha-aaa`);
-        expect(res.status).toBe(200);
-        const body = await res.json() as { reviewedFiles: string[] };
-        expect(body.reviewedFiles).toEqual(['a.ts']);
-        const originPaths = reviewProgressPaths(dataDir, REPO_ID, REPO_ID, PR_ID, originScopeForRepo());
-        expect(fs.existsSync(originPaths.filePath)).toBe(true);
+    it('404s the removed repo-scoped review-progress alias', async () => {
+        const res = await fetch(legacyProgressUrl('sha-aaa'));
+        expect(res.status).toBe(404);
     });
 
     it('returns empty record when stored headSha differs (stale-head reset)', async () => {
         // Round-trip a write under headSha=sha-old.
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress`, {
+        await fetch(`${baseUrl}/api/origins/${encodeURIComponent(originScopeForRepo())}/pull-requests/${PR_ID}/review-progress`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                workspaceId: 'ws-1', headSha: 'sha-old',
+                workspaceId: 'ws-1', repoId: REPO_ID, headSha: 'sha-old',
                 reviewedFiles: ['a.ts'], visitedFiles: ['a.ts'], lastSelectedFile: null,
             }),
         });
@@ -240,13 +231,13 @@ describe('origin-scoped PR review-progress routes', () => {
     });
 });
 
-describe('PUT /api/repos/:repoId/pull-requests/:prId/review-progress', () => {
+describe('PUT /api/origins/:originId/pull-requests/:prId/review-progress', () => {
     it('persists the body and round-trips via GET', async () => {
-        const putRes = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress`, {
+        const putRes = await fetch(`${baseUrl}/api/origins/${encodeURIComponent(originScopeForRepo())}/pull-requests/${PR_ID}/review-progress`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                workspaceId: 'ws-1', headSha: 'sha-aaa',
+                workspaceId: 'ws-1', repoId: REPO_ID, headSha: 'sha-aaa',
                 reviewedFiles: ['a.ts'], visitedFiles: ['a.ts', 'b.ts'], lastSelectedFile: 'a.ts',
             }),
         });
@@ -260,7 +251,7 @@ describe('PUT /api/repos/:repoId/pull-requests/:prId/review-progress', () => {
     });
 
     it('400s on invalid JSON', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress`, {
+        const res = await fetch(`${baseUrl}/api/origins/${encodeURIComponent(originScopeForRepo())}/pull-requests/${PR_ID}/review-progress`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: '{ not json',
@@ -269,29 +260,29 @@ describe('PUT /api/repos/:repoId/pull-requests/:prId/review-progress', () => {
     });
 
     it('400s when headSha is missing', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress`, {
+        const res = await fetch(`${baseUrl}/api/origins/${encodeURIComponent(originScopeForRepo())}/pull-requests/${PR_ID}/review-progress`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workspaceId: 'ws-1', reviewedFiles: [] }),
+            body: JSON.stringify({ workspaceId: 'ws-1', repoId: REPO_ID, reviewedFiles: [] }),
         });
         expect(res.status).toBe(400);
     });
 
     it('400s when reviewedFiles contains non-strings', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress`, {
+        const res = await fetch(`${baseUrl}/api/origins/${encodeURIComponent(originScopeForRepo())}/pull-requests/${PR_ID}/review-progress`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workspaceId: 'ws-1', headSha: 'sha', reviewedFiles: [42] }),
+            body: JSON.stringify({ workspaceId: 'ws-1', repoId: REPO_ID, headSha: 'sha', reviewedFiles: [42] }),
         });
         expect(res.status).toBe(400);
     });
 
     it('stores under <dataDir>/repos/<originId>/review-progress/<prId>.json', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress`, {
+        await fetch(`${baseUrl}/api/origins/${encodeURIComponent(originScopeForRepo())}/pull-requests/${PR_ID}/review-progress`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                workspaceId: 'ws-1', headSha: 'sha-aaa',
+                workspaceId: 'ws-1', repoId: REPO_ID, headSha: 'sha-aaa',
                 reviewedFiles: ['a.ts'], visitedFiles: ['a.ts'], lastSelectedFile: null,
             }),
         });
@@ -300,11 +291,11 @@ describe('PUT /api/repos/:repoId/pull-requests/:prId/review-progress', () => {
     });
 
     it('does not create any new top-level directory under <dataDir>', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress`, {
+        await fetch(`${baseUrl}/api/origins/${encodeURIComponent(originScopeForRepo())}/pull-requests/${PR_ID}/review-progress`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                workspaceId: 'ws-1', headSha: 'sha-aaa',
+                workspaceId: 'ws-1', repoId: REPO_ID, headSha: 'sha-aaa',
                 reviewedFiles: ['a.ts'], visitedFiles: ['a.ts'], lastSelectedFile: null,
             }),
         });
@@ -315,11 +306,11 @@ describe('PUT /api/repos/:repoId/pull-requests/:prId/review-progress', () => {
     });
 
     it('shares same-origin workspace progress and isolates distinct origins', async () => {
-        const writeFor = (workspaceId: string, reviewed: string[], repoId = REPO_ID) => fetch(`${baseUrl}/api/repos/${repoId}/pull-requests/${PR_ID}/review-progress`, {
+        const writeFor = (workspaceId: string, reviewed: string[], repoId = REPO_ID) => fetch(`${baseUrl}/api/origins/${encodeURIComponent(originScopeForRepo(repoId))}/pull-requests/${PR_ID}/review-progress`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                workspaceId, headSha: 'sha-aaa',
+                workspaceId, repoId, headSha: 'sha-aaa',
                 reviewedFiles: reviewed, visitedFiles: reviewed, lastSelectedFile: null,
             }),
         });
@@ -336,7 +327,7 @@ describe('PUT /api/repos/:repoId/pull-requests/:prId/review-progress', () => {
     });
 
     it('accepts workspaceId via query when body does not contain it', async () => {
-        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/${PR_ID}/review-progress?workspaceId=ws-1`, {
+        await fetch(`${baseUrl}/api/origins/${encodeURIComponent(originScopeForRepo())}/pull-requests/${PR_ID}/review-progress?workspaceId=ws-1&repoId=${REPO_ID}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

@@ -162,44 +162,6 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
-  it('lists, records, and removes recently opened PRs with workspace scope', async () => {
-    const adapter = createMockAdapter({ entries: [] });
-    const client = new PullRequestsClient(adapter);
-    const controller = new AbortController();
-
-    await client.listRecentOpened('repo/a', 'ws/a', { signal: controller.signal });
-    await client.recordRecentOpened('repo/a', 'ws/a', {
-      number: 42,
-      title: 'Add recent list',
-      webUrl: 'https://github.com/org/repo/pull/42',
-    }, { signal: controller.signal });
-    await client.removeRecentOpened('repo/a', 'ws/a', 42, { signal: controller.signal });
-
-    expect(adapter.calls).toEqual([
-      {
-        path: '/repos/repo%2Fa/pull-requests/recent-opened',
-        options: { query: { workspaceId: 'ws/a' }, signal: controller.signal },
-      },
-      {
-        path: '/repos/repo%2Fa/pull-requests/recent-opened',
-        options: {
-          method: 'POST',
-          body: {
-            workspaceId: 'ws/a',
-            number: 42,
-            title: 'Add recent list',
-            webUrl: 'https://github.com/org/repo/pull/42',
-          },
-          signal: controller.signal,
-        },
-      },
-      {
-        path: '/repos/repo%2Fa/pull-requests/recent-opened/42',
-        options: { method: 'DELETE', query: { workspaceId: 'ws/a' }, signal: controller.signal },
-      },
-    ]);
-  });
-
   it('lists, records, and removes recently opened PRs with origin scope', async () => {
     const adapter = createMockAdapter({ entries: [] });
     const client = new PullRequestsClient(adapter);
@@ -247,46 +209,6 @@ describe('PullRequestsClient', () => {
       {
         path: '/origins/gh_owner_repo/pull-requests/recent-opened/42',
         options: { method: 'DELETE', query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
-      },
-    ]);
-  });
-
-  it('lists, adds, and removes Team coworker roster entries with workspace scope', async () => {
-    const adapter = createMockAdapter({ entries: [] });
-    const client = new PullRequestsClient(adapter);
-    const controller = new AbortController();
-
-    await client.listCoworkerRoster('repo/a', 'ws/a', { signal: controller.signal });
-    await client.addCoworkerToRoster('repo/a', 'ws/a', {
-      id: '123',
-      displayName: 'Mona Dev',
-      email: 'mona@example.invalid',
-      avatarUrl: 'https://avatars.example.invalid/u/123',
-    }, { signal: controller.signal });
-    await client.removeCoworkerFromRoster('repo/a', 'ws/a', '123', { signal: controller.signal });
-
-    expect(adapter.calls).toEqual([
-      {
-        path: '/repos/repo%2Fa/pull-requests/coworker-roster',
-        options: { query: { workspaceId: 'ws/a' }, signal: controller.signal },
-      },
-      {
-        path: '/repos/repo%2Fa/pull-requests/coworker-roster',
-        options: {
-          method: 'POST',
-          body: {
-            workspaceId: 'ws/a',
-            id: '123',
-            displayName: 'Mona Dev',
-            email: 'mona@example.invalid',
-            avatarUrl: 'https://avatars.example.invalid/u/123',
-          },
-          signal: controller.signal,
-        },
-      },
-      {
-        path: '/repos/repo%2Fa/pull-requests/coworker-roster/123',
-        options: { method: 'DELETE', query: { workspaceId: 'ws/a' }, signal: controller.signal },
       },
     ]);
   });
@@ -344,16 +266,19 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
-  it('encodes displayName fallback keys when removing Team roster entries', async () => {
+  it('encodes displayName fallback keys when removing Team roster entries by origin', async () => {
     const adapter = createMockAdapter({ entries: [] });
     const client = new PullRequestsClient(adapter);
 
-    await client.removeCoworkerFromRoster('repo/a', 'ws/a', 'Pat Dev');
+    await client.removeCoworkerFromRosterForOrigin('gh_owner_repo', 'Pat Dev', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests/coworker-roster/Pat%20Dev',
-        options: { method: 'DELETE', query: { workspaceId: 'ws/a' }, signal: undefined },
+        path: '/origins/gh_owner_repo/pull-requests/coworker-roster/Pat%20Dev',
+        options: { method: 'DELETE', query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: undefined },
       },
     ]);
   });

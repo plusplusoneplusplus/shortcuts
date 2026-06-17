@@ -1,8 +1,8 @@
 /**
  * Pull Request Routes
  *
- * Registers /api/origins/:originId/pull-requests/* and
- * /api/repos/:repoId/pull-requests/* endpoints.
+ * Registers /api/origins/:originId/pull-requests/* endpoints plus
+ * temporary /api/repos/:repoId/pull-requests/* provider aliases.
  * Uses ProviderFactory to resolve the correct adapter per repo.
  *
  * GET  /api/repos/:repoId/pull-requests              — list PRs
@@ -21,12 +21,12 @@
  * GET  /api/repos/:repoId/pull-requests/:prId/diff       — get unified diff (plain text)
  * GET  /api/repos/:repoId/pull-requests/:prId/diff/files/:path — get per-file diff (JSON)
  * GET  /api/repos/:repoId/pull-requests/:prId/checks     — get CI/check statuses
- * GET  /api/repos/:repoId/pull-requests/recent-opened    — list recently opened PRs
- * POST /api/repos/:repoId/pull-requests/recent-opened    — record a recently opened PR
- * DELETE /api/repos/:repoId/pull-requests/recent-opened/:prNumber — remove stale recent PR
- * GET  /api/repos/:repoId/pull-requests/coworker-roster  — list Team roster coworkers
- * POST /api/repos/:repoId/pull-requests/coworker-roster  — add/update a Team roster coworker
- * DELETE /api/repos/:repoId/pull-requests/coworker-roster/:coworkerKey — remove a Team roster coworker
+ * GET  /api/origins/:originId/pull-requests/recent-opened    — list recently opened PRs
+ * POST /api/origins/:originId/pull-requests/recent-opened    — record a recently opened PR
+ * DELETE /api/origins/:originId/pull-requests/recent-opened/:prNumber — remove stale recent PR
+ * GET  /api/origins/:originId/pull-requests/coworker-roster  — list Team roster coworkers
+ * POST /api/origins/:originId/pull-requests/coworker-roster  — add/update a Team roster coworker
+ * DELETE /api/origins/:originId/pull-requests/coworker-roster/:coworkerKey — remove a Team roster coworker
  * GET  /api/origins/:originId/pull-requests/:prId/review-progress — get reviewer progress
  * PUT  /api/origins/:originId/pull-requests/:prId/review-progress — save reviewer progress
  * GET  /api/origins/:originId/pull-requests/review-history — get cached review history
@@ -313,6 +313,16 @@ function parsePositiveIntegerPathSegment(raw: string): number | null {
     if (!/^\d+$/.test(raw)) return null;
     const number = Number(raw);
     return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
+const REMOVED_REPO_PR_STATE_ALIAS_SEGMENTS = new Set([
+    'recent-opened',
+    'coworker-roster',
+    'review-progress',
+]);
+
+function isRemovedRepoPrStateAliasSegment(segment: string): boolean {
+    return REMOVED_REPO_PR_STATE_ALIAS_SEGMENTS.has(segment);
 }
 
 // ============================================================================
@@ -1947,167 +1957,6 @@ export function registerPrRoutes(
         },
     });
 
-    // -- List recently opened PRs ---------------------------------------------
-
-    routes.push({
-        method: 'GET',
-        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/recent-opened$/,
-        handler: async (req, res, match) => {
-            try {
-                const repoId = decodeURIComponent(match![1]);
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
-
-                const workspaceId = parseWorkspaceId(req, undefined, repoId);
-                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
-                const entries = listRecentOpenedPullRequests(dataDir, workspaceId, repoId, prStorageScope);
-                return sendJson(res, { entries });
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    // -- Record recently opened PR --------------------------------------------
-
-    routes.push({
-        method: 'POST',
-        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/recent-opened$/,
-        handler: async (req, res, match) => {
-            try {
-                const repoId = decodeURIComponent(match![1]);
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
-
-                let raw: unknown;
-                try {
-                    raw = await readJsonBody<unknown>(req);
-                } catch {
-                    return send400(res, 'Invalid JSON body');
-                }
-
-                const validation = validateRecentOpenedPullRequestInput(raw);
-                if (!validation.ok) {
-                    return send400(res, validation.error);
-                }
-
-                const workspaceId = parseWorkspaceId(req, raw, repoId);
-                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
-                const entries = recordRecentOpenedPullRequest(dataDir, workspaceId, repoId, validation.entry, undefined, prStorageScope);
-                return sendJson(res, { entries });
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    // -- Remove stale recently opened PR --------------------------------------
-
-    routes.push({
-        method: 'DELETE',
-        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/recent-opened\/([^/]+)$/,
-        handler: async (req, res, match) => {
-            try {
-                const repoId = decodeURIComponent(match![1]);
-                const rawPrNumber = decodeURIComponent(match![2]);
-                const prNumber = parsePositiveIntegerPathSegment(rawPrNumber);
-                if (prNumber === null) {
-                    return send400(res, 'prNumber must be a positive integer');
-                }
-
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
-
-                const workspaceId = parseWorkspaceId(req, undefined, repoId);
-                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
-                const entries = removeRecentOpenedPullRequest(dataDir, workspaceId, repoId, prNumber, prStorageScope);
-                return sendJson(res, { entries });
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    // -- List Team roster coworkers -------------------------------------------
-
-    routes.push({
-        method: 'GET',
-        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/coworker-roster$/,
-        handler: async (req, res, match) => {
-            try {
-                const repoId = decodeURIComponent(match![1]);
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
-
-                const workspaceId = parseWorkspaceId(req, undefined, repoId);
-                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
-                const entries = listPullRequestCoworkerRoster(dataDir, workspaceId, repoId, prStorageScope);
-                return sendJson(res, { entries });
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    // -- Add/update Team roster coworker ---------------------------------------
-
-    routes.push({
-        method: 'POST',
-        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/coworker-roster$/,
-        handler: async (req, res, match) => {
-            try {
-                const repoId = decodeURIComponent(match![1]);
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
-
-                let raw: unknown;
-                try {
-                    raw = await readJsonBody<unknown>(req);
-                } catch {
-                    return send400(res, 'Invalid JSON body');
-                }
-
-                const validation = validatePullRequestCoworkerRosterInput(raw);
-                if (!validation.ok) {
-                    return send400(res, validation.error);
-                }
-
-                const workspaceId = parseWorkspaceId(req, raw, repoId);
-                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
-                const entries = addPullRequestCoworkerToRoster(dataDir, workspaceId, repoId, validation.entry, undefined, prStorageScope);
-                return sendJson(res, { entries });
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    // -- Remove Team roster coworker ------------------------------------------
-
-    routes.push({
-        method: 'DELETE',
-        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/coworker-roster\/([^/]+)$/,
-        handler: async (req, res, match) => {
-            try {
-                const repoId = decodeURIComponent(match![1]);
-                const coworkerKey = decodeURIComponent(match![2]).trim();
-                if (!coworkerKey) {
-                    return send400(res, 'coworkerKey must be a non-empty string');
-                }
-
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
-
-                const workspaceId = parseWorkspaceId(req, undefined, repoId);
-                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId, repo);
-                const entries = removePullRequestCoworkerFromRoster(dataDir, workspaceId, repoId, coworkerKey, prStorageScope);
-                return sendJson(res, { entries });
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
     // -- Trigger bounded Team auto-classification ------------------------------
 
     routes.push({
@@ -2163,6 +2012,9 @@ export function registerPrRoutes(
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
+                if (isRemovedRepoPrStateAliasSegment(prId)) {
+                    return send404(res, `Pull request route ${prId} not found`);
+                }
                 const query = url.parse(req.url ?? '', true).query;
                 const workspaceId = typeof query.workspaceId === 'string' && query.workspaceId.trim()
                     ? query.workspaceId.trim()
@@ -2531,77 +2383,4 @@ export function registerPrRoutes(
         },
     });
 
-    // -- Get PR review progress (AC-04) ---------------------------------------
-
-    routes.push({
-        method: 'GET',
-        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/review-progress$/,
-        handler: async (req, res, match) => {
-            try {
-                const repoId = decodeURIComponent(match![1]);
-                const prId = decodeURIComponent(match![2]);
-                const parsed = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
-                const headSha = parsed.searchParams.get('headSha');
-                const workspaceIdParam = parsed.searchParams.get('workspaceId');
-                if (!headSha) {
-                    return send400(res, 'Missing required query parameter: headSha');
-                }
-                const workspaceId = workspaceIdParam || repoId;
-                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId);
-                const record = readReviewProgress(dataDir, workspaceId, repoId, prId, headSha, prStorageScope);
-                return sendJson(res, record);
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
-
-    // -- Put PR review progress (AC-04) ---------------------------------------
-
-    routes.push({
-        method: 'PUT',
-        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/review-progress$/,
-        handler: async (req, res, match) => {
-            try {
-                const repoId = decodeURIComponent(match![1]);
-                const prId = decodeURIComponent(match![2]);
-
-                let raw: unknown;
-                try {
-                    raw = await readJsonBody<unknown>(req);
-                } catch {
-                    return send400(res, 'Invalid JSON body');
-                }
-
-                const validation = validateReviewProgressInput(raw);
-                if (!validation.ok) {
-                    return send400(res, validation.error);
-                }
-
-                // workspaceId may travel in body OR query (body wins). Defaults to repoId.
-                const bodyObj = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {};
-                const workspaceIdRaw = typeof bodyObj.workspaceId === 'string' && bodyObj.workspaceId.length > 0
-                    ? bodyObj.workspaceId
-                    : (() => {
-                        const parsed = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
-                        return parsed.searchParams.get('workspaceId') ?? '';
-                    })();
-                const workspaceId = workspaceIdRaw || repoId;
-                const prStorageScope = await resolvePrStorageScopeForRoute(svc, store, repoId, workspaceId);
-
-                const stored = writeReviewProgress(
-                    dataDir,
-                    workspaceId,
-                    repoId,
-                    prId,
-                    validation.record,
-                    undefined,
-                    prStorageScope,
-                );
-                return sendJson(res, stored);
-            } catch (err) {
-                send500(res, err instanceof Error ? err.message : String(err));
-            }
-        },
-    });
 }

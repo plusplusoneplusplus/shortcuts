@@ -61,12 +61,8 @@ async function stopServer(): Promise<void> {
     return new Promise(resolve => server.close(() => resolve()));
 }
 
-function rosterUrl(repoId: string, workspaceId: string): string {
-    return `${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/coworker-roster?workspaceId=${encodeURIComponent(workspaceId)}`;
-}
-
-function rosterDeleteUrl(repoId: string, workspaceId: string, coworkerKey: string): string {
-    return `${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/coworker-roster/${encodeURIComponent(coworkerKey)}?workspaceId=${encodeURIComponent(workspaceId)}`;
+function legacyRosterUrl(repoId = REPO_ID): string {
+    return `${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/coworker-roster`;
 }
 
 function originRosterUrl(originId: string, workspaceId?: string, repoId?: string): string {
@@ -94,15 +90,15 @@ async function addCoworker(
     workspaceId = 'ws-1',
     repoId = REPO_ID,
 ): Promise<Response> {
-    return fetch(`${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/coworker-roster`, {
+    return fetch(originRosterUrl(originScopeForRepo(repoId)), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId, ...entry }),
+        body: JSON.stringify({ workspaceId, repoId, ...entry }),
     });
 }
 
 async function listRoster(workspaceId = 'ws-1', repoId = REPO_ID): Promise<Array<{ id: string; displayName: string; email?: string; avatarUrl?: string }>> {
-    const res = await fetch(rosterUrl(repoId, workspaceId));
+    const res = await fetch(originRosterUrl(originScopeForRepo(repoId), workspaceId, repoId));
     expect(res.status).toBe(200);
     const body = await res.json() as { entries: Array<{ id: string; displayName: string; email?: string; avatarUrl?: string }> };
     return body.entries;
@@ -134,19 +130,19 @@ afterEach(async () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-describe('GET /api/repos/:repoId/pull-requests/coworker-roster', () => {
+describe('GET /api/origins/:originId/pull-requests/coworker-roster', () => {
     it('returns an empty roster when none is stored', async () => {
         expect(await listRoster()).toEqual([]);
     });
 
-    it('404s when the repo cannot be resolved', async () => {
-        mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(rosterUrl('missing-repo', 'ws-1'));
+    it('404s the removed repo-scoped coworker-roster alias', async () => {
+        const res = await fetch(legacyRosterUrl('missing-repo'));
         expect(res.status).toBe(404);
+        expect(mockResolveRepo).not.toHaveBeenCalled();
     });
 });
 
-describe('POST /api/repos/:repoId/pull-requests/coworker-roster', () => {
+describe('POST /api/origins/:originId/pull-requests/coworker-roster', () => {
     it('round-trips add, list, and delete while updating the roster file', async () => {
         const add = await addCoworker({
             id: '123',
@@ -172,7 +168,7 @@ describe('POST /api/repos/:repoId/pull-requests/coworker-roster', () => {
         expect(fs.readdirSync(dataDir)).toEqual(['repos']);
         expect(await listRoster()).toMatchObject([{ id: '123', displayName: 'Mona Dev' }]);
 
-        const remove = await fetch(rosterDeleteUrl(REPO_ID, 'ws-1', '123'), { method: 'DELETE' });
+        const remove = await fetch(originRosterDeleteUrl(originScopeForRepo(), '123', 'ws-1', REPO_ID), { method: 'DELETE' });
         expect(remove.status).toBe(200);
         expect(await remove.json()).toEqual({ entries: [] });
         expect(JSON.parse(fs.readFileSync(paths.filePath, 'utf-8'))).toEqual({ entries: [] });
@@ -189,7 +185,7 @@ describe('POST /api/repos/:repoId/pull-requests/coworker-roster', () => {
             { id: '', displayName: 'pat dev', email: 'pat@example.invalid' },
         ]);
 
-        const remove = await fetch(rosterDeleteUrl(REPO_ID, 'ws-1', 'pat dev'), { method: 'DELETE' });
+        const remove = await fetch(originRosterDeleteUrl(originScopeForRepo(), 'pat dev', 'ws-1', REPO_ID), { method: 'DELETE' });
         expect(remove.status).toBe(200);
         expect(await listRoster()).toMatchObject([{ id: 'abc', displayName: 'New Name' }]);
     });
@@ -239,11 +235,11 @@ describe('POST /api/repos/:repoId/pull-requests/coworker-roster', () => {
     });
 });
 
-describe('DELETE /api/repos/:repoId/pull-requests/coworker-roster/:coworkerKey', () => {
+describe('DELETE /api/origins/:originId/pull-requests/coworker-roster/:coworkerKey', () => {
     it('400s on empty coworker keys and keeps existing entries', async () => {
         await addCoworker({ id: '1', displayName: 'Keep Dev' });
 
-        const res = await fetch(rosterDeleteUrl(REPO_ID, 'ws-1', '   '), { method: 'DELETE' });
+        const res = await fetch(originRosterDeleteUrl(originScopeForRepo(), '   ', 'ws-1', REPO_ID), { method: 'DELETE' });
         expect(res.status).toBe(400);
         expect(await listRoster()).toMatchObject([{ id: '1', displayName: 'Keep Dev' }]);
     });

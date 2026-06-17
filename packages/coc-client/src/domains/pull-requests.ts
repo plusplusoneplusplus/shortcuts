@@ -147,48 +147,6 @@ export class PullRequestsClient {
     });
   }
 
-  listRecentOpened(repoId: string, workspaceId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<RecentOpenedPullRequestsResponse> {
-    return this.transport.request<RecentOpenedPullRequestsResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/recent-opened`,
-      {
-        query: { workspaceId },
-        signal: options?.signal,
-      },
-    );
-  }
-
-  recordRecentOpened(
-    repoId: string,
-    workspaceId: string,
-    entry: RecordRecentOpenedPullRequestRequest,
-    options?: Pick<CocRequestOptions, 'signal'>,
-  ): Promise<RecentOpenedPullRequestsResponse> {
-    return this.transport.request<RecentOpenedPullRequestsResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/recent-opened`,
-      {
-        method: 'POST',
-        body: { workspaceId, ...entry },
-        signal: options?.signal,
-      },
-    );
-  }
-
-  removeRecentOpened(
-    repoId: string,
-    workspaceId: string,
-    prNumber: number,
-    options?: Pick<CocRequestOptions, 'signal'>,
-  ): Promise<RecentOpenedPullRequestsResponse> {
-    return this.transport.request<RecentOpenedPullRequestsResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/recent-opened/${encodePathSegment(String(prNumber))}`,
-      {
-        method: 'DELETE',
-        query: { workspaceId },
-        signal: options?.signal,
-      },
-    );
-  }
-
   listRecentOpenedForOrigin(originId: string, options?: OriginPrStateOptions): Promise<RecentOpenedPullRequestsResponse> {
     return this.transport.request<RecentOpenedPullRequestsResponse>(
       `/origins/${encodePathSegment(originId)}/pull-requests/recent-opened`,
@@ -224,48 +182,6 @@ export class PullRequestsClient {
       {
         method: 'DELETE',
         query: serializeOriginPrStateQuery(options),
-        signal: options?.signal,
-      },
-    );
-  }
-
-  listCoworkerRoster(repoId: string, workspaceId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestCoworkerRosterResponse> {
-    return this.transport.request<PullRequestCoworkerRosterResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/coworker-roster`,
-      {
-        query: { workspaceId },
-        signal: options?.signal,
-      },
-    );
-  }
-
-  addCoworkerToRoster(
-    repoId: string,
-    workspaceId: string,
-    entry: AddPullRequestCoworkerRosterEntryRequest,
-    options?: Pick<CocRequestOptions, 'signal'>,
-  ): Promise<PullRequestCoworkerRosterResponse> {
-    return this.transport.request<PullRequestCoworkerRosterResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/coworker-roster`,
-      {
-        method: 'POST',
-        body: { workspaceId, ...entry },
-        signal: options?.signal,
-      },
-    );
-  }
-
-  removeCoworkerFromRoster(
-    repoId: string,
-    workspaceId: string,
-    coworkerKey: string,
-    options?: Pick<CocRequestOptions, 'signal'>,
-  ): Promise<PullRequestCoworkerRosterResponse> {
-    return this.transport.request<PullRequestCoworkerRosterResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/coworker-roster/${encodePathSegment(coworkerKey)}`,
-      {
-        method: 'DELETE',
-        query: { workspaceId },
         signal: options?.signal,
       },
     );

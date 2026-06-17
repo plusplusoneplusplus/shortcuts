@@ -61,12 +61,8 @@ async function stopServer(): Promise<void> {
     return new Promise(resolve => server.close(() => resolve()));
 }
 
-function recentUrl(repoId: string, workspaceId: string): string {
-    return `${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/recent-opened?workspaceId=${encodeURIComponent(workspaceId)}`;
-}
-
-function recentDeleteUrl(repoId: string, workspaceId: string, prNumber: string | number): string {
-    return `${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/recent-opened/${encodeURIComponent(String(prNumber))}?workspaceId=${encodeURIComponent(workspaceId)}`;
+function legacyRecentUrl(repoId = REPO_ID): string {
+    return `${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/recent-opened`;
 }
 
 function originRecentUrl(originId: string, workspaceId?: string, repoId?: string): string {
@@ -96,15 +92,15 @@ async function recordRecent(
     repoId = REPO_ID,
     extra: Record<string, unknown> = {},
 ): Promise<Response> {
-    return fetch(`${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/recent-opened`, {
+    return fetch(originRecentUrl(originScopeForRepo(repoId)), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId, number, title, ...extra }),
+        body: JSON.stringify({ workspaceId, repoId, number, title, ...extra }),
     });
 }
 
 async function listRecent(workspaceId = 'ws-1', repoId = REPO_ID): Promise<Array<{ number: number; title: string; webUrl?: string }>> {
-    const res = await fetch(recentUrl(repoId, workspaceId));
+    const res = await fetch(originRecentUrl(originScopeForRepo(repoId), workspaceId, repoId));
     expect(res.status).toBe(200);
     const body = await res.json() as { entries: Array<{ number: number; title: string; webUrl?: string }> };
     return body.entries;
@@ -136,20 +132,20 @@ afterEach(async () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-describe('GET /api/repos/:repoId/pull-requests/recent-opened', () => {
+describe('GET /api/origins/:originId/pull-requests/recent-opened', () => {
     it('returns an empty list when no recent PRs are stored', async () => {
         const entries = await listRecent('ws-1');
         expect(entries).toEqual([]);
     });
 
-    it('404s when the repo cannot be resolved', async () => {
-        mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(recentUrl('missing-repo', 'ws-1'));
+    it('404s the removed repo-scoped recent-opened alias', async () => {
+        const res = await fetch(legacyRecentUrl('missing-repo'));
         expect(res.status).toBe(404);
+        expect(mockResolveRepo).not.toHaveBeenCalled();
     });
 });
 
-describe('POST /api/repos/:repoId/pull-requests/recent-opened', () => {
+describe('POST /api/origins/:originId/pull-requests/recent-opened', () => {
     it('records and persists a recent PR entry under the origin-scoped data layout', async () => {
         const res = await recordRecent(42, '  Add feature X  ', 'ws-1', REPO_ID, {
             webUrl: 'https://github.com/org/repo/pull/42?notification_secret=drop#files',
@@ -223,10 +219,10 @@ describe('POST /api/repos/:repoId/pull-requests/recent-opened', () => {
     });
 
     it('does not create entries for invalid bodies', async () => {
-        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/recent-opened`, {
+        const res = await fetch(originRecentUrl(originScopeForRepo(), 'ws-1', REPO_ID), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workspaceId: 'ws-1', number: 42 }),
+            body: JSON.stringify({ workspaceId: 'ws-1', repoId: REPO_ID, number: 42 }),
         });
 
         expect(res.status).toBe(400);
@@ -243,11 +239,11 @@ describe('POST /api/repos/:repoId/pull-requests/recent-opened', () => {
     });
 });
 
-describe('DELETE /api/repos/:repoId/pull-requests/recent-opened/:prNumber', () => {
+describe('DELETE /api/origins/:originId/pull-requests/recent-opened/:prNumber', () => {
     it('removes a stale recent entry after confirmed 404 handling', async () => {
         await recordRecent(42, 'Stale PR');
 
-        const res = await fetch(recentDeleteUrl(REPO_ID, 'ws-1', 42), { method: 'DELETE' });
+        const res = await fetch(originRecentDeleteUrl(originScopeForRepo(), 42, 'ws-1', REPO_ID), { method: 'DELETE' });
         expect(res.status).toBe(200);
         const body = await res.json() as { entries: unknown[] };
         expect(body.entries).toEqual([]);
@@ -257,7 +253,7 @@ describe('DELETE /api/repos/:repoId/pull-requests/recent-opened/:prNumber', () =
     it('400s on invalid PR numbers and keeps existing entries', async () => {
         await recordRecent(42, 'Keep PR');
 
-        const res = await fetch(recentDeleteUrl(REPO_ID, 'ws-1', 'not-a-number'), { method: 'DELETE' });
+        const res = await fetch(originRecentDeleteUrl(originScopeForRepo(), 'not-a-number', 'ws-1', REPO_ID), { method: 'DELETE' });
         expect(res.status).toBe(400);
         expect(await listRecent('ws-1')).toMatchObject([{ number: 42 }]);
     });
