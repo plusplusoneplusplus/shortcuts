@@ -249,43 +249,32 @@ export function createPrDiffSource(
     workspaceId: string,
     repoId: string,
     prId: string,
-    options?: {
-        originId?: string;
+    options: {
+        originId: string;
         headSha?: string;
         files?: string[];
         title?: string;
     },
 ): DiffSource {
     const client = getCocClientForWorkspace(workspaceId);
-    const originOptions = options?.originId
-        ? { workspaceId, repoId }
-        : undefined;
+    const originOptions = { workspaceId, repoId };
 
     return {
         label: options?.title ? `PR: ${options.title}` : `PR #${prId}`,
 
         fileDiffUrl(filePath: string, _full?: boolean): string {
-            if (options?.originId && originOptions) {
-                return client.pullRequests.prFileDiffPathForOrigin(options.originId, prId, filePath, originOptions);
-            }
-            return client.pullRequests.prFileDiffPath(repoId, prId, filePath);
+            return client.pullRequests.prFileDiffPathForOrigin(options.originId, prId, filePath, originOptions);
         },
 
         fullContextFileDiffUrl(filePath: string): string {
-            if (options?.originId && originOptions) {
-                return client.pullRequests.prFileDiffPathForOrigin(options.originId, prId, filePath, {
-                    ...originOptions,
-                    fullContext: true,
-                });
-            }
-            return `${client.pullRequests.prFileDiffPath(repoId, prId, filePath)}?fullContext=true`;
+            return client.pullRequests.prFileDiffPathForOrigin(options.originId, prId, filePath, {
+                ...originOptions,
+                fullContext: true,
+            });
         },
 
         fullDiffUrl(): string {
-            if (options?.originId && originOptions) {
-                return client.pullRequests.prDiffPathForOrigin(options.originId, prId, originOptions);
-            }
-            return `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff`;
+            return client.pullRequests.prDiffPathForOrigin(options.originId, prId, originOptions);
         },
 
         commentContext(filePath: string): DiffCommentContext {
@@ -303,12 +292,10 @@ export function createPrDiffSource(
 
         supportsTruncation: false,
 
-        cacheKey: `pr:${repoId}:${prId}`,
+        cacheKey: `pr:${options.originId}:${prId}`,
 
         async fetchFileList(): Promise<string[]> {
-            const diff = options?.originId && originOptions
-                ? await client.pullRequests.getDiffForOrigin(options.originId, prId, originOptions)
-                : await client.pullRequests.getDiff(repoId, prId);
+            const diff = await client.pullRequests.getDiffForOrigin(options.originId, prId, originOptions);
             return extractFilePathsFromDiff(diff);
         },
 
@@ -317,7 +304,8 @@ export function createPrDiffSource(
                 type: 'pr',
                 repoId,
                 identifier: `${prId}:${options.headSha}`,
-                ...(options.originId ? { originId: options.originId, workspaceId } : {}),
+                originId: options.originId,
+                workspaceId,
             }
             : undefined,
     };

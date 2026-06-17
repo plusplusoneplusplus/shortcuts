@@ -53,7 +53,6 @@ export async function setupPrRoutes(
     const originId = resolveCanonicalOriginId({ workspaceId: repoId, remoteUrl });
     const aggregateOriginId = resolveCanonicalOriginId({ workspaceId: '__all' });
     const bases = [
-        `${serverUrl}/api/repos/${repoId}/pull-requests`,
         `${serverUrl}/api/origins/${encodeURIComponent(originId)}/pull-requests`,
         `${serverUrl}/api/origins/${encodeURIComponent(aggregateOriginId)}/pull-requests`,
     ];

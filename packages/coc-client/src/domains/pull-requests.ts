@@ -115,13 +115,6 @@ export class PullRequestsClient {
     });
   }
 
-  list(repoId: string, query?: PullRequestListQuery, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestListResponse> {
-    return this.transport.request<PullRequestListResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests`, {
-      query: serializePrListQuery(query),
-      signal: options?.signal,
-    });
-  }
-
   listForOrigin(
     originId: string,
     query: PullRequestListQuery & { workspaceId: string; repoId?: string },
@@ -129,13 +122,6 @@ export class PullRequestsClient {
   ): Promise<PullRequestListResponse> {
     return this.transport.request<PullRequestListResponse>(`/origins/${encodePathSegment(originId)}/pull-requests`, {
       query: serializeOriginPrListQuery(query),
-      signal: options?.signal,
-    });
-  }
-
-  get(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'> & { force?: boolean }): Promise<unknown> {
-    return this.transport.request<unknown>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}`, {
-      query: options?.force ? { force: 'true' } : undefined,
       signal: options?.signal,
     });
   }
@@ -227,12 +213,6 @@ export class PullRequestsClient {
     );
   }
 
-  getThreads(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestThreadsResponse> {
-    return this.transport.request<PullRequestThreadsResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/threads`, {
-      signal: options?.signal,
-    });
-  }
-
   getThreadsForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestThreadsResponse> {
     return this.transport.request<PullRequestThreadsResponse>(
       `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/threads`,
@@ -241,12 +221,6 @@ export class PullRequestsClient {
         signal: options.signal,
       },
     );
-  }
-
-  getReviewers(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestReviewersResponse> {
-    return this.transport.request<PullRequestReviewersResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/reviewers`, {
-      signal: options?.signal,
-    });
   }
 
   getReviewersForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestReviewersResponse> {
@@ -259,12 +233,6 @@ export class PullRequestsClient {
     );
   }
 
-  getCommits(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestCommitsResponse> {
-    return this.transport.request<PullRequestCommitsResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/commits`, {
-      signal: options?.signal,
-    });
-  }
-
   getCommitsForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestCommitsResponse> {
     return this.transport.request<PullRequestCommitsResponse>(
       `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/commits`,
@@ -273,14 +241,6 @@ export class PullRequestsClient {
         signal: options.signal,
       },
     );
-  }
-
-  getDiff(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<string> {
-    const reqOptions: CocRequestOptions = { signal: options?.signal };
-    if (this.transport.requestText) {
-      return this.transport.requestText(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`, reqOptions);
-    }
-    return this.transport.request<string>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`, reqOptions);
   }
 
   getDiffForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<string> {
@@ -293,10 +253,6 @@ export class PullRequestsClient {
       return this.transport.requestText(path, reqOptions);
     }
     return this.transport.request<string>(path, reqOptions);
-  }
-
-  prFileDiffPath(repoId: string, prId: string, filePath: string): string {
-    return `/api/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff/files/${encodePathSegment(filePath)}`;
   }
 
   prDiffPathForOrigin(originId: string, prId: string, options: { workspaceId: string; repoId?: string }): string {
@@ -317,12 +273,6 @@ export class PullRequestsClient {
     if (options.repoId) query.set('repoId', options.repoId);
     if (options.fullContext === true) query.set('fullContext', 'true');
     return `/api/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/diff/files/${encodePathSegment(filePath)}?${query.toString()}`;
-  }
-
-  getChecks(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestChecksResponse> {
-    return this.transport.request<PullRequestChecksResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/checks`, {
-      signal: options?.signal,
-    });
   }
 
   getChecksForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestChecksResponse> {
@@ -437,18 +387,6 @@ export class PullRequestsClient {
     );
   }
 
-  /** Trigger bounded Team PR auto-classification using the server cap/skip helper. */
-  autoClassifyTeam(repoId: string, body: TeamPrAutoClassificationRequest, options?: Pick<CocRequestOptions, 'signal'>): Promise<TeamPrAutoClassificationResponse> {
-    return this.transport.request<TeamPrAutoClassificationResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/team-auto-classification`,
-      {
-        method: 'POST',
-        body: { ...body },
-        signal: options?.signal,
-      },
-    );
-  }
-
   /** Trigger bounded Team PR auto-classification under a canonical origin. */
   autoClassifyTeamForOrigin(
     originId: string,
@@ -503,14 +441,6 @@ export class PullRequestsClient {
 
   // ── PR review suggestions ──────────────────────────────────────
 
-  /** Get cached PR suggestions (top-5 LLM-ranked PRs for the user). */
-  getSuggestions(repoId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PrSuggestionsResponse> {
-    return this.transport.request<PrSuggestionsResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/suggestions`,
-      { signal: options?.signal },
-    );
-  }
-
   /** Get cached PR suggestions under a canonical origin. */
   getSuggestionsForOrigin(originId: string, options?: OriginPrStateOptions): Promise<PrSuggestionsResponse> {
     return this.transport.request<PrSuggestionsResponse>(
@@ -519,14 +449,6 @@ export class PullRequestsClient {
         query: serializeOriginPrStateQuery(options),
         signal: options?.signal,
       },
-    );
-  }
-
-  /** Refresh the cached review history used to seed PR suggestions. */
-  refreshReviewHistory(repoId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PrReviewHistoryResponse> {
-    return this.transport.request<PrReviewHistoryResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/review-history/refresh`,
-      { method: 'POST', signal: options?.signal },
     );
   }
 
@@ -539,14 +461,6 @@ export class PullRequestsClient {
         query: serializeOriginPrStateQuery(options),
         signal: options?.signal,
       },
-    );
-  }
-
-  /** Refresh PR suggestions by re-ranking cached review history via LLM. */
-  refreshSuggestions(repoId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PrSuggestionsResponse> {
-    return this.transport.request<PrSuggestionsResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/suggestions/refresh`,
-      { method: 'POST', signal: options?.signal },
     );
   }
 

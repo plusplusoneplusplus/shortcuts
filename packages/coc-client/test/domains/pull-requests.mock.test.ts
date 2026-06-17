@@ -72,48 +72,6 @@ describe('PullRequestsClient mock coverage', () => {
     } satisfies Partial<CocApiError>);
   });
 
-  it('lists pull requests with encoded repo ID and query serialization', async () => {
-    mock = await startMockServer();
-    mock.on('GET', '/api/repos/repo%2Fa/pull-requests', {
-      body: {
-        pullRequests: [{ id: 1, title: 'Fix bug' }],
-        total: 1,
-      },
-    });
-    const client = createClient(mock);
-
-    await expect(client.pullRequests.list('repo/a', {
-      status: 'open',
-      scope: 'all',
-      top: 10,
-      skip: 5,
-      force: true,
-      author: 'dev',
-      search: 'bug',
-    })).resolves.toEqual({ pullRequests: [{ id: 1, title: 'Fix bug' }], total: 1 });
-
-    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests', {
-      status: 'open',
-      scope: 'all',
-      top: '10',
-      skip: '5',
-      force: 'true',
-      author: 'dev',
-      search: 'bug',
-    });
-  });
-
-  it('gets a single PR by repo and PR ID', async () => {
-    mock = await startMockServer();
-    const pr = { id: 42, title: 'My PR', status: 'active' };
-    mock.on('GET', '/api/repos/repo%2Fa/pull-requests/42', { body: pr });
-    const client = createClient(mock);
-
-    await expect(client.pullRequests.get('repo/a', '42')).resolves.toEqual(pr);
-
-    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42');
-  });
-
   it('lists and gets PRs through origin routes with explicit workspace metadata', async () => {
     mock = await startMockServer();
     const pr = { id: 42, title: 'My PR', status: 'active' };
@@ -188,73 +146,18 @@ describe('PullRequestsClient mock coverage', () => {
     expectEmptyRequest(mock.requests[4], 'GET', '/api/origins/gh_owner_repo/pull-requests/42/checks', options);
   });
 
-  it('gets comment threads for a PR', async () => {
-    mock = await startMockServer();
-    const threads = [{ id: 't-1', comments: [{ content: 'LGTM' }] }];
-    mock.on('GET', '/api/repos/repo%2Fa/pull-requests/42/threads', { body: { threads } });
-    const client = createClient(mock);
-
-    await expect(client.pullRequests.getThreads('repo/a', '42')).resolves.toEqual({ threads });
-
-    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42/threads');
-  });
-
-  it('gets reviewers for a PR', async () => {
-    mock = await startMockServer();
-    const reviewers = [{ id: 'r-1', displayName: 'Dev', vote: 10 }];
-    mock.on('GET', '/api/repos/repo%2Fa/pull-requests/42/reviewers', { body: { reviewers } });
-    const client = createClient(mock);
-
-    await expect(client.pullRequests.getReviewers('repo/a', '42')).resolves.toEqual({ reviewers });
-
-    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42/reviewers');
-  });
-
-  it('gets commits for a PR', async () => {
-    mock = await startMockServer();
-    const commits = [{ sha: 'abcdef1234567890', shortSha: 'abcdef1', title: 'Fix bug' }];
-    mock.on('GET', '/api/repos/repo%2Fa/pull-requests/42/commits', { body: { commits } });
-    const client = createClient(mock);
-
-    await expect(client.pullRequests.getCommits('repo/a', '42')).resolves.toEqual({ commits });
-
-    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42/commits');
-  });
-
-  it('gets unified diff as text/plain string via the raw-text transport path', async () => {
-    mock = await startMockServer();
-    const diff = '--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,4 @@\n+import { foo } from "bar";\n export const x = 1;';
-    mock.on('GET', '/api/repos/repo%2Fa/pull-requests/42/diff', {
-      headers: { 'content-type': 'text/plain; charset=utf-8' },
-      rawBody: diff,
-    });
-    const client = createClient(mock);
-
-    await expect(client.pullRequests.getDiff('repo/a', '42')).resolves.toBe(diff);
-
-    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42/diff');
-  });
-
-  it('gets commits for a PR', async () => {
-    mock = await startMockServer();
-    const commits = [{ id: 'abc1234deadbeef', shortId: 'abc1234', subject: 'feat: x' }];
-    mock.on('GET', '/api/repos/repo%2Fa/pull-requests/42/commits', { body: { commits } });
-    const client = createClient(mock);
-
-    await expect(client.pullRequests.getCommits('repo/a', '42')).resolves.toEqual({ commits });
-
-    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42/commits');
-  });
-
   it('propagates 404 on missing PRs as CocApiError', async () => {
     mock = await startMockServer();
-    mock.on('GET', '/api/repos/repo-a/pull-requests/999', {
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests/999', {
       status: 404,
       body: { error: 'Pull request not found' },
     });
     const client = createClient(mock);
 
-    await expect(client.pullRequests.get('repo-a', '999')).rejects.toMatchObject({
+    await expect(client.pullRequests.getForOrigin('gh_owner_repo', '999', {
+      workspaceId: 'ws-1',
+      repoId: 'repo-a',
+    })).rejects.toMatchObject({
       name: 'CocApiError',
       status: 404,
     } satisfies Partial<CocApiError>);
@@ -262,14 +165,18 @@ describe('PullRequestsClient mock coverage', () => {
 
   it('aborts an in-flight list request when the signal is triggered', async () => {
     mock = await startMockServer();
-    mock.on('GET', '/api/repos/r1/pull-requests', {
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests', {
       body: { pullRequests: [], total: 0 },
       delayMs: 200,
     });
     const client = createClient(mock);
     const controller = new AbortController();
 
-    const promise = client.pullRequests.list('r1', { status: 'open' }, { signal: controller.signal });
+    const promise = client.pullRequests.listForOrigin('gh_owner_repo', {
+      workspaceId: 'ws-1',
+      repoId: 'r1',
+      status: 'open',
+    }, { signal: controller.signal });
     controller.abort();
 
     await expect(promise).rejects.toThrow();
@@ -277,12 +184,15 @@ describe('PullRequestsClient mock coverage', () => {
 
   it('includes fetchedAt when present in list response', async () => {
     mock = await startMockServer();
-    mock.on('GET', '/api/repos/r1/pull-requests', {
+    mock.on('GET', '/api/origins/gh_owner_repo/pull-requests', {
       body: { pullRequests: [{ id: 1 }], total: 1, fetchedAt: 1700000000000 },
     });
     const client = createClient(mock);
 
-    const result = await client.pullRequests.list('r1');
+    const result = await client.pullRequests.listForOrigin('gh_owner_repo', {
+      workspaceId: 'ws-1',
+      repoId: 'r1',
+    });
     expect(result.fetchedAt).toBe(1700000000000);
     expect(result.pullRequests).toEqual([{ id: 1 }]);
   });

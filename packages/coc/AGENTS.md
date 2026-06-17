@@ -135,13 +135,15 @@ all have their own `references/*.md`.
 - **Pull Request provider list/detail/subresource callers** must use
   `/api/origins/:originId/pull-requests...` or
   `client.pullRequests.*ForOrigin(...)`, passing `workspaceId` and optional
-  `repoId` only to select the concrete clone for provider access.
+  `repoId` only to select the concrete clone for provider access. Do not add
+  repo-scoped PR provider route aliases.
 - **Pull Request review progress** for PR pop-out reviewed/visited file state is
   durable origin state. Callers must use
   `/api/origins/:originId/pull-requests/:prId/review-progress` or
   `client.pullRequests.*ReviewProgressForOrigin(...)`; workspace/repo metadata is
   for legacy migration only, not storage identity. Do not add repo-scoped route
-  aliases for PR recent-opened, Team roster, or review-progress state.
+  aliases for PR provider actions, recent-opened, Team roster, or
+  review-progress state.
 - **Native Copilot session reads** (`src/server/native-copilot-sessions/`)
   must stay strictly read-only against the native store: open
   `~/.copilot/session-store.db` with short-lived `readonly` SQLite connections,

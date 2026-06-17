@@ -2,7 +2,7 @@
  * Sidebar panel that surfaces deterministic thread groupings.
  *
  * The underlying `CommentThread[]` is real (from
- * `/api/repos/:repoId/pull-requests/:prId/threads`). The grouping
+ * `/api/origins/:originId/pull-requests/:prId/threads`). The grouping
  * categories and severity tags are assigned deterministically by
  * `buildThreadGroupsFromThreads`.
  */

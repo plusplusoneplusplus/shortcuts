@@ -41,32 +41,6 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
-  it('lists, gets, and queries PR data with encoded repo and PR IDs', async () => {
-    const adapter = createMockAdapter({});
-    const client = new PullRequestsClient(adapter);
-
-    await client.list('repo/a', { status: 'open', scope: 'all', top: 10, skip: 5, force: true, author: 'me', search: 'fix' });
-    await client.get('repo/a', 'pr/1');
-    await client.getThreads('repo/a', 'pr/1');
-    await client.getReviewers('repo/a', 'pr/1');
-    await client.getCommits('repo/a', 'pr/1');
-    await client.getDiff('repo/a', 'pr/1');
-    await client.getCommits('repo/a', 'pr/1');
-
-    expect(adapter.calls).toMatchObject([
-      {
-        path: '/repos/repo%2Fa/pull-requests',
-        options: { query: { status: 'open', scope: 'all', top: 10, skip: 5, force: 'true', author: 'me', search: 'fix' } },
-      },
-      { path: '/repos/repo%2Fa/pull-requests/pr%2F1' },
-      { path: '/repos/repo%2Fa/pull-requests/pr%2F1/threads' },
-      { path: '/repos/repo%2Fa/pull-requests/pr%2F1/reviewers' },
-      { path: '/repos/repo%2Fa/pull-requests/pr%2F1/commits' },
-      { path: '/repos/repo%2Fa/pull-requests/pr%2F1/diff' },
-      { path: '/repos/repo%2Fa/pull-requests/pr%2F1/commits' },
-    ]);
-  });
-
   it('lists and gets provider PR data through origin APIs with explicit workspace metadata', async () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);
@@ -287,12 +261,12 @@ describe('PullRequestsClient', () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);
 
-    await client.list('repo-a', { status: 'closed' });
-    await client.list('repo-a');
+    await client.listForOrigin('gh_owner_repo', { workspaceId: 'ws/a', repoId: 'repo/a', status: 'closed' });
+    await client.listForOrigin('gh_owner_repo', { workspaceId: 'ws/a' });
 
-    expect(adapter.calls[0].options).toMatchObject({ query: { status: 'closed' } });
+    expect(adapter.calls[0].options).toMatchObject({ query: { workspaceId: 'ws/a', repoId: 'repo/a', status: 'closed' } });
     expect(adapter.calls[0].options?.query?.force).toBeUndefined();
-    expect(adapter.calls[1].options).toMatchObject({ query: undefined });
+    expect(adapter.calls[1].options).toMatchObject({ query: { workspaceId: 'ws/a', repoId: undefined } });
   });
 
   it('forwards abort signal to all data methods', async () => {
@@ -300,13 +274,15 @@ describe('PullRequestsClient', () => {
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.list('r1', { status: 'open' }, { signal: controller.signal });
-    await client.get('r1', '10', { signal: controller.signal });
-    await client.getThreads('r1', '10', { signal: controller.signal });
-    await client.getReviewers('r1', '10', { signal: controller.signal });
-    await client.getCommits('r1', '10', { signal: controller.signal });
-    await client.getDiff('r1', '10', { signal: controller.signal });
-    await client.getCommits('r1', '10', { signal: controller.signal });
+    const options = { workspaceId: 'ws1', repoId: 'r1', signal: controller.signal };
+
+    await client.listForOrigin('gh_owner_repo', { workspaceId: 'ws1', repoId: 'r1', status: 'open' }, { signal: controller.signal });
+    await client.getForOrigin('gh_owner_repo', '10', options);
+    await client.getThreadsForOrigin('gh_owner_repo', '10', options);
+    await client.getReviewersForOrigin('gh_owner_repo', '10', options);
+    await client.getCommitsForOrigin('gh_owner_repo', '10', options);
+    await client.getDiffForOrigin('gh_owner_repo', '10', options);
+    await client.getChecksForOrigin('gh_owner_repo', '10', options);
 
     for (const call of adapter.calls) {
       expect(call.options?.signal).toBe(controller.signal);
@@ -317,13 +293,15 @@ describe('PullRequestsClient', () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);
 
-    await client.list('r1');
-    await client.get('r1', '1');
-    await client.getThreads('r1', '1');
-    await client.getReviewers('r1', '1');
-    await client.getCommits('r1', '1');
-    await client.getDiff('r1', '1');
-    await client.getCommits('r1', '1');
+    const options = { workspaceId: 'ws1', repoId: 'r1' };
+
+    await client.listForOrigin('gh_owner_repo', { workspaceId: 'ws1', repoId: 'r1' });
+    await client.getForOrigin('gh_owner_repo', '1', options);
+    await client.getThreadsForOrigin('gh_owner_repo', '1', options);
+    await client.getReviewersForOrigin('gh_owner_repo', '1', options);
+    await client.getCommitsForOrigin('gh_owner_repo', '1', options);
+    await client.getDiffForOrigin('gh_owner_repo', '1', options);
+    await client.getChecksForOrigin('gh_owner_repo', '1', options);
 
     for (const call of adapter.calls) {
       expect(call.options?.signal).toBeUndefined();
@@ -492,34 +470,6 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
-  it('autoClassifyTeam sends POST with workspace and loaded PR payload', async () => {
-    const adapter = createMockAdapter({ started: 1 });
-    const client = new PullRequestsClient(adapter);
-
-    await client.autoClassifyTeam('repo/a', {
-      workspaceId: 'ws/a',
-      pullRequests: [
-        { number: 42, status: 'open', headSha: 'abc123', author: { id: 'u1', displayName: 'Mona Dev' } },
-      ],
-    });
-
-    expect(adapter.calls).toEqual([
-      {
-        path: '/repos/repo%2Fa/pull-requests/team-auto-classification',
-        options: {
-          method: 'POST',
-          body: {
-            workspaceId: 'ws/a',
-            pullRequests: [
-              { number: 42, status: 'open', headSha: 'abc123', author: { id: 'u1', displayName: 'Mona Dev' } },
-            ],
-          },
-          signal: undefined,
-        },
-      },
-    ]);
-  });
-
   it('autoClassifyTeamForOrigin sends POST with origin metadata and loaded PR payload', async () => {
     const adapter = createMockAdapter({ started: 1 });
     const client = new PullRequestsClient(adapter);
@@ -606,9 +556,6 @@ describe('PullRequestsClient', () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);
 
-    expect(client.prFileDiffPath('repo/a', 'pr/1', 'src/foo.ts')).toBe(
-      '/api/repos/repo%2Fa/pull-requests/pr%2F1/diff/files/src%2Ffoo.ts',
-    );
     expect(client.prDiffPathForOrigin('gh_owner_repo', 'pr/1', {
       workspaceId: 'ws/a',
       repoId: 'repo/a',
@@ -625,20 +572,6 @@ describe('PullRequestsClient', () => {
   });
 
   // ── PR suggestions ──────────────────────────────────────────
-
-  it('getSuggestions sends GET to suggestions endpoint', async () => {
-    const adapter = createMockAdapter({ suggestions: [], rankedAt: null });
-    const client = new PullRequestsClient(adapter);
-
-    await client.getSuggestions('repo/a');
-
-    expect(adapter.calls).toEqual([
-      {
-        path: '/repos/repo%2Fa/pull-requests/suggestions',
-        options: { signal: undefined },
-      },
-    ]);
-  });
 
   it('getSuggestionsForOrigin sends GET to origin suggestions endpoint', async () => {
     const adapter = createMockAdapter({ suggestions: [], rankedAt: null });
@@ -659,20 +592,6 @@ describe('PullRequestsClient', () => {
           },
           signal: undefined,
         },
-      },
-    ]);
-  });
-
-  it('refreshSuggestions sends POST to suggestions/refresh endpoint', async () => {
-    const adapter = createMockAdapter({ suggestions: [{ prNumber: 1, score: 90 }], rankedAt: '2026-01-01' });
-    const client = new PullRequestsClient(adapter);
-
-    await client.refreshSuggestions('repo/a');
-
-    expect(adapter.calls).toEqual([
-      {
-        path: '/repos/repo%2Fa/pull-requests/suggestions/refresh',
-        options: { method: 'POST', signal: undefined },
       },
     ]);
   });
@@ -701,20 +620,6 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
-  it('refreshReviewHistory sends POST to review-history/refresh endpoint', async () => {
-    const adapter = createMockAdapter({ reviews: [], fetchedAt: '2026-01-01' });
-    const client = new PullRequestsClient(adapter);
-
-    await client.refreshReviewHistory('repo/a');
-
-    expect(adapter.calls).toEqual([
-      {
-        path: '/repos/repo%2Fa/pull-requests/review-history/refresh',
-        options: { method: 'POST', signal: undefined },
-      },
-    ]);
-  });
-
   it('refreshReviewHistoryForOrigin sends POST to origin review-history/refresh endpoint', async () => {
     const adapter = createMockAdapter({ reviews: [], fetchedAt: '2026-01-01' });
     const client = new PullRequestsClient(adapter);
@@ -739,32 +644,32 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
-  it('getSuggestions forwards abort signal', async () => {
+  it('getSuggestionsForOrigin forwards abort signal', async () => {
     const adapter = createMockAdapter({ suggestions: [], rankedAt: null });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.getSuggestions('r1', { signal: controller.signal });
+    await client.getSuggestionsForOrigin('gh_owner_repo', { workspaceId: 'ws1', signal: controller.signal });
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });
 
-  it('refreshSuggestions forwards abort signal', async () => {
+  it('refreshSuggestionsForOrigin forwards abort signal', async () => {
     const adapter = createMockAdapter({ suggestions: [], rankedAt: null });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.refreshSuggestions('r1', { signal: controller.signal });
+    await client.refreshSuggestionsForOrigin('gh_owner_repo', { workspaceId: 'ws1', signal: controller.signal });
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });
 
-  it('refreshReviewHistory forwards abort signal', async () => {
+  it('refreshReviewHistoryForOrigin forwards abort signal', async () => {
     const adapter = createMockAdapter({ reviews: [], fetchedAt: null });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.refreshReviewHistory('r1', { signal: controller.signal });
+    await client.refreshReviewHistoryForOrigin('gh_owner_repo', { workspaceId: 'ws1', signal: controller.signal });
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });
