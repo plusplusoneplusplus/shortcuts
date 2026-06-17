@@ -588,29 +588,39 @@ export class WorkItemsClient {
     });
   }
 
-  aiDraft(workspaceId: string, request: NewWorkItemAiDraftRequest): Promise<WorkItemAiGenerationResponse> {
-    return this.transport.request<WorkItemAiGenerationResponse>(path(workspaceId, '/ai-draft'), {
+  aiDraftForOrigin(
+    originId: string,
+    request: NewWorkItemAiDraftRequest,
+    options: WorkItemConcreteWorkspaceOptions,
+  ): Promise<WorkItemAiGenerationResponse> {
+    return this.transport.request<WorkItemAiGenerationResponse>(originPath(originId, '/ai-draft'), {
       method: 'POST',
-      body: { ...request },
+      body: withWorkspaceBody({ ...request }, options),
     });
   }
 
-  aiImprove(workspaceId: string, workItemId: string, request: ImproveWorkItemAiDraftRequest): Promise<WorkItemAiGenerationResponse> {
+  aiImproveForOrigin(
+    originId: string,
+    workItemId: string,
+    request: ImproveWorkItemAiDraftRequest,
+    options: WorkItemConcreteWorkspaceOptions,
+  ): Promise<WorkItemAiGenerationResponse> {
     return this.transport.request<WorkItemAiGenerationResponse>(
-      path(workspaceId, `/${encodePathSegment(workItemId)}/ai-draft`),
-      { method: 'POST', body: { ...request } },
+      originPath(originId, `/${encodePathSegment(workItemId)}/ai-draft`),
+      { method: 'POST', body: withWorkspaceBody({ ...request }, options) },
     );
   }
 
-  applyAiDraft(
-    workspaceId: string,
+  applyAiDraftForOrigin(
+    originId: string,
     workItemId: string,
     request: ApplyWorkItemAiDraftRequest,
+    originOptions: WorkItemConcreteWorkspaceOptions,
     options: Pick<CocRequestOptions, 'signal'> = {},
   ): Promise<ApplyWorkItemAiDraftResponse> {
     return this.transport.request<ApplyWorkItemAiDraftResponse>(
-      path(workspaceId, `/${encodePathSegment(workItemId)}/ai-draft/apply`),
-      { method: 'POST', body: { ...request }, ...options },
+      originPath(originId, `/${encodePathSegment(workItemId)}/ai-draft/apply`),
+      { method: 'POST', body: withWorkspaceBody({ ...request }, originOptions), ...options },
     );
   }
 }

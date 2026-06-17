@@ -439,15 +439,17 @@ The `ai-draft` generation endpoints are ephemeral — no data is persisted until
 the caller explicitly applies the generated content. The workflow
 `ai-draft/apply` endpoint is the direct apply path for saved local-only
 `work-item` shells and stores an immutable AI-authored plan/content version after
-checking the caller's base snapshot.
+checking the caller's base snapshot. All AI authoring routes are origin-scoped
+and require a concrete `workspaceId` in the body so the selected clone supplies
+generation context; workspace AI-draft aliases are not registered.
 
 Response shape: `{ kind: 'clarification', questions: string[], clarificationCount: number }` or `{ kind: 'draft', workItem: {...}, goal?: string, childTasks?: [...] }`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/workspaces/:id/work-items/ai-draft` | Generate a draft for a **new** work item from a prompt. Body: `{ prompt, type?, parentId?, clarificationAnswers?, clarificationCount? }`. Returns clarification (up to 3 rounds) or a draft. |
-| POST | `/api/workspaces/:id/work-items/:itemId/ai-draft` | Generate an **improvement** draft for an existing work item. Body: `{ prompt, targets?: ['fields','goal','childTasks'], clarificationAnswers?, clarificationCount? }`. Returns clarification or a draft. |
-| POST | `/api/workspaces/:id/work-items/:itemId/ai-draft/apply` | Explicitly generate and apply an AI draft to a saved local-only `work-item`, creating the next immutable plan/content version. Requires both `workItems.aiAuthoring.enabled` and `workItems.workflow.enabled`; body requires `{ prompt, baseUpdatedAt, baseContentVersion?, targets?, clarificationAnswers?, clarificationCount?, summary?, reason? }`. The server checks the base snapshot before and after AI generation and returns `409 WORK_ITEM_AI_DRAFT_STALE` instead of overwriting newer edits. |
+| POST | `/api/origins/:originId/work-items/ai-draft` | Generate a draft for a **new** work item from a prompt. Body requires `workspaceId` plus `{ prompt, type?, parentId?, clarificationAnswers?, clarificationCount? }`. Returns clarification (up to 3 rounds) or a draft. |
+| POST | `/api/origins/:originId/work-items/:itemId/ai-draft` | Generate an **improvement** draft for an existing work item stored under the origin. Body requires `workspaceId` plus `{ prompt, targets?: ['fields','goal','childTasks'], clarificationAnswers?, clarificationCount? }`. Returns clarification or a draft. |
+| POST | `/api/origins/:originId/work-items/:itemId/ai-draft/apply` | Explicitly generate and apply an AI draft to a saved local-only `work-item`, creating the next immutable plan/content version under the origin. Requires both `workItems.aiAuthoring.enabled` and `workItems.workflow.enabled`; body requires `workspaceId` plus `{ prompt, baseUpdatedAt, baseContentVersion?, targets?, clarificationAnswers?, clarificationCount?, summary?, reason? }`. The server checks the base snapshot before and after AI generation and returns `409 WORK_ITEM_AI_DRAFT_STALE` instead of overwriting newer edits. |
 
 ## Seen State
 

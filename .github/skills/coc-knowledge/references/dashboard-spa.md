@@ -870,8 +870,8 @@ saved local-only `work-item` details show **Draft with AI** for items without
 plan content and **Revise with AI** for items with an existing plan. The action is
 hidden for remote-backed items and non-`work-item` types, disabled while the
 inline draft is dirty, opens `WorkItemAiDraftApplyDialog`, and auto-starts the
-typed `workItems.applyAiDraft(...)` call with the loaded `updatedAt` plus current
-content-version guard. The dialog surfaces generating, clarification, retry,
+typed `workItems.applyAiDraftForOrigin(...)` call with `workspaceId`, the loaded
+`updatedAt`, and current content-version guard. The dialog surfaces generating, clarification, retry,
 failure, and cancel states; successful apply refreshes the detail and updates the
 Work Items context with the returned immutable AI-authored version.
 

@@ -596,11 +596,11 @@ describe('WorkItemsClient mock coverage', () => {
     ]);
   });
 
-  it('sends explicit AI draft apply requests with optimistic base metadata', async () => {
+  it('sends explicit origin-scoped AI draft apply requests with optimistic base metadata', async () => {
     const adapter = createMockAdapter({ kind: 'applied', version: 2 });
     const client = new WorkItemsClient(adapter);
 
-    await client.applyAiDraft('repo/a', 'wi/1', {
+    await client.applyAiDraftForOrigin('gh_owner_repo', 'wi/1', {
       prompt: 'Draft implementation details',
       targets: ['fields', 'goal'],
       clarificationAnswers: ['Use the existing dashboard'],
@@ -609,11 +609,11 @@ describe('WorkItemsClient mock coverage', () => {
       baseContentVersion: 1,
       summary: 'AI draft v2',
       reason: 'User clicked Draft with AI',
-    });
+    }, { workspaceId: 'repo/a' });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/workspaces/repo%2Fa/work-items/wi%2F1/ai-draft/apply',
+        path: '/origins/gh_owner_repo/work-items/wi%2F1/ai-draft/apply',
         options: {
           method: 'POST',
           body: {
@@ -625,6 +625,7 @@ describe('WorkItemsClient mock coverage', () => {
             baseContentVersion: 1,
             summary: 'AI draft v2',
             reason: 'User clicked Draft with AI',
+            workspaceId: 'repo/a',
           },
         },
       },

@@ -211,6 +211,13 @@ all have their own `references/*.md`.
   or `client.workItems.*ForOrigin(...)`, always passing `workspaceId` so queue
   routing, git/PR operations, task files, and comment resolution use the
   selected workspace while execution history and broadcasts write to the origin.
+- **Work-item AI authoring routes** are origin-scoped and require a concrete
+  clone for generation context. New callers must use
+  `/api/origins/:originId/work-items/ai-draft`,
+  `/api/origins/:originId/work-items/:itemId/ai-draft`, or
+  `/api/origins/:originId/work-items/:itemId/ai-draft/apply` through
+  `client.workItems.*ForOrigin(...)`, always passing `workspaceId`; workspace
+  AI-draft route aliases are not registered.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
   `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
   before `tsc`, clean `dist` before emitting, and generate

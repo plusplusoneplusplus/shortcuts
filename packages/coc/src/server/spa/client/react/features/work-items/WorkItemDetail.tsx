@@ -1914,6 +1914,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                 <WorkItemAiDraftApplyDialog
                     open={showAiDraftApplyDialog}
                     workspaceId={workspaceId}
+                    originId={workItemOriginId}
                     item={{
                         id: item.id,
                         title: item.title,

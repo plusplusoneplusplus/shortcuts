@@ -12,7 +12,7 @@ import type {
     GenerateImproveItemDraftFn,
     AiDraftResponse,
 } from '../../../src/server/routes/work-item-ai-routes';
-import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import { FileWorkItemStore, createWorkItemStorageScopeResolver } from '../../../src/server/work-items/work-item-store';
 
 // ============================================================================
 // Test helpers
@@ -25,14 +25,36 @@ let baseUrl: string;
 let aiAuthoringEnabled = false;
 let workflowEnabled = false;
 
+const REPO_ID = 'test-workspace';
+const ORIGIN_ID = `local_${REPO_ID}`;
+const AI_DRAFT_PATH = `/api/origins/${ORIGIN_ID}/work-items/ai-draft`;
+
+function aiImprovePath(workItemId: string): string {
+    return `/api/origins/${ORIGIN_ID}/work-items/${encodeURIComponent(workItemId)}/ai-draft`;
+}
+
+function aiApplyPath(workItemId: string): string {
+    return `/api/origins/${ORIGIN_ID}/work-items/${encodeURIComponent(workItemId)}/ai-draft/apply`;
+}
+
+function testProcessStore() {
+    const workspaceIds = [REPO_ID, 'workspace-A', 'workspace-B'];
+    return {
+        getWorkspaces: async () => workspaceIds.map(id => ({ id, name: id })),
+        updateWorkspace: async (id: string, updates: Record<string, unknown>) => ({ id, name: id, ...updates }),
+    } as any;
+}
+
 function makeServer(
     generateNewItemDraft?: GenerateNewItemDraftFn,
     generateImproveItemDraft?: GenerateImproveItemDraftFn,
 ): http.Server {
     const routes: Route[] = [];
+    const processStore = testProcessStore();
     registerWorkItemAiRoutes({
         routes,
         workItemStore: store,
+        processStore,
         getAiAuthoringEnabled: () => aiAuthoringEnabled,
         getWorkflowEnabled: () => workflowEnabled,
         getHierarchyEnabled: () => false,
@@ -40,7 +62,7 @@ function makeServer(
         generateImproveItemDraft,
     });
     // Also register CRUD routes so we can create test fixtures
-    registerWorkItemRoutes({ routes, workItemStore: store, processStore: { getWorkspaces: async () => [] } as any });
+    registerWorkItemRoutes({ routes, workItemStore: store, processStore });
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
@@ -85,12 +107,21 @@ async function request(
             });
         });
         req.on('error', reject);
-        if (body) req.write(JSON.stringify(body));
+        const requestBody = (
+            method === 'POST' &&
+            urlPath.startsWith(`/api/origins/${ORIGIN_ID}/work-items`) &&
+            urlPath.includes('/ai-draft') &&
+            body &&
+            typeof body === 'object' &&
+            !Array.isArray(body) &&
+            !Object.prototype.hasOwnProperty.call(body, 'workspaceId')
+        )
+            ? { ...(body as Record<string, unknown>), workspaceId: REPO_ID }
+            : body;
+        if (requestBody) req.write(JSON.stringify(requestBody));
         req.end();
     });
 }
-
-const REPO_ID = 'test-workspace';
 
 const DRAFT_RESPONSE: AiDraftResponse = {
     kind: 'draft',
@@ -118,7 +149,10 @@ describe('Work Item AI Routes', () => {
         aiAuthoringEnabled = false;
         workflowEnabled = false;
         tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-ai-routes-'));
-        store = new FileWorkItemStore({ dataDir: tmpDir });
+        store = new FileWorkItemStore({
+            dataDir: tmpDir,
+            scopeResolver: createWorkItemStorageScopeResolver(testProcessStore()),
+        });
         server = makeServer(
             async () => DRAFT_RESPONSE,
             async () => DRAFT_RESPONSE,
@@ -137,7 +171,7 @@ describe('Work Item AI Routes', () => {
 
     describe('Feature flag disabled (default)', () => {
         it('POST /ai-draft (new) returns 403 when flag is off', async () => {
-            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {
+            const res = await request('POST', AI_DRAFT_PATH, {
                 prompt: 'Build a login page',
             });
             expect(res.status).toBe(403);
@@ -145,11 +179,18 @@ describe('Work Item AI Routes', () => {
         });
 
         it('POST /:id/ai-draft (improve) returns 403 when flag is off', async () => {
-            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/fake-id/ai-draft`, {
+            const res = await request('POST', aiImprovePath("fake-id"), {
                 prompt: 'Improve description',
             });
             expect(res.status).toBe(403);
             expect(res.body.error).toMatch(/feature flag/i);
+        });
+
+        it('does not register workspace-scoped AI draft aliases', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {
+                prompt: 'Build a login page',
+            });
+            expect(res.status).toBe(404);
         });
     });
 
@@ -162,21 +203,30 @@ describe('Work Item AI Routes', () => {
         // POST /ai-draft — new work item
         // -----------------------------------------------------------------------
 
-        describe('POST /api/workspaces/:id/work-items/ai-draft', () => {
+        describe('POST /api/origins/:originId/work-items/ai-draft', () => {
             it('returns 400 when prompt is missing', async () => {
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {});
+                const res = await request('POST', AI_DRAFT_PATH, {});
                 expect(res.status).toBe(400);
             });
 
+            it('returns 400 when origin AI routes omit workspaceId', async () => {
+                const res = await request('POST', AI_DRAFT_PATH, {
+                    prompt: 'Build a login page',
+                    workspaceId: '',
+                });
+                expect(res.status).toBe(400);
+                expect(res.body.error).toMatch(/workspaceId/i);
+            });
+
             it('returns 400 when prompt is empty string', async () => {
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {
+                const res = await request('POST', AI_DRAFT_PATH, {
                     prompt: '   ',
                 });
                 expect(res.status).toBe(400);
             });
 
             it('returns 400 for invalid work item type', async () => {
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {
+                const res = await request('POST', AI_DRAFT_PATH, {
                     prompt: 'Build a login page',
                     type: 'invalid-type',
                 });
@@ -184,7 +234,7 @@ describe('Work Item AI Routes', () => {
             });
 
             it('returns 400 for hierarchy type when hierarchy flag is off', async () => {
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {
+                const res = await request('POST', AI_DRAFT_PATH, {
                     prompt: 'Build a login page',
                     type: 'epic',
                 });
@@ -197,14 +247,14 @@ describe('Work Item AI Routes', () => {
                 server = makeServer(undefined, undefined);
                 await startServer();
 
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {
+                const res = await request('POST', AI_DRAFT_PATH, {
                     prompt: 'Build a login page',
                 });
                 expect(res.status).toBe(500);
             });
 
             it('returns a draft response when generator returns draft', async () => {
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {
+                const res = await request('POST', AI_DRAFT_PATH, {
                     prompt: 'Build a login page',
                 });
                 expect(res.status).toBe(200);
@@ -218,7 +268,7 @@ describe('Work Item AI Routes', () => {
                 server = makeServer(async () => CLARIFICATION_RESPONSE, async () => DRAFT_RESPONSE);
                 await startServer();
 
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {
+                const res = await request('POST', AI_DRAFT_PATH, {
                     prompt: 'Build a login page',
                     clarificationCount: 0,
                 });
@@ -236,7 +286,7 @@ describe('Work Item AI Routes', () => {
                 );
                 await startServer();
 
-                await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {
+                await request('POST', AI_DRAFT_PATH, {
                     prompt: 'Build a login page',
                     clarificationCount: 1,
                     clarificationAnswers: ['Internal users'],
@@ -254,7 +304,7 @@ describe('Work Item AI Routes', () => {
                 );
                 await startServer();
 
-                await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {
+                await request('POST', AI_DRAFT_PATH, {
                     prompt: 'Build a login page',
                 });
                 expect(capturedCtx[0].workspaceId).toBe(REPO_ID);
@@ -262,7 +312,7 @@ describe('Work Item AI Routes', () => {
 
             it('accepts valid types (work-item, bug, goal)', async () => {
                 for (const type of ['work-item', 'bug', 'goal'] as const) {
-                    const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {
+                    const res = await request('POST', AI_DRAFT_PATH, {
                         prompt: 'Build a login page',
                         type,
                     });
@@ -281,7 +331,7 @@ describe('Work Item AI Routes', () => {
 
                 // At the last allowed round (MAX - 1), if generator still returns clarification
                 // the server should reject it (500 — generator violated the contract)
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/ai-draft`, {
+                const res = await request('POST', AI_DRAFT_PATH, {
                     prompt: 'Build a login page',
                     clarificationCount: MAX_CLARIFICATION_ROUNDS - 1,
                 });
@@ -293,7 +343,7 @@ describe('Work Item AI Routes', () => {
         // POST /:workItemId/ai-draft — improve existing work item
         // -----------------------------------------------------------------------
 
-        describe('POST /api/workspaces/:id/work-items/:workItemId/ai-draft', () => {
+        describe('POST /api/origins/:originId/work-items/:workItemId/ai-draft', () => {
             let workItemId: string;
 
             beforeEach(async () => {
@@ -307,19 +357,19 @@ describe('Work Item AI Routes', () => {
             });
 
             it('returns 404 for non-existent work item', async () => {
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/nonexistent/ai-draft`, {
+                const res = await request('POST', aiImprovePath("nonexistent"), {
                     prompt: 'Improve this',
                 });
                 expect(res.status).toBe(404);
             });
 
             it('returns 400 when prompt is missing', async () => {
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft`, {});
+                const res = await request('POST', aiImprovePath(workItemId), {});
                 expect(res.status).toBe(400);
             });
 
             it('returns 400 for invalid targets', async () => {
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft`, {
+                const res = await request('POST', aiImprovePath(workItemId), {
                     prompt: 'Improve',
                     targets: ['invalid'],
                 });
@@ -332,14 +382,14 @@ describe('Work Item AI Routes', () => {
                 server = makeServer(undefined, undefined);
                 await startServer();
 
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft`, {
+                const res = await request('POST', aiImprovePath(workItemId), {
                     prompt: 'Improve this work item',
                 });
                 expect(res.status).toBe(500);
             });
 
             it('returns a draft response for an existing work item', async () => {
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft`, {
+                const res = await request('POST', aiImprovePath(workItemId), {
                     prompt: 'Improve description and add a plan',
                 });
                 expect(res.status).toBe(200);
@@ -355,7 +405,7 @@ describe('Work Item AI Routes', () => {
                 );
                 await startServer();
 
-                await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft`, {
+                await request('POST', aiImprovePath(workItemId), {
                     prompt: 'Improve it',
                     targets: ['fields', 'goal'],
                 });
@@ -374,14 +424,14 @@ describe('Work Item AI Routes', () => {
                 );
                 await startServer();
 
-                await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft`, {
+                await request('POST', aiImprovePath(workItemId), {
                     prompt: 'Improve it',
                 });
                 expect(capturedCtx[0].targets).toEqual(['fields', 'goal']);
             });
 
             it('accepts all valid targets', async () => {
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft`, {
+                const res = await request('POST', aiImprovePath(workItemId), {
                     prompt: 'Improve it',
                     targets: ['fields', 'goal', 'childTasks'],
                 });
@@ -396,7 +446,7 @@ describe('Work Item AI Routes', () => {
                 );
                 await startServer();
 
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft`, {
+                const res = await request('POST', aiImprovePath(workItemId), {
                     prompt: 'Improve it',
                 });
                 expect(res.status).toBe(500);
@@ -408,7 +458,7 @@ describe('Work Item AI Routes', () => {
         // POST /:workItemId/ai-draft/apply — explicit workflow draft application
         // -----------------------------------------------------------------------
 
-        describe('POST /api/workspaces/:id/work-items/:workItemId/ai-draft/apply', () => {
+        describe('POST /api/origins/:originId/work-items/:workItemId/ai-draft/apply', () => {
             let workItemId: string;
             let createdAtBase: string;
 
@@ -425,7 +475,7 @@ describe('Work Item AI Routes', () => {
             it('returns 403 when workflow flag is disabled', async () => {
                 workflowEnabled = false;
 
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                const res = await request('POST', aiApplyPath(workItemId), {
                     prompt: 'Draft this item',
                     baseUpdatedAt: createdAtBase,
                     baseContentVersion: null,
@@ -438,7 +488,7 @@ describe('Work Item AI Routes', () => {
             it('applies an AI draft to a title-only local work-item as immutable v1', async () => {
                 workflowEnabled = true;
 
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                const res = await request('POST', aiApplyPath(workItemId), {
                     prompt: 'Draft this item',
                     baseUpdatedAt: createdAtBase,
                     baseContentVersion: null,
@@ -469,7 +519,7 @@ describe('Work Item AI Routes', () => {
                     currentContentVersion: 1,
                 });
 
-                const versions = await store.getPlanVersions(workItemId);
+                const versions = await store.getPlanVersions(workItemId, ORIGIN_ID);
                 expect(versions).toHaveLength(1);
                 expect(versions[0]).toMatchObject({ version: 1, content: DRAFT_RESPONSE.goal, source: 'ai' });
             });
@@ -485,7 +535,7 @@ describe('Work Item AI Routes', () => {
                 const plannedId = planned.body.id;
                 const current = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${plannedId}`);
 
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${plannedId}/ai-draft/apply`, {
+                const res = await request('POST', aiApplyPath(plannedId), {
                     prompt: 'Revise the plan',
                     baseUpdatedAt: current.body.updatedAt,
                     baseContentVersion: 1,
@@ -503,7 +553,7 @@ describe('Work Item AI Routes', () => {
                     source: 'ai',
                 });
 
-                const versions = await store.getPlanVersions(plannedId);
+                const versions = await store.getPlanVersions(plannedId, ORIGIN_ID);
                 expect(versions.map(version => version.version)).toEqual([1, 2]);
                 expect(versions[0].content).toBe('## Original Plan');
                 expect(versions[1].content).toBe(DRAFT_RESPONSE.goal);
@@ -515,7 +565,7 @@ describe('Work Item AI Routes', () => {
                 server = makeServer(async () => DRAFT_RESPONSE, async () => CLARIFICATION_RESPONSE);
                 await startServer();
 
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                const res = await request('POST', aiApplyPath(workItemId), {
                     prompt: 'Draft this item',
                     baseUpdatedAt: createdAtBase,
                     baseContentVersion: null,
@@ -523,7 +573,7 @@ describe('Work Item AI Routes', () => {
 
                 expect(res.status).toBe(200);
                 expect(res.body.kind).toBe('clarification');
-                await expect(store.getPlanVersions(workItemId)).resolves.toEqual([]);
+                await expect(store.getPlanVersions(workItemId, ORIGIN_ID)).resolves.toEqual([]);
             });
 
             it('rejects stale base snapshots before invoking the generator', async () => {
@@ -538,7 +588,7 @@ describe('Work Item AI Routes', () => {
                 });
                 expect(updated.status).toBe(200);
 
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                const res = await request('POST', aiApplyPath(workItemId), {
                     prompt: 'Draft this item',
                     baseUpdatedAt: createdAtBase,
                     baseContentVersion: null,
@@ -552,7 +602,7 @@ describe('Work Item AI Routes', () => {
             it('rejects missing optimistic base metadata', async () => {
                 workflowEnabled = true;
 
-                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                const res = await request('POST', aiApplyPath(workItemId), {
                     prompt: 'Draft this item',
                 });
 
@@ -563,7 +613,7 @@ describe('Work Item AI Routes', () => {
             it('rejects unsupported targets that cannot be applied as a plan version', async () => {
                 workflowEnabled = true;
 
-                const fieldsOnly = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                const fieldsOnly = await request('POST', aiApplyPath(workItemId), {
                     prompt: 'Draft fields only',
                     targets: ['fields'],
                     baseUpdatedAt: createdAtBase,
@@ -572,7 +622,7 @@ describe('Work Item AI Routes', () => {
                 expect(fieldsOnly.status).toBe(400);
                 expect(fieldsOnly.body.error).toMatch(/goal target/i);
 
-                const childTasks = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${workItemId}/ai-draft/apply`, {
+                const childTasks = await request('POST', aiApplyPath(workItemId), {
                     prompt: 'Draft tasks',
                     targets: ['fields', 'goal', 'childTasks'],
                     baseUpdatedAt: createdAtBase,
@@ -590,7 +640,7 @@ describe('Work Item AI Routes', () => {
                     type: 'goal',
                 });
                 expect(goal.status).toBe(201);
-                const goalApply = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${goal.body.id}/ai-draft/apply`, {
+                const goalApply = await request('POST', aiApplyPath(goal.body.id), {
                     prompt: 'Draft this goal',
                     baseUpdatedAt: goal.body.updatedAt,
                     baseContentVersion: null,
@@ -600,7 +650,7 @@ describe('Work Item AI Routes', () => {
                 const now = '2026-01-01T00:00:00.000Z';
                 await store.addWorkItem({
                     id: 'remote-work-item',
-                    repoId: REPO_ID,
+                    repoId: ORIGIN_ID,
                     title: 'Remote item',
                     description: '',
                     status: 'created',
@@ -610,7 +660,7 @@ describe('Work Item AI Routes', () => {
                     source: 'manual',
                     githubMirror: { issueNumber: 123 },
                 });
-                const remoteApply = await request('POST', `/api/workspaces/${REPO_ID}/work-items/remote-work-item/ai-draft/apply`, {
+                const remoteApply = await request('POST', aiApplyPath("remote-work-item"), {
                     prompt: 'Draft this remote item',
                     baseUpdatedAt: now,
                     baseContentVersion: null,
@@ -635,8 +685,9 @@ describe('Work Item AI Routes', () => {
                 const itemId = createRes.body.id;
 
                 // Try to draft from workspace-B — should 404
-                const res = await request('POST', `/api/workspaces/workspace-B/work-items/${itemId}/ai-draft`, {
+                const res = await request('POST', `/api/origins/local_workspace-b/work-items/${itemId}/ai-draft`, {
                     prompt: 'Improve it',
+                    workspaceId: 'workspace-B',
                 });
                 expect(res.status).toBe(404);
             });

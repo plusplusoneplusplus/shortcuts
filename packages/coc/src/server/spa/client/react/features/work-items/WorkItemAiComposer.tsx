@@ -178,20 +178,20 @@ export function WorkItemAiComposer({
             let resp: WorkItemAiGenerationResponse;
 
             if (mode === 'create') {
-                resp = await cloneClient.workItems.aiDraft(workspaceId, {
+                resp = await cloneClient.workItems.aiDraftForOrigin(workItemOriginId, {
                     prompt: prompt.trim(),
                     type: (itemType as WorkItemType) ?? 'work-item',
                     parentId: parentId ?? undefined,
                     clarificationAnswers: clarifyAnswers.length > 0 ? clarifyAnswers : undefined,
                     clarificationCount: effectiveClarifyCount,
-                });
+                }, { workspaceId });
             } else {
-                resp = await cloneClient.workItems.aiImprove(workspaceId, existingItem!.id, {
+                resp = await cloneClient.workItems.aiImproveForOrigin(workItemOriginId, existingItem!.id, {
                     prompt: prompt.trim(),
                     targets: ['fields', 'goal', 'childTasks'],
                     clarificationAnswers: clarifyAnswers.length > 0 ? clarifyAnswers : undefined,
                     clarificationCount: effectiveClarifyCount,
-                });
+                }, { workspaceId });
             }
 
             if (resp.kind === 'clarification') {
@@ -207,7 +207,7 @@ export function WorkItemAiComposer({
             // Restore the previous phase so the user can retry
             setPhase(clarifyCount > 0 ? 'clarifying' : 'idle');
         }
-    }, [prompt, mode, workspaceId, existingItem, itemType, parentId, clarifyAnswers, clarifyCount, applyDraft, cloneClient]);
+    }, [prompt, mode, workspaceId, workItemOriginId, existingItem, itemType, parentId, clarifyAnswers, clarifyCount, applyDraft, cloneClient]);
 
     // Persist the approved draft via the standard create/update/plan routes
     const handleApprove = useCallback(async () => {

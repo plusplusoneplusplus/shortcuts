@@ -6,19 +6,12 @@ describe('WorkItemsClient', () => {
   it('encodes workspace and work item IDs in path segments', async () => {
     const adapter = createMockAdapter({});
     const client = new WorkItemsClient(adapter);
-    const controller = new AbortController();
 
     await client.list('repo/a', { status: ['created', 'planning'], tags: ['x', 'y'] });
     await client.create('repo/a', { title: 'Task', description: 'Do it', priority: 'normal' });
     await client.updatePlan('repo/a', 'wi/1', 'plan');
     await client.comparePlanVersions('repo/a', 'wi/1', 1, 2);
     await client.restorePlanVersion('repo/a', 'wi/1', 1, { summary: 'Restore v1' });
-    await client.applyAiDraft(
-      'repo/a',
-      'wi/1',
-      { prompt: 'Draft it', baseUpdatedAt: '2026-01-01T00:00:00.000Z', baseContentVersion: null },
-      { signal: controller.signal },
-    );
     await client.execute('repo/a', 'wi/1', { model: 'm', executionMode: 'ralph' });
     await client.submitPullRequest('repo/a', 'wi/1', { changeId: 'change/1', branchName: 'coc/wi-1' });
     await client.startAiReview('repo/a', 'wi/1', { model: 'review-model' });
@@ -52,82 +45,74 @@ describe('WorkItemsClient', () => {
       options: { method: 'POST', body: { summary: 'Restore v1' } },
     });
     expect(adapter.calls[5]).toMatchObject({
-      path: '/workspaces/repo%2Fa/work-items/wi%2F1/ai-draft/apply',
-      options: {
-        method: 'POST',
-        body: { prompt: 'Draft it', baseUpdatedAt: '2026-01-01T00:00:00.000Z', baseContentVersion: null },
-        signal: controller.signal,
-      },
-    });
-    expect(adapter.calls[6]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/execute',
       options: { method: 'POST', body: { model: 'm', executionMode: 'ralph' } },
     });
-    expect(adapter.calls[7]).toMatchObject({
+    expect(adapter.calls[6]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/submit-pr',
       options: { method: 'POST', body: { changeId: 'change/1', branchName: 'coc/wi-1' } },
     });
-    expect(adapter.calls[8]).toMatchObject({
+    expect(adapter.calls[7]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/ai-review',
       options: { method: 'POST', body: { model: 'review-model' } },
     });
-    expect(adapter.calls[9]).toMatchObject({
+    expect(adapter.calls[8]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/resolve-comments',
       options: { method: 'POST', body: { type: 'commit', commitSha: 'abc123' } },
     });
-    expect(adapter.calls[10]).toEqual({
+    expect(adapter.calls[9]).toEqual({
       path: '/workspaces/repo%2Fa/work-item-chat-bindings',
+      options: undefined,
+    });
+    expect(adapter.calls[10]).toEqual({
+      path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
       options: undefined,
     });
     expect(adapter.calls[11]).toEqual({
-      path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
-      options: undefined,
-    });
-    expect(adapter.calls[12]).toEqual({
       path: '/workspaces/repo%2Fa/work-item-chat-bindings',
       options: { method: 'POST', body: { workItemId: 'wi/1', taskId: 'task/1' } },
     });
-    expect(adapter.calls[13]).toEqual({
+    expect(adapter.calls[12]).toEqual({
       path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
       options: { method: 'DELETE' },
     });
-    expect(adapter.calls[14]).toEqual({
+    expect(adapter.calls[13]).toEqual({
       path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1/fresh',
       options: { method: 'POST', body: {} },
     });
-    expect(adapter.calls[15]).toEqual({
+    expect(adapter.calls[14]).toEqual({
       path: '/origins/gh_owner%2Frepo/work-item-chat-bindings',
+      options: undefined,
+    });
+    expect(adapter.calls[15]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-item-chat-bindings/wi%2F1',
       options: undefined,
     });
     expect(adapter.calls[16]).toEqual({
-      path: '/origins/gh_owner%2Frepo/work-item-chat-bindings/wi%2F1',
-      options: undefined,
-    });
-    expect(adapter.calls[17]).toEqual({
       path: '/origins/gh_owner%2Frepo/work-item-chat-bindings',
       options: { method: 'POST', body: { workItemId: 'wi/1', taskId: 'task/1' } },
     });
-    expect(adapter.calls[18]).toEqual({
+    expect(adapter.calls[17]).toEqual({
       path: '/origins/gh_owner%2Frepo/work-item-chat-bindings/wi%2F1',
       options: { method: 'DELETE' },
     });
-    expect(adapter.calls[19]).toEqual({
+    expect(adapter.calls[18]).toEqual({
       path: '/origins/gh_owner%2Frepo/work-item-chat-bindings/wi%2F1/fresh',
       options: { method: 'POST', body: {}, query: { workspaceId: 'repo/a' } },
     });
-    expect(adapter.calls[20]).toEqual({
+    expect(adapter.calls[19]).toEqual({
       path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/execute',
       options: { method: 'POST', body: { model: 'm', executionMode: 'ralph', workspaceId: 'repo/a' } },
     });
-    expect(adapter.calls[21]).toEqual({
+    expect(adapter.calls[20]).toEqual({
       path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/submit-pr',
       options: { method: 'POST', body: { changeId: 'change/1', workspaceId: 'repo/a' } },
     });
-    expect(adapter.calls[22]).toEqual({
+    expect(adapter.calls[21]).toEqual({
       path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/ai-review',
       options: { method: 'POST', body: { model: 'review-model', workspaceId: 'repo/a' } },
     });
-    expect(adapter.calls[23]).toEqual({
+    expect(adapter.calls[22]).toEqual({
       path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/resolve-comments',
       options: { method: 'POST', body: { type: 'commit', commitSha: 'abc123', workspaceId: 'repo/a' } },
     });
@@ -136,6 +121,7 @@ describe('WorkItemsClient', () => {
   it('encodes origin IDs in origin-scoped Work Item paths', async () => {
     const adapter = createMockAdapter({});
     const client = new WorkItemsClient(adapter);
+    const controller = new AbortController();
 
     await client.listForOrigin('gh_owner/repo', { status: ['created', 'planning'], tags: ['x', 'y'] });
     await client.createForOrigin('gh_owner/repo', { title: 'Task' }, { workspaceId: 'repo/a' });
@@ -150,6 +136,15 @@ describe('WorkItemsClient', () => {
     await client.syncStatusForOrigin('gh_owner/repo', { workspaceId: 'repo/a' }, 'github');
     await client.importFromGitHubForOrigin('gh_owner/repo', { issueNumber: 42 }, { workspaceId: 'repo/a' });
     await client.convertLocalEpicToGitHubForOrigin('gh_owner/repo', 'wi/1', { workspaceId: 'repo/a' });
+    await client.aiDraftForOrigin('gh_owner/repo', { prompt: 'Draft it' }, { workspaceId: 'repo/a' });
+    await client.aiImproveForOrigin('gh_owner/repo', 'wi/1', { prompt: 'Improve it' }, { workspaceId: 'repo/a' });
+    await client.applyAiDraftForOrigin(
+      'gh_owner/repo',
+      'wi/1',
+      { prompt: 'Apply it', baseUpdatedAt: '2026-01-01T00:00:00.000Z', baseContentVersion: null },
+      { workspaceId: 'repo/a' },
+      { signal: controller.signal },
+    );
 
     expect(adapter.calls[0]).toMatchObject({
       path: '/origins/gh_owner%2Frepo/work-items',
@@ -208,6 +203,27 @@ describe('WorkItemsClient', () => {
     expect(adapter.calls[12]).toEqual({
       path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/convert-to-github',
       options: { method: 'POST', query: { workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[13]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/ai-draft',
+      options: { method: 'POST', body: { prompt: 'Draft it', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[14]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/ai-draft',
+      options: { method: 'POST', body: { prompt: 'Improve it', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[15]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/ai-draft/apply',
+      options: {
+        method: 'POST',
+        body: {
+          prompt: 'Apply it',
+          baseUpdatedAt: '2026-01-01T00:00:00.000Z',
+          baseContentVersion: null,
+          workspaceId: 'repo/a',
+        },
+        signal: controller.signal,
+      },
     });
   });
 });

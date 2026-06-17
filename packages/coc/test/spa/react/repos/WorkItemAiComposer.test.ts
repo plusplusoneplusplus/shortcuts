@@ -174,12 +174,12 @@ describe('WorkItemAiComposer', () => {
     });
 
     describe('calls the correct API methods', () => {
-        it('calls workItems.aiDraft for create mode', () => {
-            expect(src).toContain('workItems.aiDraft(workspaceId');
+        it('calls workItems.aiDraftForOrigin for create mode', () => {
+            expect(src).toContain('workItems.aiDraftForOrigin(workItemOriginId');
         });
 
-        it('calls workItems.aiImprove for improve mode', () => {
-            expect(src).toContain('workItems.aiImprove(workspaceId');
+        it('calls workItems.aiImproveForOrigin for improve mode', () => {
+            expect(src).toContain('workItems.aiImproveForOrigin(workItemOriginId');
         });
     });
 

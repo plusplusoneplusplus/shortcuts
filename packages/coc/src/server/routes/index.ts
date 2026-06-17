@@ -925,6 +925,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkItemAiRoutes({
         routes,
         workItemStore,
+        processStore: store,
         getAiAuthoringEnabled: getWorkItemsAiAuthoringEnabled,
         getWorkflowEnabled: getWorkItemsWorkflowEnabled,
         getHierarchyEnabled: getWorkItemsHierarchyEnabled,
