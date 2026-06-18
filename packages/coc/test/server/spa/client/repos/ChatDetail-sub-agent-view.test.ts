@@ -50,6 +50,15 @@ describe('ChatDetail sub-agent drill-in wiring', () => {
         expect(source).toMatch(/onSelectAgent=\{handleSelectAgent\}/);
     });
 
+    it('routes the view from the selection so the orchestrator returns to the thread', () => {
+        // handleSelectAgent(null) (Orchestrator breadcrumb / cascade item /
+        // canvas root) must switch the view back to the thread instead of
+        // leaving the user on the agents canvas — delegated to the pure
+        // viewForAgentSelection helper (covered directly in ChatViewToggle.test).
+        expect(source).toContain('viewForAgentSelection');
+        expect(source).toMatch(/setView\(viewForAgentSelection\(agentId\)\)/);
+    });
+
     it('wires the canvas inspector action through the same selected-agent detail path', () => {
         expect(source).toMatch(/const\s+openAgentDetail\s*=\s*useCallback/);
         expect(source).toContain('handleSelectAgent(node.isRoot ? null : node.id)');
