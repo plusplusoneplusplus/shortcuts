@@ -386,8 +386,9 @@ same `handleSelectAgent` path as the cascade menu so the read-only
 `AgentCascadeMenu` lists the tree's depth levels (`flattenAgentLevels` → L0…Ln,
 only existing levels) in a left pane and that level's agents on the right;
 picking an agent opens its conversation **in-place, read-only**
-(`SubAgentDetailView`), picking the orchestrator (L0) returns to the
-thread/canvas. The selected sub-agent rides the hash as `?agent=<id>` alongside
+(`SubAgentDetailView`), picking the orchestrator (L0) returns to the main
+thread (`handleSelectAgent` derives the view via `viewForAgentSelection`: a
+sub-agent id → `agents` canvas, the orchestrator/null → `thread`). The selected sub-agent rides the hash as `?agent=<id>` alongside
 `?view=agents` (`chatAgentHash.ts`), composed into one `replaceState`; a
 stale/invalid id clears itself and resets on chat switch (parity with
 `effectiveView`). `buildSubAgentTurns(turns, id)` reconstructs the sub-agent's

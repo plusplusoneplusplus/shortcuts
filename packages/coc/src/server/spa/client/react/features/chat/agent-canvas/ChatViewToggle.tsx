@@ -7,6 +7,16 @@ import { AcIcons } from './icons';
 
 export type ChatView = 'thread' | 'agents';
 
+/**
+ * The view that should be shown after selecting an agent from the canvas,
+ * breadcrumb, or cascade menu: a sub-agent id opens the spatial 'agents'
+ * context, while the orchestrator root (null) returns to the linear 'thread'.
+ * Pure so the "Orchestrator → back to thread" navigation stays unit-testable.
+ */
+export function viewForAgentSelection(agentId: string | null): ChatView {
+    return agentId ? 'agents' : 'thread';
+}
+
 interface ChatViewToggleProps {
     view: ChatView;
     onChange: (view: ChatView) => void;

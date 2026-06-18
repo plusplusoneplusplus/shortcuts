@@ -1,6 +1,6 @@
 export { AgentCanvas } from './AgentCanvas';
 export type { AgentCanvasProps } from './AgentCanvas';
-export { ChatViewToggle } from './ChatViewToggle';
+export { ChatViewToggle, viewForAgentSelection } from './ChatViewToggle';
 export type { ChatView } from './ChatViewToggle';
 export { AgentCascadeMenu } from './AgentCascadeMenu';
 export { SubAgentDetailView } from './SubAgentDetailView';

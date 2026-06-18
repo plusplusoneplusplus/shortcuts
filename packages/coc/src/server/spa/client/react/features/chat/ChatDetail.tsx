@@ -47,7 +47,7 @@ import { buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { ConversationMiniMap } from './conversation/ConversationMiniMap';
-import { AgentCanvas, AgentCascadeMenu, SubAgentDetailView, ChatViewToggle, buildAgentRunTreeFromTurns, buildSubAgentTurns, flattenAgentLevels, findAgentNode, pathToAgent, readChatViewFromHash, applyChatViewToHash, readAgentFromHash, applyAgentToHash } from './agent-canvas';
+import { AgentCanvas, AgentCascadeMenu, SubAgentDetailView, ChatViewToggle, viewForAgentSelection, buildAgentRunTreeFromTurns, buildSubAgentTurns, flattenAgentLevels, findAgentNode, pathToAgent, readChatViewFromHash, applyChatViewToHash, readAgentFromHash, applyAgentToHash } from './agent-canvas';
 import type { AgentRunNode, ChatView } from './agent-canvas';
 import { useConversationSelection } from './hooks/useConversationSelection';
 import { snapshotConversation } from '../../utils/snapshot-copy-utils';
@@ -393,12 +393,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         [agentRoot, selectedAgentNode, selectedAgentId],
     );
     // Open a sub-agent (forcing the agents context so closing returns to the
-    // canvas) or return to the orchestrator (null).
+    // canvas) or return to the orchestrator (null), which lands back on the
+    // main thread rather than the agents canvas.
     const handleSelectAgent = useCallback((agentId: string | null) => {
         setSelectedAgentId(agentId);
-        if (agentId) {
-            setView('agents');
-        }
+        setView(viewForAgentSelection(agentId));
     }, []);
 
     const openAgentDetail = useCallback((node: AgentRunNode) => {
