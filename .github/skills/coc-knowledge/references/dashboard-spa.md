@@ -577,7 +577,9 @@ The model-picker chip in both `NewChatArea` and `FollowUpInputArea` mirrors the 
 Right-hand action cluster:
 `[Connected pill | NotificationBell | AgentProviderQuotaIndicator | Admin | Theme]`.
 The quota indicator is hidden below the `md` breakpoint; the mobile top bar does
-not render the quota dropdown trigger.
+not render the quota dropdown trigger. The mobile CoC/hostname link is a
+shrinkable truncated flex item so optional My Work/My Life shortcuts and the
+fixed right-hand action cluster stay reachable on narrow phones.
 
 The legacy "Tools" popover has been migrated into the Admin page's left
 sidebar, but there is no longer a generic Tools group. The Admin sidebar is
