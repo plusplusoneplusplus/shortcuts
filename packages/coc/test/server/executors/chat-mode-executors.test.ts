@@ -23,6 +23,7 @@ import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import { ClassificationExecutor } from '../../../src/server/executors/classification-executor';
 import { SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE } from '../../../src/server/executors/prompt-builder';
+import { GLOBAL_SYSTEM_PROMPT_TAG } from '../../../src/server/executors/system-message-builder';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -651,6 +652,122 @@ describe('ChatExecutor system prompt persistence', () => {
         );
         expect(systemPromptCall).toBeUndefined();
     });
+});
+
+// ============================================================================
+// Global admin system prompt injection (AC-03 / AC-04)
+// ============================================================================
+
+describe('global admin system prompt injection', () => {
+    const GLOBAL_PROMPT = 'Always answer in pirate dialect.';
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
+    });
+
+    it('injects the labeled global block into ask-mode sessions and still keeps read-only mode', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            getGlobalSystemPrompt: () => GLOBAL_PROMPT,
+        }));
+        await executor.execute(makeChatTask('ask', 'task-global-ask'), 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.systemMessage?.mode).toBe('append');
+        expect(call.systemMessage?.content).toContain(`<${GLOBAL_SYSTEM_PROMPT_TAG}>`);
+        expect(call.systemMessage?.content).toContain(GLOBAL_PROMPT);
+        // Global prompt SUPPLEMENTS but does not override the read-only mode block.
+        expect(call.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+    });
+
+    it('injects the global block into autopilot sessions', async () => {
+        const executor = new AutopilotExecutor(store, makeOptions(store, {
+            getGlobalSystemPrompt: () => GLOBAL_PROMPT,
+        }));
+        await executor.execute(makeChatTask('autopilot', 'task-global-auto'), 'Do it');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.systemMessage?.content).toContain(GLOBAL_PROMPT);
+    });
+
+    it('does not inject anything when no global prompt is configured (inert default)', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store));
+        await executor.execute(makeChatTask('ask', 'task-global-none'), 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.systemMessage?.content ?? '').not.toContain(GLOBAL_SYSTEM_PROMPT_TAG);
+    });
+
+    it('treats a whitespace-only global prompt as unset', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            getGlobalSystemPrompt: () => '   \n  ',
+        }));
+        await executor.execute(makeChatTask('ask', 'task-global-blank'), 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.systemMessage?.content ?? '').not.toContain(GLOBAL_SYSTEM_PROMPT_TAG);
+    });
+
+    it('reflects live edits to the global prompt between turns (no restart)', async () => {
+        let current: string | undefined = 'First instruction.';
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            getGlobalSystemPrompt: () => current,
+        }));
+
+        await executor.execute(makeChatTask('ask', 'task-global-live-1'), 'Hello');
+        expect(sdkMocks.mockSendMessage.mock.calls[0][0].systemMessage?.content).toContain('First instruction.');
+
+        current = 'Second instruction.';
+        await executor.execute(makeChatTask('ask', 'task-global-live-2'), 'Hello again');
+        const secondCall = sdkMocks.mockSendMessage.mock.calls[1][0];
+        expect(secondCall.systemMessage?.content).toContain('Second instruction.');
+        expect(secondCall.systemMessage?.content).not.toContain('First instruction.');
+    });
+
+    it('persists the global block in process metadata systemPrompt', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            getGlobalSystemPrompt: () => GLOBAL_PROMPT,
+        }));
+        const task = makeChatTask('ask', 'task-global-persist');
+        const processId = `queue_${task.id}`;
+        await store.addProcess({
+            id: processId, type: 'chat', status: 'running',
+            startTime: new Date(), promptPreview: 'Hello',
+        } as any);
+
+        await executor.execute(task, 'Hello');
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const persistCall = vi.mocked(store.updateProcess).mock.calls.find(
+            ([id, updates]) => id === processId && (updates as any).metadata?.systemPrompt != null,
+        );
+        expect(persistCall).toBeDefined();
+        expect((persistCall![1] as any).metadata.systemPrompt).toContain(GLOBAL_PROMPT);
+    });
+
+    it.each(['copilot', 'codex', 'claude'] as const)(
+        'reaches provider-level systemMessage for %s-routed sessions (provider parity)',
+        async (provider) => {
+            const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
+            const executor = new ChatExecutor(store, makeOptions(store, {
+                provider: 'copilot',
+                getGlobalSystemPrompt: () => GLOBAL_PROMPT,
+                resolveAiServiceForProvider,
+            }));
+            const task = makeChatTask('ask', `task-global-${provider}`);
+            task.payload = { ...(task.payload as any), provider } as any;
+
+            await executor.execute(task, 'Hello');
+
+            expect(resolveAiServiceForProvider).toHaveBeenCalledWith(provider);
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.systemMessage?.content).toContain(GLOBAL_PROMPT);
+        },
+    );
 });
 
 describe('AutopilotExecutor system message', () => {

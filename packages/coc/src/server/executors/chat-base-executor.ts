@@ -176,6 +176,13 @@ export interface ChatModeExecutorOptions {
      * or unavailable. Falls back to sdkServiceRegistry lookup when omitted.
      */
     resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
+    /**
+     * Live read of the admin-configured global system prompt
+     * (`chat.globalSystemPrompt`). Backed by RuntimeConfigService so edits take
+     * effect without a restart. Returns `undefined`/empty when unset. Injected
+     * into user-facing agent sessions only.
+     */
+    getGlobalSystemPrompt?: () => string | undefined;
 }
 
 /** Return type for the AI call result. */
@@ -234,6 +241,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly ralphMultiAgentGrillEnabled: boolean;
     /** Resolves per-task SDK service by provider, checking enablement. Optional — falls back to sdkServiceRegistry. */
     protected readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
+    /** Live read of the admin global system prompt; injected into user-facing sessions. */
+    protected readonly getGlobalSystemPromptFn?: () => string | undefined;
     /**
      * Per-provider model-metadata cache for reasoning-effort resolution. The
      * shared `modelMetadataStore` is warmed from the default provider only, so
@@ -257,6 +266,17 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.provider = options.provider ?? 'copilot';
         this.ralphMultiAgentGrillEnabled = options.ralphMultiAgentGrillEnabled === true;
         this.resolveAiServiceForProvider = options.resolveAiServiceForProvider;
+        this.getGlobalSystemPromptFn = options.getGlobalSystemPrompt;
+    }
+
+    /**
+     * Resolve the admin-configured global system prompt for injection into a
+     * user-facing agent session. Reads live from RuntimeConfigService via the
+     * injected callback so admin edits apply without a restart. Returns
+     * `undefined` when unset so the default path is inert.
+     */
+    protected resolveGlobalSystemPrompt(): string | undefined {
+        return this.getGlobalSystemPromptFn?.();
     }
 
     /**
@@ -486,6 +506,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // receive a contradictory `.plan.md` save target.
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage(mode)?.content)
+            .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
             .append(buildForEachGenerationSystemMessage(forEachGeneration)?.content)
             .append(buildMapReduceGenerationSystemMessage(mapReduceGeneration)?.content)
             .withRepoInstructions(workingDirectory, mode)

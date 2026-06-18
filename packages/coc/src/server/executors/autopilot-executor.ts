@@ -70,6 +70,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         });
 
         const systemMessage = await systemMessageBuilder()
+            .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
             .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
             .appendToolGuidance(ctx.toolGuidance)
             .build();

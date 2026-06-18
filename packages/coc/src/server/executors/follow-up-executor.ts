@@ -377,6 +377,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // turn.
             const systemMessage = await systemMessageBuilder()
                 .append(buildModeSystemMessage(currentMode)?.content)
+                .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
                 .append(buildForEachGenerationSystemMessage(forEachGeneration)?.content)
                 .append(buildMapReduceGenerationSystemMessage(mapReduceGeneration)?.content)
                 .withRepoInstructions(workingDirectory, currentMode)

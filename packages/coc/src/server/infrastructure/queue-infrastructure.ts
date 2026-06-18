@@ -64,6 +64,7 @@ export function createQueueInfrastructure(
     provider?: 'copilot' | 'codex' | 'claude',
     resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => import('@plusplusoneplusplus/forge').ISDKService,
     ralphMultiAgentGrillEnabled?: boolean,
+    getGlobalSystemPrompt?: () => string | undefined,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: Database.Database;
@@ -93,6 +94,7 @@ export function createQueueInfrastructure(
         provider,
         ralphMultiAgentGrillEnabled,
         resolveAiServiceForProvider,
+        getGlobalSystemPrompt,
         initialDelayMs: options.queue?.restartPickupDelayMs,
         getLoopInfra,
         getMcpOauthManager,
