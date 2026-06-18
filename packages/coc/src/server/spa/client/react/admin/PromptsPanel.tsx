@@ -1,13 +1,15 @@
 /**
- * PromptsPanel — viewer for built-in AI prompt templates.
- * Ralph prompts support admin overrides via Edit/Save/Reset.
- * Fetches from GET /api/admin/prompts and renders grouped PromptCards.
+ * PromptsPanel — admin global system prompt editor + viewer for built-in
+ * AI prompt templates. The editable "Global System Prompt" control sits at
+ * the top; the built-in templates (Ralph prompts support admin overrides via
+ * Edit/Save/Reset) render below. Fetches templates from GET /api/admin/prompts.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { Spinner } from '../ui';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { PromptCard } from './PromptCard';
+import { GlobalSystemPromptEditor } from './GlobalSystemPromptEditor';
 
 interface BuiltInPrompt {
     id: string;
@@ -62,14 +64,6 @@ export function PromptsPanel({ onError }: PromptsPanelProps) {
         ));
     }, []);
 
-    if (loading) {
-        return (
-            <div className="flex items-center gap-2 text-sm text-[#848484]" data-testid="prompts-loading">
-                <Spinner size="sm" /> Loading…
-            </div>
-        );
-    }
-
     // Group prompts by their group field
     const grouped = new Map<string, BuiltInPrompt[]>();
     for (const p of prompts) {
@@ -85,6 +79,8 @@ export function PromptsPanel({ onError }: PromptsPanelProps) {
 
     return (
         <div className="space-y-4" data-testid="prompts-panel">
+            <GlobalSystemPromptEditor onError={onError} />
+
             <div>
                 <h2 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">Prompt Templates</h2>
                 <p className="text-xs text-[#616161] dark:text-[#9d9d9d]">
@@ -92,29 +88,35 @@ export function PromptsPanel({ onError }: PromptsPanelProps) {
                 </p>
             </div>
 
-            {sortedGroups.map(([group, items]) => (
-                <div key={group} className="space-y-2">
-                    <h3 className="text-xs font-semibold text-[#616161] dark:text-[#999] uppercase tracking-wide">
-                        {group}
-                    </h3>
-                    {items.map(p => (
-                        <PromptCard
-                            key={p.id}
-                            id={p.id}
-                            title={p.title}
-                            source={p.source}
-                            description={p.description}
-                            text={p.text}
-                            editable={p.editable}
-                            templateVars={p.templateVars}
-                            hasOverride={p.hasOverride}
-                            overrideText={p.overrideText}
-                            onSave={p.editable ? handleSave : undefined}
-                            onReset={p.editable ? handleReset : undefined}
-                        />
-                    ))}
+            {loading ? (
+                <div className="flex items-center gap-2 text-sm text-[#848484]" data-testid="prompts-loading">
+                    <Spinner size="sm" /> Loading…
                 </div>
-            ))}
+            ) : (
+                sortedGroups.map(([group, items]) => (
+                    <div key={group} className="space-y-2">
+                        <h3 className="text-xs font-semibold text-[#616161] dark:text-[#999] uppercase tracking-wide">
+                            {group}
+                        </h3>
+                        {items.map(p => (
+                            <PromptCard
+                                key={p.id}
+                                id={p.id}
+                                title={p.title}
+                                source={p.source}
+                                description={p.description}
+                                text={p.text}
+                                editable={p.editable}
+                                templateVars={p.templateVars}
+                                hasOverride={p.hasOverride}
+                                overrideText={p.overrideText}
+                                onSave={p.editable ? handleSave : undefined}
+                                onReset={p.editable ? handleReset : undefined}
+                            />
+                        ))}
+                    </div>
+                ))
+            )}
         </div>
     );
 }

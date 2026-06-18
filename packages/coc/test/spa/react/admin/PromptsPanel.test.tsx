@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { PromptsPanel } from '../../../../src/server/spa/client/react/admin/PromptsPanel';
@@ -11,6 +11,8 @@ import { PromptsPanel } from '../../../../src/server/spa/client/react/admin/Prom
 const mocks = vi.hoisted(() => ({
     admin: {
         getPrompts: vi.fn(),
+        getConfig: vi.fn(),
+        updateConfig: vi.fn(),
     },
 }));
 
@@ -27,6 +29,11 @@ const onError = vi.fn();
 beforeEach(() => {
     vi.restoreAllMocks();
     mocks.admin.getPrompts.mockReset();
+    mocks.admin.getConfig.mockReset();
+    mocks.admin.updateConfig.mockReset();
+    // Default: empty global prompt so the editor resolves out of its loading state.
+    mocks.admin.getConfig.mockResolvedValue({ resolved: { chat: {} } });
+    mocks.admin.updateConfig.mockResolvedValue({ resolved: { chat: {} } });
     onError.mockReset();
 });
 
@@ -173,5 +180,135 @@ describe('PromptsPanel', () => {
         });
         expect(screen.queryByText('Diff Classification')).toBeNull();
         expect(screen.queryByText('Diff Classification - User Prompt')).toBeNull();
+    });
+});
+
+describe('PromptsPanel — Global System Prompt editor', () => {
+    it('loads the resolved global prompt into the editor', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+        mocks.admin.getConfig.mockResolvedValue({ resolved: { chat: { globalSystemPrompt: 'Stay terse.' } } });
+
+        await act(async () => { renderPanel(); });
+
+        await waitFor(() => {
+            const input = screen.getByTestId('global-system-prompt-input') as HTMLTextAreaElement;
+            expect(input.value).toBe('Stay terse.');
+        });
+        expect(mocks.admin.getConfig).toHaveBeenCalled();
+    });
+
+    it('makes the cross-provider scope clear in the help text', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+
+        await act(async () => { renderPanel(); });
+
+        await waitFor(() => {
+            expect(screen.getByText(/Copilot, Codex, and Claude/)).toBeDefined();
+        });
+    });
+
+    it('keeps the built-in template list visible below the editor', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+        mocks.admin.getConfig.mockResolvedValue({ resolved: { chat: { globalSystemPrompt: 'Hello' } } });
+
+        await act(async () => { renderPanel(); });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('global-system-prompt-input')).toBeDefined();
+        });
+        // Templates still render alongside the editor.
+        expect(screen.getByText('Prompt Templates')).toBeDefined();
+        expect(screen.getByText('Read-only Mode')).toBeDefined();
+    });
+
+    it('marks the editor dirty when edited and enables save', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+        mocks.admin.getConfig.mockResolvedValue({ resolved: { chat: { globalSystemPrompt: 'orig' } } });
+
+        await act(async () => { renderPanel(); });
+
+        const saveBtn = await screen.findByTestId('global-system-prompt-save') as HTMLButtonElement;
+        expect(saveBtn.disabled).toBe(true); // not dirty initially
+
+        const input = screen.getByTestId('global-system-prompt-input');
+        await act(async () => { fireEvent.change(input, { target: { value: 'orig changed' } }); });
+
+        expect(saveBtn.disabled).toBe(false);
+        expect(screen.getByText('Unsaved changes')).toBeDefined();
+    });
+
+    it('saves the edited prompt via updateConfig', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+
+        await act(async () => { renderPanel(); });
+
+        const input = await screen.findByTestId('global-system-prompt-input');
+        await act(async () => { fireEvent.change(input, { target: { value: 'Be concise.' } }); });
+        await act(async () => { fireEvent.click(screen.getByTestId('global-system-prompt-save')); });
+
+        await waitFor(() => {
+            expect(mocks.admin.updateConfig).toHaveBeenCalledWith({ 'chat.globalSystemPrompt': 'Be concise.' });
+        });
+        // Saving clears the dirty state.
+        const saveBtn = screen.getByTestId('global-system-prompt-save') as HTMLButtonElement;
+        expect(saveBtn.disabled).toBe(true);
+    });
+
+    it('clears the stored prompt via updateConfig with null', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+        mocks.admin.getConfig.mockResolvedValue({ resolved: { chat: { globalSystemPrompt: 'Old prompt' } } });
+
+        await act(async () => { renderPanel(); });
+
+        const clearBtn = await screen.findByTestId('global-system-prompt-clear');
+        await act(async () => { fireEvent.click(clearBtn); });
+
+        await waitFor(() => {
+            expect(mocks.admin.updateConfig).toHaveBeenCalledWith({ 'chat.globalSystemPrompt': null });
+        });
+        const input = screen.getByTestId('global-system-prompt-input') as HTMLTextAreaElement;
+        expect(input.value).toBe('');
+    });
+
+    it('clears the stored value when saving an empty prompt', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+        mocks.admin.getConfig.mockResolvedValue({ resolved: { chat: { globalSystemPrompt: 'something' } } });
+
+        await act(async () => { renderPanel(); });
+
+        const input = await screen.findByTestId('global-system-prompt-input');
+        await act(async () => { fireEvent.change(input, { target: { value: '   ' } }); });
+        await act(async () => { fireEvent.click(screen.getByTestId('global-system-prompt-save')); });
+
+        await waitFor(() => {
+            expect(mocks.admin.updateConfig).toHaveBeenCalledWith({ 'chat.globalSystemPrompt': null });
+        });
+    });
+
+    it('displays an error when saving fails', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+        mocks.admin.updateConfig.mockRejectedValue(new Error('boom'));
+
+        await act(async () => { renderPanel(); });
+
+        const input = await screen.findByTestId('global-system-prompt-input');
+        await act(async () => { fireEvent.change(input, { target: { value: 'X' } }); });
+        await act(async () => { fireEvent.click(screen.getByTestId('global-system-prompt-save')); });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('global-system-prompt-error')).toBeDefined();
+            expect(screen.getByText('boom')).toBeDefined();
+        });
+    });
+
+    it('surfaces a load error through onError', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+        mocks.admin.getConfig.mockRejectedValue(new Error('config down'));
+
+        await act(async () => { renderPanel(); });
+
+        await waitFor(() => {
+            expect(onError).toHaveBeenCalledWith('config down');
+        });
     });
 });
