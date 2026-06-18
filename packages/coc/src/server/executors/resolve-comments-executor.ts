@@ -22,6 +22,7 @@ import { createResolveCommentTool } from '../llm-tools/resolve-comment-tool';
 import type { ChatModeAIOptions, ChatModeExecutionResult, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { buildModeSystemMessage } from './prompt-builder';
+import { systemMessageBuilder } from './system-message-builder';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 
 // ============================================================================
@@ -164,9 +165,18 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
         this.resolvedIdGetters.set(processId, getResolvedIds);
         const payload = task.payload as unknown as ChatPayload;
         const isMultiFile = !!payload.context?.resolveDiffCommentsMulti;
+        // Resolve-comments is a user-facing agent session (AC-03): append the
+        // admin global system prompt via the shared builder. Single-file keeps
+        // its 'ask' mode block; multi-file (autopilot) previously had no system
+        // message and now carries only the global block when one is configured.
+        // No-op when unset, preserving the prior `undefined` default.
+        const systemMessage = await systemMessageBuilder()
+            .append(isMultiFile ? undefined : buildModeSystemMessage('ask')?.content)
+            .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
+            .build();
         return {
             agentMode: isMultiFile ? 'autopilot' : 'interactive',
-            systemMessage: isMultiFile ? undefined : buildModeSystemMessage('ask'),
+            systemMessage,
             tools: [tool as Tool<unknown>],
             effectivePrompt: prompt,
         };
