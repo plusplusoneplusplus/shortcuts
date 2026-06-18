@@ -19,12 +19,14 @@ describe('remote-clone routing sweep', () => {
     let settings: string;
     let repoDetail: string;
     let workItemsTab: string;
+    let branchPicker: string;
 
     beforeAll(() => {
         enqueue = read('queue/EnqueueDialog.tsx');
         settings = read('features/repo-settings/RepoSettingsTab.tsx');
         repoDetail = read('features/repo-detail/RepoDetail.tsx');
         workItemsTab = read('features/work-items/WorkItemsTab.tsx');
+        branchPicker = read('features/git/branches/BranchPickerModal.tsx');
     });
 
     it('EnqueueDialog routes loads, the enqueue mutation, and skill-usage to the clone', () => {
@@ -55,6 +57,12 @@ describe('remote-clone routing sweep', () => {
         expect(workItemsTab).toContain('requestForWorkspace');
         expect(workItemsTab).toContain('/git/commits/');
         expect(workItemsTab).not.toContain('fetchApi');
+    });
+
+    it('BranchPickerModal routes branch list and switch requests to the clone', () => {
+        expect(branchPicker).toContain('getCocClientForWorkspace(workspaceId).git.listBranches(workspaceId');
+        expect(branchPicker).toContain('getCocClientForWorkspace(workspaceId).git.switchBranch(workspaceId');
+        expect(branchPicker).not.toContain('getSpaCocClient');
     });
 
     it('useRalphSessionView routes the per-session journal read to the clone', () => {

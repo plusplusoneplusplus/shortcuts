@@ -747,7 +747,7 @@ the input:
   (`/summary` + `/skills/all` loads, the `queue.enqueue` mutation, and
   `recordSkillUsage`), `RepoSettingsTab` (mcp-config, skills, instructions, repo
   prefs, processes, description PATCH), `RepoDetail` (work-items badge preview),
-  and `WorkItemsTab` (commit file list).
+  `WorkItemsTab` (commit file list), and `BranchPickerModal` (branch list/switch).
 - `RalphStartPanel` builds raw `fetch` URLs against `cloneApiBase(workspaceId)`
   (absolute remote base, or local when unregistered) for its whole flow: the
   goal-file read (`/fs/blob?path=...`) and the `ralph-launch` / `processes/:id/
