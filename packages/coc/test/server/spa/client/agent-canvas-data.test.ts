@@ -172,6 +172,55 @@ describe('buildAgentRunTreeFromTurns', () => {
         });
     });
 
+    it('keeps the real start when the tool-complete snapshot re-stamps startTime to the finish time', () => {
+        // useChatSSE stamps `startTime: now` on EVERY tool snapshot, so a
+        // tool-complete carries a startTime equal to the *completion* moment.
+        // The merge must keep the earliest start (the tool-start snapshot),
+        // otherwise the sub-agent renders a bogus 0:00 duration in the canvas.
+        const turns = [assistantTurn(
+            [],
+            [
+                { type: 'tool-start', timestamp: '2026-06-13T10:00:00.000Z', toolCall: tc({ id: 't1', args: { description: 'work' }, status: 'running', startTime: '2026-06-13T10:00:00.000Z', endTime: undefined }) },
+                { type: 'tool-complete', timestamp: '2026-06-13T10:00:44.000Z', toolCall: tc({ id: 't1', args: { description: 'work' }, status: 'completed', startTime: '2026-06-13T10:00:44.000Z', endTime: '2026-06-13T10:00:44.000Z', result: 'ok' }) },
+            ],
+        )];
+        const child = buildAgentRunTreeFromTurns(turns).children[0];
+        expect(child.status).toBe('done');
+        expect(child.startedAt).toBe(Date.parse('2026-06-13T10:00:00.000Z'));
+        expect(child.completedAt).toBe(Date.parse('2026-06-13T10:00:44.000Z'));
+        // The whole point: a real, non-zero span survives the merge.
+        expect(child.completedAt! - child.startedAt!).toBe(44_000);
+    });
+
+    it('prefers the earliest start / latest end across persisted and timeline snapshots', () => {
+        // Persisted row has the true span; a later timeline snapshot re-stamps a
+        // start at finish time. Earliest-start / latest-end keeps the true span
+        // regardless of which snapshot the status-rank merge treats as "better".
+        const turns = [assistantTurn(
+            [tc({ id: 't1', args: { description: 'work' }, status: 'completed', startTime: '2026-06-13T10:00:00.000Z', endTime: '2026-06-13T10:00:30.000Z', result: 'ok' })],
+            [
+                { type: 'tool-complete', timestamp: '2026-06-13T10:00:44.000Z', toolCall: tc({ id: 't1', args: {}, status: 'completed', startTime: '2026-06-13T10:00:44.000Z', endTime: '2026-06-13T10:00:44.000Z', result: 'ok' }) },
+            ],
+        )];
+        const child = buildAgentRunTreeFromTurns(turns).children[0];
+        expect(child.startedAt).toBe(Date.parse('2026-06-13T10:00:00.000Z'));
+        expect(child.completedAt).toBe(Date.parse('2026-06-13T10:00:44.000Z'));
+    });
+
+    it('still resolves a start when only the terminal snapshot carries a time', () => {
+        // If the tool-start snapshot was missed, fall back to whatever time the
+        // terminal snapshot has rather than dropping it.
+        const turns = [assistantTurn(
+            [tc({ id: 't1', args: { description: 'work' }, status: 'running', startTime: undefined, endTime: undefined })],
+            [
+                { type: 'tool-complete', timestamp: '2026-06-13T10:00:44.000Z', toolCall: tc({ id: 't1', args: { description: 'work' }, status: 'completed', startTime: '2026-06-13T10:00:44.000Z', endTime: '2026-06-13T10:00:44.000Z', result: 'ok' }) },
+            ],
+        )];
+        const child = buildAgentRunTreeFromTurns(turns).children[0];
+        expect(child.startedAt).toBe(Date.parse('2026-06-13T10:00:44.000Z'));
+        expect(child.completedAt).toBe(Date.parse('2026-06-13T10:00:44.000Z'));
+    });
+
     it('derives root status from children when no explicit status is given', () => {
         const running = [assistantTurn([tc({ id: 't1', args: { description: 'x' }, status: 'running' })])];
         expect(buildAgentRunTreeFromTurns(running).status).toBe('running');

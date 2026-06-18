@@ -52,6 +52,37 @@ export function nonEmptyArgs(tc: ClientToolCall): Record<string, unknown> | unde
 // tool-call id appears in both `turn.toolCalls` and the timeline.
 const STATUS_RANK: Record<string, number> = { pending: 0, running: 1, completed: 2, failed: 2 };
 
+// A single tool call surfaces as several snapshots (live `tool-start` /
+// `tool-complete`, plus the persisted row), and each stamps its own *receipt*
+// time — so the terminal snapshot's `startTime` is actually the completion
+// moment. Merge a run's true span as the earliest observed start and the latest
+// observed end; otherwise a late snapshot's start wins and collapses the run to
+// a 0:00 duration in the canvas. Returns the original value to preserve its type
+// (ISO string or epoch ms).
+function earliestTime(a: unknown, b: unknown): unknown {
+    const ta = parseTime(a);
+    const tb = parseTime(b);
+    if (ta === undefined) {
+        return b;
+    }
+    if (tb === undefined) {
+        return a;
+    }
+    return ta <= tb ? a : b;
+}
+
+function latestTime(a: unknown, b: unknown): unknown {
+    const ta = parseTime(a);
+    const tb = parseTime(b);
+    if (ta === undefined) {
+        return b;
+    }
+    if (tb === undefined) {
+        return a;
+    }
+    return ta >= tb ? a : b;
+}
+
 /** Collect every tool call across turns, deduped by id, preferring terminal state. */
 export function collectToolCalls(turns: ClientConversationTurn[]): ClientToolCall[] {
     const byId = new Map<string, ClientToolCall>();
@@ -75,8 +106,8 @@ export function collectToolCalls(turns: ClientConversationTurn[]): ClientToolCal
             ...worse,
             ...better,
             ...(mergedArgs ? { args: mergedArgs } : {}),
-            startTime: better.startTime ?? worse.startTime,
-            endTime: better.endTime ?? worse.endTime,
+            startTime: earliestTime(better.startTime, worse.startTime) as ClientToolCall['startTime'],
+            endTime: latestTime(better.endTime, worse.endTime) as ClientToolCall['endTime'],
             result: better.result ?? worse.result,
             error: better.error ?? worse.error,
             // The terminal snapshot can also drop the parent linkage — keep
