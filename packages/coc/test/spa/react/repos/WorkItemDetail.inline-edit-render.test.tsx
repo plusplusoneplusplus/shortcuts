@@ -25,9 +25,12 @@ vi.mock(`../../../../src/server/spa/client/react/api/cocClient`, () => ({
     getSpaCocClient: () => ({
         workItems: {
             get: (...args: any[]) => mockGet(...args),
+            getForOrigin: (...args: any[]) => mockGet(...args),
             update: (...args: any[]) => mockUpdate(...args),
+            updateForOrigin: (...args: any[]) => mockUpdate(...args),
             updatePlan: (...args: any[]) => mockUpdatePlan(...args),
             updateStatus: (...args: any[]) => mockUpdateStatus(...args),
+            updateStatusForOrigin: (...args: any[]) => mockUpdateStatus(...args),
         },
     }),
     getSpaCocClientErrorMessage: (e: any) => (e && e.message) || 'error',
@@ -162,7 +165,7 @@ describe('WorkItemDetail inline editing (render)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockGet.mockResolvedValue({ ...baseItem });
-        mockUpdate.mockImplementation(async (_ws: string, _id: string, updates: any) => ({ ...baseItem, ...updates }));
+        mockUpdate.mockImplementation(async (_scope: string, _id: string, updates: any) => ({ ...baseItem, ...updates }));
         mockUpdatePlan.mockResolvedValue({ version: 2 });
     });
 
@@ -409,7 +412,7 @@ describe('WorkItemDetail inline editing (render)', () => {
         fireEvent.click(screen.getByTestId('wi-save-btn'));
 
         await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
-        expect(mockUpdate.mock.calls[0][0]).toBe('ws-1');
+        expect(mockUpdate.mock.calls[0][0]).toBe('local_ws-1');
         expect(mockUpdate.mock.calls[0][1]).toBe('feature-1');
         expect(mockUpdate.mock.calls[0][2]).toEqual({ title: 'Edited feature title' });
     });

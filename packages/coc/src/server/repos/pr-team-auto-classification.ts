@@ -17,6 +17,7 @@ import {
     listTeamEligiblePullRequests,
     type TeamEligiblePullRequest,
 } from './pr-team-eligibility';
+import type { PullRequestStorageScopeInput } from './pr-origin-scope';
 
 export const TEAM_PR_AUTO_CLASSIFICATION_ENQUEUE_LIMIT = 10;
 
@@ -35,6 +36,7 @@ export interface TeamPrAutoClassificationOptions {
     repoId: string;
     pullRequests: readonly TeamAutoClassifiablePullRequest[];
     maxEnqueues?: number;
+    storageScope?: PullRequestStorageScopeInput;
 }
 
 export interface TeamPrAutoClassificationResult {
@@ -71,6 +73,7 @@ export async function autoClassifyTeamPullRequests(
         options.workspaceId,
         options.repoId,
         options.pullRequests,
+        options.storageScope,
     );
     result.eligible = pullRequests.length;
 
@@ -102,6 +105,7 @@ export async function autoClassifyTeamPullRequests(
                 prepareTaskForEnqueue: options.prepareTaskForEnqueue,
                 workspaceId: options.workspaceId,
                 repoId: options.repoId,
+                storageScope: options.storageScope,
                 type: 'pr',
                 identifier,
                 priority: 'low',

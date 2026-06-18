@@ -2,18 +2,19 @@
  * Work Item AI Authoring REST API Routes
  *
  * AI-assisted creation, improvement, and explicit draft application for work
- * items, goals, and child tasks. All operations are workspace-scoped. The
- * draft endpoints are review-before-save; the apply endpoint persists only when
- * the user explicitly invokes it against a fresh saved item snapshot.
+ * items, goals, and child tasks. Persistent item reads/writes are origin-scoped;
+ * workspaceId is required to select the concrete clone used by the AI generator.
+ * The draft endpoints are review-before-save; the apply endpoint persists only
+ * when the user explicitly invokes it against a fresh saved item snapshot.
  *
  * Routes (all gated behind the `workItems.aiAuthoring` feature flag):
- *   POST /api/workspaces/:id/work-items/ai-draft
+ *   POST /api/origins/:originId/work-items/ai-draft
  *     — Generate a draft for a new work item from a free-text prompt.
  *
- *   POST /api/workspaces/:id/work-items/:workItemId/ai-draft
+ *   POST /api/origins/:originId/work-items/:workItemId/ai-draft
  *     — Generate an improvement draft for an existing work item.
  *
- *   POST /api/workspaces/:id/work-items/:workItemId/ai-draft/apply
+ *   POST /api/origins/:originId/work-items/:workItemId/ai-draft/apply
  *     — Generate and apply an AI draft to an existing local-only work-item,
  *       creating the next immutable plan/content version.
  *
@@ -29,6 +30,7 @@
 
 import * as http from 'http';
 import * as crypto from 'crypto';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { APIError, handleAPIError, badRequest, forbidden, internalError, notFound } from '../errors';
@@ -36,6 +38,7 @@ import type { WorkItem, WorkItemChange, WorkItemPlanVersion, WorkItemStore, Work
 import { WORK_ITEM_TYPES, HIERARCHY_CONTAINER_TYPES } from '../work-items/types';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
+import { resolveWorkItemRouteScope, type WorkItemRouteScope } from './work-item-route-scope';
 
 // ============================================================================
 // Public Types
@@ -90,7 +93,7 @@ export type AiDraftResponse = ClarificationResponse | DraftResponse;
 // ============================================================================
 
 /**
- * Body for POST /api/workspaces/:id/work-items/ai-draft
+ * Body for POST /api/origins/:originId/work-items/ai-draft
  */
 export interface NewWorkItemAiDraftRequest {
     /** Free-text user prompt describing the feature / problem. Required. */
@@ -109,7 +112,7 @@ export interface NewWorkItemAiDraftRequest {
 }
 
 /**
- * Body for POST /api/workspaces/:id/work-items/:workItemId/ai-draft
+ * Body for POST /api/origins/:originId/work-items/:workItemId/ai-draft
  */
 export interface ImproveWorkItemAiDraftRequest {
     /** Instruction for what to improve / what to generate. Required. */
@@ -125,7 +128,7 @@ export interface ImproveWorkItemAiDraftRequest {
 }
 
 /**
- * Body for POST /api/workspaces/:id/work-items/:workItemId/ai-draft/apply.
+ * Body for POST /api/origins/:originId/work-items/:workItemId/ai-draft/apply.
  *
  * The base fields are optimistic concurrency guards captured from the item
  * detail before the AI request starts. They are checked before and after the AI
@@ -192,6 +195,7 @@ export type GenerateImproveItemDraftFn = (ctx: ImproveItemDraftContext) => Promi
 export interface WorkItemAiRouteContext {
     routes: Route[];
     workItemStore: WorkItemStore;
+    processStore: ProcessStore;
     /** Returns true when the workItems.aiAuthoring feature flag is enabled. */
     getAiAuthoringEnabled: () => boolean;
     /** Returns true when the durable Work Items/Goals workflow flag is enabled. */
@@ -216,6 +220,9 @@ const VALID_TARGETS = new Set<string>(['fields', 'goal', 'childTasks']);
 const VALID_PRIORITIES = new Set<string>(['high', 'normal', 'low']);
 const ALL_VALID_TYPES = new Set<string>(WORK_ITEM_TYPES);
 const WORKFLOW_AI_APPLY_TYPES = new Set<WorkItemType>(['work-item']);
+const WORK_ITEM_AI_DRAFT_PATTERN = /^\/api\/origins\/([^/]+)\/work-items\/ai-draft$/;
+const WORK_ITEM_AI_IMPROVE_PATTERN = /^\/api\/origins\/([^/]+)\/work-items\/([^/]+)\/ai-draft$/;
+const WORK_ITEM_AI_APPLY_PATTERN = /^\/api\/origins\/([^/]+)\/work-items\/([^/]+)\/ai-draft\/apply$/;
 
 type AiDraftTarget = 'fields' | 'goal' | 'childTasks';
 
@@ -306,6 +313,24 @@ function optionalTrimmedString(value: unknown): string | undefined {
     return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+function bodyWorkspaceId(body: unknown): string | undefined {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
+    const raw = (body as Record<string, unknown>).workspaceId;
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+}
+
+async function resolveAiRouteScope(
+    ctx: WorkItemAiRouteContext,
+    originId: string,
+    body: unknown,
+): Promise<WorkItemRouteScope> {
+    const workspaceId = bodyWorkspaceId(body);
+    if (!workspaceId) {
+        throw badRequest('workspaceId is required for origin-scoped Work Item AI authoring routes');
+    }
+    return resolveWorkItemRouteScope(ctx, 'origins', originId, workspaceId);
+}
+
 // ============================================================================
 // Route Registration
 // ============================================================================
@@ -316,17 +341,17 @@ export function registerWorkItemAiRoutes(ctx: WorkItemAiRouteContext): void {
     const isWorkflowEnabled = () => ctx.getWorkflowEnabled?.() ?? false;
     const isHierarchyEnabled = () => ctx.getHierarchyEnabled?.() ?? false;
 
-    // POST /api/workspaces/:id/work-items/ai-draft — generate draft for a new work item
+    // POST /api/origins/:originId/work-items/ai-draft — generate draft for a new work item
     // NOTE: this pattern must be registered BEFORE /:workItemId routes to avoid matching "ai-draft" as an ID
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/ai-draft$/,
+        pattern: WORK_ITEM_AI_DRAFT_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
             if (!isAiAuthoringEnabled()) {
                 return handleAPIError(res, forbidden('workItems.aiAuthoring feature flag is not enabled'));
             }
 
-            const workspaceId = decodeURIComponent(match![1]);
+            const originId = decodeURIComponent(match![1]);
 
             let body: NewWorkItemAiDraftRequest;
             try {
@@ -363,9 +388,16 @@ export function registerWorkItemAiRoutes(ctx: WorkItemAiRouteContext): void {
                 return handleAPIError(res, internalError('AI authoring generator is not available'));
             }
 
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveAiRouteScope(ctx, originId, body);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+
             try {
                 const result = await ctx.generateNewItemDraft({
-                    workspaceId,
+                    workspaceId: scope.commandRepoId,
                     prompt: body.prompt.trim(),
                     type: (requestedType as WorkItemType) ?? 'work-item',
                     parentId: typeof body.parentId === 'string' ? body.parentId : undefined,
@@ -390,22 +422,17 @@ export function registerWorkItemAiRoutes(ctx: WorkItemAiRouteContext): void {
         },
     });
 
-    // POST /api/workspaces/:id/work-items/:workItemId/ai-draft — generate improvement draft for existing work item
+    // POST /api/origins/:originId/work-items/:workItemId/ai-draft — generate improvement draft for existing work item
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/ai-draft$/,
+        pattern: WORK_ITEM_AI_IMPROVE_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
             if (!isAiAuthoringEnabled()) {
                 return handleAPIError(res, forbidden('workItems.aiAuthoring feature flag is not enabled'));
             }
 
-            const workspaceId = decodeURIComponent(match![1]);
+            const originId = decodeURIComponent(match![1]);
             const workItemId = decodeURIComponent(match![2]);
-
-            const item = await workItemStore.getWorkItem(workItemId, workspaceId);
-            if (!item) {
-                return handleAPIError(res, notFound('Work item'));
-            }
 
             let body: ImproveWorkItemAiDraftRequest;
             try {
@@ -433,9 +460,21 @@ export function registerWorkItemAiRoutes(ctx: WorkItemAiRouteContext): void {
                 return handleAPIError(res, internalError('AI authoring generator is not available'));
             }
 
+            let scope: WorkItemRouteScope;
+            try {
+                scope = await resolveAiRouteScope(ctx, originId, body);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+
+            const item = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
+            if (!item) {
+                return handleAPIError(res, notFound('Work item'));
+            }
+
             try {
                 const result = await ctx.generateImproveItemDraft({
-                    workspaceId,
+                    workspaceId: scope.commandRepoId,
                     workItemId,
                     title: item.title,
                     description: item.description,
@@ -463,10 +502,10 @@ export function registerWorkItemAiRoutes(ctx: WorkItemAiRouteContext): void {
         },
     });
 
-    // POST /api/workspaces/:id/work-items/:workItemId/ai-draft/apply — generate and persist AI draft to a saved local work-item
+    // POST /api/origins/:originId/work-items/:workItemId/ai-draft/apply — generate and persist AI draft to a saved local work-item
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/ai-draft\/apply$/,
+        pattern: WORK_ITEM_AI_APPLY_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
             if (!isAiAuthoringEnabled()) {
                 return handleAPIError(res, forbidden('workItems.aiAuthoring feature flag is not enabled'));
@@ -475,7 +514,7 @@ export function registerWorkItemAiRoutes(ctx: WorkItemAiRouteContext): void {
                 return handleAPIError(res, forbidden('workItems.workflow feature flag is not enabled'));
             }
 
-            const workspaceId = decodeURIComponent(match![1]);
+            const originId = decodeURIComponent(match![1]);
             const workItemId = decodeURIComponent(match![2]);
 
             let body: ApplyWorkItemAiDraftRequest;
@@ -502,8 +541,15 @@ export function registerWorkItemAiRoutes(ctx: WorkItemAiRouteContext): void {
                 return handleAPIError(res, internalError('AI authoring generator is not available'));
             }
 
+            let scope: WorkItemRouteScope;
             try {
-                const item = await workItemStore.getWorkItem(workItemId, workspaceId);
+                scope = await resolveAiRouteScope(ctx, originId, body);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+
+            try {
+                const item = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
                 if (!item) {
                     return handleAPIError(res, notFound('Work item'));
                 }
@@ -517,7 +563,7 @@ export function registerWorkItemAiRoutes(ctx: WorkItemAiRouteContext): void {
                     : 0;
 
                 const result = await ctx.generateImproveItemDraft({
-                    workspaceId,
+                    workspaceId: scope.commandRepoId,
                     workItemId,
                     title: item.title,
                     description: item.description,
@@ -542,13 +588,13 @@ export function registerWorkItemAiRoutes(ctx: WorkItemAiRouteContext): void {
                     return handleAPIError(res, internalError('AI draft did not include plan content to apply'));
                 }
 
-                const latestItem = await workItemStore.getWorkItem(workItemId, workspaceId);
+                const latestItem = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
                 if (!latestItem) {
                     return handleAPIError(res, notFound('Work item'));
                 }
                 assertFreshApplyBase(latestItem, baseSnapshot);
 
-                const versions = await workItemStore.getPlanVersions(workItemId);
+                const versions = await workItemStore.getPlanVersions(workItemId, scope.storageRepoId);
                 const previousVersion = latestItem.plan?.version;
                 const latestVersion = Math.max(previousVersion ?? 0, ...versions.map(version => version.version));
                 const newVersion = latestVersion + 1;
@@ -568,7 +614,7 @@ export function registerWorkItemAiRoutes(ctx: WorkItemAiRouteContext): void {
                     summary,
                 };
 
-                await workItemStore.savePlanVersion(workItemId, planVersion);
+                await workItemStore.savePlanVersion(workItemId, planVersion, scope.storageRepoId);
 
                 const includeFields = targets.includes('fields');
                 const updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>> = {
@@ -596,7 +642,7 @@ export function registerWorkItemAiRoutes(ctx: WorkItemAiRouteContext): void {
                     updates.status = 'planning';
                 }
 
-                const updated = await workItemStore.updateWorkItem(workItemId, updates);
+                const updated = await workItemStore.updateWorkItem(workItemId, updates, scope.storageRepoId);
                 if (!updated) {
                     return handleAPIError(res, notFound('Work item'));
                 }
@@ -608,10 +654,10 @@ export function registerWorkItemAiRoutes(ctx: WorkItemAiRouteContext): void {
                     startedAt: now,
                     status: 'open',
                 };
-                workItemStore.addChange(workItemId, change).catch(() => { /* non-fatal */ });
+                workItemStore.addChange(workItemId, change, scope.storageRepoId).catch(() => { /* non-fatal */ });
 
-                clearWorkItemResponseCacheForWorkspace(workspaceId);
-                ctx.getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId, item: updated });
+                clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
+                ctx.getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-updated', workspaceId: scope.storageRepoId, item: updated });
                 sendJSON(res, 200, {
                     kind: 'applied',
                     item: updated,

@@ -511,6 +511,8 @@ export interface PrClassificationPayload {
     readonly kind: 'pr-classification';
     workspaceId: string;
     repoId: string;
+    /** Canonical origin directory key used for durable classification state. */
+    classificationStorageOriginId?: string;
     prId: string;
     headSha: string;
     prompt: string;

@@ -110,8 +110,8 @@ describe('WorkItemHierarchyTree — structure', () => {
         expect(src).toContain("from './WorkItemParentPicker'");
     });
 
-    it('fetches tree using coc-client workItems.tree()', () => {
-        expect(src).toContain('workItems.tree(');
+    it('fetches tree using coc-client workItems.treeForOrigin()', () => {
+        expect(src).toContain('workItems.treeForOrigin(workItemOriginId');
         // AC-07: clone-aware client (useCocClient(workspaceId)) instead of the
         // default getSpaCocClient() singleton.
         expect(src).toContain('useCocClient(');

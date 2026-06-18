@@ -52,6 +52,24 @@ describe('createSaveClassificationTool', () => {
         expect(getSaved()).toHaveLength(2);
     });
 
+    it('persists classifications under the canonical origin storage scope', async () => {
+        const { tool } = createSaveClassificationTool({
+            dataDir,
+            workspaceId: 'ws-a',
+            repoId: 'repo',
+            prId: '1',
+            headSha: 'sha',
+            processId: 'p-origin',
+            storageScope: 'gh_org_repo',
+        });
+
+        const result = await (tool as any).handler({ classifications: validClassifications });
+
+        expect(result.success).toBe(true);
+        expect(readClassification(dataDir, 'ws-a', 'repo', '1', 'sha')).toBeUndefined();
+        expect(readClassification(dataDir, 'ws-b', 'repo', '1', 'sha', 'gh_org_repo')?.processId).toBe('p-origin');
+    });
+
     it('returns an error and does not write on invalid input', async () => {
         const { tool, getSaved } = createSaveClassificationTool({
             dataDir, workspaceId: 'ws', repoId: 'repo', prId: '1', headSha: 'sha',

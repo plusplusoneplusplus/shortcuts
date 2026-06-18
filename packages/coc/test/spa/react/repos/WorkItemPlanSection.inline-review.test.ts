@@ -216,9 +216,9 @@ describe('WorkItemPlanSection — inline review', () => {
 
     // ── Resolve All with AI ───────────────────────────────────────────────────
 
-    it('implements handleResolveAllWithAI that uses the typed resolve-comments client method', () => {
+    it('implements handleResolveAllWithAI that uses the typed origin resolve-comments client method', () => {
         expect(src).toContain('handleResolveAllWithAI');
-        expect(src).toContain('workItems.resolveComments(workspaceId, workItemId, { type: \'plan\' })');
+        expect(src).toContain('workItems.resolveCommentsForOrigin(workItemOriginId, workItemId, { type: \'plan\' }, originOptions)');
     });
 
     it('filters open inline comments before resolving', () => {

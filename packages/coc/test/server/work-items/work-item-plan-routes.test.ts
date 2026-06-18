@@ -7,21 +7,30 @@ import type { Route } from '../../../src/server/types';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-routes';
 import { registerWorkItemPlanRoutes } from '../../../src/server/routes/work-item-plan-routes';
-import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import { createWorkItemStorageScopeResolver, FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import { safeRm } from '../../helpers/safe-rm';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
 let server: http.Server;
 let baseUrl: string;
+let workspaces: any[] = [];
+
+const processStore = {
+    getWorkspaces: async () => workspaces,
+    updateWorkspace: async (workspaceId: string, update: any) => {
+        const workspace = workspaces.find(entry => entry.id === workspaceId);
+        if (workspace) Object.assign(workspace, update);
+    },
+} as any;
 
 function makeServer(
     refineWithAI?: (plan: string, desc: string, title: string, instructions?: string) => Promise<string>,
     workflowEnabled = false,
 ): http.Server {
     const routes: Route[] = [];
-    registerWorkItemRoutes({ routes, workItemStore: store });
-    registerWorkItemPlanRoutes({ routes, workItemStore: store, refineWithAI, getWorkflowEnabled: () => workflowEnabled });
+    registerWorkItemRoutes({ routes, workItemStore: store, processStore });
+    registerWorkItemPlanRoutes({ routes, workItemStore: store, processStore, refineWithAI, getWorkflowEnabled: () => workflowEnabled });
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
@@ -72,12 +81,14 @@ async function request(
 }
 
 const REPO_ID = 'test-repo';
+const ORIGIN_ID = 'gh_plusplusoneplusplus_shortcuts';
 let workItemId: string;
 
 describe('Work Item Plan Routes', () => {
     beforeEach(async () => {
         tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-plan-routes-'));
-        store = new FileWorkItemStore({ dataDir: tmpDir });
+        workspaces = [];
+        store = new FileWorkItemStore({ dataDir: tmpDir, scopeResolver: createWorkItemStorageScopeResolver(processStore) });
         server = makeServer(async (plan, desc, title) => {
             return `# Refined Plan for: ${title}\n\n${plan}\n\n## AI Additions\n- Error handling\n- Tests`;
         });
@@ -119,6 +130,87 @@ describe('Work Item Plan Routes', () => {
         it('returns 404 for non-existent work item', async () => {
             const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/nonexistent/plan`);
             expect(res.status).toBe(404);
+        });
+    });
+
+    describe('origin-scoped plan routes', () => {
+        beforeEach(() => {
+            workspaces = [
+                {
+                    id: 'clone-a',
+                    name: 'Clone A',
+                    rootPath: path.join(tmpDir, 'clone-a'),
+                    remoteUrl: 'https://github.com/plusplusoneplusplus/shortcuts.git',
+                },
+                {
+                    id: 'clone-b',
+                    name: 'Clone B',
+                    rootPath: path.join(tmpDir, 'clone-b'),
+                    remoteUrl: 'git@github.com:plusplusoneplusplus/shortcuts.git',
+                },
+                {
+                    id: 'other-clone',
+                    name: 'Other Clone',
+                    rootPath: path.join(tmpDir, 'other-clone'),
+                    remoteUrl: 'https://github.com/plusplusoneplusplus/other.git',
+                },
+            ];
+        });
+
+        it('serves plan versions through the canonical origin across same-origin clones', async () => {
+            const create = await request('POST', '/api/workspaces/clone-a/work-items', {
+                id: 'shared-plan',
+                title: 'Shared Plan',
+            });
+            expect(create.status).toBe(201);
+
+            const update = await request('PUT', `/api/origins/${ORIGIN_ID}/work-items/shared-plan/plan`, {
+                workspaceId: 'clone-b',
+                content: 'origin plan v1',
+                summary: 'Origin update',
+            });
+            expect(update.status).toBe(200);
+            expect(update.body.version).toBe(1);
+
+            const originVersions = await request('GET', `/api/origins/${ORIGIN_ID}/work-items/shared-plan/plan/versions`);
+            expect(originVersions.status).toBe(200);
+            expect(originVersions.body).toHaveLength(1);
+            expect(originVersions.body[0].content).toBe('origin plan v1');
+
+            const cloneRead = await request('GET', '/api/workspaces/clone-b/work-items/shared-plan/plan');
+            expect(cloneRead.status).toBe(200);
+            expect(cloneRead.body.plan.content).toBe('origin plan v1');
+
+            const mismatch = await request('GET', `/api/origins/${ORIGIN_ID}/work-items/shared-plan/plan?workspaceId=other-clone`);
+            expect(mismatch.status).toBe(400);
+            expect(mismatch.body.error).toContain("resolves to origin 'gh_plusplusoneplusplus_other'");
+        });
+
+        it('keeps same work item IDs isolated across distinct origins', async () => {
+            await request('POST', '/api/workspaces/clone-a/work-items', {
+                id: 'same-id-plan',
+                title: 'Shared Origin Plan',
+            });
+            await request('POST', '/api/workspaces/other-clone/work-items', {
+                id: 'same-id-plan',
+                title: 'Other Origin Plan',
+            });
+
+            const sharedUpdate = await request('PUT', `/api/origins/${ORIGIN_ID}/work-items/same-id-plan/plan`, {
+                content: 'shared origin plan',
+            });
+            expect(sharedUpdate.status).toBe(200);
+
+            const otherUpdate = await request('PUT', '/api/origins/gh_plusplusoneplusplus_other/work-items/same-id-plan/plan', {
+                content: 'other origin plan',
+            });
+            expect(otherUpdate.status).toBe(200);
+
+            const sharedPlan = await request('GET', `/api/origins/${ORIGIN_ID}/work-items/same-id-plan/plan`);
+            const otherPlan = await request('GET', '/api/origins/gh_plusplusoneplusplus_other/work-items/same-id-plan/plan');
+
+            expect(sharedPlan.body.plan.content).toBe('shared origin plan');
+            expect(otherPlan.body.plan.content).toBe('other origin plan');
         });
     });
 

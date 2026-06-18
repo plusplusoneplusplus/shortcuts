@@ -47,7 +47,7 @@ import { buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { ConversationMiniMap } from './conversation/ConversationMiniMap';
-import { AgentCanvas, AgentCascadeMenu, SubAgentDetailView, ChatViewToggle, buildAgentRunTreeFromTurns, buildSubAgentTurns, flattenAgentLevels, findAgentNode, pathToAgent, findTurnIndexForRun, readChatViewFromHash, applyChatViewToHash, readAgentFromHash, applyAgentToHash } from './agent-canvas';
+import { AgentCanvas, AgentCascadeMenu, SubAgentDetailView, ChatViewToggle, buildAgentRunTreeFromTurns, buildSubAgentTurns, flattenAgentLevels, findAgentNode, pathToAgent, readChatViewFromHash, applyChatViewToHash, readAgentFromHash, applyAgentToHash } from './agent-canvas';
 import type { AgentRunNode, ChatView } from './agent-canvas';
 import { useConversationSelection } from './hooks/useConversationSelection';
 import { snapshotConversation } from '../../utils/snapshot-copy-utils';
@@ -196,7 +196,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // Selected sub-agent for the in-place read-only detail view. Rides the chat
     // hash as `?agent=<id>` alongside `?view=agents`.
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(() => (hashViewSync ? readAgentFromHash(window.location.hash) : null));
-    const [pendingScrollTurn, setPendingScrollTurn] = useState<number | null>(null);
     const [noteEdits, setNoteEdits] = useState<Array<{
         editId: string; notePath: string; preEditContent: string;
         postEditContent?: string; timestamp: string; turnIndex: number; tooLarge?: boolean;
@@ -402,28 +401,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         }
     }, []);
 
-    // The inspector's "Open in thread" action: switch to the thread and scroll
-    // to the run's turn.
-    const openAgentInThread = useCallback((node: AgentRunNode) => {
-        const idx = node.isRoot
-            ? (turnsRef.current[0]?.turnIndex ?? 0)
-            : findTurnIndexForRun(turnsRef.current, node.id);
-        if (idx != null) {
-            setView('thread');
-            setPendingScrollTurn(idx);
-        }
-    }, []);
-
-    // After switching to the thread, scroll to the turn a canvas node pointed at.
-    useEffect(() => {
-        if (pendingScrollTurn == null || view !== 'thread') return;
-        const container = conversationContainerRef.current;
-        const target = container?.querySelector<HTMLElement>(`[data-turn-index="${pendingScrollTurn}"]`);
-        if (target) {
-            target.scrollIntoView({ block: 'start', behavior: 'smooth' });
-            setPendingScrollTurn(null);
-        }
-    }, [pendingScrollTurn, view, turns]);
+    const openAgentDetail = useCallback((node: AgentRunNode) => {
+        handleSelectAgent(node.isRoot ? null : node.id);
+    }, [handleSelectAgent]);
 
     // Compute the follow-up mode pill set, optionally appending Ralph when
     // the chat is eligible for in-place promotion. Eligibility:
@@ -561,7 +541,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         }
         setView(hashViewSync ? (readChatViewFromHash(window.location.hash) ?? 'thread') : 'thread');
         setSelectedAgentId(hashViewSync ? readAgentFromHash(window.location.hash) : null);
-        setPendingScrollTurn(null);
     }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Mirror the active view + selected sub-agent into the chat hash
@@ -1870,7 +1849,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         variant={variant}
                     />
                     ) : effectiveView === 'agents' ? (
-                    <AgentCanvas root={agentRoot} onOpenInThread={openAgentInThread} />
+                    <AgentCanvas root={agentRoot} onOpenAgentDetail={openAgentDetail} />
                     ) : (
                     <>
                     <ConversationArea

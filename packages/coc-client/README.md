@@ -16,7 +16,7 @@ import { CocClient } from '@plusplusoneplusplus/coc-client';
 const coc = new CocClient({ baseUrl: 'http://localhost:4000' });
 
 const health = await coc.health.get();
-const { items } = await coc.workItems.list(workspaceId);
+const { items } = await coc.workItems.listForOrigin(originId);
 ```
 
 ## Runtime notes
@@ -24,7 +24,8 @@ const { items } = await coc.workItems.list(workspaceId);
 - Node.js 24+ has a global `fetch`, which the client uses by default.
 - Browser usage can omit `baseUrl` for same-origin requests.
 - Node tools that use realtime APIs should inject `WebSocket` or `EventSource` constructors when the runtime does not provide them globally.
-- Repo-scoped APIs require an explicit workspace or repo ID. IDs are encoded as path segments, so IDs containing `/` are safe.
+- Persistent Work Item APIs, including hierarchy tree reads, plan/version history, sync/import/convert state, AI authoring, execution history, and chat bindings, use an explicit origin ID. Provider, queue, AI generation, and filesystem-dependent actions still require a workspace ID. IDs are encoded as path segments, so IDs containing `/` are safe.
+- Pull Request provider APIs (list, detail, threads, reviewers, commits, checks, diffs) and persistent sidecar APIs such as recent-opened entries, Team roster, chat bindings, and review progress use explicit origin IDs. Provider and filesystem operations still require concrete workspace/repo metadata.
 - Follow-up routing, queue transitions, and storage paths remain server-authoritative.
 
 ## Supported domains
@@ -36,7 +37,8 @@ const { items } = await coc.workItems.list(workspaceId);
 | Processes | `coc.processes` | list, summaries, detail, create, update, delete, cancel, follow-up message, output, stream helper |
 | Queue | `coc.queue` | list, stats, history, enqueue, pause/resume, cancel |
 | Schedules | `coc.schedules` | repo-scoped list, create, update, enable/disable, move, delete, run, history |
-| Work items | `coc.workItems` | list, grouped list, create, get, update, delete, plan, execute |
+| Work items | `coc.workItems` | origin-scoped list/grouped/tree, plan/version history, sync/import/convert, AI authoring, create, get, update, delete, and workspace-root-dependent execution actions |
+| Pull requests | `coc.pullRequests` | origin-scoped provider PR list/detail/subresources, recent-opened, Team roster, chat bindings, classifications, review progress, suggestions |
 | Workspaces/repos | `coc.workspaces`, `coc.repos` | list, register, discover, update, delete, git info, history deletion |
 | Servers | `coc.servers` | remote server CRUD, health, reconnect, patch-transfer cherry-pick orchestration |
 | Preferences | `coc.preferences` | global and per-repo preferences, skill usage |
@@ -49,13 +51,19 @@ const { items } = await coc.workItems.list(workspaceId);
 ### Work items
 
 ```ts
-const item = await coc.workItems.create(workspaceId, {
+const item = await coc.workItems.createForOrigin(originId, {
   title: 'Add retry telemetry',
   description: 'Track retry counts in queue task metadata.',
   priority: 'normal',
 });
 
-await coc.workItems.updatePlan(workspaceId, item.id, 'Implementation plan...');
+const tree = await coc.workItems.treeForOrigin(originId, { tracker: 'local-only' }, { workspaceId });
+
+await coc.workItems.syncStatusForOrigin(originId, { workspaceId });
+
+await coc.workItems.updatePlanForOrigin(originId, item.id, 'Implementation plan...', undefined, { workspaceId });
+
+await coc.workItems.aiDraftForOrigin(originId, { prompt: 'Draft this work item' }, { workspaceId });
 ```
 
 ### Process follow-up

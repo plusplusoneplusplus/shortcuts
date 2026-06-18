@@ -5,8 +5,10 @@
  * handler based on `ClassificationKey.type`. Replaces the need for
  * type-specific classification routes on the client side.
  *
- * POST /api/repos/:repoId/classify-diff   — trigger classification
- * GET  /api/repos/:repoId/classify-diff    — get cached result / poll status
+ * POST /api/origins/:originId/classify-diff — trigger PR classification
+ * GET  /api/origins/:originId/classify-diff — get cached PR result / poll status
+ * POST /api/repos/:repoId/classify-diff     — trigger commit/branch-range classification
+ * GET  /api/repos/:repoId/classify-diff     — get cached commit/branch-range result / poll status
  *
  * The `type` field in the body (POST) or query (GET) determines how the
  * classification is keyed and dispatched:
@@ -32,6 +34,14 @@ import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS } from '../tasks/task-typ
 import type { ReasoningEffort } from '../tasks/task-types';
 import { buildClassificationPrompt } from './pr-classification-handler';
 import { renderClassificationPrompt } from './classification-prompt';
+import {
+    resolvePullRequestOriginStorageScope,
+    resolvePullRequestStorageId,
+    resolvePullRequestStorageScope,
+    type PullRequestStorageScope,
+    type PullRequestStorageScopeInput,
+} from './pr-origin-scope';
+import type { RepoInfo } from './types';
 
 const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
 
@@ -50,6 +60,8 @@ interface ClassifyDiffPostBody {
     model?: string;
     /** Workspace ID for queue routing. */
     workspaceId?: string;
+    /** Concrete repo/clone ID for origin-scoped provider access. */
+    repoId?: string;
     /** AI provider to use for this classification run (optional; falls back to server default). */
     provider?: ChatProvider;
     /** Reasoning effort override for models that support it (optional). */
@@ -84,6 +96,7 @@ export interface EnqueueGenericClassificationOptions {
     reasoningEffort?: ReasoningEffort;
     effortTier?: 'very-low' | 'low' | 'medium' | 'high';
     autoProviderRouting?: boolean;
+    storageScope?: PullRequestStorageScopeInput;
 }
 
 export type EnqueueGenericClassificationResult =
@@ -112,6 +125,66 @@ export type EnqueueGenericClassificationResult =
 
 export function registerGenericClassificationRoutes(routes: Route[], opts: GenericClassificationRouteOptions): void {
     const { dataDir, store, bridge } = opts;
+    const svc = opts.repoTreeService ?? new RepoTreeService(dataDir, undefined, store);
+
+    // -- POST: Trigger origin-scoped PR classification -------------------------
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/origins\/([^/]+)\/classify-diff$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = decodeURIComponent(match![1]).trim();
+                if (!originId) {
+                    return send400(res, 'originId must be a non-empty string');
+                }
+
+                let body: ClassifyDiffPostBody;
+                try {
+                    body = await readJsonBody<ClassifyDiffPostBody>(req);
+                } catch {
+                    return send400(res, 'Invalid JSON body');
+                }
+
+                if (body.type !== 'pr') {
+                    return send400(res, 'Origin-scoped classify-diff only supports type=pr');
+                }
+                if (!body.identifier || typeof body.identifier !== 'string') {
+                    return send400(res, 'Missing required field: identifier');
+                }
+                if (body.effortTier !== undefined && (typeof body.effortTier !== 'string' || !VALID_EFFORT_TIERS.has(body.effortTier))) {
+                    return send400(res, `Invalid effortTier: '${String(body.effortTier)}'`);
+                }
+
+                const scope = await resolveOriginClassificationScope(req, body, originId, svc, store);
+                if (!scope.ok) {
+                    return scope.status === 404 ? send404(res, scope.message) : send400(res, scope.message);
+                }
+
+                const result = await enqueueGenericClassification({
+                    ...opts,
+                    repoId: scope.value.repoId,
+                    workspaceId: scope.value.workspaceId,
+                    type: 'pr',
+                    identifier: body.identifier,
+                    priority: 'normal',
+                    model: body.model,
+                    provider: body.provider,
+                    reasoningEffort: body.reasoningEffort,
+                    effortTier: body.effortTier,
+                    autoProviderRouting: body.autoProviderRouting,
+                    storageScope: scope.value.storageScope,
+                });
+
+                if (result.status === 'not-found') {
+                    return send404(res, result.message);
+                }
+                sendJson(res, result, result.status === 'started' ? 202 : 200);
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
 
     // -- POST: Trigger classification -----------------------------------------
 
@@ -140,6 +213,9 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                 }
 
                 const { type, identifier } = body;
+                if (type === 'pr') {
+                    return send400(res, 'PR classification must use /api/origins/:originId/classify-diff');
+                }
                 const result = await enqueueGenericClassification({
                     ...opts,
                     repoId,
@@ -164,22 +240,82 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
         },
     });
 
-    // -- GET: Batch status (must be registered before the single-item GET) ------
+    // -- GET: Origin-scoped PR poll / get cached result ------------------------
 
     routes.push({
         method: 'GET',
-        pattern: /^\/api\/repos\/([^/]+)\/classify-diff\/batch-status$/,
+        pattern: /^\/api\/origins\/([^/]+)\/classify-diff$/,
         handler: async (req, res, match) => {
             try {
-                const repoId = decodeURIComponent(match![1]);
+                const originId = decodeURIComponent(match![1]).trim();
+                if (!originId) {
+                    return send400(res, 'originId must be a non-empty string');
+                }
+
+                const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
+                const type = url.searchParams.get('type') as ClassificationType | null;
+                const identifier = url.searchParams.get('identifier');
+                const workspaceId = url.searchParams.get('workspaceId')?.trim() || originId;
+                const repoId = url.searchParams.get('repoId')?.trim() || workspaceId;
+
+                if (type !== 'pr') {
+                    return send400(res, 'Origin-scoped classify-diff only supports type=pr');
+                }
+                if (!identifier) {
+                    return send400(res, 'Missing required query parameter: identifier');
+                }
+
+                const storageScope = await resolvePullRequestOriginStorageScope({ originId, processStore: store });
+                const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
+                if (cached) {
+                    return sendJson(res, {
+                        status: 'ready',
+                        processId: cached.processId,
+                        result: cached.result,
+                        createdAt: cached.createdAt,
+                    });
+                }
+
+                const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
+                if (pending) {
+                    if (isTaskAlive(pending.processId, bridge)) {
+                        return sendJson(res, {
+                            status: 'running',
+                            processId: pending.processId,
+                        });
+                    }
+                    clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
+                }
+
+                sendJson(res, { status: 'none' });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- GET: Origin-scoped PR batch status ------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/origins\/([^/]+)\/classify-diff\/batch-status$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = decodeURIComponent(match![1]).trim();
+                if (!originId) {
+                    return send400(res, 'originId must be a non-empty string');
+                }
+
                 const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
                 const type = url.searchParams.get('type') as ClassificationType | null;
                 const rawIdentifiers = url.searchParams.get('identifiers');
-                const workspaceIdParam = url.searchParams.get('workspaceId');
-                const workspaceId = workspaceIdParam || repoId;
+                const workspaceIdParam = url.searchParams.get('workspaceId')?.trim();
+                const repoIdParam = url.searchParams.get('repoId')?.trim();
+                const workspaceId = workspaceIdParam || originId;
+                const repoId = repoIdParam || workspaceId;
 
-                if (!type || !['pr', 'commit', 'branch-range'].includes(type)) {
-                    return send400(res, 'Missing or invalid query parameter: type');
+                if (type !== 'pr') {
+                    return send400(res, 'Origin-scoped classification batch status only supports type=pr');
                 }
                 if (!rawIdentifiers) {
                     return sendJson(res, { statuses: {} });
@@ -197,14 +333,74 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                     return sendJson(res, { statuses: {} });
                 }
 
+                const storageScope = await resolvePullRequestOriginStorageScope({ originId, processStore: store });
                 const statuses: Record<string, 'none' | 'ready' | 'running'> = {};
                 for (const identifier of identifiers) {
-                    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier);
+                    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
                     if (cached) {
                         statuses[identifier] = 'ready';
                         continue;
                     }
-                    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+                    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
+                    if (pending && isTaskAlive(pending.processId, bridge)) {
+                        statuses[identifier] = 'running';
+                    } else {
+                        statuses[identifier] = 'none';
+                    }
+                }
+
+                sendJson(res, { statuses });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- GET: Batch status (must be registered before the single-item GET) ------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/classify-diff\/batch-status$/,
+        handler: async (req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
+                const type = url.searchParams.get('type') as ClassificationType | null;
+                const rawIdentifiers = url.searchParams.get('identifiers');
+                const workspaceIdParam = url.searchParams.get('workspaceId');
+                const workspaceId = workspaceIdParam || repoId;
+
+                if (!type || !['pr', 'commit', 'branch-range'].includes(type)) {
+                    return send400(res, 'Missing or invalid query parameter: type');
+                }
+                if (type === 'pr') {
+                    return send400(res, 'PR classification status must use /api/origins/:originId/classify-diff/batch-status');
+                }
+                if (!rawIdentifiers) {
+                    return sendJson(res, { statuses: {} });
+                }
+
+                const identifiers = rawIdentifiers
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(Boolean);
+
+                if (identifiers.length > 200) {
+                    return send400(res, 'Too many identifiers: max 200 per request');
+                }
+                if (identifiers.length === 0) {
+                    return sendJson(res, { statuses: {} });
+                }
+
+                const storageScope = await resolveClassificationStorageScope(svc, store, repoId, workspaceId);
+                const statuses: Record<string, 'none' | 'ready' | 'running'> = {};
+                for (const identifier of identifiers) {
+                    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
+                    if (cached) {
+                        statuses[identifier] = 'ready';
+                        continue;
+                    }
+                    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
                     if (pending && isTaskAlive(pending.processId, bridge)) {
                         statuses[identifier] = 'running';
                     } else {
@@ -236,11 +432,15 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                 if (!type || !['pr', 'commit', 'branch-range'].includes(type)) {
                     return send400(res, 'Missing or invalid query parameter: type');
                 }
+                if (type === 'pr') {
+                    return send400(res, 'PR classification status must use /api/origins/:originId/classify-diff');
+                }
                 if (!identifier) {
                     return send400(res, 'Missing required query parameter: identifier');
                 }
 
-                const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier);
+                const storageScope = await resolveClassificationStorageScope(svc, store, repoId, workspaceId);
+                const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
                 if (cached) {
                     return sendJson(res, {
                         status: 'ready',
@@ -250,7 +450,7 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                     });
                 }
 
-                const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+                const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
                 if (pending) {
                     if (isTaskAlive(pending.processId, bridge)) {
                         return sendJson(res, {
@@ -259,7 +459,7 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                         });
                     }
                     // Stale marker: task is gone or terminal — clear it and report idle
-                    clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+                    clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
                 }
 
                 sendJson(res, { status: 'none' });
@@ -282,8 +482,12 @@ export async function enqueueGenericClassification(
         identifier,
     } = options;
     const workspaceId = options.workspaceId || repoId;
+    const svc = options.repoTreeService ?? new RepoTreeService(dataDir, undefined, store);
+    const repo = await svc.resolveRepo(repoId);
+    const storageScope = options.storageScope
+        ?? await resolveClassificationStorageScope(svc, store, repoId, workspaceId, repo);
 
-    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier);
+    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
     if (cached) {
         return {
             status: 'ready',
@@ -293,7 +497,7 @@ export async function enqueueGenericClassification(
         };
     }
 
-    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
     if (pending) {
         if (isTaskAlive(pending.processId, bridge)) {
             return {
@@ -301,11 +505,9 @@ export async function enqueueGenericClassification(
                 processId: pending.processId,
             };
         }
-        clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+        clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier, storageScope);
     }
 
-    const svc = options.repoTreeService ?? new RepoTreeService(dataDir, undefined, store);
-    const repo = await svc.resolveRepo(repoId);
     if (!repo) {
         return { status: 'not-found', message: `Repo ${repoId} not found` };
     }
@@ -325,6 +527,7 @@ export async function enqueueGenericClassification(
             prompt,
             workspaceId,
             repoId,
+            classificationStorageOriginId: resolvePullRequestStorageId(workspaceId, storageScope),
             classificationType: type,
             classificationIdentifier: identifier,
             ...extractPayloadFields(type, identifier),
@@ -346,7 +549,7 @@ export async function enqueueGenericClassification(
     const taskId = queueManager.enqueue(taskSpec);
 
     try {
-        writePendingGeneric(dataDir, workspaceId, repoId, type, identifier, String(taskId));
+        writePendingGeneric(dataDir, workspaceId, repoId, type, identifier, String(taskId), storageScope);
     } catch {
         /* best-effort */
     }
@@ -364,12 +567,13 @@ function readClassificationGeneric(
     repoId: string,
     type: ClassificationType,
     identifier: string,
+    storageScope?: PullRequestStorageScopeInput,
 ) {
     // Map generic key to the PR-style key the store expects.
     // For PRs: identifier = "prId:headSha"
     // For generic: we use (repoId, type_identifier_prefix, identifier_suffix) 
     const { prId, headSha } = splitIdentifier(type, identifier, repoId);
-    return readClassification(dataDir, workspaceId, repoId, prId, headSha);
+    return readClassification(dataDir, workspaceId, repoId, prId, headSha, storageScope);
 }
 
 function readPendingGeneric(
@@ -378,9 +582,10 @@ function readPendingGeneric(
     repoId: string,
     type: ClassificationType,
     identifier: string,
+    storageScope?: PullRequestStorageScopeInput,
 ) {
     const { prId, headSha } = splitIdentifier(type, identifier, repoId);
-    return readPending(dataDir, workspaceId, repoId, prId, headSha);
+    return readPending(dataDir, workspaceId, repoId, prId, headSha, storageScope);
 }
 
 function writePendingGeneric(
@@ -390,9 +595,10 @@ function writePendingGeneric(
     type: ClassificationType,
     identifier: string,
     processId: string,
+    storageScope?: PullRequestStorageScopeInput,
 ) {
     const { prId, headSha } = splitIdentifier(type, identifier, repoId);
-    writePending(dataDir, workspaceId, repoId, prId, headSha, processId);
+    writePending(dataDir, workspaceId, repoId, prId, headSha, processId, { storageScope });
 }
 
 function clearPendingGeneric(
@@ -401,9 +607,94 @@ function clearPendingGeneric(
     repoId: string,
     type: ClassificationType,
     identifier: string,
+    storageScope?: PullRequestStorageScopeInput,
 ) {
     const { prId, headSha } = splitIdentifier(type, identifier, repoId);
-    clearPending(dataDir, workspaceId, repoId, prId, headSha);
+    clearPending(dataDir, workspaceId, repoId, prId, headSha, storageScope);
+}
+
+async function resolveClassificationStorageScope(
+    svc: RepoTreeService,
+    store: ProcessStore,
+    repoId: string,
+    workspaceId: string,
+    repo?: RepoInfo,
+): Promise<PullRequestStorageScope> {
+    const resolvedRepo = repo ?? await svc.resolveRepo(repoId);
+    return resolvePullRequestStorageScope({
+        workspaceId,
+        repoId,
+        remoteUrl: resolvedRepo?.remoteUrl,
+        rootPath: resolvedRepo?.localPath,
+        processStore: store,
+    });
+}
+
+type OriginClassificationScopeResult =
+    | {
+        ok: true;
+        value: {
+            workspaceId: string;
+            repoId: string;
+            storageScope: PullRequestStorageScope;
+        };
+    }
+    | { ok: false; status: 400 | 404; message: string };
+
+function parseOptionalScopeValue(
+    req: Parameters<Route['handler']>[0],
+    body: unknown,
+    key: 'workspaceId' | 'repoId',
+): string | undefined {
+    if (body && typeof body === 'object') {
+        const raw = (body as Record<string, unknown>)[key];
+        if (typeof raw === 'string' && raw.trim()) {
+            return raw.trim();
+        }
+    }
+    const parsed = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
+    return parsed.searchParams.get(key)?.trim() || undefined;
+}
+
+async function resolveOriginClassificationScope(
+    req: Parameters<Route['handler']>[0],
+    body: unknown,
+    originId: string,
+    svc: RepoTreeService,
+    store: ProcessStore,
+): Promise<OriginClassificationScopeResult> {
+    const workspaceId = parseOptionalScopeValue(req, body, 'workspaceId');
+    if (!workspaceId) {
+        return {
+            ok: false,
+            status: 400,
+            message: 'workspaceId is required for origin-scoped PR classification',
+        };
+    }
+
+    const repoId = parseOptionalScopeValue(req, body, 'repoId') ?? workspaceId;
+    const repo = await svc.resolveRepo(repoId);
+    if (!repo) {
+        return {
+            ok: false,
+            status: 404,
+            message: `Repo ${repoId} not found`,
+        };
+    }
+
+    const storageScope = await resolveClassificationStorageScope(svc, store, repoId, workspaceId, repo);
+    if (storageScope.storageOriginId !== originId) {
+        return {
+            ok: false,
+            status: 400,
+            message: `Workspace ${workspaceId} resolves to origin ${storageScope.storageOriginId}, not ${originId}`,
+        };
+    }
+
+    return {
+        ok: true,
+        value: { workspaceId, repoId, storageScope },
+    };
 }
 
 /**

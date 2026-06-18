@@ -1,10 +1,8 @@
 /**
- * Helpers for the AC-04 PR review-progress REST endpoints.
- * Kept thin and dependency-free so usePrReviewProgress can drop them into
- * effects without dragging hook-internals into the client API.
+ * Helpers for the AC-04 PR review-progress origin endpoints.
  */
 
-import { requestSpaApi } from '../../../api/cocClient';
+import { getSpaCocClient } from '../../../api/cocClient';
 
 export interface ReviewProgressDto {
     repoId: string;
@@ -17,21 +15,22 @@ export interface ReviewProgressDto {
 }
 
 export interface ReviewProgressClientKey {
+    originId: string;
     workspaceId: string;
     repoId: string;
     prId: string;
-}
-
-function buildPath(key: ReviewProgressClientKey, suffix: string): string {
-    return `/repos/${encodeURIComponent(key.repoId)}/pull-requests/${encodeURIComponent(key.prId)}/review-progress${suffix}`;
 }
 
 export async function fetchReviewProgress(
     key: ReviewProgressClientKey,
     headSha: string,
 ): Promise<ReviewProgressDto> {
-    const params = new URLSearchParams({ headSha, workspaceId: key.workspaceId });
-    return await requestSpaApi<ReviewProgressDto>(buildPath(key, `?${params.toString()}`));
+    return await getSpaCocClient().pullRequests.getReviewProgressForOrigin(
+        key.originId,
+        key.prId,
+        headSha,
+        { workspaceId: key.workspaceId, repoId: key.repoId },
+    );
 }
 
 export async function putReviewProgress(
@@ -43,9 +42,10 @@ export async function putReviewProgress(
         lastSelectedFile: string | null;
     },
 ): Promise<ReviewProgressDto> {
-    return await requestSpaApi<ReviewProgressDto>(buildPath(key, ''), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, workspaceId: key.workspaceId }),
-    });
+    return await getSpaCocClient().pullRequests.saveReviewProgressForOrigin(
+        key.originId,
+        key.prId,
+        payload,
+        { workspaceId: key.workspaceId, repoId: key.repoId },
+    );
 }

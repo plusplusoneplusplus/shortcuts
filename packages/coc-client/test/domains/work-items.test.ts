@@ -6,19 +6,12 @@ describe('WorkItemsClient', () => {
   it('encodes workspace and work item IDs in path segments', async () => {
     const adapter = createMockAdapter({});
     const client = new WorkItemsClient(adapter);
-    const controller = new AbortController();
 
     await client.list('repo/a', { status: ['created', 'planning'], tags: ['x', 'y'] });
     await client.create('repo/a', { title: 'Task', description: 'Do it', priority: 'normal' });
     await client.updatePlan('repo/a', 'wi/1', 'plan');
     await client.comparePlanVersions('repo/a', 'wi/1', 1, 2);
     await client.restorePlanVersion('repo/a', 'wi/1', 1, { summary: 'Restore v1' });
-    await client.applyAiDraft(
-      'repo/a',
-      'wi/1',
-      { prompt: 'Draft it', baseUpdatedAt: '2026-01-01T00:00:00.000Z', baseContentVersion: null },
-      { signal: controller.signal },
-    );
     await client.execute('repo/a', 'wi/1', { model: 'm', executionMode: 'ralph' });
     await client.submitPullRequest('repo/a', 'wi/1', { changeId: 'change/1', branchName: 'coc/wi-1' });
     await client.startAiReview('repo/a', 'wi/1', { model: 'review-model' });
@@ -28,6 +21,15 @@ describe('WorkItemsClient', () => {
     await client.createChatBinding('repo/a', 'wi/1', 'task/1');
     await client.deleteChatBinding('repo/a', 'wi/1');
     await client.startFreshChat('repo/a', 'wi/1');
+    await client.listChatBindingsForOrigin('gh_owner/repo');
+    await client.getChatBindingForOrigin('gh_owner/repo', 'wi/1');
+    await client.createChatBindingForOrigin('gh_owner/repo', 'wi/1', 'task/1');
+    await client.deleteChatBindingForOrigin('gh_owner/repo', 'wi/1');
+    await client.startFreshChatForOrigin('gh_owner/repo', 'wi/1', 'repo/a');
+    await client.executeForOrigin('gh_owner/repo', 'wi/1', { model: 'm', executionMode: 'ralph' }, { workspaceId: 'repo/a' });
+    await client.submitPullRequestForOrigin('gh_owner/repo', 'wi/1', { changeId: 'change/1' }, { workspaceId: 'repo/a' });
+    await client.startAiReviewForOrigin('gh_owner/repo', 'wi/1', { model: 'review-model' }, { workspaceId: 'repo/a' });
+    await client.resolveCommentsForOrigin('gh_owner/repo', 'wi/1', { type: 'commit', commitSha: 'abc123' }, { workspaceId: 'repo/a' });
 
     expect(adapter.calls[0]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items',
@@ -43,48 +45,185 @@ describe('WorkItemsClient', () => {
       options: { method: 'POST', body: { summary: 'Restore v1' } },
     });
     expect(adapter.calls[5]).toMatchObject({
-      path: '/workspaces/repo%2Fa/work-items/wi%2F1/ai-draft/apply',
-      options: {
-        method: 'POST',
-        body: { prompt: 'Draft it', baseUpdatedAt: '2026-01-01T00:00:00.000Z', baseContentVersion: null },
-        signal: controller.signal,
-      },
-    });
-    expect(adapter.calls[6]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/execute',
       options: { method: 'POST', body: { model: 'm', executionMode: 'ralph' } },
     });
-    expect(adapter.calls[7]).toMatchObject({
+    expect(adapter.calls[6]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/submit-pr',
       options: { method: 'POST', body: { changeId: 'change/1', branchName: 'coc/wi-1' } },
     });
-    expect(adapter.calls[8]).toMatchObject({
+    expect(adapter.calls[7]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/ai-review',
       options: { method: 'POST', body: { model: 'review-model' } },
     });
-    expect(adapter.calls[9]).toMatchObject({
+    expect(adapter.calls[8]).toMatchObject({
       path: '/workspaces/repo%2Fa/work-items/wi%2F1/resolve-comments',
       options: { method: 'POST', body: { type: 'commit', commitSha: 'abc123' } },
     });
-    expect(adapter.calls[10]).toEqual({
+    expect(adapter.calls[9]).toEqual({
       path: '/workspaces/repo%2Fa/work-item-chat-bindings',
+      options: undefined,
+    });
+    expect(adapter.calls[10]).toEqual({
+      path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
       options: undefined,
     });
     expect(adapter.calls[11]).toEqual({
-      path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
-      options: undefined,
-    });
-    expect(adapter.calls[12]).toEqual({
       path: '/workspaces/repo%2Fa/work-item-chat-bindings',
       options: { method: 'POST', body: { workItemId: 'wi/1', taskId: 'task/1' } },
     });
-    expect(adapter.calls[13]).toEqual({
+    expect(adapter.calls[12]).toEqual({
       path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1',
       options: { method: 'DELETE' },
     });
-    expect(adapter.calls[14]).toEqual({
+    expect(adapter.calls[13]).toEqual({
       path: '/workspaces/repo%2Fa/work-item-chat-bindings/wi%2F1/fresh',
       options: { method: 'POST', body: {} },
+    });
+    expect(adapter.calls[14]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-item-chat-bindings',
+      options: undefined,
+    });
+    expect(adapter.calls[15]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-item-chat-bindings/wi%2F1',
+      options: undefined,
+    });
+    expect(adapter.calls[16]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-item-chat-bindings',
+      options: { method: 'POST', body: { workItemId: 'wi/1', taskId: 'task/1' } },
+    });
+    expect(adapter.calls[17]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-item-chat-bindings/wi%2F1',
+      options: { method: 'DELETE' },
+    });
+    expect(adapter.calls[18]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-item-chat-bindings/wi%2F1/fresh',
+      options: { method: 'POST', body: {}, query: { workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[19]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/execute',
+      options: { method: 'POST', body: { model: 'm', executionMode: 'ralph', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[20]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/submit-pr',
+      options: { method: 'POST', body: { changeId: 'change/1', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[21]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/ai-review',
+      options: { method: 'POST', body: { model: 'review-model', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[22]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/resolve-comments',
+      options: { method: 'POST', body: { type: 'commit', commitSha: 'abc123', workspaceId: 'repo/a' } },
+    });
+  });
+
+  it('encodes origin IDs in origin-scoped Work Item paths', async () => {
+    const adapter = createMockAdapter({});
+    const client = new WorkItemsClient(adapter);
+    const controller = new AbortController();
+
+    await client.listForOrigin('gh_owner/repo', { status: ['created', 'planning'], tags: ['x', 'y'] });
+    await client.createForOrigin('gh_owner/repo', { title: 'Task' }, { workspaceId: 'repo/a' });
+    await client.updateForOrigin('gh_owner/repo', 'wi/1', { status: 'planning' }, { workspaceId: 'repo/a' });
+    await client.deleteForOrigin('gh_owner/repo', 'wi/1');
+    await client.treeForOrigin('gh_owner/repo', { tracker: 'local-only', includeArchived: true }, { workspaceId: 'repo/a' });
+    await client.updatePlanForOrigin('gh_owner/repo', 'wi/1', 'origin plan', { summary: 'Origin plan' }, { workspaceId: 'repo/a' });
+    await client.planVersionsForOrigin('gh_owner/repo', 'wi/1', { workspaceId: 'repo/a' });
+    await client.getPlanVersionForOrigin('gh_owner/repo', 'wi/1', 3, { workspaceId: 'repo/a' });
+    await client.comparePlanVersionsForOrigin('gh_owner/repo', 'wi/1', 1, 2, { workspaceId: 'repo/a' });
+    await client.restorePlanVersionForOrigin('gh_owner/repo', 'wi/1', 1, { summary: 'Restore v1' }, { workspaceId: 'repo/a' });
+    await client.syncStatusForOrigin('gh_owner/repo', { workspaceId: 'repo/a' }, 'github');
+    await client.importFromGitHubForOrigin('gh_owner/repo', { issueNumber: 42 }, { workspaceId: 'repo/a' });
+    await client.convertLocalEpicToGitHubForOrigin('gh_owner/repo', 'wi/1', { workspaceId: 'repo/a' });
+    await client.aiDraftForOrigin('gh_owner/repo', { prompt: 'Draft it' }, { workspaceId: 'repo/a' });
+    await client.aiImproveForOrigin('gh_owner/repo', 'wi/1', { prompt: 'Improve it' }, { workspaceId: 'repo/a' });
+    await client.applyAiDraftForOrigin(
+      'gh_owner/repo',
+      'wi/1',
+      { prompt: 'Apply it', baseUpdatedAt: '2026-01-01T00:00:00.000Z', baseContentVersion: null },
+      { workspaceId: 'repo/a' },
+      { signal: controller.signal },
+    );
+
+    expect(adapter.calls[0]).toMatchObject({
+      path: '/origins/gh_owner%2Frepo/work-items',
+      options: { query: { status: 'created,planning', tags: 'x,y' } },
+    });
+    expect(adapter.calls[1]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items',
+      options: { method: 'POST', body: { title: 'Task', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[2]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1',
+      options: { method: 'PATCH', body: { status: 'planning', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[3]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1',
+      options: { method: 'DELETE', query: undefined },
+    });
+    expect(adapter.calls[4]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/tree',
+      options: {
+        query: {
+          tracker: 'local-only',
+          includeArchived: true,
+          workspaceId: 'repo/a',
+        },
+      },
+    });
+    expect(adapter.calls[5]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/plan',
+      options: { method: 'PUT', body: { content: 'origin plan', summary: 'Origin plan', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[6]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/plan/versions',
+      options: { query: { workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[7]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/plan/versions/3',
+      options: { query: { workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[8]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/plan/versions/compare',
+      options: { query: { base: 1, target: 2, workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[9]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/plan/versions/1/restore',
+      options: { method: 'POST', body: { summary: 'Restore v1', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[10]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/sync/status',
+      options: { query: { provider: 'github', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[11]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/import-from-github',
+      options: { method: 'POST', body: { issueNumber: 42, workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[12]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/convert-to-github',
+      options: { method: 'POST', query: { workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[13]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/ai-draft',
+      options: { method: 'POST', body: { prompt: 'Draft it', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[14]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/ai-draft',
+      options: { method: 'POST', body: { prompt: 'Improve it', workspaceId: 'repo/a' } },
+    });
+    expect(adapter.calls[15]).toEqual({
+      path: '/origins/gh_owner%2Frepo/work-items/wi%2F1/ai-draft/apply',
+      options: {
+        method: 'POST',
+        body: {
+          prompt: 'Apply it',
+          baseUpdatedAt: '2026-01-01T00:00:00.000Z',
+          baseContentVersion: null,
+          workspaceId: 'repo/a',
+        },
+        signal: controller.signal,
+      },
     });
   });
 });

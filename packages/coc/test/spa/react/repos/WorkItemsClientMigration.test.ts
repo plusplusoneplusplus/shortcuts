@@ -28,18 +28,18 @@ describe('work items SPA client migration', () => {
 
     it('creates manual and chat-derived work items through client.workItems', () => {
         expect(createDialog).toContain('cloneClient.workItems.createFromChat(workspaceId');
-        expect(createDialog).toContain('cloneClient.workItems.create(workspaceId');
+        expect(createDialog).toContain('cloneClient.workItems.createForOrigin(workItemOriginId');
         expect(createDialog).not.toContain('/work-items/from-chat');
     });
 
     it('loads, mutates, and deletes work item detail through client.workItems', () => {
         for (const call of [
-            'workItems.get(requestedWorkspaceId, requestedWorkItemId)',
-            'workItems.updateStatus(workspaceId, workItemId',
-            'workItems.update(workspaceId, workItemId',
-            'workItems.requestChanges(workspaceId, workItemId',
-            'workItems.resolveComments(workspaceId, workItemId',
-            'workItems.delete(workspaceId, workItemId)',
+            'workItems.getForOrigin(workItemOriginId, requestedWorkItemId',
+            'workItems.updateStatusForOrigin(',
+            'workItems.updateForOrigin(workItemOriginId, workItemId',
+            'workItems.requestChangesForOrigin(workItemOriginId, workItemId',
+            'workItems.resolveCommentsForOrigin(workItemOriginId, workItemId',
+            'workItems.deleteForOrigin(workItemOriginId, workItemId',
         ]) {
             expect(detail).toContain(call);
         }
@@ -49,27 +49,54 @@ describe('work items SPA client migration', () => {
     });
 
     it('loads grouped lists and optimistic context-menu mutations through client.workItems', () => {
-        expect(section).toContain('workItems.grouped(workspaceId');
-        expect(section).toContain('workItems.list(workspaceId');
-        expect(section).toContain('workItems.pin(workspaceId, item.id');
-        expect(section).toContain('workItems.archive(workspaceId, item.id');
-        expect(section).toContain('workItems.delete(workspaceId, item.id)');
+        expect(section).toContain('workItems.groupedForOrigin(workItemOriginId');
+        expect(section).toContain('workItems.listForOrigin(workItemOriginId');
+        expect(section).toContain('workItems.pinForOrigin(workItemOriginId, item.id');
+        expect(section).toContain('workItems.archiveForOrigin(workItemOriginId, item.id');
+        expect(section).toContain('workItems.deleteForOrigin(workItemOriginId, item.id');
         expect(section).not.toContain('/work-items/grouped');
     });
 
+    it('loads hierarchy trees through the origin-scoped work item client', () => {
+        const tree = readWorkItemComponent('WorkItemHierarchyTree.tsx');
+        expect(tree).toContain('workItems.treeForOrigin(workItemOriginId');
+        expect(tree).toContain('workItems.deleteForOrigin(workItemOriginId');
+        expect(tree).toContain('workItems.updateForOrigin(workItemOriginId');
+        expect(tree).toContain('workItems.pinForOrigin(workItemOriginId');
+        expect(tree).toContain('workItems.archiveForOrigin(workItemOriginId');
+        expect(tree).toContain('{ workspaceId }');
+        expect(tree).not.toContain('workItems.tree(workspaceId');
+        expect(tree).not.toContain('workItems.delete(workspaceId');
+        expect(tree).not.toContain('workItems.update(workspaceId');
+        expect(tree).not.toContain('workItems.pin(workspaceId');
+        expect(tree).not.toContain('workItems.archive(workspaceId');
+    });
+
+    it('loads and updates parent-picker state through origin-scoped work item APIs', () => {
+        const parentPicker = readWorkItemComponent('WorkItemParentPicker.tsx');
+        expect(parentPicker).toContain('workItems.listForOrigin(workItemOriginId');
+        expect(parentPicker).toContain('workItems.updateForOrigin(workItemOriginId');
+        expect(parentPicker).not.toContain('workItems.list(workspaceId');
+        expect(parentPicker).not.toContain('workItems.update(workspaceId');
+    });
+
     it('loads plan versions through client.workItems and persists plan via the detail Ctrl+S batch', () => {
-        expect(planSection).toContain('workItems.planVersions(workspaceId, workItemId)');
-        expect(planSection).toContain('workItems.getPlanVersion(workspaceId, workItemId, v)');
-        expect(planSection).toContain('workItems.resolveComments(workspaceId, workItemId');
+        expect(planSection).toContain('workItems.planVersionsForOrigin(workItemOriginId, workItemId, originOptions)');
+        expect(planSection).toContain('workItems.getPlanVersionForOrigin(workItemOriginId, workItemId, v, originOptions)');
+        expect(planSection).toContain('workItems.comparePlanVersionsForOrigin(workItemOriginId, workItemId');
+        expect(planSection).toContain('workItems.restorePlanVersionForOrigin(workItemOriginId, workItemId');
+        expect(planSection).toContain('workItems.resolveCommentsForOrigin(workItemOriginId, workItemId');
         // Plan persistence moved into the unified Ctrl+S PATCH batch in WorkItemDetail;
         // the plan section no longer performs an instant standalone save.
         expect(planSection).not.toContain('workItems.updatePlan(');
+        expect(planSection).not.toContain('workItems.planVersions(workspaceId');
+        expect(planSection).not.toContain('workItems.getPlanVersion(workspaceId');
         expect(detail).toContain('updates.plan');
         expect(detail).not.toContain('workItems.updatePlan(workspaceId, workItemId, planDraft');
     });
 
     it('executes work items through client.workItems while keeping skill loading separate', () => {
-        expect(executeDialog).toContain('workItems.execute(workspaceId, workItemId');
+        expect(executeDialog).toContain('workItems.executeForOrigin(workItemOriginId, workItemId');
         expect(executeDialog).toContain("'/workspaces/' + encodeURIComponent(workspaceId) + '/skills'");
     });
 
@@ -89,13 +116,13 @@ describe('work items SPA client migration', () => {
         expect(executionSession).toContain('queue.list()');
     });
 
-    it('drafts and improves work items through client.workItems.aiDraft and aiImprove', () => {
+    it('drafts and improves work items through origin-scoped client.workItems AI methods', () => {
         const composerSrc = fs.readFileSync(
             path.join(WORK_ITEMS_DIR, 'WorkItemAiComposer.tsx'),
             'utf-8',
         );
-        expect(composerSrc).toContain('workItems.aiDraft(workspaceId');
-        expect(composerSrc).toContain('workItems.aiImprove(workspaceId');
+        expect(composerSrc).toContain('workItems.aiDraftForOrigin(workItemOriginId');
+        expect(composerSrc).toContain('workItems.aiImproveForOrigin(workItemOriginId');
         // Must not hit the AI endpoint URLs directly
         expect(composerSrc).not.toContain('/ai-draft');
     });

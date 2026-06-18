@@ -17,6 +17,7 @@
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { HunkClassification } from '../spa/client/react/features/pull-requests/classification-types';
+import type { PullRequestStorageScopeInput } from '../repos/pr-origin-scope';
 import {
     validateClassificationResult,
     writeClassification,
@@ -34,6 +35,8 @@ export interface SaveClassificationDeps {
     headSha: string;
     /** Optional processId stamped onto the stored record. */
     processId?: string;
+    /** Optional canonical origin storage scope for shared PR classification state. */
+    storageScope?: PullRequestStorageScopeInput;
 }
 
 export function createSaveClassificationTool(deps: SaveClassificationDeps) {
@@ -157,7 +160,10 @@ export function createSaveClassificationTool(deps: SaveClassificationDeps) {
                     deps.prId,
                     deps.headSha,
                     { classifications: validation.classifications },
-                    { processId: deps.processId },
+                    {
+                        processId: deps.processId,
+                        storageScope: deps.storageScope,
+                    },
                 );
                 saved = validation.classifications;
                 return {

@@ -12,6 +12,7 @@ import {
 import { buildWorkItemGroupedRouteResponse, buildWorkItemListRouteResponse } from './work-item-routes';
 import { buildWorkItemTreeRouteResponse } from './work-item-hierarchy-routes';
 import { buildWorkItemSyncStatusRouteResponse } from './work-item-sync-routes';
+import { resolveWorkspaceWorkItemOriginId } from './work-item-route-scope';
 
 const DEFAULT_WORK_ITEM_PAGE_SIZE = 20;
 
@@ -30,19 +31,20 @@ function trackerForRemoteProvider(provider: WorkItemSyncProvider): WorkItemTrack
 }
 
 export async function warmWorkItemWorkspaceCache(options: WarmWorkItemWorkspaceCacheOptions): Promise<void> {
-    const repoId = options.workspaceId;
-    const listFilter = { repoId, limit: DEFAULT_WORK_ITEM_PAGE_SIZE };
-    const groupedFilter = { repoId, limit: DEFAULT_WORK_ITEM_PAGE_SIZE };
+    const workspaceId = options.workspaceId;
+    const storageRepoId = await resolveWorkspaceWorkItemOriginId(options.processStore, workspaceId);
+    const listFilter = { repoId: storageRepoId, limit: DEFAULT_WORK_ITEM_PAGE_SIZE };
+    const groupedFilter = { repoId: storageRepoId, limit: DEFAULT_WORK_ITEM_PAGE_SIZE };
     const refreshes: Array<Promise<unknown>> = [
         refreshWorkItemResponseCacheEntry(
             makeWorkItemListResponseCacheKey(listFilter),
-            repoId,
+            storageRepoId,
             'list',
             () => buildWorkItemListRouteResponse(options.workItemStore, listFilter),
         ),
         refreshWorkItemResponseCacheEntry(
             makeWorkItemGroupedResponseCacheKey(groupedFilter),
-            repoId,
+            storageRepoId,
             'grouped',
             () => buildWorkItemGroupedRouteResponse(options.workItemStore, groupedFilter),
         ),
@@ -55,10 +57,10 @@ export async function warmWorkItemWorkspaceCache(options: WarmWorkItemWorkspaceC
             includeDone: false,
         };
         refreshes.push(refreshWorkItemResponseCacheEntry(
-            makeWorkItemTreeResponseCacheKey(repoId, localTreeOptions),
-            repoId,
+            makeWorkItemTreeResponseCacheKey(storageRepoId, localTreeOptions),
+            storageRepoId,
             'tree',
-            () => buildWorkItemTreeRouteResponse(options.workItemStore, repoId, localTreeOptions),
+            () => buildWorkItemTreeRouteResponse(options.workItemStore, storageRepoId, localTreeOptions),
         ));
 
         if (options.getSyncEnabled()) {
@@ -70,10 +72,11 @@ export async function warmWorkItemWorkspaceCache(options: WarmWorkItemWorkspaceC
 }
 
 async function warmRemoteWorkItemCache(options: WarmWorkItemWorkspaceCacheOptions): Promise<void> {
-    const repoId = options.workspaceId;
+    const workspaceId = options.workspaceId;
+    const storageRepoId = await resolveWorkspaceWorkItemOriginId(options.processStore, workspaceId);
     const status = await refreshWorkItemResponseCacheEntry(
-        makeWorkItemSyncStatusResponseCacheKey(repoId),
-        repoId,
+        makeWorkItemSyncStatusResponseCacheKey(workspaceId),
+        workspaceId,
         'sync-status',
         () => buildWorkItemSyncStatusRouteResponse({
             routes: [],
@@ -83,7 +86,7 @@ async function warmRemoteWorkItemCache(options: WarmWorkItemWorkspaceCacheOption
             getHierarchyEnabled: options.getHierarchyEnabled,
             getSyncEnabled: options.getSyncEnabled,
             providers: options.providers,
-        }, repoId),
+        }, workspaceId),
     );
 
     if (status.disabled || !status.remoteProvider) {
@@ -96,9 +99,9 @@ async function warmRemoteWorkItemCache(options: WarmWorkItemWorkspaceCacheOption
         includeDone: false,
     };
     await refreshWorkItemResponseCacheEntry(
-        makeWorkItemTreeResponseCacheKey(repoId, remoteTreeOptions),
-        repoId,
+        makeWorkItemTreeResponseCacheKey(storageRepoId, remoteTreeOptions),
+        storageRepoId,
         'tree',
-        () => buildWorkItemTreeRouteResponse(options.workItemStore, repoId, remoteTreeOptions),
+        () => buildWorkItemTreeRouteResponse(options.workItemStore, storageRepoId, remoteTreeOptions),
     );
 }

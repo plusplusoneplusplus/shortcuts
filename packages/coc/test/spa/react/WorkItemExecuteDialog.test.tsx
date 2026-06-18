@@ -19,7 +19,7 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         request: mocks.request,
         workItems: {
-            execute: mocks.execute,
+            executeForOrigin: mocks.execute,
         },
         preferences: {
             recordSkillUsage: mocks.recordSkillUsage,
@@ -104,12 +104,12 @@ describe('WorkItemExecuteDialog', () => {
             fireEvent.click(screen.getByTestId('wi-execute-submit'));
         });
 
-        expect(mocks.execute).toHaveBeenCalledWith('ws-1', 'wi-1', {
+        expect(mocks.execute).toHaveBeenCalledWith('local_ws-1', 'wi-1', {
             skillNames: ['impl'],
             provider: 'codex',
             model: 'gpt-5.3-codex',
             reasoningEffort: 'high',
-        });
+        }, { workspaceId: 'ws-1' });
         expect(mocks.trackUsage).toHaveBeenCalledWith('impl');
         expect(onExecuted).toHaveBeenCalled();
         expect(onClose).toHaveBeenCalled();

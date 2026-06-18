@@ -121,8 +121,29 @@ all have their own `references/*.md`.
   `pullRequests.enabled`, `pullRequests.autoClassifyTeam`, and
   `features.focusedDiff`; use the generic classify-diff enqueue helper with the
   per-trigger cap and low priority instead of adding client-side POST loops.
-  The Team toolbar status UI should read batch status and route manual
-  "Classify now" actions through the same bounded server helper.
+  Classification result/pending files are origin-scoped and queued
+  `pr-classification` payloads must carry the resolved classification storage
+  origin so the `saveClassification` tool writes the same state route polling
+  reads. The Team toolbar status UI reads origin batch status and routes manual
+  "Classify now" actions through origin APIs backed by the same bounded server
+  helper, passing workspace/repo metadata only to select the concrete clone.
+- **Pull Request on-demand diff classification** must use
+  `/api/origins/:originId/classify-diff` or
+  `client.pullRequests.*Classification*ForOrigin(...)`, passing explicit
+  workspace/repo metadata for queue routing and legacy migration. Repo-scoped
+  `classify-diff` remains only for commit and branch-range classification.
+- **Pull Request provider list/detail/subresource callers** must use
+  `/api/origins/:originId/pull-requests...` or
+  `client.pullRequests.*ForOrigin(...)`, passing `workspaceId` and optional
+  `repoId` only to select the concrete clone for provider access. Do not add
+  repo-scoped PR provider route aliases.
+- **Pull Request review progress** for PR pop-out reviewed/visited file state is
+  durable origin state. Callers must use
+  `/api/origins/:originId/pull-requests/:prId/review-progress` or
+  `client.pullRequests.*ReviewProgressForOrigin(...)`; workspace/repo metadata is
+  for legacy migration only, not storage identity. Do not add repo-scoped route
+  aliases for PR provider actions, recent-opened, Team roster, or
+  review-progress state.
 - **Native Copilot session reads** (`src/server/native-copilot-sessions/`)
   must stay strictly read-only against the native store: open
   `~/.copilot/session-store.db` with short-lived `readonly` SQLite connections,
@@ -165,6 +186,42 @@ all have their own `references/*.md`.
   (`src/server/routes/work-item-routes.ts`) and the `create_update_work_item`
   LLM tool call it — do not re-implement hierarchy or provider logic in either
   caller.
+- **Work-item hierarchy tree reads** are persistent origin state. New callers must
+  use `/api/origins/:originId/work-items/tree` or
+  `client.workItems.treeForOrigin(...)`; pass `workspaceId` only as clone
+  metadata/validation.
+- **Work-item chat bindings** are persistent origin state. New callers must use
+  `/api/origins/:originId/work-item-chat-bindings...` or
+  `client.workItems.*ChatBindingForOrigin(...)`; pass `workspaceId` only for
+  fresh-chat archive/reset actions that need a concrete clone/process scope.
+- **Work-item plan and plan-version reads/writes** are persistent origin state.
+  New callers must use `/api/origins/:originId/work-items/:itemId/plan...` or
+  `client.workItems.*Plan*ForOrigin(...)`; pass `workspaceId` only as clone
+  metadata for origin validation.
+- **Work-item change records** (plan-version/commit bundles) are persistent
+  origin state. New callers must use
+  `/api/origins/:originId/work-items/:itemId/changes...`; pass `workspaceId`
+  only as clone metadata for origin validation.
+- **Work-item sync/import/convert actions** are origin-scoped persistent state
+  but require a concrete clone for provider configuration and transport. New
+  callers must use `/api/origins/:originId/work-items/sync/status`,
+  `/api/origins/:originId/work-items/import-from-*`, or
+  `/api/origins/:originId/work-items/:itemId/convert-to-*` and always pass
+  `workspaceId` so GitHub/Azure Boards access uses the selected workspace while
+  imported/converted items write to the origin.
+- **Work-item execution actions** are origin-scoped persistent state but require
+  a concrete clone. New callers must use
+  `/api/origins/:originId/work-items/:itemId/{execute,submit-pr,ai-review,resolve-comments}`
+  or `client.workItems.*ForOrigin(...)`, always passing `workspaceId` so queue
+  routing, git/PR operations, task files, and comment resolution use the
+  selected workspace while execution history and broadcasts write to the origin.
+- **Work-item AI authoring routes** are origin-scoped and require a concrete
+  clone for generation context. New callers must use
+  `/api/origins/:originId/work-items/ai-draft`,
+  `/api/origins/:originId/work-items/:itemId/ai-draft`, or
+  `/api/origins/:originId/work-items/:itemId/ai-draft/apply` through
+  `client.workItems.*ForOrigin(...)`, always passing `workspaceId`; workspace
+  AI-draft route aliases are not registered.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
   `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
   before `tsc`, clean `dist` before emitting, and generate

@@ -16,10 +16,12 @@ import type {
   PullRequestCommitsResponse,
   PullRequestListQuery,
   PullRequestListResponse,
+  PullRequestReviewProgressRecord,
   PullRequestReviewersResponse,
   PullRequestThreadsResponse,
   RecentOpenedPullRequestsResponse,
   RecordRecentOpenedPullRequestRequest,
+  SavePullRequestReviewProgressRequest,
   SanitizedProviderConfigResponse,
   TeamPrAutoClassificationRequest,
   TeamPrAutoClassificationResponse,
@@ -41,6 +43,61 @@ function serializePrListQuery(query?: PullRequestListQuery): CocRequestOptions['
   };
 }
 
+type OriginPrStateOptions = Pick<CocRequestOptions, 'signal'> & {
+  workspaceId?: string;
+  repoId?: string;
+};
+
+type OriginPrProviderOptions = Pick<CocRequestOptions, 'signal'> & {
+  workspaceId: string;
+  repoId?: string;
+};
+
+type OriginPrDetailOptions = OriginPrProviderOptions & {
+  force?: boolean;
+};
+
+function serializeOriginPrStateQuery(options?: OriginPrStateOptions): CocRequestOptions['query'] {
+  if (!options?.workspaceId && !options?.repoId) return undefined;
+  return {
+    workspaceId: options.workspaceId,
+    repoId: options.repoId,
+  };
+}
+
+function serializeOriginPrListQuery(query: PullRequestListQuery & { workspaceId: string; repoId?: string }): CocRequestOptions['query'] {
+  return {
+    ...serializePrListQuery(query),
+    workspaceId: query.workspaceId,
+    repoId: query.repoId,
+  };
+}
+
+function serializeOriginPrDetailQuery(options: OriginPrDetailOptions): CocRequestOptions['query'] {
+  return {
+    workspaceId: options.workspaceId,
+    repoId: options.repoId,
+    force: options.force === true ? 'true' : undefined,
+  };
+}
+
+function withOriginPrStateBody<T extends Record<string, unknown>>(body: T, options?: OriginPrStateOptions): T & { workspaceId?: string; repoId?: string } {
+  return {
+    ...(options?.workspaceId ? { workspaceId: options.workspaceId } : {}),
+    ...(options?.repoId ? { repoId: options.repoId } : {}),
+    ...body,
+  };
+}
+
+function serializeClassificationBatchStatusQuery(query: ClassificationBatchStatusQuery): CocRequestOptions['query'] {
+  return {
+    type: query.type,
+    identifiers: query.identifiers.join(','),
+    workspaceId: query.workspaceId,
+    repoId: query.repoId,
+  };
+}
+
 export class PullRequestsClient {
   constructor(
     private readonly transport: RequestAdapter,
@@ -58,193 +115,247 @@ export class PullRequestsClient {
     });
   }
 
-  list(repoId: string, query?: PullRequestListQuery, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestListResponse> {
-    return this.transport.request<PullRequestListResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests`, {
-      query: serializePrListQuery(query),
+  listForOrigin(
+    originId: string,
+    query: PullRequestListQuery & { workspaceId: string; repoId?: string },
+    options?: Pick<CocRequestOptions, 'signal'>,
+  ): Promise<PullRequestListResponse> {
+    return this.transport.request<PullRequestListResponse>(`/origins/${encodePathSegment(originId)}/pull-requests`, {
+      query: serializeOriginPrListQuery(query),
       signal: options?.signal,
     });
   }
 
-  get(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'> & { force?: boolean }): Promise<unknown> {
-    return this.transport.request<unknown>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}`, {
-      query: options?.force ? { force: 'true' } : undefined,
-      signal: options?.signal,
+  getForOrigin(originId: string, prId: string, options: OriginPrDetailOptions): Promise<unknown> {
+    return this.transport.request<unknown>(`/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}`, {
+      query: serializeOriginPrDetailQuery(options),
+      signal: options.signal,
     });
   }
 
-  listRecentOpened(repoId: string, workspaceId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<RecentOpenedPullRequestsResponse> {
+  listRecentOpenedForOrigin(originId: string, options?: OriginPrStateOptions): Promise<RecentOpenedPullRequestsResponse> {
     return this.transport.request<RecentOpenedPullRequestsResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/recent-opened`,
+      `/origins/${encodePathSegment(originId)}/pull-requests/recent-opened`,
       {
-        query: { workspaceId },
+        query: serializeOriginPrStateQuery(options),
         signal: options?.signal,
       },
     );
   }
 
-  recordRecentOpened(
-    repoId: string,
-    workspaceId: string,
+  recordRecentOpenedForOrigin(
+    originId: string,
     entry: RecordRecentOpenedPullRequestRequest,
-    options?: Pick<CocRequestOptions, 'signal'>,
+    options?: OriginPrStateOptions,
   ): Promise<RecentOpenedPullRequestsResponse> {
     return this.transport.request<RecentOpenedPullRequestsResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/recent-opened`,
+      `/origins/${encodePathSegment(originId)}/pull-requests/recent-opened`,
       {
         method: 'POST',
-        body: { workspaceId, ...entry },
+        body: withOriginPrStateBody({ ...entry }, options),
         signal: options?.signal,
       },
     );
   }
 
-  removeRecentOpened(
-    repoId: string,
-    workspaceId: string,
+  removeRecentOpenedForOrigin(
+    originId: string,
     prNumber: number,
-    options?: Pick<CocRequestOptions, 'signal'>,
+    options?: OriginPrStateOptions,
   ): Promise<RecentOpenedPullRequestsResponse> {
     return this.transport.request<RecentOpenedPullRequestsResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/recent-opened/${encodePathSegment(String(prNumber))}`,
+      `/origins/${encodePathSegment(originId)}/pull-requests/recent-opened/${encodePathSegment(String(prNumber))}`,
       {
         method: 'DELETE',
-        query: { workspaceId },
+        query: serializeOriginPrStateQuery(options),
         signal: options?.signal,
       },
     );
   }
 
-  listCoworkerRoster(repoId: string, workspaceId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestCoworkerRosterResponse> {
+  listCoworkerRosterForOrigin(originId: string, options?: OriginPrStateOptions): Promise<PullRequestCoworkerRosterResponse> {
     return this.transport.request<PullRequestCoworkerRosterResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/coworker-roster`,
+      `/origins/${encodePathSegment(originId)}/pull-requests/coworker-roster`,
       {
-        query: { workspaceId },
+        query: serializeOriginPrStateQuery(options),
         signal: options?.signal,
       },
     );
   }
 
-  addCoworkerToRoster(
-    repoId: string,
-    workspaceId: string,
+  addCoworkerToRosterForOrigin(
+    originId: string,
     entry: AddPullRequestCoworkerRosterEntryRequest,
-    options?: Pick<CocRequestOptions, 'signal'>,
+    options?: OriginPrStateOptions,
   ): Promise<PullRequestCoworkerRosterResponse> {
     return this.transport.request<PullRequestCoworkerRosterResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/coworker-roster`,
+      `/origins/${encodePathSegment(originId)}/pull-requests/coworker-roster`,
       {
         method: 'POST',
-        body: { workspaceId, ...entry },
+        body: withOriginPrStateBody({ ...entry }, options),
         signal: options?.signal,
       },
     );
   }
 
-  removeCoworkerFromRoster(
-    repoId: string,
-    workspaceId: string,
+  removeCoworkerFromRosterForOrigin(
+    originId: string,
     coworkerKey: string,
-    options?: Pick<CocRequestOptions, 'signal'>,
+    options?: OriginPrStateOptions,
   ): Promise<PullRequestCoworkerRosterResponse> {
     return this.transport.request<PullRequestCoworkerRosterResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/coworker-roster/${encodePathSegment(coworkerKey)}`,
+      `/origins/${encodePathSegment(originId)}/pull-requests/coworker-roster/${encodePathSegment(coworkerKey)}`,
       {
         method: 'DELETE',
-        query: { workspaceId },
+        query: serializeOriginPrStateQuery(options),
         signal: options?.signal,
       },
     );
   }
 
-  getThreads(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestThreadsResponse> {
-    return this.transport.request<PullRequestThreadsResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/threads`, {
-      signal: options?.signal,
-    });
+  getThreadsForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestThreadsResponse> {
+    return this.transport.request<PullRequestThreadsResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/threads`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options.signal,
+      },
+    );
   }
 
-  getReviewers(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestReviewersResponse> {
-    return this.transport.request<PullRequestReviewersResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/reviewers`, {
-      signal: options?.signal,
-    });
+  getReviewersForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestReviewersResponse> {
+    return this.transport.request<PullRequestReviewersResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/reviewers`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options.signal,
+      },
+    );
   }
 
-  getCommits(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestCommitsResponse> {
-    return this.transport.request<PullRequestCommitsResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/commits`, {
-      signal: options?.signal,
-    });
+  getCommitsForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestCommitsResponse> {
+    return this.transport.request<PullRequestCommitsResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/commits`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options.signal,
+      },
+    );
   }
 
-  getDiff(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<string> {
-    const reqOptions: CocRequestOptions = { signal: options?.signal };
+  getDiffForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<string> {
+    const reqOptions: CocRequestOptions = {
+      query: serializeOriginPrStateQuery(options),
+      signal: options.signal,
+    };
+    const path = `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/diff`;
     if (this.transport.requestText) {
-      return this.transport.requestText(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`, reqOptions);
+      return this.transport.requestText(path, reqOptions);
     }
-    return this.transport.request<string>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`, reqOptions);
+    return this.transport.request<string>(path, reqOptions);
   }
 
-  prFileDiffPath(repoId: string, prId: string, filePath: string): string {
-    return `/api/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff/files/${encodePathSegment(filePath)}`;
+  prDiffPathForOrigin(originId: string, prId: string, options: { workspaceId: string; repoId?: string }): string {
+    const query = new URLSearchParams();
+    query.set('workspaceId', options.workspaceId);
+    if (options.repoId) query.set('repoId', options.repoId);
+    return `/api/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/diff?${query.toString()}`;
   }
 
-  getChecks(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestChecksResponse> {
-    return this.transport.request<PullRequestChecksResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/checks`, {
-      signal: options?.signal,
-    });
+  prFileDiffPathForOrigin(
+    originId: string,
+    prId: string,
+    filePath: string,
+    options: { workspaceId: string; repoId?: string; fullContext?: boolean },
+  ): string {
+    const query = new URLSearchParams();
+    query.set('workspaceId', options.workspaceId);
+    if (options.repoId) query.set('repoId', options.repoId);
+    if (options.fullContext === true) query.set('fullContext', 'true');
+    return `/api/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/diff/files/${encodePathSegment(filePath)}?${query.toString()}`;
+  }
+
+  getChecksForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestChecksResponse> {
+    return this.transport.request<PullRequestChecksResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/checks`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options.signal,
+      },
+    );
   }
 
   // ── Pull-request chat bindings ──────────────────────────────────
 
-  listChatBindings(workspaceId: string): Promise<PullRequestChatBindingListResponse> {
+  listChatBindingsForOrigin(originId: string): Promise<PullRequestChatBindingListResponse> {
     return this.transport.request<PullRequestChatBindingListResponse>(
-      `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings`,
+      `/origins/${encodePathSegment(originId)}/pull-request-chat-bindings`,
     );
   }
 
-  getChatBinding(workspaceId: string, prId: string): Promise<PullRequestChatBinding> {
+  getChatBindingForOrigin(originId: string, prId: string): Promise<PullRequestChatBinding> {
     return this.transport.request<PullRequestChatBinding>(
-      `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings/${encodePathSegment(prId)}`,
+      `/origins/${encodePathSegment(originId)}/pull-request-chat-bindings/${encodePathSegment(prId)}`,
     );
   }
 
-  createChatBinding(workspaceId: string, prId: string, taskId: string): Promise<PullRequestChatBinding> {
+  createChatBindingForOrigin(originId: string, prId: string, taskId: string): Promise<PullRequestChatBinding> {
     return this.transport.request<PullRequestChatBinding>(
-      `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings`,
+      `/origins/${encodePathSegment(originId)}/pull-request-chat-bindings`,
       { method: 'POST', body: { prId, taskId } },
     );
   }
 
-  deleteChatBinding(workspaceId: string, prId: string): Promise<void> {
+  deleteChatBindingForOrigin(originId: string, prId: string): Promise<void> {
     return this.transport.request<void>(
-      `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings/${encodePathSegment(prId)}`,
+      `/origins/${encodePathSegment(originId)}/pull-request-chat-bindings/${encodePathSegment(prId)}`,
       { method: 'DELETE' },
     );
   }
 
-  startFreshChat(workspaceId: string, prId: string): Promise<PullRequestChatFreshResponse> {
+  startFreshChatForOrigin(originId: string, prId: string, workspaceId: string): Promise<PullRequestChatFreshResponse> {
     return this.transport.request<PullRequestChatFreshResponse>(
-      `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings/${encodePathSegment(prId)}/fresh`,
-      { method: 'POST', body: {} },
+      `/origins/${encodePathSegment(originId)}/pull-request-chat-bindings/${encodePathSegment(prId)}/fresh`,
+      { method: 'POST', body: {}, query: { workspaceId } },
     );
   }
 
-  /** Trigger on-demand AI classification of a PR's diff hunks. */
-  classify(repoId: string, prId: string, body: ClassifyDiffRequest, options?: Pick<CocRequestOptions, 'signal'>): Promise<ClassifyDiffResponse> {
+  /** Trigger on-demand AI classification of a PR's diff hunks under a canonical origin. */
+  classifyForOrigin(
+    originId: string,
+    prId: string,
+    body: ClassifyDiffRequest,
+    options?: OriginPrProviderOptions,
+  ): Promise<ClassifyDiffResponse> {
     return this.transport.request<ClassifyDiffResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/classify`,
+      `/origins/${encodePathSegment(originId)}/classify-diff`,
       {
         method: 'POST',
-        body: { ...body },
+        body: withOriginPrStateBody({
+          type: 'pr',
+          identifier: `${prId}:${body.headSha}`,
+          ...(body.model ? { model: body.model } : {}),
+        }, options),
         signal: options?.signal,
       },
     );
   }
 
-  /** Get cached classification result for a PR. */
-  getClassification(repoId: string, prId: string, headSha: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<ClassificationStatusResponse> {
+  /** Get cached classification result for a PR under a canonical origin. */
+  getClassificationForOrigin(
+    originId: string,
+    prId: string,
+    headSha: string,
+    options?: OriginPrStateOptions,
+  ): Promise<ClassificationStatusResponse> {
     return this.transport.request<ClassificationStatusResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/classification`,
+      `/origins/${encodePathSegment(originId)}/classify-diff`,
       {
-        query: { headSha },
+        query: {
+          type: 'pr',
+          identifier: `${prId}:${headSha}`,
+          ...serializeOriginPrStateQuery(options),
+        },
         signal: options?.signal,
       },
     );
@@ -255,23 +366,74 @@ export class PullRequestsClient {
     return this.transport.request<ClassificationBatchStatusResponse>(
       `/repos/${encodePathSegment(repoId)}/classify-diff/batch-status`,
       {
+        query: serializeClassificationBatchStatusQuery(query),
+        signal: options?.signal,
+      },
+    );
+  }
+
+  /** Get cached/running PR classification status for a batch of identifiers under a canonical origin. */
+  getClassificationBatchStatusForOrigin(
+    originId: string,
+    query: ClassificationBatchStatusQuery,
+    options?: Pick<CocRequestOptions, 'signal'>,
+  ): Promise<ClassificationBatchStatusResponse> {
+    return this.transport.request<ClassificationBatchStatusResponse>(
+      `/origins/${encodePathSegment(originId)}/classify-diff/batch-status`,
+      {
+        query: serializeClassificationBatchStatusQuery(query),
+        signal: options?.signal,
+      },
+    );
+  }
+
+  /** Trigger bounded Team PR auto-classification under a canonical origin. */
+  autoClassifyTeamForOrigin(
+    originId: string,
+    body: TeamPrAutoClassificationRequest,
+    options?: OriginPrStateOptions,
+  ): Promise<TeamPrAutoClassificationResponse> {
+    return this.transport.request<TeamPrAutoClassificationResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/team-auto-classification`,
+      {
+        method: 'POST',
+        body: withOriginPrStateBody({ ...body }, options),
+        signal: options?.signal,
+      },
+    );
+  }
+
+  /** Get persisted PR pop-out reviewer progress for a canonical origin. */
+  getReviewProgressForOrigin(
+    originId: string,
+    prId: string,
+    headSha: string,
+    options?: OriginPrStateOptions,
+  ): Promise<PullRequestReviewProgressRecord> {
+    return this.transport.request<PullRequestReviewProgressRecord>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/review-progress`,
+      {
         query: {
-          type: query.type,
-          identifiers: query.identifiers.join(','),
-          workspaceId: query.workspaceId,
+          ...serializeOriginPrStateQuery(options),
+          headSha,
         },
         signal: options?.signal,
       },
     );
   }
 
-  /** Trigger bounded Team PR auto-classification using the server cap/skip helper. */
-  autoClassifyTeam(repoId: string, body: TeamPrAutoClassificationRequest, options?: Pick<CocRequestOptions, 'signal'>): Promise<TeamPrAutoClassificationResponse> {
-    return this.transport.request<TeamPrAutoClassificationResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/team-auto-classification`,
+  /** Persist PR pop-out reviewer progress for a canonical origin. */
+  saveReviewProgressForOrigin(
+    originId: string,
+    prId: string,
+    body: SavePullRequestReviewProgressRequest,
+    options?: OriginPrStateOptions,
+  ): Promise<PullRequestReviewProgressRecord> {
+    return this.transport.request<PullRequestReviewProgressRecord>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/review-progress`,
       {
-        method: 'POST',
-        body: { ...body },
+        method: 'PUT',
+        body: withOriginPrStateBody({ ...body }, options),
         signal: options?.signal,
       },
     );
@@ -279,27 +441,38 @@ export class PullRequestsClient {
 
   // ── PR review suggestions ──────────────────────────────────────
 
-  /** Get cached PR suggestions (top-5 LLM-ranked PRs for the user). */
-  getSuggestions(repoId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PrSuggestionsResponse> {
+  /** Get cached PR suggestions under a canonical origin. */
+  getSuggestionsForOrigin(originId: string, options?: OriginPrStateOptions): Promise<PrSuggestionsResponse> {
     return this.transport.request<PrSuggestionsResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/suggestions`,
-      { signal: options?.signal },
+      `/origins/${encodePathSegment(originId)}/pull-requests/suggestions`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options?.signal,
+      },
     );
   }
 
-  /** Refresh the cached review history used to seed PR suggestions. */
-  refreshReviewHistory(repoId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PrReviewHistoryResponse> {
+  /** Refresh the cached review history under a canonical origin using a selected workspace. */
+  refreshReviewHistoryForOrigin(originId: string, options?: OriginPrStateOptions): Promise<PrReviewHistoryResponse> {
     return this.transport.request<PrReviewHistoryResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/review-history/refresh`,
-      { method: 'POST', signal: options?.signal },
+      `/origins/${encodePathSegment(originId)}/pull-requests/review-history/refresh`,
+      {
+        method: 'POST',
+        query: serializeOriginPrStateQuery(options),
+        signal: options?.signal,
+      },
     );
   }
 
-  /** Refresh PR suggestions by re-ranking cached review history via LLM. */
-  refreshSuggestions(repoId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PrSuggestionsResponse> {
+  /** Refresh PR suggestions by re-ranking origin-scoped review history via LLM. */
+  refreshSuggestionsForOrigin(originId: string, options?: OriginPrStateOptions): Promise<PrSuggestionsResponse> {
     return this.transport.request<PrSuggestionsResponse>(
-      `/repos/${encodePathSegment(repoId)}/pull-requests/suggestions/refresh`,
-      { method: 'POST', signal: options?.signal },
+      `/origins/${encodePathSegment(originId)}/pull-requests/suggestions/refresh`,
+      {
+        method: 'POST',
+        query: serializeOriginPrStateQuery(options),
+        signal: options?.signal,
+      },
     );
   }
 }

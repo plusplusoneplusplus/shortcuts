@@ -19,6 +19,7 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         workItems: {
             create: mocks.create,
+            createForOrigin: mocks.create,
         },
     }),
 }));
@@ -69,6 +70,7 @@ describe('CreateWorkItemDialog workflow mode', () => {
             type: 'goal',
             source: 'manual',
         });
+        expect(mocks.create.mock.calls[0][0]).toBe('local_ws-1');
     });
 
     it('keeps existing bug creation out of the workflow selector', async () => {
@@ -91,5 +93,6 @@ describe('CreateWorkItemDialog workflow mode', () => {
             type: 'bug',
             source: 'manual',
         });
+        expect(mocks.create.mock.calls[0][0]).toBe('local_ws-1');
     });
 });

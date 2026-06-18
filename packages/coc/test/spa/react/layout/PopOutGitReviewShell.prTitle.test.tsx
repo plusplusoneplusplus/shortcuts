@@ -47,8 +47,8 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             commitDiffPath: () => '/diff',
         },
         pullRequests: {
-            get: (...args: unknown[]) => mocks.getPr(...args),
-            getDiff: (...args: unknown[]) => mocks.getPrDiff(...args),
+            getForOrigin: (...args: unknown[]) => mocks.getPr(...args),
+            getDiffForOrigin: (...args: unknown[]) => mocks.getPrDiff(...args),
         },
         agentProviders: {
             list: () => Promise.resolve({ providers: [] }),

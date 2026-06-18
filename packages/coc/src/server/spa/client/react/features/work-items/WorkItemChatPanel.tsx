@@ -7,6 +7,7 @@ import { getReviewChatTargetStorageId } from '../git/commits/commitChatPlacement
 
 export interface WorkItemChatPanelProps {
     workspaceId: string;
+    originId?: string;
     workItemId: string;
     workItemNumber?: number;
     title?: string;
@@ -35,6 +36,7 @@ export function getWorkItemChatIdentifier(workItemId: string, workItemNumber?: n
 
 export function WorkItemChatPanel({
     workspaceId,
+    originId,
     workItemId,
     workItemNumber,
     title,
@@ -46,6 +48,7 @@ export function WorkItemChatPanel({
 }: WorkItemChatPanelProps) {
     const { taskId, loading, error, createChat, startFreshChat, startingFresh } = useWorkItemChatBinding({
         workspaceId,
+        originId,
         workItemId,
         title,
         status,

@@ -616,8 +616,6 @@ describe('AC-08: live-classified route registration', () => {
                 'utf-8',
             ),
         );
-        expect(routesSrc).toContain('registerPrClassificationRoutes(routes');
-        expect(routesSrc).not.toMatch(/if\s*\(.*focusedDiff.*\)\s*\{?\s*registerPrClassificationRoutes/);
         expect(routesSrc).toContain('registerGenericClassificationRoutes(routes');
         expect(routesSrc).not.toMatch(/if\s*\(.*focusedDiff.*\)\s*\{?\s*registerGenericClassificationRoutes/);
     });

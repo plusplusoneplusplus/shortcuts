@@ -14,11 +14,17 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         workItems: {
             get: (...args: any[]) => mockGet(...args),
+            getForOrigin: (...args: any[]) => mockGet(...args),
             update: (...args: any[]) => mockUpdate(...args),
+            updateForOrigin: (...args: any[]) => mockUpdate(...args),
             updateStatus: (...args: any[]) => mockUpdateStatus(...args),
+            updateStatusForOrigin: (...args: any[]) => mockUpdateStatus(...args),
             pin: (...args: any[]) => mockPin(...args),
+            pinForOrigin: (...args: any[]) => mockPin(...args),
             archive: (...args: any[]) => mockArchive(...args),
+            archiveForOrigin: (...args: any[]) => mockArchive(...args),
             delete: (...args: any[]) => mockDelete(...args),
+            deleteForOrigin: (...args: any[]) => mockDelete(...args),
             tree: vi.fn(),
             syncStatus: vi.fn(),
         },
@@ -220,9 +226,9 @@ describe('WorkItemsTab Work Item chat state integration', () => {
         localStorage.clear();
         window.location.hash = '';
         mockFetchApi.mockResolvedValue({ comments: [] });
-        mockGet.mockImplementation(async (workspaceId: string, workItemId: string) => makeItem(workspaceId, workItemId));
-        mockUpdate.mockImplementation(async (workspaceId: string, workItemId: string, updates: any) => ({
-            ...makeItem(workspaceId, workItemId),
+        mockGet.mockImplementation(async (scopeId: string, workItemId: string, options?: { workspaceId?: string }) => makeItem(options?.workspaceId ?? scopeId, workItemId));
+        mockUpdate.mockImplementation(async (scopeId: string, workItemId: string, updates: any, options?: { workspaceId?: string }) => ({
+            ...makeItem(options?.workspaceId ?? scopeId, workItemId),
             ...updates,
         }));
     });

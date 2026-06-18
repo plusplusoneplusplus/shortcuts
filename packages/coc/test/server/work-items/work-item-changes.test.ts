@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as http from 'http';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import type { Route } from '../../../src/server/types';
+import { createRouter } from '../../../src/server/shared/router';
+import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-routes';
+import { registerWorkItemChangesRoutes } from '../../../src/server/routes/work-item-changes-routes';
+import { createWorkItemStorageScopeResolver, FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import { clearWorkItemResponseCache } from '../../../src/server/work-items/work-item-response-cache';
 import {
     executeWorkItem,
     handleWorkItemTaskComplete,
@@ -11,6 +17,17 @@ import type { WorkItem, WorkItemChange } from '../../../src/server/work-items/ty
 
 let tmpDir: string;
 let store: FileWorkItemStore;
+let routeServer: http.Server | undefined;
+let baseUrl: string;
+let routeWorkspaces: any[] = [];
+
+const processStore = {
+    getWorkspaces: async () => routeWorkspaces,
+    updateWorkspace: async (workspaceId: string, update: any) => {
+        const workspace = routeWorkspaces.find(entry => entry.id === workspaceId);
+        if (workspace) Object.assign(workspace, update);
+    },
+} as any;
 
 function makeWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
     return {
@@ -38,13 +55,65 @@ function makeChange(overrides: Partial<WorkItemChange> = {}): WorkItemChange {
 }
 
 beforeEach(async () => {
+    clearWorkItemResponseCache();
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-changes-'));
+    routeWorkspaces = [];
     store = new FileWorkItemStore({ dataDir: tmpDir });
 });
 
 afterEach(async () => {
+    if (routeServer?.listening) {
+        await new Promise<void>(resolve => routeServer!.close(() => resolve()));
+    }
+    routeServer = undefined;
+    clearWorkItemResponseCache();
     await fs.rm(tmpDir, { recursive: true, force: true });
 });
+
+function makeRouteServer(): http.Server {
+    const routes: Route[] = [];
+    registerWorkItemRoutes({ routes, workItemStore: store, processStore });
+    registerWorkItemChangesRoutes({ routes, workItemStore: store, processStore });
+    return http.createServer(createRouter({ routes, spaHtml: '' }));
+}
+
+async function startRouteServer(): Promise<void> {
+    routeServer = makeRouteServer();
+    await new Promise<void>((resolve, reject) => {
+        routeServer!.on('error', reject);
+        routeServer!.listen(0, '127.0.0.1', () => {
+            const addr = routeServer!.address() as any;
+            baseUrl = `http://127.0.0.1:${addr.port}`;
+            resolve();
+        });
+    });
+}
+
+async function request(method: string, urlPath: string, body?: unknown): Promise<{ status: number; body: any }> {
+    return new Promise((resolve, reject) => {
+        const urlObj = new URL(urlPath, baseUrl);
+        const opts: http.RequestOptions = {
+            hostname: urlObj.hostname,
+            port: urlObj.port,
+            path: urlObj.pathname + urlObj.search,
+            method,
+            headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+        };
+        const req = http.request(opts, (res) => {
+            const chunks: Buffer[] = [];
+            res.on('data', (c: Buffer) => chunks.push(c));
+            res.on('end', () => {
+                const raw = Buffer.concat(chunks).toString('utf-8');
+                let parsed: any = null;
+                try { parsed = JSON.parse(raw); } catch { parsed = raw; }
+                resolve({ status: res.statusCode!, body: parsed });
+            });
+        });
+        req.on('error', reject);
+        if (body !== undefined) req.write(JSON.stringify(body));
+        req.end();
+    });
+}
 
 // ============================================================================
 // FileWorkItemStore — change tracking methods
@@ -175,6 +244,106 @@ describe('FileWorkItemStore.getChanges', () => {
     it('returns empty array for non-existent work item', async () => {
         const changes = await store.getChanges('nonexistent');
         expect(changes).toEqual([]);
+    });
+});
+
+describe('Work Item Changes Routes', () => {
+    const ORIGIN_ID = 'gh_plusplusoneplusplus_shortcuts';
+    const OTHER_ORIGIN_ID = 'gh_plusplusoneplusplus_other';
+
+    beforeEach(async () => {
+        routeWorkspaces = [
+            {
+                id: 'clone-a',
+                name: 'Clone A',
+                rootPath: path.join(tmpDir, 'clone-a'),
+                remoteUrl: 'https://github.com/plusplusoneplusplus/shortcuts.git',
+            },
+            {
+                id: 'clone-b',
+                name: 'Clone B',
+                rootPath: path.join(tmpDir, 'clone-b'),
+                remoteUrl: 'git@github.com:plusplusoneplusplus/shortcuts.git',
+            },
+            {
+                id: 'other-clone',
+                name: 'Other Clone',
+                rootPath: path.join(tmpDir, 'other-clone'),
+                remoteUrl: 'https://github.com/plusplusoneplusplus/other.git',
+            },
+        ];
+        store = new FileWorkItemStore({
+            dataDir: tmpDir,
+            scopeResolver: createWorkItemStorageScopeResolver(processStore),
+        });
+        await startRouteServer();
+    });
+
+    it('lists, creates, and updates changes through the canonical origin shared by same-origin clones', async () => {
+        const shared = await request('POST', '/api/workspaces/clone-a/work-items', {
+            id: 'shared-change',
+            title: 'Shared Change',
+        });
+        expect(shared.status).toBe(201);
+        const other = await request('POST', '/api/workspaces/other-clone/work-items', {
+            id: 'shared-change',
+            title: 'Other Change',
+        });
+        expect(other.status).toBe(201);
+
+        const created = await request('POST', `/api/origins/${ORIGIN_ID}/work-items/shared-change/changes`, {
+            workspaceId: 'clone-b',
+            planVersion: 3,
+            taskId: 'task-shared',
+            headBefore: 'abc123',
+        });
+        expect(created.status).toBe(201);
+        expect(created.body.planVersion).toBe(3);
+        expect(created.body.taskId).toBe('task-shared');
+
+        const listed = await request('GET', `/api/origins/${ORIGIN_ID}/work-items/shared-change/changes`);
+        expect(listed.status).toBe(200);
+        expect(listed.body.map((change: WorkItemChange) => change.id)).toEqual([created.body.id]);
+
+        const otherListed = await request('GET', `/api/origins/${OTHER_ORIGIN_ID}/work-items/shared-change/changes`);
+        expect(otherListed.status).toBe(200);
+        expect(otherListed.body).toEqual([]);
+
+        const patched = await request(
+            'PATCH',
+            `/api/origins/${ORIGIN_ID}/work-items/shared-change/changes/${created.body.id}?workspaceId=clone-a`,
+            {
+                status: 'closed',
+                completedAt: '2026-06-17T03:00:00.000Z',
+                commits: [{ sha: 'def456', message: 'feat: done', author: 'Dev' }],
+            },
+        );
+        expect(patched.status).toBe(200);
+        expect(patched.body.status).toBe('closed');
+        expect(patched.body.commits[0].sha).toBe('def456');
+
+        const stored = await store.getChanges('shared-change', ORIGIN_ID);
+        expect(stored[0].status).toBe('closed');
+        expect(stored[0].commits[0].sha).toBe('def456');
+    });
+
+    it('rejects clone metadata that resolves to a different origin', async () => {
+        const res = await request('GET', `/api/origins/${ORIGIN_ID}/work-items/shared-change/changes?workspaceId=other-clone`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toContain(`not '${ORIGIN_ID}'`);
+    });
+
+    it('does not expose the legacy workspace changes route', async () => {
+        const created = await request('POST', '/api/workspaces/clone-a/work-items', {
+            id: 'workspace-route-removed',
+            title: 'Workspace route removed',
+        });
+        expect(created.status).toBe(201);
+
+        const res = await request('GET', '/api/workspaces/clone-a/work-items/workspace-route-removed/changes');
+
+        expect(res.status).toBe(404);
     });
 });
 

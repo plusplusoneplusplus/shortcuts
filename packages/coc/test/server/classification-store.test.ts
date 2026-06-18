@@ -45,6 +45,15 @@ describe('classificationPaths', () => {
         expect(paths.pendingPath.endsWith('repo_42_abcdef.json.pending')).toBe(true);
     });
 
+    it('places origin-scoped files under <dataDir>/repos/<originId>/classifications', () => {
+        const paths = classificationPaths('/data', 'ws1', 'repo', '42', 'abcdef', {
+            storageOriginId: 'gh_org_repo',
+        });
+        expect(paths.dir).toBe(path.join('/data', 'repos', 'gh_org_repo', 'classifications'));
+        expect(paths.resultPath.endsWith('42_abcdef.json')).toBe(true);
+        expect(paths.pendingPath.endsWith('42_abcdef.json.pending')).toBe(true);
+    });
+
     it('sanitizes filesystem-unsafe characters in key parts', () => {
         const paths = classificationPaths('/data', 'ws1', 'org/repo', '42', 'sha:bad');
         const filename = path.basename(paths.resultPath);
@@ -115,6 +124,23 @@ describe('writeClassification / readClassification', () => {
         expect(read?.result.classifications).toHaveLength(1);
         expect(read?.result.classifications[0].file).toBe('b.ts');
     });
+
+    it('migrates legacy workspace/repo classifications into the origin scope on read', () => {
+        writeClassification(dataDir, 'ws-a', 'repo', '1', 'sha', validResult, {
+            processId: 'legacy-process',
+            createdAt: '2026-01-01T00:00:00.000Z',
+        });
+
+        const scope = {
+            storageOriginId: 'gh_org_repo',
+            legacyScopes: [{ workspaceId: 'ws-a', repoId: 'repo' }],
+        };
+        const read = readClassification(dataDir, 'ws-b', 'repo', '1', 'sha', scope);
+
+        expect(read?.processId).toBe('legacy-process');
+        const originPaths = classificationPaths(dataDir, 'ws-b', 'repo', '1', 'sha', scope);
+        expect(fs.existsSync(originPaths.resultPath)).toBe(true);
+    });
 });
 
 describe('pending markers', () => {
@@ -136,6 +162,25 @@ describe('pending markers', () => {
         writePending(dataDir, 'ws', 'repo', '1', 'sha', 'task-7');
         clearPending(dataDir, 'ws', 'repo', '1', 'sha');
         expect(readPending(dataDir, 'ws', 'repo', '1', 'sha')).toBeUndefined();
+    });
+
+    it('migrates and clears legacy pending markers for origin-scoped reads', () => {
+        writePending(dataDir, 'ws-a', 'repo', '1', 'sha', 'legacy-task', {
+            startedAt: '2026-01-01T00:00:00.000Z',
+        });
+        const scope = {
+            storageOriginId: 'gh_org_repo',
+            legacyScopes: [{ workspaceId: 'ws-a', repoId: 'repo' }],
+        };
+
+        const pending = readPending(dataDir, 'ws-b', 'repo', '1', 'sha', scope);
+        expect(pending?.processId).toBe('legacy-task');
+        const originPaths = classificationPaths(dataDir, 'ws-b', 'repo', '1', 'sha', scope);
+        expect(fs.existsSync(originPaths.pendingPath)).toBe(true);
+
+        clearPending(dataDir, 'ws-b', 'repo', '1', 'sha', scope);
+        expect(readPending(dataDir, 'ws-b', 'repo', '1', 'sha', scope)).toBeUndefined();
+        expect(readPending(dataDir, 'ws-a', 'repo', '1', 'sha')).toBeUndefined();
     });
 });
 

@@ -18,25 +18,35 @@ import type { Route } from '../../../src/server/types';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemHierarchyRoutes } from '../../../src/server/routes/work-item-hierarchy-routes';
 import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-routes';
-import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import { createWorkItemStorageScopeResolver, FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES } from '../../../src/server/work-items/types';
 import { clearWorkItemResponseCache } from '../../../src/server/work-items/work-item-response-cache';
 
 const REPO_ID = 'hierarchy-test-repo';
+const ORIGIN_ID = 'gh_plusplusoneplusplus_shortcuts';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
 let hierarchyEnabled = false;
+let workspaces: any[] = [];
+
+const processStore = {
+    getWorkspaces: async () => workspaces,
+    updateWorkspace: async (workspaceId: string, update: any) => {
+        const workspace = workspaces.find(entry => entry.id === workspaceId);
+        if (workspace) Object.assign(workspace, update);
+    },
+} as any;
 
 function makeServer(): http.Server {
     const routes: Route[] = [];
     const getHierarchyEnabled = () => hierarchyEnabled;
     // Hierarchy tree route must be registered first
-    registerWorkItemHierarchyRoutes({ routes, workItemStore: store, getHierarchyEnabled });
+    registerWorkItemHierarchyRoutes({ routes, workItemStore: store, processStore, getHierarchyEnabled });
     registerWorkItemRoutes({
         routes,
         workItemStore: store,
-        processStore: { getWorkspaces: async () => [] } as any,
+        processStore,
         getHierarchyEnabled,
     });
     const handler = createRouter({ routes, spaHtml: '' });
@@ -94,7 +104,11 @@ async function request(
 beforeEach(async () => {
     clearWorkItemResponseCache();
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-hier-'));
-    store = new FileWorkItemStore({ dataDir: tmpDir });
+    workspaces = [];
+    store = new FileWorkItemStore({
+        dataDir: tmpDir,
+        scopeResolver: createWorkItemStorageScopeResolver(processStore),
+    });
     hierarchyEnabled = false;
     server = makeServer();
     await startServer();
@@ -234,6 +248,48 @@ describe('Work Item Hierarchy Routes', () => {
             expect(localRes.body.roots[0].item.id).toBe('local-epic');
             expect(localRes.body.roots[0].children[0].item.id).toBe('local-feature');
             expect(localRes.body.total).toBe(2);
+        });
+
+        it('serves the same origin tree across registered clones and rejects mismatched workspace metadata', async () => {
+            workspaces = [
+                {
+                    id: 'clone-a',
+                    name: 'Clone A',
+                    rootPath: path.join(tmpDir, 'clone-a'),
+                    remoteUrl: 'https://github.com/plusplusoneplusplus/shortcuts.git',
+                },
+                {
+                    id: 'clone-b',
+                    name: 'Clone B',
+                    rootPath: path.join(tmpDir, 'clone-b'),
+                    remoteUrl: 'git@github.com:plusplusoneplusplus/shortcuts.git',
+                },
+                {
+                    id: 'other-clone',
+                    name: 'Other Clone',
+                    rootPath: path.join(tmpDir, 'other-clone'),
+                    remoteUrl: 'https://github.com/plusplusoneplusplus/other.git',
+                },
+            ];
+
+            const createRes = await request('POST', '/api/workspaces/clone-a/work-items', {
+                id: 'shared-epic',
+                title: 'Shared Epic',
+                type: 'epic',
+            });
+            expect(createRes.status).toBe(201);
+
+            const originRes = await request('GET', `/api/origins/${ORIGIN_ID}/work-items/tree?workspaceId=clone-b`);
+            expect(originRes.status).toBe(200);
+            expect(originRes.body.roots.map((root: any) => root.item.id)).toEqual(['shared-epic']);
+
+            const readOnlyOriginRes = await request('GET', `/api/origins/${ORIGIN_ID}/work-items/tree`);
+            expect(readOnlyOriginRes.status).toBe(200);
+            expect(readOnlyOriginRes.body.roots.map((root: any) => root.item.id)).toEqual(['shared-epic']);
+
+            const mismatchRes = await request('GET', `/api/origins/${ORIGIN_ID}/work-items/tree?workspaceId=other-clone`);
+            expect(mismatchRes.status).toBe(400);
+            expect(mismatchRes.body.error).toContain("resolves to origin 'gh_plusplusoneplusplus_other'");
         });
 
         it('builds a nested tree: epic → feature → pbi → work-item', async () => {

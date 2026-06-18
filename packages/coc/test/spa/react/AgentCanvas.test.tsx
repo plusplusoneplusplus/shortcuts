@@ -62,13 +62,13 @@ describe('AgentCanvas', () => {
         expect(screen.queryByTestId('agent-inspector')).toBeNull();
     });
 
-    it('calls onOpenInThread from the inspector', () => {
-        const onOpenInThread = vi.fn();
-        render(<AgentCanvas root={tree([sub('explore')])} onOpenInThread={onOpenInThread} />);
+    it('calls onOpenAgentDetail from the inspector', () => {
+        const onOpenAgentDetail = vi.fn();
+        render(<AgentCanvas root={tree([sub('explore')])} onOpenAgentDetail={onOpenAgentDetail} />);
         fireEvent.click(screen.getByTestId('agent-canvas-node-explore'));
-        fireEvent.click(screen.getByTestId('agent-inspector-open-thread'));
-        expect(onOpenInThread).toHaveBeenCalledTimes(1);
-        expect(onOpenInThread.mock.calls[0][0]).toMatchObject({ id: 'explore' });
+        fireEvent.click(screen.getByTestId('agent-inspector-open-detail'));
+        expect(onOpenAgentDetail).toHaveBeenCalledTimes(1);
+        expect(onOpenAgentDetail.mock.calls[0][0]).toMatchObject({ id: 'explore' });
     });
 
     it('renders the zoom toolbar with a percentage label', () => {

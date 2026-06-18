@@ -18,8 +18,8 @@ Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema ver
 | `queue_tasks` | Queue task persistence |
 | `schedule_runs` | Schedule execution history |
 | `commit_chat_bindings` | commitHash → taskId mappings |
-| `pull_request_chat_bindings` | prId → taskId mappings (one persistent chat per PR per workspace) |
-| `work_item_chat_bindings` | workItemId → taskId mappings (one persistent chat per Work Item per workspace) |
+| `pull_request_chat_bindings` | prId → taskId mappings (one persistent chat per PR per canonical origin; the historical `workspace_id` column stores the origin key) |
+| `work_item_chat_bindings` | workItemId → taskId mappings (one persistent chat per Work Item per canonical origin; the historical `workspace_id` column stores the origin key) |
 | `task_groups` | Generic parent/child task-group registry: one row per hierarchical run/session (type, title, normalized status, hidden flag, origin process, extra JSON) |
 | `task_group_members` | Child links per task group: role ('generation'/'item'/'reduce'/'iteration'/'final-check'/'analyzer'/'critic'), task/process IDs, itemKey, memberIndex |
 

@@ -4,12 +4,21 @@
  * File-based persistence for the Pull Requests tab's Team roster.
  *
  * Layout:
- *   ~/.coc/repos/<workspaceId>/pr-coworker-roster/<repoId>.json
+ *   ~/.coc/repos/<originId>/pr-coworker-roster/index.json
+ *
+ * Legacy workspace/repo tuple files are migrated into the origin file on access
+ * when an origin storage scope is supplied.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { getRepoDataPath } from '../paths';
+import {
+    isPullRequestOriginScoped,
+    resolvePullRequestLegacyScopes,
+    resolvePullRequestStorageId,
+    type PullRequestStorageScopeInput,
+} from './pr-origin-scope';
 
 export const MAX_PR_COWORKER_ID_LENGTH = 256;
 export const MAX_PR_COWORKER_DISPLAY_NAME_LENGTH = 200;
@@ -49,9 +58,14 @@ export function pullRequestCoworkerRosterPaths(
     dataDir: string,
     workspaceId: string,
     repoId: string,
+    scope?: PullRequestStorageScopeInput,
 ): PullRequestCoworkerRosterPaths {
-    const dir = getRepoDataPath(dataDir, workspaceId, 'pr-coworker-roster');
-    const filePath = path.join(dir, `${sanitizeKeyPart(repoId)}.json`);
+    const storageId = resolvePullRequestStorageId(workspaceId, scope);
+    const dir = getRepoDataPath(dataDir, storageId, 'pr-coworker-roster');
+    const fileName = isPullRequestOriginScoped(workspaceId, scope)
+        ? 'index.json'
+        : `${sanitizeKeyPart(repoId)}.json`;
+    const filePath = path.join(dir, fileName);
     return { filePath, dir };
 }
 
@@ -154,12 +168,7 @@ export function pullRequestCoworkerRosterEntryKey(
     return (id || entry.displayName).trim().toLowerCase();
 }
 
-export function listPullRequestCoworkerRoster(
-    dataDir: string,
-    workspaceId: string,
-    repoId: string,
-): PullRequestCoworkerRosterEntry[] {
-    const { filePath } = pullRequestCoworkerRosterPaths(dataDir, workspaceId, repoId);
+function readPullRequestCoworkerRosterFile(filePath: string): PullRequestCoworkerRosterEntry[] {
     let raw: string;
     try {
         raw = fs.readFileSync(filePath, 'utf-8');
@@ -185,17 +194,68 @@ export function listPullRequestCoworkerRoster(
     return entries.filter(isCoworkerRosterEntry);
 }
 
+function mergePullRequestCoworkerRosterEntries(
+    current: readonly PullRequestCoworkerRosterEntry[],
+    incoming: readonly PullRequestCoworkerRosterEntry[],
+): PullRequestCoworkerRosterEntry[] {
+    const byKey = new Map<string, PullRequestCoworkerRosterEntry>();
+    for (const entry of [...current, ...incoming]) {
+        const key = pullRequestCoworkerRosterEntryKey(entry);
+        const existing = byKey.get(key);
+        if (!existing || entry.addedAt > existing.addedAt) {
+            byKey.set(key, entry);
+        }
+    }
+    return [...byKey.values()].sort((a, b) => a.addedAt.localeCompare(b.addedAt));
+}
+
+function persistPullRequestCoworkerRoster(filePath: string, dir: string, entries: PullRequestCoworkerRosterEntry[]): void {
+    fs.mkdirSync(dir, { recursive: true });
+    const tmpPath = `${filePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify({ entries }, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, filePath);
+}
+
+function migratePullRequestCoworkerRoster(
+    dataDir: string,
+    workspaceId: string,
+    repoId: string,
+    scope?: PullRequestStorageScopeInput,
+): void {
+    if (!isPullRequestOriginScoped(workspaceId, scope)) return;
+    const target = pullRequestCoworkerRosterPaths(dataDir, workspaceId, repoId, scope);
+    let merged = readPullRequestCoworkerRosterFile(target.filePath);
+    const before = JSON.stringify(merged);
+    for (const legacy of resolvePullRequestLegacyScopes(workspaceId, repoId, scope)) {
+        const legacyPath = pullRequestCoworkerRosterPaths(dataDir, legacy.workspaceId, legacy.repoId);
+        if (legacyPath.filePath === target.filePath) continue;
+        merged = mergePullRequestCoworkerRosterEntries(merged, readPullRequestCoworkerRosterFile(legacyPath.filePath));
+    }
+    if (merged.length > 0 && JSON.stringify(merged) !== before) {
+        persistPullRequestCoworkerRoster(target.filePath, target.dir, merged);
+    }
+}
+
+export function listPullRequestCoworkerRoster(
+    dataDir: string,
+    workspaceId: string,
+    repoId: string,
+    scope?: PullRequestStorageScopeInput,
+): PullRequestCoworkerRosterEntry[] {
+    migratePullRequestCoworkerRoster(dataDir, workspaceId, repoId, scope);
+    const { filePath } = pullRequestCoworkerRosterPaths(dataDir, workspaceId, repoId, scope);
+    return readPullRequestCoworkerRosterFile(filePath);
+}
+
 function writePullRequestCoworkerRoster(
     dataDir: string,
     workspaceId: string,
     repoId: string,
     entries: PullRequestCoworkerRosterEntry[],
+    scope?: PullRequestStorageScopeInput,
 ): PullRequestCoworkerRosterEntry[] {
-    const { filePath, dir } = pullRequestCoworkerRosterPaths(dataDir, workspaceId, repoId);
-    fs.mkdirSync(dir, { recursive: true });
-    const tmpPath = `${filePath}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify({ entries }, null, 2), 'utf-8');
-    fs.renameSync(tmpPath, filePath);
+    const { filePath, dir } = pullRequestCoworkerRosterPaths(dataDir, workspaceId, repoId, scope);
+    persistPullRequestCoworkerRoster(filePath, dir, entries);
     return entries;
 }
 
@@ -210,8 +270,9 @@ export function addPullRequestCoworkerToRoster(
         avatarUrl?: string;
     },
     options?: { addedAt?: string },
+    scope?: PullRequestStorageScopeInput,
 ): PullRequestCoworkerRosterEntry[] {
-    const existing = listPullRequestCoworkerRoster(dataDir, workspaceId, repoId);
+    const existing = listPullRequestCoworkerRoster(dataDir, workspaceId, repoId, scope);
     const addedAt = options?.addedAt ?? new Date().toISOString();
     const nextEntry: PullRequestCoworkerRosterEntry = {
         id: entry.id,
@@ -236,7 +297,7 @@ export function addPullRequestCoworkerToRoster(
         next.push(nextEntry);
     }
 
-    return writePullRequestCoworkerRoster(dataDir, workspaceId, repoId, next);
+    return writePullRequestCoworkerRoster(dataDir, workspaceId, repoId, next, scope);
 }
 
 export function removePullRequestCoworkerFromRoster(
@@ -244,13 +305,15 @@ export function removePullRequestCoworkerFromRoster(
     workspaceId: string,
     repoId: string,
     coworkerKey: string,
+    scope?: PullRequestStorageScopeInput,
 ): PullRequestCoworkerRosterEntry[] {
     const normalizedKey = coworkerKey.trim().toLowerCase();
-    const existing = listPullRequestCoworkerRoster(dataDir, workspaceId, repoId);
+    const existing = listPullRequestCoworkerRoster(dataDir, workspaceId, repoId, scope);
     return writePullRequestCoworkerRoster(
         dataDir,
         workspaceId,
         repoId,
         existing.filter(entry => pullRequestCoworkerRosterEntryKey(entry) !== normalizedKey),
+        scope,
     );
 }

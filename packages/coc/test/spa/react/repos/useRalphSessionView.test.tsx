@@ -2,7 +2,8 @@
  * @vitest-environment jsdom
  *
  * Tests for `useRalphSessionView` — the read-side hook for the per-session
- * Ralph journal. Mocks `getSpaCocClient().workspaces.ralphSession(...)` and
+ * Ralph journal. Mocks the local `getSpaCocClient()` and the remote
+ * `getCocClientFor(baseUrl)` clients' `workspaces.ralphSession(...)` and
  * verifies:
  *
  *   1. Initial fetch resolves into the `{record, sections}` shape.
@@ -12,12 +13,16 @@
  *   5. Once the session reaches a terminal phase, polling stops.
  *   6. Switching `sessionId` re-fetches.
  *   7. `sessionId === null` short-circuits without calling the client.
+ *   8. A registered remote workspace routes the read to the clone server.
+ *   9. An unregistered (local) workspace stays on the local singleton.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
 const ralphSessionMock = vi.fn();
+const remoteRalphSessionMock = vi.fn();
+const getCocClientForMock = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
@@ -25,9 +30,19 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             ralphSession: ralphSessionMock,
         },
     }),
+    // A remote clone resolves through getCocClientFor(baseUrl); return a DISTINCT
+    // client so a routed read is observably different from the local singleton.
+    getCocClientFor: (baseUrl: string) => {
+        getCocClientForMock(baseUrl);
+        return { workspaces: { ralphSession: remoteRalphSessionMock } };
+    },
 }));
 
 import { useRalphSessionView } from '../../../../src/server/spa/client/react/features/chat/useRalphSessionView';
+import {
+    registerCloneBaseUrls,
+    resetCloneRegistryForTests,
+} from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 function makeRecord(overrides: any = {}) {
     return {
@@ -49,6 +64,12 @@ function sleep(ms: number): Promise<void> {
 
 beforeEach(() => {
     ralphSessionMock.mockReset();
+    remoteRalphSessionMock.mockReset();
+    getCocClientForMock.mockReset();
+});
+
+afterEach(() => {
+    resetCloneRegistryForTests();
 });
 
 describe('useRalphSessionView', () => {
@@ -164,5 +185,40 @@ describe('useRalphSessionView', () => {
         await sleep(20);
         expect(result.current.view).toBeUndefined();
         expect(ralphSessionMock).not.toHaveBeenCalled();
+    });
+
+    // ── Remote-clone routing (AC-07) ──────────────────────────────
+
+    it('routes the session read to the remote clone server when wsId is a registered remote workspace', async () => {
+        // Regression: a remote clone's Ralph session lives on its own server, so
+        // the read must hit the clone — not the local singleton, which 404s with
+        // "Ralph session not found".
+        registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: 'http://127.0.0.1:9999' }]);
+        remoteRalphSessionMock.mockResolvedValueOnce({
+            record: makeRecord({ sessionId: 'sess-r', phase: 'complete' }),
+            sections: [],
+        });
+
+        const { result } = renderHook(() => useRalphSessionView('remote-ws', 'sess-r'));
+        await waitFor(() => expect(result.current.view).not.toBeUndefined());
+
+        expect(getCocClientForMock).toHaveBeenCalledWith('http://127.0.0.1:9999');
+        expect(remoteRalphSessionMock).toHaveBeenCalledWith('remote-ws', 'sess-r');
+        expect(ralphSessionMock).not.toHaveBeenCalled();
+        expect(result.current.view?.record.sessionId).toBe('sess-r');
+    });
+
+    it('keeps an unregistered (local) wsId on the local singleton — no remote leakage', async () => {
+        ralphSessionMock.mockResolvedValueOnce({
+            record: makeRecord({ sessionId: 'sess-l', phase: 'complete' }),
+            sections: [],
+        });
+
+        const { result } = renderHook(() => useRalphSessionView('local-ws', 'sess-l'));
+        await waitFor(() => expect(result.current.view).not.toBeUndefined());
+
+        expect(ralphSessionMock).toHaveBeenCalledWith('local-ws', 'sess-l');
+        expect(getCocClientForMock).not.toHaveBeenCalled();
+        expect(remoteRalphSessionMock).not.toHaveBeenCalled();
     });
 });

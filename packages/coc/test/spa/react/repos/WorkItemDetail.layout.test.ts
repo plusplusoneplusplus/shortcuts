@@ -51,7 +51,7 @@ describe('WorkItemDetail — layout', () => {
 
         it('delete button triggers confirm dialog and typed delete request', () => {
             expect(src).toContain("confirm('Delete this work item?')");
-            expect(src).toContain('workItems.delete(workspaceId, workItemId)');
+            expect(src).toContain('workItems.deleteForOrigin(workItemOriginId, workItemId');
         });
     });
 

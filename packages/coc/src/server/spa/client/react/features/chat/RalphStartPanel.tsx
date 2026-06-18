@@ -18,7 +18,7 @@
  *   completed grilling-phase process).
  */
 import { useState, useEffect } from 'react';
-import { getApiBase } from '../../utils/config';
+import { cloneApiBase } from '../../repos/cloneRegistry';
 import { cn } from '../../ui/cn';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import { ModalJobAiControls, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
@@ -68,7 +68,7 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
             setLoadingFile(true);
             try {
                 const resp = await fetch(
-                    `${getApiBase()}/fs/blob?path=${encodeURIComponent(goalFilePath)}`,
+                    `${cloneApiBase(workspaceId)}/fs/blob?path=${encodeURIComponent(goalFilePath)}`,
                 );
                 if (!resp.ok) throw new Error(`Failed to read goal file (HTTP ${resp.status})`);
                 const data = await resp.json();
@@ -96,8 +96,8 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
             // `goalFilePath` to load the file's content but keep the
             // ralph-start endpoint so the existing process/session is reused.
             const url = useLaunchEndpoint
-                ? `${getApiBase()}/ralph-launch`
-                : `${getApiBase()}/processes/${encodeURIComponent(processId)}/ralph-start`;
+                ? `${cloneApiBase(workspaceId)}/ralph-launch`
+                : `${cloneApiBase(workspaceId)}/processes/${encodeURIComponent(processId)}/ralph-start`;
             const resolvedAi = aiSelection.resolved;
             const config: Record<string, unknown> = {};
             if (resolvedAi.model) config.model = resolvedAi.model;

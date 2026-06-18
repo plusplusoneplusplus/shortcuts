@@ -246,29 +246,34 @@ describe('createPrDiffSource', () => {
     const ws = 'ws1';
     const repoId = 'repo1';
     const prId = '42';
+    const originId = 'gh_owner_repo';
 
     it('label uses PR title when provided', () => {
-        const source = createPrDiffSource(ws, repoId, prId, { title: 'Fix bug' });
+        const source = createPrDiffSource(ws, repoId, prId, { originId, title: 'Fix bug' });
         expect(source.label).toBe('PR: Fix bug');
     });
 
     it('label falls back to PR number', () => {
-        const source = createPrDiffSource(ws, repoId, prId);
+        const source = createPrDiffSource(ws, repoId, prId, { originId });
         expect(source.label).toBe('PR #42');
     });
 
-    it('fullDiffUrl returns the combined PR diff endpoint', () => {
-        const source = createPrDiffSource(ws, repoId, prId);
-        expect(source.fullDiffUrl()).toBe('/api/repos/repo1/pull-requests/42/diff');
-    });
+    it('uses origin PR diff endpoints', () => {
+        const source = createPrDiffSource(ws, repoId, prId, { originId });
 
-    it('fileDiffUrl returns the per-file PR diff endpoint', () => {
-        const source = createPrDiffSource(ws, repoId, prId);
-        expect(source.fileDiffUrl('src/foo.ts')).toBe('/api/repos/repo1/pull-requests/42/diff/files/src%2Ffoo.ts');
+        expect(source.fullDiffUrl()).toBe(
+            '/api/origins/gh_owner_repo/pull-requests/42/diff?workspaceId=ws1&repoId=repo1',
+        );
+        expect(source.fileDiffUrl('src/foo.ts')).toBe(
+            '/api/origins/gh_owner_repo/pull-requests/42/diff/files/src%2Ffoo.ts?workspaceId=ws1&repoId=repo1',
+        );
+        expect(source.fullContextFileDiffUrl?.('src/foo.ts')).toBe(
+            '/api/origins/gh_owner_repo/pull-requests/42/diff/files/src%2Ffoo.ts?workspaceId=ws1&repoId=repo1&fullContext=true',
+        );
     });
 
     it('commentContext returns PR-specific refs', () => {
-        const source = createPrDiffSource(ws, repoId, prId);
+        const source = createPrDiffSource(ws, repoId, prId, { originId });
         const ctx = source.commentContext('src/bar.ts');
         expect(ctx).toEqual({
             repositoryId: 'ws1',
@@ -279,47 +284,64 @@ describe('createPrDiffSource', () => {
     });
 
     it('chat is null (PR uses separate binding)', () => {
-        const source = createPrDiffSource(ws, repoId, prId);
+        const source = createPrDiffSource(ws, repoId, prId, { originId });
         expect(source.chat).toBeNull();
     });
 
     it('supportsTruncation is false', () => {
-        const source = createPrDiffSource(ws, repoId, prId);
+        const source = createPrDiffSource(ws, repoId, prId, { originId });
         expect(source.supportsTruncation).toBe(false);
     });
 
-    it('cacheKey includes repoId and prId', () => {
-        const source = createPrDiffSource(ws, repoId, prId);
-        expect(source.cacheKey).toBe('pr:repo1:42');
+    it('cacheKey includes originId and prId', () => {
+        const source = createPrDiffSource(ws, repoId, prId, { originId });
+        expect(source.cacheKey).toBe('pr:gh_owner_repo:42');
     });
 
     it('files defaults to empty array', () => {
-        const source = createPrDiffSource(ws, repoId, prId);
+        const source = createPrDiffSource(ws, repoId, prId, { originId });
         expect(source.files).toEqual([]);
     });
 
     it('files uses provided array', () => {
-        const source = createPrDiffSource(ws, repoId, prId, { files: ['a.ts', 'b.ts'] });
+        const source = createPrDiffSource(ws, repoId, prId, { originId, files: ['a.ts', 'b.ts'] });
         expect(source.files).toEqual(['a.ts', 'b.ts']);
     });
 
     it('classificationKey is set when headSha provided', () => {
-        const source = createPrDiffSource(ws, repoId, prId, { headSha: 'abc123' });
+        const source = createPrDiffSource(ws, repoId, prId, { originId, headSha: 'abc123' });
         expect(source.classificationKey).toEqual({
             type: 'pr',
             repoId: 'repo1',
+            originId: 'gh_owner_repo',
+            workspaceId: 'ws1',
+            identifier: '42:abc123',
+        });
+    });
+
+    it('classificationKey carries origin metadata when originId is provided', () => {
+        const source = createPrDiffSource(ws, repoId, prId, {
+            originId: 'gh_owner_repo',
+            headSha: 'abc123',
+        });
+
+        expect(source.classificationKey).toEqual({
+            type: 'pr',
+            repoId: 'repo1',
+            originId: 'gh_owner_repo',
+            workspaceId: 'ws1',
             identifier: '42:abc123',
         });
     });
 
     it('classificationKey is undefined when headSha not provided', () => {
-        const source = createPrDiffSource(ws, repoId, prId);
+        const source = createPrDiffSource(ws, repoId, prId, { originId });
         expect(source.classificationKey).toBeUndefined();
     });
 
     it('encodes special characters in URL', () => {
-        const source = createPrDiffSource(ws, 'repo with spaces', '99');
-        expect(source.fullDiffUrl()).toBe('/api/repos/repo%20with%20spaces/pull-requests/99/diff');
+        const source = createPrDiffSource(ws, 'repo with spaces', '99', { originId });
+        expect(source.fullDiffUrl()).toBe('/api/origins/gh_owner_repo/pull-requests/99/diff?workspaceId=ws1&repoId=repo+with+spaces');
     });
 });
 

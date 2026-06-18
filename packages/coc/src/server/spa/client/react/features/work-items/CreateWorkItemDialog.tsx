@@ -3,6 +3,7 @@ import { Dialog } from '../../ui/Dialog';
 import { Button } from '../../ui';
 import { useCocClient } from '../../repos/cloneRouting';
 import { isWorkItemsHierarchyEnabled, isWorkItemsWorkflowEnabled } from '../../utils/config';
+import { resolveWorkItemOriginId } from './workItemOriginScope';
 
 type WorkItemTypeAll = 'work-item' | 'bug' | 'goal' | 'epic' | 'feature' | 'pbi';
 
@@ -19,6 +20,7 @@ export interface CreateWorkItemDialogProps {
     open: boolean;
     onClose: () => void;
     workspaceId: string;
+    originId?: string;
     onCreated?: (item: any) => void;
     /** Pre-fill from a chat session */
     fromChatId?: string;
@@ -28,8 +30,9 @@ export interface CreateWorkItemDialogProps {
     parentId?: string;
 }
 
-export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fromChatId, itemType = 'work-item', parentId }: CreateWorkItemDialogProps) {
+export function CreateWorkItemDialog({ open, onClose, workspaceId, originId, onCreated, fromChatId, itemType = 'work-item', parentId }: CreateWorkItemDialogProps) {
     const cloneClient = useCocClient(workspaceId); // AC-07: create on the selected clone's server.
+    const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [priority, setPriority] = useState<'normal' | 'high' | 'low'>('normal');
@@ -67,7 +70,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
                 data = await cloneClient.workItems.createFromChat(workspaceId, { processId: fromChatId });
             } else {
                 const parsedTags = tags.split(',').map(t => t.trim()).filter(Boolean);
-                data = await cloneClient.workItems.create(workspaceId, {
+                data = await cloneClient.workItems.createForOrigin(workItemOriginId, {
                     title: title.trim(),
                     description: description.trim() || undefined,
                     priority,
@@ -76,7 +79,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
                     type: selectedType,
                     successCriteria: (selectedType === 'goal' && successCriteria.trim()) ? successCriteria.trim() : undefined,
                     parentId: (hierarchyEnabled && parentId) ? parentId : undefined,
-                });
+                }, { workspaceId });
             }
             onCreated?.(data);
             onClose();
@@ -85,7 +88,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, fromChatId, title, description, priority, tags, successCriteria, selectedType, hierarchyEnabled, parentId, onCreated, onClose, cloneClient]);
+    }, [workspaceId, workItemOriginId, fromChatId, title, description, priority, tags, successCriteria, selectedType, hierarchyEnabled, parentId, onCreated, onClose, cloneClient]);
 
     const effectiveType = selectedType;
     const isBug = effectiveType === 'bug';

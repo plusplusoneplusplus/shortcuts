@@ -9,8 +9,10 @@
  * at the component level and pass its `.resolved` value here.
  *
  * API endpoints used:
- *   POST /api/repos/:repoId/classify-diff   — trigger classification
- *   GET  /api/repos/:repoId/classify-diff   — get cached result / poll
+ *   POST /api/origins/:originId/classify-diff — trigger PR classification
+ *   GET  /api/origins/:originId/classify-diff — get cached PR result / poll
+ *   POST /api/repos/:repoId/classify-diff     — trigger commit/branch classification
+ *   GET  /api/repos/:repoId/classify-diff     — get cached commit/branch result / poll
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -184,7 +186,13 @@ export function useClassification(
 
     // Stable stringified key for dependency tracking
     const keyStr = classificationKey
-        ? `${classificationKey.type}:${classificationKey.repoId}:${classificationKey.identifier}`
+        ? [
+            classificationKey.type,
+            classificationKey.repoId,
+            classificationKey.identifier,
+            classificationKey.originId ?? '',
+            classificationKey.workspaceId ?? workspaceId ?? '',
+        ].join(':')
         : '';
 
     // On key change: update the live-key guard, stop any in-flight polling, and
@@ -212,9 +220,23 @@ export function useClassification(
 
     const buildUrl = useCallback((suffix: string) => {
         if (!classificationKey) return '';
-        const base = `/repos/${encodeURIComponent(classificationKey.repoId)}/classify-diff`;
+        const base = classificationKey.type === 'pr' && classificationKey.originId
+            ? `/origins/${encodeURIComponent(classificationKey.originId)}/classify-diff`
+            : `/repos/${encodeURIComponent(classificationKey.repoId)}/classify-diff`;
         return `${base}${suffix}`;
     }, [keyStr]);
+
+    const addOriginMetadata = useCallback((params: URLSearchParams | Record<string, unknown>) => {
+        if (!classificationKey?.originId) return;
+        const metadataWorkspaceId = classificationKey.workspaceId ?? workspaceId;
+        if (params instanceof URLSearchParams) {
+            if (metadataWorkspaceId) params.set('workspaceId', metadataWorkspaceId);
+            params.set('repoId', classificationKey.repoId);
+            return;
+        }
+        if (metadataWorkspaceId) params.workspaceId = metadataWorkspaceId;
+        params.repoId = classificationKey.repoId;
+    }, [keyStr, workspaceId]);
 
     const startPolling = useCallback(() => {
         if (!classificationKey) return;
@@ -241,6 +263,7 @@ export function useClassification(
                     type: ck.type,
                     identifier: ck.identifier,
                 });
+                addOriginMetadata(params);
                 const resp = await requestApi<ClassificationGetResponse>(
                     buildUrl(`?${params.toString()}`),
                 );
@@ -254,7 +277,7 @@ export function useClassification(
                 // Transient error — keep polling
             }
         }, POLL_INTERVAL);
-    }, [keyStr, buildUrl, requestApi]);
+    }, [keyStr, buildUrl, addOriginMetadata, requestApi]);
 
     const classify = useCallback(() => {
         if (!classificationKey) return;
@@ -268,6 +291,7 @@ export function useClassification(
             type: ck.type,
             identifier: ck.identifier,
         };
+        addOriginMetadata(postBody);
         if (ai.provider) postBody.provider = ai.provider;
         if (ai.model) postBody.model = ai.model;
         if (ai.reasoningEffort) postBody.reasoningEffort = ai.reasoningEffort;
@@ -299,7 +323,7 @@ export function useClassification(
                     error: err instanceof Error ? err.message : 'Classification failed',
                 }));
             });
-    }, [keyStr, buildUrl, startPolling, requestApi]);
+    }, [keyStr, buildUrl, addOriginMetadata, startPolling, requestApi]);
 
     // On mount / key change, check for cached result
     useEffect(() => {
@@ -311,6 +335,7 @@ export function useClassification(
             type: ck.type,
             identifier: ck.identifier,
         });
+        addOriginMetadata(params);
         requestApi<ClassificationGetResponse>(
             buildUrl(`?${params.toString()}`),
         )
@@ -324,7 +349,7 @@ export function useClassification(
                 }
             })
             .catch(() => { /* no cache — ok */ });
-    }, [keyStr, buildUrl, startPolling, requestApi]);
+    }, [keyStr, buildUrl, addOriginMetadata, startPolling, requestApi]);
 
     const toggleFilter = useCallback((cat: HunkCategory) => {
         setState(prev => {

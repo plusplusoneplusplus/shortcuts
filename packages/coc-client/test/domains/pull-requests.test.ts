@@ -41,56 +41,138 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
-  it('lists, gets, and queries PR data with encoded repo and PR IDs', async () => {
+  it('lists and gets provider PR data through origin APIs with explicit workspace metadata', async () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
 
-    await client.list('repo/a', { status: 'open', scope: 'all', top: 10, skip: 5, force: true, author: 'me', search: 'fix' });
-    await client.get('repo/a', 'pr/1');
-    await client.getThreads('repo/a', 'pr/1');
-    await client.getReviewers('repo/a', 'pr/1');
-    await client.getCommits('repo/a', 'pr/1');
-    await client.getDiff('repo/a', 'pr/1');
-    await client.getCommits('repo/a', 'pr/1');
+    await client.listForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      status: 'open',
+      scope: 'all',
+      top: 10,
+      skip: 5,
+      force: true,
+      author: 'me',
+      search: 'fix',
+    }, { signal: controller.signal });
+    await client.getForOrigin('gh_owner_repo', 'pr/1', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      force: true,
+      signal: controller.signal,
+    });
 
-    expect(adapter.calls).toMatchObject([
+    expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests',
-        options: { query: { status: 'open', scope: 'all', top: 10, skip: 5, force: 'true', author: 'me', search: 'fix' } },
+        path: '/origins/gh_owner_repo/pull-requests',
+        options: {
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            status: 'open',
+            scope: 'all',
+            top: 10,
+            skip: 5,
+            force: 'true',
+            author: 'me',
+            search: 'fix',
+          },
+          signal: controller.signal,
+        },
       },
-      { path: '/repos/repo%2Fa/pull-requests/pr%2F1' },
-      { path: '/repos/repo%2Fa/pull-requests/pr%2F1/threads' },
-      { path: '/repos/repo%2Fa/pull-requests/pr%2F1/reviewers' },
-      { path: '/repos/repo%2Fa/pull-requests/pr%2F1/commits' },
-      { path: '/repos/repo%2Fa/pull-requests/pr%2F1/diff' },
-      { path: '/repos/repo%2Fa/pull-requests/pr%2F1/commits' },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1',
+        options: {
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            force: 'true',
+          },
+          signal: controller.signal,
+        },
+      },
     ]);
   });
 
-  it('lists, records, and removes recently opened PRs with workspace scope', async () => {
+  it('loads provider PR subresources through origin APIs with explicit workspace metadata', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+    const options = {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    };
+
+    await client.getThreadsForOrigin('gh_owner_repo', 'pr/1', options);
+    await client.getReviewersForOrigin('gh_owner_repo', 'pr/1', options);
+    await client.getCommitsForOrigin('gh_owner_repo', 'pr/1', options);
+    await client.getDiffForOrigin('gh_owner_repo', 'pr/1', options);
+    await client.getChecksForOrigin('gh_owner_repo', 'pr/1', options);
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/threads',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/reviewers',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/commits',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/diff',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/checks',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+    ]);
+  });
+
+  it('lists, records, and removes recently opened PRs with origin scope', async () => {
     const adapter = createMockAdapter({ entries: [] });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.listRecentOpened('repo/a', 'ws/a', { signal: controller.signal });
-    await client.recordRecentOpened('repo/a', 'ws/a', {
+    await client.listRecentOpenedForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+    await client.recordRecentOpenedForOrigin('gh_owner_repo', {
       number: 42,
       title: 'Add recent list',
       webUrl: 'https://github.com/org/repo/pull/42',
-    }, { signal: controller.signal });
-    await client.removeRecentOpened('repo/a', 'ws/a', 42, { signal: controller.signal });
+    }, {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+    await client.removeRecentOpenedForOrigin('gh_owner_repo', 42, {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests/recent-opened',
-        options: { query: { workspaceId: 'ws/a' }, signal: controller.signal },
+        path: '/origins/gh_owner_repo/pull-requests/recent-opened',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
       },
       {
-        path: '/repos/repo%2Fa/pull-requests/recent-opened',
+        path: '/origins/gh_owner_repo/pull-requests/recent-opened',
         options: {
           method: 'POST',
           body: {
             workspaceId: 'ws/a',
+            repoId: 'repo/a',
             number: 42,
             title: 'Add recent list',
             webUrl: 'https://github.com/org/repo/pull/42',
@@ -99,37 +181,50 @@ describe('PullRequestsClient', () => {
         },
       },
       {
-        path: '/repos/repo%2Fa/pull-requests/recent-opened/42',
-        options: { method: 'DELETE', query: { workspaceId: 'ws/a' }, signal: controller.signal },
+        path: '/origins/gh_owner_repo/pull-requests/recent-opened/42',
+        options: { method: 'DELETE', query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
       },
     ]);
   });
 
-  it('lists, adds, and removes Team coworker roster entries with workspace scope', async () => {
+  it('lists, adds, and removes Team coworker roster entries with origin scope', async () => {
     const adapter = createMockAdapter({ entries: [] });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.listCoworkerRoster('repo/a', 'ws/a', { signal: controller.signal });
-    await client.addCoworkerToRoster('repo/a', 'ws/a', {
+    await client.listCoworkerRosterForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+    await client.addCoworkerToRosterForOrigin('gh_owner_repo', {
       id: '123',
       displayName: 'Mona Dev',
       email: 'mona@example.invalid',
       avatarUrl: 'https://avatars.example.invalid/u/123',
-    }, { signal: controller.signal });
-    await client.removeCoworkerFromRoster('repo/a', 'ws/a', '123', { signal: controller.signal });
+    }, {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+    await client.removeCoworkerFromRosterForOrigin('gh_owner_repo', 'Pat Dev', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests/coworker-roster',
-        options: { query: { workspaceId: 'ws/a' }, signal: controller.signal },
+        path: '/origins/gh_owner_repo/pull-requests/coworker-roster',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
       },
       {
-        path: '/repos/repo%2Fa/pull-requests/coworker-roster',
+        path: '/origins/gh_owner_repo/pull-requests/coworker-roster',
         options: {
           method: 'POST',
           body: {
             workspaceId: 'ws/a',
+            repoId: 'repo/a',
             id: '123',
             displayName: 'Mona Dev',
             email: 'mona@example.invalid',
@@ -139,22 +234,25 @@ describe('PullRequestsClient', () => {
         },
       },
       {
-        path: '/repos/repo%2Fa/pull-requests/coworker-roster/123',
-        options: { method: 'DELETE', query: { workspaceId: 'ws/a' }, signal: controller.signal },
+        path: '/origins/gh_owner_repo/pull-requests/coworker-roster/Pat%20Dev',
+        options: { method: 'DELETE', query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
       },
     ]);
   });
 
-  it('encodes displayName fallback keys when removing Team roster entries', async () => {
+  it('encodes displayName fallback keys when removing Team roster entries by origin', async () => {
     const adapter = createMockAdapter({ entries: [] });
     const client = new PullRequestsClient(adapter);
 
-    await client.removeCoworkerFromRoster('repo/a', 'ws/a', 'Pat Dev');
+    await client.removeCoworkerFromRosterForOrigin('gh_owner_repo', 'Pat Dev', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests/coworker-roster/Pat%20Dev',
-        options: { method: 'DELETE', query: { workspaceId: 'ws/a' }, signal: undefined },
+        path: '/origins/gh_owner_repo/pull-requests/coworker-roster/Pat%20Dev',
+        options: { method: 'DELETE', query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: undefined },
       },
     ]);
   });
@@ -163,12 +261,12 @@ describe('PullRequestsClient', () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);
 
-    await client.list('repo-a', { status: 'closed' });
-    await client.list('repo-a');
+    await client.listForOrigin('gh_owner_repo', { workspaceId: 'ws/a', repoId: 'repo/a', status: 'closed' });
+    await client.listForOrigin('gh_owner_repo', { workspaceId: 'ws/a' });
 
-    expect(adapter.calls[0].options).toMatchObject({ query: { status: 'closed' } });
+    expect(adapter.calls[0].options).toMatchObject({ query: { workspaceId: 'ws/a', repoId: 'repo/a', status: 'closed' } });
     expect(adapter.calls[0].options?.query?.force).toBeUndefined();
-    expect(adapter.calls[1].options).toMatchObject({ query: undefined });
+    expect(adapter.calls[1].options).toMatchObject({ query: { workspaceId: 'ws/a', repoId: undefined } });
   });
 
   it('forwards abort signal to all data methods', async () => {
@@ -176,13 +274,15 @@ describe('PullRequestsClient', () => {
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.list('r1', { status: 'open' }, { signal: controller.signal });
-    await client.get('r1', '10', { signal: controller.signal });
-    await client.getThreads('r1', '10', { signal: controller.signal });
-    await client.getReviewers('r1', '10', { signal: controller.signal });
-    await client.getCommits('r1', '10', { signal: controller.signal });
-    await client.getDiff('r1', '10', { signal: controller.signal });
-    await client.getCommits('r1', '10', { signal: controller.signal });
+    const options = { workspaceId: 'ws1', repoId: 'r1', signal: controller.signal };
+
+    await client.listForOrigin('gh_owner_repo', { workspaceId: 'ws1', repoId: 'r1', status: 'open' }, { signal: controller.signal });
+    await client.getForOrigin('gh_owner_repo', '10', options);
+    await client.getThreadsForOrigin('gh_owner_repo', '10', options);
+    await client.getReviewersForOrigin('gh_owner_repo', '10', options);
+    await client.getCommitsForOrigin('gh_owner_repo', '10', options);
+    await client.getDiffForOrigin('gh_owner_repo', '10', options);
+    await client.getChecksForOrigin('gh_owner_repo', '10', options);
 
     for (const call of adapter.calls) {
       expect(call.options?.signal).toBe(controller.signal);
@@ -193,111 +293,137 @@ describe('PullRequestsClient', () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);
 
-    await client.list('r1');
-    await client.get('r1', '1');
-    await client.getThreads('r1', '1');
-    await client.getReviewers('r1', '1');
-    await client.getCommits('r1', '1');
-    await client.getDiff('r1', '1');
-    await client.getCommits('r1', '1');
+    const options = { workspaceId: 'ws1', repoId: 'r1' };
+
+    await client.listForOrigin('gh_owner_repo', { workspaceId: 'ws1', repoId: 'r1' });
+    await client.getForOrigin('gh_owner_repo', '1', options);
+    await client.getThreadsForOrigin('gh_owner_repo', '1', options);
+    await client.getReviewersForOrigin('gh_owner_repo', '1', options);
+    await client.getCommitsForOrigin('gh_owner_repo', '1', options);
+    await client.getDiffForOrigin('gh_owner_repo', '1', options);
+    await client.getChecksForOrigin('gh_owner_repo', '1', options);
 
     for (const call of adapter.calls) {
       expect(call.options?.signal).toBeUndefined();
     }
   });
 
-  it('exposes CRUD methods for pull-request chat bindings', async () => {
+  it('exposes origin-scoped CRUD methods for pull-request chat bindings', async () => {
     const adapter = createMockAdapter({ bindings: {} });
     const client = new PullRequestsClient(adapter);
 
-    await client.listChatBindings('ws/a');
-    await client.getChatBinding('ws/a', '142');
-    await client.createChatBinding('ws/a', '142', 'task-1');
-    await client.deleteChatBinding('ws/a', '142');
-    await client.startFreshChat('ws/a', '142');
+    await client.listChatBindingsForOrigin('gh_owner_repo');
+    await client.getChatBindingForOrigin('gh_owner_repo', '142');
+    await client.createChatBindingForOrigin('gh_owner_repo', '142', 'task-1');
+    await client.deleteChatBindingForOrigin('gh_owner_repo', '142');
+    await client.startFreshChatForOrigin('gh_owner_repo', '142', 'ws/a');
 
     expect(adapter.calls).toEqual([
-      { path: '/workspaces/ws%2Fa/pull-request-chat-bindings', options: undefined },
-      { path: '/workspaces/ws%2Fa/pull-request-chat-bindings/142', options: undefined },
+      { path: '/origins/gh_owner_repo/pull-request-chat-bindings', options: undefined },
+      { path: '/origins/gh_owner_repo/pull-request-chat-bindings/142', options: undefined },
       {
-        path: '/workspaces/ws%2Fa/pull-request-chat-bindings',
+        path: '/origins/gh_owner_repo/pull-request-chat-bindings',
         options: { method: 'POST', body: { prId: '142', taskId: 'task-1' } },
       },
       {
-        path: '/workspaces/ws%2Fa/pull-request-chat-bindings/142',
+        path: '/origins/gh_owner_repo/pull-request-chat-bindings/142',
         options: { method: 'DELETE' },
       },
       {
-        path: '/workspaces/ws%2Fa/pull-request-chat-bindings/142/fresh',
-        options: { method: 'POST', body: {} },
+        path: '/origins/gh_owner_repo/pull-request-chat-bindings/142/fresh',
+        options: { method: 'POST', body: {}, query: { workspaceId: 'ws/a' } },
       },
     ]);
   });
 
-  it('classify sends POST with headSha, model, and encoded IDs', async () => {
+  it('classifyForOrigin sends POST with origin metadata and encoded PR identifier', async () => {
     const adapter = createMockAdapter({ status: 'started', taskId: 'task-1' });
     const client = new PullRequestsClient(adapter);
 
-    await client.classify('repo/a', 'pr/1', { headSha: 'abc123', model: 'haiku' });
+    await client.classifyForOrigin('gh_owner_repo', 'pr/1', { headSha: 'abc123', model: 'haiku' }, {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests/pr%2F1/classify',
+        path: '/origins/gh_owner_repo/classify-diff',
         options: {
           method: 'POST',
-          body: { headSha: 'abc123', model: 'haiku' },
+          body: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            type: 'pr',
+            identifier: 'pr/1:abc123',
+            model: 'haiku',
+          },
           signal: undefined,
         },
       },
     ]);
   });
 
-  it('classify forwards abort signal', async () => {
+  it('classifyForOrigin forwards abort signal', async () => {
     const adapter = createMockAdapter({ status: 'started' });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.classify('r1', '10', { headSha: 'sha1' }, { signal: controller.signal });
+    await client.classifyForOrigin('gh_owner_repo', '10', { headSha: 'sha1' }, {
+      workspaceId: 'ws1',
+      signal: controller.signal,
+    });
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });
 
-  it('getClassification sends GET with headSha query param', async () => {
+  it('getClassificationForOrigin sends GET with origin metadata and PR identifier', async () => {
     const adapter = createMockAdapter({ status: 'none' });
     const client = new PullRequestsClient(adapter);
 
-    await client.getClassification('repo/a', 'pr/1', 'abc123');
+    await client.getClassificationForOrigin('gh_owner_repo', 'pr/1', 'abc123', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests/pr%2F1/classification',
+        path: '/origins/gh_owner_repo/classify-diff',
         options: {
-          query: { headSha: 'abc123' },
+          query: {
+            type: 'pr',
+            identifier: 'pr/1:abc123',
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+          },
           signal: undefined,
         },
       },
     ]);
   });
 
-  it('getClassification forwards abort signal', async () => {
+  it('getClassificationForOrigin forwards abort signal', async () => {
     const adapter = createMockAdapter({ status: 'ready' });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.getClassification('r1', '10', 'sha1', { signal: controller.signal });
+    await client.getClassificationForOrigin('gh_owner_repo', '10', 'sha1', {
+      workspaceId: 'ws1',
+      signal: controller.signal,
+    });
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });
 
-  it('getClassificationBatchStatus sends encoded batch-status query params', async () => {
+  it('getClassificationBatchStatus sends encoded commit batch-status query params', async () => {
     const adapter = createMockAdapter({ statuses: {} });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
     await client.getClassificationBatchStatus('repo/a', {
-      type: 'pr',
-      identifiers: ['1:abc', '2:def'],
+      type: 'commit',
+      identifiers: ['abc', 'def'],
       workspaceId: 'ws/a',
+      repoId: 'repo/a',
     }, { signal: controller.signal });
 
     expect(adapter.calls).toEqual([
@@ -305,9 +431,10 @@ describe('PullRequestsClient', () => {
         path: '/repos/repo%2Fa/classify-diff/batch-status',
         options: {
           query: {
-            type: 'pr',
-            identifiers: '1:abc,2:def',
+            type: 'commit',
+            identifiers: 'abc,def',
             workspaceId: 'ws/a',
+            repoId: 'repo/a',
           },
           signal: controller.signal,
         },
@@ -315,24 +442,55 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
-  it('autoClassifyTeam sends POST with workspace and loaded PR payload', async () => {
+  it('getClassificationBatchStatusForOrigin sends encoded origin batch-status query params', async () => {
+    const adapter = createMockAdapter({ statuses: {} });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.getClassificationBatchStatusForOrigin('gh_owner_repo', {
+      type: 'pr',
+      identifiers: ['1:abc', '2:def'],
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    }, { signal: controller.signal });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/classify-diff/batch-status',
+        options: {
+          query: {
+            type: 'pr',
+            identifiers: '1:abc,2:def',
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+          },
+          signal: controller.signal,
+        },
+      },
+    ]);
+  });
+
+  it('autoClassifyTeamForOrigin sends POST with origin metadata and loaded PR payload', async () => {
     const adapter = createMockAdapter({ started: 1 });
     const client = new PullRequestsClient(adapter);
 
-    await client.autoClassifyTeam('repo/a', {
-      workspaceId: 'ws/a',
+    await client.autoClassifyTeamForOrigin('gh_owner_repo', {
       pullRequests: [
         { number: 42, status: 'open', headSha: 'abc123', author: { id: 'u1', displayName: 'Mona Dev' } },
       ],
+    }, {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
     });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests/team-auto-classification',
+        path: '/origins/gh_owner_repo/pull-requests/team-auto-classification',
         options: {
           method: 'POST',
           body: {
             workspaceId: 'ws/a',
+            repoId: 'repo/a',
             pullRequests: [
               { number: 42, status: 'open', headSha: 'abc123', author: { id: 'u1', displayName: 'Mona Dev' } },
             ],
@@ -343,85 +501,175 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
+  it('gets and saves review progress through origin routes', async () => {
+    const adapter = createMockAdapter({ reviewedFiles: [], visitedFiles: [] });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.getReviewProgressForOrigin('gh_owner_repo', 'pr/1', 'abc123', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+    await client.saveReviewProgressForOrigin('gh_owner_repo', 'pr/1', {
+      headSha: 'abc123',
+      reviewedFiles: ['src/a.ts'],
+      visitedFiles: ['src/a.ts', 'src/b.ts'],
+      lastSelectedFile: 'src/b.ts',
+    }, {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      signal: controller.signal,
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/review-progress',
+        options: {
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            headSha: 'abc123',
+          },
+          signal: controller.signal,
+        },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/review-progress',
+        options: {
+          method: 'PUT',
+          body: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            headSha: 'abc123',
+            reviewedFiles: ['src/a.ts'],
+            visitedFiles: ['src/a.ts', 'src/b.ts'],
+            lastSelectedFile: 'src/b.ts',
+          },
+          signal: controller.signal,
+        },
+      },
+    ]);
+  });
+
   it('prFileDiffPath returns encoded per-file diff path', () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);
 
-    expect(client.prFileDiffPath('repo/a', 'pr/1', 'src/foo.ts')).toBe(
-      '/api/repos/repo%2Fa/pull-requests/pr%2F1/diff/files/src%2Ffoo.ts',
+    expect(client.prDiffPathForOrigin('gh_owner_repo', 'pr/1', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    })).toBe(
+      '/api/origins/gh_owner_repo/pull-requests/pr%2F1/diff?workspaceId=ws%2Fa&repoId=repo%2Fa',
+    );
+    expect(client.prFileDiffPathForOrigin('gh_owner_repo', 'pr/1', 'src/foo.ts', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      fullContext: true,
+    })).toBe(
+      '/api/origins/gh_owner_repo/pull-requests/pr%2F1/diff/files/src%2Ffoo.ts?workspaceId=ws%2Fa&repoId=repo%2Fa&fullContext=true',
     );
   });
 
   // ── PR suggestions ──────────────────────────────────────────
 
-  it('getSuggestions sends GET to suggestions endpoint', async () => {
+  it('getSuggestionsForOrigin sends GET to origin suggestions endpoint', async () => {
     const adapter = createMockAdapter({ suggestions: [], rankedAt: null });
     const client = new PullRequestsClient(adapter);
 
-    await client.getSuggestions('repo/a');
+    await client.getSuggestionsForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests/suggestions',
-        options: { signal: undefined },
+        path: '/origins/gh_owner_repo/pull-requests/suggestions',
+        options: {
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+          },
+          signal: undefined,
+        },
       },
     ]);
   });
 
-  it('refreshSuggestions sends POST to suggestions/refresh endpoint', async () => {
+  it('refreshSuggestionsForOrigin sends POST to origin suggestions/refresh endpoint', async () => {
     const adapter = createMockAdapter({ suggestions: [{ prNumber: 1, score: 90 }], rankedAt: '2026-01-01' });
     const client = new PullRequestsClient(adapter);
 
-    await client.refreshSuggestions('repo/a');
+    await client.refreshSuggestionsForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests/suggestions/refresh',
-        options: { method: 'POST', signal: undefined },
+        path: '/origins/gh_owner_repo/pull-requests/suggestions/refresh',
+        options: {
+          method: 'POST',
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+          },
+          signal: undefined,
+        },
       },
     ]);
   });
 
-  it('refreshReviewHistory sends POST to review-history/refresh endpoint', async () => {
+  it('refreshReviewHistoryForOrigin sends POST to origin review-history/refresh endpoint', async () => {
     const adapter = createMockAdapter({ reviews: [], fetchedAt: '2026-01-01' });
     const client = new PullRequestsClient(adapter);
 
-    await client.refreshReviewHistory('repo/a');
+    await client.refreshReviewHistoryForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+    });
 
     expect(adapter.calls).toEqual([
       {
-        path: '/repos/repo%2Fa/pull-requests/review-history/refresh',
-        options: { method: 'POST', signal: undefined },
+        path: '/origins/gh_owner_repo/pull-requests/review-history/refresh',
+        options: {
+          method: 'POST',
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+          },
+          signal: undefined,
+        },
       },
     ]);
   });
 
-  it('getSuggestions forwards abort signal', async () => {
+  it('getSuggestionsForOrigin forwards abort signal', async () => {
     const adapter = createMockAdapter({ suggestions: [], rankedAt: null });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.getSuggestions('r1', { signal: controller.signal });
+    await client.getSuggestionsForOrigin('gh_owner_repo', { workspaceId: 'ws1', signal: controller.signal });
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });
 
-  it('refreshSuggestions forwards abort signal', async () => {
+  it('refreshSuggestionsForOrigin forwards abort signal', async () => {
     const adapter = createMockAdapter({ suggestions: [], rankedAt: null });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.refreshSuggestions('r1', { signal: controller.signal });
+    await client.refreshSuggestionsForOrigin('gh_owner_repo', { workspaceId: 'ws1', signal: controller.signal });
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });
 
-  it('refreshReviewHistory forwards abort signal', async () => {
+  it('refreshReviewHistoryForOrigin forwards abort signal', async () => {
     const adapter = createMockAdapter({ reviews: [], fetchedAt: null });
     const client = new PullRequestsClient(adapter);
     const controller = new AbortController();
 
-    await client.refreshReviewHistory('r1', { signal: controller.signal });
+    await client.refreshReviewHistoryForOrigin('gh_owner_repo', { workspaceId: 'ws1', signal: controller.signal });
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });

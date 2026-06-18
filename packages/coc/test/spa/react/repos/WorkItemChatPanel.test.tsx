@@ -81,6 +81,7 @@ describe('WorkItemChatPanel', () => {
 
     const defaultProps = {
         workspaceId: 'ws-1',
+        originId: 'gh_owner_repo',
         workItemId: 'wi-1',
         workItemNumber: 7,
         title: 'Fix saved title',
@@ -187,6 +188,7 @@ describe('WorkItemChatPanel', () => {
 
         expect(mockUseWorkItemChatBinding).toHaveBeenCalledWith({
             workspaceId: 'ws-1',
+            originId: 'gh_owner_repo',
             workItemId: 'wi-1',
             title: 'Fix saved title',
             status: 'planning',

@@ -45,6 +45,10 @@ export interface PrChatContext {
 export interface ClassificationKey {
     type: 'pr' | 'commit' | 'branch-range';
     repoId: string;
+    /** Canonical origin for PR classification state; omitted for workspace-local commit/branch classification. */
+    originId?: string;
+    /** Concrete workspace used to route provider-backed PR classification work. */
+    workspaceId?: string;
     /**
      * For PR: `prId:headSha` (new push auto-invalidates).
      * For commit: hash.
@@ -238,32 +242,39 @@ export async function fetchDiffFromSource(workspaceId: string, url: string): Pro
 /**
  * Create a DiffSource backed by a pull request's diff endpoint.
  *
- * Uses the existing `/api/repos/:repoId/pull-requests/:prId/diff` endpoint
- * and client-side extraction for per-file diffs from the combined payload.
+ * Uses origin-scoped PR diff endpoints when an origin is provided so same-origin
+ * clones share cache identity while `workspaceId` still selects the concrete clone.
  */
 export function createPrDiffSource(
     workspaceId: string,
     repoId: string,
     prId: string,
-    options?: {
+    options: {
+        originId: string;
         headSha?: string;
         files?: string[];
         title?: string;
     },
 ): DiffSource {
+    const client = getCocClientForWorkspace(workspaceId);
+    const originOptions = { workspaceId, repoId };
+
     return {
         label: options?.title ? `PR: ${options.title}` : `PR #${prId}`,
 
         fileDiffUrl(filePath: string, _full?: boolean): string {
-            return `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff/files/${encodeURIComponent(filePath)}`;
+            return client.pullRequests.prFileDiffPathForOrigin(options.originId, prId, filePath, originOptions);
         },
 
         fullContextFileDiffUrl(filePath: string): string {
-            return `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff/files/${encodeURIComponent(filePath)}?fullContext=true`;
+            return client.pullRequests.prFileDiffPathForOrigin(options.originId, prId, filePath, {
+                ...originOptions,
+                fullContext: true,
+            });
         },
 
         fullDiffUrl(): string {
-            return `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff`;
+            return client.pullRequests.prDiffPathForOrigin(options.originId, prId, originOptions);
         },
 
         commentContext(filePath: string): DiffCommentContext {
@@ -281,16 +292,21 @@ export function createPrDiffSource(
 
         supportsTruncation: false,
 
-        cacheKey: `pr:${repoId}:${prId}`,
+        cacheKey: `pr:${options.originId}:${prId}`,
 
         async fetchFileList(): Promise<string[]> {
-            const client = getCocClientForWorkspace(repoId);
-            const diff = await client.pullRequests.getDiff(repoId, prId);
+            const diff = await client.pullRequests.getDiffForOrigin(options.originId, prId, originOptions);
             return extractFilePathsFromDiff(diff);
         },
 
         classificationKey: options?.headSha
-            ? { type: 'pr', repoId, identifier: `${prId}:${options.headSha}` }
+            ? {
+                type: 'pr',
+                repoId,
+                identifier: `${prId}:${options.headSha}`,
+                originId: options.originId,
+                workspaceId,
+            }
             : undefined,
     };
 }

@@ -59,7 +59,10 @@ describe('registerGenericClassificationRoutes', () => {
     let routes: Route[];
     const mockStore = {} as any;
     const mockRepoTreeService = {
-        resolveRepo: vi.fn(() => Promise.resolve({ localPath: '/tmp/repo' })),
+        resolveRepo: vi.fn(() => Promise.resolve({
+            localPath: '/tmp/repo',
+            remoteUrl: 'https://github.com/org/repo.git',
+        })),
     } as any;
 
     beforeEach(() => {
@@ -80,28 +83,31 @@ describe('registerGenericClassificationRoutes', () => {
 
     it('registers POST and GET routes', () => {
         setup();
-        expect(routes).toHaveLength(3);
+        expect(routes).toHaveLength(6);
         expect(routes[0].method).toBe('POST');
-        expect(routes[1].method).toBe('GET');
+        expect(routes[1].method).toBe('POST');
         expect(routes[2].method).toBe('GET');
+        expect(routes[3].method).toBe('GET');
+        expect(routes[4].method).toBe('GET');
+        expect(routes[5].method).toBe('GET');
     });
 
     it('GET batch-status route is registered before the single-item GET', () => {
         setup();
-        expect('/api/repos/my-repo/classify-diff/batch-status').toMatch(routes[1].pattern);
-        expect('/api/repos/my-repo/classify-diff/batch-status').not.toMatch(routes[2].pattern);
+        expect('/api/repos/my-repo/classify-diff/batch-status').toMatch(routes[4].pattern);
+        expect('/api/repos/my-repo/classify-diff/batch-status').not.toMatch(routes[5].pattern);
     });
 
     it('POST pattern matches /api/repos/:repoId/classify-diff', () => {
         setup();
-        const pattern = routes[0].pattern;
+        const pattern = routes[1].pattern;
         expect('/api/repos/my-repo/classify-diff').toMatch(pattern);
         expect('/api/repos/my-repo/classify-diff/extra').not.toMatch(pattern);
     });
 
     it('GET pattern matches /api/repos/:repoId/classify-diff', () => {
         setup();
-        const pattern = routes[2].pattern;
+        const pattern = routes[5].pattern;
         expect('/api/repos/my-repo/classify-diff').toMatch(pattern);
     });
 
@@ -121,8 +127,8 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadClassification.mockReturnValue(mockResult as any);
 
             const { res, getData } = makeCapturingRes();
-            await routes[2].handler(
-                makeGetReq('/api/repos/repo1/classify-diff?type=pr&identifier=42%3Aabc123'),
+            await routes[5].handler(
+                makeGetReq('/api/repos/repo1/classify-diff?type=commit&identifier=abc123'),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
             );
@@ -138,7 +144,7 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue({ processId: 'proc-2', startedAt: '2026-01-01' });
 
             const { res, getData } = makeCapturingRes();
-            await routes[2].handler(
+            await routes[5].handler(
                 makeGetReq('/api/repos/repo1/classify-diff?type=commit&identifier=abc1234'),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
@@ -155,8 +161,8 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue({ processId: 'proc-q', startedAt: '2026-01-01' });
 
             const { res, getData } = makeCapturingRes();
-            await routes[2].handler(
-                makeGetReq('/api/repos/repo1/classify-diff?type=pr&identifier=5%3Asha123'),
+            await routes[5].handler(
+                makeGetReq('/api/repos/repo1/classify-diff?type=commit&identifier=sha123'),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
             );
@@ -172,7 +178,7 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue({ processId: 'gone-task', startedAt: '2026-01-01' });
 
             const { res, getData } = makeCapturingRes();
-            await routes[2].handler(
+            await routes[5].handler(
                 makeGetReq('/api/repos/repo1/classify-diff?type=commit&identifier=deadbeef'),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
@@ -188,8 +194,8 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue({ processId: 'proc-3', startedAt: '2026-01-01' });
 
             const { res, getData } = makeCapturingRes();
-            await routes[2].handler(
-                makeGetReq('/api/repos/repo1/classify-diff?type=pr&identifier=10%3Afail123'),
+            await routes[5].handler(
+                makeGetReq('/api/repos/repo1/classify-diff?type=commit&identifier=fail123'),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
             );
@@ -204,7 +210,7 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue({ processId: 'proc-4', startedAt: '2026-01-01' });
 
             const { res, getData } = makeCapturingRes();
-            await routes[2].handler(
+            await routes[5].handler(
                 makeGetReq('/api/repos/repo1/classify-diff?type=branch-range&identifier=main..feat'),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
@@ -220,7 +226,7 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue({ processId: 'proc-5', startedAt: '2026-01-01' });
 
             const { res, getData } = makeCapturingRes();
-            await routes[2].handler(
+            await routes[5].handler(
                 makeGetReq('/api/repos/repo1/classify-diff?type=commit&identifier=abc999'),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
@@ -236,7 +242,7 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue(undefined);
 
             const { res, getData } = makeCapturingRes();
-            await routes[2].handler(
+            await routes[5].handler(
                 makeGetReq('/api/repos/repo1/classify-diff?type=branch-range&identifier=main..feature'),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
@@ -248,7 +254,7 @@ describe('registerGenericClassificationRoutes', () => {
         it('returns 400 for missing type parameter', async () => {
             setup();
             const { res, statusCode } = makeCapturingRes();
-            await routes[2].handler(
+            await routes[5].handler(
                 makeGetReq('/api/repos/repo1/classify-diff?identifier=abc'),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
@@ -281,8 +287,8 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue({ processId: 'task-alive', startedAt: '2026-01-01' });
 
             const { res, getData } = makeCapturingRes();
-            await routes[0].handler(
-                makePostReq({ type: 'pr', identifier: '42:abc123', workspaceId: 'ws1' }),
+            await routes[1].handler(
+                makePostReq({ type: 'commit', identifier: 'abc123', workspaceId: 'ws1' }),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
             );
@@ -298,8 +304,8 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue({ processId: 'stale-task', startedAt: '2026-01-01' });
 
             const { res, getData, statusCode } = makeCapturingRes();
-            await routes[0].handler(
-                makePostReq({ type: 'pr', identifier: '42:abc123', workspaceId: 'ws1' }),
+            await routes[1].handler(
+                makePostReq({ type: 'commit', identifier: 'abc123', workspaceId: 'ws1' }),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
             );
@@ -316,7 +322,7 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue({ processId: 'failed-task', startedAt: '2026-01-01' });
 
             const { res, getData, statusCode } = makeCapturingRes();
-            await routes[0].handler(
+            await routes[1].handler(
                 makePostReq({ type: 'commit', identifier: 'abc1234', workspaceId: 'ws1' }),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
@@ -373,8 +379,8 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue(undefined);
 
             const { res } = makeCapturingRes();
-            await localRoutes[0].handler(
-                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1', provider: 'claude' }),
+            await localRoutes[1].handler(
+                makePostReq({ type: 'commit', identifier: 'abc123', workspaceId: 'ws1', provider: 'claude' }),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
             );
@@ -389,8 +395,8 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue(undefined);
 
             const { res } = makeCapturingRes();
-            await localRoutes[0].handler(
-                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1', model: 'claude-opus-4.7' }),
+            await localRoutes[1].handler(
+                makePostReq({ type: 'commit', identifier: 'abc123', workspaceId: 'ws1', model: 'claude-opus-4.7' }),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
             );
@@ -404,8 +410,8 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue(undefined);
 
             const { res } = makeCapturingRes();
-            await localRoutes[0].handler(
-                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1', reasoningEffort: 'high' }),
+            await localRoutes[1].handler(
+                makePostReq({ type: 'commit', identifier: 'abc123', workspaceId: 'ws1', reasoningEffort: 'high' }),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
             );
@@ -419,8 +425,8 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue(undefined);
 
             const { res } = makeCapturingRes();
-            await localRoutes[0].handler(
-                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1', reasoningEffort: 'ultra-high' }),
+            await localRoutes[1].handler(
+                makePostReq({ type: 'commit', identifier: 'abc123', workspaceId: 'ws1', reasoningEffort: 'ultra-high' }),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
             );
@@ -434,13 +440,14 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue(undefined);
 
             const { res } = makeCapturingRes();
-            await localRoutes[0].handler(
-                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1', provider: 'not-a-valid-provider' }),
+            await localRoutes[1].handler(
+                makePostReq({ type: 'commit', identifier: 'abc123', workspaceId: 'ws1', provider: 'not-a-valid-provider' }),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
             );
 
             expect(enqueueCapture()).toBeDefined();
+            expect(enqueueCapture().payload.classificationStorageOriginId).toBe('gh_org_repo');
             expect(enqueueCapture().payload.provider).toBeUndefined();
         });
 
@@ -450,8 +457,8 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue(undefined);
 
             const { res } = makeCapturingRes();
-            await localRoutes[0].handler(
-                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1' }),
+            await localRoutes[1].handler(
+                makePostReq({ type: 'commit', identifier: 'abc123', workspaceId: 'ws1' }),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
             );
@@ -466,8 +473,8 @@ describe('registerGenericClassificationRoutes', () => {
             mockedReadPending.mockReturnValue(undefined);
 
             const { res } = makeCapturingRes();
-            await localRoutes[0].handler(
-                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1', autoProviderRouting: true, effortTier: 'medium' }),
+            await localRoutes[1].handler(
+                makePostReq({ type: 'commit', identifier: 'abc123', workspaceId: 'ws1', autoProviderRouting: true, effortTier: 'medium' }),
                 res,
                 ['/api/repos/repo1/classify-diff', 'repo1'],
             );

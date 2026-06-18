@@ -15,6 +15,9 @@ const { mockClient } = vi.hoisted(() => ({
             getChatBinding: vi.fn(),
             createChatBinding: vi.fn(),
             startFreshChat: vi.fn(),
+            getChatBindingForOrigin: vi.fn(),
+            createChatBindingForOrigin: vi.fn(),
+            startFreshChatForOrigin: vi.fn(),
         },
     },
 }));
@@ -38,14 +41,14 @@ function deferred<T>() {
 describe('useWorkItemChatBinding', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mockClient.workItems.getChatBinding.mockResolvedValue({ taskId: null });
-        mockClient.workItems.createChatBinding.mockResolvedValue({});
-        mockClient.workItems.startFreshChat.mockResolvedValue({ workItemId: 'wi-1', archivedTaskId: 'task-existing' });
+        mockClient.workItems.getChatBindingForOrigin.mockResolvedValue({ taskId: null });
+        mockClient.workItems.createChatBindingForOrigin.mockResolvedValue({});
+        mockClient.workItems.startFreshChatForOrigin.mockResolvedValue({ workItemId: 'wi-1', archivedTaskId: 'task-existing' });
         mockClient.queue.enqueue.mockResolvedValue({ task: { id: 'task-work-item' } });
     });
 
     it('fetches and restores existing binding for workspace + work item', async () => {
-        mockClient.workItems.getChatBinding.mockResolvedValueOnce({ workItemId: 'wi-1', taskId: 'task-existing' });
+        mockClient.workItems.getChatBindingForOrigin.mockResolvedValueOnce({ workItemId: 'wi-1', taskId: 'task-existing' });
 
         const { result } = renderHook(() => useWorkItemChatBinding({
             workspaceId: 'ws-1',
@@ -57,12 +60,12 @@ describe('useWorkItemChatBinding', () => {
             await Promise.resolve();
         });
 
-        expect(mockClient.workItems.getChatBinding).toHaveBeenCalledWith('ws-1', 'wi-1');
+        expect(mockClient.workItems.getChatBindingForOrigin).toHaveBeenCalledWith('local_ws-1', 'wi-1');
         expect(result.current.taskId).toBe('task-existing');
     });
 
     it('treats 404 as no binding', async () => {
-        mockClient.workItems.getChatBinding.mockRejectedValueOnce({ status: 404 });
+        mockClient.workItems.getChatBindingForOrigin.mockRejectedValueOnce({ status: 404 });
 
         const { result } = renderHook(() => useWorkItemChatBinding({
             workspaceId: 'ws-1',
@@ -89,16 +92,16 @@ describe('useWorkItemChatBinding', () => {
             await Promise.resolve();
         });
 
-        expect(mockClient.workItems.getChatBinding).toHaveBeenCalledWith('ws-1', 'wi-1');
-        expect(mockClient.workItems.getChatBinding).toHaveBeenCalledWith('ws-1', 'wi-2');
+        expect(mockClient.workItems.getChatBindingForOrigin).toHaveBeenCalledWith('local_ws-1', 'wi-1');
+        expect(mockClient.workItems.getChatBindingForOrigin).toHaveBeenCalledWith('local_ws-1', 'wi-2');
     });
 
     it('ignores stale binding results after changing workspace selection', async () => {
         const firstWorkspaceLookup = deferred<{ workItemId: string; taskId: string }>();
         const secondWorkspaceLookup = deferred<{ workItemId: string; taskId: string }>();
-        mockClient.workItems.getChatBinding.mockImplementation((workspaceId: string, workItemId: string) => {
-            if (workspaceId === 'ws-1' && workItemId === 'same-id') return firstWorkspaceLookup.promise;
-            if (workspaceId === 'ws-2' && workItemId === 'same-id') return secondWorkspaceLookup.promise;
+        mockClient.workItems.getChatBindingForOrigin.mockImplementation((originId: string, workItemId: string) => {
+            if (originId === 'local_ws-1' && workItemId === 'same-id') return firstWorkspaceLookup.promise;
+            if (originId === 'local_ws-2' && workItemId === 'same-id') return secondWorkspaceLookup.promise;
             return Promise.resolve({ taskId: null });
         });
 
@@ -123,8 +126,8 @@ describe('useWorkItemChatBinding', () => {
         });
 
         expect(result.current.taskId).toBe('task-ws-2');
-        expect(mockClient.workItems.getChatBinding).toHaveBeenCalledWith('ws-1', 'same-id');
-        expect(mockClient.workItems.getChatBinding).toHaveBeenCalledWith('ws-2', 'same-id');
+        expect(mockClient.workItems.getChatBindingForOrigin).toHaveBeenCalledWith('local_ws-1', 'same-id');
+        expect(mockClient.workItems.getChatBindingForOrigin).toHaveBeenCalledWith('local_ws-2', 'same-id');
     });
 
     it('does not apply a completed chat create after the selected Work Item changes', async () => {
@@ -154,7 +157,7 @@ describe('useWorkItemChatBinding', () => {
         });
 
         expect(await createPromise).toBe('task-wi-1');
-        expect(mockClient.workItems.createChatBinding).toHaveBeenCalledWith('ws-1', 'wi-1', 'task-wi-1');
+        expect(mockClient.workItems.createChatBindingForOrigin).toHaveBeenCalledWith('local_ws-1', 'wi-1', 'task-wi-1');
         expect(result.current.taskId).toBeNull();
         expect(result.current.error).toBeNull();
     });
@@ -211,6 +214,7 @@ describe('useWorkItemChatBinding', () => {
                         status: 'planning',
                         type: 'bug',
                         workItemNumber: 123,
+                        originId: 'local_ws-1',
                     },
                 },
             },
@@ -231,8 +235,9 @@ describe('useWorkItemChatBinding', () => {
         expect(enqueueArg.payload.prompt).not.toContain('provider details');
         expect(enqueueArg.payload.context.workItemChat.workspaceId).toBe('ws-1');
         expect(enqueueArg.payload.context.workItemChat.workItemId).toBe('wi-123');
+        expect(enqueueArg.payload.context.workItemChat.originId).toBe('local_ws-1');
         expect(enqueueArg.payload.context.workItemChat.title).toBeUndefined();
-        expect(mockClient.workItems.createChatBinding).toHaveBeenCalledWith('ws-1', 'wi-123', 'task-work-item');
+        expect(mockClient.workItems.createChatBindingForOrigin).toHaveBeenCalledWith('local_ws-1', 'wi-123', 'task-work-item');
         expect(result.current.taskId).toBe('task-work-item');
     });
 
@@ -261,11 +266,11 @@ describe('useWorkItemChatBinding', () => {
 
         expect(result.current.taskId).toBe('task-retry');
         expect(result.current.error).toBeNull();
-        expect(mockClient.workItems.createChatBinding).toHaveBeenCalledWith('ws-1', 'wi-1', 'task-retry');
+        expect(mockClient.workItems.createChatBindingForOrigin).toHaveBeenCalledWith('local_ws-1', 'wi-1', 'task-retry');
     });
 
     it('calls the fresh Work Item endpoint and resets taskId to the empty same-context state', async () => {
-        mockClient.workItems.getChatBinding.mockResolvedValueOnce({ workItemId: 'wi-1', taskId: 'task-existing' });
+        mockClient.workItems.getChatBindingForOrigin.mockResolvedValueOnce({ workItemId: 'wi-1', taskId: 'task-existing' });
 
         const { result } = renderHook(() => useWorkItemChatBinding({
             workspaceId: 'ws-1',
@@ -285,7 +290,7 @@ describe('useWorkItemChatBinding', () => {
         });
 
         expect(freshResult).toBe(true);
-        expect(mockClient.workItems.startFreshChat).toHaveBeenCalledWith('ws-1', 'wi-1');
+        expect(mockClient.workItems.startFreshChatForOrigin).toHaveBeenCalledWith('local_ws-1', 'wi-1', 'ws-1');
         expect(mockClient.queue.enqueue).not.toHaveBeenCalled();
         expect(result.current.taskId).toBeNull();
         expect(result.current.error).toBeNull();
@@ -293,8 +298,8 @@ describe('useWorkItemChatBinding', () => {
     });
 
     it('keeps the old taskId visible and surfaces an error when Work Item fresh reset fails', async () => {
-        mockClient.workItems.getChatBinding.mockResolvedValueOnce({ workItemId: 'wi-1', taskId: 'task-existing' });
-        mockClient.workItems.startFreshChat.mockRejectedValueOnce(new Error('archive failed'));
+        mockClient.workItems.getChatBindingForOrigin.mockResolvedValueOnce({ workItemId: 'wi-1', taskId: 'task-existing' });
+        mockClient.workItems.startFreshChatForOrigin.mockRejectedValueOnce(new Error('archive failed'));
 
         const { result } = renderHook(() => useWorkItemChatBinding({
             workspaceId: 'ws-1',
@@ -329,6 +334,6 @@ describe('useWorkItemChatBinding', () => {
 
         expect(created).toBeNull();
         expect(mockClient.queue.enqueue).not.toHaveBeenCalled();
-        expect(mockClient.workItems.createChatBinding).not.toHaveBeenCalled();
+        expect(mockClient.workItems.createChatBindingForOrigin).not.toHaveBeenCalled();
     });
 });

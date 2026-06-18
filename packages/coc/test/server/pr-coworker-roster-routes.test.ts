@@ -11,6 +11,7 @@ import { createRouter } from '../../src/server/shared/router';
 import { registerPrRoutes } from '../../src/server/repos/pr-routes';
 import { pullRequestCoworkerRosterPaths } from '../../src/server/repos/pr-coworker-roster-store';
 import type { Route } from '../../src/server/types';
+import { resolveCanonicalOriginId } from '@plusplusoneplusplus/forge';
 
 vi.mock('../../src/server/providers/provider-factory', () => ({
     ProviderFactory: {
@@ -60,12 +61,28 @@ async function stopServer(): Promise<void> {
     return new Promise(resolve => server.close(() => resolve()));
 }
 
-function rosterUrl(repoId: string, workspaceId: string): string {
-    return `${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/coworker-roster?workspaceId=${encodeURIComponent(workspaceId)}`;
+function legacyRosterUrl(repoId = REPO_ID): string {
+    return `${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/coworker-roster`;
 }
 
-function rosterDeleteUrl(repoId: string, workspaceId: string, coworkerKey: string): string {
-    return `${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/coworker-roster/${encodeURIComponent(coworkerKey)}?workspaceId=${encodeURIComponent(workspaceId)}`;
+function originRosterUrl(originId: string, workspaceId?: string, repoId?: string): string {
+    const params = new URLSearchParams();
+    if (workspaceId) params.set('workspaceId', workspaceId);
+    if (repoId) params.set('repoId', repoId);
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    return `${baseUrl}/api/origins/${encodeURIComponent(originId)}/pull-requests/coworker-roster${suffix}`;
+}
+
+function originRosterDeleteUrl(originId: string, coworkerKey: string, workspaceId?: string, repoId?: string): string {
+    const params = new URLSearchParams();
+    if (workspaceId) params.set('workspaceId', workspaceId);
+    if (repoId) params.set('repoId', repoId);
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    return `${baseUrl}/api/origins/${encodeURIComponent(originId)}/pull-requests/coworker-roster/${encodeURIComponent(coworkerKey)}${suffix}`;
+}
+
+function originScopeForRepo(repoId = REPO_ID): string {
+    return resolveCanonicalOriginId({ remoteUrl: `https://github.com/org/${repoId}.git`, workspaceId: 'ws-1' });
 }
 
 async function addCoworker(
@@ -73,15 +90,15 @@ async function addCoworker(
     workspaceId = 'ws-1',
     repoId = REPO_ID,
 ): Promise<Response> {
-    return fetch(`${baseUrl}/api/repos/${encodeURIComponent(repoId)}/pull-requests/coworker-roster`, {
+    return fetch(originRosterUrl(originScopeForRepo(repoId)), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId, ...entry }),
+        body: JSON.stringify({ workspaceId, repoId, ...entry }),
     });
 }
 
 async function listRoster(workspaceId = 'ws-1', repoId = REPO_ID): Promise<Array<{ id: string; displayName: string; email?: string; avatarUrl?: string }>> {
-    const res = await fetch(rosterUrl(repoId, workspaceId));
+    const res = await fetch(originRosterUrl(originScopeForRepo(repoId), workspaceId, repoId));
     expect(res.status).toBe(200);
     const body = await res.json() as { entries: Array<{ id: string; displayName: string; email?: string; avatarUrl?: string }> };
     return body.entries;
@@ -113,19 +130,19 @@ afterEach(async () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-describe('GET /api/repos/:repoId/pull-requests/coworker-roster', () => {
+describe('GET /api/origins/:originId/pull-requests/coworker-roster', () => {
     it('returns an empty roster when none is stored', async () => {
         expect(await listRoster()).toEqual([]);
     });
 
-    it('404s when the repo cannot be resolved', async () => {
-        mockResolveRepo.mockResolvedValueOnce(null);
-        const res = await fetch(rosterUrl('missing-repo', 'ws-1'));
+    it('404s the removed repo-scoped coworker-roster alias', async () => {
+        const res = await fetch(legacyRosterUrl('missing-repo'));
         expect(res.status).toBe(404);
+        expect(mockResolveRepo).not.toHaveBeenCalled();
     });
 });
 
-describe('POST /api/repos/:repoId/pull-requests/coworker-roster', () => {
+describe('POST /api/origins/:originId/pull-requests/coworker-roster', () => {
     it('round-trips add, list, and delete while updating the roster file', async () => {
         const add = await addCoworker({
             id: '123',
@@ -145,12 +162,13 @@ describe('POST /api/repos/:repoId/pull-requests/coworker-roster', () => {
         });
         expect(new Date(addBody.entries[0].addedAt).toString()).not.toBe('Invalid Date');
 
-        const paths = pullRequestCoworkerRosterPaths(dataDir, 'ws-1', REPO_ID);
+        const paths = pullRequestCoworkerRosterPaths(dataDir, 'ws-1', REPO_ID, originScopeForRepo());
         expect(fs.existsSync(paths.filePath)).toBe(true);
+        expect(paths.filePath.endsWith(path.join('repos', originScopeForRepo(), 'pr-coworker-roster', 'index.json'))).toBe(true);
         expect(fs.readdirSync(dataDir)).toEqual(['repos']);
         expect(await listRoster()).toMatchObject([{ id: '123', displayName: 'Mona Dev' }]);
 
-        const remove = await fetch(rosterDeleteUrl(REPO_ID, 'ws-1', '123'), { method: 'DELETE' });
+        const remove = await fetch(originRosterDeleteUrl(originScopeForRepo(), '123', 'ws-1', REPO_ID), { method: 'DELETE' });
         expect(remove.status).toBe(200);
         expect(await remove.json()).toEqual({ entries: [] });
         expect(JSON.parse(fs.readFileSync(paths.filePath, 'utf-8'))).toEqual({ entries: [] });
@@ -167,19 +185,35 @@ describe('POST /api/repos/:repoId/pull-requests/coworker-roster', () => {
             { id: '', displayName: 'pat dev', email: 'pat@example.invalid' },
         ]);
 
-        const remove = await fetch(rosterDeleteUrl(REPO_ID, 'ws-1', 'pat dev'), { method: 'DELETE' });
+        const remove = await fetch(originRosterDeleteUrl(originScopeForRepo(), 'pat dev', 'ws-1', REPO_ID), { method: 'DELETE' });
         expect(remove.status).toBe(200);
         expect(await listRoster()).toMatchObject([{ id: 'abc', displayName: 'New Name' }]);
     });
 
-    it('keeps workspace and repo rosters isolated', async () => {
+    it('shares same-origin workspace rosters and isolates distinct origins', async () => {
         await addCoworker({ id: '1', displayName: 'Workspace A' }, 'ws-a', REPO_ID);
-        await addCoworker({ id: '1', displayName: 'Workspace B' }, 'ws-b', REPO_ID);
+        await addCoworker({ id: '2', displayName: 'Workspace B' }, 'ws-b', REPO_ID);
         await addCoworker({ id: '1', displayName: 'Other Repo' }, 'ws-a', OTHER_REPO_ID);
 
-        expect(await listRoster('ws-a', REPO_ID)).toMatchObject([{ displayName: 'Workspace A' }]);
-        expect(await listRoster('ws-b', REPO_ID)).toMatchObject([{ displayName: 'Workspace B' }]);
+        expect(await listRoster('ws-a', REPO_ID)).toMatchObject([{ displayName: 'Workspace A' }, { displayName: 'Workspace B' }]);
+        expect(await listRoster('ws-b', REPO_ID)).toMatchObject([{ displayName: 'Workspace A' }, { displayName: 'Workspace B' }]);
         expect(await listRoster('ws-a', OTHER_REPO_ID)).toMatchObject([{ displayName: 'Other Repo' }]);
+    });
+
+    it('migrates a legacy workspace/repo roster file into the origin roster on access', async () => {
+        const legacyPaths = pullRequestCoworkerRosterPaths(dataDir, 'ws-a', REPO_ID);
+        fs.mkdirSync(legacyPaths.dir, { recursive: true });
+        fs.writeFileSync(legacyPaths.filePath, JSON.stringify({
+            entries: [{
+                id: 'legacy',
+                displayName: 'Legacy Teammate',
+                addedAt: '2026-06-05T00:00:00.000Z',
+            }],
+        }), 'utf-8');
+
+        expect(await listRoster('ws-a', REPO_ID)).toMatchObject([{ id: 'legacy', displayName: 'Legacy Teammate' }]);
+        const originPaths = pullRequestCoworkerRosterPaths(dataDir, 'ws-a', REPO_ID, originScopeForRepo());
+        expect(fs.existsSync(originPaths.filePath)).toBe(true);
     });
 
     it('does not create entries for invalid bodies', async () => {
@@ -201,12 +235,56 @@ describe('POST /api/repos/:repoId/pull-requests/coworker-roster', () => {
     });
 });
 
-describe('DELETE /api/repos/:repoId/pull-requests/coworker-roster/:coworkerKey', () => {
+describe('DELETE /api/origins/:originId/pull-requests/coworker-roster/:coworkerKey', () => {
     it('400s on empty coworker keys and keeps existing entries', async () => {
         await addCoworker({ id: '1', displayName: 'Keep Dev' });
 
-        const res = await fetch(rosterDeleteUrl(REPO_ID, 'ws-1', '   '), { method: 'DELETE' });
+        const res = await fetch(originRosterDeleteUrl(originScopeForRepo(), '   ', 'ws-1', REPO_ID), { method: 'DELETE' });
         expect(res.status).toBe(400);
         expect(await listRoster()).toMatchObject([{ id: '1', displayName: 'Keep Dev' }]);
+    });
+});
+
+describe('origin-scoped Team coworker roster routes', () => {
+    it('round-trips roster entries directly under /api/origins/:originId without resolving a repo', async () => {
+        const originId = originScopeForRepo();
+
+        const add = await fetch(originRosterUrl(originId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: '123', displayName: 'Origin Teammate' }),
+        });
+        expect(add.status).toBe(200);
+        expect(mockResolveRepo).not.toHaveBeenCalled();
+        expect(await add.json()).toMatchObject({ entries: [{ id: '123', displayName: 'Origin Teammate' }] });
+
+        const paths = pullRequestCoworkerRosterPaths(dataDir, originId, originId, { storageOriginId: originId });
+        expect(paths.filePath.endsWith(path.join('repos', originId, 'pr-coworker-roster', 'index.json'))).toBe(true);
+        expect(fs.existsSync(paths.filePath)).toBe(true);
+
+        const list = await fetch(originRosterUrl(originId));
+        expect(list.status).toBe(200);
+        expect(await list.json()).toMatchObject({ entries: [{ id: '123', displayName: 'Origin Teammate' }] });
+
+        const remove = await fetch(originRosterDeleteUrl(originId, '123'), { method: 'DELETE' });
+        expect(remove.status).toBe(200);
+        expect(await remove.json()).toEqual({ entries: [] });
+    });
+
+    it('uses optional workspace/repo metadata only to migrate legacy rosters into the origin roster', async () => {
+        const legacyPaths = pullRequestCoworkerRosterPaths(dataDir, 'ws-a', REPO_ID);
+        fs.mkdirSync(legacyPaths.dir, { recursive: true });
+        fs.writeFileSync(legacyPaths.filePath, JSON.stringify({
+            entries: [{
+                id: 'legacy',
+                displayName: 'Legacy Origin Teammate',
+                addedAt: '2026-06-05T00:00:00.000Z',
+            }],
+        }), 'utf-8');
+
+        const res = await fetch(originRosterUrl(originScopeForRepo(), 'ws-a', REPO_ID));
+        expect(res.status).toBe(200);
+        expect(await res.json()).toMatchObject({ entries: [{ id: 'legacy', displayName: 'Legacy Origin Teammate' }] });
+        expect(mockResolveRepo).not.toHaveBeenCalled();
     });
 });

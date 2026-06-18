@@ -91,7 +91,7 @@ describe('WorkItemAiComposer', () => {
             // The create call must be inside handleApprove, not in handleGenerate
             const generateFnStart = src.indexOf('const handleGenerate');
             const approveFnStart = src.indexOf('const handleApprove');
-            const createCallIdx = src.indexOf("workItems.create(workspaceId");
+            const createCallIdx = src.indexOf("workItems.createForOrigin(workItemOriginId");
             expect(generateFnStart).toBeGreaterThan(-1);
             expect(approveFnStart).toBeGreaterThan(-1);
             expect(createCallIdx).toBeGreaterThan(-1);
@@ -110,8 +110,8 @@ describe('WorkItemAiComposer', () => {
     });
 
     describe('approval flow: create mode', () => {
-        it('calls workItems.create with AI-generated fields', () => {
-            expect(src).toContain('workItems.create(workspaceId');
+        it('calls workItems.createForOrigin with AI-generated fields', () => {
+            expect(src).toContain('workItems.createForOrigin(workItemOriginId');
         });
 
         it('passes plan content to the create call', () => {
@@ -129,12 +129,12 @@ describe('WorkItemAiComposer', () => {
     });
 
     describe('approval flow: improve mode', () => {
-        it('calls workItems.update for the existing item', () => {
-            expect(src).toContain('workItems.update(workspaceId, existingItem!.id');
+        it('calls workItems.updateForOrigin for the existing item', () => {
+            expect(src).toContain('workItems.updateForOrigin(workItemOriginId, existingItem!.id');
         });
 
-        it('calls workItems.updatePlan when goal/plan content changed', () => {
-            expect(src).toContain('workItems.updatePlan(workspaceId, existingItem!.id');
+        it('sends changed plan content through the origin update payload', () => {
+            expect(src).toContain('plan: { content: draftGoal }');
         });
 
         it('only updates plan when content differs from current', () => {
@@ -174,12 +174,12 @@ describe('WorkItemAiComposer', () => {
     });
 
     describe('calls the correct API methods', () => {
-        it('calls workItems.aiDraft for create mode', () => {
-            expect(src).toContain('workItems.aiDraft(workspaceId');
+        it('calls workItems.aiDraftForOrigin for create mode', () => {
+            expect(src).toContain('workItems.aiDraftForOrigin(workItemOriginId');
         });
 
-        it('calls workItems.aiImprove for improve mode', () => {
-            expect(src).toContain('workItems.aiImprove(workspaceId');
+        it('calls workItems.aiImproveForOrigin for improve mode', () => {
+            expect(src).toContain('workItems.aiImproveForOrigin(workItemOriginId');
         });
     });
 
@@ -220,6 +220,7 @@ describe('WorkItemsTab — Create with AI entry point', () => {
 
     it('passes workspaceId and onCreated to the composer', () => {
         expect(src).toContain('workspaceId={workspaceId}');
+        expect(src).toContain('originId={workItemOriginId}');
         expect(src).toContain('onCreated={handleCreated}');
     });
 });

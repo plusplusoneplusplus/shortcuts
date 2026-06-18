@@ -50,6 +50,11 @@ const mockCache: ReviewHistoryCache = {
     ],
 };
 
+const originScope = {
+    storageOriginId: 'gh_org_repo',
+    legacyScopes: [{ workspaceId: 'ws-abc', repoId: 'repo-abc' }],
+};
+
 // ── Setup / Teardown ─────────────────────────────────────────
 
 let tmpDir: string;
@@ -96,6 +101,19 @@ describe('readReviewHistoryCache', () => {
         expect(result!.reviews[0].number).toBe(42);
         expect(result!.fetchedAt).toBe('2024-06-01T12:00:00.000Z');
     });
+
+    it('migrates legacy workspace cache into origin storage on read', () => {
+        const legacyDir = path.join(tmpDir, 'repos', 'ws-abc');
+        fs.mkdirSync(legacyDir, { recursive: true });
+        fs.writeFileSync(path.join(legacyDir, 'pr-review-history.json'), JSON.stringify(mockCache), 'utf-8');
+
+        const result = readReviewHistoryCache(tmpDir, 'ws-abc', 'repo-abc', originScope);
+
+        expect(result?.reviews).toHaveLength(1);
+        const originFile = path.join(tmpDir, 'repos', 'gh_org_repo', 'pr-review-history.json');
+        expect(fs.existsSync(originFile)).toBe(true);
+        expect(JSON.parse(fs.readFileSync(originFile, 'utf-8')).reviews).toHaveLength(1);
+    });
 });
 
 describe('writeReviewHistoryCache', () => {
@@ -106,6 +124,15 @@ describe('writeReviewHistoryCache', () => {
         const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         expect(raw.reviews).toHaveLength(1);
         expect(raw.fetchedAt).toBe('2024-06-01T12:00:00.000Z');
+    });
+
+    it('writes origin-scoped cache when a storage scope is supplied', () => {
+        writeReviewHistoryCache(tmpDir, 'ws-abc', mockCache, originScope);
+
+        expect(fs.existsSync(path.join(tmpDir, 'repos', 'ws-abc', 'pr-review-history.json'))).toBe(false);
+        const filePath = path.join(tmpDir, 'repos', 'gh_org_repo', 'pr-review-history.json');
+        expect(fs.existsSync(filePath)).toBe(true);
+        expect(JSON.parse(fs.readFileSync(filePath, 'utf-8')).reviews).toHaveLength(1);
     });
 
     it('overwrites existing cache', () => {
@@ -278,6 +305,19 @@ describe('readSuggestionsCache', () => {
         expect(result!.suggestions[0].score).toBe(95);
         expect(result!.rankedAt).toBe('2024-06-01T14:00:00.000Z');
     });
+
+    it('migrates legacy workspace suggestions into origin storage on read', () => {
+        const legacyDir = path.join(tmpDir, 'repos', 'ws-abc');
+        fs.mkdirSync(legacyDir, { recursive: true });
+        fs.writeFileSync(path.join(legacyDir, 'pr-suggestions-cache.json'), JSON.stringify(mockSuggestionsCache), 'utf-8');
+
+        const result = readSuggestionsCache(tmpDir, 'ws-abc', 'repo-abc', originScope);
+
+        expect(result?.suggestions).toHaveLength(2);
+        const originFile = path.join(tmpDir, 'repos', 'gh_org_repo', 'pr-suggestions-cache.json');
+        expect(fs.existsSync(originFile)).toBe(true);
+        expect(JSON.parse(fs.readFileSync(originFile, 'utf-8')).suggestions).toHaveLength(2);
+    });
 });
 
 describe('writeSuggestionsCache', () => {
@@ -288,6 +328,15 @@ describe('writeSuggestionsCache', () => {
         const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         expect(raw.suggestions).toHaveLength(2);
         expect(raw.rankedAt).toBe('2024-06-01T14:00:00.000Z');
+    });
+
+    it('writes origin-scoped suggestions when a storage scope is supplied', () => {
+        writeSuggestionsCache(tmpDir, 'ws-abc', mockSuggestionsCache, originScope);
+
+        expect(fs.existsSync(path.join(tmpDir, 'repos', 'ws-abc', 'pr-suggestions-cache.json'))).toBe(false);
+        const filePath = path.join(tmpDir, 'repos', 'gh_org_repo', 'pr-suggestions-cache.json');
+        expect(fs.existsSync(filePath)).toBe(true);
+        expect(JSON.parse(fs.readFileSync(filePath, 'utf-8')).suggestions).toHaveLength(2);
     });
 
     it('overwrites existing cache', () => {

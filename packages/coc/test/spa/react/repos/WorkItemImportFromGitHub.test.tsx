@@ -15,7 +15,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () =
     useWorkItems: () => ({
         state: {
             workItemsByRepo: {
-                'ws-test': [{
+                'local_ws-test': [{
                     id: 'wi-imported',
                     title: 'Imported issue',
                     status: 'created',
@@ -25,7 +25,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () =
                 }],
             },
             paginationByRepo: {
-                'ws-test': {
+                'local_ws-test': {
                     created: { total: 1, hasMore: false, offset: 1 },
                 },
             },
@@ -40,8 +40,11 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         workItems: {
             tree: mocks.tree,
+            treeForOrigin: mocks.tree,
             grouped: mocks.grouped,
+            groupedForOrigin: mocks.grouped,
             syncStatus: mocks.syncStatus,
+            syncStatusForOrigin: mocks.syncStatus,
         },
     }),
     getSpaCocClientErrorMessage: (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback,
@@ -251,7 +254,7 @@ describe('Import from remote work item placement', () => {
         expect(screen.getByTestId('remote-provider-filter-azure-boards')).toBeTruthy();
         expect(screen.queryByTestId('remote-provider-filter-all')).toBeNull();
         expect(screen.queryByTestId('remote-provider-filter-github')).toBeNull();
-        expect(mocks.syncStatus).toHaveBeenCalledWith('ws-test');
+        expect(mocks.syncStatus).toHaveBeenCalledWith('local_ws-test', { workspaceId: 'ws-test' });
         expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).toContain('azure-boards-backed');
         expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).not.toContain('github-backed');
     });

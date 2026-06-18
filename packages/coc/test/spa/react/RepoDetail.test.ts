@@ -164,7 +164,7 @@ describe('RepoDetail Dreams tab feature gating', () => {
 
     it('guards DreamsPanel mounting on dreamsEnabled', () => {
         expect(REPO_DETAIL_SOURCE).toContain('{dreamsEnabled && (');
-        expect(REPO_DETAIL_SOURCE).toContain('<DreamsPanel key={ws.id} workspaceId={ws.id} />');
+        expect(REPO_DETAIL_SOURCE).toContain('<DreamsPanel key={ws.id} workspaceId={ws.id} originId={workItemOriginId} />');
     });
 });
 

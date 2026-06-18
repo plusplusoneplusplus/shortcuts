@@ -649,7 +649,7 @@ export interface WorkItemAiDraftResult {
 /** Union of all possible AI draft API responses. */
 export type WorkItemAiGenerationResponse = WorkItemAiClarificationResponse | WorkItemAiDraftResult;
 
-/** Request body for POST /api/workspaces/:id/work-items/ai-draft */
+/** Request body for POST /api/origins/:originId/work-items/ai-draft */
 export interface NewWorkItemAiDraftRequest extends JsonObject {
   /** Free-text user prompt describing the feature / problem. Required. */
   prompt: string;
@@ -663,7 +663,7 @@ export interface NewWorkItemAiDraftRequest extends JsonObject {
   clarificationCount?: number;
 }
 
-/** Request body for POST /api/workspaces/:id/work-items/:workItemId/ai-draft */
+/** Request body for POST /api/origins/:originId/work-items/:workItemId/ai-draft */
 export interface ImproveWorkItemAiDraftRequest extends JsonObject {
   /** Instruction for what to improve. Required. */
   prompt: string;
@@ -675,7 +675,7 @@ export interface ImproveWorkItemAiDraftRequest extends JsonObject {
   clarificationCount?: number;
 }
 
-/** Request body for POST /api/workspaces/:id/work-items/:workItemId/ai-draft/apply */
+/** Request body for POST /api/origins/:originId/work-items/:workItemId/ai-draft/apply */
 export interface ApplyWorkItemAiDraftRequest extends JsonObject {
   /** Instruction for what to draft or revise. Required. */
   prompt: string;

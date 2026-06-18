@@ -108,6 +108,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         workItems: {
             tree: mocks.tree,
             syncStatus: mocks.syncStatus,
+            syncStatusForOrigin: mocks.syncStatus,
         },
     }),
     getSpaCocClientErrorMessage: (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback,

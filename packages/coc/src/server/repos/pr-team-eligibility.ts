@@ -10,6 +10,7 @@ import {
     listPullRequestCoworkerRoster,
     type PullRequestCoworkerRosterEntry,
 } from './pr-coworker-roster-store';
+import type { PullRequestStorageScopeInput } from './pr-origin-scope';
 import {
     pullRequestMatchesPrTeamRoster,
     type PrTeamPullRequest,
@@ -44,8 +45,9 @@ export function listTeamEligiblePullRequests<T extends TeamEligiblePullRequest>(
     workspaceId: string,
     repoId: string,
     pullRequests: readonly T[],
+    storageScope?: PullRequestStorageScopeInput,
 ): TeamPullRequestEligibilityResult<T> {
-    const roster = listPullRequestCoworkerRoster(dataDir, workspaceId, repoId);
+    const roster = listPullRequestCoworkerRoster(dataDir, workspaceId, repoId, storageScope);
     return {
         roster,
         pullRequests: filterTeamEligiblePullRequests(pullRequests, roster),

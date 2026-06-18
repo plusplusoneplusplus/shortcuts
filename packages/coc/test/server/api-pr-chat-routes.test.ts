@@ -1,11 +1,11 @@
 /**
  * Pull-Request-Chat Binding API Route Tests
  *
- * HTTP-level tests for the 4 pull-request-chat API endpoints:
- *   - GET    /api/workspaces/:id/pull-request-chat-bindings          (list)
- *   - GET    /api/workspaces/:id/pull-request-chat-bindings/:prId    (get)
- *   - POST   /api/workspaces/:id/pull-request-chat-bindings          (create)
- *   - DELETE /api/workspaces/:id/pull-request-chat-bindings/:prId    (delete)
+ * HTTP-level tests for the origin-scoped pull-request-chat API endpoints:
+ *   - GET    /api/origins/:originId/pull-request-chat-bindings          (list)
+ *   - GET    /api/origins/:originId/pull-request-chat-bindings/:prId    (get)
+ *   - POST   /api/origins/:originId/pull-request-chat-bindings          (create)
+ *   - DELETE /api/origins/:originId/pull-request-chat-bindings/:prId    (delete)
  *
  * Uses a real http.Server with registerApiRoutes + a temp dataDir.
  * Cross-platform (Linux/Mac/Windows).
@@ -81,6 +81,9 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
     let db: Database.Database;
 
     const WORKSPACE_ID = 'ws-pr-chat-test';
+    const WORKSPACE_CLONE_ID = 'ws-pr-chat-clone';
+    const WORKSPACE_OTHER_ID = 'ws-pr-chat-other';
+    const ORIGIN_ID = 'gh_owner_repo';
 
     beforeAll(async () => {
         db = new Database(':memory:');
@@ -88,7 +91,9 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
 
         store = createMockProcessStore();
         (store.getWorkspaces as any).mockResolvedValue([
-            { id: WORKSPACE_ID, name: 'Test Repo', rootPath: '/test/repo' },
+            { id: WORKSPACE_ID, name: 'Test Repo', rootPath: '/test/repo', remoteUrl: 'https://github.com/owner/repo.git' },
+            { id: WORKSPACE_CLONE_ID, name: 'Test Repo Clone', rootPath: '/test/repo-clone', remoteUrl: 'git@github.com:owner/repo.git' },
+            { id: WORKSPACE_OTHER_ID, name: 'Other Repo', rootPath: '/test/other-repo', remoteUrl: 'https://github.com/owner/other.git' },
         ]);
 
         const routes: Route[] = [];
@@ -105,10 +110,11 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
     });
 
     const base = () => `http://127.0.0.1:${port}`;
-    const api = (wsPath: string) => `${base()}/api/workspaces/${WORKSPACE_ID}/${wsPath}`;
+    const originApi = (originPath: string) => `${base()}/api/origins/${ORIGIN_ID}/${originPath}`;
+    const api = originApi;
 
     // ========================================================================
-    // GET /api/workspaces/:id/pull-request-chat-bindings/:prId
+    // GET /api/origins/:originId/pull-request-chat-bindings/:prId
     // ========================================================================
 
     describe('GET /pull-request-chat-bindings/:prId', () => {
@@ -130,14 +136,14 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
             expect(res.status).toBe(404);
         });
 
-        it('returns 404 for unknown workspace', async () => {
-            const res = await request(`${base()}/api/workspaces/unknown-ws/pull-request-chat-bindings/142`);
+        it('does not expose the legacy workspace detail alias', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/pull-request-chat-bindings/142`);
             expect(res.status).toBe(404);
         });
     });
 
     // ========================================================================
-    // POST /api/workspaces/:id/pull-request-chat-bindings
+    // POST /api/origins/:originId/pull-request-chat-bindings
     // ========================================================================
 
     describe('POST /pull-request-chat-bindings', () => {
@@ -154,6 +160,18 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
             const verify = await request(api('pull-request-chat-bindings/500'));
             expect(verify.status).toBe(200);
             expect(verify.json().taskId).toBe('task-new');
+        });
+
+        it('validates optional workspace metadata against the route origin', async () => {
+            const res = await request(`${api('pull-request-chat-bindings')}?workspaceId=${WORKSPACE_CLONE_ID}`, {
+                method: 'POST',
+                body: JSON.stringify({ prId: 'same-origin-1', taskId: 'task-same-origin' }),
+            });
+            expect(res.status).toBe(201);
+
+            const verify = await request(api('pull-request-chat-bindings/same-origin-1'));
+            expect(verify.status).toBe(200);
+            expect(verify.json().taskId).toBe('task-same-origin');
         });
 
         it('returns 400 when prId is missing', async () => {
@@ -189,8 +207,8 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
             expect(res.json().prId).toBe('PR-1234');
         });
 
-        it('returns 404 for unknown workspace', async () => {
-            const res = await request(`${base()}/api/workspaces/unknown-ws/pull-request-chat-bindings`, {
+        it('does not expose the legacy workspace collection alias', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/pull-request-chat-bindings`, {
                 method: 'POST',
                 body: JSON.stringify({ prId: '142', taskId: 'task-1' }),
             });
@@ -199,7 +217,7 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
     });
 
     // ========================================================================
-    // DELETE /api/workspaces/:id/pull-request-chat-bindings/:prId
+    // DELETE /api/origins/:originId/pull-request-chat-bindings/:prId
     // ========================================================================
 
     describe('DELETE /pull-request-chat-bindings/:prId', () => {
@@ -221,8 +239,8 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
             expect(res.status).toBe(204);
         });
 
-        it('returns 404 for unknown workspace', async () => {
-            const res = await request(`${base()}/api/workspaces/unknown-ws/pull-request-chat-bindings/142`, {
+        it('does not expose the legacy workspace delete alias', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/pull-request-chat-bindings/142`, {
                 method: 'DELETE',
             });
             expect(res.status).toBe(404);
@@ -230,7 +248,7 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
     });
 
     // ========================================================================
-    // GET /api/workspaces/:id/pull-request-chat-bindings
+    // GET /api/origins/:originId/pull-request-chat-bindings
     // ========================================================================
 
     describe('GET /pull-request-chat-bindings', () => {
@@ -252,9 +270,68 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
             expect(data.bindings['1002']).toBeDefined();
         });
 
-        it('returns 404 for unknown workspace', async () => {
-            const res = await request(`${base()}/api/workspaces/unknown-ws/pull-request-chat-bindings`);
+        it('does not expose the legacy workspace list alias', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/pull-request-chat-bindings`);
             expect(res.status).toBe(404);
+        });
+    });
+
+    describe('origin-scoped /pull-request-chat-bindings', () => {
+        it('creates, reads, lists, and deletes bindings by canonical origin', async () => {
+            const create = await request(originApi('pull-request-chat-bindings'), {
+                method: 'POST',
+                body: JSON.stringify({ prId: 'origin-1', taskId: 'task-origin-1' }),
+            });
+            expect(create.status).toBe(201);
+            expect(create.json()).toEqual({ prId: 'origin-1', taskId: 'task-origin-1' });
+
+            const get = await request(originApi('pull-request-chat-bindings/origin-1'));
+            expect(get.status).toBe(200);
+            expect(get.json()).toEqual({ prId: 'origin-1', taskId: 'task-origin-1' });
+
+            const list = await request(originApi('pull-request-chat-bindings'));
+            expect(list.status).toBe(200);
+            expect(list.json().bindings['origin-1'].taskId).toBe('task-origin-1');
+
+            const remove = await request(originApi('pull-request-chat-bindings/origin-1'), { method: 'DELETE' });
+            expect(remove.status).toBe(204);
+
+            const verify = await request(originApi('pull-request-chat-bindings/origin-1'));
+            expect(verify.status).toBe(404);
+        });
+
+        it('migrates a legacy workspace row when reading through an origin route', async () => {
+            db.prepare(`
+                INSERT INTO pull_request_chat_bindings (workspace_id, pr_id, task_id, created_at)
+                VALUES (?, ?, ?, ?)
+            `).run(WORKSPACE_ID, 'legacy-origin-1', 'task-legacy-origin', '2026-01-01T00:00:00.000Z');
+
+            const res = await request(originApi('pull-request-chat-bindings/legacy-origin-1'));
+
+            expect(res.status).toBe(200);
+            expect(res.json().taskId).toBe('task-legacy-origin');
+            expect(
+                db.prepare('SELECT COUNT(*) AS count FROM pull_request_chat_bindings WHERE workspace_id = ?')
+                    .get(WORKSPACE_ID) as { count: number },
+            ).toEqual({ count: 0 });
+            expect(
+                db.prepare('SELECT task_id FROM pull_request_chat_bindings WHERE workspace_id = ? AND pr_id = ?')
+                    .get(ORIGIN_ID, 'legacy-origin-1') as { task_id: string },
+            ).toEqual({ task_id: 'task-legacy-origin' });
+        });
+
+        it('requires a matching workspaceId for origin-scoped fresh chat reset', async () => {
+            const missingWorkspace = await request(originApi('pull-request-chat-bindings/origin-fresh/fresh'), {
+                method: 'POST',
+                body: '{}',
+            });
+            expect(missingWorkspace.status).toBe(400);
+
+            const mismatchedWorkspace = await request(`${originApi('pull-request-chat-bindings/origin-fresh/fresh')}?workspaceId=${WORKSPACE_OTHER_ID}`, {
+                method: 'POST',
+                body: '{}',
+            });
+            expect(mismatchedWorkspace.status).toBe(400);
         });
     });
 });

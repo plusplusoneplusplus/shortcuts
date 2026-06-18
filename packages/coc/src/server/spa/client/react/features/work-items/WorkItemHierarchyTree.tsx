@@ -37,6 +37,7 @@ import {
     type WorkItemRemoteProviderFilter,
     type WorkItemTrackerViewKind,
 } from './workItemTrackerViews';
+import { resolveWorkItemOriginId } from './workItemOriginScope';
 
 const TYPE_CHILD_LABELS: Record<WorkItemTypeLabel, string> = {
     epic:        'Feature',
@@ -165,6 +166,7 @@ function remoteSyncStatusNotice(state: RemoteSyncStatusState, filter: WorkItemRe
 
 export interface WorkItemHierarchyTreeProps {
     workspaceId: string;
+    originId?: string;
     /** Filters the tree to one Epic-rooted tracker partition. */
     trackerKind?: WorkItemTrackerKind;
     /** Filters the tree to multiple Epic-rooted tracker partitions, merged in order. */
@@ -194,6 +196,7 @@ export interface WorkItemHierarchyTreeProps {
 
 export function WorkItemHierarchyTree({
     workspaceId,
+    originId,
     trackerKind,
     trackerKinds,
     trackerViewKind,
@@ -210,8 +213,9 @@ export function WorkItemHierarchyTree({
     highlightedWorkItemId,
     isMobile = false,
 }: WorkItemHierarchyTreeProps) {
-    // Route work-item tree/mutations to the workspace's clone (AC-07).
+    // Route persistent tree state to the origin while clone-dependent calls keep the workspace.
     const client = useCocClient(workspaceId);
+    const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
     const [treeData, setTreeData] = useState<WorkItemTreeNode[]>([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -290,7 +294,7 @@ export function WorkItemHierarchyTree({
                 showDone,
             });
             const responses: WorkItemTreeResponse[] = await Promise.all(
-                filters.map(filter => client.workItems.tree(workspaceId, filter)),
+                filters.map(filter => client.workItems.treeForOrigin(workItemOriginId, filter, { workspaceId })),
             );
             if (responses.some(resp => resp.disabled)) {
                 setError('Hierarchy feature is disabled.');
@@ -304,7 +308,7 @@ export function WorkItemHierarchyTree({
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, effectiveTrackerKinds, isRemoteView, searchQuery, showArchived, showDone, client]);
+    }, [workspaceId, workItemOriginId, effectiveTrackerKinds, isRemoteView, searchQuery, showArchived, showDone, client]);
 
     // Initial load
     useEffect(() => { fetchTree(); }, [fetchTree]);
@@ -330,7 +334,7 @@ export function WorkItemHierarchyTree({
         }
         let cancelled = false;
         setRemoteStatus({ loading: true });
-        client.workItems.syncStatus(workspaceId)
+        client.workItems.syncStatusForOrigin(workItemOriginId, { workspaceId })
             .then(response => {
                 if (!cancelled) setRemoteStatus({ loading: false, response });
             })
@@ -343,7 +347,7 @@ export function WorkItemHierarchyTree({
                 }
             });
         return () => { cancelled = true; };
-    }, [isRemoteView, onDetectedRemoteProviderChange, workItemsSyncEnabled, workspaceId, client]);
+    }, [isRemoteView, onDetectedRemoteProviderChange, workItemsSyncEnabled, workspaceId, workItemOriginId, client]);
 
     useEffect(() => {
         if (!isRemoteView) return;
@@ -359,8 +363,8 @@ export function WorkItemHierarchyTree({
         remoteProviderFilter,
     ]);
 
-    // Refresh when workspace-scoped Work Item WebSocket events arrive.
-    const realtimeRevision = workItemState.realtimeRevisionByRepo?.[workspaceId] ?? 0;
+    // Refresh when origin-scoped Work Item WebSocket events arrive.
+    const realtimeRevision = workItemState.realtimeRevisionByRepo?.[workItemOriginId] ?? 0;
     const prevRealtimeRevisionRef = useRef(realtimeRevision);
     useEffect(() => {
         if (prevRealtimeRevisionRef.current === realtimeRevision) return;
@@ -399,12 +403,12 @@ export function WorkItemHierarchyTree({
     const handleDelete = useCallback(async (id: string) => {
         if (!confirm('Delete this work item? Children must be moved or deleted first.')) return;
         try {
-            await client.workItems.delete(workspaceId, id);
+            await client.workItems.deleteForOrigin(workItemOriginId, id, { workspaceId });
             fetchTree();
         } catch (err: any) {
             alert(err.message ?? 'Failed to delete');
         }
-    }, [workspaceId, fetchTree, client]);
+    }, [workspaceId, workItemOriginId, fetchTree, client]);
 
     const buildContextMenuItems = useCallback((node: WorkItemTreeNode): ContextMenuItem[] => {
         const effectiveType = (node.item.type ?? 'work-item') as WorkItemTypeLabel;
@@ -453,7 +457,7 @@ export function WorkItemHierarchyTree({
                     icon: '🔓',
                     onClick: async () => {
                         try {
-                            await client.workItems.update(workspaceId, node.item.id, { parentId: null });
+                            await client.workItems.updateForOrigin(workItemOriginId, node.item.id, { parentId: null }, { workspaceId });
                             fetchTree();
                         } catch (err: any) {
                             alert(err.message ?? 'Failed to unlink');
@@ -470,7 +474,7 @@ export function WorkItemHierarchyTree({
             separator: true,
             onClick: async () => {
                 try {
-                    await client.workItems.pin(workspaceId, node.item.id, !node.item.pinnedAt);
+                    await client.workItems.pinForOrigin(workItemOriginId, node.item.id, !node.item.pinnedAt, { workspaceId });
                     fetchTree();
                 } catch (err: any) {
                     alert(err.message ?? 'Failed to pin');
@@ -482,7 +486,7 @@ export function WorkItemHierarchyTree({
             icon: '🗄️',
             onClick: async () => {
                 try {
-                    await client.workItems.archive(workspaceId, node.item.id, !node.item.archivedAt);
+                    await client.workItems.archiveForOrigin(workItemOriginId, node.item.id, !node.item.archivedAt, { workspaceId });
                     fetchTree();
                 } catch (err: any) {
                     alert(err.message ?? 'Failed to archive');
@@ -496,7 +500,7 @@ export function WorkItemHierarchyTree({
         });
 
         return items;
-    }, [workspaceId, onCreateItem, fetchTree, handleDelete, client]);
+    }, [workspaceId, workItemOriginId, onCreateItem, fetchTree, handleDelete, client]);
 
     /** Recursively render a tree node and its children. */
     const renderNode = useCallback((node: WorkItemTreeNode, depth: number): React.ReactNode => {
@@ -820,6 +824,7 @@ export function WorkItemHierarchyTree({
                     open={true}
                     onClose={() => setParentPicker(null)}
                     workspaceId={workspaceId}
+                    originId={workItemOriginId}
                     itemId={parentPicker.itemId}
                     itemType={parentPicker.itemType}
                     currentParentId={parentPicker.currentParentId}

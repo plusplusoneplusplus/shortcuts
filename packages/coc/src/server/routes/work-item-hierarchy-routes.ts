@@ -4,7 +4,7 @@
  * Provides the hierarchy tree read API for the work item board.
  *
  * Routes:
- *   GET /api/workspaces/:id/work-items/tree — Full hierarchy tree with rollup counts
+ *   GET /api/origins/:originId/work-items/tree — Full hierarchy tree with rollup counts
  *
  * All routes are gated by the workItems.hierarchy.enabled feature flag.
  * When the flag is false the endpoints return a `{ disabled: true }` response
@@ -13,8 +13,15 @@
 
 import * as http from 'http';
 import * as url from 'url';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
+import { handleAPIError } from '../errors';
+import {
+    queryWorkspaceId,
+    resolveWorkItemRouteScope,
+    type WorkItemRouteScopeKind,
+} from './work-item-route-scope';
 import type { WorkItemStore, WorkItemIndexEntry, WorkItemTrackerKind, WorkItemType } from '../work-items/types';
 import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES, WORK_ITEM_TRACKER_KINDS, getOwnWorkItemTrackerKind } from '../work-items/types';
 import {
@@ -22,6 +29,8 @@ import {
     makeWorkItemTreeResponseCacheKey,
     type WorkItemTreeCacheOptions,
 } from '../work-items/work-item-response-cache';
+
+const WORK_ITEM_TREE_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/tree$/;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,6 +58,7 @@ export interface WorkItemTreeRouteResponse {
 export interface WorkItemHierarchyRouteContext {
     routes: Route[];
     workItemStore: WorkItemStore;
+    processStore: ProcessStore;
     /** Returns true when the hierarchy feature flag is enabled. */
     getHierarchyEnabled: () => boolean;
 }
@@ -250,17 +260,25 @@ export async function buildWorkItemTreeRouteResponse(
 export function registerWorkItemHierarchyRoutes(ctx: WorkItemHierarchyRouteContext): void {
     const { routes, workItemStore, getHierarchyEnabled } = ctx;
 
-    // GET /api/workspaces/:id/work-items/tree
+    // GET /api/origins/:originId/work-items/tree
     // Must be registered BEFORE the generic /:workItemId route to win the match.
     routes.push({
         method: 'GET',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/tree$/,
+        pattern: WORK_ITEM_TREE_PATTERN,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            const routeKind = match![1] as WorkItemRouteScopeKind;
+            const routeScopeId = decodeURIComponent(match![2]);
+            let scope;
+            try {
+                scope = await resolveWorkItemRouteScope(ctx, routeKind, routeScopeId, queryWorkspaceId(req));
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+
             if (!getHierarchyEnabled()) {
                 return sendJSON(res, 200, { disabled: true, roots: [], total: 0 } satisfies WorkItemTreeRouteResponse);
             }
 
-            const repoId = decodeURIComponent(match![1]);
             const parsed = url.parse(req.url || '/', true);
             const query = parsed.query;
 
@@ -283,11 +301,11 @@ export function registerWorkItemHierarchyRoutes(ctx: WorkItemHierarchyRouteConte
                 includeDone,
             };
             const response = await getOrRefreshWorkItemResponseCacheEntry(
-                makeWorkItemTreeResponseCacheKey(repoId, options),
-                repoId,
+                makeWorkItemTreeResponseCacheKey(scope.storageRepoId, options),
+                scope.storageRepoId,
                 'tree',
                 force,
-                () => buildWorkItemTreeRouteResponse(workItemStore, repoId, options),
+                () => buildWorkItemTreeRouteResponse(workItemStore, scope.storageRepoId, options),
             );
             sendJSON(res, 200, response);
         },

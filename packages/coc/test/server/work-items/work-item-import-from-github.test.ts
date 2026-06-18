@@ -19,6 +19,7 @@ import type {
 import { importGitHubEpicTreeAsWorkItems } from '../../../src/server/work-items/work-item-sync-github-provider';
 
 const REPO_ID = 'import-test-repo';
+const ORIGIN_ID = 'gh_plusplusoneplusplus_shortcuts';
 const NOW = '2026-01-01T00:00:00.000Z';
 
 const CONFIGURED_OWNER = 'plusplusoneplusplus';
@@ -229,6 +230,10 @@ function importUrl(repoId: string = REPO_ID): string {
     return `/api/workspaces/${encodeURIComponent(repoId)}/work-items/import-from-github`;
 }
 
+function originImportUrl(originId: string = ORIGIN_ID): string {
+    return `/api/origins/${encodeURIComponent(originId)}/work-items/import-from-github`;
+}
+
 beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'import-gh-test-'));
     store = new FileWorkItemStore({ dataDir: tmpDir });
@@ -278,7 +283,7 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         expect(res.status).toBe(201);
         expect(res.body).toMatchObject({
             title: 'GitHub Epic',
-            repoId: REPO_ID,
+            repoId: ORIGIN_ID,
             source: 'manual',
             type: 'epic',
             status: 'created',
@@ -297,11 +302,11 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         });
         expect(res.body.syncLinks).toBeUndefined();
 
-        const stored = await store.getWorkItem(res.body.id, REPO_ID);
+        const stored = await store.getWorkItem(res.body.id, ORIGIN_ID);
         expect(stored).toBeDefined();
         expect(stored!.title).toBe('GitHub Epic');
 
-        const all = await store.listWorkItems({ repoId: REPO_ID });
+        const all = await store.listWorkItems({ repoId: ORIGIN_ID });
         expect(all.items.map(item => item.title).sort()).toEqual(['GitHub Epic', 'GitHub Feature', 'GitHub PBI']);
         const feature = all.items.find(item => item.title === 'GitHub Feature')!;
         const pbi = all.items.find(item => item.title === 'GitHub PBI')!;
@@ -309,7 +314,7 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         expect(pbi.parentId).toBe(feature.id);
         expect(pbi.githubMirror).toMatchObject({ issueNumber: 44, state: 'closed' });
 
-        const githubBacked = await store.listWorkItems({ repoId: REPO_ID, tracker: 'github-backed' });
+        const githubBacked = await store.listWorkItems({ repoId: ORIGIN_ID, tracker: 'github-backed' });
         expect(githubBacked.items.map(item => item.title).sort()).toEqual(['GitHub Epic', 'GitHub Feature', 'GitHub PBI']);
     });
 
@@ -337,7 +342,7 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         expect(res.status).toBe(201);
         expect(res.body).toMatchObject({
             title: 'Number Import Epic',
-            repoId: REPO_ID,
+            repoId: ORIGIN_ID,
             type: 'epic',
             tracker: {
                 kind: 'github-backed',
@@ -352,8 +357,39 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
                 issueUrl: `https://github.com/${CONFIGURED_OWNER}/${CONFIGURED_REPO}/issues/${issueNumber}`,
             },
         });
-        const stored = await store.getWorkItem(res.body.id, REPO_ID);
+        const stored = await store.getWorkItem(res.body.id, ORIGIN_ID);
         expect(stored?.githubMirror?.issueNumber).toBe(issueNumber);
+    });
+
+    it('imports through an origin route while requiring a concrete workspace for provider access', async () => {
+        const issueNumber = 78;
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [issueNumber, makeMockIssue(issueNumber, 'Origin Route Epic', 'open', {
+                labels: ['coc:type:epic'],
+                body: 'Epic body imported through origin route',
+            })],
+        ]);
+        await startServer(issues);
+
+        const missingWorkspace = await post(originImportUrl(), { issueNumber });
+        expect(missingWorkspace.status).toBe(400);
+        expect(missingWorkspace.body.error).toMatch(/workspaceId is required/i);
+
+        const imported = await post(originImportUrl(), { issueNumber, workspaceId: REPO_ID });
+
+        expect(imported.status).toBe(201);
+        expect(imported.body).toMatchObject({
+            title: 'Origin Route Epic',
+            repoId: ORIGIN_ID,
+            tracker: {
+                kind: 'github-backed',
+                provider: 'github',
+                github: { issueNumber },
+            },
+        });
+        await expect(store.getWorkItem(imported.body.id, ORIGIN_ID)).resolves.toMatchObject({
+            title: 'Origin Route Epic',
+        });
     });
 
     it('rejects mismatched issueUrl and issueNumber payloads', async () => {
@@ -626,15 +662,15 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
             issueUrl: `https://github.com/${CONFIGURED_OWNER}/${CONFIGURED_REPO}/issues/90`,
         });
         expect(imported.status).toBe(201);
-        const allBefore = await store.listWorkItems({ repoId: REPO_ID });
+        const allBefore = await store.listWorkItems({ repoId: ORIGIN_ID });
         expect(allBefore.items.some(item => item.githubMirror?.issueNumber === 92)).toBe(true);
 
         const synced = await post(`/api/workspaces/${encodeURIComponent(REPO_ID)}/work-items/${encodeURIComponent(imported.body.id)}/sync-from-github`);
 
         expect(synced.status).toBe(404);
-        const root = await store.getWorkItem(imported.body.id, REPO_ID);
+        const root = await store.getWorkItem(imported.body.id, ORIGIN_ID);
         expect(root?.title).toBe('Route Epic');
-        const allAfter = await store.listWorkItems({ repoId: REPO_ID });
+        const allAfter = await store.listWorkItems({ repoId: ORIGIN_ID });
         expect(allAfter.items.map(item => item.githubMirror?.issueNumber).filter(Boolean).sort()).toEqual([90, 91, 92]);
     });
 

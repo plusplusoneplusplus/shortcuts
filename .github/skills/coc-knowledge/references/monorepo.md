@@ -59,7 +59,9 @@ Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memo
 
 **Repo-scoped data:** All runtime data specific to a single repository must live under `~/.coc/repos/<workspaceId>/`. Use `getRepoDataPath(dataDir, workspaceId, filename)` from `packages/coc/src/server/` to resolve the path. Do **NOT** add new top-level directories under `~/.coc/` for per-repo data.
 
-**Creating work items:** Work items are stored as JSON files in `~/.coc/repos/<workspaceId>/work-items/` (NOT as `.plan.md` files in `tasks/`).
+**Canonical origin IDs:** Forge git helpers export `resolveCanonicalOrigin()` / `resolveCanonicalOriginId()` from `@plusplusoneplusplus/forge/git`. They derive `gh_<owner>_<repo>` for GitHub, `ado_<org>_<project>` for Azure DevOps, `git_<remoteHash>` for unknown remotes, and `local_<workspaceId>` when no remote exists.
+
+**Creating work items:** Work items are stored as JSON files in `~/.coc/repos/<originId>/work-items/` using canonical origin IDs (`local_<workspaceId>` for workspaces with no remote), not as `.plan.md` files in `tasks/`. Same-origin workspace directories are migrated into the canonical origin directory on first store access.
 
 - **ALWAYS use the REST API** to create/update work items when the CoC server is running:
   ```

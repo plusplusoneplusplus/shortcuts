@@ -3,14 +3,15 @@
  *
  * File-based persistence for PR popout reviewer progress (AC-04).
  *
- * One JSON file per (workspace, repo, pr) tuple. The headSha is stored
+ * One JSON file per (origin, pr) tuple when an origin scope is supplied. Legacy
+ * (workspace, repo, pr) files are migrated into the origin file on access. The headSha is stored
  * inside the payload — when the caller asks for a different headSha than
  * what is on disk, the stale record is ignored (the reviewer starts fresh
  * for the new head commit), so PR head churn never causes "phantom
  * reviewed" rows.
  *
  * Layout:
- *   ~/.coc/repos/<workspaceId>/review-progress/<repoId>_<prId>.json
+ *   ~/.coc/repos/<originId>/review-progress/<prId>.json
  *
  * No VS Code dependencies. Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -18,6 +19,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getRepoDataPath } from '../paths';
+import {
+    isPullRequestOriginScoped,
+    resolvePullRequestLegacyScopes,
+    resolvePullRequestStorageId,
+    type PullRequestStorageScopeInput,
+} from './pr-origin-scope';
 
 // ============================================================================
 // Types
@@ -65,9 +72,13 @@ export function reviewProgressPaths(
     workspaceId: string,
     repoId: string,
     prId: string,
+    scope?: PullRequestStorageScopeInput,
 ): ReviewProgressPaths {
-    const dir = getRepoDataPath(dataDir, workspaceId, 'review-progress');
-    const base = `${sanitizeKeyPart(repoId)}_${sanitizeKeyPart(prId)}`;
+    const storageId = resolvePullRequestStorageId(workspaceId, scope);
+    const dir = getRepoDataPath(dataDir, storageId, 'review-progress');
+    const base = isPullRequestOriginScoped(workspaceId, scope)
+        ? sanitizeKeyPart(prId)
+        : `${sanitizeKeyPart(repoId)}_${sanitizeKeyPart(prId)}`;
     const filePath = path.join(dir, `${base}.json`);
     return { filePath, dir };
 }
@@ -164,44 +175,32 @@ export function emptyReviewProgress(repoId: string, prId: string, headSha: strin
     };
 }
 
-/**
- * Read the progress record for a (workspace, repo, pr) tuple. Returns the
- * stored record only when its headSha matches the supplied `headSha`;
- * otherwise an empty record is returned (stale-head reset).
- *
- * Returns `undefined` only if the dataDir/workspaceId itself is invalid.
- */
-export function readReviewProgress(
-    dataDir: string,
-    workspaceId: string,
-    repoId: string,
-    prId: string,
-    headSha: string,
-): ReviewProgressRecord {
-    const { filePath } = reviewProgressPaths(dataDir, workspaceId, repoId, prId);
+function readReviewProgressFile(filePath: string): Partial<ReviewProgressRecord> | undefined {
     let raw: string;
     try {
         raw = fs.readFileSync(filePath, 'utf-8');
     } catch {
-        return emptyReviewProgress(repoId, prId, headSha);
+        return undefined;
     }
-    let parsed: Partial<ReviewProgressRecord> | undefined;
     try {
-        parsed = JSON.parse(raw) as Partial<ReviewProgressRecord>;
+        return JSON.parse(raw) as Partial<ReviewProgressRecord>;
     } catch {
-        return emptyReviewProgress(repoId, prId, headSha);
+        return undefined;
     }
+}
+
+function normalizeStoredReviewProgress(
+    parsed: Partial<ReviewProgressRecord> | undefined,
+    repoId: string,
+    prId: string,
+): ReviewProgressRecord | undefined {
     if (
         !parsed ||
         typeof parsed.headSha !== 'string' ||
         !isStringArrayClean(parsed.reviewedFiles) ||
         !isStringArrayClean(parsed.visitedFiles)
     ) {
-        return emptyReviewProgress(repoId, prId, headSha);
-    }
-    // Stale-head reset: never serve progress for a different head.
-    if (parsed.headSha !== headSha) {
-        return emptyReviewProgress(repoId, prId, headSha);
+        return undefined;
     }
     return {
         repoId,
@@ -217,6 +216,65 @@ export function readReviewProgress(
     };
 }
 
+function writeReviewProgressFile(filePath: string, dir: string, record: ReviewProgressRecord): void {
+    fs.mkdirSync(dir, { recursive: true });
+    const tmpPath = `${filePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(record, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, filePath);
+}
+
+function migrateReviewProgress(
+    dataDir: string,
+    workspaceId: string,
+    repoId: string,
+    prId: string,
+    scope?: PullRequestStorageScopeInput,
+): void {
+    if (!isPullRequestOriginScoped(workspaceId, scope)) return;
+    const target = reviewProgressPaths(dataDir, workspaceId, repoId, prId, scope);
+    let newest = normalizeStoredReviewProgress(readReviewProgressFile(target.filePath), repoId, prId);
+    for (const legacy of resolvePullRequestLegacyScopes(workspaceId, repoId, scope)) {
+        const legacyPath = reviewProgressPaths(dataDir, legacy.workspaceId, legacy.repoId, prId);
+        if (legacyPath.filePath === target.filePath) continue;
+        const candidate = normalizeStoredReviewProgress(readReviewProgressFile(legacyPath.filePath), repoId, prId);
+        if (!candidate) continue;
+        if (!newest || candidate.updatedAt > newest.updatedAt) {
+            newest = candidate;
+        }
+    }
+    if (newest) {
+        writeReviewProgressFile(target.filePath, target.dir, newest);
+    }
+}
+
+/**
+ * Read the progress record for a (workspace, repo, pr) tuple. Returns the
+ * stored record only when its headSha matches the supplied `headSha`;
+ * otherwise an empty record is returned (stale-head reset).
+ *
+ * Returns `undefined` only if the dataDir/workspaceId itself is invalid.
+ */
+export function readReviewProgress(
+    dataDir: string,
+    workspaceId: string,
+    repoId: string,
+    prId: string,
+    headSha: string,
+    scope?: PullRequestStorageScopeInput,
+): ReviewProgressRecord {
+    migrateReviewProgress(dataDir, workspaceId, repoId, prId, scope);
+    const { filePath } = reviewProgressPaths(dataDir, workspaceId, repoId, prId, scope);
+    const record = normalizeStoredReviewProgress(readReviewProgressFile(filePath), repoId, prId);
+    if (!record) {
+        return emptyReviewProgress(repoId, prId, headSha);
+    }
+    // Stale-head reset: never serve progress for a different head.
+    if (record.headSha !== headSha) {
+        return emptyReviewProgress(repoId, prId, headSha);
+    }
+    return record;
+}
+
 /** Write a progress record atomically. */
 export function writeReviewProgress(
     dataDir: string,
@@ -230,9 +288,10 @@ export function writeReviewProgress(
         lastSelectedFile: string | null;
     },
     options?: { updatedAt?: string },
+    scope?: PullRequestStorageScopeInput,
 ): ReviewProgressRecord {
-    const { filePath, dir } = reviewProgressPaths(dataDir, workspaceId, repoId, prId);
-    fs.mkdirSync(dir, { recursive: true });
+    migrateReviewProgress(dataDir, workspaceId, repoId, prId, scope);
+    const { filePath, dir } = reviewProgressPaths(dataDir, workspaceId, repoId, prId, scope);
     const out: ReviewProgressRecord = {
         repoId,
         prId,
@@ -242,9 +301,7 @@ export function writeReviewProgress(
         lastSelectedFile: record.lastSelectedFile,
         updatedAt: options?.updatedAt ?? new Date().toISOString(),
     };
-    const tmpPath = `${filePath}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(out, null, 2), 'utf-8');
-    fs.renameSync(tmpPath, filePath);
+    writeReviewProgressFile(filePath, dir, out);
     return out;
 }
 
@@ -254,8 +311,10 @@ export function clearReviewProgress(
     workspaceId: string,
     repoId: string,
     prId: string,
+    scope?: PullRequestStorageScopeInput,
 ): void {
-    const { filePath } = reviewProgressPaths(dataDir, workspaceId, repoId, prId);
+    migrateReviewProgress(dataDir, workspaceId, repoId, prId, scope);
+    const { filePath } = reviewProgressPaths(dataDir, workspaceId, repoId, prId, scope);
     try {
         fs.unlinkSync(filePath);
     } catch {

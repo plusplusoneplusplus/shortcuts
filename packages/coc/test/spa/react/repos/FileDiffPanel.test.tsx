@@ -226,14 +226,14 @@ function makeCommitSource(overrides: Partial<DiffSource> = {}): DiffSource {
 function makePrSource(overrides: Partial<DiffSource> = {}): DiffSource {
     return {
         label: 'PR #42',
-        fileDiffUrl: (fp: string) => `/api/repos/repo1/pull-requests/42/diff/files/${fp}`,
-        fullContextFileDiffUrl: (fp: string) => `/api/repos/repo1/pull-requests/42/diff/files/${fp}?fullContext=true`,
-        fullDiffUrl: () => `/api/repos/repo1/pull-requests/42/diff`,
+        fileDiffUrl: (fp: string) => `/api/origins/gh_owner_repo/pull-requests/42/diff/files/${fp}?workspaceId=ws1&repoId=repo1`,
+        fullContextFileDiffUrl: (fp: string) => `/api/origins/gh_owner_repo/pull-requests/42/diff/files/${fp}?workspaceId=ws1&repoId=repo1&fullContext=true`,
+        fullDiffUrl: () => `/api/origins/gh_owner_repo/pull-requests/42/diff?workspaceId=ws1&repoId=repo1`,
         commentContext: (fp: string) => ({ repositoryId: 'ws1', filePath: fp, oldRef: 'pr-42-base', newRef: 'pr-42-head' }),
         files: [],
         chat: null,
         supportsTruncation: false,
-        cacheKey: 'pr:repo1:42',
+        cacheKey: 'pr:gh_owner_repo:42',
         ...overrides,
     };
 }
@@ -747,7 +747,7 @@ describe('FileDiffPanel', () => {
 
         // Before toggle: standard URL
         expect(mockUseFileDiff).toHaveBeenLastCalledWith(
-            `/api/repos/repo1/pull-requests/42/diff/files/src/foo.ts`,
+            `/api/origins/gh_owner_repo/pull-requests/42/diff/files/src/foo.ts?workspaceId=ws1&repoId=repo1`,
             null,
             'ws1',
         );
@@ -758,7 +758,7 @@ describe('FileDiffPanel', () => {
 
         // After toggle: full-context URL
         expect(mockUseFileDiff).toHaveBeenLastCalledWith(
-            `/api/repos/repo1/pull-requests/42/diff/files/src/foo.ts?fullContext=true`,
+            `/api/origins/gh_owner_repo/pull-requests/42/diff/files/src/foo.ts?workspaceId=ws1&repoId=repo1&fullContext=true`,
             null,
             'ws1',
         );
@@ -803,7 +803,7 @@ describe('FileDiffPanel', () => {
             fireEvent.click(screen.getByTestId('full-context-toggle-btn'));
         });
         expect(mockUseFileDiff).toHaveBeenLastCalledWith(
-            `/api/repos/repo1/pull-requests/42/diff/files/src/foo.ts?fullContext=true`,
+            `/api/origins/gh_owner_repo/pull-requests/42/diff/files/src/foo.ts?workspaceId=ws1&repoId=repo1&fullContext=true`,
             null,
             'ws1',
         );
@@ -813,7 +813,7 @@ describe('FileDiffPanel', () => {
 
         // Mode should reset — standard URL used again
         expect(mockUseFileDiff).toHaveBeenLastCalledWith(
-            `/api/repos/repo1/pull-requests/42/diff/files/src/bar.ts`,
+            `/api/origins/gh_owner_repo/pull-requests/42/diff/files/src/bar.ts?workspaceId=ws1&repoId=repo1`,
             null,
             'ws1',
         );

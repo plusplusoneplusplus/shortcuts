@@ -529,7 +529,7 @@ async function updateExistingWorkItem(
     }
 
     if (!content) {
-        const updated = await store.updateWorkItem(existing.id, patchResult.patch);
+        const updated = await store.updateWorkItem(existing.id, patchResult.patch, repoId);
         if (!updated) {
             return { updated: false, error: `Failed to update work item: ${existing.id}` };
         }
@@ -558,7 +558,7 @@ async function updateExistingWorkItem(
         summary: args.summary ?? `Plan updated from chat (v${nextVersion})`,
     };
 
-    await store.savePlanVersion(existing.id, planVersion);
+    await store.savePlanVersion(existing.id, planVersion, repoId);
     const updated = await store.updateWorkItem(existing.id, {
         ...patchResult.patch,
         status: 'planning',
@@ -572,7 +572,7 @@ async function updateExistingWorkItem(
             source: 'ai',
             reason: planVersion.reason,
         },
-    });
+    }, repoId);
     if (!updated) {
         return { updated: false, error: `Failed to update work item: ${existing.id}` };
     }
@@ -583,7 +583,7 @@ async function updateExistingWorkItem(
         commits: [],
         startedAt: now,
         status: 'open',
-    });
+    }, repoId);
 
     ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: updated });
 

@@ -14,9 +14,9 @@
  * a previous PR head must never apply to the new head.
  *
  * When `persistence` options are supplied the hook also loads progress from
- * `GET /api/repos/:repoId/pull-requests/:prId/review-progress?headSha=…` on
+ * `GET /api/origins/:originId/pull-requests/:prId/review-progress?headSha=…` on
  * mount / headSha change and writes back via debounced
- * `PUT /api/repos/:repoId/pull-requests/:prId/review-progress`. The fetch
+ * `PUT /api/origins/:originId/pull-requests/:prId/review-progress`. The fetch
  * stale-head reset is handled server-side: when stored headSha does not
  * match the requested one the server returns empty sets.
  */
@@ -83,7 +83,7 @@ export function usePrReviewProgress(
     // Stable string key for effect deps (avoids re-running when caller rebuilds
     // the object identity each render).
     const persistenceKey = persistence
-        ? `${persistence.workspaceId}|${persistence.repoId}|${persistence.prId}`
+        ? `${persistence.originId}|${persistence.workspaceId}|${persistence.repoId}|${persistence.prId}`
         : '';
 
     // Tracks the last serialized payload that was sent to the server so the
@@ -265,4 +265,3 @@ export function usePrReviewProgress(
         setLastSelectedFile,
     };
 }
-

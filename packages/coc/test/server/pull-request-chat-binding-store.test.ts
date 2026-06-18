@@ -56,10 +56,10 @@ describe('PullRequestChatBindingStore', () => {
         expect(all['144'].taskId).toBe('task-c');
     });
 
-    it('multiple workspaces are isolated', () => {
-        store.bind('ws1', '142', 'task-1');
-        expect(store.get('ws1', '142')!.taskId).toBe('task-1');
-        expect(store.get('ws2', '142')).toBeUndefined();
+    it('multiple origin scopes are isolated', () => {
+        store.bind('gh_owner_repo', '142', 'task-1');
+        expect(store.get('gh_owner_repo', '142')!.taskId).toBe('task-1');
+        expect(store.get('gh_other_repo', '142')).toBeUndefined();
     });
 
     it('createdAt is a valid ISO-8601 string', () => {
@@ -78,5 +78,49 @@ describe('PullRequestChatBindingStore', () => {
     it('handles non-numeric pr identifiers (provider-agnostic)', () => {
         store.bind('ws1', 'PR-ABC123', 'task-x');
         expect(store.get('ws1', 'PR-ABC123')!.taskId).toBe('task-x');
+    });
+
+    it('migrates legacy workspace rows into an origin scope using newest binding per PR', () => {
+        db.prepare(`
+            INSERT INTO pull_request_chat_bindings (workspace_id, pr_id, task_id, created_at)
+            VALUES (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, ?)
+        `).run(
+            'ws-a', '142', 'task-old', '2026-01-01T00:00:00.000Z',
+            'ws-b', '142', 'task-new', '2026-01-02T00:00:00.000Z',
+            'ws-a', '143', 'task-other', '2026-01-01T00:00:00.000Z',
+        );
+
+        const bindings = store.list('gh_owner_repo', ['ws-a', 'ws-b']);
+
+        expect(bindings['142'].taskId).toBe('task-new');
+        expect(bindings['142'].createdAt).toBe('2026-01-02T00:00:00.000Z');
+        expect(bindings['143'].taskId).toBe('task-other');
+        expect(store.list('ws-a')).toEqual({});
+        expect(store.list('ws-b')).toEqual({});
+    });
+
+    it('preserves existing origin rows when migrating legacy workspace rows', () => {
+        db.prepare(`
+            INSERT INTO pull_request_chat_bindings (workspace_id, pr_id, task_id, created_at)
+            VALUES (?, ?, ?, ?), (?, ?, ?, ?)
+        `).run(
+            'gh_owner_repo', '142', 'task-origin', '2026-01-03T00:00:00.000Z',
+            'ws-a', '142', 'task-legacy', '2026-01-04T00:00:00.000Z',
+        );
+
+        expect(store.get('gh_owner_repo', '142', ['ws-a'])!.taskId).toBe('task-origin');
+        expect(store.get('ws-a', '142')).toBeUndefined();
+    });
+
+    it('does not resurrect migrated legacy rows after an origin unbind', () => {
+        db.prepare(`
+            INSERT INTO pull_request_chat_bindings (workspace_id, pr_id, task_id, created_at)
+            VALUES (?, ?, ?, ?)
+        `).run('ws-a', '142', 'task-legacy', '2026-01-01T00:00:00.000Z');
+
+        expect(store.unbind('gh_owner_repo', '142', ['ws-a'])).toBe(true);
+
+        expect(store.get('gh_owner_repo', '142', ['ws-a'])).toBeUndefined();
+        expect(store.get('ws-a', '142')).toBeUndefined();
     });
 });
