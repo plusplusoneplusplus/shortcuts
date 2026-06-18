@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectCommitsInToolGroup, type DetectedCommit } from '../../../src/server/spa/client/react/features/chat/conversation/commitDetection';
+import { detectCommitsByToolCallId, detectCommitsInToolGroup, type DetectedCommit } from '../../../src/server/spa/client/react/features/chat/conversation/commitDetection';
 
 function makeShellCall(id: string, command: string, result: string, status = 'completed') {
     return { id, toolName: 'powershell', args: { command }, result, status };
@@ -328,6 +328,106 @@ describe('detectCommitsInToolGroup', () => {
                 toolCallId: 't1',
                 isFixup: false,
             });
+        });
+
+        it('detects git log verification after truncated commit output in the same SPA turn', () => {
+            const fullHash = 'cbe266d8ca37fd1e350958b0701663b129e6be02';
+            const toolCalls = [
+                makeShellCall(
+                    'commit',
+                    'git add file.txt; git commit -m "Stabilize synthetic fixture tests"',
+                    [
+                        'Output too large to read at once (135.0 KB). Saved to: C:\\Users\\agent\\AppData\\Local\\Temp\\commit-output.txt',
+                        'Preview (first 500 chars):',
+                        'lots of unrelated build setup output',
+                    ].join('\n'),
+                ),
+                makeShellCall(
+                    'verify',
+                    'git --no-pager status --short --branch; git --no-pager log -1 --format="%H%n%s"',
+                    [
+                        '## main...origin/main [ahead 2]',
+                        fullHash,
+                        'Stabilize synthetic fixture tests',
+                        '<exited with exit code 0>',
+                    ].join('\n'),
+                ),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0]).toEqual<DetectedCommit>({
+                shortHash: 'cbe266d8ca37',
+                fullHash,
+                subject: 'Stabilize synthetic fixture tests',
+                toolCallId: 'verify',
+                isFixup: false,
+            });
+        });
+
+        it('does not detect git log verification after a failed commit command', () => {
+            const toolCalls = [
+                makeShellCall(
+                    'commit',
+                    'git commit -m "Failed attempt"',
+                    'nothing to commit, working tree clean\n<exited with exit code 1>',
+                ),
+                makeShellCall(
+                    'verify',
+                    'git --no-pager log -1 --format="%H%n%s"',
+                    [
+                        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                        'Previous commit from before the failed attempt',
+                        '<exited with exit code 0>',
+                    ].join('\n'),
+                ),
+            ];
+
+            expect(detectCommitsInToolGroup(toolCalls)).toEqual([]);
+        });
+
+        it('keeps no-pager git log -1 read-only output ignored without prior commit context', () => {
+            const toolCalls = [
+                makeShellCall(
+                    'verify',
+                    'git --no-pager log -1 --format="%H%n%s"',
+                    [
+                        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                        'Existing commit',
+                        '<exited with exit code 0>',
+                    ].join('\n'),
+                ),
+            ];
+
+            expect(detectCommitsInToolGroup(toolCalls)).toEqual([]);
+        });
+
+        it('maps correlated verification commits to the verification tool call for ungrouped SPA rendering', () => {
+            const fullHash = 'cbe266d8ca37fd1e350958b0701663b129e6be02';
+            const toolCalls = [
+                makeShellCall(
+                    'commit',
+                    'git commit -m "Stabilize synthetic fixture tests"',
+                    'Output too large to read at once (135.0 KB). Saved to: C:\\Users\\agent\\AppData\\Local\\Temp\\commit-output.txt',
+                ),
+                makeShellCall(
+                    'verify',
+                    'git --no-pager log -1 --format="%H%n%s"',
+                    `${fullHash}\nStabilize synthetic fixture tests\n<exited with exit code 0>`,
+                ),
+            ];
+
+            const byToolId = detectCommitsByToolCallId(toolCalls);
+            expect(byToolId.get('commit')).toBeUndefined();
+            expect(byToolId.get('verify')).toEqual<DetectedCommit[]>([
+                {
+                    shortHash: 'cbe266d8ca37',
+                    fullHash,
+                    subject: 'Stabilize synthetic fixture tests',
+                    toolCallId: 'verify',
+                    isFixup: false,
+                },
+            ]);
         });
 
         it('bash tool: ignores read-only git commands', () => {

@@ -422,12 +422,15 @@ non-breaking trailing tools (`suggest_follow_ups`, `report_intent`,
 tool/tool-group. This keeps a rich answer visible even when a hidden
 `suggest_follow_ups` call splits it from a trivial closing line.
 
-Chat commit strips are detected from real shell output on `powershell`, `shell`,
-and `bash` tool calls. The detector only treats commit-creating commands
-(`git commit`, `git merge`, `git cherry-pick`, `git revert`) with native git
-output such as `[branch abc1234] subject`, or compact verification output such
-as `abc1234 subject` from the same commit-creating command, as commits;
-assistant prose and read-only git command output are ignored.
+Chat commit strips are detected entirely in the SPA from already-loaded turn
+tool data; no server-side commit binding or persistence is required for display.
+The detector treats commit-creating commands (`git commit`, `git merge`,
+`git cherry-pick`, `git revert`) with native git output such as
+`[branch abc1234] subject`, or compact verification output such as
+`abc1234 subject`, as commits. For truncated commit-command output, the SPA
+keeps a short same-turn verification window so a correlated `git log -1`
+verification command can supply the hash/subject. Unrelated read-only git
+commands and generic assistant prose remain ignored.
 
 Live unanswered `ask_user` batches remain owned by
 `ChatDetail`/`ConversationArea` through `processDetails.pendingAskUser` and
