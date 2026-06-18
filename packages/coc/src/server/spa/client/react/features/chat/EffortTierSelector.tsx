@@ -90,7 +90,7 @@ export function EffortTierSelector({
                 onClick={() => setOpen(o => !o)}
                 className={cn(
                     'ctool shrink-0 inline-flex items-center gap-1 rounded-sm text-[11px]',
-                    mobileTapTarget ? 'h-8 px-2 lg:h-[22px] lg:px-1.5' : 'h-[22px] px-1.5',
+                    mobileTapTarget ? 'h-8 w-8 justify-center px-0 sm:w-auto sm:px-2 lg:h-[22px] lg:px-1.5' : 'h-[22px] px-1.5',
                     'text-[#5a5a5a] dark:text-[#cccccc]',
                     'hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e]',
                     'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50',
@@ -101,9 +101,15 @@ export function EffortTierSelector({
                 data-testid="effort-tier-trigger-btn"
                 aria-haspopup="listbox"
                 aria-expanded={open}
-                aria-label="Effort tier"
+                aria-label={`Effort tier: ${selectedLabel}`}
             >
-                <span className="font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999] truncate">
+                <span aria-hidden="true" className={cn('font-mono text-[10px] font-semibold text-[#848484] dark:text-[#999]', mobileTapTarget ? 'inline sm:hidden' : 'hidden')}>
+                    E
+                </span>
+                <span className={cn(
+                    'font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999] truncate',
+                    mobileTapTarget && 'hidden sm:inline',
+                )}>
                     Effort: {selectedLabel}
                 </span>
                 <svg
