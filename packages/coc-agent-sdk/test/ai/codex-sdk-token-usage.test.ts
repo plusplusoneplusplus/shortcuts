@@ -101,4 +101,38 @@ describe('CodexSDKService token usage', () => {
         expect(result.success).toBe(true);
         expect(result.tokenUsage).toBeUndefined();
     });
+
+    it('populates per-turn fields but leaves context-window fields undefined (no native Codex signal)', async () => {
+        // Codex exposes no native context-window signal, so the per-turn mapping
+        // must never fabricate the context meter. Guards the documented Codex
+        // limitation: tokenLimit/currentTokens (and the rest of the breakdown)
+        // stay undefined even when per-turn usage is reported.
+        const result = await sendWithEvents([
+            { type: 'thread.started', thread_id: 'thread-1' },
+            {
+                type: 'turn.completed',
+                usage: {
+                    input_tokens: 80,
+                    cached_input_tokens: 10,
+                    output_tokens: 30,
+                    reasoning_output_tokens: 8,
+                },
+            },
+            { type: 'item.completed', item: { id: 'item-1', type: 'agent_message', text: 'ok' } },
+        ]);
+
+        expect(result.success).toBe(true);
+        // Per-turn fields are populated.
+        expect(result.tokenUsage?.inputTokens).toBe(80);
+        expect(result.tokenUsage?.outputTokens).toBe(30);
+        expect(result.tokenUsage?.cacheReadTokens).toBe(10);
+        expect(result.tokenUsage?.totalTokens).toBe(110);
+        expect(result.tokenUsage?.turnCount).toBe(1);
+        // Context-window fields are never populated for Codex.
+        expect(result.tokenUsage?.tokenLimit).toBeUndefined();
+        expect(result.tokenUsage?.currentTokens).toBeUndefined();
+        expect(result.tokenUsage?.systemTokens).toBeUndefined();
+        expect(result.tokenUsage?.toolDefinitionsTokens).toBeUndefined();
+        expect(result.tokenUsage?.conversationTokens).toBeUndefined();
+    });
 });

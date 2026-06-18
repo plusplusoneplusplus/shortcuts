@@ -1970,6 +1970,83 @@ describe('addClaudeContextUsage', () => {
             conversationTokens: 98,
         });
     });
+
+    it('maps a full installed getContextUsage payload, using maxTokens (not rawMaxTokens) for tokenLimit', () => {
+        // Mirrors the installed `@anthropic-ai/claude-agent-sdk`
+        // `SDKControlGetContextUsageResponse` shape (sdk.d.ts:2802-2892): full
+        // nested entries plus every sibling field the SDK returns. Assigned to a
+        // `const` (not passed as a fresh literal) so the broader shape stays
+        // structurally assignable to the local `ClaudeContextUsage` stub.
+        //
+        // `rawMaxTokens` is deliberately different from `maxTokens` so the test
+        // fails if the mapping ever drifts onto the raw (uncapped) limit — the
+        // effective `maxTokens` is the only correct source for `tokenLimit`.
+        const response = {
+            categories: [
+                { name: 'System prompt', tokens: 125, color: 'blue' },
+                { name: 'Messages', tokens: 98, color: 'green', isDeferred: false },
+            ],
+            totalTokens: 2400,
+            maxTokens: 200000,
+            rawMaxTokens: 1000000,
+            percentage: 1.2,
+            gridRows: [],
+            model: 'claude-opus-4',
+            memoryFiles: [{ path: 'CLAUDE.md', type: 'project', tokens: 42 }],
+            mcpTools: [
+                { name: 'search', serverName: 'coc', tokens: 30, isLoaded: true },
+                { name: 'fetch', serverName: 'coc', tokens: 20, isLoaded: false },
+            ],
+            deferredBuiltinTools: [{ name: 'WebSearch', tokens: 5, isLoaded: false }],
+            systemTools: [
+                { name: 'Read', tokens: 40 },
+                { name: 'Edit', tokens: 10 },
+            ],
+            systemPromptSections: [
+                { name: 'identity', tokens: 100 },
+                { name: 'tools', tokens: 25 },
+            ],
+            agents: [{ agentType: 'Explore', source: 'builtin', tokens: 12 }],
+            slashCommands: { totalCommands: 5, includedCommands: 3, tokens: 8 },
+            skills: { totalSkills: 2, includedSkills: 1, tokens: 4, skillFrontmatter: [] },
+            autoCompactThreshold: 0.8,
+            isAutoCompactEnabled: true,
+            messageBreakdown: {
+                toolCallTokens: 11,
+                toolResultTokens: 12,
+                attachmentTokens: 13,
+                assistantMessageTokens: 14,
+                userMessageTokens: 15,
+                redirectedContextTokens: 16,
+                unattributedTokens: 17,
+                toolCallsByType: [{ name: 'Read', callTokens: 5, resultTokens: 6 }],
+                attachmentsByType: [{ name: 'image', tokens: 13 }],
+            },
+            apiUsage: {
+                input_tokens: 1000,
+                output_tokens: 200,
+                cache_creation_input_tokens: 50,
+                cache_read_input_tokens: 80,
+            },
+        };
+
+        const usage = addClaudeContextUsage(undefined, response);
+
+        // tokenLimit maps from maxTokens (200000), never rawMaxTokens (1000000).
+        expect(usage?.tokenLimit).toBe(200000);
+        expect(usage?.currentTokens).toBe(2400);
+        // systemPromptSections: 100 + 25
+        expect(usage?.systemTokens).toBe(125);
+        // systemTools (40 + 10) + mcpTools (30 + 20) + deferredBuiltinTools (5)
+        expect(usage?.toolDefinitionsTokens).toBe(105);
+        // messageBreakdown: 11 + 12 + 13 + 14 + 15 + 16 + 17
+        expect(usage?.conversationTokens).toBe(98);
+        // apiUsage seeds the per-turn envelope when there is no prior usage.
+        expect(usage?.inputTokens).toBe(1000);
+        expect(usage?.outputTokens).toBe(200);
+        expect(usage?.cacheReadTokens).toBe(80);
+        expect(usage?.cacheWriteTokens).toBe(50);
+    });
 });
 
 // ============================================================================
