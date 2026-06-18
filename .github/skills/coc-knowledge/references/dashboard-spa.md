@@ -286,8 +286,11 @@ contract. Notes direct goal launch remains separate because it skips grilling.
   keeps its dedicated red palette and ignores `provider`.
 - **Interrupted assistant turns:** Amber "Partial response preserved" banner
   renders above the still-visible partial transcript and tool timeline. The
-  Continue / retry button focuses the normal follow-up composer; it does not
-  replay preserved partial content into a prompt.
+  Continue / retry button sends a generated raw follow-up through the normal
+  follow-up path (auth/session/provider/network-looking interruptions use retry
+  wording; other interruptions ask the assistant to continue). It does not
+  replay preserved partial content into a prompt or include current composer
+  draft/paste/context/attachments.
 - **Script output:** Dark terminal window with PASS/FAIL highlighting; the
   avatar keeps its dedicated dark-terminal palette and ignores `provider`.
 

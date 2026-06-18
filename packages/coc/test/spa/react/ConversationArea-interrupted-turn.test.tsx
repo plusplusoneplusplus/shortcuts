@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, act } from '@testing-library/react';
 import { createRef } from 'react';
-import { ConversationArea } from '../../../src/server/spa/client/react/features/chat/ConversationArea';
+import {
+    ConversationArea,
+    INTERRUPTED_TURN_CONTINUE_MESSAGE,
+    INTERRUPTED_TURN_RETRY_MESSAGE,
+} from '../../../src/server/spa/client/react/features/chat/ConversationArea';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 
 vi.mock('../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
@@ -90,6 +94,7 @@ function renderConversationArea(
     inputFocus: () => void,
     turns: ClientConversationTurn[] = [makeInterruptedTurn()],
     processError: string | null = null,
+    onSendInterruptedTurnFollowUp?: (message: string) => void,
 ) {
     return render(
         <ConversationArea
@@ -108,13 +113,14 @@ function renderConversationArea(
             variant="inline"
             taskId="task-1"
             inputRef={{ current: { focus: inputFocus } }}
+            onSendInterruptedTurnFollowUp={onSendInterruptedTurnFollowUp}
             processError={processError}
         />,
     );
 }
 
 describe('ConversationArea — interrupted turn affordance wiring', () => {
-    it('wires preserved-turn Continue / retry to the normal follow-up input focus path', async () => {
+    it('falls back to focusing the normal follow-up input when no send handler is provided', async () => {
         const focus = vi.fn();
         const { getByTestId } = renderConversationArea(focus);
 
@@ -123,6 +129,35 @@ describe('ConversationArea — interrupted turn affordance wiring', () => {
         });
 
         expect(focus).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends a generic continue follow-up for non-retry-specific interruptions', async () => {
+        const focus = vi.fn();
+        const sendInterruptedTurnFollowUp = vi.fn();
+        const { getByTestId } = renderConversationArea(focus, [makeInterruptedTurn()], null, sendInterruptedTurnFollowUp);
+
+        await act(async () => {
+            fireEvent.click(getByTestId('mock-interrupted-continue'));
+        });
+
+        expect(sendInterruptedTurnFollowUp).toHaveBeenCalledWith(INTERRUPTED_TURN_CONTINUE_MESSAGE);
+        expect(focus).not.toHaveBeenCalled();
+    });
+
+    it('sends retry wording for temporary authorization or session interruptions', async () => {
+        const sendInterruptedTurnFollowUp = vi.fn();
+        const { getByTestId } = renderConversationArea(
+            vi.fn(),
+            [makeInterruptedTurn({ interruptionReason: 'Copilot session error: Authorization error, you may need to run /login' })],
+            null,
+            sendInterruptedTurnFollowUp,
+        );
+
+        await act(async () => {
+            fireEvent.click(getByTestId('mock-interrupted-continue'));
+        });
+
+        expect(sendInterruptedTurnFollowUp).toHaveBeenCalledWith(INTERRUPTED_TURN_RETRY_MESSAGE);
     });
 
     it('keeps a refreshed interrupted turn visible after a later follow-up is appended', () => {
