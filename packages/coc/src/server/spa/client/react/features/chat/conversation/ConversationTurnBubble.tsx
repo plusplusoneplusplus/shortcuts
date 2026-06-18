@@ -1265,6 +1265,11 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
+        // Shift+right-click bypasses the custom menu and falls through to the
+        // browser's native context menu (standard web convention).
+        if (e.shiftKey) {
+            return;
+        }
         e.preventDefault();
         setContextMenu({ x: e.clientX, y: e.clientY });
     }, []);
