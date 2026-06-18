@@ -35,7 +35,7 @@ export interface ToolCallGroupViewProps {
     /** The shared agent_id when category === 'agent'. */
     agentId?: string;
     renderToolTree: (toolId: string, depth: number) => React.ReactNode;
-    /** Git commits detected in this tool group's shell results. */
+    /** Git commits detected in this tool group's results. */
     commits?: DetectedCommit[];
     /** Workspace ID for commit detail navigation. */
     workspaceId?: string;

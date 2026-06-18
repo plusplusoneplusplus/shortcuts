@@ -30,7 +30,7 @@ import { ToolCallGroupView } from './tool-calls/ToolCallGroupView';
 import { normalizeToolForDisplay } from './tool-calls/toolNormalization';
 import { TaskDefs } from '../../../../../../tasks/task-types';
 import { WhisperCollapsedGroup } from './tool-calls/WhisperCollapsedGroup';
-import { detectCommitsInToolGroup } from './commitDetection';
+import { detectCommitsByToolCallId, type DetectedCommit } from './commitDetection';
 import { CommitStrip } from './CommitStrip';
 import { NoteEditCard } from './NoteEditCard';
 import { ScriptTerminalBlock } from './ScriptTerminalBlock';
@@ -1081,6 +1081,17 @@ function buildRawContent(turn: ClientConversationTurn): string {
 
 export { buildRawContent as _buildRawContent };
 
+function buildCommitsByToolCallId(toolById: Map<string, RenderToolCall>): Map<string, DetectedCommit[]> {
+    const allToolCalls = [...toolById.values()].map(tool => ({
+        id: tool.id,
+        toolName: tool.toolName,
+        args: tool.args,
+        result: tool.result,
+        status: tool.status,
+    }));
+    return detectCommitsByToolCallId(allToolCalls);
+}
+
 /** Format elapsed milliseconds into a human-friendly string. */
 export function formatCostTime(ms: number): string {
     if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -1376,6 +1387,10 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
         }
         return grouped;
     }, [assistantRender, toolCompactness, groupSingleLineMessages]);
+    const commitsByToolCallId = useMemo(
+        () => assistantRender ? buildCommitsByToolCallId(assistantRender.toolById) : new Map<string, DetectedCommit[]>(),
+        [assistantRender],
+    );
 
     function renderToolTree(toolId: string, depth: number): React.ReactNode {
         if (depth > 20) return null;
@@ -1800,26 +1815,15 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                                 const toolNode = renderToolTree(chunk.toolId, 0);
                                 if (toolNode !== null) {
                                     flushContent();
-                                    // Detect commits for individual (ungrouped) shell tool calls
-                                    const tool = assistantRender.toolById.get(chunk.toolId);
-                                    const toolName = tool?.toolName ?? '';
-                                    if ((toolName === 'powershell' || toolName === 'shell' || toolName === 'bash') && tool?.result) {
-                                        const commits = detectCommitsInToolGroup([{
-                                            id: chunk.toolId,
-                                            toolName,
-                                            args: tool.args,
-                                            result: tool.result,
-                                            status: tool.status,
-                                        }]);
-                                        if (commits.length > 0) {
-                                            nodes.push(
-                                                <React.Fragment key={chunk.key + '-with-commit'}>
-                                                    {toolNode}
-                                                    <CommitStrip commits={commits} workspaceId={wsId} />
-                                                </React.Fragment>
-                                            );
-                                            continue;
-                                        }
+                                    const commits = commitsByToolCallId.get(chunk.toolId);
+                                    if (commits && commits.length > 0) {
+                                        nodes.push(
+                                            <React.Fragment key={chunk.key + '-with-commit'}>
+                                                {toolNode}
+                                                <CommitStrip commits={commits} workspaceId={wsId} />
+                                            </React.Fragment>
+                                        );
+                                        continue;
                                     }
                                     nodes.push(toolNode);
                                 }
@@ -1828,9 +1832,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                                 const toolCalls = chunk.toolIds
                                     .map(id => assistantRender.toolById.get(id))
                                     .filter((tc): tc is NonNullable<typeof tc> => tc != null);
-                                const commits = chunk.category === 'shell'
-                                    ? detectCommitsInToolGroup(toolCalls)
-                                    : undefined;
+                                const commits = chunk.toolIds.flatMap(id => commitsByToolCallId.get(id) ?? []);
                                 nodes.push(
                                     <ToolCallGroupView
                                         key={chunk.key}
@@ -1842,7 +1844,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                                         compactness={toolCompactness}
                                         agentId={chunk.agentId}
                                         renderToolTree={renderToolTree}
-                                        commits={commits}
+                                        commits={commits.length > 0 ? commits : undefined}
                                         workspaceId={wsId}
                                     />
                                 );

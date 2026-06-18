@@ -141,7 +141,7 @@ interface ToolGroupChunk {
     parentToolId?: string;
     /** Set when category === 'agent' — the shared agent_id for the group. */
     agentId?: string;
-    /** Git commits detected in shell tool call results. */
+    /** Git commits detected in tool call results. */
     commits?: DetectedCommit[];
 }
 
