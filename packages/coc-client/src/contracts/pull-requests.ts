@@ -89,6 +89,7 @@ export interface RecordRecentOpenedPullRequestRequest {
 export interface PullRequestCoworkerRosterEntry {
   id: string;
   displayName: string;
+  login?: string;
   email?: string;
   avatarUrl?: string;
   /** ISO 8601 string. */
@@ -102,6 +103,7 @@ export interface PullRequestCoworkerRosterResponse {
 export interface AddPullRequestCoworkerRosterEntryRequest {
   id?: string;
   displayName: string;
+  login?: string;
   email?: string;
   avatarUrl?: string;
 }
@@ -119,6 +121,7 @@ export interface PullRequestCoworkerCandidateSearchQuery {
 export interface PullRequestCoworkerCandidate {
   id: string;
   displayName: string;
+  login?: string;
   email?: string;
   avatarUrl?: string;
   prCount: number;

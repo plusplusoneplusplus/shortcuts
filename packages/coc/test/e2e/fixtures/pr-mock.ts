@@ -18,6 +18,7 @@ import {
 interface MockCoworkerCandidate {
     id: string;
     displayName: string;
+    login?: string;
     email?: string;
     avatarUrl?: string;
     prCount: number;
@@ -64,6 +65,7 @@ function buildCoworkerCandidatesFromPullRequests(pullRequests: readonly PullRequ
         byKey.set(key, {
             id,
             displayName,
+            ...(pr.author?.login ? { login: pr.author.login } : {}),
             ...(pr.author?.email ? { email: pr.author.email } : {}),
             ...(pr.author?.avatarUrl ? { avatarUrl: pr.author.avatarUrl } : {}),
             prCount: 1,
@@ -76,6 +78,7 @@ function buildCoworkerCandidatesFromPullRequests(pullRequests: readonly PullRequ
 function coworkerCandidateMatches(candidate: MockCoworkerCandidate, query: string): boolean {
     const normalizedQuery = query.toLowerCase();
     return candidate.displayName.toLowerCase().includes(normalizedQuery) ||
+        (candidate.login?.toLowerCase().includes(normalizedQuery) ?? false) ||
         (candidate.email?.toLowerCase().includes(normalizedQuery) ?? false) ||
         candidate.id.toLowerCase().includes(normalizedQuery);
 }

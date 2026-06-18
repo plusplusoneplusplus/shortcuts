@@ -115,6 +115,9 @@ function makeMockOctokit(overrides: Record<string, unknown> = {}): Octokit {
                 },
             }),
         },
+        search: {
+            issuesAndPullRequests: vi.fn().mockResolvedValue({ data: { items: [] } }),
+        },
         request: vi.fn().mockResolvedValue({ data: 'diff --git a/file.ts b/file.ts\n' }),
         ...overrides,
     } as unknown as Octokit;
@@ -206,6 +209,60 @@ describe('GitHubPullRequestsAdapter', () => {
                 per_page: 20,
                 page: 3,
             }));
+        });
+    });
+
+    describe('listPullRequests with authorId (Search API)', () => {
+        it('uses Search API when authorId is specified', async () => {
+            const searchItem = {
+                id: 1001,
+                number: 42,
+                title: 'Fix bug',
+                body: 'Fixes a nasty bug',
+                user: { id: 100, login: 'alice', name: 'Alice Smith', avatar_url: 'https://avatar/alice' },
+                state: 'open',
+                draft: false,
+                created_at: '2024-01-01T00:00:00Z',
+                updated_at: '2024-01-02T00:00:00Z',
+                pull_request: { merged_at: null },
+                labels: [{ id: 1, name: 'bug', color: 'red' }],
+                html_url: 'https://github.com/owner/repo/pull/42',
+            };
+            ((octokit as any).search.issuesAndPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue({
+                data: { items: [searchItem] },
+            });
+
+            const prs = await adapter.listPullRequests('repo', { status: 'open', authorId: 'alice', top: 25 });
+            expect(prs).toHaveLength(1);
+            expect(prs[0].number).toBe(42);
+            expect(prs[0].author.id).toBe('100');
+            expect(prs[0].author.login).toBe('alice');
+            expect((octokit as any).search.issuesAndPullRequests).toHaveBeenCalledWith({
+                q: 'is:pr is:open repo:owner/repo author:alice',
+                sort: 'updated',
+                order: 'desc',
+                per_page: 25,
+            });
+            // Should NOT call pulls.list
+            expect(octokit.pulls.list).not.toHaveBeenCalled();
+        });
+
+        it('falls back to pulls.list filter when Search API throws', async () => {
+            ((octokit as any).search.issuesAndPullRequests as ReturnType<typeof vi.fn>).mockRejectedValue(
+                new Error('Search failed'),
+            );
+            // pulls.list returns all PRs; fallback filters by author ID
+            (octokit.pulls.list as ReturnType<typeof vi.fn>).mockResolvedValue({
+                data: [
+                    mockGitHubPr,
+                    { ...mockGitHubPr, id: 2002, number: 99, user: { id: 200, login: 'bob', name: 'Bob' } },
+                ],
+            });
+
+            const prs = await adapter.listPullRequests('repo', { status: 'open', authorId: '100', top: 25 });
+            // Only Alice's PR (author.id === '100') should be returned
+            expect(prs).toHaveLength(1);
+            expect(prs[0].author.id).toBe('100');
         });
     });
 

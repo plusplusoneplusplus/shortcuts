@@ -25,6 +25,7 @@ import type {
     GitHubPullRequest,
     GitHubPullRequestCommit,
     GitHubReview,
+    GitHubSearchPrItem,
     GitHubUser,
 } from './types';
 
@@ -34,6 +35,7 @@ function mapGitHubUser(user: GitHubUser | null | undefined): Identity {
     return {
         id: String(user?.id ?? ''),
         displayName: user?.name ?? user?.login ?? '',
+        login: user?.login,
         email: user?.email ?? undefined,
         avatarUrl: user?.avatar_url,
     };
@@ -124,6 +126,31 @@ function mapGitHubPullRequest(pr: GitHubPullRequest, owner: string, repo: string
         baseSha: pr.base.sha,
         autoMerge: mapGitHubAutoMerge(pr),
         raw: pr,
+    };
+}
+
+function mapGitHubSearchResultToPullRequest(item: GitHubSearchPrItem, owner: string, repo: string): PullRequest {
+    const status: PullRequestStatus = item.pull_request?.merged_at ? 'merged'
+        : item.state === 'closed' ? 'closed'
+        : 'open';
+    return {
+        id: item.id,
+        number: item.number,
+        title: item.title,
+        description: item.body ?? '',
+        author: mapGitHubUser(item.user),
+        sourceBranch: '',
+        targetBranch: '',
+        status,
+        isDraft: item.draft ?? false,
+        createdAt: new Date(item.created_at),
+        updatedAt: new Date(item.updated_at),
+        mergedAt: item.pull_request?.merged_at ? new Date(item.pull_request.merged_at) : undefined,
+        closedAt: item.closed_at ? new Date(item.closed_at) : undefined,
+        url: item.html_url,
+        repositoryId: `${owner}/${repo}`,
+        reviewers: [],
+        labels: item.labels.map(l => l.name),
     };
 }
 
@@ -300,6 +327,11 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
     }
 
     async listPullRequests(_repositoryId: string, criteria?: SearchCriteria): Promise<PullRequest[]> {
+        // When authorId is specified, use GitHub Search API to find PRs by that author
+        if (criteria?.authorId) {
+            return this.listPullRequestsByAuthor(criteria);
+        }
+
         const state = criteria?.status === 'closed' || criteria?.status === 'merged' ? 'closed'
             : criteria?.status === 'open' ? 'open'
             : 'open';
@@ -321,6 +353,45 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
         return (data as unknown as GitHubPullRequest[]).map(pr =>
             mapGitHubPullRequest(pr, this.owner, this.repo),
         );
+    }
+
+    /**
+     * Fetch PRs by a specific author using GitHub Search API.
+     * The authorId should be a GitHub login (username). If it's a numeric ID,
+     * we fall back to fetching all PRs and filtering by author ID.
+     */
+    private async listPullRequestsByAuthor(criteria: SearchCriteria): Promise<PullRequest[]> {
+        const authorId = criteria.authorId!;
+        const state = criteria.status === 'closed' || criteria.status === 'merged' ? 'closed' : 'open';
+        const isState = state === 'closed' ? 'is:closed' : 'is:open';
+        const perPage = Math.min(Math.max(criteria.top ?? 30, 1), 100);
+
+        // Try Search API with author qualifier (works with GitHub login)
+        const q = `is:pr ${isState} repo:${this.owner}/${this.repo} author:${authorId}`;
+
+        try {
+            const { data } = await this.octokit.search.issuesAndPullRequests({
+                q,
+                sort: 'updated',
+                order: 'desc',
+                per_page: perPage,
+            });
+
+            return data.items.map(item => mapGitHubSearchResultToPullRequest(
+                item as unknown as GitHubSearchPrItem,
+                this.owner,
+                this.repo,
+            ));
+        } catch {
+            // If search fails (e.g. authorId is numeric not a login), fall back
+            // to fetching all PRs and filtering by author ID
+            const allPrs = await this.listPullRequests('', {
+                ...criteria,
+                authorId: undefined,
+                top: 100,
+            });
+            return allPrs.filter(pr => pr.author.id === authorId);
+        }
     }
 
     async getPullRequest(_repositoryId: string, pullRequestId: number | string): Promise<PullRequest> {

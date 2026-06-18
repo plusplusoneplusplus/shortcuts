@@ -865,6 +865,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
             const data = await cloneClient.pullRequests.addCoworkerToRosterForOrigin(originId, {
                 id: selectedCoworkerCandidate.id,
                 displayName: selectedCoworkerCandidate.displayName,
+                ...(selectedCoworkerCandidate.login ? { login: selectedCoworkerCandidate.login } : {}),
                 ...(selectedCoworkerCandidate.email ? { email: selectedCoworkerCandidate.email } : {}),
                 ...(selectedCoworkerCandidate.avatarUrl ? { avatarUrl: selectedCoworkerCandidate.avatarUrl } : {}),
             }, { workspaceId, repoId });
