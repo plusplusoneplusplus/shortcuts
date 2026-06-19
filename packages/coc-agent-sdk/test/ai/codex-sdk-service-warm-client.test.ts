@@ -194,3 +194,48 @@ describe('CodexSDKService — cold paths leave no warm entry (AC-02)', () => {
         expect(registrySize(svc)).toBe(0);
     });
 });
+
+describe('CodexSDKService — abort/interrupt tears down the warm entry (AC-03)', () => {
+    let svc: CodexSDKService | undefined;
+
+    afterEach(() => {
+        svc?.dispose();
+        svc = undefined;
+        cocToolBridgeServer.closeAll();
+        resetSDKLogger();
+    });
+
+    it('does not keep the base client warm when the turn is aborted mid-stream', async () => {
+        const controller = new AbortController();
+        // A thread whose run aborts the caller's signal mid-turn, then still
+        // completes successfully. This exercises the guard
+        // `keepWarm = success && !signal.aborted` distinctly from the turn.failed
+        // path: the turn produces a response, but the abort must still tear down
+        // the warm entry. (The signal is NOT aborted at sendMessage entry, so the
+        // early abort guard is bypassed and the warm path is engaged.)
+        const abortingThread = () => ({
+            id: 'thread-1',
+            runStreamed: vi.fn(async () => {
+                controller.abort();
+                return {
+                    events: (async function* () {
+                        yield { type: 'thread.started' as const, thread_id: 'thread-1' };
+                        yield { type: 'item.completed' as const, item: { id: 'i1', type: 'agent_message', text: 'ok' } };
+                    })(),
+                };
+            }),
+        });
+        const { ctor, clients } = makeRecordingCtor(abortingThread as unknown as () => ReturnType<typeof makeThread>);
+        svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
+
+        const result = await svc.sendMessage({ prompt: 'hello', keepWarm: true, signal: controller.signal });
+
+        // The turn itself produced a response on a freshly cold-started warm client…
+        expect(result.success).toBe(true);
+        expect(clients).toHaveLength(1);
+        // …but because the signal was aborted, the base client is not parked — the
+        // abort tears the warm entry down (Codex's `stop` is a no-op by design, so
+        // entry removal is the observable teardown).
+        expect(registrySize(svc)).toBe(0);
+    });
+});

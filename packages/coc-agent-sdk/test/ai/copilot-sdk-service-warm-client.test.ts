@@ -242,3 +242,66 @@ describe('CopilotSDKService — warm client TTL expiry (AC-01)', () => {
         expect((service as any).warmRegistry.size()).toBe(0);
     });
 });
+
+// ============================================================================
+// Abort / interrupt teardown (AC-03)
+// ============================================================================
+
+describe('CopilotSDKService — abort/interrupt tears down the warm client (AC-03)', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        service.dispose();
+        resetCopilotSDKService();
+        resetSDKLogger();
+    });
+
+    function wireMock() {
+        const mod = createMockSDKModule(() => createMockSession());
+        createSdkClientMock.mockImplementation((opts: any) => new mod.MockCopilotClient(opts));
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+        return mod;
+    }
+
+    it('stops the warm client and removes the entry when the turn is aborted', async () => {
+        const { mockClient } = wireMock();
+        const controller = new AbortController();
+        controller.abort();
+
+        const result = await warmSend(service, { signal: controller.signal });
+
+        // The abort surfaces as a failed turn…
+        expect(result.success).toBe(false);
+        // …and the warm client that was spun up for the turn is torn down, not parked.
+        expect(createSdkClientMock).toHaveBeenCalledTimes(1);
+        expect(mockClient.start).toHaveBeenCalledTimes(1);
+        expect(mockClient.stop).toHaveBeenCalledTimes(1);
+        expect((service as any).warmRegistry.size()).toBe(0);
+    });
+
+    it('tears down even when the send reports success but the signal aborted', async () => {
+        const { mockClient } = wireMock();
+        // Isolate the defensive guard `keepWarm = success && !signal.aborted`:
+        // force a successful send while the caller's signal is already aborted, so
+        // the only reason to tear down is the aborted signal (not a failed result).
+        const sendSpy = vi
+            .spyOn((service as any).requestRunner, 'send')
+            .mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
+        const controller = new AbortController();
+        controller.abort();
+
+        const result = await warmSend(service, { signal: controller.signal });
+
+        expect(result.success).toBe(true);
+        expect(sendSpy).toHaveBeenCalledTimes(1);
+        // An aborted signal forces teardown regardless of the (racy) success result.
+        expect(mockClient.stop).toHaveBeenCalledTimes(1);
+        expect((service as any).warmRegistry.size()).toBe(0);
+    });
+});
