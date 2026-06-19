@@ -140,6 +140,11 @@ describe('buildSourceLocationMarkdownLinkSystemMessage', () => {
         expect(result!.content).toContain('[src/file.ts:42-58](src/file.ts:42-58)');
     });
 
+    it('wraps the citation guidance in a <citing_rule> tag', () => {
+        expect(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE.startsWith('<citing_rule>\n')).toBe(true);
+        expect(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE.endsWith('\n</citing_rule>')).toBe(true);
+    });
+
     it.each(['codex', undefined] as const)('omits source-location instructions for %s', (provider) => {
         expect(buildSourceLocationMarkdownLinkSystemMessage(provider)).toBeUndefined();
     });
@@ -606,6 +611,12 @@ describe('buildFollowUpSuggestionsAddon', () => {
         const result = buildFollowUpSuggestionsAddon(true, 5);
         expect(result.suffix).toContain('5 suggestions');
     });
+
+    it('wraps the guidance in a <follow_up_suggestions> tag with the separator prefix', () => {
+        const result = buildFollowUpSuggestionsAddon(true, 3);
+        expect(result.suffix.startsWith('\n\n<follow_up_suggestions>\n')).toBe(true);
+        expect(result.suffix.endsWith('\n</follow_up_suggestions>')).toBe(true);
+    });
 });
 
 // ============================================================================
@@ -672,6 +683,12 @@ describe('buildCreateWorkItemAddon', () => {
         const result = buildCreateWorkItemAddon('/data', 'repo-1');
         expect(result.suffix).toContain('get_work_item');
         expect(result.suffix).toContain('create_update_work_item');
+    });
+
+    it('wraps the guidance in a <work_item_tools> tag with the separator prefix', () => {
+        const result = buildCreateWorkItemAddon('/data', 'repo-1');
+        expect(result.suffix.startsWith('\n\n<work_item_tools>\n')).toBe(true);
+        expect(result.suffix.endsWith('\n</work_item_tools>')).toBe(true);
     });
 
     it('passes dataDir, repoId, broadcastFn, and deps to factories', () => {

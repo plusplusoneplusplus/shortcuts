@@ -111,6 +111,9 @@ describe('buildMemoryV2Addon', () => {
             expect(toolNames).toContain(MEMORY_V2_STORE_TOOL_NAME);
             expect(toolNames).toContain(MEMORY_V2_RECALL_TOOL_NAME);
             expect(addon.suffix).toContain('memory');
+            // Guidance is wrapped in a named tag with the separator prefix.
+            expect(addon.suffix.startsWith('\n\n<memory_tool>\n')).toBe(true);
+            expect(addon.suffix.endsWith('\n</memory_tool>')).toBe(true);
             expect(addon.excludedBuiltinTools).toEqual(['vote_memory', 'store_memory']);
         } finally {
             addon.dispose();
