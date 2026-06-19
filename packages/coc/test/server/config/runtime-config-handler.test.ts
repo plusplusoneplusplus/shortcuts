@@ -283,6 +283,45 @@ describe('AC-06: env-driven prewarm debounce in runtime config', () => {
     });
 });
 
+describe('AC-01: env-driven warm-client TTL in runtime config', () => {
+    const ENV = 'COC_WARM_CLIENT_TTL_MS';
+    let saved: string | undefined;
+
+    beforeEach(() => { saved = process.env[ENV]; });
+    afterEach(() => {
+        if (saved === undefined) delete process.env[ENV];
+        else process.env[ENV] = saved;
+    });
+
+    it('defaults warmClientTtlMs to 300000 when the env override is absent', () => {
+        delete process.env[ENV];
+        const svc = createMockRuntimeConfigService();
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.warmClientTtlMs).toBe(300000);
+    });
+
+    it('reflects COC_WARM_CLIENT_TTL_MS from the environment', () => {
+        process.env[ENV] = '120000';
+        const svc = createMockRuntimeConfigService();
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.warmClientTtlMs).toBe(120000);
+    });
+
+    it('surfaces 0 when warming is disabled', () => {
+        process.env[ENV] = '0';
+        const svc = createMockRuntimeConfigService();
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.warmClientTtlMs).toBe(0);
+    });
+
+    it('falls back to 300000 for an invalid (negative) env value', () => {
+        process.env[ENV] = '-5';
+        const svc = createMockRuntimeConfigService();
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.warmClientTtlMs).toBe(300000);
+    });
+});
+
 describe('AC-01: workItems.hierarchy.enabled live enablement end-to-end', () => {
     it('workItems.hierarchy.enabled update through service is reflected in runtime dashboard config', async () => {
         const fs = await import('fs');

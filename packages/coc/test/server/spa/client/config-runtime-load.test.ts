@@ -17,6 +17,7 @@ describe('loadRuntimeConfig', () => {
     let isPullRequestsAutoClassifyTeamEnabled: () => boolean;
     let isContainerMode: () => boolean;
     let getPrewarmDebounceMs: () => number;
+    let getWarmClientTtlMs: () => number;
     let setCurrentAgentId: (id: string | null) => void;
     let _resetRuntimeConfig: () => void;
 
@@ -33,6 +34,7 @@ describe('loadRuntimeConfig', () => {
         isPullRequestsAutoClassifyTeamEnabled = mod.isPullRequestsAutoClassifyTeamEnabled;
         isContainerMode = mod.isContainerMode;
         getPrewarmDebounceMs = mod.getPrewarmDebounceMs;
+        getWarmClientTtlMs = mod.getWarmClientTtlMs;
         setCurrentAgentId = mod.setCurrentAgentId;
         _resetRuntimeConfig = mod._resetRuntimeConfig;
         delete (window as any).__DASHBOARD_CONFIG__;
@@ -142,6 +144,53 @@ describe('loadRuntimeConfig', () => {
 
         await loadRuntimeConfig();
         expect(getPrewarmDebounceMs()).toBe(0);
+    });
+
+    it('reads warmClientTtlMs from the runtime config API response', async () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws' };
+        // Falls back to the 300000ms default before any config is loaded.
+        expect(getWarmClientTtlMs()).toBe(300000);
+
+        vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                revision: 1,
+                features: { ralphEnabled: false, warmClientTtlMs: 120000 },
+            }),
+        } as Response);
+
+        await loadRuntimeConfig();
+        expect(getWarmClientTtlMs()).toBe(120000);
+    });
+
+    it('falls back to the 300000ms default when warmClientTtlMs is absent or invalid', async () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws' };
+
+        vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                revision: 1,
+                features: { ralphEnabled: false, warmClientTtlMs: -5 },
+            }),
+        } as Response);
+
+        await loadRuntimeConfig();
+        expect(getWarmClientTtlMs()).toBe(300000);
+    });
+
+    it('honors warmClientTtlMs = 0 (warming disabled) from the runtime config', async () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws' };
+
+        vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                revision: 1,
+                features: { ralphEnabled: false, warmClientTtlMs: 0 },
+            }),
+        } as Response);
+
+        await loadRuntimeConfig();
+        expect(getWarmClientTtlMs()).toBe(0);
     });
 
     it('falls back to bootstrap config on fetch failure', async () => {
