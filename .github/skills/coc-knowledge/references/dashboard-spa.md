@@ -411,6 +411,10 @@ parent isn't another captured Task — or whose parent chain is cyclic — attac
 to the orchestrator. From the call's args it captures the agent name (`args.name`,
 falling back to `description`/`prompt`), type (`agent_type`/`subagent_type`),
 `model`, `mode`, `description`, and `prompt`; status/timing come from the call.
+For background `task` calls whose immediate result is only an `agent_id`
+startup acknowledgement, the tree correlates that id with later `read_agent`
+tool calls and uses the completed agent output for the node's result/summary and
+completion time.
 Children are deduped across `toolCalls`+timeline — keeping the snapshot with
 non-empty args, since a terminal `tool-complete` often carries empty args while
 an earlier snapshot holds the full invocation — and ordered by start time.
@@ -456,9 +460,12 @@ the sub-agent's own Task id is absent from the synthetic turn, so the renderer
 leaves its direct steps at top level and nests deeper descendants under their
 parents (nested sub-agents render as Task cards), re-rooting the subtree. There
 is no follow-up input in detail mode, and the sub-agent's status (not the
-orchestrator's) drives the streaming tail. Limitation: `content`-type timeline
-items carry no parent linkage, so a sub-agent's prose isn't attributed — its
-Task `result` shows as the closing content instead.
+orchestrator's) drives the streaming tail. For background sub-agents, the closing
+content uses the matching `read_agent` final output when available, rather than
+the `task` startup acknowledgement. Limitation: `content`-type timeline items
+carry no parent linkage, so a sub-agent's prose isn't attributed — its Task
+result (or matching `read_agent` final output) shows as the closing content
+instead.
 Styles live in scoped `agent-canvas.css` (`.agent-canvas`,
 light/dark via `.dark`); there is no clock scrubber (the prototype's replay
 control is dropped — the real view is

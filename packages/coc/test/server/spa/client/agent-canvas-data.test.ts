@@ -192,6 +192,99 @@ describe('buildAgentRunTreeFromTurns', () => {
         expect(child.completedAt! - child.startedAt!).toBe(44_000);
     });
 
+    it('uses read_agent final output for a background task result', () => {
+        const finalResult = 'Build succeeded!\nLog: out/mcp/build/cosmosclient.74.log';
+        const turns = [assistantTurn([
+            tc({
+                id: 'task-build',
+                args: { name: 'build-and-test', mode: 'background', prompt: 'build it' },
+                status: 'completed',
+                startTime: '2026-06-13T10:00:00.000Z',
+                endTime: '2026-06-13T10:00:01.000Z',
+                result: 'Agent started in background with agent_id: build-and-test. You will be notified when it completes.',
+            }),
+            tc({
+                id: 'read-build',
+                toolName: 'read_agent',
+                args: { agent_id: 'build-and-test', wait: true },
+                status: 'completed',
+                startTime: '2026-06-13T10:00:30.000Z',
+                endTime: '2026-06-13T10:00:44.000Z',
+                result: `Agent completed. agent_id: build-and-test, agent_type: task, status: completed\n\n${finalResult}`,
+            }),
+        ])];
+        const child = buildAgentRunTreeFromTurns(turns).children[0];
+        expect(child.result).toBe(finalResult);
+        expect(child.summary).toBe('Build succeeded!');
+        expect(child.completedAt).toBe(Date.parse('2026-06-13T10:00:44.000Z'));
+    });
+
+    it('keeps the start snapshot tool name when the read_agent completion snapshot is unknown', () => {
+        const turns = [assistantTurn(
+            [
+                tc({
+                    id: 'task-build',
+                    args: { name: 'build-and-test', mode: 'background', prompt: 'build it' },
+                    result: 'Agent started in background with agent_id: build-and-test.',
+                }),
+            ],
+            [
+                {
+                    type: 'tool-start',
+                    timestamp: '2026-06-13T10:00:30.000Z',
+                    toolCall: tc({
+                        id: 'read-build',
+                        toolName: 'read_agent',
+                        args: { agent_id: 'build-and-test', wait: true },
+                        status: 'running',
+                    }),
+                },
+                {
+                    type: 'tool-complete',
+                    timestamp: '2026-06-13T10:00:44.000Z',
+                    toolCall: tc({
+                        id: 'read-build',
+                        toolName: 'unknown',
+                        args: {},
+                        status: 'completed',
+                        result: 'Agent completed. agent_id: build-and-test\n\nFinal live result',
+                    }),
+                },
+            ],
+        )];
+        expect(buildAgentRunTreeFromTurns(turns).children[0].result).toBe('Final live result');
+    });
+
+    it('matches read_agent final output to the correct background task by agent_id', () => {
+        const root = buildAgentRunTreeFromTurns([assistantTurn([
+            tc({
+                id: 'task-a',
+                args: { name: 'agent-a', mode: 'background', prompt: 'A' },
+                result: 'Agent started in background with agent_id: agent-a.',
+            }),
+            tc({
+                id: 'task-b',
+                args: { name: 'agent-b', mode: 'background', prompt: 'B' },
+                result: 'Agent started in background with agent_id: agent-b.',
+            }),
+            tc({
+                id: 'read-b',
+                toolName: 'read_agent',
+                args: { agent_id: 'agent-b', wait: true },
+                result: 'Agent completed. agent_id: agent-b\n\nBravo result',
+            }),
+            tc({
+                id: 'read-a',
+                toolName: 'read_agent',
+                args: { agent_id: 'agent-a', wait: true },
+                result: 'Agent completed. agent_id: agent-a\n\nAlpha result',
+            }),
+        ])]);
+        const byId = new Map(root.children.map((child) => [child.id, child]));
+        expect(byId.get('task-a')?.result).toBe('Alpha result');
+        expect(byId.get('task-b')?.result).toBe('Bravo result');
+    });
+
     it('prefers the earliest start / latest end across persisted and timeline snapshots', () => {
         // Persisted row has the true span; a later timeline snapshot re-stamps a
         // start at finish time. Earliest-start / latest-end keeps the true span

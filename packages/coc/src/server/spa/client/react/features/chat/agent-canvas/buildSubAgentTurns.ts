@@ -10,7 +10,7 @@
 // closing content.
 
 import type { ClientConversationTurn, ClientTimelineItem, ClientToolCall } from '../../../types/dashboard';
-import { asRecord, asString, collectToolCalls, rawArgs } from './agentToolCalls';
+import { asRecord, asString, buildAgentCompletionByTaskId, collectToolCalls, rawArgs } from './agentToolCalls';
 
 /**
  * Build `[userTurn, assistantTurn]` for the sub-agent `subAgentId`, or `[]` when
@@ -69,7 +69,8 @@ export function buildSubAgentTurns(
 
     const args = asRecord(rawArgs(task));
     const prompt = asString(args.prompt) || asString(args.description);
-    const result = typeof task.result === 'string' ? task.result : '';
+    const result = buildAgentCompletionByTaskId(all).get(task.id)?.result
+        ?? (typeof task.result === 'string' ? task.result : '');
 
     const userTurn: ClientConversationTurn = {
         role: 'user',

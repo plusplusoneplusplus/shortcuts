@@ -88,6 +88,40 @@ describe('buildSubAgentTurns', () => {
         expect(assistant.toolCalls).toEqual([]);
     });
 
+    it('uses the matching read_agent final output as background-mode assistant content', () => {
+        const turns = [assistantTurn([
+            tc({
+                id: 'bg',
+                toolName: 'task',
+                args: { name: 'build-and-test', mode: 'background', prompt: 'build it' },
+                result: 'Agent started in background with agent_id: build-and-test. You will be notified when it completes.',
+            }),
+            tc({
+                id: 'other-bg',
+                toolName: 'task',
+                args: { name: 'other-agent', mode: 'background', prompt: 'other' },
+                result: 'Agent started in background with agent_id: other-agent.',
+            }),
+            tc({
+                id: 'read-other',
+                toolName: 'read_agent',
+                args: { agent_id: 'other-agent', wait: true },
+                result: 'Agent completed. agent_id: other-agent\n\nOther final result',
+            }),
+            tc({
+                id: 'read-bg',
+                toolName: 'read_agent',
+                args: { agent_id: 'build-and-test', wait: true },
+                result: 'Agent completed. agent_id: build-and-test\n\nBuild failed with C2065',
+            }),
+        ])];
+        const [user, assistant] = buildSubAgentTurns(turns, 'bg');
+        expect(user.content).toBe('build it');
+        expect(assistant.content).toBe('Build failed with C2065');
+        expect(assistant.content).not.toContain('started in background');
+        expect(assistant.content).not.toContain('Other final result');
+    });
+
     it('returns a valid pair for a sub-agent with zero child steps', () => {
         const turns = [assistantTurn([
             tc({ id: 'lonely', toolName: 'task', args: { prompt: 'just me' }, result: 'ok' }),
