@@ -253,6 +253,35 @@ describe('WarmClientRegistry', () => {
         expect(registry.isActive(KEY)).toBe(true);
     });
 
+    it('rolls back the refcount when a send attached mid-warm and the warm fails', async () => {
+        // Regression: a send attaching to an in-flight prewarm bumps activeCount
+        // before awaiting the shared warming promise. If that warm then rejects,
+        // the bump must be rolled back — otherwise the entry leaks activeCount,
+        // permanently no-op'ing prewarm and blocking idle-TTL teardown for the key.
+        const registry = makeRegistry();
+        const deferred = makeDeferred<WarmClientHandle>();
+        const factory = vi.fn(() => deferred.promise);
+
+        const prewarmP = registry.prewarm(KEY, factory);
+        // Send arrives before warming resolves and attaches to the same warm.
+        const acquireP = registry.acquire(KEY, factory);
+
+        deferred.reject(new Error('spawn failed'));
+        await expect(acquireP).rejects.toThrow('spawn failed');
+        await prewarmP;
+
+        // No leaked refcount or orphan entry.
+        expect(factory).toHaveBeenCalledTimes(1);
+        expect(registry.has(KEY)).toBe(false);
+        expect(registry.isActive(KEY)).toBe(false);
+        expect(registry.size()).toBe(0);
+
+        // The key is not poisoned: a later prewarm still warms and parks.
+        const handle = makeHandle();
+        await registry.prewarm(KEY, () => Promise.resolve(handle));
+        expect(registry.isWarm(KEY)).toBe(true);
+    });
+
     // ── Factory rejection rollback ───────────────────────────────────────
 
     it('rolls back and leaves no entry when a cold-start factory rejects', async () => {
