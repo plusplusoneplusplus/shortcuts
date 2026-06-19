@@ -287,9 +287,13 @@ export class PullRequestsClient {
 
   // ── Pull-request chat bindings ──────────────────────────────────
 
-  listChatBindingsForOrigin(originId: string): Promise<PullRequestChatBindingListResponse> {
+  listChatBindingsForOrigin(
+    originId: string,
+    options?: { taskId?: string },
+  ): Promise<PullRequestChatBindingListResponse> {
     return this.transport.request<PullRequestChatBindingListResponse>(
       `/origins/${encodePathSegment(originId)}/pull-request-chat-bindings`,
+      options?.taskId ? { query: { taskId: options.taskId } } : undefined,
     );
   }
 

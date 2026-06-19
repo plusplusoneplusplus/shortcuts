@@ -38,6 +38,12 @@ function queryWorkspaceId(req: import('http').IncomingMessage): string | undefin
     return raw || undefined;
 }
 
+function queryTaskId(req: import('http').IncomingMessage): string | undefined {
+    const parsed = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    const raw = parsed.searchParams.get('taskId')?.trim();
+    return raw || undefined;
+}
+
 function bodyWorkspaceId(body: unknown): string | undefined {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
     const raw = (body as Record<string, unknown>).workspaceId;
@@ -133,6 +139,8 @@ export function registerPrChatRoutes(ctx: ApiRouteContext): void {
     });
 
     // GET /api/origins/:originId/pull-request-chat-bindings — List all bindings
+    //   Optional `?taskId=` filter restricts the result to a single chat task,
+    //   used on chat load to recover the PRs a conversation created.
     routes.push({
         method: 'GET',
         pattern: PR_CHAT_COLLECTION_PATTERN,
@@ -140,7 +148,11 @@ export function registerPrChatRoutes(ctx: ApiRouteContext): void {
             const originId = decodeURIComponent(match![1]);
             try {
                 const scope = await resolvePrChatBindingScope(ctx, originId, queryWorkspaceId(req), false);
-                sendJSON(res, 200, { bindings: bindingStore.list(scope.scopeId, scope.legacyScopeIds) });
+                const taskId = queryTaskId(req);
+                const bindings = taskId
+                    ? bindingStore.listByTaskId(scope.scopeId, taskId, scope.legacyScopeIds)
+                    : bindingStore.list(scope.scopeId, scope.legacyScopeIds);
+                sendJSON(res, 200, { bindings });
             } catch (error) {
                 handleAPIError(res, error);
             }

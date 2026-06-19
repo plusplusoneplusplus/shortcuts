@@ -336,6 +336,20 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
+  it('lists chat bindings filtered by taskId when provided', async () => {
+    const adapter = createMockAdapter({ bindings: {} });
+    const client = new PullRequestsClient(adapter);
+
+    await client.listChatBindingsForOrigin('gh_owner_repo', { taskId: 'chat-7' });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-request-chat-bindings',
+        options: { query: { taskId: 'chat-7' } },
+      },
+    ]);
+  });
+
   it('classifyForOrigin sends POST with origin metadata and encoded PR identifier', async () => {
     const adapter = createMockAdapter({ status: 'started', taskId: 'task-1' });
     const client = new PullRequestsClient(adapter);
