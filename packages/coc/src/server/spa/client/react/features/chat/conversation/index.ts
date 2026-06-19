@@ -9,6 +9,8 @@ export type { RenderToolCall, ToolCallGroupViewProps } from './tool-calls/ToolCa
 export { ToolResultPopover } from './tool-calls/ToolResultPopover';
 export { WhisperCollapsedGroup } from './tool-calls/WhisperCollapsedGroup';
 export { CommitStrip } from './CommitStrip';
+export { PrStatusCard } from './PrStatusCard';
+export type { PrStatusCardProps, PrStatusCardItem, PrStatusCardItemState, PrStatusCardPr } from './PrStatusCard';
 export { JsonResponseView } from '../../../ui/JsonResponseView';
 export { NoteEditCard } from './NoteEditCard';
 export { ScriptTerminalBlock, highlightTerminalLine } from './ScriptTerminalBlock';

@@ -114,6 +114,18 @@ function stripDotGit(s: string): string {
 }
 
 /**
+ * Build the dashboard hash-route that deep-links into the existing
+ * `PullRequestDetail` view for a PR, opening its overview sub-tab.
+ *
+ * Centralizes the `#repos/{repoId}/pull-requests/{prNumber}/overview` shape so
+ * the PR status card and the Pull Requests tab share one definition. Both
+ * segments are URL-encoded.
+ */
+export function buildPrDetailHash(repoId: string, prNumber: number | string): string {
+    return `#repos/${encodeURIComponent(String(repoId))}/pull-requests/${encodeURIComponent(String(prNumber))}/overview`;
+}
+
+/**
  * Normalize a repository remote URL into `{ host, owner, repo }`.
  *
  * Recognizes the common shapes used by GitHub, GitHub Enterprise, and
