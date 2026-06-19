@@ -48,6 +48,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isForEachEnabled: () => mockForEachEnabled.value,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled.value,
     getPrewarmDebounceMs: () => 500,
+    getWarmClientTtlMs: () => 300000,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({

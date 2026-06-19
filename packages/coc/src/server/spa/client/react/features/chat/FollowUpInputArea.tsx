@@ -20,6 +20,7 @@ import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { usePrewarmClient } from './hooks/usePrewarmClient';
+import { WarmIndicatorDot } from './WarmIndicatorDot';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_TOOLTIPS, cycleMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
@@ -34,7 +35,7 @@ import {
 } from '../../utils/composerKeyboardShortcuts';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import type { ChatAttachment } from '../../types/attachments';
-import { isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled, getPrewarmDebounceMs } from '../../utils/config';
+import { isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled, getPrewarmDebounceMs, getWarmClientTtlMs } from '../../utils/config';
 import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
 import {
     dataTransferHasAnyData,
@@ -272,13 +273,18 @@ export function FollowUpInputArea({
 
     // Prewarm the provider client for the next turn while the user is typing a
     // follow-up (AC-05). Suppressed while a turn is generating or the session is
-    // expired — the server would no-op those anyway. No UI indicator.
-    usePrewarmClient({
+    // expired — the server would no-op those anyway. The returned status feeds
+    // the tiny "session warm" indicator next to the send button (AC-03); the
+    // surfaced TTL drives its client-side decay timer. When the TTL is 0
+    // (warming disabled) the status stays `idle`, so the dot never lights up
+    // (AC-04 kill-switch).
+    const warmStatus = usePrewarmClient({
         input: followUpInput,
         workspaceId: activeWorkspaceId,
         processId: activeProcessId,
         enabled: !inputDisabled && !isActiveGeneration,
         debounceMs: getPrewarmDebounceMs(),
+        ttlMs: getWarmClientTtlMs(),
     });
 
     // Reset dismiss state whenever a new set of suggestions arrives.
@@ -792,6 +798,7 @@ export function FollowUpInputArea({
                             >✕</button>
                         </div>
                     )}
+                    <WarmIndicatorDot status={warmStatus} className="mx-1" />
                     {isActiveGeneration ? stopButton : (
                         <SendButton
                             disabled={inputDisabled || sending}
@@ -1147,6 +1154,7 @@ export function FollowUpInputArea({
                                 />
                             </div>
                             <span aria-hidden="true" data-testid="chat-toolbar-divider-send" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
+                            <WarmIndicatorDot status={warmStatus} className="mr-1 self-center" />
                             {isActiveGeneration ? stopButton : (
                                 <QueueFollowUpButton
                                     disabled={inputDisabled || sending}
