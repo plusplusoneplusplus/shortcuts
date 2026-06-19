@@ -56,6 +56,56 @@ export interface Reviewer {
     isRequired: boolean;
 }
 
+// ── Canonical auto-merge / auto-complete status ──────────────
+
+/**
+ * Unified lifecycle state for a pull request's auto-merge (GitHub) /
+ * auto-complete (Azure DevOps) configuration.
+ *
+ * - `not-enabled` auto-merge / auto-complete is not set on the PR
+ * - `armed`       enabled and waiting on requirements; will merge when ready
+ * - `queued`      the merge is queued or in progress
+ * - `blocked`     enabled but currently cannot complete (see `blockedReason`)
+ */
+export type AutoMergeState = 'not-enabled' | 'armed' | 'queued' | 'blocked';
+
+/**
+ * Why an armed auto-merge / auto-complete is currently blocked.
+ *
+ * - `failing-checks` one or more required/blocking checks are failing
+ * - `pending-review` required reviews/approvals or branch policies not satisfied
+ * - `conflicts`      the source branch conflicts with the target branch
+ * - `blocked`        blocked for an unspecified / other reason
+ */
+export type AutoMergeBlockedReason =
+    | 'failing-checks'
+    | 'pending-review'
+    | 'conflicts'
+    | 'blocked';
+
+/**
+ * Provider-agnostic auto-merge / auto-complete status. GitHub adapters map it
+ * from REST `pulls.get` (`auto_merge` / `mergeable` / `mergeable_state`); ADO
+ * adapters map it from `autoCompleteSetBy` / `completionOptions` / `mergeStatus`.
+ * The UI renders one indicator with a provider-aware label ("Auto-merge" for
+ * GitHub, "Auto-complete" for Azure DevOps).
+ */
+export interface PullRequestAutoMerge {
+    /** Whether auto-merge (GitHub) / auto-complete (ADO) is enabled. */
+    enabled: boolean;
+    /** Unified lifecycle state. */
+    state: AutoMergeState;
+    /** Identity that enabled auto-merge / auto-complete, when known. */
+    enabledBy?: Identity;
+    /**
+     * Normalized merge method the provider will use when it completes:
+     * 'merge' | 'squash' | 'rebase' | 'rebase-merge', when exposed.
+     */
+    mergeMethod?: string;
+    /** Reason the merge is blocked — only set when `state` is 'blocked'. */
+    blockedReason?: AutoMergeBlockedReason;
+}
+
 // ── Canonical pull-request check / status ────────────────────
 
 /**
@@ -199,6 +249,12 @@ export interface PullRequest {
     headSha?: string;
     /** SHA of the PR base (target branch) commit. */
     baseSha?: string;
+    /**
+     * Unified auto-merge (GitHub) / auto-complete (ADO) status, when resolvable.
+     * Populated from the provider's PR-detail fetch; list responses may omit the
+     * underlying source fields, in which case this reports `not-enabled`.
+     */
+    autoMerge?: PullRequestAutoMerge;
     /** Provider-specific raw object, for fields not in the canonical shape. */
     raw?: unknown;
 }

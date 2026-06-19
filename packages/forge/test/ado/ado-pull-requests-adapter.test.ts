@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AdoPullRequestsAdapter } from '../../src/ado/ado-pull-requests-adapter';
+import { AdoPullRequestsAdapter, mapAdoAutoMerge } from '../../src/ado/ado-pull-requests-adapter';
 import type { AdoPullRequestsService } from '../../src/ado/pull-requests-service';
 import { VersionControlChangeType } from '../../src/ado/pull-requests-service';
+import {
+    GitPullRequestMergeStrategy,
+    PullRequestAsyncStatus,
+} from 'azure-devops-node-api/interfaces/GitInterfaces';
+import type { GitPullRequest } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import type { PullRequest, CommentThread, Reviewer } from '../../src/providers/types';
 import { setLogger, nullLogger } from '../../src/logger';
 import type { Logger } from '../../src/logger';
@@ -1046,6 +1051,99 @@ describe('AdoPullRequestsAdapter', () => {
 
             const debugCalls = (mockLogger.debug as ReturnType<typeof vi.fn>).mock.calls;
             expect(debugCalls.length).toBe(0);
+        });
+    });
+
+    // ── auto-complete (auto-merge) mapping (AC-04) ───────────
+    describe('mapAdoAutoMerge', () => {
+        const setBy = { id: 'user-9', displayName: 'Dana', uniqueName: 'dana@example.com' };
+        function prWith(overrides: Partial<GitPullRequest>): GitPullRequest {
+            return { ...mockAdoPr, ...overrides } as unknown as GitPullRequest;
+        }
+
+        it('reports not-enabled when autoCompleteSetBy is absent (off)', () => {
+            expect(mapAdoAutoMerge(prWith({}))).toEqual({ enabled: false, state: 'not-enabled' });
+        });
+
+        it('reports armed with enabledBy + merge method when set and merge succeeded (on)', () => {
+            const result = mapAdoAutoMerge(prWith({
+                autoCompleteSetBy: setBy,
+                completionOptions: { mergeStrategy: GitPullRequestMergeStrategy.Squash },
+                mergeStatus: PullRequestAsyncStatus.Succeeded,
+            }));
+            expect(result.enabled).toBe(true);
+            expect(result.state).toBe('armed');
+            expect(result.mergeMethod).toBe('squash');
+            expect(result.enabledBy).toEqual({
+                id: 'user-9',
+                displayName: 'Dana',
+                email: 'dana@example.com',
+                avatarUrl: undefined,
+            });
+            expect(result.blockedReason).toBeUndefined();
+        });
+
+        it('reports armed when mergeStatus is NotSet/unknown', () => {
+            const result = mapAdoAutoMerge(prWith({
+                autoCompleteSetBy: setBy,
+                completionOptions: { mergeStrategy: GitPullRequestMergeStrategy.NoFastForward },
+            }));
+            expect(result.state).toBe('armed');
+            expect(result.mergeMethod).toBe('merge');
+        });
+
+        it('falls back to squash via deprecated squashMerge flag', () => {
+            const result = mapAdoAutoMerge(prWith({
+                autoCompleteSetBy: setBy,
+                completionOptions: { squashMerge: true },
+                mergeStatus: PullRequestAsyncStatus.Succeeded,
+            }));
+            expect(result.mergeMethod).toBe('squash');
+        });
+
+        it('reports queued when the merge is queued', () => {
+            const result = mapAdoAutoMerge(prWith({
+                autoCompleteSetBy: setBy,
+                mergeStatus: PullRequestAsyncStatus.Queued,
+            }));
+            expect(result).toMatchObject({ enabled: true, state: 'queued' });
+        });
+
+        it('reports blocked/conflicts on merge conflicts (blocked)', () => {
+            const result = mapAdoAutoMerge(prWith({
+                autoCompleteSetBy: setBy,
+                mergeStatus: PullRequestAsyncStatus.Conflicts,
+            }));
+            expect(result).toMatchObject({ enabled: true, state: 'blocked', blockedReason: 'conflicts' });
+        });
+
+        it('reports blocked/pending-review when rejected by policy', () => {
+            const result = mapAdoAutoMerge(prWith({
+                autoCompleteSetBy: setBy,
+                mergeStatus: PullRequestAsyncStatus.RejectedByPolicy,
+            }));
+            expect(result).toMatchObject({ state: 'blocked', blockedReason: 'pending-review' });
+        });
+
+        it('reports generic blocked on merge failure', () => {
+            const result = mapAdoAutoMerge(prWith({
+                autoCompleteSetBy: setBy,
+                mergeStatus: PullRequestAsyncStatus.Failure,
+            }));
+            expect(result).toMatchObject({ state: 'blocked', blockedReason: 'blocked' });
+        });
+
+        it('surfaces autoMerge through getPullRequest', async () => {
+            service = makeMockService({
+                getPullRequestById: vi.fn().mockResolvedValue(prWith({
+                    autoCompleteSetBy: setBy,
+                    completionOptions: { mergeStrategy: GitPullRequestMergeStrategy.Rebase },
+                    mergeStatus: PullRequestAsyncStatus.Queued,
+                })),
+            });
+            adapter = new AdoPullRequestsAdapter(service, 'my-project');
+            const pr = await adapter.getPullRequest('repo-id', 42);
+            expect(pr.autoMerge).toMatchObject({ enabled: true, state: 'queued', mergeMethod: 'rebase' });
         });
     });
 });

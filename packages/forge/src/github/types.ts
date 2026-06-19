@@ -15,6 +15,17 @@ export interface GitHubLabel {
     color: string;
 }
 
+/**
+ * Auto-merge configuration on a pull request. Returned (non-null) by
+ * `pulls.get` only when auto-merge has been enabled; `null`/absent otherwise.
+ */
+export interface GitHubAutoMerge {
+    enabled_by?: GitHubUser | null;
+    merge_method?: 'merge' | 'squash' | 'rebase' | null;
+    commit_title?: string | null;
+    commit_message?: string | null;
+}
+
 export interface GitHubPullRequest {
     id: number;
     number: number;
@@ -31,6 +42,21 @@ export interface GitHubPullRequest {
     closed_at: string | null;
     html_url: string;
     labels: GitHubLabel[];
+    /**
+     * Auto-merge config — present (non-null) only when auto-merge is enabled.
+     * Returned by `pulls.get`, not by `pulls.list`.
+     */
+    auto_merge?: GitHubAutoMerge | null;
+    /**
+     * Whether the PR is mergeable; `null` while GitHub is still computing it.
+     * Returned by `pulls.get`.
+     */
+    mergeable?: boolean | null;
+    /**
+     * Detailed mergeability: 'clean' | 'dirty' | 'blocked' | 'behind' |
+     * 'unstable' | 'has_hooks' | 'draft' | 'unknown'. Returned by `pulls.get`.
+     */
+    mergeable_state?: string;
 }
 
 export interface GitHubReview {
