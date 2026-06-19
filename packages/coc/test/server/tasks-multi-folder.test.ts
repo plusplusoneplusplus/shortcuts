@@ -431,4 +431,81 @@ describe('Tasks Multi-Folder HTTP API', () => {
         expect(body.tasks.name).not.toBe('Tasks');
     });
 
+    // ------------------------------------------------------------------
+    // PATCH /tasks/content with multi-folder
+    // ------------------------------------------------------------------
+
+    it('PATCH /tasks/content writes to a file in an additional folder via folderPath', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        // Create additional tasks folder with a file
+        const extraDir = path.join(workspaceDir, 'extra-tasks');
+        createTaskFilesInDir(extraDir, {
+            'plan.md': '# Original',
+        });
+
+        // Configure multi-folder
+        await writeTasksSettings(dataDir, wsId, { folderPaths: [extraDir] });
+
+        const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+            path: 'plan.md',
+            content: '# Updated via folderPath',
+            folderPath: extraDir,
+        });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.updated).toBe(true);
+
+        // Verify file was actually written
+        const written = fs.readFileSync(path.join(extraDir, 'plan.md'), 'utf-8');
+        expect(written).toBe('# Updated via folderPath');
+    });
+
+    it('PATCH /tasks/content resolves file in additional folder without folderPath hint', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        // Create additional tasks folder with a file
+        const extraDir = path.join(workspaceDir, 'extra-tasks');
+        createTaskFilesInDir(extraDir, {
+            'extra-plan.md': '# Extra Original',
+        });
+
+        // Configure multi-folder
+        await writeTasksSettings(dataDir, wsId, { folderPaths: [extraDir] });
+
+        // Write without folderPath — server should find the file across all roots
+        const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+            path: 'extra-plan.md',
+            content: '# Updated without folderPath',
+        });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.updated).toBe(true);
+
+        const written = fs.readFileSync(path.join(extraDir, 'extra-plan.md'), 'utf-8');
+        expect(written).toBe('# Updated without folderPath');
+    });
+
+    it('PATCH /tasks/content rejects folderPath that is not a configured task root', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        // Create a directory with a file but don't configure it as a task root
+        const unconfigured = path.join(workspaceDir, 'unconfigured');
+        createTaskFilesInDir(unconfigured, {
+            'plan.md': '# Content',
+        });
+
+        const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+            path: 'plan.md',
+            content: '# Hacked',
+            folderPath: unconfigured,
+        });
+        // Should fall through to primary root check, then additional roots, then workspace fallback
+        // Since the file doesn't exist in any of those, it should fail
+        expect(res.status).not.toBe(200);
+    });
+
 });

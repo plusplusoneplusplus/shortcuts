@@ -13,6 +13,7 @@ interface TaskActionsProps {
     openFilePath: string | null;
     selectedFilePaths: string[];
     tasksFolderPath: string;
+    openFileTaskRootPath?: string | null;
     selectedFolderPath?: string | null;
     onClearSelection: () => void;
     /** When true, omit the bottom border (used when embedded in a toolbar with its own border). */
@@ -25,7 +26,7 @@ function copyToClipboard(text: string): void {
     }
 }
 
-export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolderPath, selectedFolderPath, onClearSelection, noBorder }: TaskActionsProps) {
+export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolderPath, openFileTaskRootPath, selectedFolderPath, onClearSelection, noBorder }: TaskActionsProps) {
     const { showContextFiles, toggleShowContextFiles } = useTaskPanel();
     const nonContextSelected = selectedFilePaths.filter(p => {
         const parts = p.split('/');
@@ -35,7 +36,8 @@ export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolder
 
     const handleCopyPath = () => {
         if (openFilePath) {
-            copyToClipboard(`${tasksFolderPath.replace(/\\/g, '/')}/${openFilePath}`);
+            const root = openFileTaskRootPath || tasksFolderPath;
+            copyToClipboard(`${root.replace(/\\/g, '/')}/${openFilePath}`);
         }
     };
 

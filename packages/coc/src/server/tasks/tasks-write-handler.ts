@@ -121,7 +121,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { path: filePath, content, expectedMtime } = body || {};
+            const { path: filePath, content, expectedMtime, folderPath: clientFolderPath } = body || {};
             if (!filePath || typeof filePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
@@ -129,8 +129,36 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 return sendError(res, 400, 'Missing required field: content');
             }
 
-            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
-            let resolvedPath = resolveAndValidatePath(tasksFolder, filePath);
+            // Resolve the task root: prefer client-supplied folderPath, fall back to primary root,
+            // then check additional configured roots before the workspace fallback.
+            let resolvedPath: string | null = null;
+            if (clientFolderPath && typeof clientFolderPath === 'string') {
+                const settings = await readTasksSettings(dataDir, ws.id);
+                const allRoots = resolveAllTaskRoots({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }, settings.folderPaths);
+                const rootMatch = allRoots.find(r => path.resolve(r.absolutePath) === path.resolve(clientFolderPath));
+                if (rootMatch) {
+                    resolvedPath = resolveAndValidatePath(rootMatch.absolutePath, filePath);
+                }
+            }
+            if (!resolvedPath) {
+                const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
+                const candidate = resolveAndValidatePath(tasksFolder, filePath);
+                if (candidate && fs.existsSync(candidate)) {
+                    resolvedPath = candidate;
+                }
+            }
+            if (!resolvedPath) {
+                // Check all additional configured roots before falling back to workspace root.
+                const settings = await readTasksSettings(dataDir, ws.id);
+                const allRoots = resolveAllTaskRoots({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }, settings.folderPaths);
+                for (const root of allRoots) {
+                    const candidate = resolveAndValidatePath(root.absolutePath, filePath);
+                    if (candidate && fs.existsSync(candidate)) {
+                        resolvedPath = candidate;
+                        break;
+                    }
+                }
+            }
             if (!resolvedPath) {
                 // Allow writing arbitrary workspace markdown files
                 // (mirrors the PATCH /tasks fallback). Used by the

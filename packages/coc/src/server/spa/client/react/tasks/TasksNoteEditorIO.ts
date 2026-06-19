@@ -43,19 +43,20 @@ async function withSpaErrors<T>(request: Promise<T>): Promise<T> {
  */
 export function createTasksNoteEditorIO(): NoteEditorIO {
     return {
-        async loadContent(workspaceId, path) {
+        async loadContent(workspaceId, path, root?) {
             const res = await withSpaErrors(
-                getSpaCocClient().tasks.getContent(workspaceId, path),
+                getSpaCocClient().tasks.getContent(workspaceId, path, root ? { folder: root } : undefined),
             );
             return { content: res.content, path: res.path, mtime: res.mtime };
         },
 
-        async saveContent(workspaceId, path, markdown, expectedMtime?) {
+        async saveContent(workspaceId, path, markdown, expectedMtime?, root?) {
             const res = await withConflictError(
                 getSpaCocClient().tasks.writeContent(workspaceId, {
                     path,
                     content: markdown,
                     expectedMtime,
+                    ...(root ? { folderPath: root } : {}),
                 }),
             );
             return { path: res.path, updated: res.updated, mtime: res.mtime };

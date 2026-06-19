@@ -62,13 +62,18 @@ describe('RichTextInput', () => {
         expect(wasCancelled).toBe(true);
     });
 
-    it('paste without images: does not call preventDefault', () => {
+    it('paste without images: always prevents default for plain-text paste', () => {
         const onPaste = vi.fn(); // does NOT call preventDefault
+        document.execCommand = vi.fn().mockReturnValue(true);
         render(<RichTextInput onPaste={onPaste} onChange={vi.fn()} data-testid="rich" />);
         const div = screen.getByTestId('rich');
-        const wasNotCancelled = fireEvent.paste(div);
+        const wasCancelled = !fireEvent.paste(div, {
+            clipboardData: { getData: () => 'plain text' },
+        });
         expect(onPaste).toHaveBeenCalled();
-        expect(wasNotCancelled).toBe(true);
+        // Now always prevented to force plain-text insertion
+        expect(wasCancelled).toBe(true);
+        expect(document.execCommand).toHaveBeenCalledWith('insertText', false, 'plain text');
     });
 
     it('imperative getValue and setValue', () => {
@@ -222,10 +227,30 @@ describe('RichTextInput', () => {
         expect(getSelectionSpy).not.toHaveBeenCalled();
     });
 
-    // Regression: contentEditable div must have white-space:pre-wrap so browsers preserve
-    // trailing spaces after Tab-autocomplete (e.g. "/impl " stays "/impl " — not "/impl").
-    // Without this class, Chromium strips trailing whitespace from text nodes under
-    // white-space:normal, causing the cursor to land before the space and breaking typing.
+    // Regression: pasting rich HTML should strip formatting and insert plain text only.
+    it('paste strips HTML formatting and inserts plain text only', () => {
+        document.execCommand = vi.fn().mockReturnValue(true);
+        render(<RichTextInput onChange={vi.fn()} data-testid="rich" />);
+        const div = screen.getByTestId('rich');
+        const wasCancelled = !fireEvent.paste(div, {
+            clipboardData: {
+                getData: (type: string) => type === 'text/plain' ? 'just plain text' : '<b>just plain text</b>',
+            },
+        });
+        expect(wasCancelled).toBe(true);
+        expect(document.execCommand).toHaveBeenCalledWith('insertText', false, 'just plain text');
+    });
+
+    it('paste with empty clipboard does not call execCommand', () => {
+        document.execCommand = vi.fn().mockReturnValue(true);
+        render(<RichTextInput onChange={vi.fn()} data-testid="rich" />);
+        const div = screen.getByTestId('rich');
+        fireEvent.paste(div, {
+            clipboardData: { getData: () => '' },
+        });
+        expect(document.execCommand).not.toHaveBeenCalled();
+    });
+
     it('contentEditable div has whitespace-pre-wrap class (browser trailing-space preservation)', () => {
         render(<RichTextInput onChange={vi.fn()} data-testid="rich-ws" />);
         const div = screen.getByTestId('rich-ws');
