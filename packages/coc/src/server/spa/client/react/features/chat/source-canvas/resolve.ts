@@ -4,6 +4,7 @@
  * Given a clicked file reference and the known workspaces, decide which
  * workspace to fetch from and which path to fetch:
  *  - relative paths are resolved against the directory of `sourceFilePath`;
+ *  - workspace-relative paths are resolved against the selected workspace root;
  *  - the workspace is chosen by longest-prefix `rootPath` match (mirroring
  *    `FilePreview` and the App-level md-link handler), honoring an explicit
  *    `wsId` hint when present and falling back to the first workspace.
@@ -23,7 +24,7 @@ export interface SourceCanvasWorkspace {
 export interface SourceCanvasTarget {
     /** Workspace id to fetch from. */
     wsId: string;
-    /** Path to fetch (absolute, or workspace-relative for the preview API). */
+    /** Absolute path to fetch through the preview API. */
     path: string;
 }
 
@@ -38,11 +39,47 @@ function normalize(p: string): string {
     return p.replace(/\\/g, '/');
 }
 
+function trimTrailingSlashes(p: string): string {
+    return normalize(p).replace(/\/+$/, '');
+}
+
 /** Directory portion of a (possibly Windows) path, normalized to `/`. */
 function dirOf(p: string): string {
     const n = normalize(p);
     const idx = n.lastIndexOf('/');
     return idx >= 0 ? n.slice(0, idx) : '';
+}
+
+function findWorkspaceById(
+    id: string | undefined,
+    workspaces: ReadonlyArray<SourceCanvasWorkspace>,
+): SourceCanvasWorkspace | undefined {
+    return id ? workspaces.find((ws) => ws.id === id) : undefined;
+}
+
+function isSameOrWithinRoot(filePath: string, rootPath: string): boolean {
+    const normalizedFile = trimTrailingSlashes(filePath).toLowerCase();
+    const normalizedRoot = trimTrailingSlashes(rootPath).toLowerCase();
+    return !!normalizedRoot && (
+        normalizedFile === normalizedRoot ||
+        normalizedFile.startsWith(`${normalizedRoot}/`)
+    );
+}
+
+function findBestWorkspaceForPath(
+    filePath: string,
+    workspaces: ReadonlyArray<SourceCanvasWorkspace>,
+): SourceCanvasWorkspace | undefined {
+    let best: SourceCanvasWorkspace | undefined;
+    for (const ws of workspaces) {
+        const root = ws.rootPath ? trimTrailingSlashes(ws.rootPath) : '';
+        if (root && isSameOrWithinRoot(filePath, root)) {
+            if (!best || root.length > trimTrailingSlashes(best.rootPath || '').length) {
+                best = ws;
+            }
+        }
+    }
+    return best;
 }
 
 /** Type guard: the resolution failed (no resolvable workspace). */
@@ -58,28 +95,35 @@ export function resolveSourceCanvasTarget(
 ): SourceCanvasTarget | SourceCanvasResolveError {
     // 1. Resolve relative refs against the directory of the source file.
     let path = fileRef.fullPath;
+    if (!isAbsolutePath(path)) {
+        path = normalize(path);
+    }
     if (!isAbsolutePath(path) && fileRef.sourceFilePath) {
         path = resolveRelativePath(dirOf(fileRef.sourceFilePath), path);
     }
 
     // 2. Pick a workspace: explicit hint → longest rootPath prefix → first.
-    let wsId = fileRef.wsId;
-    if (!wsId) {
-        const normalizedFile = normalize(path);
-        let best: { id: string; len: number } | null = null;
-        for (const ws of workspaces) {
-            const root = ws.rootPath ? normalize(ws.rootPath) : '';
-            if (root && normalizedFile.startsWith(root)) {
-                if (!best || root.length > best.len) {
-                    best = { id: ws.id, len: root.length };
-                }
-            }
-        }
-        wsId = best?.id ?? workspaces[0]?.id;
-    }
+    const hintedWorkspace = findWorkspaceById(fileRef.wsId, workspaces);
+    const matchedWorkspace = isAbsolutePath(path)
+        ? findBestWorkspaceForPath(path, workspaces)
+        : undefined;
+    const fallbackWorkspace = fileRef.wsId ? undefined : workspaces[0];
+    const workspace = hintedWorkspace ?? matchedWorkspace ?? fallbackWorkspace;
+    const wsId = fileRef.wsId ?? workspace?.id;
 
     if (!wsId) {
         return { error: 'No workspace available', attemptedPath: path };
     }
+
+    // 3. The preview API requires an absolute path; anchor workspace-relative
+    // chat refs at the chosen workspace root before fetching.
+    if (!isAbsolutePath(path)) {
+        const root = workspace?.rootPath ? trimTrailingSlashes(workspace.rootPath) : '';
+        if (!root) {
+            return { error: 'No workspace root available', attemptedPath: path };
+        }
+        path = resolveRelativePath(root, path);
+    }
+
     return { wsId, path };
 }

@@ -1,9 +1,9 @@
 /**
  * useSourceCanvasContent — loads file content for the docked source canvas
  * (AC-06). Resolves the workspace + path (longest-prefix `rootPath` match,
- * relative paths against `sourceFilePath`), fetches via the existing
- * `previewWorkspaceFile` endpoint, and exposes explicit loading / success /
- * error states.
+ * relative paths against `sourceFilePath` or the workspace root), fetches via
+ * the existing `previewWorkspaceFile` endpoint, and exposes explicit loading /
+ * success / error states.
  *
  * An unresolvable or missing path still resolves to an `error` state — the
  * canvas stays open with a clear "couldn't load <path>" message rather than

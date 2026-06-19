@@ -2,8 +2,8 @@
  * Tests for resolveSourceCanvasTarget — pure path + workspace resolution for
  * the docked source canvas (AC-06). Covers explicit wsId hints, longest-prefix
  * rootPath matching, first-workspace fallback, relative-path resolution against
- * the source file, Windows path normalization, and the unresolvable (no
- * workspace) error path.
+ * the source file or workspace root, Windows path normalization, and the
+ * unresolvable error paths.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -46,6 +46,17 @@ describe('resolveSourceCanvasTarget', () => {
     it('falls back to the first workspace when no rootPath matches', () => {
         const r = resolveSourceCanvasTarget({ fullPath: '/elsewhere/x.ts' }, WS);
         expect(r).toEqual({ wsId: 'ws-root', path: '/elsewhere/x.ts' });
+    });
+
+    it('does not match sibling paths that only share a root prefix', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: '/home/u/proj-other/src/foo.ts' },
+            [
+                { id: 'ws-proj', rootPath: '/home/u/proj' },
+                { id: 'ws-home', rootPath: '/home/u' },
+            ],
+        );
+        expect(r).toEqual({ wsId: 'ws-home', path: '/home/u/proj-other/src/foo.ts' });
     });
 
     it('returns an error (with attempted path) when there are no workspaces', () => {
@@ -94,6 +105,28 @@ describe('resolveSourceCanvasTarget', () => {
         expect(r).toEqual({ wsId: 'ws-hint', path: '/home/u/proj/src/a.ts' });
     });
 
+    it('resolves a workspace-relative path against the hinted workspace root', () => {
+        const r = resolveSourceCanvasTarget({ fullPath: 'src/foo.ts', wsId: 'ws-pkg' }, WS);
+        expect(r).toEqual({
+            wsId: 'ws-pkg',
+            path: '/home/u/proj/packages/coc/src/foo.ts',
+        });
+    });
+
+    it('resolves a workspace-relative path against the first workspace root without a hint', () => {
+        const r = resolveSourceCanvasTarget({ fullPath: 'src/foo.ts' }, WS);
+        expect(r).toEqual({
+            wsId: 'ws-root',
+            path: '/home/u/proj/src/foo.ts',
+        });
+    });
+
+    it('returns an error for an unrooted relative path with an unknown workspace hint', () => {
+        const r = resolveSourceCanvasTarget({ fullPath: 'src/foo.ts', wsId: 'missing-ws' }, WS);
+        expect(isSourceCanvasResolveError(r)).toBe(true);
+        expect(r).toEqual({ error: 'No workspace root available', attemptedPath: 'src/foo.ts' });
+    });
+
     it('normalizes Windows backslashes for prefix matching', () => {
         const r = resolveSourceCanvasTarget(
             { fullPath: 'C:\\work\\proj\\src\\foo.ts' },
@@ -102,8 +135,11 @@ describe('resolveSourceCanvasTarget', () => {
         expect(r).toEqual({ wsId: 'ws-win', path: 'C:\\work\\proj\\src\\foo.ts' });
     });
 
-    it('leaves a relative path as-is when there is no source file', () => {
-        const r = resolveSourceCanvasTarget({ fullPath: 'rel/foo.ts', wsId: 'ws1' }, WS);
-        expect(r).toEqual({ wsId: 'ws1', path: 'rel/foo.ts' });
+    it('resolves a Windows workspace-relative path against the hinted workspace root', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: 'src\\foo.ts', wsId: 'ws-win' },
+            [{ id: 'ws-win', rootPath: 'C:\\work\\proj' }],
+        );
+        expect(r).toEqual({ wsId: 'ws-win', path: 'C:/work/proj/src/foo.ts' });
     });
 });

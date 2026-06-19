@@ -10,7 +10,7 @@ export interface SourceCanvasFileRef {
     /**
      * The bare file path to resolve + fetch — never includes a `:line` suffix.
      * May be absolute (matched against a workspace `rootPath`) or relative
-     * (resolved against `sourceFilePath`).
+     * (resolved against `sourceFilePath` or the workspace root).
      */
     fullPath: string;
     /** Optional path to show in the header (defaults to `fullPath`). */

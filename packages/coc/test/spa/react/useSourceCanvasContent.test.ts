@@ -96,4 +96,16 @@ describe('useSourceCanvasContent', () => {
             }),
         );
     });
+
+    it('fetches a workspace-relative chat path as an absolute workspace path', async () => {
+        previewMock.mockResolvedValue({ content: 'x' });
+        const { result } = renderHook(() =>
+            useSourceCanvasContent({ fullPath: 'src/from-chat.ts', wsId: 'ws1' }),
+        );
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        expect(result.current.resolvedPath).toBe('/home/u/proj/src/from-chat.ts');
+        expect(previewMock).toHaveBeenCalledWith('ws1', '/home/u/proj/src/from-chat.ts', {
+            lines: 0,
+        });
+    });
 });
