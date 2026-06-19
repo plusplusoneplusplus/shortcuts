@@ -18,7 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { ModelInfo, QueuedTask } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, READ_ONLY_SYSTEM_MESSAGE, setHomeDirectoryOverride, clearMcpConfigCache } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import { ClassificationExecutor } from '../../../src/server/executors/classification-executor';
@@ -1742,5 +1742,68 @@ describe('ChatBaseExecutor contextTier', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call).not.toHaveProperty('contextTier');
+    });
+});
+
+// ============================================================================
+// AC-04 — MCP per-tool allow-list enforcement on the new-chat execute() path
+// ============================================================================
+
+describe('ChatExecutor MCP allow-list enforcement', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let tmpHome: string;
+    let tmpWorkspace: string;
+    let tmpData: string;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'AI answer', sessionId: 'sess-1', toolCalls: [] });
+
+        tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-chat-mcp-home-'));
+        tmpWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-chat-mcp-ws-'));
+        tmpData = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-chat-mcp-data-'));
+        setHomeDirectoryOverride(tmpHome);
+        clearMcpConfigCache();
+        fs.mkdirSync(path.join(tmpHome, '.copilot'), { recursive: true });
+        fs.writeFileSync(
+            path.join(tmpHome, '.copilot', 'mcp-config.json'),
+            JSON.stringify({ mcpServers: { srv: { command: 'srv-bin' } } }),
+        );
+    });
+
+    afterEach(() => {
+        setHomeDirectoryOverride(null);
+        clearMcpConfigCache();
+        fs.rmSync(tmpHome, { recursive: true, force: true });
+        fs.rmSync(tmpWorkspace, { recursive: true, force: true });
+        fs.rmSync(tmpData, { recursive: true, force: true });
+    });
+
+    it('sends mcpServers with the disabled tool absent and loadDefaultMcpConfig=false', async () => {
+        await store.registerWorkspace({ id: 'ws-mcp', name: 'ws', rootPath: tmpWorkspace, enabledMcpServers: null } as any);
+        writeRepoPreferences(tmpData, 'ws-mcp', { enabledMcpTools: { srv: ['kept_tool'] } });
+
+        const executor = new ChatExecutor(store, makeOptions(store), tmpData);
+        const task = makeChatTask('ask', 'task-mcp-allow');
+        task.payload = { ...(task.payload as any), workspaceId: 'ws-mcp', workingDirectory: tmpWorkspace } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(call.loadDefaultMcpConfig).toBe(false);
+        expect(call.mcpServers.srv.tools).toEqual(['kept_tool']);
+        expect(call.mcpServers.srv.tools).not.toContain('dropped_tool');
+    });
+
+    it('does not set mcpServers when the chat has no workspace context', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store), tmpData);
+        // makeChatTask payload has no workspaceId/workingDirectory → no rootPath.
+        await executor.execute(makeChatTask('ask', 'task-mcp-no-ws'), 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(call).not.toHaveProperty('mcpServers');
+        expect(call).not.toHaveProperty('loadDefaultMcpConfig');
     });
 });

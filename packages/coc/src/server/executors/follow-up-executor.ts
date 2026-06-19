@@ -54,6 +54,7 @@ import { ChatBaseExecutor } from './chat-base-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { ChatTurnContext } from './chat-turn-context-builder';
+import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
 import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
 import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
 // ============================================================================
@@ -451,6 +452,18 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 ? getCopilotContextTierForModel(reasoningModelMetadata)
                 : undefined;
 
+            // AC-04 — Apply the per-repo MCP allow-lists (server-level
+            // `enabledMcpServers` + per-tool `enabledMcpTools`) to the
+            // dashboard chat/session follow-up path. When resolved, the explicit
+            // map is sent with `loadDefaultMcpConfig: false` so disabled
+            // tools/servers never reach the agent on a follow-up turn.
+            const resolvedMcpServers = await resolveChatMcpServersForWorkspace({
+                store: this.store,
+                dataDir: this.dataDir,
+                workspaceId: wsId,
+                workingDirectory,
+            });
+
             const sendOptions = {
                 prompt: followUpMessage,
                 sessionId: process.sdkSessionId,
@@ -468,6 +481,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 ...(chatCtx.excludedTools.length > 0
                     ? { excludedTools: chatCtx.excludedTools }
                     : {}),
+                ...(resolvedMcpServers ? { mcpServers: resolvedMcpServers, loadDefaultMcpConfig: false } : {}),
                 skillDirectories,
                 disabledSkills,
                 onSessionCreated: (sessionId: string) => {

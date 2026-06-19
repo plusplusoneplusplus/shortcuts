@@ -13,9 +13,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { AIProcess, ModelInfo } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore } from '@plusplusoneplusplus/forge';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import type { AIProcess, ModelInfo, WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, setHomeDirectoryOverride, clearMcpConfigCache } from '@plusplusoneplusplus/forge';
 import { FollowUpExecutor } from '../../../src/server/executors/follow-up-executor';
+import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 
@@ -1610,5 +1614,76 @@ describe('FollowUpExecutor contextTier', () => {
 
         const call = sdkMocks.mockSendMessage.calls[0][0] as Record<string, unknown>;
         expect(call).not.toHaveProperty('contextTier');
+    });
+
+    // -------------------------------------------------------------------------
+    // AC-04 — MCP per-tool allow-list enforcement (dashboard chat/session path)
+    // -------------------------------------------------------------------------
+
+    describe('MCP allow-list enforcement', () => {
+        let tmpHome: string;
+        let tmpWorkspace: string;
+        let tmpData: string;
+
+        beforeEach(() => {
+            tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-fu-mcp-home-'));
+            tmpWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-fu-mcp-ws-'));
+            tmpData = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-fu-mcp-data-'));
+            setHomeDirectoryOverride(tmpHome);
+            clearMcpConfigCache();
+            fs.mkdirSync(path.join(tmpHome, '.copilot'), { recursive: true });
+            fs.writeFileSync(
+                path.join(tmpHome, '.copilot', 'mcp-config.json'),
+                JSON.stringify({ mcpServers: { srv: { command: 'srv-bin' } } }),
+            );
+        });
+
+        afterEach(() => {
+            setHomeDirectoryOverride(null);
+            clearMcpConfigCache();
+            fs.rmSync(tmpHome, { recursive: true, force: true });
+            fs.rmSync(tmpWorkspace, { recursive: true, force: true });
+            fs.rmSync(tmpData, { recursive: true, force: true });
+        });
+
+        it('sends mcpServers with the disabled tool absent and loadDefaultMcpConfig=false', async () => {
+            const ws: WorkspaceInfo = {
+                id: 'ws-mcp',
+                name: 'ws',
+                rootPath: tmpWorkspace,
+                enabledMcpServers: null,
+            } as WorkspaceInfo;
+            await store.registerWorkspace(ws);
+            // Allow-list keeps only `kept_tool`; `dropped_tool` is disabled.
+            writeRepoPreferences(tmpData, 'ws-mcp', { enabledMcpTools: { srv: ['kept_tool'] } });
+
+            const proc = makeProcess({
+                id: 'proc-mcp',
+                metadata: { type: 'chat', workspaceId: 'ws-mcp' },
+            });
+            await store.addProcess(proc);
+
+            const executor = makeExecutor(store, {}, tmpData);
+            await executor.executeFollowUp('proc-mcp', 'follow-up');
+
+            const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+            expect(callArg.loadDefaultMcpConfig).toBe(false);
+            expect(callArg.mcpServers.srv.tools).toEqual(['kept_tool']);
+            expect(callArg.mcpServers.srv.tools).not.toContain('dropped_tool');
+        });
+
+        it('does not set mcpServers when there is no workspace context', async () => {
+            // No workspace registered, process has no workspaceId → rootPath
+            // unresolved → preserve SDK default MCP load.
+            const proc = makeProcess({ id: 'proc-no-ws', metadata: { type: 'chat' } });
+            await store.addProcess(proc);
+
+            const executor = makeExecutor(store, {}, tmpData);
+            await executor.executeFollowUp('proc-no-ws', 'follow-up');
+
+            const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+            expect(callArg).not.toHaveProperty('mcpServers');
+            expect(callArg).not.toHaveProperty('loadDefaultMcpConfig');
+        });
     });
 });
