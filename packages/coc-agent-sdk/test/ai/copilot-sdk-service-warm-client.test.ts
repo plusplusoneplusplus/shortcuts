@@ -244,6 +244,50 @@ describe('CopilotSDKService — warm client TTL expiry (AC-01)', () => {
 });
 
 // ============================================================================
+// TTL = 0 disables warming entirely (AC-06)
+// ============================================================================
+
+describe('CopilotSDKService — TTL=0 disables warming on the send path (AC-06)', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        process.env.COC_WARM_CLIENT_TTL_MS = '0';
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        delete process.env.COC_WARM_CLIENT_TTL_MS;
+        service.dispose();
+        resetCopilotSDKService();
+        resetSDKLogger();
+    });
+
+    it('stops the client immediately on release and parks no entry, even with keepWarm:true', async () => {
+        const mod = createMockSDKModule(() => createMockSession());
+        createSdkClientMock.mockImplementation((opts: any) => new mod.MockCopilotClient(opts));
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const r1 = await warmSend(service);
+
+        expect(r1.success).toBe(true);
+        // keepWarm:true was requested, but TTL=0 forces cold behaviour: the client
+        // is torn down immediately on release — nothing is parked.
+        expect(mod.mockClient.stop).toHaveBeenCalledTimes(1);
+        expect((service as any).warmRegistry.size()).toBe(0);
+
+        // A second send cold-starts a brand-new client (no warm reuse possible).
+        const r2 = await warmSend(service);
+
+        expect(r2.success).toBe(true);
+        expect(createSdkClientMock).toHaveBeenCalledTimes(2);
+        expect(mod.mockClient.stop).toHaveBeenCalledTimes(2);
+        expect((service as any).warmRegistry.size()).toBe(0);
+    });
+});
+
+// ============================================================================
 // Abort / interrupt teardown (AC-03)
 // ============================================================================
 
