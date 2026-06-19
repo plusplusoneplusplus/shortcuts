@@ -136,9 +136,12 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 return sendError(res, 400, 'Missing required query parameter: path');
             }
 
-            // Resolve and validate path is within workspace, a trusted read-only directory, or the task root
-            const resolvedPath = path.resolve(filePath);
+            // Resolve and validate path is within workspace, a trusted read-only directory, or the task root.
+            // Relative paths resolve against the workspace root (mirrors resolveAllowedHtmlPath), not process.cwd().
             const wsRoot = path.resolve(ws.rootPath);
+            const resolvedPath = path.isAbsolute(filePath)
+                ? path.resolve(filePath)
+                : path.resolve(wsRoot, filePath);
             const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
             if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinTrustedReadOnlyDir(resolvedPath, dataDir) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace');
