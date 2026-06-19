@@ -153,6 +153,18 @@ export {
 } from './session-manager';
 
 export {
+    WarmClientRegistry,
+    makeWarmKey,
+} from './warm-client-registry';
+
+export type {
+    WarmClientHandle,
+    WarmClientFactory,
+    WarmAcquireResult,
+    WarmClientRegistryOptions,
+} from './warm-client-registry';
+
+export {
     modelMetadataStore,
 } from './model-metadata-store';
 
