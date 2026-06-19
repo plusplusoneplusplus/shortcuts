@@ -135,6 +135,14 @@ interface CodexTurnFailedEvent {
     error?: { message?: string };
 }
 
+/**
+ * Per-turn token totals from a Codex `turn.completed` event — the ONLY usage
+ * signal the `@openai/codex-sdk` exposes (index.d.ts `Usage`). Codex has no
+ * native context-window signal (no max/limit, no running session total), so
+ * `addCodexUsage` cannot populate `TokenUsage.tokenLimit` / `currentTokens`.
+ * Deriving a context window from the model registry or the latest-turn snapshot
+ * is intentionally out of scope, so the context meter stays hidden for Codex.
+ */
 interface CodexUsage {
     input_tokens?: number;
     cached_input_tokens?: number;
@@ -1608,6 +1616,15 @@ function codexUsageNumber(value: number | undefined): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+/**
+ * Accumulate a Codex per-turn `Usage` into the shared `TokenUsage` envelope.
+ *
+ * Only per-turn fields are populated. The context-window fields
+ * (`tokenLimit`, `currentTokens`, `systemTokens`, `toolDefinitionsTokens`,
+ * `conversationTokens`) are intentionally left untouched: Codex emits no native
+ * context-window signal (see the `CodexUsage` note above), so the UI keeps the
+ * context meter hidden for Codex by design.
+ */
 function addCodexUsage(current: TokenUsage | undefined, usage: CodexUsage | undefined): TokenUsage | undefined {
     if (!usage) return current;
 
