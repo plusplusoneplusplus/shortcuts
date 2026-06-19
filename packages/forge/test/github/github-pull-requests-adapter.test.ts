@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { GitHubPullRequestsAdapter } from '../../src/github/github-pull-requests-adapter';
+import { GitHubPullRequestsAdapter, mapGitHubAutoMerge } from '../../src/github/github-pull-requests-adapter';
+import type { GitHubPullRequest } from '../../src/github/types';
 import type { Octokit } from '@octokit/rest';
 
 // ── fixtures ─────────────────────────────────────────────────
@@ -557,6 +558,103 @@ describe('GitHubPullRequestsAdapter', () => {
 
             const result = await adapter.getReviewedPullRequests('repo', 10);
             expect(result).toEqual([]);
+        });
+    });
+
+    // ── auto-merge mapping (AC-04) ───────────────────────────
+    describe('mapGitHubAutoMerge', () => {
+        function prWith(overrides: Partial<GitHubPullRequest>): GitHubPullRequest {
+            return { ...mockGitHubPr, ...overrides } as GitHubPullRequest;
+        }
+
+        it('reports not-enabled when auto_merge is absent (off)', () => {
+            expect(mapGitHubAutoMerge(prWith({}))).toEqual({ enabled: false, state: 'not-enabled' });
+        });
+
+        it('reports not-enabled when auto_merge is null', () => {
+            expect(mapGitHubAutoMerge(prWith({ auto_merge: null }))).toEqual({
+                enabled: false,
+                state: 'not-enabled',
+            });
+        });
+
+        it('reports armed with enabledBy + merge method when enabled and clean (on)', () => {
+            const result = mapGitHubAutoMerge(prWith({
+                auto_merge: {
+                    enabled_by: { id: 7, login: 'carol', name: 'Carol' },
+                    merge_method: 'squash',
+                },
+                mergeable: true,
+                mergeable_state: 'clean',
+            }));
+            expect(result.enabled).toBe(true);
+            expect(result.state).toBe('armed');
+            expect(result.mergeMethod).toBe('squash');
+            expect(result.enabledBy).toEqual({
+                id: '7',
+                displayName: 'Carol',
+                email: undefined,
+                avatarUrl: undefined,
+            });
+            expect(result.blockedReason).toBeUndefined();
+        });
+
+        it('stays armed for a behind/unknown mergeable_state', () => {
+            const result = mapGitHubAutoMerge(prWith({
+                auto_merge: { enabled_by: null, merge_method: 'merge' },
+                mergeable: null,
+                mergeable_state: 'behind',
+            }));
+            expect(result.state).toBe('armed');
+            expect(result.enabledBy).toBeUndefined();
+            expect(result.mergeMethod).toBe('merge');
+        });
+
+        it('reports blocked/conflicts when mergeable is false (blocked)', () => {
+            const result = mapGitHubAutoMerge(prWith({
+                auto_merge: { merge_method: 'merge' },
+                mergeable: false,
+                mergeable_state: 'dirty',
+            }));
+            expect(result).toMatchObject({ enabled: true, state: 'blocked', blockedReason: 'conflicts' });
+        });
+
+        it('reports blocked/pending-review for mergeable_state "blocked"', () => {
+            const result = mapGitHubAutoMerge(prWith({
+                auto_merge: { merge_method: 'rebase' },
+                mergeable: true,
+                mergeable_state: 'blocked',
+            }));
+            expect(result).toMatchObject({ state: 'blocked', blockedReason: 'pending-review', mergeMethod: 'rebase' });
+        });
+
+        it('reports blocked/failing-checks for mergeable_state "unstable"', () => {
+            const result = mapGitHubAutoMerge(prWith({
+                auto_merge: { merge_method: 'merge' },
+                mergeable: true,
+                mergeable_state: 'unstable',
+            }));
+            expect(result).toMatchObject({ state: 'blocked', blockedReason: 'failing-checks' });
+        });
+
+        it('drops an unrecognized merge_method to undefined', () => {
+            const result = mapGitHubAutoMerge(prWith({
+                auto_merge: { merge_method: 'fast-forward' as never },
+                mergeable_state: 'clean',
+            }));
+            expect(result.mergeMethod).toBeUndefined();
+        });
+
+        it('surfaces autoMerge through getPullRequest', async () => {
+            octokit.pulls.get = vi.fn().mockResolvedValue({
+                data: prWith({
+                    auto_merge: { enabled_by: { id: 7, login: 'carol' }, merge_method: 'squash' },
+                    mergeable: true,
+                    mergeable_state: 'clean',
+                }),
+            });
+            const pr = await adapter.getPullRequest('repo', 42);
+            expect(pr.autoMerge).toMatchObject({ enabled: true, state: 'armed', mergeMethod: 'squash' });
         });
     });
 });

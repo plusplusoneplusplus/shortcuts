@@ -35,6 +35,7 @@ export interface PullRequestChatBindings {
 export class PullRequestChatBindingStore {
     private readonly db: Database.Database;
     private readonly stmtList: Database.Statement;
+    private readonly stmtListByTask: Database.Statement;
     private readonly stmtGet: Database.Statement;
     private readonly stmtBind: Database.Statement;
     private readonly stmtBindWithCreatedAt: Database.Statement;
@@ -45,6 +46,9 @@ export class PullRequestChatBindingStore {
         this.db = db;
         this.stmtList = db.prepare(
             'SELECT pr_id, task_id, created_at FROM pull_request_chat_bindings WHERE workspace_id = ?',
+        );
+        this.stmtListByTask = db.prepare(
+            'SELECT pr_id, task_id, created_at FROM pull_request_chat_bindings WHERE workspace_id = ? AND task_id = ?',
         );
         this.stmtGet = db.prepare(
             'SELECT task_id, created_at FROM pull_request_chat_bindings WHERE workspace_id = ? AND pr_id = ?',
@@ -102,6 +106,23 @@ export class PullRequestChatBindingStore {
     load(scopeId: string, legacyScopeIds: readonly string[] = []): PullRequestChatBindings {
         this.migrateLegacyScopes(scopeId, legacyScopeIds);
         const rows = this.stmtList.all(scopeId) as Array<{ pr_id: string; task_id: string; created_at: string }>;
+        const result: PullRequestChatBindings = {};
+        for (const row of rows) {
+            result[row.pr_id] = { taskId: row.task_id, createdAt: row.created_at };
+        }
+        return result;
+    }
+
+    /**
+     * List the bindings for an origin scope that point at a given chat `taskId`.
+     *
+     * Used on chat load to recover the PRs a conversation created, even after
+     * the creating turn has been collapsed/trimmed and is no longer scanned by
+     * the client-side detection pass. Returns {} when the task owns no bindings.
+     */
+    listByTaskId(scopeId: string, taskId: string, legacyScopeIds: readonly string[] = []): PullRequestChatBindings {
+        this.migrateLegacyScopes(scopeId, legacyScopeIds);
+        const rows = this.stmtListByTask.all(scopeId, taskId) as Array<{ pr_id: string; task_id: string; created_at: string }>;
         const result: PullRequestChatBindings = {};
         for (const row of rows) {
             result[row.pr_id] = { taskId: row.task_id, createdAt: row.created_at };

@@ -2,11 +2,16 @@ import type {
     GitCommitRef,
     GitPullRequest,
     GitPullRequestCommentThread,
+    GitPullRequestCompletionOptions,
     GitPullRequestStatus,
     GitStatus,
     IdentityRefWithVote,
 } from 'azure-devops-node-api/interfaces/GitInterfaces';
-import { PullRequestStatus as AdoPrStatus } from 'azure-devops-node-api/interfaces/GitInterfaces';
+import {
+    GitPullRequestMergeStrategy,
+    PullRequestAsyncStatus,
+    PullRequestStatus as AdoPrStatus,
+} from 'azure-devops-node-api/interfaces/GitInterfaces';
 import type { IPullRequestsService } from '../providers/interfaces';
 import type {
     CheckStatus,
@@ -15,6 +20,7 @@ import type {
     CreatePullRequestInput,
     Identity,
     PullRequest,
+    PullRequestAutoMerge,
     PullRequestCheck,
     PullRequestCommit,
     PullRequestStatus,
@@ -105,6 +111,54 @@ function reviewedAtFromAdoPullRequest(pr: GitPullRequest): Date {
     return pr.closedDate ? new Date(pr.closedDate) : pr.creationDate ? new Date(pr.creationDate) : new Date(0);
 }
 
+/** Normalize an ADO merge strategy into the canonical merge-method vocabulary. */
+function mapAdoMergeMethod(options: GitPullRequestCompletionOptions | undefined): string | undefined {
+    if (!options) { return undefined; }
+    switch (options.mergeStrategy) {
+        case GitPullRequestMergeStrategy.NoFastForward: return 'merge';
+        case GitPullRequestMergeStrategy.Squash:        return 'squash';
+        case GitPullRequestMergeStrategy.Rebase:        return 'rebase';
+        case GitPullRequestMergeStrategy.RebaseMerge:   return 'rebase-merge';
+        // mergeStrategy is deprecated in favour of itself but older payloads may
+        // only carry the squashMerge flag.
+        default: return options.squashMerge ? 'squash' : undefined;
+    }
+}
+
+/**
+ * Map an ADO PR's auto-complete fields into the canonical `PullRequestAutoMerge`
+ * shape. Auto-complete is enabled when `autoCompleteSetBy` is present; the async
+ * `mergeStatus` then decides the lifecycle state:
+ *   - Queued                → queued
+ *   - Conflicts             → blocked (conflicts)
+ *   - RejectedByPolicy      → blocked (pending-review)
+ *   - Failure               → blocked
+ *   - NotSet / Succeeded    → armed (waiting on policies / merge preview clean)
+ */
+export function mapAdoAutoMerge(pr: GitPullRequest): PullRequestAutoMerge {
+    if (!pr.autoCompleteSetBy) {
+        return { enabled: false, state: 'not-enabled' };
+    }
+    const base: PullRequestAutoMerge = {
+        enabled: true,
+        state: 'armed',
+        enabledBy: mapAdoIdentity(pr.autoCompleteSetBy),
+        mergeMethod: mapAdoMergeMethod(pr.completionOptions),
+    };
+    switch (pr.mergeStatus) {
+        case PullRequestAsyncStatus.Queued:
+            return { ...base, state: 'queued' };
+        case PullRequestAsyncStatus.Conflicts:
+            return { ...base, state: 'blocked', blockedReason: 'conflicts' };
+        case PullRequestAsyncStatus.RejectedByPolicy:
+            return { ...base, state: 'blocked', blockedReason: 'pending-review' };
+        case PullRequestAsyncStatus.Failure:
+            return { ...base, state: 'blocked', blockedReason: 'blocked' };
+        default:
+            return base;
+    }
+}
+
 function mapAdoPullRequest(pr: GitPullRequest, repositoryId: string): PullRequest {
     const isDraft = pr.isDraft ?? false;
     const status = isDraft ? 'draft' : mapAdoStatusToPrStatus(pr.status);
@@ -128,6 +182,7 @@ function mapAdoPullRequest(pr: GitPullRequest, repositoryId: string): PullReques
         labels: (pr.labels ?? []).map((l: { name?: string }) => l.name ?? '').filter(Boolean),
         headSha: pr.lastMergeSourceCommit?.commitId,
         baseSha: pr.lastMergeTargetCommit?.commitId,
+        autoMerge: mapAdoAutoMerge(pr),
         raw: pr,
     };
 }

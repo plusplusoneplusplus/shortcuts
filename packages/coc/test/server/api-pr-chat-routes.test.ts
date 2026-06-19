@@ -274,6 +274,29 @@ describe('Pull-Request-Chat Binding API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/pull-request-chat-bindings`);
             expect(res.status).toBe(404);
         });
+
+        it('filters bindings by taskId when ?taskId= is provided', async () => {
+            await request(api('pull-request-chat-bindings'), {
+                method: 'POST',
+                body: JSON.stringify({ prId: '2001', taskId: 'chat-x' }),
+            });
+            await request(api('pull-request-chat-bindings'), {
+                method: 'POST',
+                body: JSON.stringify({ prId: '2002', taskId: 'chat-x' }),
+            });
+            await request(api('pull-request-chat-bindings'), {
+                method: 'POST',
+                body: JSON.stringify({ prId: '2003', taskId: 'chat-y' }),
+            });
+
+            const res = await request(`${api('pull-request-chat-bindings')}?taskId=chat-x`);
+            expect(res.status).toBe(200);
+            const bindings = res.json().bindings;
+            expect(Object.keys(bindings).sort()).toEqual(['2001', '2002']);
+            expect(bindings['2001'].taskId).toBe('chat-x');
+            expect(bindings['2002'].taskId).toBe('chat-x');
+            expect(bindings['2003']).toBeUndefined();
+        });
     });
 
     describe('origin-scoped /pull-request-chat-bindings', () => {

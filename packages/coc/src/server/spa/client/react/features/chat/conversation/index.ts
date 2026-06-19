@@ -9,6 +9,18 @@ export type { RenderToolCall, ToolCallGroupViewProps } from './tool-calls/ToolCa
 export { ToolResultPopover } from './tool-calls/ToolResultPopover';
 export { WhisperCollapsedGroup } from './tool-calls/WhisperCollapsedGroup';
 export { CommitStrip } from './CommitStrip';
+export { PrStatusCard, describeAutoMerge, autoMergeLabel, prProviderFromUrl } from './PrStatusCard';
+export type {
+    PrStatusCardProps, PrStatusCardItem, PrStatusCardItemState, PrStatusCardPr,
+    PrAutoMergeInfo, AutoMergeIndicatorModel, PrProvider,
+} from './PrStatusCard';
+export { ChatPrStatusCard } from './ChatPrStatusCard';
+export type { ChatPrStatusCardProps } from './ChatPrStatusCard';
+export { usePrChatStatusItems, mapPrDetailToCardPr, parseAutoMerge } from './usePrChatStatusItems';
+export type { UsePrChatStatusItemsOptions, UsePrChatStatusItemsResult } from './usePrChatStatusItems';
+export {
+    PR_STATUS_POLL_INTERVAL_MS, isPrItemActive, shouldPollPrStatusItems, formatUpdatedAgo,
+} from './prStatusFreshness';
 export { JsonResponseView } from '../../../ui/JsonResponseView';
 export { NoteEditCard } from './NoteEditCard';
 export { ScriptTerminalBlock, highlightTerminalLine } from './ScriptTerminalBlock';
@@ -19,6 +31,12 @@ export { getConversationTurns } from './chatConversationUtils';
 // Utilities
 export { detectCommitsInToolGroup } from './commitDetection';
 export { detectPullRequestsInToolGroup } from './pullRequestDetection';
+export type { DetectedPullRequest } from './pullRequestDetection';
+export {
+    collectToolCallsFromTurns, gatherDetectedPrsFromTurns, originIdForDetectedPr,
+    unionAssociations, detectedPrsNeedingBinding,
+} from './prChatAssociation';
+export type { PrAssociation, PrChatBindingLike, UnionAssociationsInput } from './prChatAssociation';
 export type { DetectedCommit } from './commitDetection';
 export { isJsonResponse } from '../../../ui/json-utils';
 export { mergeConsecutiveContentItems } from './timeline-utils';

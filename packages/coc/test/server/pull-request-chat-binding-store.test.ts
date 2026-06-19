@@ -56,6 +56,60 @@ describe('PullRequestChatBindingStore', () => {
         expect(all['144'].taskId).toBe('task-c');
     });
 
+    it('listByTaskId round-trips an upserted binding', () => {
+        store.bind('gh_owner_repo', '142', 'task-1');
+        const byTask = store.listByTaskId('gh_owner_repo', 'task-1');
+        expect(Object.keys(byTask)).toEqual(['142']);
+        expect(byTask['142'].taskId).toBe('task-1');
+        expect(new Date(byTask['142'].createdAt).toISOString()).toBe(byTask['142'].createdAt);
+    });
+
+    it('listByTaskId returns every PR a single task created, newest values after overwrite', () => {
+        store.bind('gh_owner_repo', '142', 'task-1');
+        store.bind('gh_owner_repo', '143', 'task-1');
+        store.bind('gh_owner_repo', '144', 'task-2');
+        // overwrite 142 keeps it bound to task-1
+        store.bind('gh_owner_repo', '142', 'task-1');
+
+        const forTask1 = store.listByTaskId('gh_owner_repo', 'task-1');
+        expect(Object.keys(forTask1).sort()).toEqual(['142', '143']);
+
+        const forTask2 = store.listByTaskId('gh_owner_repo', 'task-2');
+        expect(Object.keys(forTask2)).toEqual(['144']);
+    });
+
+    it('listByTaskId returns empty object for an unknown task', () => {
+        store.bind('gh_owner_repo', '142', 'task-1');
+        expect(store.listByTaskId('gh_owner_repo', 'task-absent')).toEqual({});
+    });
+
+    it('listByTaskId is isolated across origin scopes', () => {
+        store.bind('gh_owner_repo', '142', 'task-1');
+        store.bind('gh_other_repo', '143', 'task-1');
+        expect(Object.keys(store.listByTaskId('gh_owner_repo', 'task-1'))).toEqual(['142']);
+        expect(Object.keys(store.listByTaskId('gh_other_repo', 'task-1'))).toEqual(['143']);
+    });
+
+    it('listByTaskId reflects a binding moved to a different task by overwrite', () => {
+        store.bind('gh_owner_repo', '142', 'task-1');
+        // re-bind the same PR to a different chat task
+        store.bind('gh_owner_repo', '142', 'task-2');
+        expect(store.listByTaskId('gh_owner_repo', 'task-1')).toEqual({});
+        expect(Object.keys(store.listByTaskId('gh_owner_repo', 'task-2'))).toEqual(['142']);
+    });
+
+    it('listByTaskId migrates legacy workspace rows before filtering', () => {
+        db.prepare(`
+            INSERT INTO pull_request_chat_bindings (workspace_id, pr_id, task_id, created_at)
+            VALUES (?, ?, ?, ?)
+        `).run('ws-a', '142', 'task-legacy', '2026-01-01T00:00:00.000Z');
+
+        const byTask = store.listByTaskId('gh_owner_repo', 'task-legacy', ['ws-a']);
+        expect(Object.keys(byTask)).toEqual(['142']);
+        expect(byTask['142'].taskId).toBe('task-legacy');
+        expect(store.list('ws-a')).toEqual({});
+    });
+
     it('multiple origin scopes are isolated', () => {
         store.bind('gh_owner_repo', '142', 'task-1');
         expect(store.get('gh_owner_repo', '142')!.taskId).toBe('task-1');

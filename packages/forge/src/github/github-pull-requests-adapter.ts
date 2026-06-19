@@ -7,6 +7,7 @@ import type {
     CreatePullRequestInput,
     Identity,
     PullRequest,
+    PullRequestAutoMerge,
     PullRequestCheck,
     PullRequestCommit,
     PullRequestStatus,
@@ -55,6 +56,51 @@ function mapGitHubReviewVote(state: GitHubReview['state']): ReviewVote {
     }
 }
 
+/** Normalize the GitHub `merge_method` to the canonical merge-method vocabulary. */
+function mapGitHubMergeMethod(method: string | null | undefined): string | undefined {
+    switch (method) {
+        case 'merge':  return 'merge';
+        case 'squash': return 'squash';
+        case 'rebase': return 'rebase';
+        default:       return undefined;
+    }
+}
+
+/**
+ * Map a GitHub PR's auto-merge config + mergeability into the canonical
+ * `PullRequestAutoMerge` shape.
+ *
+ * `auto_merge` and `mergeable`/`mergeable_state` are only present on the
+ * `pulls.get` (detail) response — `pulls.list` items report `not-enabled`.
+ * When auto-merge is armed, the mergeability state decides blocked vs armed:
+ *   - `mergeable === false` or `dirty`  → blocked (conflicts)
+ *   - `blocked`                          → blocked (pending-review)
+ *   - `unstable`                         → blocked (failing-checks)
+ *   - otherwise (clean/behind/…)         → armed
+ */
+export function mapGitHubAutoMerge(pr: GitHubPullRequest): PullRequestAutoMerge {
+    const autoMerge = pr.auto_merge;
+    if (!autoMerge) {
+        return { enabled: false, state: 'not-enabled' };
+    }
+    const base: PullRequestAutoMerge = {
+        enabled: true,
+        state: 'armed',
+        enabledBy: autoMerge.enabled_by ? mapGitHubUser(autoMerge.enabled_by) : undefined,
+        mergeMethod: mapGitHubMergeMethod(autoMerge.merge_method),
+    };
+    if (pr.mergeable === false || pr.mergeable_state === 'dirty') {
+        return { ...base, state: 'blocked', blockedReason: 'conflicts' };
+    }
+    if (pr.mergeable_state === 'blocked') {
+        return { ...base, state: 'blocked', blockedReason: 'pending-review' };
+    }
+    if (pr.mergeable_state === 'unstable') {
+        return { ...base, state: 'blocked', blockedReason: 'failing-checks' };
+    }
+    return base;
+}
+
 function mapGitHubPullRequest(pr: GitHubPullRequest, owner: string, repo: string): PullRequest {
     return {
         id: pr.id,
@@ -76,6 +122,7 @@ function mapGitHubPullRequest(pr: GitHubPullRequest, owner: string, repo: string
         labels: pr.labels.map(l => l.name),
         headSha: pr.head.sha,
         baseSha: pr.base.sha,
+        autoMerge: mapGitHubAutoMerge(pr),
         raw: pr,
     };
 }

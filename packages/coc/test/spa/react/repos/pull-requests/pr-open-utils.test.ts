@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+    buildPrDetailHash,
     matchWorkspaceForPrUrl,
     normalizeRemoteUrl,
     parsePrInput,
@@ -168,5 +169,15 @@ describe('matchWorkspaceForPrUrl', () => {
         if (parsed.kind !== 'url') return;
         expect(matchWorkspaceForPrUrl([], parsed)).toBeNull();
         expect(matchWorkspaceForPrUrl(undefined, parsed)).toBeNull();
+    });
+});
+
+describe('buildPrDetailHash', () => {
+    it('builds the overview deep-link route for a PR', () => {
+        expect(buildPrDetailHash('ws-abc', 101)).toBe('#repos/ws-abc/pull-requests/101/overview');
+    });
+
+    it('URL-encodes the repo id and PR number', () => {
+        expect(buildPrDetailHash('org/repo id', '12 3')).toBe('#repos/org%2Frepo%20id/pull-requests/12%203/overview');
     });
 });
