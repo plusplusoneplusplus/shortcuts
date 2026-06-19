@@ -80,7 +80,13 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
         const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
             props.onPaste?.(e);
             if (e.defaultPrevented) return;
-            // Let the browser handle HTML/text paste natively
+            // Always paste as plain text to avoid formatting issues
+            // in the contentEditable div (bold, colors, etc.).
+            e.preventDefault();
+            const text = e.clipboardData?.getData('text/plain') ?? '';
+            if (text) {
+                document.execCommand('insertText', false, text);
+            }
         };
 
         const handleInput = () => {
