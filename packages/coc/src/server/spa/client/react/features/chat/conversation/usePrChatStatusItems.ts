@@ -29,6 +29,7 @@ import {
     type PrAssociation,
     type PrChatBindingLike,
 } from './prChatAssociation';
+import { PR_STATUS_POLL_INTERVAL_MS, shouldPollPrStatusItems } from './prStatusFreshness';
 import type { PrAutoMergeInfo, PrStatusCardItem, PrStatusCardPr } from './PrStatusCard';
 
 export interface UsePrChatStatusItemsOptions {
@@ -48,6 +49,17 @@ export interface UsePrChatStatusItemsResult {
     retry: (key: string) => void;
     /** Lazily fetch a row's CI checks (AC-03) — called when its panel is expanded. */
     expandChecks: (key: string) => void;
+    /**
+     * Force-refresh every row's detail (and any already-loaded checks), bypassing
+     * the server cache (AC-05). Used by the manual refresh control and smart poll.
+     */
+    refresh: () => void;
+    /** True while a {@link refresh} is in flight (drives the refresh control's spinner). */
+    refreshing: boolean;
+    /** Epoch ms of the last successful detail fetch — feeds the "updated Xs ago" label. */
+    lastUpdatedAt: number | undefined;
+    /** Whether the smart poll is currently active (a PR is non-terminal + unsettled). */
+    isPolling: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -122,9 +134,24 @@ function bindingsFromResponse(bindings: Record<string, { taskId: string }> | und
     return Object.entries(bindings).map(([prId, value]) => ({ prId, taskId: value.taskId }));
 }
 
+/** Optional behaviour for a detail/checks fetch. */
+interface FetchOptions {
+    /** Force-refresh — bypass the server cache (AC-05). */
+    force?: boolean;
+    /**
+     * Silent (background) fetch — do not flash the loading skeleton, and on
+     * failure keep the currently-displayed data instead of replacing it with an
+     * error. Used by the smart poll + manual refresh so a transient failure does
+     * not blank a good row.
+     */
+    silent?: boolean;
+}
+
 export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UsePrChatStatusItemsResult {
     const { turns, workspaceId, remoteUrl, taskId } = options;
     const [items, setItems] = useState<PrStatusCardItem[]>([]);
+    const [refreshing, setRefreshing] = useState(false);
+    const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>(undefined);
 
     // Bump on every (re)run / cleanup so stale async callbacks no-op.
     const generationRef = useRef(0);
@@ -143,26 +170,36 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
     const detectedKey = useMemo(() => detected.map(pr => pr.url).sort().join('|'), [detected]);
 
     const fetchDetailForAssociation = useCallback(
-        (association: PrAssociation, repoId: string, generation: number) => {
-            setItems(prev =>
-                prev.map(item =>
-                    item.key === association.key ? { ...item, state: 'loading', error: undefined } : item,
-                ),
-            );
-            getSpaCocClient()
-                .pullRequests.getForOrigin(association.originId, association.prId, { workspaceId: repoId })
+        (association: PrAssociation, repoId: string, generation: number, opts: FetchOptions = {}): Promise<void> => {
+            const { force, silent } = opts;
+            if (!silent) {
+                setItems(prev =>
+                    prev.map(item =>
+                        item.key === association.key ? { ...item, state: 'loading', error: undefined } : item,
+                    ),
+                );
+            }
+            return getSpaCocClient()
+                .pullRequests.getForOrigin(association.originId, association.prId, {
+                    workspaceId: repoId,
+                    ...(force ? { force: true } : {}),
+                })
                 .then(detail => {
                     if (generationRef.current !== generation) return;
                     const pr = mapPrDetailToCardPr(detail);
+                    setLastUpdatedAt(Date.now());
                     setItems(prev =>
                         prev.map(item => {
                             if (item.key !== association.key) return item;
                             if (!pr) {
+                                // A malformed payload on a background refresh must not blank good data.
+                                if (silent && item.state === 'ready') return item;
                                 return { ...item, state: 'error', error: 'Pull request details unavailable.' };
                             }
                             return {
                                 ...item,
                                 state: 'ready',
+                                error: undefined,
                                 pr,
                                 number: pr.number ?? item.number,
                                 createdAt: detailCreatedAt(detail),
@@ -173,11 +210,12 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
                 .catch((err: unknown) => {
                     if (generationRef.current !== generation) return;
                     setItems(prev =>
-                        prev.map(item =>
-                            item.key === association.key
-                                ? { ...item, state: 'error', error: getSpaCocClientErrorMessage(err, 'Failed to load pull request.') }
-                                : item,
-                        ),
+                        prev.map(item => {
+                            if (item.key !== association.key) return item;
+                            // A transient background-refresh failure keeps the stale row visible.
+                            if (silent && item.state === 'ready') return item;
+                            return { ...item, state: 'error', error: getSpaCocClientErrorMessage(err, 'Failed to load pull request.') };
+                        }),
                     );
                 });
         },
@@ -185,17 +223,23 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
     );
 
     const fetchChecksForAssociation = useCallback(
-        (association: PrAssociation, repoId: string, generation: number) => {
+        (association: PrAssociation, repoId: string, generation: number, opts: FetchOptions = {}) => {
+            const { force, silent } = opts;
             checksStatusRef.current.set(association.key, 'loading');
-            setItems(prev =>
-                prev.map(item =>
-                    item.key === association.key
-                        ? { ...item, checksState: 'loading', checksError: undefined }
-                        : item,
-                ),
-            );
+            if (!silent) {
+                setItems(prev =>
+                    prev.map(item =>
+                        item.key === association.key
+                            ? { ...item, checksState: 'loading', checksError: undefined }
+                            : item,
+                    ),
+                );
+            }
             getSpaCocClient()
-                .pullRequests.getChecksForOrigin(association.originId, association.prId, { workspaceId: repoId })
+                .pullRequests.getChecksForOrigin(association.originId, association.prId, {
+                    workspaceId: repoId,
+                    ...(force ? { force: true } : {}),
+                })
                 .then(body => {
                     if (generationRef.current !== generation) return;
                     const rows = buildCheckRowsFromChecks((body.checks ?? []) as PullRequestCheck[]);
@@ -210,7 +254,11 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
                 })
                 .catch((err: unknown) => {
                     if (generationRef.current !== generation) return;
-                    checksStatusRef.current.set(association.key, 'error');
+                    // A background-refresh failure keeps the previously-loaded checks
+                    // (mark 'ready' so a later toggle re-uses them); a foreground fetch
+                    // surfaces the error + retry.
+                    checksStatusRef.current.set(association.key, silent ? 'ready' : 'error');
+                    if (silent) return;
                     setItems(prev =>
                         prev.map(item =>
                             item.key === association.key
@@ -224,6 +272,8 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
     );
 
     useEffect(() => {
+        // A dep change rebuilds the association set — abandon any in-flight refresh.
+        setRefreshing(false);
         if (!workspaceId || !chatOriginId) {
             associationsRef.current = [];
             setItems([]);
@@ -299,5 +349,43 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
         [workspaceId, fetchChecksForAssociation],
     );
 
-    return { items, retry, expandChecks };
+    /**
+     * Manual refresh + smart-poll tick (AC-05): force-refresh every row's detail
+     * (and any already-loaded checks panel), bypassing the server cache. Runs
+     * silently so the rows don't flash a skeleton on each background poll.
+     */
+    const refresh = useCallback(() => {
+        if (!workspaceId) return;
+        const associations = associationsRef.current;
+        if (associations.length === 0) return;
+        const generation = generationRef.current;
+        setRefreshing(true);
+        const detailFetches = associations.map(association =>
+            fetchDetailForAssociation(association, workspaceId, generation, { force: true, silent: true }),
+        );
+        for (const association of associations) {
+            if (checksStatusRef.current.get(association.key) === 'ready') {
+                fetchChecksForAssociation(association, workspaceId, generation, { force: true, silent: true });
+            }
+        }
+        void Promise.allSettled(detailFetches).then(() => {
+            if (generationRef.current === generation) setRefreshing(false);
+        });
+    }, [workspaceId, fetchDetailForAssociation, fetchChecksForAssociation]);
+
+    // Smart auto-poll (AC-05): poll on a fixed cadence ONLY while at least one PR
+    // is non-terminal and unsettled (checks pending/running or auto-merge
+    // armed/queued); the interval is torn down once everything settles.
+    const isPolling = useMemo(() => shouldPollPrStatusItems(items), [items]);
+    const refreshRef = useRef(refresh);
+    refreshRef.current = refresh;
+    useEffect(() => {
+        if (!isPolling) return undefined;
+        const intervalId = setInterval(() => {
+            refreshRef.current();
+        }, PR_STATUS_POLL_INTERVAL_MS);
+        return () => clearInterval(intervalId);
+    }, [isPolling]);
+
+    return { items, retry, expandChecks, refresh, refreshing, lastUpdatedAt, isPolling };
 }

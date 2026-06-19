@@ -269,6 +269,30 @@ describe('PullRequestsClient', () => {
     expect(adapter.calls[1].options).toMatchObject({ query: { workspaceId: 'ws/a', repoId: undefined } });
   });
 
+  it('force-refreshes checks through the origin checks endpoint (AC-05)', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PullRequestsClient(adapter);
+
+    await client.getChecksForOrigin('gh_owner_repo', 'pr/1', { workspaceId: 'ws/a', repoId: 'repo/a', force: true });
+
+    expect(adapter.calls[0]).toEqual({
+      path: '/origins/gh_owner_repo/pull-requests/pr%2F1/checks',
+      options: {
+        query: { workspaceId: 'ws/a', repoId: 'repo/a', force: 'true' },
+        signal: undefined,
+      },
+    });
+  });
+
+  it('omits the force query param for checks when not requested (AC-05)', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PullRequestsClient(adapter);
+
+    await client.getChecksForOrigin('gh_owner_repo', 'pr/1', { workspaceId: 'ws/a', repoId: 'repo/a' });
+
+    expect(adapter.calls[0].options?.query?.force).toBeUndefined();
+  });
+
   it('forwards abort signal to all data methods', async () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);

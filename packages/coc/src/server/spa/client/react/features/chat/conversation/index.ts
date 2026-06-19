@@ -18,6 +18,9 @@ export { ChatPrStatusCard } from './ChatPrStatusCard';
 export type { ChatPrStatusCardProps } from './ChatPrStatusCard';
 export { usePrChatStatusItems, mapPrDetailToCardPr, parseAutoMerge } from './usePrChatStatusItems';
 export type { UsePrChatStatusItemsOptions, UsePrChatStatusItemsResult } from './usePrChatStatusItems';
+export {
+    PR_STATUS_POLL_INTERVAL_MS, isPrItemActive, shouldPollPrStatusItems, formatUpdatedAgo,
+} from './prStatusFreshness';
 export { JsonResponseView } from '../../../ui/JsonResponseView';
 export { NoteEditCard } from './NoteEditCard';
 export { ScriptTerminalBlock, highlightTerminalLine } from './ScriptTerminalBlock';

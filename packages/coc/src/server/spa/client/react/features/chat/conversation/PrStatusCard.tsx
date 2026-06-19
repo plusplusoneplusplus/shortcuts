@@ -20,11 +20,12 @@
  * feature (no duplicated badge or timestamp logic) and {@link buildPrDetailHash}
  * for the deep-link.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { prStatusBadge, formatTimestamp, type PrStatus } from '../../pull-requests/pr-utils';
 import { buildPrDetailHash } from '../../pull-requests/pr-open-utils';
 import { PrChecksCompact, type PrChecksCompactState } from '../../pull-requests/PrChecksSummary';
 import type { PrCheckRow } from '../../pull-requests/pr-derived-data';
+import { formatUpdatedAgo } from './prStatusFreshness';
 
 /** Per-PR fetch lifecycle for a card row. */
 export type PrStatusCardItemState = 'loading' | 'ready' | 'error';
@@ -99,6 +100,12 @@ export interface PrStatusCardProps {
      * card can lazily fetch the checks, and again on an in-panel retry.
      */
     onExpandChecks?: (key: string) => void;
+    /** Force-refresh all rows (AC-05) — wires the manual refresh control. */
+    onRefresh?: () => void;
+    /** True while a refresh is in flight — shows the refresh control as busy. */
+    refreshing?: boolean;
+    /** Epoch ms of the last successful fetch — drives the "updated Xs ago" label (AC-05). */
+    lastUpdatedAt?: number;
     /**
      * Collapse the list to a count when the number of PRs exceeds this.
      * Defaults to 2 (one or two PRs stay expanded).
@@ -237,11 +244,27 @@ function sortNewestFirst(items: PrStatusCardItem[]): PrStatusCardItem[] {
         .map(({ item }) => item);
 }
 
-export function PrStatusCard({ items, onRetry, onExpandChecks, collapseThreshold = 2 }: PrStatusCardProps) {
+export function PrStatusCard({
+    items,
+    onRetry,
+    onExpandChecks,
+    onRefresh,
+    refreshing = false,
+    lastUpdatedAt,
+    collapseThreshold = 2,
+}: PrStatusCardProps) {
     const sorted = sortNewestFirst(items);
     const [expanded, setExpanded] = useState(sorted.length <= collapseThreshold);
     // Which rows have their CI-checks panel expanded (AC-03).
     const [checksExpandedKeys, setChecksExpandedKeys] = useState<ReadonlySet<string>>(() => new Set());
+
+    // Tick a clock so the "updated Xs ago" label stays current between fetches.
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (lastUpdatedAt === undefined) return undefined;
+        const id = setInterval(() => setNow(Date.now()), 5000);
+        return () => clearInterval(id);
+    }, [lastUpdatedAt]);
 
     const toggleChecks = (key: string) =>
         setChecksExpandedKeys(prev => {
@@ -253,6 +276,8 @@ export function PrStatusCard({ items, onRetry, onExpandChecks, collapseThreshold
 
     // Empty state — card is hidden entirely.
     if (sorted.length === 0) return null;
+
+    const updatedLabel = formatUpdatedAgo(lastUpdatedAt, now);
 
     const collapsible = sorted.length > collapseThreshold;
     const showRows = !collapsible || expanded;
@@ -268,25 +293,53 @@ export function PrStatusCard({ items, onRetry, onExpandChecks, collapseThreshold
             role="region"
             aria-label="Pull requests created in this chat"
         >
-            <button
-                type="button"
-                className={
-                    'flex w-full items-center gap-2 px-2.5 py-1.5 text-xs font-semibold ' +
-                    'text-[#57606a] dark:text-[#8b949e] select-none ' +
-                    (collapsible ? 'cursor-pointer hover:text-[#1f2328] dark:hover:text-[#c9d1d9]' : 'cursor-default')
-                }
-                data-testid="pr-status-card-toggle"
-                aria-expanded={showRows}
-                onClick={collapsible ? () => setExpanded(v => !v) : undefined}
-            >
-                <span aria-hidden="true">🔀</span>
-                <span>
-                    {sorted.length === 1 ? '1 pull request' : `${sorted.length} pull requests`}
-                </span>
-                {collapsible && (
-                    <span className="ml-auto" aria-hidden="true">{showRows ? '▾' : '▸'}</span>
-                )}
-            </button>
+            <div className="flex items-center gap-2 px-2.5 py-1.5">
+                <button
+                    type="button"
+                    className={
+                        'flex items-center gap-2 text-xs font-semibold ' +
+                        'text-[#57606a] dark:text-[#8b949e] select-none ' +
+                        (collapsible ? 'cursor-pointer hover:text-[#1f2328] dark:hover:text-[#c9d1d9]' : 'cursor-default')
+                    }
+                    data-testid="pr-status-card-toggle"
+                    aria-expanded={showRows}
+                    onClick={collapsible ? () => setExpanded(v => !v) : undefined}
+                >
+                    <span aria-hidden="true">🔀</span>
+                    <span>
+                        {sorted.length === 1 ? '1 pull request' : `${sorted.length} pull requests`}
+                    </span>
+                    {collapsible && (
+                        <span aria-hidden="true">{showRows ? '▾' : '▸'}</span>
+                    )}
+                </button>
+
+                <div className="ml-auto flex items-center gap-2 text-[11px] text-[#57606a] dark:text-[#8b949e]">
+                    {updatedLabel && (
+                        <span data-testid="pr-status-card-updated" title={updatedLabel}>
+                            {updatedLabel}
+                        </span>
+                    )}
+                    {onRefresh && (
+                        <button
+                            type="button"
+                            className={
+                                'inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium ' +
+                                'text-[#0969da] dark:text-[#58a6ff] hover:bg-black/[0.05] dark:hover:bg-white/[0.08] ' +
+                                'disabled:opacity-60'
+                            }
+                            data-testid="pr-status-card-refresh"
+                            aria-label="Refresh pull request status"
+                            aria-busy={refreshing}
+                            disabled={refreshing}
+                            onClick={onRefresh}
+                        >
+                            <span className={refreshing ? 'animate-spin' : ''} aria-hidden="true">↻</span>
+                            <span>{refreshing ? 'Refreshing…' : 'Refresh'}</span>
+                        </button>
+                    )}
+                </div>
+            </div>
 
             {showRows && (
                 <div className="border-t border-[#d0d7de] dark:border-[#3c3c3c]">

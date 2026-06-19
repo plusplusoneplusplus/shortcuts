@@ -128,7 +128,19 @@ when already loading/ready), maps the response with the existing
 `features/pull-requests/PrChecksSummary.tsx` `PrChecksCompact` (a summary-count
 line + per-check list with detail links). That module is the single home for the
 check-status → label/summary logic: `PrChecksAndReadiness`'s `PrChecksTable` also
-imports `checkStatusLabel` from it (no copy-pasted check-status logic).
+imports `checkStatusLabel` from it (no copy-pasted check-status logic). Freshness
+(AC-05) lives in the pure `conversation/prStatusFreshness.ts`: `shouldPollPrStatusItems`
+returns true only while some PR is non-terminal AND has checks pending/running OR
+auto-merge armed/queued (false once all merged/closed), and `formatUpdatedAgo`
+renders the "updated Xs ago" label. `usePrChatStatusItems` exposes `refresh`
+(force-refreshes every row's detail + any loaded checks with `{ force: true }`,
+running silently so rows don't flash a skeleton), `refreshing`, `lastUpdatedAt`,
+and `isPolling`; an internal `setInterval(PR_STATUS_POLL_INTERVAL_MS = 45s)` is
+armed only while `isPolling` is true and torn down once everything settles. The
+card header surfaces a manual Refresh control + the freshness label. Force-refresh
+threads through `getForOrigin`/`getChecksForOrigin` `{ force }` to the
+`?force=true` query, which the server checks route honours by evicting
+`prChecksCache` (the detail route already evicts sub-caches).
 
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
 the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,

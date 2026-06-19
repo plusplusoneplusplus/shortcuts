@@ -275,11 +275,11 @@ export class PullRequestsClient {
     return `/api/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/diff/files/${encodePathSegment(filePath)}?${query.toString()}`;
   }
 
-  getChecksForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestChecksResponse> {
+  getChecksForOrigin(originId: string, prId: string, options: OriginPrDetailOptions): Promise<PullRequestChecksResponse> {
     return this.transport.request<PullRequestChecksResponse>(
       `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/checks`,
       {
-        query: serializeOriginPrStateQuery(options),
+        query: serializeOriginPrDetailQuery(options),
         signal: options.signal,
       },
     );

@@ -1084,10 +1084,16 @@ export function registerPrRoutes(
 
     async function sendPullRequestChecks(
         res: Parameters<Route['handler']>[1],
-        options: { repoId: string; prId: string; repo: RepoInfo; cacheScopeId: string },
+        options: { repoId: string; prId: string; repo: RepoInfo; cacheScopeId: string; force?: boolean },
     ): Promise<void> {
         const cacheKey = makePrSubCacheKey(options.cacheScopeId, options.prId);
-        const cached = prChecksCache.get(cacheKey);
+        if (options.force) {
+            // Smart-poll / manual refresh asks for fresh check statuses, bypassing
+            // the 10-min cache (AC-05 force-refresh).
+            prChecksCache.delete(cacheKey);
+            console.debug(`[pr-checks-cache] bypass key=${cacheKey}`);
+        }
+        const cached = !options.force ? prChecksCache.get(cacheKey) : undefined;
         if (cached && cached.expiresAt > Date.now()) {
             console.debug(`[pr-checks-cache] hit key=${cacheKey}`);
             return sendJson(res, cached.data);
@@ -1634,11 +1640,13 @@ export function registerPrRoutes(
                 const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
                 if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
                 const { repoId, repo, storageScope } = scopeResult.value;
+                const force = url.parse(req.url ?? '', true).query.force === 'true';
                 await sendPullRequestChecks(res, {
                     repoId,
                     prId,
                     repo,
                     cacheScopeId: storageScope.storageOriginId,
+                    force,
                 });
             } catch (err) {
                 sendProviderBackedPrRouteError(res, err);

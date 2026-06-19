@@ -16,9 +16,10 @@
  *   - mapPrDetailToCardPr pure-mapper edge cases.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, fireEvent, waitFor } from '@testing-library/react';
+import { render, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
+import { PR_STATUS_POLL_INTERVAL_MS } from '../../../src/server/spa/client/react/features/chat/conversation/prStatusFreshness';
 
 const mocks = vi.hoisted(() => ({
     pullRequests: {
@@ -201,6 +202,85 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
         fireEvent.click(getByTestId(`pr-status-card-retry-${GH_ORIGIN}:42`));
         await findByText('Recovered PR');
         expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(2);
+    });
+
+    it('AC-05: manual refresh force-refreshes every row, bypassing the cache', async () => {
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 42,
+            title: 'Add PR status card',
+            status: 'open',
+            sourceBranch: 'feature/card',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: GH_URL,
+        });
+
+        const { findByText, getByTestId } = render(
+            <ChatPrStatusCard turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+        );
+
+        await findByText('Add PR status card');
+        // Initial load is not forced.
+        expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(1);
+        expect(mocks.pullRequests.getForOrigin).toHaveBeenLastCalledWith(GH_ORIGIN, '42', { workspaceId: 'ws1' });
+
+        fireEvent.click(getByTestId('pr-status-card-refresh'));
+
+        // Manual refresh re-fetches with force=true to bypass the server cache.
+        await waitFor(() => expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(2));
+        expect(mocks.pullRequests.getForOrigin).toHaveBeenLastCalledWith(GH_ORIGIN, '42', { workspaceId: 'ws1', force: true });
+        // The row content survives the refresh (no skeleton flash).
+        expect(getByTestId(`pr-status-card-branches-${GH_ORIGIN}:42`).textContent).toContain('feature/card → main');
+    });
+
+    it('AC-05: a pending PR auto-polls then stops once it merges', async () => {
+        vi.useFakeTimers();
+        try {
+            mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+            mocks.pullRequests.getForOrigin
+                .mockResolvedValueOnce({
+                    number: 42,
+                    title: 'Pending PR',
+                    status: 'open',
+                    sourceBranch: 'feature/card',
+                    targetBranch: 'main',
+                    createdAt: '2024-01-01T00:00:00Z',
+                    url: GH_URL,
+                    // submit-commits-as-pr arms auto-merge → the poll predicate is active.
+                    autoMerge: { enabled: true, state: 'armed', mergeMethod: 'squash' },
+                })
+                .mockResolvedValue({
+                    number: 42,
+                    title: 'Pending PR',
+                    status: 'merged',
+                    sourceBranch: 'feature/card',
+                    targetBranch: 'main',
+                    mergedAt: '2024-01-02T00:00:00Z',
+                    createdAt: '2024-01-01T00:00:00Z',
+                    url: GH_URL,
+                    autoMerge: { enabled: true, state: 'armed', mergeMethod: 'squash' },
+                });
+
+            render(
+                <ChatPrStatusCard turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+            );
+
+            // Flush the initial bindings + detail fetch.
+            await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+            expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(1);
+
+            // One poll interval → a forced re-fetch, which now reports a merge.
+            await act(async () => { await vi.advanceTimersByTimeAsync(PR_STATUS_POLL_INTERVAL_MS); });
+            expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(2);
+            expect(mocks.pullRequests.getForOrigin).toHaveBeenLastCalledWith(GH_ORIGIN, '42', { workspaceId: 'ws1', force: true });
+
+            // Now terminal → polling stops; further time advances do not re-fetch.
+            await act(async () => { await vi.advanceTimersByTimeAsync(PR_STATUS_POLL_INTERVAL_MS * 3); });
+            expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('empty: no detection and no bindings keeps the card hidden', async () => {

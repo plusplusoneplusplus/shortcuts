@@ -238,6 +238,46 @@ describe('PrStatusCard auto-merge indicator (AC-04 display)', () => {
     });
 });
 
+describe('PrStatusCard freshness controls (AC-05 display)', () => {
+    it('renders an "updated ago" label when lastUpdatedAt is provided', () => {
+        const { getByTestId } = render(
+            <PrStatusCard items={[readyItem()]} lastUpdatedAt={Date.now()} />,
+        );
+        expect(getByTestId('pr-status-card-updated').textContent).toContain('updated');
+    });
+
+    it('omits the freshness label until the first fetch lands', () => {
+        const { queryByTestId } = render(<PrStatusCard items={[readyItem()]} />);
+        expect(queryByTestId('pr-status-card-updated')).toBeNull();
+    });
+
+    it('shows a refresh control that invokes onRefresh', () => {
+        const onRefresh = vi.fn();
+        const { getByTestId } = render(<PrStatusCard items={[readyItem()]} onRefresh={onRefresh} />);
+        const refresh = getByTestId('pr-status-card-refresh');
+        expect(refresh.textContent).toContain('Refresh');
+        fireEvent.click(refresh);
+        expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('disables the refresh control while refreshing', () => {
+        const onRefresh = vi.fn();
+        const { getByTestId } = render(
+            <PrStatusCard items={[readyItem()]} onRefresh={onRefresh} refreshing />,
+        );
+        const refresh = getByTestId('pr-status-card-refresh') as HTMLButtonElement;
+        expect(refresh.disabled).toBe(true);
+        expect(refresh.textContent).toContain('Refreshing');
+        fireEvent.click(refresh);
+        expect(onRefresh).not.toHaveBeenCalled();
+    });
+
+    it('omits the refresh control when no onRefresh handler is provided', () => {
+        const { queryByTestId } = render(<PrStatusCard items={[readyItem()]} />);
+        expect(queryByTestId('pr-status-card-refresh')).toBeNull();
+    });
+});
+
 function checkRow(status: CheckStatus, name: string, overrides: Partial<PrCheckRow> = {}): PrCheckRow {
     return { id: `${name}-${status}`, name, status, duration: '', interpretation: '', ...overrides };
 }

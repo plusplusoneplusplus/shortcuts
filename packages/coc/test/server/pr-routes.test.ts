@@ -1916,6 +1916,22 @@ describe('checks cache (GET /api/origins/:originId/pull-requests/:prId/checks)',
         await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
         expect(mockSvc.getChecks).toHaveBeenCalledTimes(2);
     });
+
+    it('force=true on the checks endpoint itself bypasses the cache (AC-05)', async () => {
+        await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
+        expect(mockSvc.getChecks).toHaveBeenCalledTimes(1);
+
+        // A cached call does not re-hit the provider...
+        await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
+        expect(mockSvc.getChecks).toHaveBeenCalledTimes(1);
+
+        // ...but a forced refresh does, then repopulates the cache.
+        await fetch(originPullRequestsUrl(`/42/checks?force=true`, REPO_ID));
+        expect(mockSvc.getChecks).toHaveBeenCalledTimes(2);
+
+        await fetch(originPullRequestsUrl(`/42/checks`, REPO_ID));
+        expect(mockSvc.getChecks).toHaveBeenCalledTimes(2);
+    });
 });
 
 // ── PR detail cache tests ─────────────────────────────────────────────────────
