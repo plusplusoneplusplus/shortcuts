@@ -120,7 +120,15 @@ mapped server-side from GitHub REST `pulls.get` / ADO `autoCompleteSetBy`) onto
 the card PR, and the pure `describeAutoMerge` reduces it to an armed/queued/blocked
 badge with a provider-aware label (`autoMergeLabel` → "Auto-merge" for GitHub,
 "Auto-complete" for Azure DevOps, with the provider derived from the PR URL via
-`prProviderFromUrl`); not-enabled renders nothing.
+`prProviderFromUrl`); not-enabled renders nothing. Each ready row also has a
+"Checks" disclosure (AC-03): expanding it lazily calls
+`usePrChatStatusItems.expandChecks(key)` → `getChecksForOrigin` (deduped — skips
+when already loading/ready), maps the response with the existing
+`buildCheckRowsFromChecks`, and renders the shared
+`features/pull-requests/PrChecksSummary.tsx` `PrChecksCompact` (a summary-count
+line + per-check list with detail links). That module is the single home for the
+check-status → label/summary logic: `PrChecksAndReadiness`'s `PrChecksTable` also
+imports `checkStatusLabel` from it (no copy-pasted check-status logic).
 
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
 the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,

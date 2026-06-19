@@ -5,23 +5,11 @@
 
 import { cn } from '../../ui';
 import { checkStatusClass, findingTagClass } from './pr-derived-data';
+import { checkStatusLabel } from './PrChecksSummary';
 import type { PrCheckRow, MergeReadinessItem } from './pr-derived-data';
 
 interface PrChecksTableProps {
     rows: PrCheckRow[];
-}
-
-function statusLabel(status: PrCheckRow['status']): string {
-    switch (status) {
-        case 'success':   return 'Passed';
-        case 'warning':   return 'Needs review';
-        case 'failure':   return 'Failed';
-        case 'cancelled': return 'Cancelled';
-        case 'skipped':   return 'Skipped';
-        case 'pending':   return 'Pending';
-        case 'running':   return 'Running';
-        case 'unknown':   return 'Unknown';
-    }
 }
 
 export function PrChecksTable({ rows }: PrChecksTableProps) {
@@ -89,7 +77,7 @@ export function PrChecksTable({ rows }: PrChecksTableProps) {
                                         )}
                                     </td>
                                     <td className={cn('px-[7px] py-[5px] align-top text-[12px] font-semibold', checkStatusClass(row.status))}>
-                                        {statusLabel(row.status)}
+                                        {checkStatusLabel(row.status)}
                                     </td>
                                     <td className="px-[7px] py-[5px] align-top font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400">
                                         {row.duration}

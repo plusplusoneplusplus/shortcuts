@@ -20,6 +20,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClientConversationTurn } from '../../../types/dashboard';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { resolveCanonicalOriginId } from '../../../repos/originScope';
+import { buildCheckRowsFromChecks } from '../../pull-requests/pr-derived-data';
+import type { PullRequestCheck } from '../../pull-requests/pr-utils';
 import {
     detectedPrsNeedingBinding,
     gatherDetectedPrsFromTurns,
@@ -44,6 +46,8 @@ export interface UsePrChatStatusItemsResult {
     items: PrStatusCardItem[];
     /** Re-fetch a single failed row's detail. */
     retry: (key: string) => void;
+    /** Lazily fetch a row's CI checks (AC-03) — called when its panel is expanded. */
+    expandChecks: (key: string) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -126,6 +130,8 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
     const generationRef = useRef(0);
     // Latest unioned associations, so `retry` can re-fetch one by key.
     const associationsRef = useRef<PrAssociation[]>([]);
+    // Per-key checks fetch status — dedups expand requests (skip when loading/ready).
+    const checksStatusRef = useRef<Map<string, 'loading' | 'ready' | 'error'>>(new Map());
 
     const chatOriginId = useMemo(
         () => (workspaceId ? resolveCanonicalOriginId({ workspaceId, remoteUrl: remoteUrl ?? null }) : ''),
@@ -178,6 +184,45 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
         [],
     );
 
+    const fetchChecksForAssociation = useCallback(
+        (association: PrAssociation, repoId: string, generation: number) => {
+            checksStatusRef.current.set(association.key, 'loading');
+            setItems(prev =>
+                prev.map(item =>
+                    item.key === association.key
+                        ? { ...item, checksState: 'loading', checksError: undefined }
+                        : item,
+                ),
+            );
+            getSpaCocClient()
+                .pullRequests.getChecksForOrigin(association.originId, association.prId, { workspaceId: repoId })
+                .then(body => {
+                    if (generationRef.current !== generation) return;
+                    const rows = buildCheckRowsFromChecks((body.checks ?? []) as PullRequestCheck[]);
+                    checksStatusRef.current.set(association.key, 'ready');
+                    setItems(prev =>
+                        prev.map(item =>
+                            item.key === association.key
+                                ? { ...item, checksState: 'ready', checks: rows, checksError: undefined }
+                                : item,
+                        ),
+                    );
+                })
+                .catch((err: unknown) => {
+                    if (generationRef.current !== generation) return;
+                    checksStatusRef.current.set(association.key, 'error');
+                    setItems(prev =>
+                        prev.map(item =>
+                            item.key === association.key
+                                ? { ...item, checksState: 'error', checksError: getSpaCocClientErrorMessage(err, 'Failed to load checks.') }
+                                : item,
+                        ),
+                    );
+                });
+        },
+        [],
+    );
+
     useEffect(() => {
         if (!workspaceId || !chatOriginId) {
             associationsRef.current = [];
@@ -203,6 +248,8 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
 
             const associations = unionAssociations({ detected, bindings, workspaceId, chatOriginId });
             associationsRef.current = associations;
+            // New association set → drop stale per-key checks fetch status.
+            checksStatusRef.current.clear();
 
             // Persist freshly-detected PRs so they survive a reload with the
             // creating turn collapsed (AC-01 DoD #2). Best-effort.
@@ -238,5 +285,19 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
         [workspaceId, fetchDetailForAssociation],
     );
 
-    return { items, retry };
+    const expandChecks = useCallback(
+        (key: string) => {
+            if (!workspaceId) return;
+            // Dedup: an in-flight or already-loaded fetch needs no refetch on toggle;
+            // an 'error' (or never-fetched) key re-fetches (covers the in-panel Retry).
+            const status = checksStatusRef.current.get(key);
+            if (status === 'loading' || status === 'ready') return;
+            const association = associationsRef.current.find(candidate => candidate.key === key);
+            if (!association) return;
+            fetchChecksForAssociation(association, workspaceId, generationRef.current);
+        },
+        [workspaceId, fetchChecksForAssociation],
+    );
+
+    return { items, retry, expandChecks };
 }

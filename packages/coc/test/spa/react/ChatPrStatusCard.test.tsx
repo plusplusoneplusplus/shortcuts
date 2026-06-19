@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
         listChatBindingsForOrigin: vi.fn(),
         createChatBindingForOrigin: vi.fn(),
         getForOrigin: vi.fn(),
+        getChecksForOrigin: vi.fn(),
     },
 }));
 
@@ -66,6 +67,7 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
         mocks.pullRequests.listChatBindingsForOrigin.mockReset();
         mocks.pullRequests.createChatBindingForOrigin.mockReset();
         mocks.pullRequests.getForOrigin.mockReset();
+        mocks.pullRequests.getChecksForOrigin.mockReset();
         mocks.pullRequests.createChatBindingForOrigin.mockResolvedValue({ prId: '42', taskId: 't1' });
     });
 
@@ -105,6 +107,50 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
         await waitFor(() =>
             expect(mocks.pullRequests.createChatBindingForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '42', 't1'),
         );
+    });
+
+    it('AC-03: expanding a row lazily fetches checks and renders summary counts + rows', async () => {
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 42,
+            title: 'Add PR status card',
+            status: 'open',
+            sourceBranch: 'feature/card',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: GH_URL,
+        });
+        mocks.pullRequests.getChecksForOrigin.mockResolvedValue({
+            checks: [
+                { id: 'c1', name: 'build', status: 'success', source: 'check', detailsUrl: 'https://ci/build' },
+                { id: 'c2', name: 'unit', status: 'failure', source: 'check' },
+                { id: 'c3', name: 'e2e', status: 'pending', source: 'check' },
+            ],
+        });
+
+        const { findByText, getByTestId } = render(
+            <ChatPrStatusCard turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+        );
+
+        await findByText('Add PR status card');
+        // Checks are not fetched until the row is expanded (lazy).
+        expect(mocks.pullRequests.getChecksForOrigin).not.toHaveBeenCalled();
+
+        fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${GH_ORIGIN}:42`));
+
+        // Fetched against the PR's canonical origin, then summary counts render.
+        await waitFor(() =>
+            expect(mocks.pullRequests.getChecksForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '42', { workspaceId: 'ws1' }),
+        );
+        const passing = await waitFor(() => getByTestId(`pr-checks-compact-${GH_ORIGIN}:42-count-passing`));
+        expect(passing.getAttribute('data-count')).toBe('1');
+        expect(getByTestId(`pr-checks-compact-${GH_ORIGIN}:42-count-failing`).getAttribute('data-count')).toBe('1');
+        expect(getByTestId(`pr-checks-compact-${GH_ORIGIN}:42-count-pending`).getAttribute('data-count')).toBe('1');
+
+        // Collapsing then re-expanding does not refetch (already loaded → deduped).
+        fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${GH_ORIGIN}:42`));
+        fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${GH_ORIGIN}:42`));
+        expect(mocks.pullRequests.getChecksForOrigin).toHaveBeenCalledTimes(1);
     });
 
     it('AC-01 DoD #2: a persisted binding alone surfaces the PR on reload (no re-post)', async () => {

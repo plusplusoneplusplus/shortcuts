@@ -16,7 +16,14 @@ export interface ChatPrStatusCardProps extends UsePrChatStatusItemsOptions {
 }
 
 export function ChatPrStatusCard({ collapseThreshold, ...options }: ChatPrStatusCardProps) {
-    const { items, retry } = usePrChatStatusItems(options);
+    const { items, retry, expandChecks } = usePrChatStatusItems(options);
     if (items.length === 0) return null;
-    return <PrStatusCard items={items} onRetry={retry} collapseThreshold={collapseThreshold} />;
+    return (
+        <PrStatusCard
+            items={items}
+            onRetry={retry}
+            onExpandChecks={expandChecks}
+            collapseThreshold={collapseThreshold}
+        />
+    );
 }

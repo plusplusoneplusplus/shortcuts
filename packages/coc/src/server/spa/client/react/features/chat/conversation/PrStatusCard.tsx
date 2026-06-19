@@ -23,6 +23,8 @@
 import React, { useState } from 'react';
 import { prStatusBadge, formatTimestamp, type PrStatus } from '../../pull-requests/pr-utils';
 import { buildPrDetailHash } from '../../pull-requests/pr-open-utils';
+import { PrChecksCompact, type PrChecksCompactState } from '../../pull-requests/PrChecksSummary';
+import type { PrCheckRow } from '../../pull-requests/pr-derived-data';
 
 /** Per-PR fetch lifecycle for a card row. */
 export type PrStatusCardItemState = 'loading' | 'ready' | 'error';
@@ -80,12 +82,23 @@ export interface PrStatusCardItem {
     url?: string;
     /** Sort key — newer sorts first. ISO string or epoch number. */
     createdAt?: string | number;
+    /** Per-PR CI-checks fetch lifecycle (AC-03) — undefined until first expanded. */
+    checksState?: PrChecksCompactState;
+    /** Loaded check rows (present when `checksState === 'ready'`). */
+    checks?: PrCheckRow[];
+    /** Error message shown when `checksState === 'error'`. */
+    checksError?: string;
 }
 
 export interface PrStatusCardProps {
     items: PrStatusCardItem[];
     /** Retry a failed item's fetch. */
     onRetry?: (key: string) => void;
+    /**
+     * Expand a row's CI checks (AC-03) — fired on first expand so the connected
+     * card can lazily fetch the checks, and again on an in-panel retry.
+     */
+    onExpandChecks?: (key: string) => void;
     /**
      * Collapse the list to a count when the number of PRs exceeds this.
      * Defaults to 2 (one or two PRs stay expanded).
@@ -224,9 +237,19 @@ function sortNewestFirst(items: PrStatusCardItem[]): PrStatusCardItem[] {
         .map(({ item }) => item);
 }
 
-export function PrStatusCard({ items, onRetry, collapseThreshold = 2 }: PrStatusCardProps) {
+export function PrStatusCard({ items, onRetry, onExpandChecks, collapseThreshold = 2 }: PrStatusCardProps) {
     const sorted = sortNewestFirst(items);
     const [expanded, setExpanded] = useState(sorted.length <= collapseThreshold);
+    // Which rows have their CI-checks panel expanded (AC-03).
+    const [checksExpandedKeys, setChecksExpandedKeys] = useState<ReadonlySet<string>>(() => new Set());
+
+    const toggleChecks = (key: string) =>
+        setChecksExpandedKeys(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
 
     // Empty state — card is hidden entirely.
     if (sorted.length === 0) return null;
@@ -268,7 +291,14 @@ export function PrStatusCard({ items, onRetry, collapseThreshold = 2 }: PrStatus
             {showRows && (
                 <div className="border-t border-[#d0d7de] dark:border-[#3c3c3c]">
                     {sorted.map(item => (
-                        <PrStatusCardRow key={item.key} item={item} onRetry={onRetry} />
+                        <PrStatusCardRow
+                            key={item.key}
+                            item={item}
+                            onRetry={onRetry}
+                            checksExpanded={checksExpandedKeys.has(item.key)}
+                            onToggleChecks={toggleChecks}
+                            onExpandChecks={onExpandChecks}
+                        />
                     ))}
                 </div>
             )}
@@ -276,7 +306,19 @@ export function PrStatusCard({ items, onRetry, collapseThreshold = 2 }: PrStatus
     );
 }
 
-function PrStatusCardRow({ item, onRetry }: { item: PrStatusCardItem; onRetry?: (key: string) => void }) {
+function PrStatusCardRow({
+    item,
+    onRetry,
+    checksExpanded,
+    onToggleChecks,
+    onExpandChecks,
+}: {
+    item: PrStatusCardItem;
+    onRetry?: (key: string) => void;
+    checksExpanded: boolean;
+    onToggleChecks: (key: string) => void;
+    onExpandChecks?: (key: string) => void;
+}) {
     const number = item.pr?.number ?? item.number;
     const detailHash = buildPrDetailHash(item.repoId, number);
     const terminal = item.state === 'ready' && isTerminal(item.pr?.status);
@@ -284,6 +326,14 @@ function PrStatusCardRow({ item, onRetry }: { item: PrStatusCardItem; onRetry?: 
         item.state === 'ready' && item.pr
             ? describeAutoMerge(item.pr.autoMerge, prProviderFromUrl(item.pr.url))
             : null;
+
+    const handleToggleChecks = () => {
+        const willExpand = !checksExpanded;
+        onToggleChecks(item.key);
+        // Lazily fetch on first expand (and re-fetch when re-expanding a row
+        // whose checks aren't loaded). The connected card dedups in-flight/ready.
+        if (willExpand) onExpandChecks?.(item.key);
+    };
 
     return (
         <div
@@ -361,6 +411,29 @@ function PrStatusCardRow({ item, onRetry }: { item: PrStatusCardItem; onRetry?: 
                             </span>
                         )}
                         {autoMerge && <AutoMergeIndicator model={autoMerge} testKey={item.key} />}
+                    </div>
+                    <div>
+                        <button
+                            type="button"
+                            className="flex items-center gap-1 rounded px-1 py-0.5 text-[11px] font-medium text-[#57606a] hover:text-[#1f2328] dark:text-[#8b949e] dark:hover:text-[#c9d1d9]"
+                            data-testid={`pr-status-card-checks-toggle-${item.key}`}
+                            aria-expanded={checksExpanded}
+                            onClick={handleToggleChecks}
+                        >
+                            <span aria-hidden="true">{checksExpanded ? '▾' : '▸'}</span>
+                            <span>Checks</span>
+                        </button>
+                        {checksExpanded && (
+                            <div className="mt-1 pl-2" data-testid={`pr-status-card-checks-${item.key}`}>
+                                <PrChecksCompact
+                                    state={item.checksState ?? 'loading'}
+                                    rows={item.checks ?? []}
+                                    error={item.checksError}
+                                    onRetry={onExpandChecks ? () => onExpandChecks(item.key) : undefined}
+                                    testId={`pr-checks-compact-${item.key}`}
+                                />
+                            </div>
+                        )}
                     </div>
                 </>
             )}

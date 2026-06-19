@@ -23,6 +23,7 @@ import {
     type PrStatusCardItem,
     type PrAutoMergeInfo,
 } from '../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
+import type { PrCheckRow, CheckStatus } from '../../../src/server/spa/client/react/features/pull-requests/pr-derived-data';
 
 function readyItem(overrides: Partial<PrStatusCardItem> = {}): PrStatusCardItem {
     return {
@@ -234,6 +235,67 @@ describe('PrStatusCard auto-merge indicator (AC-04 display)', () => {
         const item = readyItem({ key: 'plain:1' });
         const { queryByTestId } = render(<PrStatusCard items={[item]} />);
         expect(queryByTestId('pr-status-card-automerge-plain:1')).toBeNull();
+    });
+});
+
+function checkRow(status: CheckStatus, name: string, overrides: Partial<PrCheckRow> = {}): PrCheckRow {
+    return { id: `${name}-${status}`, name, status, duration: '', interpretation: '', ...overrides };
+}
+
+describe('PrStatusCard CI checks (AC-03 display)', () => {
+    it('checks panel is collapsed by default and not in the DOM until expanded', () => {
+        const item = readyItem();
+        const { queryByTestId, getByTestId } = render(<PrStatusCard items={[item]} />);
+        expect(getByTestId(`pr-status-card-checks-toggle-${item.key}`)).toBeTruthy();
+        expect(queryByTestId(`pr-status-card-checks-${item.key}`)).toBeNull();
+    });
+
+    it('expanding a row calls onExpandChecks once and reveals the checks panel', () => {
+        const onExpandChecks = vi.fn();
+        const item = readyItem({
+            checksState: 'ready',
+            checks: [
+                checkRow('success', 'build', { detailsUrl: 'https://ci/build' }),
+                checkRow('failure', 'unit'),
+                checkRow('pending', 'e2e'),
+            ],
+        });
+        const { getByTestId } = render(<PrStatusCard items={[item]} onExpandChecks={onExpandChecks} />);
+
+        fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${item.key}`));
+        expect(onExpandChecks).toHaveBeenCalledTimes(1);
+        expect(onExpandChecks).toHaveBeenCalledWith(item.key);
+
+        // Panel + the shared compact renderer (summary counts + a row per check).
+        const panel = getByTestId(`pr-status-card-checks-${item.key}`);
+        const summary = within(panel).getByTestId(`pr-checks-compact-${item.key}-summary`);
+        expect(within(summary).getByTestId(`pr-checks-compact-${item.key}-count-passing`).getAttribute('data-count')).toBe('1');
+        expect(within(summary).getByTestId(`pr-checks-compact-${item.key}-count-failing`).getAttribute('data-count')).toBe('1');
+        expect(within(panel).getAllByTestId(`pr-checks-compact-${item.key}-row`)).toHaveLength(3);
+
+        // Collapsing again removes the panel (and does not re-fire expand).
+        fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${item.key}`));
+        expect(onExpandChecks).toHaveBeenCalledTimes(1);
+    });
+
+    it('expanded row shows a loading state before checks arrive', () => {
+        const item = readyItem();
+        const { getByTestId } = render(<PrStatusCard items={[item]} onExpandChecks={vi.fn()} />);
+        fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${item.key}`));
+        // checksState undefined → compact renderer defaults to loading.
+        expect(getByTestId(`pr-checks-compact-${item.key}-loading`)).toBeTruthy();
+    });
+
+    it('expanded row surfaces a checks error with a retry that re-requests', () => {
+        const onExpandChecks = vi.fn();
+        const item = readyItem({ checksState: 'error', checksError: 'checks down' });
+        const { getByTestId } = render(<PrStatusCard items={[item]} onExpandChecks={onExpandChecks} />);
+        fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${item.key}`));
+        expect(onExpandChecks).toHaveBeenCalledTimes(1); // the expand
+        const err = getByTestId(`pr-checks-compact-${item.key}-error`);
+        expect(err.textContent).toContain('checks down');
+        fireEvent.click(getByTestId(`pr-checks-compact-${item.key}-retry`));
+        expect(onExpandChecks).toHaveBeenCalledTimes(2); // expand + retry
     });
 });
 
