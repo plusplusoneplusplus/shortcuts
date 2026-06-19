@@ -7,7 +7,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseDataUrl, saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../../src/server/core/image-utils';
+import { parseDataUrl, saveImagesToTempFiles, cleanupTempDir, isImageDataUrl, MAX_IMAGE_BYTES } from '../../src/server/core/image-utils';
 
 // ============================================================================
 // Helpers
@@ -122,6 +122,20 @@ describe('saveImagesToTempFiles', () => {
         expect(result.attachments).toHaveLength(1);
         expect(result.attachments[0].type).toBe('file');
         expect(fs.existsSync(result.attachments[0].path)).toBe(true);
+    });
+
+    it('should drop an image whose decoded bytes exceed MAX_IMAGE_BYTES before writing a temp file', () => {
+        const oversized = Buffer.alloc(MAX_IMAGE_BYTES + 1);
+        const oversizedDataUrl = `data:image/png;base64,${oversized.toString('base64')}`;
+        const result = saveImagesToTempFiles([oversizedDataUrl, PNG_DATA_URL]);
+        tempDirs.push(result.tempDir);
+
+        // Only the in-limit image survives; the oversized one is dropped.
+        expect(result.attachments).toHaveLength(1);
+        // Index is preserved (the valid PNG is at index 1).
+        expect(path.basename(result.attachments[0].path)).toBe('image-1.png');
+        // The oversized image left nothing on disk.
+        expect(fs.readdirSync(result.tempDir)).toHaveLength(1);
     });
 });
 

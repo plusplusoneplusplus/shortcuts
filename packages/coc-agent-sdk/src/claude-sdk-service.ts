@@ -28,20 +28,20 @@
  * themselves.
  */
 
-import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig, ReasoningEffort, SystemMessageConfig, TokenUsage } from './types';
+import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig, ReasoningEffort, SystemMessageConfig, TokenUsage, Attachment } from './types';
 import type { ToolEvent } from './types';
 import { denyAllPermissions } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
 import type { ToolCall } from './tool-call';
-import type { ClaudeImageSource } from './image-converter';
+import type { ClaudeImageSource, ClaudeImageSkip } from './image-converter';
 import { sdkServiceRegistry, CLAUDE_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { getSDKLogger } from './logger';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
-import { tryReadImageAsBase64 } from './image-converter';
+import { evaluateClaudeImageFile } from './image-converter';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
 import * as crypto from 'crypto';
@@ -793,10 +793,21 @@ export class ClaudeSDKService implements ISDKService {
 
     private buildClaudePrompt(options: SendMessageOptions): string | AsyncIterable<ClaudeStreamingUserMessage> {
         const text = options.prompt ?? '';
-        const images = (options.attachments ?? [])
-            .filter(attachment => attachment.type === 'file')
-            .map(attachment => tryReadImageAsBase64(attachment.path))
-            .filter((image): image is ClaudeImageSource => image !== null);
+        const images: ClaudeImageSource[] = [];
+        for (const attachment of options.attachments ?? []) {
+            if (attachment.type !== 'file') continue;
+            // Explicit Claude image-size boundary: oversized/malformed supported
+            // images are dropped here (not forwarded) and recorded as sanitized
+            // skip diagnostics. Unsupported extensions (SVG, non-images) return
+            // null and are ignored silently so text-only behavior is preserved.
+            const evaluation = evaluateClaudeImageFile(attachment.path);
+            if (!evaluation) continue;
+            if (evaluation.ok) {
+                images.push(evaluation.source);
+            } else {
+                this.logClaudeImageSkipped(attachment, evaluation.skip);
+            }
+        }
 
         if (images.length === 0) return text;
 
@@ -820,6 +831,29 @@ export class ClaudeSDKService implements ISDKService {
         return (async function* () {
             yield message;
         })();
+    }
+
+    /**
+     * Record a sanitized diagnostic for a Claude image attachment that was not
+     * forwarded as an image block. Only safe metadata is logged — reason, byte
+     * size, applied limit, extension/media type, and the attachment display name
+     * or basename — never base64 payloads, prompt/system-prompt text,
+     * credentials, or transcript content (AC-04).
+     */
+    private logClaudeImageSkipped(attachment: Attachment, skip: ClaudeImageSkip): void {
+        getSDKLogger().warn(
+            {
+                provider: CLAUDE_PROVIDER,
+                event: 'claude_image_skipped',
+                reason: skip.reason,
+                limitBytes: skip.limit,
+                ...(typeof skip.byteSize === 'number' ? { byteSize: skip.byteSize } : {}),
+                extension: skip.extension,
+                mediaType: skip.mediaType,
+                attachmentName: claudeAttachmentDisplayName(attachment),
+            },
+            'Claude image attachment skipped',
+        );
     }
 
     /**
@@ -1547,6 +1581,17 @@ function inferClaudeMcpServerNamesFromOptions(options: SendMessageOptions): stri
         names.add(COC_LLM_TOOLS_MCP_SERVER_NAME);
     }
     return Array.from(names).sort();
+}
+
+/**
+ * Safe display label for a skipped-image diagnostic: the attachment's display
+ * name when present, else the path basename. Both are filename-level metadata
+ * (never image bytes or prompt content).
+ */
+function claudeAttachmentDisplayName(attachment: Attachment): string {
+    const displayName = attachment.displayName?.trim();
+    if (displayName) return displayName;
+    return path.basename(attachment.path);
 }
 
 function resolveClaudeSystemPromptOptions(

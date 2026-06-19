@@ -60,6 +60,12 @@ describe('buildChatToolBundle', () => {
         // above); their prompt suffix was intentionally trimmed, so no guidance text.
         expect(result.toolGuidance).toContain('3 suggestions');
         expect(result.askUser).toBeDefined();
+        // Each enabled addon's guidance is wrapped in its named XML-style tag.
+        expect(result.toolGuidance).toContain('<follow_up_suggestions>');
+        expect(result.toolGuidance).toContain('</follow_up_suggestions>');
+        expect(result.toolGuidance).toContain('<ask_user_tool>');
+        expect(result.toolGuidance).toContain('<work_item_tools>');
+        expect(result.toolGuidance).toContain('<web_search_tool>');
     });
 
     it('filters tavily_web_search and its suffix when disabled by repo preferences', () => {
@@ -75,6 +81,8 @@ describe('buildChatToolBundle', () => {
 
         expect(result.tools.map(t => t.name)).not.toContain('tavily_web_search');
         expect(result.toolGuidance).not.toContain('tavily_web_search');
+        // Disabling the tool drops its whole tagged guidance block.
+        expect(result.toolGuidance).not.toContain('<web_search_tool>');
     });
 
     it('honors context-specific exclusions in addition to preferences', () => {

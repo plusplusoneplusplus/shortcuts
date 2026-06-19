@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { tryConvertImageFileToDataUrl, tryReadImageAsBase64 } from '../../src/copilot-sdk-service';
-import { isImageFilePath, isSupportedCodexImagePath } from '../../src/image-converter';
+import { isImageFilePath, isSupportedCodexImagePath, evaluateClaudeImageFile, MAX_CLAUDE_IMAGE_BYTES } from '../../src/image-converter';
 import { CopilotSDKService, resetCopilotSDKService } from '../../src/copilot-sdk-service';
 import { createStreamingMockSDKModule } from '../helpers/mock-sdk';
 
@@ -180,8 +180,90 @@ describe('tryReadImageAsBase64', () => {
     });
 
     it('returns null for images larger than the conversion limit', () => {
-        const filePath = writeTmpFile('large.png', Buffer.alloc((10 * 1024 * 1024) + 1));
+        const filePath = writeTmpFile('large.png', Buffer.alloc(MAX_CLAUDE_IMAGE_BYTES + 1));
         expect(tryReadImageAsBase64(filePath)).toBeNull();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// evaluateClaudeImageFile — explicit Claude image-size boundary
+// ---------------------------------------------------------------------------
+
+describe('evaluateClaudeImageFile', () => {
+    let tmpDir: string;
+
+    beforeAll(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-eval-test-'));
+    });
+
+    afterAll(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    function writeTmpFile(name: string, content: Buffer | string): string {
+        const p = path.join(tmpDir, name);
+        fs.writeFileSync(p, content);
+        return p;
+    }
+
+    it('returns null for unsupported extensions (SVG, text) — a silent, non-diagnostic skip', () => {
+        expect(evaluateClaudeImageFile(writeTmpFile('icon.svg', '<svg></svg>'))).toBeNull();
+        expect(evaluateClaudeImageFile(writeTmpFile('notes.txt', 'hello'))).toBeNull();
+    });
+
+    it('forwards an under-limit image with its metadata', () => {
+        const bytes = Buffer.alloc(1024, 3);
+        const result = evaluateClaudeImageFile(writeTmpFile('small.png', bytes));
+        expect(result).toEqual({
+            ok: true,
+            source: { media_type: 'image/png', data: bytes.toString('base64') },
+            byteSize: bytes.length,
+            extension: 'png',
+            mediaType: 'image/png',
+        });
+    });
+
+    it('forwards an image whose byte size is exactly at the limit', () => {
+        const bytes = Buffer.alloc(MAX_CLAUDE_IMAGE_BYTES, 5);
+        const result = evaluateClaudeImageFile(writeTmpFile('exact.webp', bytes));
+        expect(result?.ok).toBe(true);
+        if (result?.ok) {
+            expect(result.byteSize).toBe(MAX_CLAUDE_IMAGE_BYTES);
+            expect(result.mediaType).toBe('image/webp');
+        }
+    });
+
+    it('skips an over-limit image with a sanitized too-large diagnostic', () => {
+        const oversized = MAX_CLAUDE_IMAGE_BYTES + 1;
+        const result = evaluateClaudeImageFile(writeTmpFile('big.jpg', Buffer.alloc(oversized)));
+        expect(result).toEqual({
+            ok: false,
+            skip: {
+                reason: 'too-large',
+                byteSize: oversized,
+                limit: MAX_CLAUDE_IMAGE_BYTES,
+                extension: 'jpg',
+                mediaType: 'image/jpeg',
+            },
+        });
+    });
+
+    it('reports a read-error skip for a missing supported-extension file', () => {
+        const result = evaluateClaudeImageFile(path.join(tmpDir, 'missing.png'));
+        expect(result).toEqual({
+            ok: false,
+            skip: { reason: 'read-error', limit: MAX_CLAUDE_IMAGE_BYTES, extension: 'png', mediaType: 'image/png' },
+        });
+    });
+
+    it('reports a not-a-regular-file skip for a directory with an image extension', () => {
+        const dirPath = path.join(tmpDir, 'folder.png');
+        fs.mkdirSync(dirPath, { recursive: true });
+        const result = evaluateClaudeImageFile(dirPath);
+        expect(result).toEqual({
+            ok: false,
+            skip: { reason: 'not-a-regular-file', limit: MAX_CLAUDE_IMAGE_BYTES, extension: 'png', mediaType: 'image/png' },
+        });
     });
 });
 

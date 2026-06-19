@@ -14,6 +14,20 @@ import * as path from 'path';
 import type { Attachment } from '@plusplusoneplusplus/forge';
 
 /**
+ * Maximum decoded byte size for a single image / attachment buffer (10 MB).
+ *
+ * Single source of truth for the server-side image/attachment byte limit.
+ * `attachment-utils` re-exports this as `MAX_ATTACHMENT_SIZE`, and it mirrors
+ * the SDK-side `MAX_CLAUDE_IMAGE_BYTES` (also 10 MB) so every CoC image limit
+ * stays intentionally consistent. It is enforced against the *decoded* buffer
+ * length — never the client-reported `size` — so a forged small `size` cannot
+ * smuggle an oversized payload onto disk. Defined here (the dependency leaf) so
+ * both `image-utils` and `attachment-utils` can reference it without a circular
+ * import.
+ */
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+/**
  * Parse a base64 data URL into its components.
  * Returns null for invalid or non-image data URLs.
  */
@@ -47,6 +61,9 @@ export function saveImagesToTempFiles(
     for (let i = 0; i < images.length; i++) {
         const parsed = parseDataUrl(images[i]);
         if (!parsed) { continue; }
+        // Decoded-byte enforcement: do not trust any client-reported size — drop
+        // oversized images here, before any temp file is written to disk.
+        if (parsed.buffer.length > MAX_IMAGE_BYTES) { continue; }
         const fileName = `image-${i}.${parsed.extension}`;
         const filePath = path.join(tempDir, fileName);
         fs.writeFileSync(filePath, parsed.buffer);

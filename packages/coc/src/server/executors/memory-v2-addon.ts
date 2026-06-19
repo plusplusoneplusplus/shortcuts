@@ -28,6 +28,7 @@ import {
 } from '@plusplusoneplusplus/coc-memory';
 import { readGlobalPreferences, readRepoPreferences } from '../preferences-handler';
 import { createMemoryStoreFactTool, createMemoryRecallTool, type MemoryV2ToolDeps } from '../llm-tools/memory-v2-tools';
+import { tagGuidanceSuffix } from './prompt-tags';
 
 // ============================================================================
 // Types
@@ -61,8 +62,10 @@ const EMPTY_ADDON: MemoryV2Addon = Object.freeze({
     dispose: () => {},
 });
 
-const MEMORY_TOOL_SUFFIX =
-    '\n\nYou have a persistent `memory` tool. Actively capture facts, preferences, and patterns you discover during this session. When in doubt, save it — storage is cheap and forgetting is expensive.';
+const MEMORY_TOOL_SUFFIX = tagGuidanceSuffix(
+    'memory_tool',
+    'You have a persistent `memory` tool. Actively capture facts, preferences, and patterns you discover during this session. When in doubt, save it — storage is cheap and forgetting is expensive.',
+);
 
 // ============================================================================
 // Builder

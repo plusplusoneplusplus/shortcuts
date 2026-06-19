@@ -41,6 +41,7 @@ import { createCancelLoopTool, createCreateLoopTool, createListLoopsTool, create
 import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
+import { tagBlock, tagGuidanceSuffix } from './prompt-tags';
 import type { ChatMode, ChatPayload, ChatProvider, DreamRunPayload, ForEachGenerationContext, MapReduceGenerationContext, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
     hasCommitChatContext,
@@ -85,12 +86,14 @@ export function buildModeSystemMessage(
     return { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE };
 }
 
-export const SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE = `\
-When citing source code locations, format each location as a Markdown link.
+export const SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE = tagBlock(
+    'citing_rule',
+    `When citing source code locations, format each location as a Markdown link.
 
 Use:
 - [src/file.ts:42](src/file.ts:42)
-- [src/file.ts:42-58](src/file.ts:42-58)`;
+- [src/file.ts:42-58](src/file.ts:42-58)`,
+);
 
 export function buildSourceLocationMarkdownLinkSystemMessage(
     provider: ChatProvider | undefined,
@@ -456,7 +459,10 @@ export function buildFollowUpSuggestionsAddon(
     }
     return {
         tools: [createSuggestFollowUpsTool()],
-        suffix: `\n\nWhen suggesting follow-ups, provide exactly ${count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`,
+        suffix: tagGuidanceSuffix(
+            'follow_up_suggestions',
+            `When suggesting follow-ups, provide exactly ${count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`,
+        ),
     };
 }
 
@@ -533,11 +539,13 @@ export function buildAskUserAddon(
     }
 
     const { tool, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending } = createAskUserTool(deps);
-    const suffix =
-        '\n\nYou have access to the `ask_user` tool. It takes `{ questions: [...] }`; put related clarification, ' +
+    const suffix = tagGuidanceSuffix(
+        'ask_user_tool',
+        'You have access to the `ask_user` tool. It takes `{ questions: [...] }`; put related clarification, ' +
         'confirmation, or choice questions in one call instead of calling the tool repeatedly. The user will see one interactive widget. ' +
         'Every question has Skip and Need more context options, so the user is never stuck. If the tool result includes `deferred: true` with `reason: "needs-context"`, provide the missing context and ask a revised version of that question again when the answer is still needed; if it is no longer needed, explain why. Do not treat it as permission to ignore the question. ' +
-        'Do NOT use ask_user for simple yes/no that can be inferred from context.';
+        'Do NOT use ask_user for simple yes/no that can be inferred from context.',
+    );
 
     return { tools: [tool], suffix, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending };
 }
@@ -569,12 +577,14 @@ export function buildCreateWorkItemAddon(
     const { tool: getWorkItemTool } = createGetWorkItemTool(dataDir, repoId, deps);
     const { tool: workItemTool } = createCreateUpdateWorkItemTool(dataDir, repoId, broadcastFn, deps);
 
-    const suffix =
-        '\n\nYou have access to the `get_work_item` and `create_update_work_item` tools. ' +
+    const suffix = tagGuidanceSuffix(
+        'work_item_tools',
+        'You have access to the `get_work_item` and `create_update_work_item` tools. ' +
         'Use `get_work_item` to read an existing work item by UUID, WI-N, or work-item number when the user ' +
         'references an existing item or attached context supplies a work-item pointer — before drafting changes, ' +
         'unless the full detail is already in the prompt. It is read-only. ' +
-        'Use `create_update_work_item` only after presenting a draft and receiving user confirmation.';
+        'Use `create_update_work_item` only after presenting a draft and receiving user confirmation.',
+    );
 
     return { tools: [getWorkItemTool, workItemTool], suffix };
 }
@@ -623,10 +633,12 @@ export function buildTavilyWebSearchAddon(
     }
 
     const { tool } = createTavilyWebSearchTool({ dataDir });
-    const suffix =
-        '\n\nYou have access to the `tavily_web_search` tool. ' +
+    const suffix = tagGuidanceSuffix(
+        'web_search_tool',
+        'You have access to the `tavily_web_search` tool. ' +
         'Use it proactively when the user asks about recent events, version-specific behavior, ' +
-        'newly released libraries/APIs, ongoing incidents, or anything likely past your knowledge cutoff.';
+        'newly released libraries/APIs, ongoing incidents, or anything likely past your knowledge cutoff.',
+    );
 
     return { tools: [tool], suffix };
 }
@@ -709,12 +721,14 @@ export function buildCanvasToolsAddon(
         processStore: store,
     });
 
-    const suffix =
-        '\n\nCanvas tools (`write_canvas`, `read_canvas`, `extension_canvas`) maintain a live artifact in '
+    const suffix = tagGuidanceSuffix(
+        'canvas_tools',
+        'Canvas tools (`write_canvas`, `read_canvas`, `extension_canvas`) maintain a live artifact in '
         + 'a side panel beside this chat. Use one when the user wants a document, plan, spec, or code file '
         + 'they will iterate on — not for short answers — and keep replies brief, referencing the canvas '
         + 'rather than repeating it. For interactive artifacts (boards, checklists, dashboards) use '
-        + '`extension_canvas`.';
+        + '`extension_canvas`.',
+    );
 
     return { tools: [write, read, extension], suffix };
 }

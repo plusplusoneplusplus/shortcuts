@@ -55,6 +55,8 @@ preferences are rewritten.
 - Applies `applyLlmToolPreferences()` filtering from `prompt-builder.ts`
 - Filters by the effective disabled tools list
 
+Each addon's prompt `suffix` is wrapped in a named XML-style tag via `tagGuidanceSuffix()` from `prompt-tags.ts` (e.g. `<follow_up_suggestions>`, `<ask_user_tool>`, `<work_item_tools>`, `<web_search_tool>`, `<canvas_tools>`, `<memory_tool>`), so the aggregated `toolGuidance` is self-delimiting. `tagGuidanceSuffix` includes the leading blank-line separator `applyLlmToolPreferences` relies on; the standalone `tagBlock()` helper wraps non-suffix blocks (e.g. the `<citing_rule>` source-location directive). When a tool is disabled its whole tagged block is dropped with it.
+
 ## Provider Parity (Copilot / Codex / Claude)
 
 The assembled `Tool<any>[]` bundle is passed to every provider via

@@ -17,6 +17,7 @@ import {
     hasAttachments,
     processMessageAttachments,
     TEXT_EXTERNALIZE_THRESHOLD,
+    MAX_ATTACHMENT_SIZE,
 } from '../../src/server/core/attachment-utils';
 import type { AttachmentPayload } from '../../src/server/core/attachment-utils';
 
@@ -58,6 +59,16 @@ function makePayload(overrides: Partial<AttachmentPayload> = {}): AttachmentPayl
         dataUrl: TEXT_DATA_URL,
         ...overrides,
     };
+}
+
+/**
+ * Build an image/png data URL whose *decoded* bytes exceed MAX_ATTACHMENT_SIZE.
+ * Used for forged-size tests: the declared `size` on the payload can be set
+ * arbitrarily small while the actual decoded image bytes are over the limit.
+ */
+function makeOversizedImageDataUrl(): string {
+    const oversized = Buffer.alloc(MAX_ATTACHMENT_SIZE + 1);
+    return `data:image/png;base64,${oversized.toString('base64')}`;
 }
 
 // ── parseGenericDataUrl ──────────────────────────────────────────────────
@@ -132,9 +143,9 @@ describe('validateAttachments', () => {
         expect(payloads[0].name).toBe('ok.txt');
     });
 
-    it('rejects files exceeding 10MB', () => {
+    it('rejects files whose declared size exceeds the limit', () => {
         const { payloads } = validateAttachments([
-            makePayload({ size: 11 * 1024 * 1024 }),
+            makePayload({ size: MAX_ATTACHMENT_SIZE + 1 }),
         ]);
         expect(payloads).toHaveLength(0);
     });
@@ -247,6 +258,48 @@ describe('saveAttachmentsToTempFiles', () => {
             tempDir,
         );
         expect(attachments).toHaveLength(0);
+    });
+
+    it('drops a forged-size image whose decoded bytes exceed the limit (never written to disk)', () => {
+        const tempDir = makeTempDir();
+        // Declared size is tiny, but the decoded image is over MAX_ATTACHMENT_SIZE.
+        const forged = makePayload({
+            name: 'forged.png',
+            mimeType: 'image/png',
+            size: 1024,
+            dataUrl: makeOversizedImageDataUrl(),
+        });
+        const { attachments, textContents } = saveAttachmentsToTempFiles([forged], tempDir);
+
+        expect(attachments).toHaveLength(0);
+        expect(textContents).toHaveLength(0);
+        // Nothing was written to disk for the oversized payload.
+        expect(fs.readdirSync(tempDir)).toHaveLength(0);
+    });
+
+    it('drops a forged-size generic attachment whose decoded bytes exceed the limit', () => {
+        const tempDir = makeTempDir();
+        const oversized = Buffer.alloc(MAX_ATTACHMENT_SIZE + 1);
+        const forged = makePayload({
+            name: 'forged.bin',
+            mimeType: 'application/octet-stream',
+            size: 512,
+            dataUrl: `data:application/octet-stream;base64,${oversized.toString('base64')}`,
+        });
+        const { attachments } = saveAttachmentsToTempFiles([forged], tempDir);
+
+        expect(attachments).toHaveLength(0);
+        expect(fs.readdirSync(tempDir)).toHaveLength(0);
+    });
+
+    it('still saves an image whose decoded bytes are within the limit', () => {
+        const tempDir = makeTempDir();
+        const { attachments } = saveAttachmentsToTempFiles(
+            [makePayload({ name: 'photo.png', mimeType: 'image/png', dataUrl: PNG_DATA_URL })],
+            tempDir,
+        );
+        expect(attachments).toHaveLength(1);
+        expect(fs.existsSync(attachments[0].path)).toBe(true);
     });
 });
 
@@ -432,6 +485,27 @@ describe('processMessageAttachments', () => {
         expect(result.textContext).toBe('');
         expect(result.validatedImages).toBeUndefined();
         expect(result.fileAttachmentMeta).toBeUndefined();
+    });
+
+    it('drops a forged-size oversized image attachment safely (no temp file, no SDK attachment)', () => {
+        const tempDir = makeTempDir();
+        const body = {
+            content: 'check this image',
+            // Declared size is small, but decoded bytes exceed MAX_ATTACHMENT_SIZE.
+            attachments: [makePayload({
+                name: 'forged.png',
+                mimeType: 'image/png',
+                size: 512,
+                dataUrl: makeOversizedImageDataUrl(),
+            })],
+        };
+
+        const result = processMessageAttachments(body, tempDir);
+        // The oversized image must not become an SDK attachment or a temp file…
+        expect(result.sdkAttachments).toHaveLength(0);
+        expect(fs.readdirSync(tempDir)).toHaveLength(0);
+        // …and the request does not throw — the text prompt path still proceeds.
+        expect(result.textContext).toBe('');
     });
 
     it('saves bitmap/image attachments to temp files (never inlined)', () => {
