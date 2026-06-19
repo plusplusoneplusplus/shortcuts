@@ -10,12 +10,9 @@ import React from 'react';
 import { PrStatusCard } from './PrStatusCard';
 import { usePrChatStatusItems, type UsePrChatStatusItemsOptions } from './usePrChatStatusItems';
 
-export interface ChatPrStatusCardProps extends UsePrChatStatusItemsOptions {
-    /** Forwarded to {@link PrStatusCard} — collapse to a count beyond this many PRs. */
-    collapseThreshold?: number;
-}
+export type ChatPrStatusCardProps = UsePrChatStatusItemsOptions;
 
-export function ChatPrStatusCard({ collapseThreshold, ...options }: ChatPrStatusCardProps) {
+export function ChatPrStatusCard(options: ChatPrStatusCardProps) {
     const { items, retry, expandChecks, refresh, refreshing, lastUpdatedAt } = usePrChatStatusItems(options);
     if (items.length === 0) return null;
     return (
@@ -26,7 +23,6 @@ export function ChatPrStatusCard({ collapseThreshold, ...options }: ChatPrStatus
             onRefresh={refresh}
             refreshing={refreshing}
             lastUpdatedAt={lastUpdatedAt}
-            collapseThreshold={collapseThreshold}
         />
     );
 }

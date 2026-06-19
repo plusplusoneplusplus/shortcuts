@@ -13,8 +13,9 @@
  *   - ready:   detail loaded → full row (terminal rows get muted styling)
  *   - error:   fetch failed → inline error + retry
  *
- * Card-level: with no items the whole card is hidden (empty state). When there
- * are several PRs the list collapses to a count via a `<details>`-style toggle.
+ * Card-level: with no items the whole card is hidden (empty state). Otherwise
+ * the card starts as a compact count row; that top row acts as a dropdown toggle
+ * for the full PR list.
  *
  * Reuses {@link prStatusBadge} / {@link formatTimestamp} from the pull-requests
  * feature (no duplicated badge or timestamp logic) and {@link buildPrDetailHash}
@@ -106,11 +107,6 @@ export interface PrStatusCardProps {
     refreshing?: boolean;
     /** Epoch ms of the last successful fetch — drives the "updated Xs ago" label (AC-05). */
     lastUpdatedAt?: number;
-    /**
-     * Collapse the list to a count when the number of PRs exceeds this.
-     * Defaults to 2 (one or two PRs stay expanded).
-     */
-    collapseThreshold?: number;
 }
 
 const TERMINAL_STATES = new Set<string>(['merged', 'closed']);
@@ -251,10 +247,9 @@ export function PrStatusCard({
     onRefresh,
     refreshing = false,
     lastUpdatedAt,
-    collapseThreshold = 2,
 }: PrStatusCardProps) {
     const sorted = sortNewestFirst(items);
-    const [expanded, setExpanded] = useState(sorted.length <= collapseThreshold);
+    const [expanded, setExpanded] = useState(false);
     // Which rows have their CI-checks panel expanded (AC-03).
     const [checksExpandedKeys, setChecksExpandedKeys] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -279,8 +274,7 @@ export function PrStatusCard({
 
     const updatedLabel = formatUpdatedAgo(lastUpdatedAt, now);
 
-    const collapsible = sorted.length > collapseThreshold;
-    const showRows = !collapsible || expanded;
+    const showRows = expanded;
 
     return (
         <div
@@ -303,19 +297,17 @@ export function PrStatusCard({
                     className={
                         'flex min-w-0 items-center gap-2 text-xs font-semibold ' +
                         'text-[#57606a] dark:text-[#8b949e] select-none ' +
-                        (collapsible ? 'cursor-pointer hover:text-[#1f2328] dark:hover:text-[#c9d1d9]' : 'cursor-default')
+                        'cursor-pointer hover:text-[#1f2328] dark:hover:text-[#c9d1d9]'
                     }
                     data-testid="pr-status-card-toggle"
                     aria-expanded={showRows}
-                    onClick={collapsible ? () => setExpanded(v => !v) : undefined}
+                    onClick={() => setExpanded(v => !v)}
                 >
                     <span aria-hidden="true">🔀</span>
                     <span className="truncate">
                         {sorted.length === 1 ? '1 pull request' : `${sorted.length} pull requests`}
                     </span>
-                    {collapsible && (
-                        <span className="shrink-0" aria-hidden="true">{showRows ? '▾' : '▸'}</span>
-                    )}
+                    <span className="shrink-0" aria-hidden="true">{showRows ? '▾' : '▸'}</span>
                 </button>
 
                 <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-[#57606a] dark:text-[#8b949e]">

@@ -88,9 +88,14 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
             url: GH_URL,
         });
 
-        const { findByText, getByTestId } = render(
+        const { findByText, findByTestId, getByTestId } = render(
             <ChatPrStatusCard turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
         );
+
+        const toggle = await findByTestId('pr-status-card-toggle');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toggle.textContent).toContain('1 pull request');
+        fireEvent.click(toggle);
 
         // Row renders with the fetched title + branches (AC-02 DoD #1).
         await findByText('Add PR status card');
@@ -129,10 +134,11 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
             ],
         });
 
-        const { findByText, getByTestId } = render(
+        const { findByText, findByTestId, getByTestId } = render(
             <ChatPrStatusCard turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
         );
 
+        fireEvent.click(await findByTestId('pr-status-card-toggle'));
         await findByText('Add PR status card');
         // Checks are not fetched until the row is expanded (lazy).
         expect(mocks.pullRequests.getChecksForOrigin).not.toHaveBeenCalled();
@@ -169,10 +175,11 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
         });
 
         // No turns → nothing detected; the binding is the only source.
-        const { findByText } = render(
+        const { findByText, findByTestId } = render(
             <ChatPrStatusCard turns={[]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
         );
 
+        fireEvent.click(await findByTestId('pr-status-card-toggle'));
         await findByText('Persisted PR');
         expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '42', { workspaceId: 'ws1' });
         // Already bound → no upsert.
@@ -192,10 +199,11 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
                 createdAt: '2024-01-01T00:00:00Z',
             });
 
-        const { findByText, getByTestId } = render(
+        const { findByText, findByTestId, getByTestId } = render(
             <ChatPrStatusCard turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
         );
 
+        fireEvent.click(await findByTestId('pr-status-card-toggle'));
         const errorRow = await waitFor(() => getByTestId(`pr-status-card-error-${GH_ORIGIN}:42`));
         expect(errorRow.textContent).toContain('network down');
 
@@ -216,10 +224,11 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
             url: GH_URL,
         });
 
-        const { findByText, getByTestId } = render(
+        const { findByText, findByTestId, getByTestId } = render(
             <ChatPrStatusCard turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
         );
 
+        fireEvent.click(await findByTestId('pr-status-card-toggle'));
         await findByText('Add PR status card');
         // Initial load is not forced.
         expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(1);

@@ -112,8 +112,9 @@ canonical origin through `resolveCanonicalOriginId`, upserts a binding
 with the creating turn collapsed, and fetches PR detail per row
 (`getForOrigin`) into per-row loading/ready/error state with retry. The union
 and origin logic live in the pure `conversation/prChatAssociation.ts` module;
-the card itself (`PrStatusCard`) is presentational, newest-first, collapsible,
-and deep-links into `PullRequestDetail`. Each ready row also shows a unified
+the card itself (`PrStatusCard`) is presentational, newest-first, collapsed to
+a clickable count row by default, and deep-links into `PullRequestDetail` after
+expansion. Each ready row also shows a unified
 auto-merge indicator (AC-04): `mapPrDetailToCardPr` carries the canonical
 `autoMerge` (`{ enabled, state, enabledBy?, mergeMethod?, blockedReason? }`,
 mapped server-side from GitHub REST `pulls.get` / ADO `autoCompleteSetBy`) onto

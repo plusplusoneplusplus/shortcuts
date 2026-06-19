@@ -10,8 +10,8 @@
  *   - error   → inline error + retry control
  *   - terminal→ merged/closed styling + terminal timestamp
  *
- * Plus: two PRs stack newest-first, and the list collapses to a count when
- * there are several PRs.
+ * Plus: two PRs stack newest-first, and the list starts behind the top-row
+ * dropdown count even for a single PR.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, within } from '@testing-library/react';
@@ -49,9 +49,13 @@ describe('PrStatusCard', () => {
         expect(container.querySelector('[data-testid="pr-status-card"]')).toBeNull();
     });
 
-    it('loading state: shows a skeleton row with the PR number', () => {
+    it('loading state: shows a skeleton row with the PR number after expanding', () => {
         const item = readyItem({ state: 'loading', pr: undefined });
-        const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        const { getByTestId, queryByTestId } = render(<PrStatusCard items={[item]} />);
+        expect(getByTestId('pr-status-card-toggle').getAttribute('aria-expanded')).toBe('false');
+        expect(queryByTestId(`pr-status-card-row-${item.key}`)).toBeNull();
+
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         const row = getByTestId(`pr-status-card-row-${item.key}`);
         expect(row.getAttribute('data-state')).toBe('loading');
         expect(getByTestId(`pr-status-card-loading-${item.key}`)).toBeTruthy();
@@ -62,6 +66,7 @@ describe('PrStatusCard', () => {
     it('success state: shows number, title, state badge, branches, and deep-link', () => {
         const item = readyItem();
         const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
 
         const row = getByTestId(`pr-status-card-row-${item.key}`);
         expect(within(row).getByTestId('pr-status-card-state-badge').textContent).toContain('Open');
@@ -76,6 +81,7 @@ describe('PrStatusCard', () => {
         const onRetry = vi.fn();
         const item = readyItem({ state: 'error', pr: undefined, error: 'Network error' });
         const { getByTestId } = render(<PrStatusCard items={[item]} onRetry={onRetry} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
 
         expect(getByTestId(`pr-status-card-error-${item.key}`).textContent).toContain('Network error');
         fireEvent.click(getByTestId(`pr-status-card-retry-${item.key}`));
@@ -86,7 +92,8 @@ describe('PrStatusCard', () => {
 
     it('error state: omits the retry button when no onRetry handler is provided', () => {
         const item = readyItem({ state: 'error', pr: undefined, error: 'boom' });
-        const { queryByTestId } = render(<PrStatusCard items={[item]} />);
+        const { getByTestId, queryByTestId } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         expect(queryByTestId(`pr-status-card-retry-${item.key}`)).toBeNull();
     });
 
@@ -104,6 +111,7 @@ describe('PrStatusCard', () => {
             },
         });
         const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         const row = getByTestId(`pr-status-card-row-${item.key}`);
         expect(row.className).toContain('opacity-70');
         expect(within(row).getByTestId('pr-status-card-state-badge').textContent).toContain('Merged');
@@ -124,6 +132,7 @@ describe('PrStatusCard', () => {
             },
         });
         const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         expect(within(getByTestId(`pr-status-card-row-${item.key}`)).getByTestId('pr-status-card-state-badge').textContent).toContain('Closed');
         expect(getByTestId(`pr-status-card-terminal-time-${item.key}`).textContent).toContain('closed');
     });
@@ -133,33 +142,45 @@ describe('PrStatusCard', () => {
         const newer = readyItem({ key: 'o:2', number: 2, createdAt: '2026-02-01T00:00:00Z', pr: { number: 2, title: 'Newer', status: 'open', sourceBranch: 'b', targetBranch: 'main' } });
 
         // Pass oldest-first to prove the card reorders.
-        const { getAllByTestId } = render(<PrStatusCard items={[older, newer]} />);
+        const { getAllByTestId, getByTestId } = render(<PrStatusCard items={[older, newer]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         const rows = getAllByTestId(/^pr-status-card-row-/);
         expect(rows[0].textContent).toContain('Newer');
         expect(rows[1].textContent).toContain('Older');
     });
 
-    it('collapses to a count when there are more PRs than the threshold', () => {
+    it('starts collapsed to a count and expands from the top row', () => {
         const items = [1, 2, 3].map(n => readyItem({
             key: `o:${n}`,
             number: n,
             pr: { number: n, title: `PR ${n}`, status: 'open', sourceBranch: `b${n}`, targetBranch: 'main' },
         }));
-        const { getByTestId, queryByTestId } = render(<PrStatusCard items={items} collapseThreshold={2} />);
+        const { getByTestId, queryByTestId } = render(<PrStatusCard items={items} />);
 
         const toggle = getByTestId('pr-status-card-toggle');
         expect(toggle.textContent).toContain('3 pull requests');
         // Collapsed by default → rows hidden.
         expect(queryByTestId('pr-status-card-row-o:1')).toBeNull();
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
 
         // Expanding reveals the rows.
         fireEvent.click(toggle);
         expect(getByTestId('pr-status-card-row-o:1')).toBeTruthy();
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
     });
 
-    it('singular vs plural count label', () => {
-        const { getByTestId } = render(<PrStatusCard items={[readyItem()]} />);
-        expect(getByTestId('pr-status-card-toggle').textContent).toContain('1 pull request');
+    it('single PR also starts collapsed behind the dropdown top row', () => {
+        const item = readyItem();
+        const { getByTestId, queryByTestId } = render(<PrStatusCard items={[item]} />);
+        const toggle = getByTestId('pr-status-card-toggle');
+        expect(toggle.textContent).toContain('1 pull request');
+        expect(toggle.textContent).toContain('▸');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(queryByTestId(`pr-status-card-row-${item.key}`)).toBeNull();
+
+        fireEvent.click(toggle);
+        expect(toggle.textContent).toContain('▾');
+        expect(getByTestId(`pr-status-card-row-${item.key}`)).toBeTruthy();
     });
 });
 
@@ -186,6 +207,7 @@ describe('PrStatusCard auto-merge indicator (AC-04 display)', () => {
             'https://github.com/o/r/pull/101',
         );
         const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         const badge = getByTestId(`pr-status-card-automerge-${item.key}`);
         expect(badge.getAttribute('data-automerge-state')).toBe('armed');
         expect(badge.textContent).toContain('Auto-merge armed');
@@ -199,6 +221,7 @@ describe('PrStatusCard auto-merge indicator (AC-04 display)', () => {
             'https://github.com/o/r/pull/101',
         );
         const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         const badge = getByTestId(`pr-status-card-automerge-${item.key}`);
         expect(badge.getAttribute('data-automerge-state')).toBe('blocked');
         expect(badge.textContent).toContain('Auto-merge blocked');
@@ -211,6 +234,7 @@ describe('PrStatusCard auto-merge indicator (AC-04 display)', () => {
             'https://dev.azure.com/org/proj/_git/repo/pullrequest/101',
         );
         const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         const badge = getByTestId(`pr-status-card-automerge-${item.key}`);
         expect(badge.textContent).toContain('Auto-complete armed');
         expect(badge.textContent).not.toContain('Auto-merge');
@@ -222,18 +246,21 @@ describe('PrStatusCard auto-merge indicator (AC-04 display)', () => {
             'https://github.com/o/r/pull/101',
         );
         const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         expect(getByTestId(`pr-status-card-automerge-${item.key}`).textContent).toContain('Auto-merge queued');
     });
 
     it('not-enabled / disabled: renders no indicator', () => {
         const offItem = autoMergeItem({ enabled: false, state: 'not-enabled' }, 'https://github.com/o/r/pull/101', 'off:1');
-        const { queryByTestId } = render(<PrStatusCard items={[offItem]} />);
+        const { getByTestId, queryByTestId } = render(<PrStatusCard items={[offItem]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         expect(queryByTestId('pr-status-card-automerge-off:1')).toBeNull();
     });
 
     it('no auto-merge field at all: renders no indicator', () => {
         const item = readyItem({ key: 'plain:1' });
-        const { queryByTestId } = render(<PrStatusCard items={[item]} />);
+        const { getByTestId, queryByTestId } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         expect(queryByTestId('pr-status-card-automerge-plain:1')).toBeNull();
     });
 });
@@ -286,6 +313,7 @@ describe('PrStatusCard CI checks (AC-03 display)', () => {
     it('checks panel is collapsed by default and not in the DOM until expanded', () => {
         const item = readyItem();
         const { queryByTestId, getByTestId } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         expect(getByTestId(`pr-status-card-checks-toggle-${item.key}`)).toBeTruthy();
         expect(queryByTestId(`pr-status-card-checks-${item.key}`)).toBeNull();
     });
@@ -301,6 +329,7 @@ describe('PrStatusCard CI checks (AC-03 display)', () => {
             ],
         });
         const { getByTestId } = render(<PrStatusCard items={[item]} onExpandChecks={onExpandChecks} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
 
         fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${item.key}`));
         expect(onExpandChecks).toHaveBeenCalledTimes(1);
@@ -321,6 +350,7 @@ describe('PrStatusCard CI checks (AC-03 display)', () => {
     it('expanded row shows a loading state before checks arrive', () => {
         const item = readyItem();
         const { getByTestId } = render(<PrStatusCard items={[item]} onExpandChecks={vi.fn()} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${item.key}`));
         // checksState undefined → compact renderer defaults to loading.
         expect(getByTestId(`pr-checks-compact-${item.key}-loading`)).toBeTruthy();
@@ -330,6 +360,7 @@ describe('PrStatusCard CI checks (AC-03 display)', () => {
         const onExpandChecks = vi.fn();
         const item = readyItem({ checksState: 'error', checksError: 'checks down' });
         const { getByTestId } = render(<PrStatusCard items={[item]} onExpandChecks={onExpandChecks} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${item.key}`));
         expect(onExpandChecks).toHaveBeenCalledTimes(1); // the expand
         const err = getByTestId(`pr-checks-compact-${item.key}-error`);

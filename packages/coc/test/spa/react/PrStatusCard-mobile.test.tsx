@@ -55,11 +55,16 @@ function checkRow(status: CheckStatus, name: string, overrides: Partial<PrCheckR
 }
 
 describe('PrStatusCard — mobile parity at 375px (AC-06)', () => {
-    it('renders the card at a 375px viewport', () => {
+    it('renders a collapsed card at a 375px viewport and expands from the top row', () => {
         viewportCleanup = mockViewport(MOBILE_WIDTH);
-        const { getByTestId } = render(<PrStatusCard items={[readyItem()]} />);
+        const { getByTestId, queryByText } = render(<PrStatusCard items={[readyItem()]} />);
         const card = getByTestId('pr-status-card');
         expect(card).toBeTruthy();
+        expect(card.textContent).toContain('1 pull request');
+        expect(card.textContent).not.toContain('Add PR status card');
+        expect(queryByText('Add PR status card')).toBeNull();
+
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
         expect(card.textContent).toContain('Add PR status card');
     });
 
@@ -98,6 +103,7 @@ describe('PrStatusCard — mobile parity at 375px (AC-06)', () => {
             },
         });
         const { getByTestId, getByTitle } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
 
         // Title truncates within a min-w-0 flex parent so it never pushes the row wider.
         const title = getByTitle(item.pr!.title);
@@ -122,6 +128,7 @@ describe('PrStatusCard — mobile parity at 375px (AC-06)', () => {
             ],
         });
         const { getByTestId } = render(<PrStatusCard items={[item]} onExpandChecks={onExpandChecks} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
 
         // Collapsed by default — the panel is absent until tapped.
         expect(() => getByTestId(`pr-status-card-checks-${item.key}`)).toThrow();
@@ -150,6 +157,7 @@ describe('PrStatusCard — mobile parity at 375px (AC-06)', () => {
             },
         });
         const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
 
         const badge = getByTestId(`pr-status-card-automerge-${item.key}`);
         expect(badge.textContent).toContain('Auto-merge armed');
@@ -165,7 +173,7 @@ describe('PrStatusCard — mobile parity at 375px (AC-06)', () => {
             number: n,
             pr: { number: n, title: `PR ${n}`, status: 'open', sourceBranch: `b${n}`, targetBranch: 'main' },
         }));
-        const { getByTestId, queryByTestId } = render(<PrStatusCard items={items} collapseThreshold={2} />);
+        const { getByTestId, queryByTestId } = render(<PrStatusCard items={items} />);
 
         const toggle = getByTestId('pr-status-card-toggle');
         expect(toggle.textContent).toContain('3 pull requests');
