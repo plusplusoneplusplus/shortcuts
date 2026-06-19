@@ -84,8 +84,21 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
             // in the contentEditable div (bold, colors, etc.).
             e.preventDefault();
             const text = e.clipboardData?.getData('text/plain') ?? '';
-            if (text) {
+            if (!text) return;
+            // execCommand maintains undo history in most browsers
+            if (document.execCommand) {
                 document.execCommand('insertText', false, text);
+            } else {
+                // Fallback: insert text via Selection API
+                const sel = window.getSelection?.();
+                if (sel && sel.rangeCount > 0) {
+                    const range = sel.getRangeAt(0);
+                    range.deleteContents();
+                    range.insertNode(document.createTextNode(text));
+                    range.collapse(false);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
             }
         };
 

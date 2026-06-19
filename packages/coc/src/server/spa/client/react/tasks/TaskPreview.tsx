@@ -40,6 +40,7 @@ export function TaskPreview({ wsId, filePath, taskRootPath, initialViewMode }: T
                 io={tasksIO}
                 commentBackend={noopCommentBackend}
                 notesRoot={taskRootPath ?? undefined}
+                root={taskRootPath ?? undefined}
                 initialViewMode={mappedInitialViewMode}
                 onViewModeChange={handleViewModeChange}
                 toolbarRight={
