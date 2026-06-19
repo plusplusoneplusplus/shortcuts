@@ -783,4 +783,80 @@ describe('scanTurnsForCreatedFiles', () => {
             expect(scanTurnsForCreatedFiles(turns)).toHaveLength(0);
         });
     });
+
+    // ==================================================================
+    // Claude Code provider tools: PascalCase names + `file_path` arg.
+    // Regression: these were silently dropped, so a `.goal.md` written
+    // by a Claude session never surfaced the inline Ralph launch panel.
+    // ==================================================================
+    describe('Claude Code tool names (Write / Edit / MultiEdit, file_path arg)', () => {
+        it('detects a Write tool call with a file_path arg', () => {
+            const turns = [
+                makeTurn([{ toolName: 'Write', args: { file_path: '/tmp/plan.md' } }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/plan.md');
+        });
+
+        it('detects a .goal.md written via the Write tool (the reported bug)', () => {
+            const turns = [
+                makeTurn([{
+                    toolName: 'Write',
+                    args: { file_path: '/repos/myrepo/Plans/feature/warm-indicator.goal.md' },
+                }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/repos/myrepo/Plans/feature/warm-indicator.goal.md');
+            expect(results[0].filePath.toLowerCase().endsWith('.goal.md')).toBe(true);
+        });
+
+        it('detects an Edit tool call with a file_path arg', () => {
+            const turns = [
+                makeTurn([{ toolName: 'Edit', args: { file_path: '/tmp/spec.md' } }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/spec.md');
+        });
+
+        it('detects a MultiEdit tool call with a file_path arg', () => {
+            const turns = [
+                makeTurn([{ toolName: 'MultiEdit', args: { file_path: '/tmp/design.md' } }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/design.md');
+        });
+
+        it('detects a Write call from persisted data (name field, file_path arg)', () => {
+            const turns = [
+                makePersistedTurn([{ name: 'Write', args: { file_path: '/tmp/persisted.goal.md' } }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/persisted.goal.md');
+        });
+
+        it('resolves a Write call from tool-start for live SSE completions', () => {
+            const turns = [
+                makeLiveSSETurn([{
+                    id: 'tc0',
+                    toolName: 'Write',
+                    args: { file_path: '/tmp/live.goal.md' },
+                }]),
+            ];
+            const results = scanTurnsForCreatedFiles(turns);
+            expect(results).toHaveLength(1);
+            expect(results[0].filePath).toBe('/tmp/live.goal.md');
+        });
+
+        it('still ignores the Read tool (normalizes to a non-write tool)', () => {
+            const turns = [
+                makeTurn([{ toolName: 'Read', args: { file_path: '/tmp/notes.md' } }]),
+            ];
+            expect(scanTurnsForCreatedFiles(turns)).toHaveLength(0);
+        });
+    });
 });
