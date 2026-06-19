@@ -35,7 +35,7 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
 }));
 
 import { ChatPrStatusCard } from '../../../src/server/spa/client/react/features/chat/conversation/ChatPrStatusCard';
-import { mapPrDetailToCardPr } from '../../../src/server/spa/client/react/features/chat/conversation/usePrChatStatusItems';
+import { mapPrDetailToCardPr, parseAutoMerge } from '../../../src/server/spa/client/react/features/chat/conversation/usePrChatStatusItems';
 
 const GH_URL = 'https://github.com/owner/repo/pull/42';
 const GH_REMOTE = 'https://github.com/owner/repo';
@@ -201,5 +201,67 @@ describe('mapPrDetailToCardPr', () => {
     it('defaults missing branch fields to empty strings', () => {
         const pr = mapPrDetailToCardPr({ title: 'T', status: 'open' });
         expect(pr).toMatchObject({ title: 'T', status: 'open', sourceBranch: '', targetBranch: '' });
+    });
+
+    it('extracts the canonical auto-merge payload (AC-04)', () => {
+        const pr = mapPrDetailToCardPr({
+            title: 'T',
+            status: 'open',
+            autoMerge: {
+                enabled: true,
+                state: 'armed',
+                mergeMethod: 'squash',
+                enabledBy: { id: 'u1', displayName: 'Carol' },
+                blockedReason: undefined,
+            },
+        });
+        expect(pr?.autoMerge).toEqual({
+            enabled: true,
+            state: 'armed',
+            mergeMethod: 'squash',
+            enabledBy: { displayName: 'Carol' },
+            blockedReason: undefined,
+        });
+    });
+
+    it('leaves auto-merge undefined when the detail omits it', () => {
+        const pr = mapPrDetailToCardPr({ title: 'T', status: 'open' });
+        expect(pr?.autoMerge).toBeUndefined();
+    });
+});
+
+describe('parseAutoMerge', () => {
+    it('returns undefined for non-objects or payloads missing state', () => {
+        expect(parseAutoMerge(undefined)).toBeUndefined();
+        expect(parseAutoMerge(null)).toBeUndefined();
+        expect(parseAutoMerge('nope')).toBeUndefined();
+        expect(parseAutoMerge({ enabled: true })).toBeUndefined();
+    });
+
+    it('maps a blocked auto-merge, narrowing enabledBy to displayName', () => {
+        expect(
+            parseAutoMerge({
+                enabled: true,
+                state: 'blocked',
+                blockedReason: 'conflicts',
+                enabledBy: { id: 'u2', displayName: 'Dana', email: 'd@x.io' },
+            }),
+        ).toEqual({
+            enabled: true,
+            state: 'blocked',
+            blockedReason: 'conflicts',
+            mergeMethod: undefined,
+            enabledBy: { displayName: 'Dana' },
+        });
+    });
+
+    it('treats a missing/false enabled flag and absent enabledBy gracefully', () => {
+        expect(parseAutoMerge({ state: 'not-enabled' })).toEqual({
+            enabled: false,
+            state: 'not-enabled',
+            blockedReason: undefined,
+            mergeMethod: undefined,
+            enabledBy: undefined,
+        });
     });
 });

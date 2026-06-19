@@ -28,6 +28,25 @@ import { buildPrDetailHash } from '../../pull-requests/pr-open-utils';
 export type PrStatusCardItemState = 'loading' | 'ready' | 'error';
 
 /**
+ * Provider-agnostic auto-merge / auto-complete status (AC-04). A read-only,
+ * UI-side mirror of the canonical forge `PullRequestAutoMerge` shape surfaced via
+ * the PR-detail endpoint. GitHub maps it from REST `pulls.get`; ADO from
+ * `autoCompleteSetBy` / `completionOptions` / `mergeStatus`.
+ */
+export interface PrAutoMergeInfo {
+    /** Whether auto-merge (GitHub) / auto-complete (ADO) is enabled. */
+    enabled: boolean;
+    /** Unified lifecycle state. */
+    state: 'not-enabled' | 'armed' | 'queued' | 'blocked' | string;
+    /** Identity that enabled it, when known. */
+    enabledBy?: { displayName?: string };
+    /** Normalized merge method the provider will use ('squash' | 'merge' | …). */
+    mergeMethod?: string;
+    /** Reason the merge is blocked — only meaningful when `state` is 'blocked'. */
+    blockedReason?: 'failing-checks' | 'pending-review' | 'conflicts' | 'blocked' | string;
+}
+
+/**
  * Minimal PR detail the card renders. Intentionally a subset of the canonical
  * `PullRequest` (pr-utils) so a fetched detail object can be passed directly.
  */
@@ -40,6 +59,8 @@ export interface PrStatusCardPr {
     mergedAt?: string;
     closedAt?: string;
     url?: string;
+    /** Auto-merge / auto-complete status (AC-04), when surfaced by the detail. */
+    autoMerge?: PrAutoMergeInfo;
 }
 
 export interface PrStatusCardItem {
@@ -82,6 +103,108 @@ function terminalTimestamp(pr: PrStatusCardPr): string {
     if (pr.status === 'merged') return formatTimestamp(pr.mergedAt);
     if (pr.status === 'closed') return formatTimestamp(pr.closedAt ?? pr.mergedAt);
     return '';
+}
+
+/** Hosting provider a PR belongs to — drives the provider-aware auto-merge label. */
+export type PrProvider = 'github' | 'azure-devops';
+
+/**
+ * Derives the provider from a PR web URL by host (not a PR-URL regex — pure host
+ * detection), so the auto-merge label is correct for detected *and* binding-only
+ * PRs that only carry a `url` from the fetched detail.
+ */
+export function prProviderFromUrl(url: string | undefined): PrProvider | undefined {
+    if (!url) return undefined;
+    if (url.includes('github.com')) return 'github';
+    if (url.includes('dev.azure.com') || url.includes('visualstudio.com')) return 'azure-devops';
+    return undefined;
+}
+
+/** Provider-aware base label: GitHub "Auto-merge" vs Azure DevOps "Auto-complete". */
+export function autoMergeLabel(provider: PrProvider | undefined): string {
+    return provider === 'azure-devops' ? 'Auto-complete' : 'Auto-merge';
+}
+
+/** Human text for each canonical blocked reason. */
+const AUTO_MERGE_BLOCKED_REASON_TEXT: Record<string, string> = {
+    'failing-checks': 'failing checks',
+    'pending-review': 'pending review',
+    conflicts: 'conflicts',
+    blocked: 'blocked',
+};
+
+/** The visible, provider-aware shape of the auto-merge indicator. */
+export interface AutoMergeIndicatorModel {
+    /** Provider-aware base label ("Auto-merge" | "Auto-complete"). */
+    label: string;
+    /** Active state (never 'not-enabled' — that yields no indicator). */
+    state: 'armed' | 'queued' | 'blocked';
+    /** Display name of whoever armed it, when known. */
+    enabledBy?: string;
+    /** Normalized merge method, when exposed. */
+    mergeMethod?: string;
+    /** Human blocked-reason text, only when `state` is 'blocked'. */
+    blockedReason?: string;
+}
+
+/**
+ * Reduces the unified auto-merge shape to the indicator the card renders, or
+ * `null` when there is nothing to show (disabled / not-enabled / unknown state).
+ * Pure + provider-aware so it is unit-testable for both GitHub and ADO.
+ */
+export function describeAutoMerge(
+    autoMerge: PrAutoMergeInfo | undefined,
+    provider: PrProvider | undefined,
+): AutoMergeIndicatorModel | null {
+    if (!autoMerge || !autoMerge.enabled) return null;
+    const { state } = autoMerge;
+    if (state !== 'armed' && state !== 'queued' && state !== 'blocked') return null;
+    return {
+        label: autoMergeLabel(provider),
+        state,
+        enabledBy: autoMerge.enabledBy?.displayName || undefined,
+        mergeMethod: autoMerge.mergeMethod || undefined,
+        blockedReason:
+            state === 'blocked' && autoMerge.blockedReason
+                ? AUTO_MERGE_BLOCKED_REASON_TEXT[autoMerge.blockedReason] ?? autoMerge.blockedReason
+                : undefined,
+    };
+}
+
+const AUTO_MERGE_TONE_CLASS: Record<AutoMergeIndicatorModel['state'], string> = {
+    armed: 'bg-[#dafbe1] text-[#1a7f37] dark:bg-[#238636]/25 dark:text-[#3fb950]',
+    queued: 'bg-[#ddf4ff] text-[#0969da] dark:bg-[#388bfd]/25 dark:text-[#58a6ff]',
+    blocked: 'bg-[#ffebe9] text-[#cf222e] dark:bg-[#f85149]/20 dark:text-[#f85149]',
+};
+
+const AUTO_MERGE_TONE_EMOJI: Record<AutoMergeIndicatorModel['state'], string> = {
+    armed: '⚡',
+    queued: '⏳',
+    blocked: '⛔',
+};
+
+function AutoMergeIndicator({ model, testKey }: { model: AutoMergeIndicatorModel; testKey: string }) {
+    const parts: string[] = [];
+    if (model.state === 'blocked' && model.blockedReason) parts.push(model.blockedReason);
+    if (model.mergeMethod) parts.push(model.mergeMethod);
+    if (model.enabledBy) parts.push(`by ${model.enabledBy}`);
+    const detail = parts.join(' · ');
+    const title = `${model.label} ${model.state}${detail ? ` — ${detail}` : ''}`;
+    return (
+        <span
+            className={
+                'inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ' +
+                AUTO_MERGE_TONE_CLASS[model.state]
+            }
+            data-testid={`pr-status-card-automerge-${testKey}`}
+            data-automerge-state={model.state}
+            title={title}
+        >
+            <span aria-hidden="true">{AUTO_MERGE_TONE_EMOJI[model.state]}</span>
+            <span>{model.label} {model.state}</span>
+            {detail && <span className="font-normal opacity-90">· {detail}</span>}
+        </span>
+    );
 }
 
 /** Stable newest-first ordering: descending `createdAt`, input order otherwise. */
@@ -157,6 +280,10 @@ function PrStatusCardRow({ item, onRetry }: { item: PrStatusCardItem; onRetry?: 
     const number = item.pr?.number ?? item.number;
     const detailHash = buildPrDetailHash(item.repoId, number);
     const terminal = item.state === 'ready' && isTerminal(item.pr?.status);
+    const autoMerge =
+        item.state === 'ready' && item.pr
+            ? describeAutoMerge(item.pr.autoMerge, prProviderFromUrl(item.pr.url))
+            : null;
 
     return (
         <div
@@ -233,6 +360,7 @@ function PrStatusCardRow({ item, onRetry }: { item: PrStatusCardItem; onRetry?: 
                                 · {item.pr.status === 'merged' ? 'merged' : 'closed'} {terminalTimestamp(item.pr)}
                             </span>
                         )}
+                        {autoMerge && <AutoMergeIndicator model={autoMerge} testKey={item.key} />}
                     </div>
                 </>
             )}

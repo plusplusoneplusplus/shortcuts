@@ -27,7 +27,7 @@ import {
     type PrAssociation,
     type PrChatBindingLike,
 } from './prChatAssociation';
-import type { PrStatusCardItem, PrStatusCardPr } from './PrStatusCard';
+import type { PrAutoMergeInfo, PrStatusCardItem, PrStatusCardPr } from './PrStatusCard';
 
 export interface UsePrChatStatusItemsOptions {
     /** Currently-loaded conversation turns (PRs are detected in their tool output). */
@@ -55,6 +55,25 @@ function optionalString(value: unknown): string | undefined {
 }
 
 /**
+ * Maps the canonical `PullRequestAutoMerge` payload to the card's
+ * {@link PrAutoMergeInfo} subset (AC-04). Returns undefined when the payload is
+ * absent or lacks a `state`, so the row simply shows no auto-merge indicator.
+ */
+export function parseAutoMerge(value: unknown): PrAutoMergeInfo | undefined {
+    if (!isRecord(value)) return undefined;
+    const state = optionalString(value.state);
+    if (state === undefined) return undefined;
+    const enabledByName = isRecord(value.enabledBy) ? optionalString(value.enabledBy.displayName) : undefined;
+    return {
+        enabled: value.enabled === true,
+        state,
+        enabledBy: enabledByName ? { displayName: enabledByName } : undefined,
+        mergeMethod: optionalString(value.mergeMethod),
+        blockedReason: optionalString(value.blockedReason),
+    };
+}
+
+/**
  * Maps a fetched PR-detail payload (the canonical `PullRequest` shape) to the
  * card's {@link PrStatusCardPr} subset. Returns undefined when the payload is not
  * a recognizable PR detail (missing title/status), so callers surface an error.
@@ -73,6 +92,7 @@ export function mapPrDetailToCardPr(detail: unknown): PrStatusCardPr | undefined
         mergedAt: optionalString(detail.mergedAt),
         closedAt: optionalString(detail.closedAt),
         url: optionalString(detail.url),
+        autoMerge: parseAutoMerge(detail.autoMerge),
     };
 }
 

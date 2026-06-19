@@ -17,7 +17,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, within } from '@testing-library/react';
 import {
     PrStatusCard,
+    describeAutoMerge,
+    autoMergeLabel,
+    prProviderFromUrl,
     type PrStatusCardItem,
+    type PrAutoMergeInfo,
 } from '../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
 
 function readyItem(overrides: Partial<PrStatusCardItem> = {}): PrStatusCardItem {
@@ -155,5 +159,123 @@ describe('PrStatusCard', () => {
     it('singular vs plural count label', () => {
         const { getByTestId } = render(<PrStatusCard items={[readyItem()]} />);
         expect(getByTestId('pr-status-card-toggle').textContent).toContain('1 pull request');
+    });
+});
+
+/** A ready item carrying an auto-merge payload + a provider-revealing URL. */
+function autoMergeItem(autoMerge: PrAutoMergeInfo, url: string, key = 'origin-1:101'): PrStatusCardItem {
+    return readyItem({
+        key,
+        pr: {
+            number: 101,
+            title: 'Add PR status card',
+            status: 'open',
+            sourceBranch: 'feature/card',
+            targetBranch: 'main',
+            url,
+            autoMerge,
+        },
+    });
+}
+
+describe('PrStatusCard auto-merge indicator (AC-04 display)', () => {
+    it('GitHub armed: shows "Auto-merge armed" with merge method and who armed it', () => {
+        const item = autoMergeItem(
+            { enabled: true, state: 'armed', mergeMethod: 'squash', enabledBy: { displayName: 'Carol' } },
+            'https://github.com/o/r/pull/101',
+        );
+        const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        const badge = getByTestId(`pr-status-card-automerge-${item.key}`);
+        expect(badge.getAttribute('data-automerge-state')).toBe('armed');
+        expect(badge.textContent).toContain('Auto-merge armed');
+        expect(badge.textContent).toContain('squash');
+        expect(badge.textContent).toContain('by Carol');
+    });
+
+    it('GitHub blocked: shows "Auto-merge blocked" with the human reason', () => {
+        const item = autoMergeItem(
+            { enabled: true, state: 'blocked', blockedReason: 'pending-review', mergeMethod: 'rebase' },
+            'https://github.com/o/r/pull/101',
+        );
+        const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        const badge = getByTestId(`pr-status-card-automerge-${item.key}`);
+        expect(badge.getAttribute('data-automerge-state')).toBe('blocked');
+        expect(badge.textContent).toContain('Auto-merge blocked');
+        expect(badge.textContent).toContain('pending review');
+    });
+
+    it('ADO armed: provider-aware "Auto-complete" label from a dev.azure.com URL', () => {
+        const item = autoMergeItem(
+            { enabled: true, state: 'armed', mergeMethod: 'merge', enabledBy: { displayName: 'Dana' } },
+            'https://dev.azure.com/org/proj/_git/repo/pullrequest/101',
+        );
+        const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        const badge = getByTestId(`pr-status-card-automerge-${item.key}`);
+        expect(badge.textContent).toContain('Auto-complete armed');
+        expect(badge.textContent).not.toContain('Auto-merge');
+    });
+
+    it('queued: shows the queued state', () => {
+        const item = autoMergeItem(
+            { enabled: true, state: 'queued' },
+            'https://github.com/o/r/pull/101',
+        );
+        const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        expect(getByTestId(`pr-status-card-automerge-${item.key}`).textContent).toContain('Auto-merge queued');
+    });
+
+    it('not-enabled / disabled: renders no indicator', () => {
+        const offItem = autoMergeItem({ enabled: false, state: 'not-enabled' }, 'https://github.com/o/r/pull/101', 'off:1');
+        const { queryByTestId } = render(<PrStatusCard items={[offItem]} />);
+        expect(queryByTestId('pr-status-card-automerge-off:1')).toBeNull();
+    });
+
+    it('no auto-merge field at all: renders no indicator', () => {
+        const item = readyItem({ key: 'plain:1' });
+        const { queryByTestId } = render(<PrStatusCard items={[item]} />);
+        expect(queryByTestId('pr-status-card-automerge-plain:1')).toBeNull();
+    });
+});
+
+describe('describeAutoMerge / provider helpers (AC-04 pure logic)', () => {
+    it('prProviderFromUrl maps hosts to providers', () => {
+        expect(prProviderFromUrl('https://github.com/o/r/pull/1')).toBe('github');
+        expect(prProviderFromUrl('https://dev.azure.com/org/proj/_git/r/pullrequest/1')).toBe('azure-devops');
+        expect(prProviderFromUrl('https://myorg.visualstudio.com/proj/_git/r/pullrequest/1')).toBe('azure-devops');
+        expect(prProviderFromUrl(undefined)).toBeUndefined();
+        expect(prProviderFromUrl('https://example.com/x')).toBeUndefined();
+    });
+
+    it('autoMergeLabel is provider-aware', () => {
+        expect(autoMergeLabel('github')).toBe('Auto-merge');
+        expect(autoMergeLabel('azure-devops')).toBe('Auto-complete');
+        expect(autoMergeLabel(undefined)).toBe('Auto-merge');
+    });
+
+    it('returns null when off / disabled / unknown state (off)', () => {
+        expect(describeAutoMerge(undefined, 'github')).toBeNull();
+        expect(describeAutoMerge({ enabled: false, state: 'not-enabled' }, 'github')).toBeNull();
+        expect(describeAutoMerge({ enabled: true, state: 'not-enabled' }, 'github')).toBeNull();
+        expect(describeAutoMerge({ enabled: true, state: 'whatever' }, 'github')).toBeNull();
+    });
+
+    it('describes an armed auto-merge (on)', () => {
+        expect(
+            describeAutoMerge(
+                { enabled: true, state: 'armed', mergeMethod: 'squash', enabledBy: { displayName: 'Carol' } },
+                'github',
+            ),
+        ).toEqual({ label: 'Auto-merge', state: 'armed', mergeMethod: 'squash', enabledBy: 'Carol', blockedReason: undefined });
+    });
+
+    it('describes a blocked auto-merge with a human reason (blocked)', () => {
+        expect(
+            describeAutoMerge({ enabled: true, state: 'blocked', blockedReason: 'failing-checks' }, 'azure-devops'),
+        ).toEqual({ label: 'Auto-complete', state: 'blocked', mergeMethod: undefined, enabledBy: undefined, blockedReason: 'failing checks' });
+    });
+
+    it('passes through an unknown blocked reason verbatim', () => {
+        const model = describeAutoMerge({ enabled: true, state: 'blocked', blockedReason: 'custom-reason' }, 'github');
+        expect(model?.blockedReason).toBe('custom-reason');
     });
 });

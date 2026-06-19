@@ -9,11 +9,14 @@ export type { RenderToolCall, ToolCallGroupViewProps } from './tool-calls/ToolCa
 export { ToolResultPopover } from './tool-calls/ToolResultPopover';
 export { WhisperCollapsedGroup } from './tool-calls/WhisperCollapsedGroup';
 export { CommitStrip } from './CommitStrip';
-export { PrStatusCard } from './PrStatusCard';
-export type { PrStatusCardProps, PrStatusCardItem, PrStatusCardItemState, PrStatusCardPr } from './PrStatusCard';
+export { PrStatusCard, describeAutoMerge, autoMergeLabel, prProviderFromUrl } from './PrStatusCard';
+export type {
+    PrStatusCardProps, PrStatusCardItem, PrStatusCardItemState, PrStatusCardPr,
+    PrAutoMergeInfo, AutoMergeIndicatorModel, PrProvider,
+} from './PrStatusCard';
 export { ChatPrStatusCard } from './ChatPrStatusCard';
 export type { ChatPrStatusCardProps } from './ChatPrStatusCard';
-export { usePrChatStatusItems, mapPrDetailToCardPr } from './usePrChatStatusItems';
+export { usePrChatStatusItems, mapPrDetailToCardPr, parseAutoMerge } from './usePrChatStatusItems';
 export type { UsePrChatStatusItemsOptions, UsePrChatStatusItemsResult } from './usePrChatStatusItems';
 export { JsonResponseView } from '../../../ui/JsonResponseView';
 export { NoteEditCard } from './NoteEditCard';

@@ -113,7 +113,14 @@ with the creating turn collapsed, and fetches PR detail per row
 (`getForOrigin`) into per-row loading/ready/error state with retry. The union
 and origin logic live in the pure `conversation/prChatAssociation.ts` module;
 the card itself (`PrStatusCard`) is presentational, newest-first, collapsible,
-and deep-links into `PullRequestDetail`.
+and deep-links into `PullRequestDetail`. Each ready row also shows a unified
+auto-merge indicator (AC-04): `mapPrDetailToCardPr` carries the canonical
+`autoMerge` (`{ enabled, state, enabledBy?, mergeMethod?, blockedReason? }`,
+mapped server-side from GitHub REST `pulls.get` / ADO `autoCompleteSetBy`) onto
+the card PR, and the pure `describeAutoMerge` reduces it to an armed/queued/blocked
+badge with a provider-aware label (`autoMergeLabel` → "Auto-merge" for GitHub,
+"Auto-complete" for Azure DevOps, with the provider derived from the PR URL via
+`prProviderFromUrl`); not-enabled renders nothing.
 
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
 the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,
