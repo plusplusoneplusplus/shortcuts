@@ -42,6 +42,7 @@ import { useModels } from '../../hooks/useModels';
 import type { ModelInfo } from '../../hooks/useModels';
 import { ChatHeader } from './ChatHeader';
 import { ConversationArea } from './ConversationArea';
+import { ChatPrStatusCard } from './conversation/ChatPrStatusCard';
 import { FollowUpInputArea } from './FollowUpInputArea';
 import { buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
@@ -288,6 +289,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const workspaceRootPath = useMemo(() => {
         const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
         return typeof workspace?.rootPath === 'string' ? workspace.rootPath : '';
+    }, [appState.workspaces, workspaceId]);
+    const workspaceRemoteUrl = useMemo(() => {
+        const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
+        return typeof workspace?.remoteUrl === 'string' ? workspace.remoteUrl : null;
     }, [appState.workspaces, workspaceId]);
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
@@ -1903,6 +1908,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         processError={processDetails?.error ?? null}
                         provider={sessionProvider}
                         postConversationContent={planReviewCards}
+                        prStatusCard={
+                            <ChatPrStatusCard
+                                turns={turns}
+                                workspaceId={workspaceId}
+                                remoteUrl={workspaceRemoteUrl}
+                                taskId={bareTaskId}
+                            />
+                        }
                     />
                     {variant !== 'floating' && !isMobile && (
                         <ConversationMiniMap

@@ -101,6 +101,20 @@ transient
 sections and provenance chips; it does not create separate agent threads or
 separate answer submissions.
 
+`features/chat/conversation/ChatPrStatusCard.tsx` renders a pinned, read-only
+PR status card at the top of `ConversationArea` (via a sticky `prStatusCard`
+slot that `ChatDetail` passes) for chats that created pull requests. The
+`usePrChatStatusItems` hook unions PRs detected in the loaded turns
+(`pullRequestDetection.ts`, no new regex) with persisted bindings looked up by
+`task_id` (`listChatBindingsForOrigin(originId, { taskId })`), resolves each PR's
+canonical origin through `resolveCanonicalOriginId`, upserts a binding
+(`createChatBindingForOrigin`) for any freshly-detected PR so it survives reload
+with the creating turn collapsed, and fetches PR detail per row
+(`getForOrigin`) into per-row loading/ready/error state with retry. The union
+and origin logic live in the pure `conversation/prChatAssociation.ts` module;
+the card itself (`PrStatusCard`) is presentational, newest-first, collapsible,
+and deep-links into `PullRequestDetail`.
+
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
 the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,
 default off). When enabled, `ChatDetail` discovers canvases linked to the open
