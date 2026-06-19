@@ -21,6 +21,12 @@ export { getConversationTurns } from './chatConversationUtils';
 // Utilities
 export { detectCommitsInToolGroup } from './commitDetection';
 export { detectPullRequestsInToolGroup } from './pullRequestDetection';
+export type { DetectedPullRequest } from './pullRequestDetection';
+export {
+    collectToolCallsFromTurns, gatherDetectedPrsFromTurns, originIdForDetectedPr,
+    unionAssociations, detectedPrsNeedingBinding,
+} from './prChatAssociation';
+export type { PrAssociation, PrChatBindingLike, UnionAssociationsInput } from './prChatAssociation';
 export type { DetectedCommit } from './commitDetection';
 export { isJsonResponse } from '../../../ui/json-utils';
 export { mergeConsecutiveContentItems } from './timeline-utils';
