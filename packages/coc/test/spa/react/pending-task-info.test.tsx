@@ -41,6 +41,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getActiveProvider: () => 'copilot' as const,
     isSessionContextAttachmentsEnabled: () => false,
     isCanvasEnabled: () => false,
+    getPrewarmDebounceMs: () => 500,
 }));
 
 // Mock useDisplaySettings

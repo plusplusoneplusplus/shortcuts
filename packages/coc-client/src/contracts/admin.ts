@@ -253,6 +253,8 @@ export interface RuntimeDashboardConfig {
     effortLevelsEnabled: boolean;
     nativeCliSessionsEnabled: boolean;
     remoteShellEnabled: boolean;
+    /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
+    prewarmDebounceMs: number;
   };
   hostname?: string;
   bindAddress?: string;

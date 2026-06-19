@@ -4,8 +4,9 @@ import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 /**
  * Default debounce (ms) for the typing-driven client prewarm. Kept low enough
  * that the warm client is usually ready by the time a short follow-up is sent,
- * but high enough that we don't fire on every keystroke. AC-06 may override this
- * from runtime config via the `debounceMs` option.
+ * but high enough that we don't fire on every keystroke. The call site overrides
+ * this from runtime config (env COC_WARM_PREWARM_DEBOUNCE_MS) via the
+ * `debounceMs` option; this constant is the fallback when config is absent.
  */
 export const PREWARM_DEBOUNCE_MS = 500;
 

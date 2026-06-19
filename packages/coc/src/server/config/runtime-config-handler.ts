@@ -13,6 +13,7 @@ import type { RuntimeDashboardConfig } from '@plusplusoneplusplus/coc-client';
 import { shortenHostname } from '../core/hostname-utils';
 import { buildRuntimeFeatureFlags } from '../../config/admin-setting-definitions';
 import type { ResolvedCLIConfig } from '../../config';
+import { resolveWarmPrewarmDebounceMs } from '@plusplusoneplusplus/coc-agent-sdk';
 
 /**
  * Build the dashboard feature-flag map for a (possibly partial) config.
@@ -23,6 +24,10 @@ export function buildRuntimeFeatures(config: Partial<ResolvedCLIConfig>): Runtim
     return {
         ...buildRuntimeFeatureFlags(config),
         gitCommitLookupEnabled: config.features?.gitCommitLookup ?? false,
+        // Env-driven (COC_WARM_PREWARM_DEBOUNCE_MS), mirroring the warm-client
+        // idle TTL. Surfaced so usePrewarmClient debounces by the configured
+        // window instead of a hardcoded default. Not an admin/CLI setting.
+        prewarmDebounceMs: resolveWarmPrewarmDebounceMs(),
     } as RuntimeDashboardConfig['features'];
 }
 

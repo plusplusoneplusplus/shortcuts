@@ -35,6 +35,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => false,
     isForEachEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
+    getPrewarmDebounceMs: () => 500,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({

@@ -172,6 +172,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => mockConfig.effortLevelsEnabled,
     isSessionContextAttachmentsEnabled: () => mockConfig.sessionContextAttachmentsEnabled,
+    getPrewarmDebounceMs: () => 500,
 }));
 
 vi.mock('../../../src/server/spa/client/react/hooks/useAgentProviders', () => ({

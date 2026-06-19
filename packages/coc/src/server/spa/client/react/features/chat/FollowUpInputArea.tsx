@@ -34,7 +34,7 @@ import {
 } from '../../utils/composerKeyboardShortcuts';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import type { ChatAttachment } from '../../types/attachments';
-import { isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled, getPrewarmDebounceMs } from '../../utils/config';
 import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
 import {
     dataTransferHasAnyData,
@@ -278,6 +278,7 @@ export function FollowUpInputArea({
         workspaceId: activeWorkspaceId,
         processId: activeProcessId,
         enabled: !inputDisabled && !isActiveGeneration,
+        debounceMs: getPrewarmDebounceMs(),
     });
 
     // Reset dismiss state whenever a new set of suggestions arrives.

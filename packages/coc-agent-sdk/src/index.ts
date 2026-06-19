@@ -178,6 +178,9 @@ export {
     resolveWarmClientTtlMs,
     DEFAULT_WARM_CLIENT_TTL_MS,
     WARM_CLIENT_TTL_ENV,
+    resolveWarmPrewarmDebounceMs,
+    DEFAULT_WARM_PREWARM_DEBOUNCE_MS,
+    WARM_PREWARM_DEBOUNCE_ENV,
 } from './warm-client-config';
 
 export {

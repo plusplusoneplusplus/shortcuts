@@ -13,6 +13,9 @@ import {
     resolveWarmClientTtlMs,
     DEFAULT_WARM_CLIENT_TTL_MS,
     WARM_CLIENT_TTL_ENV,
+    resolveWarmPrewarmDebounceMs,
+    DEFAULT_WARM_PREWARM_DEBOUNCE_MS,
+    WARM_PREWARM_DEBOUNCE_ENV,
 } from '../../src/warm-client-config';
 
 const KEY = makeWarmKey('copilot', '/repo');
@@ -126,5 +129,32 @@ describe('resolveWarmClientTtlMs', () => {
     it('falls back to the default for non-numeric or negative values', () => {
         expect(resolveWarmClientTtlMs({ [WARM_CLIENT_TTL_ENV]: 'abc' })).toBe(DEFAULT_WARM_CLIENT_TTL_MS);
         expect(resolveWarmClientTtlMs({ [WARM_CLIENT_TTL_ENV]: '-1' })).toBe(DEFAULT_WARM_CLIENT_TTL_MS);
+    });
+});
+
+describe('resolveWarmPrewarmDebounceMs', () => {
+    it('returns the default when the override is absent', () => {
+        expect(resolveWarmPrewarmDebounceMs({})).toBe(DEFAULT_WARM_PREWARM_DEBOUNCE_MS);
+    });
+
+    it('returns the default when the override is blank', () => {
+        expect(resolveWarmPrewarmDebounceMs({ [WARM_PREWARM_DEBOUNCE_ENV]: '   ' })).toBe(DEFAULT_WARM_PREWARM_DEBOUNCE_MS);
+    });
+
+    it('parses a valid numeric override', () => {
+        expect(resolveWarmPrewarmDebounceMs({ [WARM_PREWARM_DEBOUNCE_ENV]: '750' })).toBe(750);
+    });
+
+    it('honors 0 (fire without debouncing)', () => {
+        expect(resolveWarmPrewarmDebounceMs({ [WARM_PREWARM_DEBOUNCE_ENV]: '0' })).toBe(0);
+    });
+
+    it('floors fractional values', () => {
+        expect(resolveWarmPrewarmDebounceMs({ [WARM_PREWARM_DEBOUNCE_ENV]: '321.9' })).toBe(321);
+    });
+
+    it('falls back to the default for non-numeric or negative values', () => {
+        expect(resolveWarmPrewarmDebounceMs({ [WARM_PREWARM_DEBOUNCE_ENV]: 'abc' })).toBe(DEFAULT_WARM_PREWARM_DEBOUNCE_MS);
+        expect(resolveWarmPrewarmDebounceMs({ [WARM_PREWARM_DEBOUNCE_ENV]: '-1' })).toBe(DEFAULT_WARM_PREWARM_DEBOUNCE_MS);
     });
 });

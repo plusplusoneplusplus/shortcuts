@@ -70,6 +70,8 @@ interface DashboardConfig {
     nativeCliSessionsEnabled?: boolean;
     /** Whether the remote-first two-row dashboard shell is enabled (feature flag). */
     remoteShellEnabled?: boolean;
+    /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
+    prewarmDebounceMs?: number;
 }
 
 /** Cached runtime config loaded from the API. */
@@ -246,6 +248,16 @@ export function isScratchpadEnabled(): boolean {
 
 export function getScratchpadLayout(): 'horizontal' | 'vertical' {
     return getConfig().scratchpadLayout === 'horizontal' ? 'horizontal' : 'vertical';
+}
+
+/**
+ * Typing-driven client prewarm debounce (ms), resolved from env on the server
+ * (COC_WARM_PREWARM_DEBOUNCE_MS) and surfaced via runtime config. Falls back to
+ * the 500ms default when the value is missing or invalid.
+ */
+export function getPrewarmDebounceMs(): number {
+    const raw = (getConfig() as unknown as Record<string, unknown>).prewarmDebounceMs;
+    return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 500;
 }
 
 export function isWorkflowsEnabled(): boolean {
