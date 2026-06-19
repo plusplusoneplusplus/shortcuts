@@ -183,3 +183,130 @@ describe('usePrewarmClient', () => {
         expect(prewarmSpy).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('usePrewarmClient — warm status (AC-02)', () => {
+    const TTL = 1000;
+
+    // Drive the prewarm-response promise to resolution under fake timers.
+    async function flush() {
+        await act(async () => {
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+    }
+
+    it('walks idle → warming → warm across a successful prewarm', async () => {
+        prewarmSpy.mockResolvedValue({ warming: true, provider: 'copilot' });
+        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+            initialProps: baseProps({ ttlMs: TTL }),
+        });
+        expect(result.current).toBe('idle');
+
+        rerender(baseProps({ input: 'hello', ttlMs: TTL }));
+        // Still inside the debounce window — not warming yet.
+        expect(result.current).toBe('idle');
+
+        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
+        // Debounce fired → POST is in flight.
+        expect(result.current).toBe('warming');
+
+        await flush();
+        // POST resolved { warming: true } → warm.
+        expect(result.current).toBe('warm');
+    });
+
+    it('decays from warm back to idle after the TTL window', async () => {
+        prewarmSpy.mockResolvedValue({ warming: true, provider: 'copilot' });
+        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+            initialProps: baseProps({ ttlMs: TTL }),
+        });
+        rerender(baseProps({ input: 'hello', ttlMs: TTL }));
+        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
+        await flush();
+        expect(result.current).toBe('warm');
+
+        // Composer still has text (latched), so nothing re-fires — warmth simply
+        // lapses once the TTL elapses.
+        await act(async () => { vi.advanceTimersByTime(TTL); });
+        expect(result.current).toBe('idle');
+    });
+
+    it('becomes unsupported and never flips to warm afterward (sticky)', async () => {
+        prewarmSpy.mockResolvedValue({ warming: false, provider: 'claude', reason: 'unsupported' });
+        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+            initialProps: baseProps({ ttlMs: TTL }),
+        });
+        rerender(baseProps({ input: 'hello', ttlMs: TTL }));
+        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
+        await flush();
+        expect(result.current).toBe('unsupported');
+
+        // A later prewarm that *would* report warm must not override the sticky
+        // unsupported verdict for the session.
+        prewarmSpy.mockResolvedValue({ warming: true, provider: 'claude' });
+        rerender(baseProps({ input: '', ttlMs: TTL }));   // composer cleared
+        expect(result.current).toBe('unsupported');        // survives the reset
+        rerender(baseProps({ input: 'again', ttlMs: TTL }));
+        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
+        await flush();
+        expect(result.current).toBe('unsupported');
+    });
+
+    it('resets to idle when the composer is cleared', async () => {
+        prewarmSpy.mockResolvedValue({ warming: true, provider: 'copilot' });
+        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+            initialProps: baseProps({ ttlMs: TTL }),
+        });
+        rerender(baseProps({ input: 'hello', ttlMs: TTL }));
+        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
+        await flush();
+        expect(result.current).toBe('warm');
+
+        rerender(baseProps({ input: '', ttlMs: TTL }));   // send / manual clear
+        expect(result.current).toBe('idle');
+    });
+
+    it('goes back to idle when the prewarm reports an error', async () => {
+        prewarmSpy.mockResolvedValue({ warming: false, provider: 'copilot', reason: 'error' });
+        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+            initialProps: baseProps({ ttlMs: TTL }),
+        });
+        rerender(baseProps({ input: 'hello', ttlMs: TTL }));
+        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
+        expect(result.current).toBe('warming');
+        await flush();
+        expect(result.current).toBe('idle');
+    });
+
+    it('stays idle when warming is disabled (ttlMs === 0 kill-switch)', async () => {
+        prewarmSpy.mockResolvedValue({ warming: true, provider: 'copilot' });
+        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+            initialProps: baseProps({ ttlMs: 0 }),
+        });
+        rerender(baseProps({ input: 'hello', ttlMs: 0 }));
+        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
+        // Never claims warm, never pulses.
+        expect(result.current).toBe('idle');
+        await flush();
+        expect(result.current).toBe('idle');
+        // The prewarm POST still fires (server no-ops) — existing behavior intact.
+        expect(prewarmSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('clears the decay timer on unmount (no timer leaks)', async () => {
+        prewarmSpy.mockResolvedValue({ warming: true, provider: 'copilot' });
+        const { result, rerender, unmount } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+            initialProps: baseProps({ ttlMs: TTL }),
+        });
+        rerender(baseProps({ input: 'hello', ttlMs: TTL }));
+        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
+        await flush();
+        expect(result.current).toBe('warm');   // decay timer is now scheduled
+
+        unmount();
+        // The pending decay timer must be cancelled on unmount.
+        expect(vi.getTimerCount()).toBe(0);
+        // Advancing past the TTL must not throw or setState on the torn-down hook.
+        expect(() => { act(() => { vi.advanceTimersByTime(TTL * 2); }); }).not.toThrow();
+    });
+});
