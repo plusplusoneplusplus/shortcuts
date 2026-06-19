@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Attachment } from '@plusplusoneplusplus/forge';
-import { parseDataUrl, isImageDataUrl, saveImagesToTempFiles } from './image-utils';
+import { parseDataUrl, isImageDataUrl, saveImagesToTempFiles, MAX_IMAGE_BYTES } from './image-utils';
 
 /** Wire format for file attachments from the client */
 export interface AttachmentPayload {
@@ -78,8 +78,12 @@ export function parseGenericDataUrl(
     }
 }
 
-/** Max attachment size server-side (10 MB) */
-const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+/**
+ * Max attachment size server-side (10 MB). Re-exported from the shared
+ * {@link MAX_IMAGE_BYTES} so the limit is defined exactly once and the boundary
+ * is referenceable by name (e.g. from tests) instead of being a magic number.
+ */
+export const MAX_ATTACHMENT_SIZE = MAX_IMAGE_BYTES;
 /** Max number of attachments per message */
 const MAX_ATTACHMENTS = 10;
 
@@ -143,6 +147,10 @@ export function saveAttachmentsToTempFiles(
         if (category === 'image') {
             const parsed = parseDataUrl(payload.dataUrl);
             if (parsed) {
+                // Decoded-byte enforcement: the client-reported `size` is not
+                // trusted, so drop images whose actual decoded bytes exceed the
+                // limit before writing them to disk or producing an SDK attachment.
+                if (parsed.buffer.length > MAX_ATTACHMENT_SIZE) continue;
                 const sanitizedName = sanitizeFileName(payload.name);
                 const safeName = sanitizedName.trim().length > 0 ? sanitizedName : `image-${i}.${parsed.extension}`;
                 const filePath = path.join(tempDir, safeName);
@@ -159,6 +167,10 @@ export function saveAttachmentsToTempFiles(
         // Generic data URL parsing
         const parsed = parseGenericDataUrl(payload.dataUrl);
         if (!parsed) continue;
+        // Decoded-byte enforcement (same rationale as the image path above):
+        // drop any payload whose decoded bytes exceed the limit, regardless of
+        // the client-reported `size`, before it is written to disk.
+        if (parsed.buffer.length > MAX_ATTACHMENT_SIZE) continue;
 
         const sanitizedName = sanitizeFileName(payload.name);
         const safeName = sanitizedName.trim().length > 0 ? sanitizedName : `file-${i}`;
