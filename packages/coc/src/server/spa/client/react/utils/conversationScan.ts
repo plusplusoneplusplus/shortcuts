@@ -1,6 +1,10 @@
 import type { ClientConversationTurn, ClientToolCall } from '../types/dashboard';
 import { getApplyPatchText, parseApplyPatchFileChanges } from './applyPatchParser';
 import { FILE_WRITE_TOOLS } from './fileWriteTools';
+import {
+    normalizeToolArgs,
+    normalizeToolName,
+} from '../features/chat/conversation/tool-calls/toolNormalization';
 
 /** File extensions considered "plan/doc" files worth pinning */
 export const PINNED_EXTENSIONS = ['.md', '.txt', '.yaml', '.yml', '.json'];
@@ -250,6 +254,11 @@ function extractApplyPatchPaths(
  * 2. Persisted: name (not toolName) field, args may be empty
  * 3. Live SSE: toolName='unknown', args={} — resolved via tool-start or result parsing
  * 4. apply_patch: string args with "*** Add File:" lines, result "Added N file(s): ..."
+ *
+ * Tool names and args are run through normalizeToolName/normalizeToolArgs so
+ * provider-specific shapes are recognised — e.g. Claude Code's PascalCase
+ * Write/Edit/MultiEdit (with a `file_path` arg) map to the canonical
+ * create/edit tools used by FILE_WRITE_TOOLS.
  */
 export function scanTurnsForCreatedFiles(
     turns: ClientConversationTurn[]
@@ -289,9 +298,14 @@ export function scanTurnsForCreatedFiles(
 
         for (const tc of toolCalls) {
             // Resolve tool name: tc.toolName > tc.name > matching tool-start name
-            const effectiveName = resolveToolName(tc) !== 'unknown'
+            const rawName = resolveToolName(tc) !== 'unknown'
                 ? resolveToolName(tc)
                 : (tc.id && toolStartNames.get(tc.id)) || resolveToolName(tc);
+
+            // Normalize provider-specific names to canonical ones so detection
+            // works across providers — e.g. Claude Code's PascalCase
+            // Write/Edit/MultiEdit map to create/edit and Bash maps to bash.
+            const effectiveName = normalizeToolName(rawName);
 
             if (SHELL_MOVE_TOOLS.has(effectiveName)) {
                 const args = typeof tc.args === 'object' ? tc.args ?? {} : {};
@@ -324,11 +338,14 @@ export function scanTurnsForCreatedFiles(
             }
 
             // Resolve args: tc.args > tool-start args (by toolCallId)
-            let args = typeof tc.args === 'object' ? tc.args ?? {} : {};
-            const hasPath = args.path || args.filePath;
+            let rawArgs = typeof tc.args === 'object' ? tc.args ?? {} : {};
+            const hasPath = rawArgs.path || rawArgs.filePath || rawArgs.file_path;
             if (!hasPath && tc.id && toolStartArgs.has(tc.id)) {
-                args = toolStartArgs.get(tc.id)!;
+                rawArgs = toolStartArgs.get(tc.id)!;
             }
+
+            // Normalize args (e.g. Claude's `file_path` → `path`) before reading.
+            const args = normalizeToolArgs(effectiveName, rawArgs) as Record<string, any>;
 
             let filePath: string = args.path || args.filePath || '';
 
