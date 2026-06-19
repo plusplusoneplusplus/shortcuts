@@ -9,6 +9,8 @@ vi.mock('../../src/sdk-esm-loader', () => ({
 
 import { ClaudeSDKService } from '../../src/claude-sdk-service';
 import { dynamicImportModule } from '../../src/sdk-esm-loader';
+import { MAX_CLAUDE_IMAGE_BYTES } from '../../src/image-converter';
+import { initSDKLogger, resetSDKLogger } from '../../src/logger';
 
 const mockDynamicImport = vi.mocked(dynamicImportModule);
 
@@ -30,6 +32,27 @@ async function drainAsyncIterable(iterable: AsyncIterable<unknown>): Promise<unk
     return values;
 }
 
+/** Minimal pino-shaped logger that records every call for assertions. */
+function createCapturingLogger() {
+    const logs: Array<{ level: string; fields: Record<string, unknown>; message: string }> = [];
+    const capture = (level: string) => (...args: unknown[]) => {
+        const [first, second] = args;
+        const fields = typeof first === 'object' && first !== null && !Array.isArray(first)
+            ? (first as Record<string, unknown>)
+            : {};
+        const message = typeof first === 'string' ? first : typeof second === 'string' ? second : '';
+        logs.push({ level, fields, message });
+    };
+    const logger: Record<string, unknown> = {
+        debug: capture('debug'),
+        info: capture('info'),
+        warn: capture('warn'),
+        error: capture('error'),
+    };
+    logger.child = () => logger;
+    return { logs, logger };
+}
+
 describe('ClaudeSDKService image attachments', () => {
     let svc: ClaudeSDKService;
     let tmpDir: string;
@@ -46,6 +69,7 @@ describe('ClaudeSDKService image attachments', () => {
 
     afterEach(() => {
         svc.dispose();
+        resetSDKLogger();
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
@@ -111,14 +135,80 @@ describe('ClaudeSDKService image attachments', () => {
         expect(queryFn.mock.calls[0][0].prompt).toBe('Skip unsupported');
     });
 
-    it('skips oversized image attachments', async () => {
+    it('forwards an image whose byte size is exactly at the limit', async () => {
+        // A buffer exactly at MAX_CLAUDE_IMAGE_BYTES must still be forwarded —
+        // the boundary check skips only strictly-greater sizes.
+        const exact = Buffer.alloc(MAX_CLAUDE_IMAGE_BYTES, 1);
+        const result = await svc.sendMessage({
+            prompt: 'Exactly at limit',
+            attachments: [{ type: 'file', path: writeFile('exact.png', exact), displayName: 'exact.png' }],
+        });
+
+        expect(result.success).toBe(true);
+        const prompt = queryFn.mock.calls[0][0].prompt;
+        expect(typeof prompt).not.toBe('string');
+        const messages = (await drainAsyncIterable(prompt)) as Array<{
+            message: { content: Array<{ type: string; source?: { media_type: string } }> };
+        }>;
+        const blocks = messages[0].message.content;
+        expect(blocks).toHaveLength(2);
+        expect(blocks[1].type).toBe('image');
+        expect(blocks[1].source?.media_type).toBe('image/png');
+    });
+
+    it('skips oversized image attachments and keeps the text prompt', async () => {
         await svc.sendMessage({
             prompt: 'Too large',
             attachments: [
-                { type: 'file', path: writeFile('large.png', Buffer.alloc((10 * 1024 * 1024) + 1)), displayName: 'large.png' },
+                { type: 'file', path: writeFile('large.png', Buffer.alloc(MAX_CLAUDE_IMAGE_BYTES + 1)), displayName: 'large.png' },
             ],
         });
 
+        // Oversized image dropped; request still runs as a plain text prompt.
         expect(queryFn.mock.calls[0][0].prompt).toBe('Too large');
+    });
+
+    it('records a sanitized skip diagnostic for an oversized image (no payload/prompt leak)', async () => {
+        const { logs, logger } = createCapturingLogger();
+        initSDKLogger(logger as never);
+
+        const oversizedBytes = MAX_CLAUDE_IMAGE_BYTES + 1024;
+        await svc.sendMessage({
+            prompt: 'Sensitive prompt text that must never be logged',
+            attachments: [
+                { type: 'file', path: writeFile('huge.png', Buffer.alloc(oversizedBytes, 7)), displayName: 'huge.png' },
+            ],
+        });
+
+        const skip = logs.find(l => l.fields.event === 'claude_image_skipped');
+        expect(skip).toBeDefined();
+        expect(skip!.level).toBe('warn');
+        expect(skip!.fields.reason).toBe('too-large');
+        expect(skip!.fields.byteSize).toBe(oversizedBytes);
+        expect(skip!.fields.limitBytes).toBe(MAX_CLAUDE_IMAGE_BYTES);
+        expect(skip!.fields.extension).toBe('png');
+        expect(skip!.fields.mediaType).toBe('image/png');
+        expect(skip!.fields.attachmentName).toBe('huge.png');
+
+        // The diagnostic must never carry image bytes or prompt text.
+        const serialized = JSON.stringify(skip);
+        expect(serialized).not.toContain('Sensitive prompt text');
+        expect(serialized).not.toContain(Buffer.alloc(8, 7).toString('base64'));
+    });
+
+    it('falls back to the path basename when an oversized image has no display name', async () => {
+        const { logs, logger } = createCapturingLogger();
+        initSDKLogger(logger as never);
+
+        await svc.sendMessage({
+            prompt: 'No display name',
+            attachments: [
+                { type: 'file', path: writeFile('unnamed.png', Buffer.alloc(MAX_CLAUDE_IMAGE_BYTES + 1)), displayName: '' },
+            ],
+        });
+
+        const skip = logs.find(l => l.fields.event === 'claude_image_skipped');
+        expect(skip).toBeDefined();
+        expect(skip!.fields.attachmentName).toBe('unnamed.png');
     });
 });

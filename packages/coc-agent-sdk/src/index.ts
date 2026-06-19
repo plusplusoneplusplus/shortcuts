@@ -82,6 +82,15 @@ export {
 export {
     isImageFilePath,
     isSupportedCodexImagePath,
+    evaluateClaudeImageFile,
+    MAX_CLAUDE_IMAGE_BYTES,
+} from './image-converter';
+
+export type {
+    ClaudeImageSource,
+    ClaudeImageSkip,
+    ClaudeImageSkipReason,
+    ClaudeImageEvaluation,
 } from './image-converter';
 
 export type { BackgroundTasksInfo, IAccountQuotaSnapshot, IAccountQuotaResult } from './copilot-sdk-service';
