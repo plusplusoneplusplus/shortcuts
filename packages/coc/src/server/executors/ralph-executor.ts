@@ -84,6 +84,7 @@ export class RalphExecutor extends ChatBaseExecutor {
         // System message carries only generic, non-Ralph blocks. All Ralph
         // framing lives in the user message (AC-01, AC-02).
         const systemMessage = await systemMessageBuilder()
+            .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
             .withRepoInstructions(workingDirectory, isFinalCheck ? 'ask' : 'ralph')
             .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
             .appendMemoryV2(ctx.memoryV2)

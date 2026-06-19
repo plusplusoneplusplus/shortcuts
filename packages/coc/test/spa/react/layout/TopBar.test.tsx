@@ -78,6 +78,7 @@ describe('TopBar responsive behavior', () => {
     afterEach(() => {
         viewportCleanup?.();
         viewportCleanup = undefined;
+        delete (window as any).__DASHBOARD_CONFIG__;
     });
 
     it('tab bar is not rendered when TABS is empty (repos is implicit default, wiki hidden)', () => {
@@ -97,6 +98,27 @@ describe('TopBar responsive behavior', () => {
         expect(mobileTitle.tagName).toBe('A');
         expect(mobileTitle.href).toContain('#');
         expect(mobileTitle.className).toContain('md:hidden');
+    });
+
+    it('mobile title truncates instead of forcing narrow topbar overflow', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            hostname: 'very-long-hostname-for-mobile.example',
+        };
+        mockMyLifeEnabled = true;
+        viewportCleanup = mockViewport(375);
+        render(<TopBar />);
+
+        const mobileTitle = document.querySelector('[data-tab-mobile="repos"]') as HTMLAnchorElement;
+        expect(mobileTitle.textContent).toBe('CoC @ very-long-hostname-for-mobile.example');
+        expect(mobileTitle.title).toBe('Copilot of Copilot @ very-long-hostname-for-mobile.example');
+        expect(mobileTitle.className).toContain('truncate');
+        expect(mobileTitle.className).toContain('min-w-0');
+        expect(mobileTitle.className).toContain('shrink');
+        expect(mobileTitle.className).toContain('px-1');
+        expect(mobileTitle.className).not.toContain('flex-shrink-0');
+        expect(document.getElementById('my-life-toggle')).toBeTruthy();
     });
 
     it('desktop CoC link shows short label with tooltip', () => {

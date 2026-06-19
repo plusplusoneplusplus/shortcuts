@@ -42,6 +42,23 @@ describe('EffortTierSelector', () => {
         expect(screen.getByTestId('effort-tier-trigger-btn').textContent).toContain('Effort: Medium');
     });
 
+    it('uses compact icon-only sizing below sm when mobile tap target mode is enabled', () => {
+        renderSelector({ selectedTier: 'medium', mobileTapTarget: true });
+
+        const trigger = screen.getByTestId('effort-tier-trigger-btn');
+        const tokens = trigger.className.split(/\s+/);
+        expect(tokens).toContain('h-8');
+        expect(tokens).toContain('w-8');
+        expect(tokens).toContain('justify-center');
+        expect(tokens).toContain('sm:w-auto');
+        expect(tokens).toContain('sm:px-2');
+        expect(trigger.getAttribute('aria-label')).toBe('Effort tier: Medium');
+        expect(trigger.textContent).toContain('E');
+        const label = Array.from(trigger.querySelectorAll('span')).find(span => span.textContent?.includes('Effort: Medium')) as HTMLElement;
+        expect(label.className).toContain('hidden');
+        expect(label.className).toContain('sm:inline');
+    });
+
     it('opens the dropdown on trigger click', () => {
         renderSelector();
         fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));

@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 
 const PAGE_SIZE = 50;
 
@@ -71,7 +71,7 @@ export function BranchPickerModal({
             }
             setError(null);
             try {
-                const data = await getSpaCocClient().git.listBranches(workspaceId, {
+                const data = await getCocClientForWorkspace(workspaceId).git.listBranches(workspaceId, {
                     type: 'local',
                     limit: PAGE_SIZE,
                     offset: newOffset,
@@ -141,7 +141,7 @@ export function BranchPickerModal({
                 if (onSelected) {
                     await onSelected(branchName);
                 } else {
-                    const result = await getSpaCocClient().git.switchBranch(workspaceId, branchName, { force: false });
+                    const result = await getCocClientForWorkspace(workspaceId).git.switchBranch(workspaceId, branchName, { force: false });
                     if (result.success === false) {
                         throw new Error(result.error || 'Switch failed');
                     }

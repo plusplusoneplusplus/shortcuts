@@ -23,7 +23,6 @@ import type {
     ProcessStore,
     QueuedTask,
     SelectedContext,
-    SystemMessageConfig,
 } from '@plusplusoneplusplus/forge';
 import {
     applyDeepModePrefix,
@@ -40,6 +39,7 @@ import type { ChatPayload } from '../tasks/task-types';
 import { resolveTaskRoot } from '../tasks/task-root-resolver';
 import type { ChatModeAIOptions, ChatModeExecutionResult, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
+import { systemMessageBuilder } from './system-message-builder';
 import { isValidTaskFolder } from './auto-folder-utils';
 
 // ============================================================================
@@ -160,9 +160,14 @@ export class TaskGenerationExecutor extends ChatBaseExecutor {
         _workingDirectory: string | undefined,
     ): Promise<ChatModeAIOptions> {
         const systemPrompt = this.pendingSystemPrompts.get(task.id) ?? '';
-        const systemMessage: SystemMessageConfig | undefined = systemPrompt
-            ? { mode: 'append', content: systemPrompt }
-            : undefined;
+        // Task generation is a user-facing agent session (AC-03): append the
+        // admin-configured global system prompt after the plan-generation
+        // contract via the shared builder. No-op when unset, so structured
+        // plan output is unchanged by default.
+        const systemMessage = await systemMessageBuilder()
+            .append(systemPrompt || undefined)
+            .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
+            .build();
         return {
             agentMode: undefined,
             systemMessage,

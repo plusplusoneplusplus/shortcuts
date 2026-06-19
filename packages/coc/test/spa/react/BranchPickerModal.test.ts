@@ -181,6 +181,11 @@ describe('BranchPickerModal', () => {
             expect(source).toContain('listBranches(workspaceId');
         });
 
+        it('routes branch listing through the selected clone client', () => {
+            expect(source).toContain("import { getCocClientForWorkspace } from '../../../repos/cloneRegistry'");
+            expect(source).toContain('getCocClientForWorkspace(workspaceId).git.listBranches(workspaceId');
+        });
+
         it('uses type=local query parameter', () => {
             expect(source).toContain("'local'");
             expect(source).toContain('type');
@@ -190,6 +195,10 @@ describe('BranchPickerModal', () => {
     describe('switch flow', () => {
         it('switches branches through typed client', () => {
             expect(source).toContain('switchBranch(workspaceId, branchName');
+        });
+
+        it('routes branch switching through the selected clone client', () => {
+            expect(source).toContain('getCocClientForWorkspace(workspaceId).git.switchBranch(workspaceId, branchName');
         });
 
         it('sends branch name in request body', () => {
@@ -231,7 +240,11 @@ describe('BranchPickerModal', () => {
         });
 
         it('delegates JSON request details to the client', () => {
-            expect(source).toContain('getSpaCocClient().git');
+            expect(source).toContain('getCocClientForWorkspace(workspaceId).git');
+        });
+
+        it('does not fall back to the local-only SPA client for workspace git calls', () => {
+            expect(source).not.toContain('getSpaCocClient');
         });
     });
 
@@ -287,7 +300,7 @@ describe('BranchPickerModal', () => {
 
     describe('API integration', () => {
         it('imports typed CoC client', () => {
-            expect(source).toContain("import { getSpaCocClient } from '../../../api/cocClient'");
+            expect(source).toContain("import { getCocClientForWorkspace } from '../../../repos/cloneRegistry'");
         });
 
         it('uses typed client for workspace ID encoding', () => {

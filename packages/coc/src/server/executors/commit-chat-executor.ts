@@ -119,6 +119,7 @@ export class CommitChatExecutor extends ChatBaseExecutor {
 
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage('ask')?.content)
+            .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
             .withRepoInstructions(workingDirectory, 'ask')
             .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
             .appendToolGuidance(toolGuidance)

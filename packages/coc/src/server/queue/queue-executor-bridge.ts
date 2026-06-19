@@ -35,6 +35,13 @@ export interface CLITaskExecutorOptions {
      * holding a direct reference to RuntimeConfigService.
      */
     resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => ISDKService;
+    /**
+     * Live read of the admin-configured global system prompt
+     * (`chat.globalSystemPrompt`). Supplied by the server (backed by
+     * RuntimeConfigService) so executors inject it without holding a config
+     * reference. Threaded to user-facing chat executors only.
+     */
+    getGlobalSystemPrompt?: () => string | undefined;
     /** Resolve Auto provider routing when a queued chat task starts execution. */
     resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
@@ -133,6 +140,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             provider: options.provider,
             ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
             resolveAiServiceForProvider: options.resolveAiServiceForProvider,
+            getGlobalSystemPrompt: options.getGlobalSystemPrompt,
             resolveSkillConfig: skillCfg,
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),

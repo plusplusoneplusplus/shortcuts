@@ -306,6 +306,7 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
         );
 
         const systemMessage = await systemMessageBuilder()
+            .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
             .appendToolGuidance(toolGuidance)
             .build();
 

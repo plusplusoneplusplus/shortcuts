@@ -100,6 +100,7 @@ export class ClassificationExecutor extends ChatBaseExecutor {
 
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage('ask')?.content)
+            .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
             .withRepoInstructions(workingDirectory, 'ask')
             .append(buildSourceLocationMarkdownLinkSystemMessage(readProvider(task.payload, this.provider))?.content)
             .appendToolGuidance(toolGuidance)

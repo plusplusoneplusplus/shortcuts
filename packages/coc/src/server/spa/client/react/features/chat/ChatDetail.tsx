@@ -909,6 +909,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         return sendFollowUp(overrideContent, deliveryMode);
     }, [pendingPrefix, onClearPendingPrefix, sendFollowUp, followUpInputRef]);
 
+    const sendInterruptedTurnFollowUp = useCallback((message: string) => {
+        void sendFollowUp(message, 'enqueue', {
+            includeComposerContext: false,
+            modeOverride: selectedMode === 'ralph' ? 'ask' : selectedMode,
+        });
+    }, [sendFollowUp, selectedMode]);
+
     const { stopStreaming } = useChatSSE({
         taskId,
         task,
@@ -1889,6 +1896,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         processType={fullTask?.type ?? task?.type}
                         onCancelPendingMessage={handleCancelPendingMessage}
                         inputRef={richTextRef}
+                        onSendInterruptedTurnFollowUp={sendInterruptedTurnFollowUp}
                         mcpOAuthPrompts={mcpOAuthPrompts}
                         onMcpOAuthCompleted={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}
                         onMcpOAuthFailed={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}

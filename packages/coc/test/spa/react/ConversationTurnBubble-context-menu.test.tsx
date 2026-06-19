@@ -136,4 +136,42 @@ describe('ConversationTurnBubble — context menu', () => {
         fireEvent.click(screen.getByText('Attach as context'));
         expect(onAttach).toHaveBeenCalledWith(1, 'assistant', 'Full content');
     });
+
+    it('does not open the custom menu on shift+right-click (lets the browser show its native menu)', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn()}
+                turnIndex={0}
+                onAttachContext={vi.fn()}
+            />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!, { shiftKey: true });
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+    });
+
+    it('does not call preventDefault on shift+right-click so the native menu appears', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn()}
+                turnIndex={0}
+                onAttachContext={vi.fn()}
+            />,
+        );
+        // fireEvent.contextMenu returns false if a handler called preventDefault.
+        const notPrevented = fireEvent.contextMenu(container.querySelector('.chat-message')!, { shiftKey: true });
+        expect(notPrevented).toBe(true);
+    });
+
+    it('still calls preventDefault and opens the custom menu on a plain right-click', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn()}
+                turnIndex={0}
+                onAttachContext={vi.fn()}
+            />,
+        );
+        const notPrevented = fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        expect(notPrevented).toBe(false);
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+    });
 });

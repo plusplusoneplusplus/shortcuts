@@ -46,6 +46,38 @@ type ConditionalStep = { kind: 'conditional'; block: string };
 type Step = EagerStep | AsyncStep | ConditionalStep;
 
 // ============================================================================
+// Global admin system prompt block
+// ============================================================================
+
+/** Tag wrapping the admin-configured global system prompt block. */
+export const GLOBAL_SYSTEM_PROMPT_TAG = 'admin-global-system-prompt';
+
+/**
+ * Wrap the admin-configured global system prompt in a labeled block.
+ *
+ * The block is framed so the model treats it as an operator-wide instruction
+ * that *supplements* — never overrides — CoC runtime constraints (read-only
+ * mode, tool and permission policy, and other system instructions). The tag
+ * also makes the block identifiable in persisted Conversation Metadata.
+ *
+ * Returns `undefined` when the prompt is empty, undefined, or only whitespace
+ * so the default (no global prompt) is inert.
+ */
+export function buildGlobalSystemPromptBlock(prompt: string | undefined): string | undefined {
+    const trimmed = prompt?.trim();
+    if (!trimmed) return undefined;
+    return [
+        `<${GLOBAL_SYSTEM_PROMPT_TAG}>`,
+        'Administrator-configured global instructions that apply to every agent session. '
+            + 'They supplement, but do not override, CoC runtime constraints such as read-only '
+            + 'mode, tool and permission policy, or other system instructions.',
+        '',
+        trimmed,
+        `</${GLOBAL_SYSTEM_PROMPT_TAG}>`,
+    ].join('\n');
+}
+
+// ============================================================================
 // SystemMessageBuilder
 // ============================================================================
 
@@ -54,6 +86,23 @@ class SystemMessageBuilder {
 
     /** Append a raw string block. No-op when the block is empty or undefined. */
     append(block: string | undefined): this {
+        if (block) {
+            this.steps.push({ kind: 'eager', block });
+        }
+        return this;
+    }
+
+    /**
+     * Append the admin-configured global system prompt as a labeled block.
+     *
+     * Used by user-facing agent sessions so an operator-wide instruction reaches
+     * every provider through the shared `systemMessage` channel. The block is
+     * framed as supplementing — not overriding — CoC runtime constraints.
+     *
+     * No-op when the prompt is empty, undefined, or only whitespace.
+     */
+    appendGlobalSystemPrompt(prompt: string | undefined): this {
+        const block = buildGlobalSystemPromptBlock(prompt);
         if (block) {
             this.steps.push({ kind: 'eager', block });
         }

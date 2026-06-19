@@ -286,8 +286,11 @@ contract. Notes direct goal launch remains separate because it skips grilling.
   keeps its dedicated red palette and ignores `provider`.
 - **Interrupted assistant turns:** Amber "Partial response preserved" banner
   renders above the still-visible partial transcript and tool timeline. The
-  Continue / retry button focuses the normal follow-up composer; it does not
-  replay preserved partial content into a prompt.
+  Continue / retry button sends a generated raw follow-up through the normal
+  follow-up path (auth/session/provider/network-looking interruptions use retry
+  wording; other interruptions ask the assistant to continue). It does not
+  replay preserved partial content into a prompt or include current composer
+  draft/paste/context/attachments.
 - **Script output:** Dark terminal window with PASS/FAIL highlighting; the
   avatar keeps its dedicated dark-terminal palette and ignores `provider`.
 
@@ -581,7 +584,9 @@ The model-picker chip in both `NewChatArea` and `FollowUpInputArea` mirrors the 
 Right-hand action cluster:
 `[Connected pill | NotificationBell | AgentProviderQuotaIndicator | Admin | Theme]`.
 The quota indicator is hidden below the `md` breakpoint; the mobile top bar does
-not render the quota dropdown trigger.
+not render the quota dropdown trigger. The mobile CoC/hostname link is a
+shrinkable truncated flex item so optional My Work/My Life shortcuts and the
+fixed right-hand action cluster stay reachable on narrow phones.
 
 The legacy "Tools" popover has been migrated into the Admin page's left
 sidebar, but there is no longer a generic Tools group. The Admin sidebar is
@@ -749,7 +754,7 @@ the input:
   (`/summary` + `/skills/all` loads, the `queue.enqueue` mutation, and
   `recordSkillUsage`), `RepoSettingsTab` (mcp-config, skills, instructions, repo
   prefs, processes, description PATCH), `RepoDetail` (work-items badge preview),
-  and `WorkItemsTab` (commit file list).
+  `WorkItemsTab` (commit file list), and `BranchPickerModal` (branch list/switch).
 - `RalphStartPanel` builds raw `fetch` URLs against `cloneApiBase(workspaceId)`
   (absolute remote base, or local when unregistered) for its whole flow: the
   goal-file read (`/fs/blob?path=...`) and the `ralph-launch` / `processes/:id/

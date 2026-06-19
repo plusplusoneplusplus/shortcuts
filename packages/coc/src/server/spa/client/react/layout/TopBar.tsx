@@ -149,7 +149,8 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                 <a
                     href="#"
                     data-tab-mobile="repos"
-                    className={`text-sm font-semibold whitespace-nowrap md:hidden flex-shrink-0 px-2 h-7 transition-colors inline-flex items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:underline'}`}
+                    className={`text-sm font-semibold truncate min-w-0 shrink md:hidden px-1 md:px-2 h-7 transition-colors inline-flex items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:underline'}`}
+                    title={brandTooltip}
                     onClick={e => { e.preventDefault(); goToRepos(); }}
                 >{ brandLabel }</a>
                 <a
@@ -222,7 +223,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     </nav>
                 )}
             </div>
-            <div className="flex items-center gap-1.5" data-testid="topbar-actions">
+            <div className="flex flex-shrink-0 items-center gap-1.5" data-testid="topbar-actions">
                 {/* WS status — pill on desktop, bare dot on mobile to save space */}
                 <span
                     className="hidden md:inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-xs font-medium text-[#656d76] dark:text-[#999]"

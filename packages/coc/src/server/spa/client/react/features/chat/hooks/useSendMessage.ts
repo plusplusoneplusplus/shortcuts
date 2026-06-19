@@ -16,6 +16,13 @@ import type { RalphGrillSetup } from '../../../../../../ralph/grill-planning';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 
+export interface SendFollowUpOptions {
+    /** When false, send exactly the provided content without composer draft/paste/context/attachments. */
+    includeComposerContext?: boolean;
+    /** Optional mode override for generated sends that should not follow the current composer mode. */
+    modeOverride?: ChatMode;
+}
+
 export interface UseSendMessageOptions {
     processId: string | null;
     taskId: string;
@@ -114,7 +121,7 @@ export function useSendMessage({
     ralphGrillSetup,
     onPromotedToRalph,
 }: UseSendMessageOptions): {
-    sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode) => Promise<void>;
+    sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode, options?: SendFollowUpOptions) => Promise<void>;
     closeFollowUpStream: () => void;
     onSendComplete: () => void;
 } {
@@ -122,11 +129,11 @@ export function useSendMessage({
     const followUpEventSourceRef = useRef<EventSource | null>(null);
     const resolveCurrentSendRef = useRef<(() => void) | null>(null);
 
-    const buildMessageRequest = useCallback((content: string, deliveryMode: DeliveryMode, skillNames: string[]): ProcessMessageRequest => ({
+    const buildMessageRequest = useCallback((content: string, deliveryMode: DeliveryMode, skillNames: string[], options: SendFollowUpOptions = {}): ProcessMessageRequest => ({
         content,
-        images: images.length > 0 ? images : undefined,
-        ...(toPayload ? (() => { const ap = toPayload(); return ap.length > 0 ? { attachments: ap } : {}; })() : {}),
-        mode: selectedMode,
+        images: options.includeComposerContext === false ? undefined : (images.length > 0 ? images : undefined),
+        ...(options.includeComposerContext === false || !toPayload ? {} : (() => { const ap = toPayload(); return ap.length > 0 ? { attachments: ap } : {}; })()),
+        mode: options.modeOverride ?? selectedMode,
         deliveryMode,
         ...(skillNames.length > 0 ? { skillNames } : {}),
         ...(modelOverride ? { model: modelOverride } : {}),
@@ -169,10 +176,12 @@ export function useSendMessage({
         });
     }, [refreshConversation]);
 
-    const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue') => {
+    const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue', options: SendFollowUpOptions = {}) => {
+        const includeComposerContext = options.includeComposerContext !== false;
+        const messageMode = options.modeOverride ?? selectedMode;
         const userText = (overrideContent ?? followUpInputRef.current).trim();
-        const pastedContent = getPastedContent?.() ?? null;
-        const contextItems = getAttachedContext?.() ?? [];
+        const pastedContent = includeComposerContext ? (getPastedContent?.() ?? null) : null;
+        const contextItems = includeComposerContext ? (getAttachedContext?.() ?? []) : [];
         const sessionContextSendError = validateSessionContextAttachmentsForSend({
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId: workspaceId,
@@ -198,7 +207,7 @@ export function useSendMessage({
         // instead of enqueueing a normal follow-up. The user's typed text (if
         // any) is forwarded as `extraGuidance` to focus the synthesis prompt.
         // Empty input is fine — the synthesis prompt stands on its own.
-        if (selectedMode === 'ralph') {
+        if (messageMode === 'ralph') {
             if (archivedChatIds.has(taskId)) unarchiveChat(taskId);
             setSuggestions([]);
             setFollowUpInput('');
@@ -247,8 +256,10 @@ export function useSendMessage({
         const { skills: extractedSkills } = slashCommands.parseAndExtract(rawContent);
 
         setSuggestions([]);
-        setFollowUpInput('');
-        clearDraft(taskId);
+        if (includeComposerContext) {
+            setFollowUpInput('');
+            clearDraft(taskId);
+        }
         slashCommands.dismissMenu();
         setError(null);
 
@@ -275,12 +286,14 @@ export function useSendMessage({
             // Routed to the chat's clone (AC-07).
             void getCocClientForWorkspace(workspaceId).processes.sendMessage(
                 processId,
-                buildMessageRequest(rawContent, deliveryMode, extractedSkills),
+                buildMessageRequest(rawContent, deliveryMode, extractedSkills, options),
             ).catch(() => {});
 
-            clearImages();
-            clearPaste();
-            clearAttachedContext?.();
+            if (includeComposerContext) {
+                clearImages();
+                clearPaste();
+                clearAttachedContext?.();
+            }
             return;
         }
 
@@ -303,14 +316,16 @@ export function useSendMessage({
             // Idle chat: start the streaming follow-up against the chat's clone (AC-07).
             await getCocClientForWorkspace(workspaceId).processes.sendMessage(
                 processId,
-                buildMessageRequest(rawContent, deliveryMode, extractedSkills),
+                buildMessageRequest(rawContent, deliveryMode, extractedSkills, options),
             );
 
             lastFailedMessageRef.current = '';
             setTask((prev: any) => prev ? { ...prev, status: 'running' } : prev);
-            clearImages();
-            clearPaste();
-            clearAttachedContext?.();
+            if (includeComposerContext) {
+                clearImages();
+                clearPaste();
+                clearAttachedContext?.();
+            }
             await waitForSendCompletion(processId);
         } catch (err: any) {
             if (err instanceof CocApiError && err.status === 410) {

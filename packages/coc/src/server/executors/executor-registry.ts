@@ -42,6 +42,12 @@ export interface ExecutorRegistryOptions {
      * receiving the RuntimeConfigService directly.
      */
     resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => ISDKService;
+    /**
+     * Live read of the admin-configured global system prompt
+     * (`chat.globalSystemPrompt`). Threaded to user-facing chat executors so
+     * the operator-wide instruction reaches every provider via `systemMessage`.
+     */
+    getGlobalSystemPrompt?: () => string | undefined;
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
@@ -102,6 +108,7 @@ export class ExecutorRegistry {
             provider: options.provider,
             ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
             resolveAiServiceForProvider: options.resolveAiServiceForProvider,
+            getGlobalSystemPrompt: options.getGlobalSystemPrompt,
         };
 
         this.strategyRegistry = new TaskStrategyRegistry();

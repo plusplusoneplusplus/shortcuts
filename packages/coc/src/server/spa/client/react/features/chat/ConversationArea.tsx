@@ -15,6 +15,18 @@ import { MODE_ICONS, MODE_TEXT_COLORS, normalizeChatMode } from '../../repos/mod
 import type { ChatMode } from '../../repos/modeConfig';
 import type { ChatProvider } from './ProviderBadge';
 
+export const INTERRUPTED_TURN_CONTINUE_MESSAGE = 'Please continue from where the last response was interrupted.';
+export const INTERRUPTED_TURN_RETRY_MESSAGE = 'The previous response was interrupted by a temporary authorization/session error. Please retry the prior request and continue.';
+
+const RETRYABLE_INTERRUPTION_REASON_PATTERN = /\b(auth(?:entication|orization)?|authori[sz](?:ation|ed)?|login|session|provider|network|connection|temporar(?:y|ily)|unavailable|econnreset|econnrefused|eai_again|etimedout)\b/i;
+
+export function buildInterruptedTurnFollowUpMessage(reason?: string | null): string {
+    if (reason && RETRYABLE_INTERRUPTION_REASON_PATTERN.test(reason)) {
+        return INTERRUPTED_TURN_RETRY_MESSAGE;
+    }
+    return INTERRUPTED_TURN_CONTINUE_MESSAGE;
+}
+
 export interface ConversationAreaProps {
     loading: boolean;
     error: string | null;
@@ -96,6 +108,8 @@ export interface ConversationAreaProps {
      * vim-style `i` re-focuses the input from nav mode.
      */
     inputRef?: React.RefObject<{ focus: () => void } | null> | null;
+    /** Sends a generated raw follow-up for interrupted assistant turns. Falls back to focusing input when omitted. */
+    onSendInterruptedTurnFollowUp?: (message: string) => void;
     /** Active MCP OAuth prompts awaiting user authorization. */
     mcpOAuthPrompts?: McpOAuthPromptData[];
     /** Called when an MCP OAuth flow completes. */
@@ -150,6 +164,7 @@ export function ConversationArea({
     processType,
     onCancelPendingMessage,
     inputRef,
+    onSendInterruptedTurnFollowUp,
     mcpOAuthPrompts,
     onMcpOAuthCompleted,
     onMcpOAuthFailed,
@@ -175,7 +190,11 @@ export function ConversationArea({
     }, [isSelecting, onCancelSelection]);
 
     const selectedCount = selectedTurns?.size ?? 0;
-    const focusFollowUpInput = () => {
+    const continueInterruptedTurn = (reason?: string) => {
+        if (onSendInterruptedTurnFollowUp) {
+            onSendInterruptedTurnFollowUp(buildInterruptedTurnFollowUpMessage(reason));
+            return;
+        }
         inputRef?.current?.focus();
     };
     const showRalphGrillPlanningProgress = !!ralphGrillPlanningProgress && !pendingAskUserBatch;
@@ -240,7 +259,7 @@ export function ConversationArea({
                                                 onPinTurn={onPinTurn}
                                                 onArchiveTurn={onArchiveTurn}
                                                 onDeleteTurn={onDeleteTurn}
-                                                onContinueInterrupted={focusFollowUpInput}
+                                                onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
                                                 noteEdits={noteEdits}
                                                 processId={processId}
                                                 processType={processType}
@@ -375,7 +394,7 @@ export function ConversationArea({
                                                     onDeleteTurn={onDeleteTurn}
                                                     onPinTurn={onPinTurn}
                                                     onArchiveTurn={onArchiveTurn}
-                                                    onContinueInterrupted={focusFollowUpInput}
+                                                    onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
                                                     noteEdits={noteEdits}
                                                     processId={processId}
                                                     processType={processType}

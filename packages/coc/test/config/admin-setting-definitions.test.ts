@@ -343,4 +343,21 @@ describe('Features card UI metadata', () => {
         expect(interval!.default).toBe(300_000);
         expect(interval!.runtime).toBe('restartRequired');
     });
+
+    // AC-01: the global system prompt is rendered bespoke on Admin -> System
+    // Prompts (no Features-card `ui`), is live-editable, and clears on null/''.
+    it('keeps chat.globalSystemPrompt admin-editable, live, nullable, and off the Features card', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'chat.globalSystemPrompt');
+        expect(def, 'chat.globalSystemPrompt must be an admin setting').toBeDefined();
+        expect(def!.ui, 'chat.globalSystemPrompt must not be on the Features card').toBeUndefined();
+        expect(def!.runtime, 'chat.globalSystemPrompt must be live-editable').toBe('live');
+        expect(def!.default).toBeUndefined();
+        expect(def!.value).toMatchObject({ kind: 'string', nullable: true, clearOnEmpty: true });
+        // Saving an empty prompt clears the stored value.
+        const config: CLIConfig = {};
+        applyAdminSettingValue(config, def!, 'be concise');
+        expect(getConfigValueAtPath(config, 'chat.globalSystemPrompt')).toBe('be concise');
+        applyAdminSettingValue(config, def!, '');
+        expect(getConfigValueAtPath(config, 'chat.globalSystemPrompt')).toBeUndefined();
+    });
 });

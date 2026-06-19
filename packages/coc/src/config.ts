@@ -77,6 +77,11 @@ export interface CLIConfig {
         askUser?: {
             enabled?: boolean;
         };
+        /**
+         * Admin-configured global system prompt injected into user-facing agent
+         * sessions across all providers. Empty/unset means no global prompt.
+         */
+        globalSystemPrompt?: string;
     };
     /** Serve command defaults */
     serve?: {
@@ -373,6 +378,11 @@ export interface ResolvedCLIConfig {
         askUser: {
             enabled: boolean;
         };
+        /**
+         * Admin-configured global system prompt injected into user-facing agent
+         * sessions across all providers. Absent when no global prompt is set.
+         */
+        globalSystemPrompt?: string;
     };
     serve?: {
         port: number;

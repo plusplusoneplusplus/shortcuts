@@ -142,7 +142,7 @@ describe('ChatDetail', () => {
                 USE_SEND_MESSAGE_SOURCE.indexOf('const buildMessageRequest'),
                 USE_SEND_MESSAGE_SOURCE.indexOf('const buildMessageRequest') + 1200,
             );
-            expect(requestBlock).toContain('mode: selectedMode');
+            expect(requestBlock).toContain('mode: options.modeOverride ?? selectedMode');
         });
 
         it('initializes selectedMode from draft mode on load', () => {
@@ -299,9 +299,8 @@ describe('ChatDetail', () => {
 
         it('includes images in sendFollowUp POST body', () => {
             const sendFollowUpSection = USE_SEND_MESSAGE_SOURCE.substring(USE_SEND_MESSAGE_SOURCE.indexOf('const buildMessageRequest'));
-            expect(sendFollowUpSection).toContain('images: images.length > 0');
-            expect(sendFollowUpSection).toContain('? images');
-            expect(sendFollowUpSection).toContain(': undefined');
+            expect(sendFollowUpSection).toContain('images: ');
+            expect(sendFollowUpSection).toContain('images.length > 0 ? images : undefined');
         });
 
         it('clears images immediately after send (before waiting for completion)', () => {

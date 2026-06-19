@@ -437,6 +437,16 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         runtime: 'live',
     },
     bool({ key: 'chat.askUser.enabled', default: true, runtime: 'live' }),
+    {
+        // Global system prompt injected into user-facing agent sessions across
+        // all providers. Rendered bespoke on Admin -> System Prompts (no `ui`).
+        // Live so edits apply without a server restart; nullable + clearOnEmpty
+        // so saving an empty prompt clears the stored value.
+        key: 'chat.globalSystemPrompt',
+        value: { kind: 'string', nullable: true, clearOnEmpty: true },
+        default: undefined,
+        runtime: 'live',
+    },
 
     // ── feature flags ─────────────────────────────────────────────────────────
     bool({

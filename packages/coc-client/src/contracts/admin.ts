@@ -67,6 +67,8 @@ export interface AdminResolvedConfig {
     askUser?: {
       enabled?: boolean;
     };
+    /** Admin-configured global system prompt injected into user-facing agent sessions. */
+    globalSystemPrompt?: string;
   };
   serve?: {
     serverName?: string;
@@ -162,6 +164,8 @@ export interface AdminConfigUpdate {
   'chat.followUpSuggestions.enabled'?: boolean;
   'chat.followUpSuggestions.count'?: number;
   'chat.askUser.enabled'?: boolean;
+  /** null clears the stored value; '' also clears it. */
+  'chat.globalSystemPrompt'?: string | null;
   'serve.serverName'?: string | null;
   'terminal.enabled'?: boolean;
   'notes.enabled'?: boolean;

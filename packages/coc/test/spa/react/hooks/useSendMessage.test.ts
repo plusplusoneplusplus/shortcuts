@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useSendMessage } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 import type { UseSendMessageOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
+import type { AttachmentPayload } from '../../../../src/server/spa/client/react/types/attachments';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
@@ -377,6 +378,46 @@ describe('useSendMessage', () => {
         await act(async () => { await result.current.sendFollowUp(); });
 
         expect(clearPaste).toHaveBeenCalled();
+    });
+
+    it('sends override content as raw text when composer context is disabled', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const clearImages = vi.fn();
+        const clearPaste = vi.fn();
+        const clearAttachedContext = vi.fn();
+        const setFollowUpInput = vi.fn();
+        const opts = makeOptions({
+            images: ['data:image/png;base64,abc'],
+            toPayload: (): AttachmentPayload[] => [{
+                name: 'example.ts',
+                mimeType: 'text/plain',
+                size: 7,
+                dataUrl: 'data:text/plain;base64,ZXhhbXBsZQ==',
+            }],
+            getPastedContent: () => 'PASTED_CONTENT',
+            getAttachedContext: () => [{ id: 'ctx-1', turnIndex: 1, role: 'assistant', snippet: 'context', preview: 'context' }],
+            clearImages,
+            clearPaste,
+            clearAttachedContext,
+            setFollowUpInput,
+        });
+        opts.followUpInputRef.current = 'draft that should be preserved';
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => {
+            await result.current.sendFollowUp('Please continue from where the last response was interrupted.', 'enqueue', {
+                includeComposerContext: false,
+            });
+        });
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.content).toBe('Please continue from where the last response was interrupted.');
+        expect(body.attachments).toBeUndefined();
+        expect(body.images).toBeUndefined();
+        expect(setFollowUpInput).not.toHaveBeenCalled();
+        expect(clearImages).not.toHaveBeenCalled();
+        expect(clearPaste).not.toHaveBeenCalled();
+        expect(clearAttachedContext).not.toHaveBeenCalled();
     });
 
     // ── Group 1: sendFollowUp while active generation is running, deliveryMode='immediate' ──

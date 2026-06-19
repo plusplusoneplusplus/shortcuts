@@ -330,6 +330,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         effectiveProvider,
         resolveAiServiceForProvider,
         resolvedConfig.features.ralphMultiAgentGrill,
+        // Live read of the admin global system prompt so edits apply without a
+        // restart. Threaded to user-facing chat executors via the queue bridge.
+        () => runtimeConfigService.config.chat.globalSystemPrompt,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
