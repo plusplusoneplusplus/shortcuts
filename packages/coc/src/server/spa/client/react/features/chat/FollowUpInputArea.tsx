@@ -19,6 +19,7 @@ import { ComposerMetaStrip } from './ComposerMetaStrip';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
+import { usePrewarmClient } from './hooks/usePrewarmClient';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_TOOLTIPS, cycleMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
@@ -268,6 +269,17 @@ export function FollowUpInputArea({
         sessionContextAttachmentsEnabled && canRetrieveConversationsProp === undefined,
     );
     const canRetrieveConversations = canRetrieveConversationsProp ?? localCanRetrieveConversations;
+
+    // Prewarm the provider client for the next turn while the user is typing a
+    // follow-up (AC-05). Suppressed while a turn is generating or the session is
+    // expired — the server would no-op those anyway. No UI indicator.
+    usePrewarmClient({
+        input: followUpInput,
+        workspaceId: activeWorkspaceId,
+        processId: activeProcessId,
+        enabled: !inputDisabled && !isActiveGeneration,
+    });
+
     // Reset dismiss state whenever a new set of suggestions arrives.
     useEffect(() => { setSuggestionsDismissed(false); }, [suggestions]);
 
