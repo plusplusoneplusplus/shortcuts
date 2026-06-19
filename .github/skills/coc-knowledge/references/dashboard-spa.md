@@ -140,7 +140,14 @@ armed only while `isPolling` is true and torn down once everything settles. The
 card header surfaces a manual Refresh control + the freshness label. Force-refresh
 threads through `getForOrigin`/`getChecksForOrigin` `{ force }` to the
 `?force=true` query, which the server checks route honours by evicting
-`prChecksCache` (the detail route already evicts sub-caches).
+`prChecksCache` (the detail route already evicts sub-caches). The card is the
+same component on the dashboard SPA and mobile (AC-06): its header wraps
+(`flex-wrap`, the toggle is `min-w-0`, the freshness+Refresh cluster is
+`shrink-0`) so the controls drop to a second line rather than overflowing the
+`overflow-x-hidden` `ConversationArea` at the 375px viewport, and the title,
+branch pair, check rows, and auto-merge/summary chips stay legible via
+`truncate` + wrapping meta lines; the Checks and collapse disclosures expand on
+tap.
 
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
 the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,

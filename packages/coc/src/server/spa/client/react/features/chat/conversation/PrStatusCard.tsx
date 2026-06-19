@@ -293,11 +293,15 @@ export function PrStatusCard({
             role="region"
             aria-label="Pull requests created in this chat"
         >
-            <div className="flex items-center gap-2 px-2.5 py-1.5">
+            {/* Header wraps (flex-wrap) so the freshness label + refresh control
+                drop to a second line rather than overflowing on narrow mobile
+                viewports (AC-06, 375px). The toggle can shrink (`min-w-0`) and the
+                control cluster stays intact (`shrink-0`). */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2.5 py-1.5">
                 <button
                     type="button"
                     className={
-                        'flex items-center gap-2 text-xs font-semibold ' +
+                        'flex min-w-0 items-center gap-2 text-xs font-semibold ' +
                         'text-[#57606a] dark:text-[#8b949e] select-none ' +
                         (collapsible ? 'cursor-pointer hover:text-[#1f2328] dark:hover:text-[#c9d1d9]' : 'cursor-default')
                     }
@@ -306,15 +310,15 @@ export function PrStatusCard({
                     onClick={collapsible ? () => setExpanded(v => !v) : undefined}
                 >
                     <span aria-hidden="true">🔀</span>
-                    <span>
+                    <span className="truncate">
                         {sorted.length === 1 ? '1 pull request' : `${sorted.length} pull requests`}
                     </span>
                     {collapsible && (
-                        <span aria-hidden="true">{showRows ? '▾' : '▸'}</span>
+                        <span className="shrink-0" aria-hidden="true">{showRows ? '▾' : '▸'}</span>
                     )}
                 </button>
 
-                <div className="ml-auto flex items-center gap-2 text-[11px] text-[#57606a] dark:text-[#8b949e]">
+                <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-[#57606a] dark:text-[#8b949e]">
                     {updatedLabel && (
                         <span data-testid="pr-status-card-updated" title={updatedLabel}>
                             {updatedLabel}
