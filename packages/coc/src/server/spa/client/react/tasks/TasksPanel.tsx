@@ -243,6 +243,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog, initialNavState, o
                         openFilePath={openFilePath}
                         selectedFilePaths={Array.from(selectedFilePaths)}
                         tasksFolderPath={tasksFolder}
+                        openFileTaskRootPath={openFileTaskRootPath}
                         selectedFolderPath={selectedFolderPath}
                         onClearSelection={clearSelection}
                         noBorder

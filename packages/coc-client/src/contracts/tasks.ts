@@ -118,6 +118,7 @@ export interface WriteTaskContentRequest {
   path: string;
   content: string;
   expectedMtime?: number;
+  folderPath?: string;
 }
 
 export interface WriteTaskContentResponse {
