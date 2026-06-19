@@ -165,6 +165,21 @@ export type {
 } from './warm-client-registry';
 
 export {
+    runWithWarmClient,
+} from './warm-client-runner';
+
+export type {
+    WarmRunOutcome,
+    WarmRunParams,
+} from './warm-client-runner';
+
+export {
+    resolveWarmClientTtlMs,
+    DEFAULT_WARM_CLIENT_TTL_MS,
+    WARM_CLIENT_TTL_ENV,
+} from './warm-client-config';
+
+export {
     modelMetadataStore,
 } from './model-metadata-store';
 
