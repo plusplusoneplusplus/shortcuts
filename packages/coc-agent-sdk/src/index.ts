@@ -102,6 +102,7 @@ export type {
     IInvocationResult,
     TransformOptions,
     TransformResult,
+    PrewarmOptions,
 } from './sdk-service-interface';
 
 export {

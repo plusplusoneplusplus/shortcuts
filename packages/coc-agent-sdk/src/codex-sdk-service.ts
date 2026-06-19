@@ -20,7 +20,7 @@
 import type { SendMessageOptions, SystemMessageConfig, TokenUsage } from './types';
 import type { ToolEvent } from './types';
 import { denyAllPermissions } from './types';
-import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult } from './sdk-service-interface';
+import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult, PrewarmOptions } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
 import type { ToolCall } from './tool-call';
 import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
@@ -912,19 +912,11 @@ export class CodexSDKService implements ISDKService {
     private async sendWarm(options: SendMessageOptions): Promise<IInvocationResult> {
         const log = getSDKLogger();
         const key = makeWarmKey(CODEX_PROVIDER, options.workingDirectory);
-        const factory: WarmClientFactory = async () => {
-            const ctor = this.codexCtor;
-            if (!ctor) throw new Error('Codex client constructor unavailable');
-            // Codex's base client owns no child process of its own (the codex CLI
-            // process spawns per thread.run()), so there is nothing to stop.
-            const client = new ctor();
-            return { client, stop: async () => {} };
-        };
 
         return runWithWarmClient<IInvocationResult>({
             registry: this.warmRegistry,
             key,
-            factory,
+            factory: this.buildWarmFactory(),
             logger: log,
             coldFallback: () => this.runTurn(options),
             run: async (handle, warmHit) => {
@@ -939,6 +931,41 @@ export class CodexSDKService implements ISDKService {
                 return { result, keepWarm };
             },
         });
+    }
+
+    /**
+     * Build the warm-client factory for Codex. Shared by {@link sendWarm}
+     * (cold-miss path) and {@link prewarm} so both park an identical base client
+     * under the same key. Codex's base client owns no child process of its own
+     * (the codex CLI spawns per `thread.run()`), so `stop` is a no-op and the
+     * working directory is not baked in here — it is a per-thread option, while
+     * the warm key still namespaces by `(provider, workingDirectory)`.
+     */
+    private buildWarmFactory(): WarmClientFactory {
+        return async () => {
+            const ctor = this.codexCtor;
+            if (!ctor) throw new Error('Codex client constructor unavailable');
+            const client = new ctor();
+            return { client, stop: async () => {} };
+        };
+    }
+
+    /**
+     * Pre-warm the Codex base client for the next turn without creating a
+     * session (AC-04). Idempotent and best-effort: no-ops when warming is
+     * disabled (TTL <= 0), when the Codex SDK is unavailable, or while a turn is
+     * in flight on the same key (handled by the registry). The base client is
+     * parked under `makeWarmKey(CODEX_PROVIDER, workingDirectory)` so the next
+     * {@link sendMessage} reuses it for a no-tools turn (tools turns still build
+     * a per-invocation MCP-configured client); a send arriving mid-warm attaches
+     * to the in-flight warming.
+     */
+    public async prewarm(options: PrewarmOptions): Promise<void> {
+        if (this.disposed || !this.warmRegistry.warmingEnabled) return;
+        const avail = await this.isAvailable();
+        if (!avail.available) return;
+        const key = makeWarmKey(CODEX_PROVIDER, options.workingDirectory);
+        await this.warmRegistry.prewarm(key, this.buildWarmFactory());
     }
 
     /**

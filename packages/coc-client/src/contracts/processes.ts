@@ -227,6 +227,23 @@ export interface ProcessForkResponse {
   process: AIProcess;
 }
 
+/**
+ * Response from `POST /processes/:id/prewarm`.
+ *
+ * `warming` is `true` when the provider client was warmed (or was already
+ * warm/warming); `false` when prewarm was a no-op — e.g. the provider cannot
+ * stay warm (Claude) or a warm-start failed. `reason` is populated only when
+ * `warming` is `false`. Prewarm is best-effort, so a `false` result is never an
+ * error the caller must handle.
+ */
+export interface ProcessPrewarmResponse {
+  warming: boolean;
+  /** Conversation provider that was (or would have been) warmed. */
+  provider: string;
+  /** Why warming was skipped, when `warming` is `false`. */
+  reason?: 'unsupported' | 'error';
+}
+
 export interface PromoteToRalphResult {
   promoted: true;
   /** Queue-prefixed ID of the promoted process (now grilling-phase). */

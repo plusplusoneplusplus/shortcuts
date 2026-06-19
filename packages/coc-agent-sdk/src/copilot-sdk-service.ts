@@ -32,7 +32,7 @@ export type { StreamingResult, IStreamableSession, StreamingState, StreamingSess
 import { SessionManager } from './session-manager';
 import { StreamErrorGuard, isStreamDestroyedError } from './stream-error-guard';
 import { RequestRunner } from './request-runner';
-import type { ISDKService, TransformOptions, TransformResult } from './sdk-service-interface';
+import type { ISDKService, TransformOptions, TransformResult, PrewarmOptions } from './sdk-service-interface';
 import { sdkServiceRegistry, COPILOT_PROVIDER } from './sdk-service-registry';
 import { WarmClientRegistry, makeWarmKey, WarmClientFactory } from './warm-client-registry';
 import { runWithWarmClient } from './warm-client-runner';
@@ -223,19 +223,11 @@ export class CopilotSDKService implements ISDKService {
     private async sendWarm(options: SendMessageOptions): Promise<SDKInvocationResult> {
         const aiLog = getAIServiceLogger();
         const key = makeWarmKey(COPILOT_PROVIDER, options.workingDirectory);
-        const factory: WarmClientFactory = async () => {
-            const client = await this.createClient(options.workingDirectory);
-            // Spawn/connect the process eagerly so the warm client is truly warm
-            // (start() is idempotent and is otherwise lazily called by the first
-            // createSession()).
-            await client.start();
-            return { client, stop: async () => { await client.stop(); } };
-        };
 
         return runWithWarmClient({
             registry: this.warmRegistry,
             key,
-            factory,
+            factory: this.buildWarmFactory(options.workingDirectory),
             logger: aiLog,
             coldFallback: () => this.requestRunner.send(options),
             run: async (handle, warmHit) => {
@@ -253,6 +245,40 @@ export class CopilotSDKService implements ISDKService {
                 return { result, keepWarm };
             },
         });
+    }
+
+    /**
+     * Build the warm-client factory for a working directory. Shared by
+     * {@link sendWarm} (cold-miss path) and {@link prewarm} so both spin up an
+     * identical client under the same key — guaranteeing a prewarmed process is
+     * reused by the next send rather than duplicated.
+     */
+    private buildWarmFactory(workingDirectory?: string): WarmClientFactory {
+        return async () => {
+            const client = await this.createClient(workingDirectory);
+            // Spawn/connect the process eagerly so the warm client is truly warm
+            // (start() is idempotent and is otherwise lazily called by the first
+            // createSession()).
+            await client.start();
+            return { client, stop: async () => { await client.stop(); } };
+        };
+    }
+
+    /**
+     * Pre-warm the Copilot client process for the next turn without creating a
+     * session (AC-04). Idempotent and best-effort: no-ops when warming is
+     * disabled (TTL <= 0), when the SDK is unavailable, or while a turn is in
+     * flight on the same key (handled by the registry). The client is parked
+     * under `makeWarmKey(COPILOT_PROVIDER, workingDirectory)` so the next
+     * {@link sendMessage} reuses it; a send arriving mid-warm attaches to the
+     * in-flight warming.
+     */
+    public async prewarm(options: PrewarmOptions): Promise<void> {
+        if (this.disposed || !this.warmRegistry.warmingEnabled) return;
+        const availability = await this.isAvailable();
+        if (!availability.available) return;
+        const key = makeWarmKey(COPILOT_PROVIDER, options.workingDirectory);
+        await this.warmRegistry.prewarm(key, this.buildWarmFactory(options.workingDirectory));
     }
 
     public async abortSession(sessionId: string): Promise<boolean> {

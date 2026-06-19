@@ -559,6 +559,49 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
+    // POST /api/processes/:id/prewarm — Pre-warm the provider client for the next turn
+    //
+    // Fired when the user starts typing a follow-up (see FollowUpInputArea). Warms
+    // the provider client process WITHOUT creating a session, so the next send
+    // reuses a live process. Best-effort and side-effect-light: it never creates a
+    // session, never mutates the process record, and never returns an error for a
+    // warm-start failure — warming is a latency optimization, not a hard dependency.
+    routes.push(createRoute({
+        method: 'POST',
+        pattern: /^\/api\/processes\/([^/]+)\/prewarm$/,
+        handler: async ({ req, res, match }) => {
+            const id = decodeURIComponent(match[1]);
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const proc = await resolveProcess(store, id, wsId);
+            if (!proc) {
+                return void handleAPIError(res, notFound('Process'));
+            }
+
+            // Resolve the conversation provider; default to copilot. The provider
+            // string doubles as the SDK service registry key.
+            const provider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
+                ? proc.metadata.provider
+                : 'copilot';
+
+            const { sdkServiceRegistry } = await import('@plusplusoneplusplus/forge');
+            const service = sdkServiceRegistry.get(provider);
+            // Providers that cannot stay warm (Claude) — or that aren't registered
+            // — fall back transparently: prewarm becomes a no-op, never an error.
+            if (!service || typeof service.prewarm !== 'function') {
+                return { warming: false, provider, reason: 'unsupported' };
+            }
+
+            try {
+                await service.prewarm({ workingDirectory: proc.workingDirectory });
+            } catch {
+                // Best-effort: a warm-start failure must never surface to the user
+                // or block the follow-up they are about to send.
+                return { warming: false, provider, reason: 'error' };
+            }
+            return { warming: true, provider };
+        },
+    }));
+
     // POST /api/processes/:id/message — Send a follow-up message
     routes.push({
         method: 'POST',
