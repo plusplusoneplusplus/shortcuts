@@ -70,6 +70,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
+    getPrewarmDebounceMs: () => 500,
+    getWarmClientTtlMs: () => 300000,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useProviderEffortTiers', () => ({

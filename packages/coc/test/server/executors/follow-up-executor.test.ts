@@ -414,6 +414,20 @@ describe('FollowUpExecutor', () => {
         expect(callArg.infiniteSessions).toEqual({ enabled: true });
     });
 
+    it('opts the follow-up turn into warm-client keep-alive (keepWarm: true)', async () => {
+        // Follow-ups are interactive continuations and the primary beneficiary of
+        // warm reuse, so the follow-up send path must request keepWarm so the SDK
+        // service retains the provider client for the next turn (AC-01/AC-02).
+        const proc = makeProcess({ id: 'proc-warm', sdkSessionId: 'sdk-warm' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-warm', 'msg');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.keepWarm).toBe(true);
+    });
+
     it('prepends a selected-skills directive without inlining skill bodies', async () => {
         const proc = makeProcess({ id: 'proc-skills', sdkSessionId: 'sdk-session-skills' });
         await store.addProcess(proc);

@@ -102,6 +102,7 @@ export type {
     IInvocationResult,
     TransformOptions,
     TransformResult,
+    PrewarmOptions,
 } from './sdk-service-interface';
 
 export {
@@ -151,6 +152,36 @@ export {
     SessionManager,
     IAbortableSession,
 } from './session-manager';
+
+export {
+    WarmClientRegistry,
+    makeWarmKey,
+} from './warm-client-registry';
+
+export type {
+    WarmClientHandle,
+    WarmClientFactory,
+    WarmAcquireResult,
+    WarmClientRegistryOptions,
+} from './warm-client-registry';
+
+export {
+    runWithWarmClient,
+} from './warm-client-runner';
+
+export type {
+    WarmRunOutcome,
+    WarmRunParams,
+} from './warm-client-runner';
+
+export {
+    resolveWarmClientTtlMs,
+    DEFAULT_WARM_CLIENT_TTL_MS,
+    WARM_CLIENT_TTL_ENV,
+    resolveWarmPrewarmDebounceMs,
+    DEFAULT_WARM_PREWARM_DEBOUNCE_MS,
+    WARM_PREWARM_DEBOUNCE_ENV,
+} from './warm-client-config';
 
 export {
     modelMetadataStore,

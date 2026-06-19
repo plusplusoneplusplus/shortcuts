@@ -121,6 +121,23 @@ export interface TransformResult {
     tokenUsage?: TokenUsage;
 }
 
+/**
+ * Options for a {@link ISDKService.prewarm} call.
+ *
+ * Prewarm spins up (or keeps alive) the provider client process for the next
+ * turn without creating a session. The working directory is the only input that
+ * matters: together with the provider it forms the warm-client key, so a
+ * prewarm and the follow-up send for the same conversation reuse one client.
+ */
+export interface PrewarmOptions {
+    /**
+     * Working directory for the warm client. Part of the warm-client key
+     * `(provider, workingDirectory)`; for a given conversation the cwd is stable
+     * across turns, so a prewarm here is reused by the next send.
+     */
+    workingDirectory?: string;
+}
+
 // ============================================================================
 // ISDKService — Main Interface
 // ============================================================================
@@ -177,6 +194,25 @@ export interface ISDKService {
      * caller supplies the model (or accepts the provider default).
      */
     transform(input: string, options?: TransformOptions): Promise<TransformResult>;
+
+    /**
+     * Pre-warm the provider client process for the next turn — without creating
+     * a session (AC-04).
+     *
+     * Optional: providers that cannot stay warm (e.g. Claude, whose `query()`
+     * spawns per turn) omit this method, and callers fall back transparently
+     * with no warm client. Implementations must be:
+     *   - idempotent — repeated calls do not duplicate the client;
+     *   - a no-op while a turn is in flight on the same key;
+     *   - a no-op when warming is disabled (idle TTL `<= 0`);
+     *   - best-effort — a warm-start failure resolves quietly, never throws, and
+     *     never blocks or fails a later real send.
+     *
+     * A real send arriving mid-warm attaches to the same in-flight warming via
+     * the warm-client registry, so the prewarmed process is reused rather than
+     * duplicated.
+     */
+    prewarm?(options: PrewarmOptions): Promise<void>;
 
     // ------------------------------------------------------------------
     // Session management

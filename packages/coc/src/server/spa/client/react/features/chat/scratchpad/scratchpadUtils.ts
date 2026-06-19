@@ -1,5 +1,6 @@
 import type { ClientConversationTurn } from '../../../types/dashboard';
 import { FILE_WRITE_TOOLS } from '../../../utils/fileWriteTools';
+import { normalizeToolName } from '../conversation/tool-calls/toolNormalization';
 
 function parseArgs(args: unknown): Record<string, unknown> | null {
     if (!args) return null;
@@ -49,8 +50,10 @@ export function extractLastWrittenNotePath(turns: ClientConversationTurn[]): str
         const calls = timelineCalls.length > 0 ? timelineCalls : (turn.toolCalls ?? []);
 
         for (const tc of calls) {
-            // toolName may be on `toolName` or `name` depending on serialisation path
-            const name: string = tc.toolName || (tc as any).name || '';
+            // toolName may be on `toolName` or `name` depending on serialisation path.
+            // Normalize provider-specific names (e.g. Claude Code's PascalCase
+            // Write/Edit/MultiEdit) to canonical create/edit before matching.
+            const name: string = normalizeToolName(tc.toolName || (tc as any).name || '');
             if (!FILE_WRITE_TOOLS.has(name)) continue;
             const mdPath = extractMdPath(tc.args);
             if (mdPath) return mdPath;

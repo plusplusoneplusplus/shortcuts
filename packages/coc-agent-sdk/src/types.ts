@@ -455,6 +455,19 @@ export interface SendMessageOptions {
      * resources, but the underlying CLI process stays alive for future calls.
      */
     client?: import('@github/copilot-sdk').CopilotClient;
+    /**
+     * Opt this turn into warm-client keep-alive. When `true` and the provider
+     * supports warming (and warming is enabled via TTL), the provider keeps its
+     * client process alive after a clean completion — keyed per
+     * `(provider, workingDirectory)` — so the next opted-in turn reuses a warm
+     * process instead of paying full cold-start cost.
+     *
+     * Chat-process turns (manual, queued, autopilot, ralph) set this; one-shot
+     * background jobs (title generation, dream, other `transform()` callers)
+     * leave it unset so they always run cold. Ignored when the caller supplies
+     * its own {@link client} (the caller then owns that client's lifecycle).
+     */
+    keepWarm?: boolean;
     /** Optional model override (e.g., 'gpt-5', 'claude-sonnet-4.6') */
     model?: string;
     /**

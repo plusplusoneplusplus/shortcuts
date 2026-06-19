@@ -14,6 +14,7 @@ import type {
   ProcessMessageResponse,
   ProcessOutputQuery,
   ProcessOutputResponse,
+  ProcessPrewarmResponse,
   ProcessGroupPinResponse,
   ProcessGroupPinsResponse,
   ProcessGroupPinType,
@@ -208,6 +209,20 @@ export class ProcessesClient {
 
   fork(processId: string, query?: Pick<ProcessListQuery, 'workspace'>): Promise<ProcessForkResponse> {
     return this.transport.request<ProcessForkResponse>(`/processes/${encodePathSegment(processId)}/fork`, {
+      method: 'POST',
+      query,
+      body: {},
+    });
+  }
+
+  /**
+   * Pre-warm the provider client for a conversation's next turn — without
+   * creating a session. Fire when the user starts typing a follow-up so the
+   * next send reuses a live process. Best-effort: a `warming: false` result is
+   * normal (e.g. the provider can't stay warm) and not an error.
+   */
+  prewarm(processId: string, query?: Pick<ProcessListQuery, 'workspace'>): Promise<ProcessPrewarmResponse> {
+    return this.transport.request<ProcessPrewarmResponse>(`/processes/${encodePathSegment(processId)}/prewarm`, {
       method: 'POST',
       query,
       body: {},

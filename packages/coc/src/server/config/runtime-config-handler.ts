@@ -13,6 +13,7 @@ import type { RuntimeDashboardConfig } from '@plusplusoneplusplus/coc-client';
 import { shortenHostname } from '../core/hostname-utils';
 import { buildRuntimeFeatureFlags } from '../../config/admin-setting-definitions';
 import type { ResolvedCLIConfig } from '../../config';
+import { resolveWarmPrewarmDebounceMs, resolveWarmClientTtlMs } from '@plusplusoneplusplus/coc-agent-sdk';
 
 /**
  * Build the dashboard feature-flag map for a (possibly partial) config.
@@ -23,6 +24,14 @@ export function buildRuntimeFeatures(config: Partial<ResolvedCLIConfig>): Runtim
     return {
         ...buildRuntimeFeatureFlags(config),
         gitCommitLookupEnabled: config.features?.gitCommitLookup ?? false,
+        // Env-driven (COC_WARM_PREWARM_DEBOUNCE_MS), mirroring the warm-client
+        // idle TTL. Surfaced so usePrewarmClient debounces by the configured
+        // window instead of a hardcoded default. Not an admin/CLI setting.
+        prewarmDebounceMs: resolveWarmPrewarmDebounceMs(),
+        // Env-driven (COC_WARM_CLIENT_TTL_MS). Surfaced so the SPA can decay the
+        // optimistic "session warm" indicator on a client-side timer matching the
+        // server's idle TTL. `0` means warming is disabled. Not an admin/CLI setting.
+        warmClientTtlMs: resolveWarmClientTtlMs(),
     } as RuntimeDashboardConfig['features'];
 }
 

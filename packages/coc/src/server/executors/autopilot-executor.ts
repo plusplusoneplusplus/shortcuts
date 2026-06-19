@@ -42,6 +42,11 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         this.getWsServerFn = options.getWsServer;
     }
 
+    /** Autopilot is an interactive chat-process turn — keep the client warm. */
+    protected override keepClientWarm(): boolean {
+        return true;
+    }
+
     protected async buildModeOptions(
         task: QueuedTask,
         prompt: string,

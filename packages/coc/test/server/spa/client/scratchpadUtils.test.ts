@@ -197,4 +197,45 @@ describe('extractLastWrittenNotePath', () => {
         const t2 = makeTurn('assistant', { toolCalls: [makeToolCall('create', { path: 'b.json' })] });
         expect(extractLastWrittenNotePath([t1, t2])).toBeNull();
     });
+
+    // Claude Code emits PascalCase tool names (Write/Edit/MultiEdit) with a
+    // `file_path` arg. These must normalize to canonical create/edit so the
+    // scratchpad auto-opens for Claude sessions too.
+    describe('Claude Code tool names (Write / Edit / MultiEdit, file_path arg)', () => {
+        it('returns path for a Write tool call with file_path', () => {
+            const tc = makeToolCall('Write', { file_path: 'claude-write.md' });
+            const turns = [makeTurn('assistant', { toolCalls: [tc] })];
+            expect(extractLastWrittenNotePath(turns)).toBe('claude-write.md');
+        });
+
+        it('returns path for an Edit tool call with file_path', () => {
+            const tc = makeToolCall('Edit', { file_path: 'claude-edit.md' });
+            const turns = [makeTurn('assistant', { toolCalls: [tc] })];
+            expect(extractLastWrittenNotePath(turns)).toBe('claude-edit.md');
+        });
+
+        it('returns path for a MultiEdit tool call with file_path', () => {
+            const tc = makeToolCall('MultiEdit', { file_path: 'claude-multiedit.md' });
+            const turns = [makeTurn('assistant', { toolCalls: [tc] })];
+            expect(extractLastWrittenNotePath(turns)).toBe('claude-multiedit.md');
+        });
+
+        it('returns path for a Write call from the name field (persisted shape)', () => {
+            const tc: any = {
+                id: 'tc-write',
+                name: 'Write',
+                args: { file_path: 'via-name.md' },
+                status: 'completed',
+            };
+            delete tc.toolName;
+            const turns = [makeTurn('assistant', { toolCalls: [tc] })];
+            expect(extractLastWrittenNotePath(turns)).toBe('via-name.md');
+        });
+
+        it('still ignores the Read tool (normalizes to a non-write tool)', () => {
+            const tc = makeToolCall('Read', { file_path: 'read-only.md' });
+            const turns = [makeTurn('assistant', { toolCalls: [tc] })];
+            expect(extractLastWrittenNotePath(turns)).toBeNull();
+        });
+    });
 });

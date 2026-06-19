@@ -32,8 +32,11 @@ export type { StreamingResult, IStreamableSession, StreamingState, StreamingSess
 import { SessionManager } from './session-manager';
 import { StreamErrorGuard, isStreamDestroyedError } from './stream-error-guard';
 import { RequestRunner } from './request-runner';
-import type { ISDKService, TransformOptions, TransformResult } from './sdk-service-interface';
+import type { ISDKService, TransformOptions, TransformResult, PrewarmOptions } from './sdk-service-interface';
 import { sdkServiceRegistry, COPILOT_PROVIDER } from './sdk-service-registry';
+import { WarmClientRegistry, makeWarmKey, WarmClientFactory } from './warm-client-registry';
+import { runWithWarmClient } from './warm-client-runner';
+import { resolveWarmClientTtlMs } from './warm-client-config';
 
 const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_AI_IDLE_TIMEOUT_MS = 60 * 60 * 1000;
@@ -82,6 +85,7 @@ export class CopilotSDKService implements ISDKService {
     private readonly sessionManager = new SessionManager();
     private readonly streamErrorGuard = new StreamErrorGuard();
     private readonly requestRunner: RequestRunner;
+    private readonly warmRegistry: WarmClientRegistry;
 
     private static readonly DEFAULT_TIMEOUT_MS = DEFAULT_AI_TIMEOUT_MS;
     private static readonly DEFAULT_IDLE_TIMEOUT_MS = DEFAULT_AI_IDLE_TIMEOUT_MS;
@@ -94,6 +98,10 @@ export class CopilotSDKService implements ISDKService {
             CopilotSDKService.DEFAULT_TIMEOUT_MS,
             CopilotSDKService.DEFAULT_IDLE_TIMEOUT_MS,
         );
+        this.warmRegistry = new WarmClientRegistry({
+            ttlMs: resolveWarmClientTtlMs(),
+            logger: getAIServiceLogger(),
+        });
     }
 
     public static getInstance(): CopilotSDKService {
@@ -194,7 +202,83 @@ export class CopilotSDKService implements ISDKService {
     }
 
     public async sendMessage(options: SendMessageOptions): Promise<SDKInvocationResult> {
-        return this.requestRunner.send(options);
+        // Cold path: the turn did not opt into warming, warming is disabled
+        // (TTL <= 0), or the caller supplied its own client (it owns that
+        // lifecycle). One-shot jobs (transform/title-gen) never set keepWarm, so
+        // they always land here.
+        if (!options.keepWarm || !this.warmRegistry.warmingEnabled || options.client) {
+            return this.requestRunner.send(options);
+        }
+        return this.sendWarm(options);
+    }
+
+    /**
+     * Run a warm-eligible turn: reuse the live client process for this
+     * `(provider, workingDirectory)` when one is parked, otherwise cold-start
+     * and park it for the next turn. The client is injected as
+     * `options.client` so `RequestRunner` skips `client.stop()` — a fresh
+     * session is still created/resumed and disconnected per turn, so
+     * conversation continuity is unaffected.
+     */
+    private async sendWarm(options: SendMessageOptions): Promise<SDKInvocationResult> {
+        const aiLog = getAIServiceLogger();
+        const key = makeWarmKey(COPILOT_PROVIDER, options.workingDirectory);
+
+        return runWithWarmClient({
+            registry: this.warmRegistry,
+            key,
+            factory: this.buildWarmFactory(options.workingDirectory),
+            logger: aiLog,
+            coldFallback: () => this.requestRunner.send(options),
+            run: async (handle, warmHit) => {
+                aiLog.debug(
+                    { key, provider: COPILOT_PROVIDER, warmHit },
+                    warmHit ? 'Warm client hit — reusing live process' : 'Warm client miss — cold start',
+                );
+                const result = await this.requestRunner.send({
+                    ...options,
+                    client: handle.client as CopilotClient,
+                });
+                // Keep the client warm only on a clean, un-aborted success;
+                // abort/interrupt/error tears it down.
+                const keepWarm = result.success === true && options.signal?.aborted !== true;
+                return { result, keepWarm };
+            },
+        });
+    }
+
+    /**
+     * Build the warm-client factory for a working directory. Shared by
+     * {@link sendWarm} (cold-miss path) and {@link prewarm} so both spin up an
+     * identical client under the same key — guaranteeing a prewarmed process is
+     * reused by the next send rather than duplicated.
+     */
+    private buildWarmFactory(workingDirectory?: string): WarmClientFactory {
+        return async () => {
+            const client = await this.createClient(workingDirectory);
+            // Spawn/connect the process eagerly so the warm client is truly warm
+            // (start() is idempotent and is otherwise lazily called by the first
+            // createSession()).
+            await client.start();
+            return { client, stop: async () => { await client.stop(); } };
+        };
+    }
+
+    /**
+     * Pre-warm the Copilot client process for the next turn without creating a
+     * session (AC-04). Idempotent and best-effort: no-ops when warming is
+     * disabled (TTL <= 0), when the SDK is unavailable, or while a turn is in
+     * flight on the same key (handled by the registry). The client is parked
+     * under `makeWarmKey(COPILOT_PROVIDER, workingDirectory)` so the next
+     * {@link sendMessage} reuses it; a send arriving mid-warm attaches to the
+     * in-flight warming.
+     */
+    public async prewarm(options: PrewarmOptions): Promise<void> {
+        if (this.disposed || !this.warmRegistry.warmingEnabled) return;
+        const availability = await this.isAvailable();
+        if (!availability.available) return;
+        const key = makeWarmKey(COPILOT_PROVIDER, options.workingDirectory);
+        await this.warmRegistry.prewarm(key, this.buildWarmFactory(options.workingDirectory));
     }
 
     public async abortSession(sessionId: string): Promise<boolean> {
@@ -229,6 +313,8 @@ export class CopilotSDKService implements ISDKService {
         const aiLog = getAIServiceLogger();
         aiLog.debug('Cleaning up SDK service');
         await this.sessionManager.abortAll();
+        // Stop every warm client so no provider child process outlives the service.
+        await this.warmRegistry.evictAll();
         this.streamErrorGuard.remove();
         this.availabilityCache = null;
     }
