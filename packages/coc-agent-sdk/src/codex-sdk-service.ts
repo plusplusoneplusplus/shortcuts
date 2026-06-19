@@ -24,6 +24,10 @@ import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, T
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
 import type { ToolCall } from './tool-call';
 import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
+import { WarmClientRegistry, makeWarmKey, WarmClientFactory } from './warm-client-registry';
+import { runWithWarmClient } from './warm-client-runner';
+import { resolveWarmClientTtlMs } from './warm-client-config';
+import { getSDKLogger } from './logger';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { execFileAsync } from './internal/exec-utils';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
@@ -544,6 +548,22 @@ export class CodexSDKService implements ISDKService {
     /** sessionId → active session metadata */
     private readonly sessions = new Map<string, ActiveCodexSession>();
 
+    /**
+     * Warm-client keep-alive for chat turns (AC-02). Codex routes warm-eligible
+     * turns through the same shared {@link runWithWarmClient} abstraction as
+     * Copilot, keyed per `(provider, workingDirectory)`. The warm unit is the
+     * base Codex client (built without per-turn MCP config); the per-turn
+     * CoC LLM-tool MCP bridge stays per-invocation because Codex bakes
+     * `mcp_servers`/`enabled_tools` into the client constructor and the tool set
+     * can change per turn, so reusing an MCP-configured client across turns would
+     * risk a stale allow-list. This keeps warming faithful to the "MCP is a
+     * per-turn session option that does not force teardown" decision.
+     */
+    private readonly warmRegistry = new WarmClientRegistry({
+        ttlMs: resolveWarmClientTtlMs(),
+        logger: getSDKLogger(),
+    });
+
     // ── Auth checker injection (AC-08) ────────────────────────────────────────
 
     /**
@@ -611,10 +631,13 @@ export class CodexSDKService implements ISDKService {
      */
     private async resolveRequestClient(
         options: SendMessageOptions,
+        baseClient?: CodexClient,
     ): Promise<{ client: CodexClient; cleanup: () => void }> {
         const tools = options.tools;
         if (!tools || tools.length === 0 || !this.codexCtor) {
-            return { client: this.sdk!, cleanup: () => {} };
+            // No tools: reuse the warm base client when one was acquired for this
+            // turn, otherwise the shared singleton. Either carries no MCP config.
+            return { client: baseClient ?? this.sdk!, cleanup: () => {} };
         }
 
         const runtime = new CocToolRuntime(tools, { sessionId: options.sessionId });
@@ -868,6 +891,62 @@ export class CodexSDKService implements ISDKService {
             return { success: false, error: avail.error };
         }
 
+        // Cold path: one-shot/transform turns (no keepWarm) or warming disabled
+        // (TTL <= 0) run a fresh turn directly. Chat turns set keepWarm and route
+        // through the shared warm-client abstraction so the base client is reused.
+        if (!options.keepWarm || !this.warmRegistry.warmingEnabled) {
+            return this.runTurn(options);
+        }
+        return this.sendWarm(options);
+    }
+
+    /**
+     * Run a warm-eligible Codex turn: reuse a parked base client for this
+     * `(provider, workingDirectory)` when available, otherwise cold-start one and
+     * park it for the next turn. A fresh thread is still started/resumed per turn,
+     * so conversation continuity is unaffected. When the turn uses CoC LLM tools,
+     * the per-turn MCP bridge is still built and torn down per invocation (the
+     * base client carries no MCP config); the warm base client is reused for the
+     * no-tools case and otherwise kept warm for the next turn and for prewarm.
+     */
+    private async sendWarm(options: SendMessageOptions): Promise<IInvocationResult> {
+        const log = getSDKLogger();
+        const key = makeWarmKey(CODEX_PROVIDER, options.workingDirectory);
+        const factory: WarmClientFactory = async () => {
+            const ctor = this.codexCtor;
+            if (!ctor) throw new Error('Codex client constructor unavailable');
+            // Codex's base client owns no child process of its own (the codex CLI
+            // process spawns per thread.run()), so there is nothing to stop.
+            const client = new ctor();
+            return { client, stop: async () => {} };
+        };
+
+        return runWithWarmClient<IInvocationResult>({
+            registry: this.warmRegistry,
+            key,
+            factory,
+            logger: log,
+            coldFallback: () => this.runTurn(options),
+            run: async (handle, warmHit) => {
+                log.debug(
+                    { key, provider: CODEX_PROVIDER, warmHit },
+                    warmHit ? 'Warm client hit — reusing live process' : 'Warm client miss — cold start',
+                );
+                const result = await this.runTurn(options, handle.client as CodexClient);
+                // Keep warm only on a clean, un-aborted success; abort/error tears
+                // the entry down.
+                const keepWarm = result.success === true && options.signal?.aborted !== true;
+                return { result, keepWarm };
+            },
+        });
+    }
+
+    /**
+     * Execute a single Codex turn. `baseClient`, when provided (warm path), is the
+     * warm base client to run a no-tools turn on; tools turns always build a fresh
+     * per-invocation MCP-configured client regardless.
+     */
+    private async runTurn(options: SendMessageOptions, baseClient?: CodexClient): Promise<IInvocationResult> {
         const abortController = new AbortController();
 
         // Propagate caller's AbortSignal into our internal controller so
@@ -892,7 +971,7 @@ export class CodexSDKService implements ISDKService {
             // Resolve the client for this request. With CoC LLM tools present this
             // builds a fresh client carrying the bridge's mcp_servers config.
             const effectiveModel = this.normalizeCodexModel(options.model);
-            const { client: sdk, cleanup } = await this.resolveRequestClient(options);
+            const { client: sdk, cleanup } = await this.resolveRequestClient(options, baseClient);
             mcpCleanup = cleanup;
 
             let thread: CodexThread;
@@ -1586,6 +1665,8 @@ export class CodexSDKService implements ISDKService {
             session.abortController.abort();
         }
         this.sessions.clear();
+        // Stop every warm client so no provider client outlives the service.
+        await this.warmRegistry.evictAll();
         this.availabilityCache = null;
         this.sdk = null;
         this.codexCtor = null;
