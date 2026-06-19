@@ -42,6 +42,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isSessionContextAttachmentsEnabled: () => false,
     isCanvasEnabled: () => false,
     getPrewarmDebounceMs: () => 500,
+    getWarmClientTtlMs: () => 300000,
 }));
 
 // Mock useDisplaySettings

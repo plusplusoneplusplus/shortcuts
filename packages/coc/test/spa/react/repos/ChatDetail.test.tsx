@@ -59,6 +59,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isEffortLevelsEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
     getPrewarmDebounceMs: () => 500,
+    getWarmClientTtlMs: () => 300000,
     isCanvasEnabled: () => false,
 }));
 
