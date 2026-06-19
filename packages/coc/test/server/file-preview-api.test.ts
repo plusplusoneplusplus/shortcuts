@@ -288,6 +288,45 @@ describe('File Preview API', () => {
     });
 
     // ========================================================================
+    // Relative paths (regression: path must resolve against workspace root,
+    // not the server process cwd)
+    // ========================================================================
+
+    describe('GET /api/workspaces/:id/files/preview — Relative paths', () => {
+        it('resolves a workspace-relative path against the workspace root', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const lines = Array.from({ length: 30 }, (_, i) => `Line ${i + 1}`);
+            createFile('src/server/main.ts', lines.join('\n'));
+
+            const relPath = path.join('src', 'server', 'main.ts');
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/files/preview?path=${encodeURIComponent(relPath)}&lines=0`
+            );
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.fileName).toBe('main.ts');
+            expect(body.lines).toHaveLength(30);
+            // Server echoes the absolute resolved path
+            expect(body.path).toBe(path.join(workspaceDir, 'src', 'server', 'main.ts'));
+        });
+
+        it('returns 403 for a relative path that escapes the workspace', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const relTraversal = path.join('..', '..', '..', '..', 'etc', 'passwd');
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/files/preview?path=${encodeURIComponent(relTraversal)}`
+            );
+            expect(res.status).toBe(403);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('outside workspace');
+        });
+    });
+
+    // ========================================================================
     // Edge Cases
     // ========================================================================
 
