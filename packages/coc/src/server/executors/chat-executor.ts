@@ -33,6 +33,11 @@ export class ChatExecutor extends ChatBaseExecutor {
         this.getWsServerFn = options.getWsServer;
     }
 
+    /** Manual ask-mode chat is an interactive turn — keep the client warm. */
+    protected override keepClientWarm(): boolean {
+        return true;
+    }
+
     protected async buildModeOptions(
         task: QueuedTask,
         prompt: string,

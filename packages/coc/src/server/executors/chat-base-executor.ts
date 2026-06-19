@@ -281,6 +281,20 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     /**
+     * Whether this executor's turns should keep the provider client process warm
+     * after a clean completion (warm-client keep-alive). Interactive chat-process
+     * turns (manual ask, queued follow-up, autopilot, ralph) opt in so the next
+     * turn reuses a live process; one-shot background executors (classification,
+     * task-generation, note-create, resolve-comments) inherit the cold default so
+     * they never hold a child process past their single run. The SDK service only
+     * acts on this for providers that can stay warm (Copilot/Codex); Claude
+     * ignores it and stays cold. Default: cold.
+     */
+    protected keepClientWarm(): boolean {
+        return false;
+    }
+
+    /**
      * Resolve the ISDKService to use for a given provider.
      * Uses the injected resolveAiServiceForProvider callback when present;
      * otherwise falls back to this.aiService (backward-compatible test path).
@@ -786,6 +800,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
                 ...(contextTier ? { contextTier } : {}),
                 infiniteSessions: { enabled: true } as const,
+                ...(this.keepClientWarm() ? { keepWarm: true as const } : {}),
                 workingDirectory,
                 timeoutMs,
                 attachments,

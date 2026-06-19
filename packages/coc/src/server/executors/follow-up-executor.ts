@@ -171,6 +171,16 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         this.getWsServerFn = options.getWsServer;
     }
 
+    /**
+     * Follow-ups are the interactive continuation of any conversation (manual,
+     * queued, autopilot, ralph, note/commit chat). They are the primary
+     * beneficiary of warm reuse — the next turn after a follow-up reuses the live
+     * client — so keep the client warm.
+     */
+    protected override keepClientWarm(): boolean {
+        return true;
+    }
+
     protected async buildModeOptions(
         _task: QueuedTask,
         _prompt: string,
@@ -473,6 +483,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
                 ...(contextTier ? { contextTier } : {}),
                 infiniteSessions: { enabled: true } as const,
+                ...(this.keepClientWarm() ? { keepWarm: true as const } : {}),
                 systemMessage: historySystemMessage,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,

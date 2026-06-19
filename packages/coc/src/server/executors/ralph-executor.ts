@@ -52,6 +52,11 @@ export class RalphExecutor extends ChatBaseExecutor {
         this.getWsServerFn = options.getWsServer;
     }
 
+    /** Ralph runs back-to-back chat turns — keep the client warm between them. */
+    protected override keepClientWarm(): boolean {
+        return true;
+    }
+
     protected async buildModeOptions(
         task: QueuedTask,
         prompt: string,
