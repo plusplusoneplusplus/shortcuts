@@ -356,6 +356,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 line: typeof detail.line === 'number' ? detail.line : undefined,
                 endLine: typeof detail.endLine === 'number' ? detail.endLine : undefined,
                 sourceFilePath: typeof detail.sourceFilePath === 'string' ? detail.sourceFilePath : undefined,
+                kind: detail.kind === 'note' ? 'note' : 'code',
             });
         };
         window.addEventListener('coc-open-source-canvas', handler as EventListener);

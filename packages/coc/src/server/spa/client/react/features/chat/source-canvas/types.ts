@@ -23,4 +23,9 @@ export interface SourceCanvasFileRef {
     sourceFilePath?: string;
     /** Workspace-id hint from the clicked container, if known. */
     wsId?: string;
+    /**
+     * Body mode for the docked panel: `'note'` renders the editable markdown
+     * NoteEditor; `'code'` (or omitted) renders the read-only source viewer.
+     */
+    kind?: 'note' | 'code';
 }
