@@ -164,18 +164,21 @@ describe('RemoteSubBar', () => {
         expect(remoteRow.querySelector('[data-testid="clone-remote-badge"]')).toBeTruthy();
     });
 
-    it('keeps the PRIMARY marker on the local clone, never the remote', () => {
+    it('shows a Local badge on the local clone, never the remote', () => {
         const local = repo('a', 'shortcuts');
         const remote = remoteRepo('b', 'shortcuts-remote', 'devbox');
         // Remote passed FIRST — grouping must still sort the local clone ahead.
         render(<RemoteSubBar repo={local as any} repos={[remote, local] as any} />);
         fireEvent.click(screen.getByTestId('clone-switch'));
         const items = screen.getAllByTestId('clone-popover-item');
-        const primaryRow = items.find(el => el.textContent?.toLowerCase().includes('primary'))!;
-        expect(primaryRow).toBeTruthy();
-        expect(primaryRow.getAttribute('data-remote')).toBe('false');
-        // The remote row must NOT be marked primary.
+        // The local row must carry the "Local" badge (not "primary").
+        const localRow = items.find(el => el.getAttribute('data-remote') === 'false')!;
+        expect(localRow).toBeTruthy();
+        expect(localRow.textContent?.toLowerCase()).toContain('local');
+        expect(localRow.textContent?.toLowerCase()).not.toContain('primary');
+        // The remote row must NOT carry the "Local" badge.
         const remoteRow = items.find(el => el.getAttribute('data-remote') === 'true')!;
+        expect(remoteRow.textContent?.toLowerCase()).not.toContain('local');
         expect(remoteRow.textContent?.toLowerCase()).not.toContain('primary');
     });
 
@@ -312,5 +315,55 @@ describe('RemoteSubBar', () => {
         const row = openAndGetRow([repo('a', 'shortcuts'), repo('b', 'shortcuts-2', 'feat/x')], 'a', 'b');
         expect(row.getAttribute('data-offline')).toBe('false');
         expect((row as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    // ── AC-01: clone-switch button label excludes git branch ──────────────────
+
+    it('clone-switch button does not include branch name in visible text', () => {
+        const repos = [repo('a', 'shortcuts', 'feat/my-feature'), repo('b', 'shortcuts-2', 'main')];
+        render(<RemoteSubBar repo={repos[0] as any} repos={repos as any} />);
+        const sw = screen.getByTestId('clone-switch');
+        expect(sw.textContent).toContain('shortcuts');
+        expect(sw.textContent).not.toContain('feat/my-feature');
+    });
+
+    it('clone-switch button title attribute is just the workspace name (no branch)', () => {
+        const repos = [repo('a', 'shortcuts', 'feat/my-feature')];
+        render(<RemoteSubBar repo={repos[0] as any} repos={repos as any} />);
+        const sw = screen.getByTestId('clone-switch');
+        expect(sw.getAttribute('title')).toBe('shortcuts');
+        expect(sw.getAttribute('title')).not.toContain('feat/my-feature');
+    });
+
+    // ── AC-02: Local badge on local clone only when mixed local+remote group ──
+
+    it('does not show Local badge when all clones are local (no distinction)', () => {
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        render(<RemoteSubBar repo={repos[0] as any} repos={repos as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const items = screen.getAllByTestId('clone-popover-item');
+        items.forEach(item => {
+            expect(item.textContent?.toLowerCase()).not.toContain('local');
+        });
+    });
+
+    it('shows Local badge on local clone when remote is also in the group', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox');
+        render(<RemoteSubBar repo={local as any} repos={[local, remote] as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const localRow = screen.getAllByTestId('clone-popover-item')
+            .find(el => el.getAttribute('data-remote') === 'false')!;
+        expect(localRow.textContent?.toLowerCase()).toContain('local');
+    });
+
+    it('does not show Local badge on the remote clone', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox');
+        render(<RemoteSubBar repo={local as any} repos={[local, remote] as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const remoteRow = screen.getAllByTestId('clone-popover-item')
+            .find(el => el.getAttribute('data-remote') === 'true')!;
+        expect(remoteRow.textContent?.toLowerCase()).not.toContain('local');
     });
 });

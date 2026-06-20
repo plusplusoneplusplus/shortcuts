@@ -208,6 +208,55 @@ export function hashString(s: string): string {
     return Math.abs(hash).toString(36);
 }
 
+/**
+ * Bounded palette of accessible accent colors for the repo selector status dot,
+ * readable in both light and dark themes.
+ */
+export const REPO_COLOR_PALETTE: readonly string[] = [
+    '#0078d4', // blue
+    '#16825d', // green
+    '#8250df', // purple
+    '#d16969', // red
+    '#d4870a', // amber
+    '#0ea5e9', // sky
+    '#ec4899', // pink
+    '#14b8a6', // teal
+    '#f97316', // orange
+    '#6366f1', // indigo
+    '#84cc16', // lime
+    '#a855f7', // violet
+];
+
+/**
+ * Derive a display-only accent color for a workspace's status dot from a stable
+ * key built from the contributing server name and repo path. The result is
+ * bounded to `REPO_COLOR_PALETTE` and never persisted back to `workspace.color`.
+ *
+ * @param workspace  The raw workspace object (any shape accepted).
+ * @param localServerName  The resolved hostname for local workspaces
+ *                         (e.g. from `getHostname() ?? 'local'`).
+ */
+export function getRepoHashColor(workspace: any, localServerName?: string): string {
+    const hasRemote =
+        typeof workspace?.baseUrl === 'string' &&
+        typeof workspace?.remote === 'object' &&
+        workspace.remote !== null;
+
+    let serverName: string;
+    if (hasRemote) {
+        const remote = workspace.remote as { serverLabel?: string; serverId?: string } | null;
+        serverName = String(remote?.serverLabel ?? remote?.serverId ?? workspace.baseUrl ?? 'remote');
+    } else {
+        serverName = localServerName ?? 'local';
+    }
+
+    const repoPath = String(workspace?.rootPath ?? workspace?.path ?? workspace?.id ?? '');
+    const key = `${serverName}:${repoPath}`;
+    const hash = hashString(key);
+    const idx = Math.abs(parseInt(hash, 36)) % REPO_COLOR_PALETTE.length;
+    return REPO_COLOR_PALETTE[idx];
+}
+
 /** Recursively count tasks from the server task tree response. */
 export function countTasks(node: any): number {
     if (!node) return 0;

@@ -8,7 +8,7 @@ import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { AddFolderDialog } from '../../repos/AddFolderDialog';
 import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import type { RepoData, RepoGroup } from '../../repos/repoGrouping';
-import { groupReposByRemote, groupReposByAgent, applyGroupOrder } from '../../repos/repoGrouping';
+import { groupReposByRemote, groupReposByAgent, applyGroupOrder, getRepoHashColor } from '../../repos/repoGrouping';
 import { moveRepoTabOrder, moveRepoTabOrderToIndex, resolveRepoTabOrder, sanitizeRepoTabOrder } from '../../repos/repoOrder';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
@@ -16,7 +16,7 @@ import { useContainerAgents } from '../../contexts/ContainerAgentContext';
 import { ToastContext } from '../../contexts/ToastContext';
 import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { isContainerMode } from '../../utils/config';
+import { isContainerMode, getHostname } from '../../utils/config';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 
@@ -655,7 +655,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         const ws = repo.workspace;
         const isSelected = ws.id === selectedRepoId && (!ws.agentId || !appState.currentAgentId || ws.agentId === appState.currentAgentId);
         const unseenCount = unseenCounts[ws.id] ?? 0;
-        const color = ws.color || '#848484';
+        const color = getRepoHashColor(ws, getHostname() ?? 'local');
         const dotShape = (repo.gitInfoLoading || repo.gitInfo?.isGitRepo !== false) ? 'rounded-full' : 'rounded-sm';
         const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
         const accessibleLabel = getRepoQueueAccessibleLabel(getRepoDisplayName(ws), queueStatus);
@@ -834,7 +834,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                     {group.repos.map(repo => {
                                         const ws = repo.workspace;
                                         const isSelected = ws.id === selectedRepoId;
-                                        const color = ws.color || '#848484';
+                                        const color = getRepoHashColor(ws, getHostname() ?? 'local');
                                         const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
                                         const unseenCount = unseenCounts[ws.id] ?? 0;
                                         return (
@@ -963,7 +963,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                             {group.repos.map(repo => {
                                                 const ws = repo.workspace;
                                                 const isSelected = ws.id === selectedRepoId;
-                                                const color = ws.color || '#848484';
+                                                const color = getRepoHashColor(ws, getHostname() ?? 'local');
                                                 const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
                                                 return (
                                                     <button
@@ -1073,7 +1073,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                             const ws = repo.workspace;
                                             const isSelected = ws.id === selectedRepoId && (!ws.agentId || !appState.currentAgentId || ws.agentId === appState.currentAgentId);
                                             const unseenCount = unseenCounts[ws.id] ?? 0;
-                                            const color = ws.color || '#848484';
+                                            const color = getRepoHashColor(ws, getHostname() ?? 'local');
                                             const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
                                             const dotShape = (repo.gitInfoLoading || repo.gitInfo?.isGitRepo !== false) ? 'rounded-full' : 'rounded-sm';
                                             const accessibleLabel = getRepoQueueAccessibleLabel(getRepoDisplayName(ws), queueStatus);

@@ -27,7 +27,7 @@ import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { useRepoQueueStats, isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTabs';
-import { groupReposByRemote, isRemoteRepo, truncatePath } from '../../repos/repoGrouping';
+import { groupReposByRemote, isRemoteRepo, truncatePath, getRepoHashColor } from '../../repos/repoGrouping';
 import {
     partitionShellTabs, computeCloneStatusMap, cloneStatusColor, summarizeRemote, computeVisibleTabKeys,
     remoteProviderLabel,
@@ -36,6 +36,7 @@ import { useShellNavigation } from './useShellNavigation';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab } from '../../types/dashboard';
 import { resolveRepoWorkItemOriginScope } from '../work-items/workItemOriginScope';
+import { getHostname } from '../../utils/config';
 
 interface RemoteSubBarProps {
     repo: RepoData;
@@ -86,16 +87,11 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
         return groups.find(g => g.repos.some(r => String(r.workspace.id) === cloneId)) ?? null;
     }, [repos, cloneId]);
     const clones = group?.repos ?? [repo];
-    // Index of the first LOCAL clone (clones are sorted local-first by
-    // groupReposByRemote). -1 ⇒ a remote-only group, whose first remote row is
-    // then the primary entry. Drives the PRIMARY marker so an aggregated remote
-    // clone never displaces a local primary.
-    const primaryIdx = clones.findIndex(c => !isRemoteRepo(c));
     const cloneStatus = useMemo(
         () => computeCloneStatusMap(repos, queueState.repoQueueMap, isHiddenTask),
         [repos, queueState.repoQueueMap],
     );
-    const remoteColor = (clones[0]?.workspace.color as string) || '#848484';
+    const remoteColor = getRepoHashColor(clones[0]?.workspace, getHostname() ?? 'local');
     const remoteLabel = group ? summarizeRemote(group, cloneStatus, {}).name : ws.name;
     const providerLabel = remoteProviderLabel(group?.normalizedUrl);
     const branch = repo.gitInfo?.branch || null;
@@ -242,12 +238,11 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                     onClick={() => setCloneOpen(o => !o)}
                     aria-haspopup="menu"
                     aria-expanded={cloneOpen}
-                    title={`${ws.name}${branch ? ' · ' + branch : ''}`}
+                    title={ws.name}
                     className="inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:border-[#0078d4] dark:hover:border-[#0078d4] transition-colors"
                 >
                     <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: cloneStatusColor(cloneStatus[cloneId], remoteColor) }} aria-hidden />
                     <span className="max-w-[160px] truncate">{ws.name}</span>
-                    {branch && <span className="font-mono text-[11px] text-[#848484] dark:text-[#777] font-normal">{branch}</span>}
                     {clones.length > 1 && <span className="text-[11px] text-[#848484] dark:text-[#777]">· {clones.length}</span>}
                     <Chevron />
                 </button>
@@ -272,11 +267,9 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                             // are never opened; it flips back the moment the marker reports
                             // online again (aggregateRemoteWorkspaces re-run).
                             const isOffline = isRemote && st === 'offline';
-                            // Anchor PRIMARY on the first LOCAL clone; clones are sorted
-                            // local-first so that's the first non-remote row. A remote-only
-                            // group has no local clone (primaryIdx === -1) — its first
-                            // remote row is then the sole/primary entry.
-                            const isPrimary = primaryIdx >= 0 ? i === primaryIdx : i === 0;
+                            // Anchor the LOCAL badge on the first LOCAL clone; clones are
+                            // sorted local-first by groupReposByRemote. The "Local" label is
+                            // shown only when the group has both local and remote clones.
                             const serverLabel = isRemote
                                 ? String((c.workspace as { remote?: { serverLabel?: unknown } }).remote?.serverLabel ?? 'remote')
                                 : null;
@@ -305,11 +298,11 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                                             : (isSel ? 'bg-[#ddf4ff] dark:bg-[#3794ff]/15' : 'hover:bg-black/[0.04] dark:hover:bg-white/[0.06]'))
                                     }
                                 >
-                                    <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5" style={{ background: cloneStatusColor(st, (c.workspace.color as string) || remoteColor) }} aria-hidden />
+                                    <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5" style={{ background: cloneStatusColor(st, getRepoHashColor(c.workspace, getHostname() ?? 'local')) }} aria-hidden />
                                     <span className="flex-1 min-w-0">
                                         <span className="flex items-center gap-1.5">
                                             <span className={'text-[12.5px] font-semibold truncate ' + (isSel && !isOffline ? 'text-[#0969da] dark:text-[#79c0ff]' : 'text-[#1e1e1e] dark:text-[#cccccc]')}>{c.workspace.name}</span>
-                                            {isPrimary && clones.length > 1 && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#ddf4ff] dark:bg-[#3794ff]/20 text-[#0969da] dark:text-[#79c0ff]">primary</span>}
+                                            {!isRemote && clones.length > 1 && clones.some(cl => isRemoteRepo(cl)) && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#ddf4ff] dark:bg-[#3794ff]/20 text-[#0969da] dark:text-[#79c0ff]">Local</span>}
                                             {serverLabel && (
                                                 <span
                                                     data-testid="clone-remote-badge"
@@ -332,9 +325,6 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                                             {!isOffline && st === 'running' && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#16a34a]/15 text-[#16a34a]">running</span>}
                                         </span>
                                         <span className="block font-mono text-[10.5px] text-[#848484] dark:text-[#777] truncate mt-0.5">{truncatePath(c.workspace.rootPath || '', 36)}</span>
-                                    </span>
-                                    <span className="flex items-center gap-1.5 flex-shrink-0">
-                                        {c.gitInfo?.branch && <span className="font-mono text-[10.5px] text-[#656d76] dark:text-[#999]">{c.gitInfo.branch}</span>}
                                     </span>
                                 </button>
                             );
