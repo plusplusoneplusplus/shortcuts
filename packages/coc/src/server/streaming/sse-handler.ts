@@ -159,6 +159,12 @@ export async function handleProcessStream(
     // Parse workspaceId hint from the query string for direct-path lookup
     const parsed = new URL(req.url ?? '/', 'http://x');
     const wsId = parsed.searchParams.get('workspace') ?? undefined;
+    // Warm-only mode: the SPA opens this lightweight stream purely to receive
+    // `warm_status` pushes (AC-02). Unlike the main stream it skips the
+    // conversation replay and stays open for completed/failed/cancelled
+    // processes — the dominant warm case is typing a follow-up on a finished
+    // conversation whose provider client is still parked warm.
+    const warmOnly = parsed.searchParams.get('warm') === '1';
 
     // 1. Look up the process — 404 if not found
     let process = await store.getProcess(processId, wsId);
@@ -177,7 +183,12 @@ export async function handleProcessStream(
         'X-Accel-Buffering': 'no',
     });
     res.flushHeaders();
-    getServerLogger().debug({ processId }, 'SSE stream started');
+    getServerLogger().debug({ processId, warmOnly }, 'SSE stream started');
+
+    if (warmOnly) {
+        streamWarmStatusOnly(req, res, processId, process, store, warmBridge);
+        return;
+    }
 
     // 3. For running processes, flush buffered content before replay
     if ((process.status === 'running') && store.requestFlush) {
@@ -361,6 +372,59 @@ export async function handleProcessStream(
     }, 15_000);
 
     // 8. Cleanup on client disconnect
+    req.on('close', cleanup);
+}
+
+/**
+ * Lightweight warm-status-only stream (the `?warm=1` variant of the process
+ * stream). It exists so the SPA warm indicator can receive `warm_status` pushes
+ * even when the conversation is not running (AC-02): unlike {@link
+ * handleProcessStream} it sends no conversation snapshot, relays nothing but
+ * `warm-status` events, and never self-closes on a terminal process status — it
+ * stays open until the client disconnects. Heartbeats keep the connection alive
+ * and let the client detect a stale socket.
+ */
+function streamWarmStatusOnly(
+    req: IncomingMessage,
+    res: ServerResponse,
+    processId: string,
+    process: AIProcess,
+    store: ProcessStore,
+    warmBridge: WarmStatusBridge,
+): void {
+    let cleaned = false;
+
+    const unregisterWarm = warmBridge.register({
+        store,
+        processId,
+        provider: resolveProviderId(process.metadata?.provider),
+        workingDirectory: process.workingDirectory,
+    });
+
+    const unsubscribe = store.onProcessOutput(processId, (event) => {
+        if ((event as { type: string }).type !== 'warm-status') { return; }
+        const warmStatus = (event as { warmStatus?: WarmStatus }).warmStatus;
+        if (warmStatus) {
+            sendEvent(res, 'warm_status', { status: warmStatus } satisfies WarmStatusPayload);
+        }
+    });
+
+    const cleanup = () => {
+        if (cleaned) { return; }
+        cleaned = true;
+        clearInterval(heartbeat);
+        unsubscribe();
+        unregisterWarm();
+        getServerLogger().debug({ processId }, 'SSE warm stream ended');
+    };
+
+    // Immediate heartbeat signals the client the stream is ready; periodic
+    // heartbeats keep the connection alive and detect stale sockets.
+    sendEvent(res, 'heartbeat', {});
+    const heartbeat = setInterval(() => {
+        sendEvent(res, 'heartbeat', {});
+    }, 15_000);
+
     req.on('close', cleanup);
 }
 

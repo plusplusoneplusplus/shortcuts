@@ -41,9 +41,18 @@ export interface RegisterWarmInterestOptions {
     workingDirectory?: string;
 }
 
+/** Ref-counted interest in a key for a single process. */
+interface ProcessInterest {
+    store: ProcessStore;
+    /** Number of open streams (e.g. the main chat stream + a warm-only stream)
+     * that registered this processId. The fan-out emits once per processId; the
+     * interest is dropped only when the last stream unregisters. */
+    count: number;
+}
+
 export class WarmStatusBridge {
-    /** warmKey → (processId → store) for every open stream interested in that key. */
-    private readonly interests = new Map<string, Map<string, ProcessStore>>();
+    /** warmKey → (processId → ref-counted interest) for every open stream interested in that key. */
+    private readonly interests = new Map<string, Map<string, ProcessInterest>>();
     /** provider → unsubscribe for the single onWarmStatusChange subscription. */
     private readonly subscriptions = new Map<string, () => void>();
 
@@ -52,6 +61,13 @@ export class WarmStatusBridge {
     /**
      * Register interest in warm-status transitions for a process's `(provider, cwd)`
      * key. Returns an idempotent unregister function to call when the stream closes.
+     *
+     * Interest is ref-counted per processId: a conversation can have two streams
+     * open at once — the main chat stream (open while running) and the dedicated
+     * warm-only stream (open across completion) — both registering the same
+     * processId. Without ref-counting, closing the first stream would delete the
+     * shared entry and silently drop the second stream's interest, so the
+     * subsequent `active → warm` push at turn completion would never reach the SPA.
      */
     register(options: RegisterWarmInterestOptions): () => void {
         const { store, processId, provider, workingDirectory } = options;
@@ -63,7 +79,13 @@ export class WarmStatusBridge {
             byProcess = new Map();
             this.interests.set(key, byProcess);
         }
-        byProcess.set(processId, store);
+        const existing = byProcess.get(processId);
+        if (existing) {
+            existing.count += 1;
+            existing.store = store;
+        } else {
+            byProcess.set(processId, { store, count: 1 });
+        }
 
         let active = true;
         return () => {
@@ -71,8 +93,13 @@ export class WarmStatusBridge {
             active = false;
             const current = this.interests.get(key);
             if (!current) { return; }
-            current.delete(processId);
-            if (current.size === 0) { this.interests.delete(key); }
+            const interest = current.get(processId);
+            if (!interest) { return; }
+            interest.count -= 1;
+            if (interest.count <= 0) {
+                current.delete(processId);
+                if (current.size === 0) { this.interests.delete(key); }
+            }
         };
     }
 
@@ -101,7 +128,7 @@ export class WarmStatusBridge {
             if (!byProcess || byProcess.size === 0) { return; }
             // Snapshot so a re-entrant unregister during emit cannot mutate the
             // map we are iterating.
-            for (const [processId, store] of [...byProcess]) {
+            for (const [processId, { store }] of [...byProcess]) {
                 try {
                     store.emitProcessEvent(processId, {
                         type: 'warm-status',

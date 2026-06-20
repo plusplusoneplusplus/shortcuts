@@ -143,6 +143,46 @@ describe('WarmStatusBridge', () => {
         expect(storeB.emitProcessEvent).toHaveBeenCalledWith('pB', { type: 'warm-status', warmStatus: 'warm' });
     });
 
+    it('ref-counts interest per process: a second stream survives the first closing (regression)', () => {
+        // A conversation can have two open streams registering the same processId:
+        // the main chat stream (open while running) and the warm-only stream (open
+        // across completion). Closing the first must NOT drop the second's interest,
+        // otherwise the `active → warm` push at turn completion never reaches the SPA.
+        const copilot = createWarmingService();
+        const bridge = new WarmStatusBridge(createRegistry({ copilot }));
+        const store = createMockStore();
+        const key = makeWarmKey('copilot', '/repo');
+
+        const closeMain = bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo' });
+        const closeWarm = bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo' });
+
+        // Main chat stream closes when the turn completes.
+        closeMain();
+        // The warm-only stream is still open → the parked-client push must arrive.
+        copilot.emit(key, 'warm');
+        expect(store.emitProcessEvent).toHaveBeenCalledTimes(1);
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('p1', { type: 'warm-status', warmStatus: 'warm' });
+
+        // Once the last stream closes, interest is dropped.
+        closeWarm();
+        copilot.emit(key, 'cold');
+        expect(store.emitProcessEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it('fans out once per process even when registered by multiple streams', () => {
+        const copilot = createWarmingService();
+        const bridge = new WarmStatusBridge(createRegistry({ copilot }));
+        const store = createMockStore();
+        const key = makeWarmKey('copilot', '/repo');
+
+        bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo' });
+        bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo' });
+        copilot.emit(key, 'active');
+
+        // Two registrations for one processId still produce a single emit.
+        expect(store.emitProcessEvent).toHaveBeenCalledTimes(1);
+    });
+
     it('is a no-op for a provider that cannot stay warm (no onWarmStatusChange, e.g. Claude)', () => {
         const claude = {}; // no onWarmStatusChange method
         const bridge = new WarmStatusBridge(createRegistry({ claude }));

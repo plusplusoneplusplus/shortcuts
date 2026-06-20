@@ -245,3 +245,117 @@ describe('handleProcessStream warm-interest wiring', () => {
         expect(bridge.register).not.toHaveBeenCalled();
     });
 });
+
+// ============================================================================
+// Warm-only stream mode (?warm=1)
+// ============================================================================
+
+describe('handleProcessStream warm-only mode (?warm=1)', () => {
+    let store: MockProcessStore;
+    let outputCallback: ((event: ProcessOutputEvent) => void) | undefined;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        outputCallback = undefined;
+        store.onProcessOutput = vi.fn((_id: string, cb: (event: ProcessOutputEvent) => void) => {
+            outputCallback = cb;
+            return () => { outputCallback = undefined; };
+        });
+    });
+
+    /** A request carrying the `?warm=1` query flag. */
+    function warmReq(): IncomingMessage {
+        const req = createMockReq();
+        (req as unknown as { url: string }).url = '/api/processes/p/stream?warm=1';
+        return req;
+    }
+
+    it('registers warm interest for a COMPLETED process and keeps the stream open', async () => {
+        // The dominant warm case: a finished conversation whose client is still
+        // parked warm. The one-shot stream closes here; the warm stream must not.
+        const proc = createProcessFixture({
+            id: 'p-warm-c',
+            status: 'completed',
+            workingDirectory: '/repo',
+            metadata: { provider: 'copilot' } as any,
+        });
+        store.processes.set(proc.id, proc);
+
+        const bridge = createSpyBridge();
+        const res = createMockRes();
+        await handleProcessStream(warmReq(), res, 'p-warm-c', store, bridge);
+
+        expect(bridge.register).toHaveBeenCalledTimes(1);
+        expect(bridge.register).toHaveBeenCalledWith(expect.objectContaining({
+            processId: 'p-warm-c',
+            provider: 'copilot',
+            workingDirectory: '/repo',
+        }));
+
+        // No terminal status/done frame and the response stays open.
+        const events = parseSSEFrames(res._chunks).map(f => f.event);
+        expect(events).not.toContain('status');
+        expect(events).not.toContain('done');
+        expect(res._ended).toBe(false);
+    });
+
+    it('relays warm-status pushes and ignores every other output event', async () => {
+        const proc = createProcessFixture({ id: 'p-warm-r', status: 'completed' });
+        store.processes.set(proc.id, proc);
+
+        const res = createMockRes();
+        await handleProcessStream(warmReq(), res, 'p-warm-r', store, createSpyBridge());
+        expect(outputCallback).toBeDefined();
+
+        outputCallback!({ type: 'chunk', content: 'ignored' });
+        outputCallback!({ type: 'warm-status', warmStatus: 'warm' } as unknown as ProcessOutputEvent);
+
+        const frames = parseSSEFrames(res._chunks);
+        expect(frames.filter(f => f.event === 'chunk')).toHaveLength(0);
+        const warm = frames.filter(f => f.event === 'warm_status');
+        expect(warm).toHaveLength(1);
+        expect(warm[0].data).toEqual({ status: 'warm' });
+    });
+
+    it('does not replay a conversation snapshot', async () => {
+        const proc = createProcessFixture({
+            id: 'p-warm-s',
+            status: 'completed',
+            conversationTurns: [{ role: 'user', content: 'hi' }] as any,
+        });
+        store.processes.set(proc.id, proc);
+
+        const res = createMockRes();
+        await handleProcessStream(warmReq(), res, 'p-warm-s', store, createSpyBridge());
+
+        const events = parseSSEFrames(res._chunks).map(f => f.event);
+        expect(events).not.toContain('conversation-snapshot');
+    });
+
+    it('sends an initial heartbeat so the client knows the stream is ready', async () => {
+        const proc = createProcessFixture({ id: 'p-warm-h', status: 'completed' });
+        store.processes.set(proc.id, proc);
+
+        const res = createMockRes();
+        await handleProcessStream(warmReq(), res, 'p-warm-h', store, createSpyBridge());
+
+        const heartbeats = parseSSEFrames(res._chunks).filter(f => f.event === 'heartbeat');
+        expect(heartbeats.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('unregisters interest and unsubscribes on client disconnect', async () => {
+        const proc = createProcessFixture({ id: 'p-warm-d', status: 'completed' });
+        store.processes.set(proc.id, proc);
+
+        const unsubscribe = vi.fn();
+        store.onProcessOutput = vi.fn(() => unsubscribe);
+        const bridge = createSpyBridge();
+        const req = warmReq();
+        await handleProcessStream(req, createMockRes(), 'p-warm-d', store, bridge);
+
+        expect(bridge.unregister).not.toHaveBeenCalled();
+        (req as unknown as PassThrough).emit('close');
+        expect(bridge.unregister).toHaveBeenCalledTimes(1);
+        expect(unsubscribe).toHaveBeenCalledTimes(1);
+    });
+});
