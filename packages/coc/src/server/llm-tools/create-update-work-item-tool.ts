@@ -60,6 +60,14 @@ export interface CreateUpdateWorkItemArgs {
     parentTarget?: string;
     /** Parent sequential work item number, e.g. 12 or "WI-12". */
     parentWorkItemNumber?: number | string;
+    /**
+     * Explicit target workspace or canonical origin id (e.g. a per-clone `ws-*`
+     * workspace id or a `gh_<owner>_<repo>` mirror). When provided, the operation
+     * is scoped to that workspace's canonical origin instead of the active one,
+     * so an item can be created directly under a mirrored parent. Omit to use the
+     * active workspace.
+     */
+    targetWorkspaceId?: string;
 }
 
 export type BroadcastWorkItemFn = (event: {
@@ -262,6 +270,31 @@ function commandErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Resolve the effective repoId for an operation, honoring an explicit
+ * `targetWorkspaceId` when supplied. A target is normalized to its canonical
+ * origin scope via the store's `resolveOriginId` (reusing the same scope
+ * resolution + `legacyRepoIds` machinery as the REST routes), so an item can be
+ * created under, or linked to, a mirrored parent of the same upstream repo.
+ *
+ * When no target is given the baked-in `repoId` is returned unchanged, keeping
+ * the active-workspace behavior byte-for-byte identical to today.
+ */
+async function resolveEffectiveRepoId(
+    store: WorkItemStore,
+    repoId: string,
+    target: string | undefined,
+): Promise<string> {
+    const trimmed = target?.trim();
+    if (!trimmed) {
+        return repoId;
+    }
+    if (store.resolveOriginId) {
+        return store.resolveOriginId(trimmed);
+    }
+    return trimmed;
+}
+
 // ============================================================================
 // Factory
 // ============================================================================
@@ -313,6 +346,9 @@ export function createCreateUpdateWorkItemTool(
             'the item under a new valid parent, or `parentId: null` to unlink it from its current parent. Link updates can ' +
             'be combined with field or plan updates and are validated against the allowed parent/child type hierarchy. ' +
             '`type` cannot be changed in update mode; when supplied it must match the existing item type. ' +
+            'Pass `targetWorkspaceId` (a "ws-*" workspace id or "gh_<owner>_<repo>" mirror) to scope the create/update ' +
+            'to a different workspace of the same upstream repo — e.g. to file an item directly under a mirrored parent; ' +
+            'omit it to use the active workspace. ' +
             'Do not append raw text or submit a partial diff for `plan`; always send the full revised plan. ' +
             'IMPORTANT: Before calling this tool, you MUST first present a draft summary to the user ' +
             'and only call this tool once the user confirms. ' +
@@ -382,16 +418,26 @@ export function createCreateUpdateWorkItemTool(
                     oneOf: [{ type: 'number' }, { type: 'string' }],
                     description: 'Parent sequential work item number, e.g. 12 or "WI-12". Alternative to parentId.',
                 },
+                targetWorkspaceId: {
+                    type: 'string',
+                    description:
+                        'Explicit target workspace or canonical origin id (e.g. a per-clone "ws-*" workspace id or a ' +
+                        '"gh_<owner>_<repo>" mirror). When provided, the create/update is scoped to that workspace\'s ' +
+                        'canonical origin instead of the active one — use it to create an item directly under a ' +
+                        'mirrored parent that lives in a different workspace of the same upstream repo. Omit to use ' +
+                        'the active workspace.',
+                },
             },
             required: [],
         },
         handler: async (rawArgs: CreateUpdateWorkItemArgs) => {
             const args = normalizePlanFromDescription(rawArgs);
+            const effectiveRepoId = await resolveEffectiveRepoId(store, repoId, args.targetWorkspaceId);
             const existingTarget = getExistingTarget(args);
             if (existingTarget !== undefined && String(existingTarget).trim() !== '') {
-                return updateExistingWorkItem(commandCtx, repoId, args);
+                return updateExistingWorkItem(commandCtx, effectiveRepoId, args);
             }
-            return createNewWorkItem(commandCtx, repoId, args);
+            return createNewWorkItem(commandCtx, effectiveRepoId, args);
         },
     });
 
