@@ -2041,6 +2041,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             isCancelling={isCancelling}
                             error={error}
                             resumeFeedback={resumeFeedback}
+                            onDismissResumeFeedback={() => setResumeFeedback(null)}
                             suggestions={suggestions}
                             followUpInput={followUpInput}
                             setFollowUpInput={setFollowUpInput}
@@ -2170,6 +2171,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     isCancelling={isCancelling}
                     error={error}
                     resumeFeedback={resumeFeedback}
+                    onDismissResumeFeedback={() => setResumeFeedback(null)}
                     suggestions={suggestions}
                     followUpInput={followUpInput}
                     setFollowUpInput={setFollowUpInput}

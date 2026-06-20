@@ -518,3 +518,53 @@ describe('FollowUpInputArea — session context drops', () => {
         );
     });
 });
+
+describe('FollowUpInputArea — resume feedback dismiss', () => {
+    it('shows resume feedback message when resumeFeedback is set', () => {
+        render(<FollowUpInputArea {...makeProps({
+            resumeFeedback: { type: 'success', message: 'Copied resume command.', command: 'claude --resume abc123' },
+        })} />);
+        expect(screen.getByText('Copied resume command.')).toBeTruthy();
+        expect(screen.getByText('claude --resume abc123')).toBeTruthy();
+    });
+
+    it('renders dismiss button when onDismissResumeFeedback is provided', () => {
+        render(<FollowUpInputArea {...makeProps({
+            resumeFeedback: { type: 'success', message: 'Copied resume command.' },
+            onDismissResumeFeedback: vi.fn(),
+        })} />);
+        expect(screen.getByRole('button', { name: 'Dismiss' })).toBeTruthy();
+    });
+
+    it('does not render dismiss button when onDismissResumeFeedback is not provided', () => {
+        render(<FollowUpInputArea {...makeProps({
+            resumeFeedback: { type: 'success', message: 'Copied resume command.' },
+        })} />);
+        expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    });
+
+    it('calls onDismissResumeFeedback when dismiss button is clicked', () => {
+        const onDismissResumeFeedback = vi.fn();
+        render(<FollowUpInputArea {...makeProps({
+            resumeFeedback: { type: 'success', message: 'Copied resume command.' },
+            onDismissResumeFeedback,
+        })} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+        expect(onDismissResumeFeedback).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not render feedback banner when resumeFeedback is null', () => {
+        render(<FollowUpInputArea {...makeProps({ resumeFeedback: null })} />);
+        expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    });
+
+    it('dismiss button appears for error-type feedback too', () => {
+        const onDismissResumeFeedback = vi.fn();
+        render(<FollowUpInputArea {...makeProps({
+            resumeFeedback: { type: 'error', message: 'Failed to copy resume command.' },
+            onDismissResumeFeedback,
+        })} />);
+        expect(screen.getByText('Failed to copy resume command.')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Dismiss' })).toBeTruthy();
+    });
+});

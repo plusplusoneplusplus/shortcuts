@@ -56,6 +56,8 @@ export interface FollowUpInputAreaProps {
     isCancelling: boolean;
     error: string | null;
     resumeFeedback: { type: 'success' | 'error'; message: string; command?: string } | null;
+    /** Called when the user clicks the dismiss (✕) button on the resume feedback banner. */
+    onDismissResumeFeedback?: () => void;
     suggestions: string[];
     followUpInput: string;
     setFollowUpInput: (v: string) => void;
@@ -198,6 +200,7 @@ export function FollowUpInputArea({
     isCancelling,
     error,
     resumeFeedback,
+    onDismissResumeFeedback,
     suggestions,
     followUpInput,
     setFollowUpInput,
@@ -618,12 +621,23 @@ export function FollowUpInputArea({
             )}
         >
             {resumeFeedback && (
-                <div className={`text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
-                    {resumeFeedback.message}
-                    {resumeFeedback.command && (
-                        <div className="mt-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] px-2 py-1 font-mono text-[11px] break-all text-[#1e1e1e] dark:text-[#cccccc]">
-                            {resumeFeedback.command}
-                        </div>
+                <div className={`flex items-start gap-1 text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
+                    <span className="flex-1">
+                        {resumeFeedback.message}
+                        {resumeFeedback.command && (
+                            <div className="mt-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] px-2 py-1 font-mono text-[11px] break-all text-[#1e1e1e] dark:text-[#cccccc]">
+                                {resumeFeedback.command}
+                            </div>
+                        )}
+                    </span>
+                    {onDismissResumeFeedback && (
+                        <button
+                            type="button"
+                            className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer leading-none"
+                            onClick={onDismissResumeFeedback}
+                            aria-label="Dismiss"
+                            title="Dismiss"
+                        >✕</button>
                     )}
                 </div>
             )}
