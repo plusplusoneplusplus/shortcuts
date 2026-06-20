@@ -58,6 +58,31 @@ describe('ChatDetail implement-plan handoff', () => {
         expect(block).toContain('onViewRun=');
     });
 
+    it('passes availableTargets (implementTargets) to the card', () => {
+        const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
+        expect(cardBlock).not.toBeNull();
+        expect(cardBlock![0]).toContain('availableTargets={implementTargets}');
+    });
+
+    it('routes onViewRun to the run target server (targetWorkspaceId ?? workspaceId)', () => {
+        const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
+        expect(cardBlock).not.toBeNull();
+        const block = cardBlock![0];
+        expect(block).toMatch(/onViewRun=\{\(runProcessId,\s*targetWorkspaceId\)/);
+        expect(block).toContain('repoId: targetWorkspaceId ?? workspaceId');
+    });
+
+    it('builds implementTargets from the repos context, gated by remote-shell availability', () => {
+        expect(source).toContain("import { buildImplementTargets } from './implementTargets'");
+        expect(source).toContain('const implementTargets = useMemo(');
+        expect(source).toMatch(/if\s*\(!isRemoteShellEnabled\(\)\s*\|\|\s*!reposCtx\)\s*return undefined/);
+    });
+
+    it('resolves remote run status via the target-routed client', () => {
+        expect(source).toContain('getCocClientForWorkspace');
+        expect(source).toMatch(/run\.isRemoteTarget\s*\?\s*getCocClientForWorkspace\(run\.targetWorkspaceId\)/);
+    });
+
     it('passes sourceProcessId and sourceMetadata for persistence', () => {
         const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
         expect(cardBlock).not.toBeNull();
