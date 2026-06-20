@@ -201,9 +201,17 @@ export class ProcessesClient {
     );
   }
 
-  resumeCli(processId: string): Promise<ProcessResumeCliResponse> {
+  /**
+   * Resume a process in the CLI. By default (`launch: true`) the server spawns a
+   * terminal and returns the full launched command. With `launch: false` the
+   * server resolves the provider + working directory but does NOT spawn — it
+   * returns the bare, paste-ready resume invocation (no `cd`) for clipboard use.
+   */
+  resumeCli(processId: string, opts?: { launch?: boolean }): Promise<ProcessResumeCliResponse> {
+    const body = typeof opts?.launch === 'boolean' ? { launch: opts.launch } : undefined;
     return this.transport.request<ProcessResumeCliResponse>(`/processes/${encodePathSegment(processId)}/resume-cli`, {
       method: 'POST',
+      ...(body ? { body } : {}),
     });
   }
 

@@ -255,7 +255,14 @@ export interface PromoteToRalphResult {
 }
 
 export interface ProcessResumeCliResponse extends JsonObject {
+  processId?: string;
+  sessionId?: string;
+  workingDirectory?: string;
+  /** CLI tool the resume command targets: copilot | codex | claude. */
+  provider?: string;
   launched?: boolean;
+  terminal?: string;
+  reason?: string;
   command?: string;
 }
 

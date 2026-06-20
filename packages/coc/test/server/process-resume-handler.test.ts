@@ -144,6 +144,7 @@ describe('POST /api/processes/:id/resume-cli', () => {
         expect(mockLauncher).toHaveBeenCalledWith({
             sessionId: 'sess-resume-1',
             workingDirectory: dataDir,
+            provider: 'copilot',
         });
     });
 
@@ -186,6 +187,7 @@ describe('POST /api/processes/:id/resume-cli', () => {
         expect(mockLauncher).toHaveBeenCalledWith({
             sessionId: 'sess-from-result',
             workingDirectory: dataDir,
+            provider: 'copilot',
         });
     });
 
@@ -217,6 +219,159 @@ describe('POST /api/processes/:id/resume-cli', () => {
         expect(res.status).toBe(404);
         expect(JSON.parse(res.body).error).toContain('Process not found');
         expect(mockLauncher).not.toHaveBeenCalled();
+    });
+
+    describe('provider-aware command (AC-01)', () => {
+        async function makeServer(opts?: { getDefaultProvider?: () => any }) {
+            const routes: Route[] = [];
+            registerApiRoutes(routes, store, undefined);
+            registerProcessResumeRoutes(routes, store, mockLauncher, opts);
+            const srv = http.createServer(createRequestHandler({
+                routes,
+                spaHtml: generateDashboardHtml(),
+                store,
+            }));
+            await new Promise<void>((resolve, reject) => {
+                srv.on('error', reject);
+                srv.listen(0, 'localhost', () => resolve());
+            });
+            const address = srv.address() as { port: number };
+            return { srv, url: `http://localhost:${address.port}` };
+        }
+
+        it('uses the process metadata.provider (codex) for launch', async () => {
+            await store.addProcess({
+                id: 'proc-codex',
+                type: 'clarification',
+                promptPreview: 'p',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-codex',
+                workingDirectory: dataDir,
+                metadata: { provider: 'codex' },
+            } as AIProcess);
+
+            mockLauncher.mockResolvedValue({ launched: true, command: 'cmd', terminal: 'Terminal' });
+
+            const res = await request(`${baseUrl}/api/processes/proc-codex/resume-cli`, { method: 'POST' });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.provider).toBe('codex');
+            expect(mockLauncher).toHaveBeenCalledWith({
+                sessionId: 'sess-codex',
+                workingDirectory: dataDir,
+                provider: 'codex',
+            });
+        });
+
+        it('falls back to the configured default provider when metadata.provider is missing', async () => {
+            await store.addProcess({
+                id: 'proc-default',
+                type: 'clarification',
+                promptPreview: 'p',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-default',
+                workingDirectory: dataDir,
+            } as AIProcess);
+
+            mockLauncher.mockResolvedValue({ launched: true, command: 'cmd', terminal: 'Terminal' });
+            const getDefaultProvider = vi.fn(async () => 'claude' as const);
+            const { srv, url } = await makeServer({ getDefaultProvider });
+            try {
+                const res = await request(`${url}/api/processes/proc-default/resume-cli`, { method: 'POST' });
+                expect(res.status).toBe(200);
+                expect(JSON.parse(res.body).provider).toBe('claude');
+                expect(getDefaultProvider).toHaveBeenCalledTimes(1);
+                expect(mockLauncher).toHaveBeenCalledWith({
+                    sessionId: 'sess-default',
+                    workingDirectory: dataDir,
+                    provider: 'claude',
+                });
+            } finally {
+                await new Promise<void>((resolve) => srv.close(() => resolve()));
+            }
+        });
+
+        it('falls back to the default provider when metadata.provider is invalid', async () => {
+            await store.addProcess({
+                id: 'proc-invalid',
+                type: 'clarification',
+                promptPreview: 'p',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-invalid',
+                workingDirectory: dataDir,
+                metadata: { provider: 'not-a-real-provider' },
+            } as AIProcess);
+
+            mockLauncher.mockResolvedValue({ launched: true, command: 'cmd', terminal: 'Terminal' });
+            const { srv, url } = await makeServer({ getDefaultProvider: async () => 'codex' as const });
+            try {
+                const res = await request(`${url}/api/processes/proc-invalid/resume-cli`, { method: 'POST' });
+                expect(JSON.parse(res.body).provider).toBe('codex');
+            } finally {
+                await new Promise<void>((resolve) => srv.close(() => resolve()));
+            }
+        });
+
+        it('launch:false returns the bare claude command and does not spawn', async () => {
+            await store.addProcess({
+                id: 'proc-bare-claude',
+                type: 'clarification',
+                promptPreview: 'p',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-bare-claude',
+                workingDirectory: dataDir,
+                metadata: { provider: 'claude' },
+            } as AIProcess);
+
+            const res = await request(`${baseUrl}/api/processes/proc-bare-claude/resume-cli`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ launch: false }),
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.launched).toBe(false);
+            expect(body.provider).toBe('claude');
+            // Bare invocation — no `cd` prefix; quoting is platform-specific.
+            expect(body.command).toMatch(/claude --dangerously-skip-permissions --resume /);
+            expect(body.command).toContain('sess-bare-claude');
+            expect(body.command).not.toContain('cd ');
+            expect(body.command).not.toContain('&&');
+            expect(mockLauncher).not.toHaveBeenCalled();
+        });
+
+        it('launch:false returns the bare codex command (subcommand form)', async () => {
+            await store.addProcess({
+                id: 'proc-bare-codex',
+                type: 'clarification',
+                promptPreview: 'p',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-bare-codex',
+                workingDirectory: dataDir,
+                metadata: { provider: 'codex' },
+            } as AIProcess);
+
+            const res = await request(`${baseUrl}/api/processes/proc-bare-codex/resume-cli`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ launch: false }),
+            });
+
+            const body = JSON.parse(res.body);
+            expect(body.launched).toBe(false);
+            expect(body.provider).toBe('codex');
+            expect(body.command).toContain('codex resume ');
+            expect(body.command).toContain('--dangerously-bypass-approvals-and-sandbox');
+            expect(body.command).toContain('sess-bare-codex');
+            expect(body.command).not.toContain('cd ');
+            expect(mockLauncher).not.toHaveBeenCalled();
+        });
     });
 
     describe('Request logs', () => {
@@ -255,7 +410,7 @@ describe('POST /api/processes/:id/resume-cli', () => {
             const lines = stderrSpy.mock.calls
                 .map(([msg]) => (typeof msg === 'string' ? msg : ''))
                 .filter(Boolean);
-            expect(lines.some(l => l.includes('[Process] resume-cli id=proc-log-1 sessionId=sess-log-1 launched=true'))).toBe(true);
+            expect(lines.some(l => l.includes('[Process] resume-cli id=proc-log-1 sessionId=sess-log-1 provider=copilot launched=true'))).toBe(true);
         });
     });
 });
@@ -348,6 +503,33 @@ describe('launchResumeCommandInTerminal – Windows spawn arguments', () => {
 
         const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
         expect(startLine).not.toContain('&&');
+    });
+
+    it('launches Codex resume (subcommand form) when provider is codex', async () => {
+        const result = await launchResumeCommandInTerminal({
+            sessionId: 'sess-win-codex',
+            workingDirectory: 'C:\\Users\\test\\project',
+            provider: 'codex',
+        });
+
+        expect(result.launched).toBe(true);
+        const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
+        expect(startLine).toContain('powershell.exe -NoExit -Command codex resume "sess-win-codex" --dangerously-bypass-approvals-and-sandbox');
+        expect(startLine).not.toContain('copilot --yolo');
+    });
+
+    it('launches Claude resume when provider is claude', async () => {
+        const result = await launchResumeCommandInTerminal({
+            sessionId: 'sess-win-claude',
+            workingDirectory: 'C:\\Users\\test\\project',
+            provider: 'claude',
+        });
+
+        expect(result.launched).toBe(true);
+        const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
+        expect(startLine).toContain('powershell.exe -NoExit -Command claude --dangerously-skip-permissions --resume "sess-win-claude"');
+        expect(startLine).not.toContain('copilot --yolo');
+        expect(startLine).not.toContain('codex');
     });
 });
 
