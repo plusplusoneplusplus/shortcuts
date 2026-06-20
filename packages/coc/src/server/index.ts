@@ -26,7 +26,7 @@ import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVI
 import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
-import { sweepOrphanedRunningProcesses } from './processes/finalize-orphaned-turn';
+import { sweepOrphanedRunningProcesses, collectResumableFollowUpProcessIds } from './processes/finalize-orphaned-turn';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './workspaces/global-workspace';
 import { ensureMyWorkWorkspace } from './workspaces/my-work-workspace';
 import { ensureMyLifeWorkspace } from './workspaces/my-life-workspace';
@@ -336,17 +336,23 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
-    // an unclean shutdown. The queue restart policy assigns NEW process IDs
-    // to any re-enqueued work, so every pre-existing in-flight process row
-    // is definitionally orphaned and must be marked failed/cancelled before
-    // we accept any client requests.
+    // an unclean shutdown, before we accept client requests. Chat follow-ups
+    // re-enqueued by the queue persistence layer (restore() already ran inside
+    // createQueueInfrastructure) point their payload.processId back at the
+    // original conversation, so those processes are recoverable — revive them
+    // to 'queued' rather than mark them failed.
     try {
-        const orphanCount = await sweepOrphanedRunningProcesses(store, {
+        const resumableProcessIds = collectResumableFollowUpProcessIds([
+            ...queueFacade.getQueued(),
+            ...queueFacade.getRunning(),
+        ]);
+        const { finalized, revived } = await sweepOrphanedRunningProcesses(store, {
             error: 'Process orphaned by server restart',
+            protectedProcessIds: resumableProcessIds,
         });
-        if (orphanCount > 0) {
+        if (finalized > 0 || revived > 0) {
             process.stderr.write(
-                `[ExecutionServer] Finalized ${orphanCount} orphaned in-flight process(es) on startup\n`,
+                `[ExecutionServer] Startup recovery: finalized ${finalized} orphaned in-flight process(es), revived ${revived} to pending\n`,
             );
         }
     } catch {
