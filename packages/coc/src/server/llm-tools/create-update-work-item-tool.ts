@@ -7,13 +7,11 @@
  * next version, or move/unlink an existing work item in the Epic → Feature → PBI →
  * Work Item/Bug/Goal hierarchy.
  *
- * Hierarchy-sensitive operations (create-with-parent, reparent, unlink) and all
- * creates run through the shared work-item command service so the tool reuses the
- * same validation, remote-provider sync, cache invalidation, and dashboard
- * broadcast behavior as the Work Items REST routes.
+ * Creates and updates run through the shared work-item command service so the
+ * tool reuses the same validation, remote-provider sync, cache invalidation, and
+ * dashboard broadcast behavior as the Work Items REST routes.
  */
 
-import * as crypto from 'crypto';
 import * as path from 'path';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -575,13 +573,43 @@ async function updateExistingWorkItem(
     }
 
     if (!content) {
-        const updated = await store.updateWorkItem(existing.id, patchResult.patch, repoId);
-        if (!updated) {
-            return { updated: false, error: `Failed to update work item: ${existing.id}` };
+        try {
+            const updated = await updateWorkItemCommand(
+                ctx,
+                repoId,
+                existing.id,
+                patchResult.patch as UpdateWorkItemCommandInput,
+            );
+            return {
+                updated: true,
+                id: updated.id,
+                title: updated.title,
+                status: updated.status,
+                planVersion: updated.plan?.version,
+            };
+        } catch (error) {
+            if (error instanceof APIError) {
+                return { updated: false, id: existing.id, error: error.message };
+            }
+            throw error;
         }
+    }
 
-        ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+    const nextVersion = (existing.plan?.version ?? 0) + 1;
+    const summary = args.summary ?? `Plan updated from chat (v${nextVersion})`;
 
+    try {
+        const updated = await updateWorkItemCommand(ctx, repoId, existing.id, {
+            ...(patchResult.patch as UpdateWorkItemCommandInput),
+            status: 'planning',
+            skipStatusTransitionValidation: true,
+            plan: {
+                content,
+                resolvedBy: 'ai',
+                reason: summary,
+                summary,
+            },
+        });
         return {
             updated: true,
             id: updated.id,
@@ -589,57 +617,12 @@ async function updateExistingWorkItem(
             status: updated.status,
             planVersion: updated.plan?.version,
         };
+    } catch (error) {
+        if (error instanceof APIError) {
+            return { updated: false, id: existing.id, error: error.message };
+        }
+        throw error;
     }
-
-    const now = new Date().toISOString();
-    const nextVersion = (existing.plan?.version ?? 0) + 1;
-    const planVersion = {
-        version: nextVersion,
-        content,
-        createdAt: now,
-        resolvedBy: 'ai' as const,
-        source: 'ai' as const,
-        authorType: 'ai' as const,
-        reason: args.summary ?? `Plan updated from chat (v${nextVersion})`,
-        summary: args.summary ?? `Plan updated from chat (v${nextVersion})`,
-    };
-
-    await store.savePlanVersion(existing.id, planVersion, repoId);
-    const updated = await store.updateWorkItem(existing.id, {
-        ...patchResult.patch,
-        status: 'planning',
-        currentContentVersion: nextVersion,
-        plan: {
-            version: nextVersion,
-            currentVersion: nextVersion,
-            content,
-            updatedAt: now,
-            resolvedBy: 'ai',
-            source: 'ai',
-            reason: planVersion.reason,
-        },
-    }, repoId);
-    if (!updated) {
-        return { updated: false, error: `Failed to update work item: ${existing.id}` };
-    }
-
-    await store.addChange(existing.id, {
-        id: crypto.randomUUID(),
-        planVersion: nextVersion,
-        commits: [],
-        startedAt: now,
-        status: 'open',
-    }, repoId);
-
-    ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: updated });
-
-    return {
-        updated: true,
-        id: updated.id,
-        title: updated.title,
-        status: updated.status,
-        planVersion: updated.plan?.version,
-    };
 }
 
 /**

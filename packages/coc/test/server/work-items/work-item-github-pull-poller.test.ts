@@ -5,6 +5,12 @@ import * as path from 'path';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import {
+    clearWorkItemResponseCache,
+    getWorkItemResponseCacheEntry,
+    makeWorkItemTreeResponseCacheKey,
+    refreshWorkItemResponseCacheEntry,
+} from '../../../src/server/work-items/work-item-response-cache';
+import {
     WorkItemGitHubPullPoller,
     WORK_ITEM_SYNC_MAX_ITEMS,
     importGitHubEpicTreeAsWorkItems,
@@ -17,6 +23,7 @@ import {
 import type { WorkItem } from '../../../src/server/work-items';
 
 const REPO_ID = 'github-poller-test-repo';
+const ORIGIN_ID = 'gh_plusplusoneplusplus_shortcuts';
 const NOW = '2026-01-01T00:00:00.000Z';
 const OWNER = 'plusplusoneplusplus';
 const REPO = 'shortcuts';
@@ -120,13 +127,38 @@ let tmpDir: string;
 let store: FileWorkItemStore;
 
 beforeEach(async () => {
+    clearWorkItemResponseCache();
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'github-poller-test-'));
     store = new FileWorkItemStore({ dataDir: tmpDir });
 });
 
 afterEach(async () => {
+    clearWorkItemResponseCache();
     await fs.rm(tmpDir, { recursive: true, force: true });
 });
+
+function createScopedStore(): FileWorkItemStore {
+    return new FileWorkItemStore({
+        dataDir: tmpDir,
+        scopeResolver: repoId => {
+            if (repoId === REPO_ID || repoId === ORIGIN_ID) {
+                return { storageRepoId: ORIGIN_ID, legacyRepoIds: [REPO_ID] };
+            }
+            return undefined;
+        },
+    });
+}
+
+async function primeOriginTreeCache(): Promise<string> {
+    const key = makeWorkItemTreeResponseCacheKey(ORIGIN_ID, {
+        tracker: 'github-backed',
+        includeArchived: false,
+        includeDone: false,
+    });
+    await refreshWorkItemResponseCacheEntry(key, ORIGIN_ID, 'tree', async () => ({ stale: true }));
+    expect(getWorkItemResponseCacheEntry(key)).toBeDefined();
+    return key;
+}
 
 describe('WorkItemGitHubPullPoller', () => {
     it('configures per-workspace polling and honors disabled preferences', async () => {
@@ -323,6 +355,47 @@ describe('WorkItemGitHubPullPoller', () => {
             errors: [],
         });
         expect(await store.getWorkItem(imported.root.id, REPO_ID)).toBeUndefined();
+    });
+
+    it('clears origin-scoped response cache when a ws-* poll updates a mirrored tree', async () => {
+        store = createScopedStore();
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [100, makeIssue(100, 'Remote Epic', {
+                labels: ['coc:type:epic'],
+                body: 'Remote epic',
+            })],
+        ]);
+        await importTree(store, issues);
+        const cacheKey = await primeOriginTreeCache();
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: {
+                sync: {
+                    github: {
+                        owner: OWNER,
+                        repo: REPO,
+                        pollingEnabled: true,
+                    },
+                },
+            },
+        });
+        const poller = new WorkItemGitHubPullPoller({
+            dataDir: tmpDir,
+            processStore: processStore(tmpDir),
+            workItemStore: store,
+            transport: makeTransport(issues),
+            now: () => '2026-01-03T00:00:00.000Z',
+        });
+
+        issues.set(100, makeIssue(100, 'Remote Epic Updated', {
+            labels: ['coc:type:epic'],
+            body: 'Remote epic updated',
+            updatedAt: '2026-01-02T00:00:00.000Z',
+        }));
+
+        const pullResult = await poller.pollWorkspace(REPO_ID);
+
+        expect(pullResult).toMatchObject({ updated: 1, errors: [] });
+        expect(getWorkItemResponseCacheEntry(cacheKey)).toBeUndefined();
     });
 
     it('does not resurrect a deleted closed-issue mirror on re-poll, but still re-imports open issues', async () => {

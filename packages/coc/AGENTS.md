@@ -192,9 +192,12 @@ all have their own `references/*.md`.
 - **Work-item create/update side effects** (hierarchy `parentId` validation,
   GitHub/Azure Boards provider sync, response-cache invalidation, dashboard
   broadcasts, auto-execute) live in the shared command service
-  `src/server/work-items/work-item-commands.ts`. Both the REST routes
-  (`src/server/routes/work-item-routes.ts`) and the `create_update_work_item`
-  LLM tool call it — do not re-implement hierarchy or provider logic in either
+  `src/server/work-items/work-item-commands.ts`. Cache invalidation and
+  broadcasts cover both the caller workspace id and the resolved origin/storage
+  id when they differ, so workspace-compatible and origin-scoped views refresh
+  together. Both the REST routes (`src/server/routes/work-item-routes.ts`) and
+  the `create_update_work_item` LLM tool call the command service — do not
+  re-implement hierarchy, provider logic, or mutation side effects in either
   caller.
 - **Work-item hierarchy tree reads** are persistent origin state. New callers must
   use `/api/origins/:originId/work-items/tree` or

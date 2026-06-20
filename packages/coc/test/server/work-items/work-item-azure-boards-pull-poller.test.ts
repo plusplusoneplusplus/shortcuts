@@ -5,6 +5,12 @@ import * as path from 'path';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import {
+    clearWorkItemResponseCache,
+    getWorkItemResponseCacheEntry,
+    makeWorkItemTreeResponseCacheKey,
+    refreshWorkItemResponseCacheEntry,
+} from '../../../src/server/work-items/work-item-response-cache';
+import {
     WorkItemAzureBoardsPullPoller,
     importAzureBoardsEpicTreeAsWorkItems,
     type AvailableAzureBoardsWorkItemSyncProject,
@@ -16,6 +22,7 @@ import {
 
 const REPO_ID = 'azure-poller-test-repo';
 const SECOND_REPO_ID = 'azure-poller-second-repo';
+const ORIGIN_ID = 'ado_octo_org_project_alpha_repo';
 const NOW = '2026-01-01T00:00:00.000Z';
 const ORG_URL = 'https://dev.azure.com/octo-org';
 const PROJECT = 'Project Alpha';
@@ -154,14 +161,39 @@ let store: FileWorkItemStore;
 let transport: FakeAzureBoardsTransport;
 
 beforeEach(async () => {
+    clearWorkItemResponseCache();
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'azure-poller-test-'));
     store = new FileWorkItemStore({ dataDir: tmpDir });
     transport = new FakeAzureBoardsTransport();
 });
 
 afterEach(async () => {
+    clearWorkItemResponseCache();
     await fs.rm(tmpDir, { recursive: true, force: true });
 });
+
+function createScopedStore(): FileWorkItemStore {
+    return new FileWorkItemStore({
+        dataDir: tmpDir,
+        scopeResolver: repoId => {
+            if (repoId === REPO_ID || repoId === ORIGIN_ID) {
+                return { storageRepoId: ORIGIN_ID, legacyRepoIds: [REPO_ID] };
+            }
+            return undefined;
+        },
+    });
+}
+
+async function primeOriginTreeCache(): Promise<string> {
+    const key = makeWorkItemTreeResponseCacheKey(ORIGIN_ID, {
+        tracker: 'azure-boards-backed',
+        includeArchived: false,
+        includeDone: false,
+    });
+    await refreshWorkItemResponseCacheEntry(key, ORIGIN_ID, 'tree', async () => ({ stale: true }));
+    expect(getWorkItemResponseCacheEntry(key)).toBeDefined();
+    return key;
+}
 
 describe('WorkItemAzureBoardsPullPoller', () => {
     it('configures per-workspace polling and honors disabled preferences', async () => {
@@ -374,6 +406,46 @@ describe('WorkItemAzureBoardsPullPoller', () => {
             errors: [],
         });
         expect(await store.getWorkItem(imported.root.id, REPO_ID)).toBeUndefined();
+    });
+
+    it('clears origin-scoped response cache when a ws-* poll updates a mirrored tree', async () => {
+        store = createScopedStore();
+        transport.set([
+            makeWorkItem(100, 'Remote Epic', { workItemType: 'Epic' }),
+        ]);
+        await importTree(store, transport);
+        const cacheKey = await primeOriginTreeCache();
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: {
+                sync: {
+                    azureBoards: {
+                        project: PROJECT,
+                        pollingEnabled: true,
+                    },
+                },
+            },
+        });
+        const poller = new WorkItemAzureBoardsPullPoller({
+            dataDir: tmpDir,
+            processStore: processStore(tmpDir),
+            workItemStore: store,
+            provider: makeProvider(),
+            transport,
+            now: () => '2026-01-03T00:00:00.000Z',
+        });
+
+        transport.set([
+            makeWorkItem(100, 'Remote Epic Updated', {
+                revision: 2,
+                workItemType: 'Epic',
+                updatedAt: '2026-01-02T00:00:00.000Z',
+            }),
+        ]);
+
+        const pullResult = await poller.pollWorkspace(REPO_ID);
+
+        expect(pullResult).toMatchObject({ updated: 1, errors: [] });
+        expect(getWorkItemResponseCacheEntry(cacheKey)).toBeUndefined();
     });
 
     it('polls only the requested workspace', async () => {
