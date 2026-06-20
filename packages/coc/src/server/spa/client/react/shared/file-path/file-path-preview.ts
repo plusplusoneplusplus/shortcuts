@@ -346,9 +346,20 @@ function isExternalHref(href: string): boolean {
 function findChatMarkdownAnchor(target: EventTarget | null): HTMLAnchorElement | null {
     if (!(target instanceof HTMLElement)) return null;
     const link = target.closest<HTMLAnchorElement>('a[href]');
-    if (!link || !link.closest('.chat-message.assistant')) return null;
+    if (!link) return null;
+    const chatMessage = link.closest('.chat-message');
+    if (!chatMessage) return null;
     const href = link.getAttribute('href') || '';
     if (!href || isExternalHref(href) || href.startsWith('#')) return null;
+    // Assistant messages route every local anchor through the canvas (markdown →
+    // editable note, code → read-only source viewer). User messages only divert
+    // *markdown* note anchors — including tilde-style CoC note hrefs like
+    // `~/.coc/repos/<wsId>/notes/.../*.md` — so non-markdown local anchors keep
+    // their existing native navigation.
+    if (!chatMessage.classList.contains('assistant')
+        && !isMarkdownPath(parseFilePathRef(toForwardSlashes(href)).path)) {
+        return null;
+    }
     return link;
 }
 

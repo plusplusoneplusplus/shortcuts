@@ -951,6 +951,194 @@ describe('editable-note canvas routing for markdown chat links (AC-01)', () => {
     });
 });
 
+describe('CoC note hrefs open the editable note canvas for user + assistant (screenshot path shape)', () => {
+    const PREVIEW_MODULE = '../../../src/server/spa/client/react/shared/file-path/file-path-preview';
+    const FLAGS_MODULE = '../../../src/server/spa/client/react/featureFlags';
+
+    // The screenshot link points at a CoC note under the workspace clone storage.
+    // `linkifyFilePaths` keeps the absolute path in `data-full-path` and only
+    // shortens the *display* text to the `~/.coc/...` tilde form via
+    // `shortenFilePath`, so the clicked element is a `.file-path-link` span.
+    const NOTE_ABS = '/Users/yihengtao/.coc/repos/ws-hcv3mg/notes/Plans/SourceCanvas/chat-note-links.md';
+    const NOTE_TILDE = '~/.coc/repos/ws-hcv3mg/notes/Plans/SourceCanvas/chat-note-links.md';
+
+    function freshBody(): void {
+        document.body = document.createElement('body');
+    }
+
+    beforeEach(() => {
+        freshBody();
+        vi.resetModules();
+        vi.doUnmock(FLAGS_MODULE);
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ workspaces: [] }),
+        }) as any);
+    });
+
+    afterEach(() => {
+        vi.doUnmock(FLAGS_MODULE);
+        vi.resetModules();
+        vi.restoreAllMocks();
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+        freshBody();
+    });
+
+    function clickLink(selector: string): ReturnType<typeof vi.spyOn> {
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+        const link = document.querySelector(selector) as HTMLElement;
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        return dispatchSpy as any;
+    }
+
+    function eventCalls(dispatchSpy: ReturnType<typeof vi.spyOn>, eventType: string): any[] {
+        return (dispatchSpy.mock.calls as any[]).filter(
+            ([e]) => (e as Event)?.type === eventType
+        );
+    }
+
+    function expectNoteCanvas(dispatchSpy: ReturnType<typeof vi.spyOn>, expectedFilePath: string): void {
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        expect(call[0].detail).toEqual(expect.objectContaining({
+            filePath: expectedFilePath,
+            kind: 'note',
+        }));
+        // Must NOT fall back to the floating markdown-review dialog.
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    }
+
+    it('screenshot shape: USER-message `.file-path-link` note → editable note canvas (no fallback)', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message user" data-ws-id="ws-hcv3mg">
+                <span class="file-path-link" data-full-path="${NOTE_ABS}" title="${NOTE_ABS}">${NOTE_TILDE}</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.file-path-link');
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        expect(call[0].detail).toEqual(expect.objectContaining({
+            filePath: NOTE_ABS,
+            wsId: 'ws-hcv3mg',
+            kind: 'note',
+        }));
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
+    it('screenshot shape: ASSISTANT-message `.file-path-link` note → editable note canvas (parity)', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-hcv3mg">
+                <span class="file-path-link" data-full-path="${NOTE_ABS}" title="${NOTE_ABS}">${NOTE_TILDE}</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.file-path-link');
+
+        expectNoteCanvas(dispatchSpy, NOTE_ABS);
+    });
+
+    it('USER-message markdown `<a href>` note anchor → editable note canvas (consistency with assistant)', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message user" data-ws-id="ws-hcv3mg">
+                <a href="${NOTE_ABS}"><span class="label">open plan note</span></a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.label');
+
+        expectNoteCanvas(dispatchSpy, NOTE_ABS);
+    });
+
+    it('USER-message tilde note href `~/.coc/repos/<wsId>/notes/.../*.md` → note canvas before any fallback', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message user" data-ws-id="ws-hcv3mg">
+                <a href="${NOTE_TILDE}"><span class="label">open plan note</span></a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.label');
+
+        expectNoteCanvas(dispatchSpy, NOTE_TILDE);
+    });
+
+    it('ASSISTANT-message tilde note href anchor → note canvas (parity)', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-hcv3mg">
+                <a href="${NOTE_TILDE}"><span class="label">open plan note</span></a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.label');
+
+        expectNoteCanvas(dispatchSpy, NOTE_TILDE);
+    });
+
+    it('USER-message NON-markdown `<a href>` (code) anchor is NOT diverted (native navigation preserved)', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message user" data-ws-id="ws-hcv3mg">
+                <a href="/repo/src/foo.ts"><span class="label">open source</span></a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.label');
+
+        // Neither the canvas nor the floating dialog is opened — the code anchor
+        // keeps its native navigation in a user message.
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
+    it('USER-message external `<a href>` is NOT diverted to the note canvas (external handling unchanged)', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message user" data-ws-id="ws-hcv3mg">
+                <a href="https://example.com/notes/plan.md"><span class="label">external</span></a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.label');
+
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
+    it('flag OFF: USER-message note anchor falls back to floating markdown review (not native/external)', async () => {
+        vi.doMock(FLAGS_MODULE, () => ({
+            SHOW_WELCOME_TUTORIAL: true,
+            SHOW_FOCUSED_DIFF: true,
+            SHOW_EXCALIDRAW_DIAGRAMS: true,
+            SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS: false,
+            RALPH_MULTI_LOOP: false,
+        }));
+
+        document.body.innerHTML = `
+            <div class="chat-message user" data-ws-id="ws-hcv3mg">
+                <a href="${NOTE_ABS}"><span class="label">open plan note</span></a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.label');
+
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'coc-open-markdown-review',
+                detail: expect.objectContaining({ filePath: NOTE_ABS, wsId: 'ws-hcv3mg' }),
+            })
+        );
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+    });
+});
+
 function mockWorkspaceAndDirectoryPreview(fetchMock: ReturnType<typeof vi.fn>, overrides?: {
     dirName?: string;
     entries?: { name: string; isDirectory: boolean }[];
