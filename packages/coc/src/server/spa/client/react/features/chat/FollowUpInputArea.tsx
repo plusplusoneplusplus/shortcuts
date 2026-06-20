@@ -35,7 +35,7 @@ import {
 } from '../../utils/composerKeyboardShortcuts';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import type { ChatAttachment } from '../../types/attachments';
-import { isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled, getPrewarmDebounceMs, getWarmClientTtlMs } from '../../utils/config';
+import { isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
 import {
     dataTransferHasAnyData,
@@ -271,20 +271,17 @@ export function FollowUpInputArea({
     );
     const canRetrieveConversations = canRetrieveConversationsProp ?? localCanRetrieveConversations;
 
-    // Prewarm the provider client for the next turn while the user is typing a
-    // follow-up (AC-05). Suppressed while a turn is generating or the session is
-    // expired — the server would no-op those anyway. The returned status feeds
-    // the tiny "session warm" indicator next to the send button (AC-03); the
-    // surfaced TTL drives its client-side decay timer. When the TTL is 0
-    // (warming disabled) the status stays `idle`, so the dot never lights up
-    // (AC-04 kill-switch).
+    // Subscribe to the conversation's real-time warm status, pushed from the
+    // backend WarmClientRegistry over the existing SSE channel (AC-02). The
+    // returned status feeds the tiny "session warm" indicator next to the send
+    // button. The subscription stays open across an active turn (so the dot
+    // shows green while a reply is generating) and across completion (so it
+    // catches the active → warm transition on a finished conversation); only the
+    // absence of a process gates it. Providers that never warm (e.g. Claude)
+    // never emit, so the dot simply stays invisible.
     const warmStatus = usePrewarmClient({
-        input: followUpInput,
         workspaceId: activeWorkspaceId,
         processId: activeProcessId,
-        enabled: !inputDisabled && !isActiveGeneration,
-        debounceMs: getPrewarmDebounceMs(),
-        ttlMs: getWarmClientTtlMs(),
     });
 
     // Reset dismiss state whenever a new set of suggestions arrives.
