@@ -240,4 +240,15 @@ describe('ContextWindowIndicator', () => {
         expect(popover.textContent).toContain('Other');
         expect(popover.textContent).toContain('Total');
     });
+
+    it('right-anchors the breakdown popover so it is not clipped on the right edge', () => {
+        // The indicator sits on the right side of the chat header, so the popover
+        // must open leftward (right-0) rather than overflow past the panel boundary
+        // (which clipped the "% of limit" column). Regression test.
+        render(<ContextWindowIndicator tokenLimit={200000} currentTokens={70000} />);
+        fireEvent.mouseEnter(screen.getByTestId('context-window-indicator'));
+        const popover = screen.getByTestId('ctx-breakdown-popover');
+        expect(popover.className).toContain('right-0');
+        expect(popover.className).not.toContain('left-0');
+    });
 });
