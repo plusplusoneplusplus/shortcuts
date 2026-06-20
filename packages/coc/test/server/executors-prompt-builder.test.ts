@@ -65,6 +65,12 @@ vi.mock('../../src/server/llm-tools/get-work-item-tool', () => ({
     createGetWorkItemTool: (...args: any[]) => mockCreateGetWorkItemTool(...args),
 }));
 
+const mockScopedStore = { _isScopedStore: true };
+const mockCreateWorkItemStore = vi.fn(() => mockScopedStore);
+vi.mock('../../src/server/work-items/work-item-store', () => ({
+    createWorkItemStore: (...args: any[]) => mockCreateWorkItemStore(...args),
+}));
+
 import {
     buildForEachGenerationSystemMessage,
     buildModeSystemMessage,
@@ -691,12 +697,17 @@ describe('buildCreateWorkItemAddon', () => {
         expect(result.suffix.endsWith('\n</work_item_tools>')).toBe(true);
     });
 
-    it('passes dataDir, repoId, broadcastFn, and deps to factories', () => {
+    it('passes dataDir, repoId, broadcastFn, and a scoped workItemStore to factories', () => {
         const broadcast = vi.fn();
-        const deps = { processStore: {} as any };
+        const processStore = {} as any;
+        const deps = { processStore };
         buildCreateWorkItemAddon('/data', 'repo-1', broadcast, deps);
-        expect(mockCreateUpdateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast, deps);
-        expect(mockCreateGetWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', deps);
+
+        // The addon builds one scoped store and injects it into both tools.
+        expect(mockCreateWorkItemStore).toHaveBeenCalledWith({ dataDir: '/data', processStore });
+        const scopedDeps = { processStore, workItemStore: mockScopedStore };
+        expect(mockCreateUpdateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast, scopedDeps);
+        expect(mockCreateGetWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', scopedDeps);
     });
 
 });

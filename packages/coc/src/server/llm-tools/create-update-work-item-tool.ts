@@ -19,7 +19,7 @@ import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { resolveConfig, CONFIG_FILE_NAME } from '../../config';
 import { APIError } from '../errors';
-import { FileWorkItemStore } from '../work-items/work-item-store';
+import { createWorkItemStore } from '../work-items/work-item-store';
 import type { WorkItem, WorkItemPriority, WorkItemStatus, WorkItemStore, WorkItemType } from '../work-items/types';
 import { WORK_ITEM_TYPES } from '../work-items/types';
 import { WORK_ITEM_PLAN_TEMPLATE } from '../work-items/plan-template';
@@ -280,7 +280,7 @@ export function createCreateUpdateWorkItemTool(
     broadcastFn?: BroadcastWorkItemFn,
     deps?: CreateUpdateWorkItemToolDeps,
 ) {
-    const store: WorkItemStore = deps?.workItemStore ?? new FileWorkItemStore({ dataDir });
+    const store: WorkItemStore = deps?.workItemStore ?? createWorkItemStore({ dataDir, processStore: deps?.processStore });
     const configPath = path.join(dataDir, CONFIG_FILE_NAME);
     const commandCtx: WorkItemCommandContext = {
         workItemStore: store,

@@ -12,7 +12,8 @@
  */
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
-import { FileWorkItemStore } from '../work-items/work-item-store';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { createWorkItemStore } from '../work-items/work-item-store';
 import type { WorkItem, WorkItemStore } from '../work-items/types';
 
 // ============================================================================
@@ -35,6 +36,8 @@ export interface GetWorkItemArgs {
 export interface GetWorkItemToolDeps {
     /** Workspace-scoped store. Defaults to a `FileWorkItemStore` rooted at `dataDir`. */
     workItemStore?: WorkItemStore;
+    /** When provided alongside `workItemStore` being absent, wires scope resolution. */
+    processStore?: ProcessStore;
 }
 
 export interface GetWorkItemSuccess {
@@ -118,7 +121,7 @@ export function createGetWorkItemTool(
     repoId: string,
     deps?: GetWorkItemToolDeps,
 ) {
-    const store: WorkItemStore = deps?.workItemStore ?? new FileWorkItemStore({ dataDir });
+    const store: WorkItemStore = deps?.workItemStore ?? createWorkItemStore({ dataDir, processStore: deps?.processStore });
 
     const tool = defineTool<GetWorkItemArgs>('get_work_item', {
         description:

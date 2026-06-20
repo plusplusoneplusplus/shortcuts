@@ -41,6 +41,7 @@ import { createCancelLoopTool, createCreateLoopTool, createListLoopsTool, create
 import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
+import { createWorkItemStore } from '../work-items/work-item-store';
 import { tagBlock, tagGuidanceSuffix } from './prompt-tags';
 import type { ChatMode, ChatPayload, ChatProvider, DreamRunPayload, ForEachGenerationContext, MapReduceGenerationContext, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
@@ -574,8 +575,14 @@ export function buildCreateWorkItemAddon(
         return { tools: [], suffix: '' };
     }
 
-    const { tool: getWorkItemTool } = createGetWorkItemTool(dataDir, repoId, deps);
-    const { tool: workItemTool } = createCreateUpdateWorkItemTool(dataDir, repoId, broadcastFn, deps);
+    // Build one correctly-scoped store and inject it into both tools so they
+    // share a single instance and cannot diverge on which directory they use.
+    const workItemStore = deps?.workItemStore
+        ?? createWorkItemStore({ dataDir, processStore: deps?.processStore });
+    const scopedDeps: CreateUpdateWorkItemToolDeps = { ...deps, workItemStore };
+
+    const { tool: getWorkItemTool } = createGetWorkItemTool(dataDir, repoId, scopedDeps);
+    const { tool: workItemTool } = createCreateUpdateWorkItemTool(dataDir, repoId, broadcastFn, scopedDeps);
 
     const suffix = tagGuidanceSuffix(
         'work_item_tools',
