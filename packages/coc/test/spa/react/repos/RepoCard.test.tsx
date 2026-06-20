@@ -2,7 +2,7 @@
  * Tests for RepoCard — 2-line compact layout.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
@@ -161,5 +161,80 @@ describe('inGroup indent', () => {
         renderCard({ inGroup: false });
         const card = document.querySelector('.repo-item');
         expect(card?.className).not.toContain('ml-4');
+    });
+});
+
+// ── Remote-workspace distinction (AC-03) ───────────────────────────────────────
+
+function makeRemoteRepo(opts: {
+    serverLabel?: string;
+    connection?: string;
+    queue?: string;
+    offline?: boolean;
+    name?: string;
+} = {}): RepoData {
+    const { serverLabel = 'devbox', connection = 'online', queue = 'idle', offline = false, name = 'shortcuts' } = opts;
+    return makeRepo({
+        workspace: {
+            id: 'remote-1', name, color: '#0078d4', rootPath: '/remote/shortcuts', isGitRepo: true,
+            baseUrl: 'http://127.0.0.1:4000',
+            remote: { baseUrl: 'http://127.0.0.1:4000', serverId: 'srv-1', serverLabel, offline, connection, queue },
+        } as any,
+        gitInfo: { branch: 'main', dirty: false, isGitRepo: true } as any,
+    });
+}
+
+describe('remote distinction (AC-03)', () => {
+    beforeEach(() => {
+        mockQueueStats.mockReturnValue({ running: 0, queued: 0 });
+    });
+
+    it('renders no remote badge for a local workspace (local layout unchanged)', () => {
+        renderCard();
+        expect(screen.queryByTestId('repo-card-remote-badge')).toBeNull();
+        // Local card keeps its exact 2-row structure (identity + metadata).
+        const card = document.querySelector('.repo-item');
+        expect(Array.from(card?.children || []).length).toBe(2);
+    });
+
+    it('shows a compact server-label badge with a status dot for an online remote workspace', () => {
+        renderCard({ repo: makeRemoteRepo({ serverLabel: 'devbox' }) });
+        const badge = screen.getByTestId('repo-card-remote-badge');
+        expect(badge.getAttribute('data-offline')).toBe('false');
+        expect(badge.getAttribute('data-remote-status')).toBe('idle');
+        expect(badge.textContent).toContain('devbox');
+        expect(badge.getAttribute('title')).toContain('devbox');
+        expect(screen.getByTestId('repo-card-remote-status-dot')).toBeTruthy();
+    });
+
+    it('reflects a running remote queue as a running status', () => {
+        renderCard({ repo: makeRemoteRepo({ connection: 'online', queue: 'running' }) });
+        const badge = screen.getByTestId('repo-card-remote-badge');
+        expect(badge.getAttribute('data-offline')).toBe('false');
+        expect(badge.getAttribute('data-remote-status')).toBe('running');
+    });
+
+    it('marks an offline remote workspace as offline rather than dropping it (AC-01 DoD)', () => {
+        renderCard({ repo: makeRemoteRepo({ connection: 'offline', offline: true }) });
+        const badge = screen.getByTestId('repo-card-remote-badge');
+        expect(badge.getAttribute('data-offline')).toBe('true');
+        expect(badge.getAttribute('data-remote-status')).toBe('offline');
+        expect(badge.getAttribute('title')).toContain('offline');
+        // The workspace still renders — it did not disappear silently.
+        expect(screen.getByText('shortcuts')).toBeTruthy();
+    });
+
+    it('keeps the badge inside row 1 so the card structure is still 2 rows', () => {
+        renderCard({ repo: makeRemoteRepo() });
+        const card = document.querySelector('.repo-item');
+        expect(Array.from(card?.children || []).length).toBe(2);
+    });
+
+    it('truncates a long server label so it cannot overflow the narrow dropdown', () => {
+        renderCard({ repo: makeRemoteRepo({ serverLabel: 'a-very-long-remote-server-label-that-would-overflow' }) });
+        const badge = screen.getByTestId('repo-card-remote-badge');
+        expect(badge.className).toContain('max-w-[96px]');
+        const labelSpan = badge.querySelector('span.truncate');
+        expect(labelSpan?.textContent).toContain('a-very-long-remote-server-label');
     });
 });

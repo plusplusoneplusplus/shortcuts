@@ -4,9 +4,11 @@
  */
 
 import type { RepoData } from './repoGrouping';
-import { truncatePath } from './repoGrouping';
+import { truncatePath, isRemoteRepo } from './repoGrouping';
+import { blendRemoteCloneStatus, cloneStatusColor } from '../features/remote-shell/shellModel';
 import { Card, cn } from '../ui';
 import { useRepoQueueStats } from '../queue/hooks/useRepoQueueStats';
+import type { RemoteWorkspaceMarker } from './remoteWorkspaceAggregation';
 
 interface RepoCardProps {
     repo: RepoData;
@@ -25,6 +27,21 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
     const truncPath = truncatePath(ws.rootPath || '', 24);
     const taskCount = repo.taskCount || 0;
     const queueStats = useRepoQueueStats(ws.id);
+
+    // Remote-workspace distinction (AC-03): aggregated remote checkouts carry a
+    // `remote` marker (server label + connection/queue, set by AC-01). Surface a
+    // compact, truncated server-label badge with an inline status dot whose color
+    // is the connection-first blended status (shellModel) — so a remote row is
+    // scannable and an offline server reads as offline rather than disappearing
+    // silently (AC-01 DoD). Local cards take none of this branch and are unchanged.
+    const isRemote = isRemoteRepo(repo);
+    const remote: RemoteWorkspaceMarker | null = isRemote
+        ? (ws as { remote: RemoteWorkspaceMarker }).remote
+        : null;
+    const remoteStatus = remote ? blendRemoteCloneStatus(remote) : null;
+    const isOffline = remoteStatus === 'offline';
+    const serverLabel = remote?.serverLabel ? String(remote.serverLabel) : null;
+    const remoteDotColor = cloneStatusColor(remoteStatus ?? undefined, color);
 
     return (
         <Card
@@ -59,6 +76,30 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
                 )}
                 {taskCount > 0 && (
                     <span className="text-[10px] text-[#848484] flex-shrink-0">· {taskCount}</span>
+                )}
+                {isRemote && serverLabel && (
+                    <span
+                        data-testid="repo-card-remote-badge"
+                        data-offline={isOffline ? 'true' : 'false'}
+                        data-remote-status={remoteStatus ?? 'idle'}
+                        title={isOffline
+                            ? `Remote · ${serverLabel} · offline (server unreachable)`
+                            : `Remote · ${serverLabel}`}
+                        className={cn(
+                            'ml-auto inline-flex items-center gap-1 max-w-[96px] min-w-0 text-[9px] font-bold uppercase tracking-[0.04em] px-1 py-px rounded',
+                            isOffline
+                                ? 'bg-[#8c959f]/15 text-[#6e7781] dark:text-[#8c959f]'
+                                : 'bg-[#8250df]/12 text-[#8250df] dark:bg-[#a371f7]/15 dark:text-[#a371f7]'
+                        )}
+                    >
+                        <span
+                            data-testid="repo-card-remote-status-dot"
+                            className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+                            style={{ background: remoteDotColor }}
+                            aria-hidden
+                        />
+                        <span className="truncate">{serverLabel}</span>
+                    </span>
                 )}
             </div>
 
