@@ -20,7 +20,12 @@
  * one place keeps the floating dialog and the canvas editor in sync.
  */
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
-import { isAbsolutePath, resolveRelativePath } from '../../utils/path-resolution';
+import {
+    deriveHomeDirFromWorkspaces,
+    expandTildePath,
+    isAbsolutePath,
+    resolveRelativePath,
+} from '../../utils/path-resolution';
 
 /* @internal – exported for testing only */
 export interface WorkspaceLike {
@@ -115,6 +120,15 @@ export function resolveMarkdownReviewTarget(
 
     const wsIdHint = typeof input.wsId === 'string' ? input.wsId : '';
     const eventTaskRootPath = typeof input.taskRootPath === 'string' ? input.taskRootPath : undefined;
+
+    // CoC note hrefs (e.g. `~/.coc/repos/<wsId>/notes/...`) arrive tilde-prefixed
+    // from assistant markdown links. Expand `~` to an absolute path — using the
+    // home dir of the hinted (or any) workspace so remote-clone homes resolve
+    // correctly — before the absolute/relative classification below, which would
+    // otherwise misread `~/...` as a task-relative or unresolvable path.
+    if (filePath.startsWith('~')) {
+        filePath = expandTildePath(filePath, deriveHomeDirFromWorkspaces(wsIdHint, workspaces || []));
+    }
 
     // Fast path: wsId hint provided — use that workspace directly.
     if (wsIdHint) {

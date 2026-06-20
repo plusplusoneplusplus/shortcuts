@@ -142,4 +142,46 @@ describe('resolveSourceCanvasTarget', () => {
         );
         expect(r).toEqual({ wsId: 'ws-win', path: 'C:/work/proj/src/foo.ts' });
     });
+
+    // ── Tilde-prefixed CoC note hrefs ────────────────────────────────────────
+    const HOME_WS = [
+        { id: 'ws-hcv3mg', rootPath: '/Users/yihengtao/.coc/repos/ws-hcv3mg' },
+    ];
+
+    it('expands `~/.coc/repos/<wsId>/...` through the hinted workspace home', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: '~/.coc/repos/ws-hcv3mg/notes/Plans/foo.md', wsId: 'ws-hcv3mg' },
+            HOME_WS,
+        );
+        expect(r).toEqual({
+            wsId: 'ws-hcv3mg',
+            path: '/Users/yihengtao/.coc/repos/ws-hcv3mg/notes/Plans/foo.md',
+        });
+    });
+
+    it('expands a tilde href without a wsId hint via prefix matching', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: '~/.coc/repos/ws-hcv3mg/src/foo.ts' },
+            HOME_WS,
+        );
+        expect(r).toEqual({
+            wsId: 'ws-hcv3mg',
+            path: '/Users/yihengtao/.coc/repos/ws-hcv3mg/src/foo.ts',
+        });
+    });
+
+    it('derives home from the hinted workspace in multi-repo (remote-clone home differs)', () => {
+        const multi = [
+            { id: 'ws-local', rootPath: '/Users/local/.coc/repos/ws-local' },
+            { id: 'ws-remote', rootPath: '/home/remote/.coc/repos/ws-remote' },
+        ];
+        const r = resolveSourceCanvasTarget(
+            { fullPath: '~/.coc/repos/ws-remote/notes/r.md', wsId: 'ws-remote' },
+            multi,
+        );
+        expect(r).toEqual({
+            wsId: 'ws-remote',
+            path: '/home/remote/.coc/repos/ws-remote/notes/r.md',
+        });
+    });
 });

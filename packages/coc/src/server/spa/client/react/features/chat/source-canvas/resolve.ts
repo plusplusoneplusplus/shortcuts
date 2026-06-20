@@ -13,7 +13,12 @@
  * path we attempted — so the canvas can still open with a clear
  * "couldn't load <path>" message when nothing resolves.
  */
-import { isAbsolutePath, resolveRelativePath } from '../../../utils/path-resolution';
+import {
+    deriveHomeDirFromWorkspaces,
+    expandTildePath,
+    isAbsolutePath,
+    resolveRelativePath,
+} from '../../../utils/path-resolution';
 import type { SourceCanvasFileRef } from './types';
 
 export interface SourceCanvasWorkspace {
@@ -93,8 +98,15 @@ export function resolveSourceCanvasTarget(
     fileRef: SourceCanvasFileRef,
     workspaces: ReadonlyArray<SourceCanvasWorkspace>,
 ): SourceCanvasTarget | SourceCanvasResolveError {
-    // 1. Resolve relative refs against the directory of the source file.
+    // 0. Expand `~`-prefixed CoC note hrefs (e.g. `~/.coc/repos/<wsId>/...`) to
+    // an absolute path through the hinted workspace's home, so they resolve
+    // instead of being treated as workspace-relative.
     let path = fileRef.fullPath;
+    if (path.startsWith('~')) {
+        path = expandTildePath(path, deriveHomeDirFromWorkspaces(fileRef.wsId, workspaces));
+    }
+
+    // 1. Resolve relative refs against the directory of the source file.
     if (!isAbsolutePath(path)) {
         path = normalize(path);
     }
