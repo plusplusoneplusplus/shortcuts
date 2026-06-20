@@ -55,6 +55,7 @@ export {
     buildGitHubWorkItemLabels,
     buildGitHubWorkItemSyncMetadata,
     formatGitHubWorkItemSyncMetadataBlock,
+    githubIssueContentRevision,
     hasExactlyOneGitHubWorkItemSyncMetadataBlock,
     parseGitHubWorkItemIssue,
     parseGitHubWorkItemSyncMetadataBlocks,

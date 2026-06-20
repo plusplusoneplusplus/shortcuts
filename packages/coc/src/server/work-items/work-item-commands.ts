@@ -37,6 +37,7 @@ import {
     getEffectiveType,
 } from './types';
 import { resolveGitHubWorkItemSyncRepo, type GitHubWorkItemSyncRepo } from './work-item-sync-github-repo';
+import { githubIssueContentRevision } from './work-item-sync-github-issue';
 import {
     GhCliGitHubWorkItemIssueTransport,
     createGitHubIssueForLocalChild,
@@ -387,9 +388,42 @@ function githubOperationFailedError(action: string, error: unknown, code: string
     return githubProviderError(`GitHub ${action} failed: ${detail}`, code);
 }
 
+/**
+ * True when the remote GitHub issue changed since the local mirror last synced.
+ *
+ * Prefers a real content-revision check: a hash of the remote's CoC-owned
+ * content (title, metadata-stripped body, state, labels) is recorded at every
+ * pull/push as `lastSyncedRemoteRevision`. Comparing the current remote revision
+ * against that base detects a genuine edit to CoC-owned content while ignoring a
+ * benign `updated_at` bump (a reaction, comment, cross-reference, lock, or
+ * unrelated label) that the old timestamp-string-equality check flagged as a
+ * false conflict. Legacy mirrors without a recorded revision fall back to a
+ * parsed-instant `updatedAt` comparison so a timestamp reformat alone is not a
+ * conflict either.
+ */
 function githubMirrorIsStale(local: WorkItem, remote: GitHubWorkItemIssue): boolean {
-    const localUpdatedAt = local.githubMirror?.updatedAt;
-    return Boolean(localUpdatedAt && remote.updatedAt && localUpdatedAt !== remote.updatedAt);
+    const baseRevision = local.githubMirror?.lastSyncedRemoteRevision;
+    if (baseRevision !== undefined) {
+        return githubIssueContentRevision(remote) !== baseRevision;
+    }
+    return githubUpdatedAtChanged(local.githubMirror?.updatedAt, remote.updatedAt);
+}
+
+/**
+ * Compare two GitHub `updated_at` timestamps as instants rather than raw
+ * strings, so an ISO reformat (millisecond precision, timezone offset form)
+ * does not register as a change. Falls back to string inequality when either
+ * value is non-parseable, and treats a missing value on either side as "no
+ * detectable change" (matching the prior short-circuit behavior).
+ */
+function githubUpdatedAtChanged(local: string | undefined, remote: string | undefined): boolean {
+    if (!local || !remote) return false;
+    const localTime = Date.parse(local);
+    const remoteTime = Date.parse(remote);
+    if (Number.isNaN(localTime) || Number.isNaN(remoteTime)) {
+        return local !== remote;
+    }
+    return localTime !== remoteTime;
 }
 
 function azureBoardsMirrorIsStale(local: WorkItem, remote: AzureBoardsWorkItem): boolean {

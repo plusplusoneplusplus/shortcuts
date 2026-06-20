@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import {
     getEffectiveType,
     isKnownWorkItemStatus,
@@ -260,6 +261,37 @@ export function stripGitHubWorkItemSyncMetadataBlocks(body: string | null | unde
         .replace(metadataBlockPattern(), '')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
+}
+
+/**
+ * Stable content revision for a GitHub issue's CoC-owned content.
+ *
+ * Hashes only the fields CoC reads from the remote — title, the human-visible
+ * body (the hidden `coc-work-item-sync` metadata block is stripped so its
+ * per-push `lastSyncedAt` churn does not move the revision), open/closed state,
+ * and the deduped, case-insensitively sorted label set. The push gate compares
+ * this against the revision recorded at the last sync (`lastSyncedRemoteRevision`)
+ * so a conflict reflects a real change to CoC-owned content rather than any
+ * GitHub-side touch — a reaction, a comment, a cross-reference, a lock, or an
+ * unrelated label — that merely bumps `updated_at`. This is the "real revision"
+ * GitHub does not otherwise expose (issues have no monotonic revision number).
+ */
+export function githubIssueContentRevision(
+    issue: Pick<GitHubWorkItemIssueSnapshot, 'title' | 'body' | 'state' | 'labels'>,
+): string {
+    const labels: string[] = [];
+    const seenLabels = new Set<string>();
+    for (const label of issue.labels ?? []) {
+        addUnique(labels, seenLabels, labelName(label));
+    }
+    labels.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()) || a.localeCompare(b));
+    const payload = JSON.stringify({
+        title: issue.title ?? '',
+        body: stripGitHubWorkItemSyncMetadataBlocks(issue.body),
+        state: issue.state ?? '',
+        labels,
+    });
+    return crypto.createHash('sha256').update(payload).digest('hex');
 }
 
 export function formatGitHubWorkItemSyncMetadataBlock(metadata: GitHubWorkItemSyncMetadata): string {

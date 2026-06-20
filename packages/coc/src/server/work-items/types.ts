@@ -136,6 +136,15 @@ export interface WorkItemGitHubMirrorMetadata {
      * base so a locally-dirty/unpushed edit survives instead of being clobbered.
      */
     lastSyncedFieldHashes?: Record<string, string>;
+    /**
+     * Content revision of the remote GitHub issue (a hash of its CoC-owned
+     * content — title, metadata-stripped body, state, labels) recorded at the
+     * last successful pull/push. The push gate compares this against the current
+     * remote revision so a "changed remotely" conflict reflects a real edit to
+     * CoC-owned content, not a benign `updated_at` bump (a reaction, comment,
+     * cross-reference, or unrelated label) or a timestamp reformat.
+     */
+    lastSyncedRemoteRevision?: string;
 }
 
 /** Azure Boards-backed Epic root metadata. Organization/project identity is workspace-scoped config. */

@@ -6,6 +6,7 @@ import {
     buildGitHubWorkItemIssueUpdate,
     buildGitHubWorkItemLabels,
     buildGitHubWorkItemSyncMetadata,
+    githubIssueContentRevision,
     parseGitHubWorkItemIssue,
     upsertGitHubWorkItemSyncMetadataBlock,
     type GitHubIssueLabel,
@@ -420,6 +421,7 @@ function githubMirrorForIssue(issue: GitHubWorkItemIssue, pulledAt: string): Non
         state: issue.state,
         updatedAt: issue.updatedAt,
         lastPulledAt: pulledAt,
+        lastSyncedRemoteRevision: githubIssueContentRevision(issue),
     };
 }
 
