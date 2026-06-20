@@ -53,7 +53,7 @@ describe('useRemoteServerHealth', () => {
     it('returns an empty array when given no servers', () => {
         const { result, unmount } = renderHook(() => useRemoteServerHealth(EMPTY_SERVERS));
         try {
-            expect(result.current).toEqual([]);
+            expect(result.current.healthStates).toEqual([]);
         } finally {
             unmount();
         }
@@ -64,9 +64,9 @@ describe('useRemoteServerHealth', () => {
         fetchMock.mockReturnValue(new Promise<Response>(r => { resolveFetch = r; }));
         const { result, unmount } = renderHook(() => useRemoteServerHealth(ONE_SERVER));
         try {
-            expect(result.current).toHaveLength(1);
-            expect(result.current[0].status).toBe('checking');
-            expect(result.current[0].server).toEqual(SERVER_A);
+            expect(result.current.healthStates).toHaveLength(1);
+            expect(result.current.healthStates[0].status).toBe('checking');
+            expect(result.current.healthStates[0].server).toEqual(SERVER_A);
         } finally {
             unmount();
             resolveFetch(jsonResponse({}, 500));
@@ -89,8 +89,8 @@ describe('useRemoteServerHealth', () => {
 
         const { result, unmount } = renderHook(() => useRemoteServerHealth(ONE_SERVER));
         try {
-            await waitFor(() => expect(result.current[0].status).toBe('online'));
-            const state = result.current[0];
+            await waitFor(() => expect(result.current.healthStates[0].status).toBe('online'));
+            const state = result.current.healthStates[0];
             expect(fetchMock).toHaveBeenCalledWith('/api/servers/a/health', expect.any(Object));
             expect(state.uptime).toBe(1234);
             expect(state.processCount).toBe(7);
@@ -108,9 +108,9 @@ describe('useRemoteServerHealth', () => {
         fetchMock.mockRejectedValue(new Error('network down'));
         const { result, unmount } = renderHook(() => useRemoteServerHealth(ONE_SERVER));
         try {
-            await waitFor(() => expect(result.current[0].status).toBe('offline'));
-            expect(result.current[0].error).toBe('CoC API request failed before receiving a response');
-            expect(result.current[0].lastChecked).toBeTypeOf('number');
+            await waitFor(() => expect(result.current.healthStates[0].status).toBe('offline'));
+            expect(result.current.healthStates[0].error).toBe('CoC API request failed before receiving a response');
+            expect(result.current.healthStates[0].lastChecked).toBeTypeOf('number');
         } finally {
             unmount();
         }
@@ -120,8 +120,8 @@ describe('useRemoteServerHealth', () => {
         fetchMock.mockResolvedValue(jsonResponse({ error: 'bad' }, 503));
         const { result, unmount } = renderHook(() => useRemoteServerHealth(ONE_SERVER));
         try {
-            await waitFor(() => expect(result.current[0].status).toBe('offline'));
-            expect(result.current[0].error).toBe('bad');
+            await waitFor(() => expect(result.current.healthStates[0].status).toBe('offline'));
+            expect(result.current.healthStates[0].error).toBe('bad');
         } finally {
             unmount();
         }
@@ -153,15 +153,15 @@ describe('useRemoteServerHealth', () => {
         const { result, unmount } = renderHook(() => useRemoteServerHealth(TWO_SERVERS));
         try {
             await waitFor(() => {
-                expect(result.current).toHaveLength(2);
-                const a = result.current.find(s => s.server.id === 'a');
-                const b = result.current.find(s => s.server.id === 'b');
+                expect(result.current.healthStates).toHaveLength(2);
+                const a = result.current.healthStates.find(s => s.server.id === 'a');
+                const b = result.current.healthStates.find(s => s.server.id === 'b');
                 expect(a?.status).toBe('online');
                 expect(b?.status).toBe('offline');
             });
-            expect(result.current.find(s => s.server.id === 'a')?.version).toBe('v-a');
-            expect(result.current.find(s => s.server.id === 'b')?.error).toBe('B is down');
-            expect(result.current.find(s => s.server.id === 'b')?.localPort).toBe(4000);
+            expect(result.current.healthStates.find(s => s.server.id === 'a')?.version).toBe('v-a');
+            expect(result.current.healthStates.find(s => s.server.id === 'b')?.error).toBe('B is down');
+            expect(result.current.healthStates.find(s => s.server.id === 'b')?.localPort).toBe(4000);
         } finally {
             unmount();
         }
@@ -175,6 +175,45 @@ describe('useRemoteServerHealth', () => {
         unmount();
         expect(clearSpy).toHaveBeenCalled();
         resolveFetch(jsonResponse({}, 500));
+    });
+
+    it('refetch() triggers an immediate re-poll without waiting for the interval', async () => {
+        vi.useFakeTimers();
+        fetchMock.mockResolvedValue(jsonResponse({
+            serverId: 'a',
+            kind: 'url',
+            status: 'online',
+            lastChecked: 1,
+        }));
+
+        const { result, unmount } = renderHook(() => useRemoteServerHealth(ONE_SERVER));
+        try {
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(0);
+            });
+            expect(result.current.healthStates[0].status).toBe('online');
+            const callsAfterFirstPoll = fetchMock.mock.calls.length;
+
+            // No interval advance — refetch alone should fire another poll.
+            await act(async () => {
+                result.current.refetch();
+                await vi.advanceTimersByTimeAsync(0);
+            });
+            expect(fetchMock.mock.calls.length).toBeGreaterThan(callsAfterFirstPoll);
+        } finally {
+            unmount();
+            vi.useRealTimers();
+        }
+    });
+
+    it('refetch() is a no-op when there are no servers', () => {
+        const { result, unmount } = renderHook(() => useRemoteServerHealth(EMPTY_SERVERS));
+        try {
+            expect(() => result.current.refetch()).not.toThrow();
+            expect(fetchMock).not.toHaveBeenCalled();
+        } finally {
+            unmount();
+        }
     });
 
     it('re-polls after the 30s interval', async () => {
@@ -191,7 +230,7 @@ describe('useRemoteServerHealth', () => {
             await act(async () => {
                 await vi.advanceTimersByTimeAsync(0);
             });
-            expect(result.current[0].status).toBe('online');
+            expect(result.current.healthStates[0].status).toBe('online');
             const callsAfterFirstPoll = fetchMock.mock.calls.length;
 
             await act(async () => {

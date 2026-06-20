@@ -328,6 +328,7 @@ describe('ServerCard — restart menu item', () => {
 
     it('shows "Restarting…" and disables the item while restarting', () => {
         render(<ServerCard health={REMOTE_BASE} isLocal={false} onRestart={vi.fn()} restarting />);
+        expect(screen.getByTestId('server-card-restarting').textContent).toContain('Restarting');
         fireEvent.click(screen.getByTestId('server-card-menu-btn'));
         const btn = screen.getByTestId('server-card-menu-restart') as HTMLButtonElement;
         expect(btn.disabled).toBe(true);

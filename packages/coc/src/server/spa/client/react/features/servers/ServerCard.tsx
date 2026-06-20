@@ -197,6 +197,11 @@ export function ServerCard({ health, isLocal, onRemove, onEdit, onReconnect, rec
             </div>
 
             <div className="px-4 py-3 flex flex-col gap-1.5 text-xs text-[#848484] dark:text-[#999] flex-1">
+                {restarting && (
+                    <div className="text-[#e5a92b] font-medium" data-testid="server-card-restarting">
+                        ↻ Restarting…
+                    </div>
+                )}
                 {health.serverName && (
                     <div className="text-[#1e1e1e] dark:text-[#cccccc] font-medium text-xs truncate" data-testid="server-card-hostname">
                         CoC @ {health.serverName}

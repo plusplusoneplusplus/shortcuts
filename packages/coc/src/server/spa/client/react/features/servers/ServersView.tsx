@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     addRemoteServer,
     listRemoteServers,
@@ -30,6 +30,10 @@ interface UnifiedHealth extends ServerCardHealth {
 
 const LOCAL_POLL_INTERVAL_MS = 30_000;
 const FETCH_TIMEOUT_MS = 5_000;
+// Upper bound on the optimistic "Restarting…" indicator. Normally it clears once
+// polling observes the server go offline and come back online; this backstop
+// guarantees it never sticks if the restart blip is missed between poll cycles.
+const RESTART_OPTIMISTIC_MAX_MS = 90_000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -347,6 +351,9 @@ function ServerRow({
                     )}
                 </div>
                 <div className="flex items-center gap-1.5 text-[11.5px] text-[#848484] dark:text-[#9d9d9d] font-mono min-w-0 overflow-hidden">
+                    {restarting && (
+                        <span className="text-[#e5a92b] flex-shrink-0" data-testid="server-row-restarting">restarting…</span>
+                    )}
                     {health.serverName && (
                         <span className="text-[#424242] dark:text-[#cccccc] truncate shrink">{health.serverName}</span>
                     )}
@@ -650,6 +657,14 @@ export function ServersView() {
     const [restartConfirmId, setRestartConfirmId] = useState<string | undefined>();
     const [restartPending, setRestartPending] = useState(false);
     const [restartError, setRestartError] = useState<string | undefined>();
+    // Servers showing the optimistic "Restarting…" indicator. Outlives the in-flight
+    // request: set on confirm, cleared once polling settles the offline→online cycle
+    // (or by the RESTART_OPTIMISTIC_MAX_MS backstop).
+    const [restartingIds, setRestartingIds] = useState<Set<string>>(() => new Set());
+    // Per-id record of whether polling has observed the restart blip (offline/checking)
+    // since the restart began, so we only clear once it is genuinely back online.
+    const sawOfflineRef = useRef<Set<string>>(new Set());
+    const restartTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
     const [loadError, setLoadError] = useState<string | undefined>();
     const [view, setView] = useState<ViewMode>('split');
     const [filter, setFilter] = useState<FilterMode>('all');
@@ -664,7 +679,7 @@ export function ServersView() {
         return () => { cancelled = true; };
     }, []);
 
-    const remoteHealthStates = useRemoteServerHealth(servers);
+    const { healthStates: remoteHealthStates, refetch: refetchHealth } = useRemoteServerHealth(servers);
     const editServer = editServerId ? servers.find(s => s.id === editServerId) : undefined;
 
     const [localHealth, setLocalHealth] = useState<ServerCardHealth>(() => ({
@@ -792,6 +807,30 @@ export function ServersView() {
         setRestartError(undefined);
     };
 
+    const clearRestarting = useCallback((id: string) => {
+        sawOfflineRef.current.delete(id);
+        const timer = restartTimersRef.current.get(id);
+        if (timer) { clearTimeout(timer); restartTimersRef.current.delete(id); }
+        setRestartingIds(prev => {
+            if (!prev.has(id)) { return prev; }
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+        });
+    }, []);
+
+    const beginRestarting = useCallback((id: string) => {
+        sawOfflineRef.current.delete(id);
+        const existing = restartTimersRef.current.get(id);
+        if (existing) { clearTimeout(existing); }
+        restartTimersRef.current.set(id, setTimeout(() => clearRestarting(id), RESTART_OPTIMISTIC_MAX_MS));
+        setRestartingIds(prev => {
+            const next = new Set(prev);
+            next.add(id);
+            return next;
+        });
+    }, [clearRestarting]);
+
     const confirmRestart = async () => {
         const id = restartConfirmId;
         if (!id) { return; }
@@ -800,12 +839,43 @@ export function ServersView() {
         try {
             await restartServer(id);
             setRestartConfirmId(undefined);
+            // Optimistic transient that outlives the request, plus an immediate
+            // re-poll so the offline→online cycle surfaces without the 30s wait.
+            beginRestarting(id);
+            refetchHealth();
         } catch (e) {
+            // Restart never fired: clear any transient and surface the error inline.
+            clearRestarting(id);
             setRestartError(e instanceof Error ? e.message : 'Restart request failed');
         } finally {
             setRestartPending(false);
         }
     };
+
+    // Clear the optimistic "Restarting…" indicator once polling settles: a server
+    // must be observed offline/checking (the restart blip) and then back online.
+    useEffect(() => {
+        if (restartingIds.size === 0) { return; }
+        for (const h of remoteHealthStates) {
+            if (!restartingIds.has(h.server.id)) { continue; }
+            if (h.status === 'offline' || h.status === 'checking') {
+                sawOfflineRef.current.add(h.server.id);
+            } else if (h.status === 'online' && sawOfflineRef.current.has(h.server.id)) {
+                clearRestarting(h.server.id);
+            }
+        }
+    }, [remoteHealthStates, restartingIds, clearRestarting]);
+
+    // Drop pending restart timers on unmount.
+    useEffect(() => {
+        const timers = restartTimersRef.current;
+        return () => {
+            for (const timer of timers.values()) { clearTimeout(timer); }
+            timers.clear();
+        };
+    }, []);
+
+    const isRestarting = (id: string) => restartingIds.has(id) || (restartPending && restartConfirmId === id);
 
     const handleEdit = async (fields: RemoteServerInput) => {
         if (!editServer) { throw new Error('Remote server is no longer available'); }
@@ -836,7 +906,7 @@ export function ServersView() {
         onRemove: !h.isLocal ? () => { void handleRemove(h.server.id); } : undefined,
         onRestart: !h.isLocal ? () => requestRestart(h.server.id) : undefined,
         reconnecting: reconnectingId === h.server.id,
-        restarting: restartPending && restartConfirmId === h.server.id,
+        restarting: isRestarting(h.server.id),
     });
 
     return (
@@ -886,7 +956,7 @@ export function ServersView() {
                                 onReconnect={h.isLocal ? undefined : handleReconnect}
                                 reconnecting={reconnectingId === h.server.id}
                                 onRestart={h.isLocal ? undefined : requestRestart}
-                                restarting={restartPending && restartConfirmId === h.server.id}
+                                restarting={isRestarting(h.server.id)}
                             />
                         ))}
                     </div>
@@ -919,7 +989,7 @@ export function ServersView() {
                                     onRemove={!selectedHealth.isLocal ? () => { void handleRemove(selectedHealth.server.id); } : undefined}
                                     onRestart={!selectedHealth.isLocal ? () => requestRestart(selectedHealth.server.id) : undefined}
                                     reconnecting={reconnectingId === selectedHealth.server.id}
-                                    restarting={restartPending && restartConfirmId === selectedHealth.server.id}
+                                    restarting={isRestarting(selectedHealth.server.id)}
                                 />
                             ) : (
                                 <div className="h-full flex items-center justify-center text-xs text-[#999] dark:text-[#6e6e6e]">
