@@ -475,4 +475,68 @@ describe('WorkItemGitHubPullPoller', () => {
         expect(pullResult.truncated).toBe(false);
         expect(logs).toEqual([]);
     });
+
+    it('preserves an unpushed local edit on poll, surfaces it as a warning, and logs it', async () => {
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [100, makeIssue(100, 'Remote Epic', { labels: ['coc:type:epic'], body: 'Remote epic' })],
+        ]);
+        const tree = await importTree(store, issues);
+        const rootId = tree.root.id;
+
+        // The user edits the title locally but has not pushed it back to GitHub.
+        await store.updateWorkItem(rootId, { title: 'Local unpushed title' });
+        // The remote title also moves, so the next poll is a genuine conflict.
+        issues.set(100, makeIssue(100, 'Remote moved title', {
+            labels: ['coc:type:epic'],
+            body: 'Remote epic',
+            updatedAt: '2026-01-02T00:00:00.000Z',
+        }));
+
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: { sync: { github: { owner: OWNER, repo: REPO, pollingEnabled: true, pollIntervalMinutes: 1 } } },
+        });
+
+        const scheduled: Array<{ handler: () => void | Promise<void> }> = [];
+        const timerApi: WorkItemGitHubPullPollerTimerApi = {
+            setInterval(handler) {
+                scheduled.push({ handler });
+                return scheduled.length;
+            },
+            clearInterval() {
+                // no-op
+            },
+        };
+        const logs: string[] = [];
+        const poller = new WorkItemGitHubPullPoller({
+            dataDir: tmpDir,
+            processStore: processStore(tmpDir),
+            workItemStore: store,
+            transport: makeTransport(issues),
+            now: () => '2026-01-03T00:00:00.000Z',
+            timerApi,
+            logError: message => logs.push(message),
+        });
+
+        // Structured warning is surfaced from the pull result.
+        const pullResult = await poller.pollWorkspace(REPO_ID);
+        expect(pullResult.warnings).toHaveLength(1);
+        expect(pullResult.warnings[0]).toMatchObject({
+            code: 'local-edits-preserved',
+            workItemId: rootId,
+            issueNumber: 100,
+            fields: ['title'],
+        });
+
+        // The scheduled (timer-driven) poll logs the conflict so it is observable.
+        await poller.configureWorkspace(REPO_ID);
+        expect(scheduled).toHaveLength(1);
+        await scheduled[0].handler();
+        expect(logs.some(message =>
+            message.includes('#100') && message.toLowerCase().includes('unpushed'),
+        )).toBe(true);
+
+        // The unpushed local edit survives both polls.
+        const updated = await store.getWorkItem(rootId, REPO_ID);
+        expect(updated?.title).toBe('Local unpushed title');
+    });
 });

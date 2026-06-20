@@ -130,6 +130,12 @@ export interface WorkItemGitHubMirrorMetadata {
     updatedAt?: string;
     /** Last successful GitHub→local pull timestamp for this item. */
     lastPulledAt?: string;
+    /**
+     * Per-field hashes of GitHub-owned local fields (title, description, status,
+     * tags) after the last successful pull. The next pull uses these as the merge
+     * base so a locally-dirty/unpushed edit survives instead of being clobbered.
+     */
+    lastSyncedFieldHashes?: Record<string, string>;
 }
 
 /** Azure Boards-backed Epic root metadata. Organization/project identity is workspace-scoped config. */

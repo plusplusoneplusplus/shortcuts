@@ -90,6 +90,7 @@ export {
     type CreateGitHubIssueForLocalChildResult,
     type CreateGitHubIssueForLocalEpicRootOptions,
     type CreateGitHubWorkItemSyncProviderOptions,
+    type GitHubSyncWarning,
     type GitHubWorkItemIssue,
     type GitHubWorkItemIssueListFilters,
     type GitHubWorkItemIssueTransport,

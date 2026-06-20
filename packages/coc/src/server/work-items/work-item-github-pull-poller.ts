@@ -9,6 +9,7 @@ import {
     deleteGitHubEpicMirrorTree,
     importGitHubEpicTreeAsWorkItems,
     type AvailableGitHubWorkItemSyncRepo,
+    type GitHubSyncWarning,
     type GitHubWorkItemIssue,
     type GitHubWorkItemIssueTransport,
     type ImportGitHubEpicTreeResult,
@@ -51,6 +52,11 @@ export interface WorkItemGitHubPullWorkspaceResult {
     deleted: number;
     deletedItemIds: string[];
     errors: WorkItemGitHubPullPollError[];
+    /**
+     * Conflicts where a locally-dirty/unpushed field was preserved over a
+     * competing remote change. Surfaced so the divergence is observable in logs.
+     */
+    warnings: GitHubSyncWarning[];
     /** Number of remote candidate issues fetched for this poll (after the cap). */
     candidatesConsidered: number;
     /**
@@ -116,6 +122,7 @@ function blankResult(workspaceId: string): WorkItemGitHubPullWorkspaceResult {
         deleted: 0,
         deletedItemIds: [],
         errors: [],
+        warnings: [],
         candidatesConsidered: 0,
         truncated: false,
     };
@@ -225,6 +232,7 @@ export class WorkItemGitHubPullPoller {
                 result.updated += syncResult.updated;
                 result.deleted += syncResult.deleted;
                 result.deletedItemIds.push(...syncResult.deletedItemIds);
+                result.warnings.push(...syncResult.warnings);
             } catch (error) {
                 result.errors.push({
                     workItemId: root.id,
@@ -245,6 +253,9 @@ export class WorkItemGitHubPullPoller {
     private async pollWorkspaceSafely(workspaceId: string): Promise<void> {
         try {
             const result = await this.pollWorkspace(workspaceId);
+            for (const warning of result.warnings) {
+                this.logError(`[work-items/github-poll] ${workspaceId}: ${warning.message}`);
+            }
             for (const error of result.errors) {
                 this.logError(`[work-items/github-poll] ${workspaceId}: ${error.message}`);
             }
@@ -307,6 +318,7 @@ export class WorkItemGitHubPullPoller {
                 items: [],
                 created: 0,
                 updated: 0,
+                warnings: [],
                 ...deleteResult,
             };
         }

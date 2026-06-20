@@ -533,7 +533,7 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         expect(res.body.syncLinks).toBeUndefined();
     });
 
-    it('re-pulls GitHub-owned fields and status while preserving plans and execution history', async () => {
+    it('preserves unpushed local edits to GitHub-owned fields on re-pull while still applying remote-only changes', async () => {
         const issues = new Map<number, GitHubWorkItemIssue>([
             [70, makeMockIssue(70, 'Remote Epic', 'open', {
                 labels: ['coc:type:epic', 'remote-tag'],
@@ -548,6 +548,8 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
             [...issues.values()],
             () => NOW,
         );
+        // Local edits the user has NOT pushed back to GitHub. tags are left
+        // untouched so the remote tag change still flows through on re-pull.
         await store.updateWorkItem(first.root.id, {
             title: 'Local title edit',
             description: 'Local body edit',
@@ -564,6 +566,7 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
                 status: 'running',
             }],
         });
+        // Remote also moved title/description/status and changed tags.
         issues.set(70, makeMockIssue(70, 'Remote Epic Updated', 'closed', {
             labels: ['coc:type:epic', 'coc:status:done', 'github-tag'],
             body: 'Remote body updated',
@@ -579,12 +582,24 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         );
 
         expect(second).toMatchObject({ created: 0, updated: 1 });
+        // The conflicting fields are reported so the divergence is observable.
+        expect(second.warnings).toHaveLength(1);
+        expect(second.warnings[0]).toMatchObject({
+            provider: 'github',
+            code: 'local-edits-preserved',
+            workItemId: first.root.id,
+            issueNumber: 70,
+        });
+        expect([...second.warnings[0].fields].sort()).toEqual(['description', 'status', 'title']);
+
         const updated = await store.getWorkItem(first.root.id, REPO_ID);
         expect(updated).toMatchObject({
-            title: 'Remote Epic Updated',
-            description: 'Remote body updated',
+            // Unpushed local edits survive the pull.
+            title: 'Local title edit',
+            description: 'Local body edit',
+            status: 'planning',
             type: 'epic',
-            status: 'done',
+            // tags were not edited locally, so the remote change still applies.
             tags: ['github-tag'],
             githubMirror: {
                 issueNumber: 70,
@@ -595,6 +610,136 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         });
         expect(updated?.plan?.content).toBe('Local plan');
         expect(updated?.executionHistory?.[0].taskId).toBe('task-1');
+    });
+
+    it('applies remote GitHub-owned changes when the local mirror has no unpushed edits', async () => {
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [71, makeMockIssue(71, 'Remote Epic', 'open', {
+                labels: ['coc:type:epic', 'remote-tag'],
+                body: 'Remote body',
+            })],
+        ]);
+
+        const first = await importGitHubEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            configuredRepo(),
+            issues.get(71)!,
+            [...issues.values()],
+            () => NOW,
+        );
+        // No local edits before the remote moves: a clean mirror takes the
+        // remote values, matching the prior remote-authoritative behavior.
+        issues.set(71, makeMockIssue(71, 'Remote Epic Updated', 'closed', {
+            labels: ['coc:type:epic', 'coc:status:done', 'github-tag'],
+            body: 'Remote body updated',
+            updatedAt: '2026-01-02T00:00:00.000Z',
+        }));
+
+        const second = await importGitHubEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            configuredRepo(),
+            issues.get(71)!,
+            [...issues.values()],
+            () => '2026-01-03T00:00:00.000Z',
+        );
+
+        expect(second).toMatchObject({ created: 0, updated: 1 });
+        expect(second.warnings).toHaveLength(0);
+        const updated = await store.getWorkItem(first.root.id, REPO_ID);
+        expect(updated).toMatchObject({
+            title: 'Remote Epic Updated',
+            description: 'Remote body updated',
+            status: 'done',
+            tags: ['github-tag'],
+        });
+    });
+
+    it('keeps an unpushed local edit without a conflict warning when the remote field is unchanged', async () => {
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [72, makeMockIssue(72, 'Remote Epic', 'open', {
+                labels: ['coc:type:epic'],
+                body: 'Remote body',
+            })],
+        ]);
+
+        const first = await importGitHubEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            configuredRepo(),
+            issues.get(72)!,
+            [...issues.values()],
+            () => NOW,
+        );
+        await store.updateWorkItem(first.root.id, { title: 'Local title only' });
+        // Remote re-pull leaves title untouched (same issue), only bumps state.
+        issues.set(72, makeMockIssue(72, 'Remote Epic', 'open', {
+            labels: ['coc:type:epic'],
+            body: 'Remote body',
+            updatedAt: '2026-01-02T00:00:00.000Z',
+        }));
+
+        const second = await importGitHubEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            configuredRepo(),
+            issues.get(72)!,
+            [...issues.values()],
+            () => '2026-01-03T00:00:00.000Z',
+        );
+
+        // Local edit survives, and since the remote title did not move there is
+        // no conflict to warn about.
+        expect(second.warnings).toHaveLength(0);
+        const updated = await store.getWorkItem(first.root.id, REPO_ID);
+        expect(updated?.title).toBe('Local title only');
+    });
+
+    it('preserves an unpushed local edit across repeated re-pulls until it is reconciled', async () => {
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [73, makeMockIssue(73, 'Remote Epic', 'open', {
+                labels: ['coc:type:epic'],
+                body: 'Remote body',
+            })],
+        ]);
+
+        const first = await importGitHubEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            configuredRepo(),
+            issues.get(73)!,
+            [...issues.values()],
+            () => NOW,
+        );
+        await store.updateWorkItem(first.root.id, { title: 'Local title edit' });
+        issues.set(73, makeMockIssue(73, 'Remote Title A', 'open', {
+            labels: ['coc:type:epic'],
+            body: 'Remote body',
+            updatedAt: '2026-01-02T00:00:00.000Z',
+        }));
+
+        await importGitHubEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            configuredRepo(),
+            issues.get(73)!,
+            [...issues.values()],
+            () => '2026-01-03T00:00:00.000Z',
+        );
+        // Even though the first pull persisted a fresh mirror, the local edit is
+        // still dirty relative to the original synced base, so a second remote
+        // move must not silently overwrite it.
+        issues.set(73, makeMockIssue(73, 'Remote Title B', 'open', {
+            labels: ['coc:type:epic'],
+            body: 'Remote body',
+            updatedAt: '2026-01-04T00:00:00.000Z',
+        }));
+        const third = await importGitHubEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            configuredRepo(),
+            issues.get(73)!,
+            [...issues.values()],
+            () => '2026-01-05T00:00:00.000Z',
+        );
+
+        expect(third.warnings).toHaveLength(1);
+        const updated = await store.getWorkItem(first.root.id, REPO_ID);
+        expect(updated?.title).toBe('Local title edit');
     });
 
     it('prunes mirrored descendants that disappear from the GitHub Epic subtree on re-pull', async () => {
