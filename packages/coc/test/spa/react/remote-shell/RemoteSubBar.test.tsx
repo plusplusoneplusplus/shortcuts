@@ -4,12 +4,14 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 
 const mockSelectClone = vi.fn();
 const mockSwitchSubTab = vi.fn();
 const mockQueueDispatch = vi.fn();
 const mockWorkItemDispatch = vi.fn();
+const mockFetchRepos = vi.fn().mockResolvedValue(undefined);
+const mockRemoveWorkspace = vi.fn().mockResolvedValue(undefined);
 let mockAppState: any = { activeRepoSubTab: 'chats' };
 let mockQueueState: any = { repoQueueMap: {} };
 let mockWorkItemState: any = { unseenByRepo: {} };
@@ -19,6 +21,7 @@ let mockGitInfo: any = { ahead: 0, behind: 0 };
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({ useApp: () => ({ state: mockAppState, dispatch: vi.fn() }) }));
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({ useQueue: () => ({ state: mockQueueState, dispatch: mockQueueDispatch }) }));
 vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () => ({ useWorkItems: () => ({ state: mockWorkItemState, dispatch: mockWorkItemDispatch }) }));
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({ useRepos: () => ({ fetchRepos: mockFetchRepos, repos: [], loading: false, unseenCounts: {}, refreshUnseenCounts: vi.fn() }) }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useTerminalEnabled', () => ({ useTerminalEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/hooks/useNotesEnabled', () => ({ useNotesEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({ useWorkflowsEnabled: () => true }));
@@ -30,6 +33,9 @@ vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats',
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useGitInfo', () => ({ useGitInfo: () => mockGitInfo }));
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/useShellNavigation', () => ({
     useShellNavigation: () => ({ selectClone: mockSelectClone, switchSubTab: mockSwitchSubTab }),
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () => ({
+    removeWorkspace: (...args: any[]) => mockRemoveWorkspace(...args),
 }));
 
 import { RemoteSubBar } from '../../../../src/server/spa/client/react/features/remote-shell/RemoteSubBar';
@@ -70,6 +76,8 @@ beforeEach(() => {
     mockSwitchSubTab.mockReset();
     mockQueueDispatch.mockReset();
     mockWorkItemDispatch.mockReset();
+    mockFetchRepos.mockReset().mockResolvedValue(undefined);
+    mockRemoveWorkspace.mockReset().mockResolvedValue(undefined);
     mockAppState = { activeRepoSubTab: 'chats' };
     mockQueueState = { repoQueueMap: {} };
     mockWorkItemState = { unseenByRepo: {} };
@@ -315,6 +323,104 @@ describe('RemoteSubBar', () => {
         const row = openAndGetRow([repo('a', 'shortcuts'), repo('b', 'shortcuts-2', 'feat/x')], 'a', 'b');
         expect(row.getAttribute('data-offline')).toBe('false');
         expect((row as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    // ── Context menu on clone rows ────────────────────────────────────────────
+
+    it('right-clicking a clone-popover-item opens the context menu', () => {
+        renderBar();
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const items = screen.getAllByTestId('clone-popover-item');
+        fireEvent.contextMenu(items[0]);
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+    });
+
+    it('context menu contains Repo info, Copy path, and Remove from CoC', () => {
+        renderBar();
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        fireEvent.contextMenu(screen.getAllByTestId('clone-popover-item')[0]);
+        const menu = screen.getByTestId('context-menu');
+        expect(menu.textContent).toContain('Repo info');
+        expect(menu.textContent).toContain('Copy path');
+        expect(menu.textContent).toContain('Remove from CoC');
+    });
+
+    it('Remove from CoC is disabled for remote clones', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox');
+        render(<RemoteSubBar repo={local as any} repos={[local, remote] as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const remoteRow = screen.getAllByTestId('clone-popover-item')
+            .find(el => el.getAttribute('data-remote') === 'true')!;
+        fireEvent.contextMenu(remoteRow);
+        const removeBtn = Array.from(screen.getByTestId('context-menu').querySelectorAll('button'))
+            .find(btn => btn.textContent?.includes('Remove from CoC'))!;
+        expect(removeBtn.disabled).toBe(true);
+    });
+
+    it('Remove from CoC is enabled for local clones', () => {
+        renderBar();
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        fireEvent.contextMenu(screen.getAllByTestId('clone-popover-item')[0]);
+        const removeBtn = Array.from(screen.getByTestId('context-menu').querySelectorAll('button'))
+            .find(btn => btn.textContent?.includes('Remove from CoC'))!;
+        expect(removeBtn.disabled).toBe(false);
+    });
+
+    it('clicking Repo info opens the info dialog with path and branch', () => {
+        renderBar();
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        fireEvent.contextMenu(screen.getAllByTestId('clone-popover-item')[0]);
+        const infoBtn = Array.from(screen.getByTestId('context-menu').querySelectorAll('button'))
+            .find(btn => btn.textContent?.includes('Repo info'))!;
+        fireEvent.click(infoBtn);
+        expect(screen.getByTestId('clone-info-content')).toBeTruthy();
+        expect(screen.getByTestId('clone-info-path').textContent).toBe('/r/a');
+        expect(screen.getByTestId('clone-info-branch').textContent).toBe('main');
+    });
+
+    it('clicking Remove from CoC shows a confirmation dialog', () => {
+        renderBar();
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        fireEvent.contextMenu(screen.getAllByTestId('clone-popover-item')[0]);
+        const removeBtn = Array.from(screen.getByTestId('context-menu').querySelectorAll('button'))
+            .find(btn => btn.textContent?.includes('Remove from CoC'))!;
+        fireEvent.click(removeBtn);
+        expect(screen.getByTestId('clone-remove-confirm-btn')).toBeTruthy();
+        expect(screen.getByText(/folder on disk is left untouched/i)).toBeTruthy();
+    });
+
+    it('confirming remove calls removeWorkspace and fetchRepos', async () => {
+        renderBar();
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        fireEvent.contextMenu(screen.getAllByTestId('clone-popover-item')[1]);
+        const removeBtn = Array.from(screen.getByTestId('context-menu').querySelectorAll('button'))
+            .find(btn => btn.textContent?.includes('Remove from CoC'))!;
+        fireEvent.click(removeBtn);
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('clone-remove-confirm-btn'));
+        });
+        await waitFor(() => {
+            expect(mockRemoveWorkspace).toHaveBeenCalledWith('b');
+            expect(mockFetchRepos).toHaveBeenCalled();
+        });
+    });
+
+    it('confirming remove of the selected clone calls selectClone with a sibling', async () => {
+        renderBar(); // active repo is 'a'; repos are ['a', 'b']
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        // Right-click the first row (selected clone 'a')
+        fireEvent.contextMenu(screen.getAllByTestId('clone-popover-item')[0]);
+        const removeBtn = Array.from(screen.getByTestId('context-menu').querySelectorAll('button'))
+            .find(btn => btn.textContent?.includes('Remove from CoC'))!;
+        fireEvent.click(removeBtn);
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('clone-remove-confirm-btn'));
+        });
+        await waitFor(() => {
+            expect(mockRemoveWorkspace).toHaveBeenCalledWith('a');
+            expect(mockSelectClone).toHaveBeenCalledWith('b');
+        });
     });
 
     // ── AC-01: clone-switch button label excludes git branch ──────────────────

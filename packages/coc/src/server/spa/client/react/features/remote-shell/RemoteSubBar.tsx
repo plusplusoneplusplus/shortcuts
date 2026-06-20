@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useWorkItems } from '../../contexts/WorkItemContext';
+import { useRepos } from '../../contexts/ReposContext';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
 import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
@@ -37,6 +38,10 @@ import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab } from '../../types/dashboard';
 import { resolveRepoWorkItemOriginScope } from '../work-items/workItemOriginScope';
 import { getHostname } from '../../utils/config';
+import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
+import { Dialog } from '../../ui/Dialog';
+import { useToast, ToastContainer } from '../../ui/Toast';
+import { removeWorkspace } from '../../repos/repositoryService';
 
 interface RemoteSubBarProps {
     repo: RepoData;
@@ -96,8 +101,15 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
     const providerLabel = remoteProviderLabel(group?.normalizedUrl);
     const branch = repo.gitInfo?.branch || null;
 
+    const { fetchRepos } = useRepos();
+    const { toasts, addToast, removeToast } = useToast();
+
     const [cloneOpen, setCloneOpen] = useState(false);
     const [ovOpen, setOvOpen] = useState(false);
+    const [ctxMenu, setCtxMenu] = useState<{ repo: RepoData; x: number; y: number } | null>(null);
+    const [infoRepo, setInfoRepo] = useState<RepoData | null>(null);
+    const [removeRepo, setRemoveRepo] = useState<RepoData | null>(null);
+    const [removing, setRemoving] = useState(false);
     // Which clone-tab keys fit inline; null means "show all" (no overflow / no layout yet).
     const [visibleKeys, setVisibleKeys] = useState<Set<string> | null>(null);
     const cloneRef = useRef<HTMLDivElement>(null);
@@ -152,6 +164,53 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
     const hiddenCloneTabs = visibleKeys ? cloneTabs.filter(t => !visibleKeys.has(t.key)) : [];
     const hasOverflow = hiddenCloneTabs.length > 0;
     const overflowActive = hiddenCloneTabs.some(t => t.key === activeTab);
+
+    const buildMenuItems = useCallback((repo: RepoData): ContextMenuItem[] => {
+        const isRemote = isRemoteRepo(repo);
+        return [
+            {
+                label: 'Repo info',
+                icon: 'ℹ',
+                onClick: () => { setCtxMenu(null); setInfoRepo(repo); },
+            },
+            {
+                label: 'Copy path',
+                icon: '📋',
+                onClick: () => {
+                    setCtxMenu(null);
+                    navigator.clipboard.writeText(repo.workspace.rootPath ?? '').catch(() => {});
+                },
+            },
+            { label: '', separator: true, onClick: () => {} },
+            {
+                label: 'Remove from CoC',
+                icon: '🗑',
+                disabled: isRemote,
+                onClick: () => { setCtxMenu(null); setRemoveRepo(repo); },
+            },
+        ];
+    }, []);
+
+    const doRemove = useCallback(async (repo: RepoData) => {
+        setRemoving(true);
+        try {
+            const removingSelected = String(repo.workspace.id) === cloneId;
+            await removeWorkspace(String(repo.workspace.id));
+            if (removingSelected) {
+                const sibling = clones.find(c => String(c.workspace.id) !== String(repo.workspace.id));
+                if (sibling) {
+                    selectClone(String(sibling.workspace.id));
+                }
+            }
+            setRemoveRepo(null);
+            await fetchRepos();
+            addToast(`Removed ${repo.workspace.name}`, 'success');
+        } catch {
+            addToast(`Failed to remove ${repo.workspace.name}`, 'error');
+        } finally {
+            setRemoving(false);
+        }
+    }, [cloneId, clones, selectClone, fetchRepos, addToast]);
 
     const onTab = (key: RepoSubTab) => {
         if (key === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: workItemOriginId });
@@ -284,6 +343,11 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                                     aria-disabled={isOffline}
                                     role="menuitem"
                                     title={isOffline ? `${c.workspace.name} · offline (server unreachable)` : undefined}
+                                    onContextMenu={(e) => {
+                                        e.preventDefault();
+                                        setCloneOpen(false);
+                                        setCtxMenu({ repo: c, x: e.clientX, y: e.clientY });
+                                    }}
                                     onClick={() => {
                                         // Block selection/navigation for offline clones so a
                                         // dead remote server's tabs are never opened.
@@ -408,6 +472,113 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                 <span className="text-[14px] leading-none">+</span>
                 Queue
             </button>
+
+            {/* ── Clone context menu (portal, outside popover) ── */}
+            {ctxMenu && (
+                <ContextMenu
+                    position={{ x: ctxMenu.x, y: ctxMenu.y }}
+                    items={buildMenuItems(ctxMenu.repo)}
+                    onClose={() => setCtxMenu(null)}
+                />
+            )}
+
+            {/* ── Repo info dialog ── */}
+            {infoRepo && (
+                <Dialog
+                    open={true}
+                    onClose={() => setInfoRepo(null)}
+                    title="Repo info"
+                    data-testid="clone-info-dialog"
+                    footer={
+                        <button
+                            onClick={() => setInfoRepo(null)}
+                            className="px-3 py-1.5 rounded-md text-[12px] font-semibold bg-[#f6f8fa] dark:bg-[#2a2a2a] border border-[#d0d7de] dark:border-[#3c3c3c] text-[#1f2328] dark:text-[#cccccc] hover:bg-[#eaeef2] dark:hover:bg-[#3c3c3c] transition-colors"
+                        >
+                            Close
+                        </button>
+                    }
+                >
+                    <div className="flex flex-col gap-2 text-[13px]" data-testid="clone-info-content">
+                        <div className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-[#848484] dark:text-[#777]">Name</span>
+                            <span className="font-semibold">{infoRepo.workspace.name}</span>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-[#848484] dark:text-[#777]">Path</span>
+                            <span className="font-mono text-[12px] break-all" data-testid="clone-info-path">{infoRepo.workspace.rootPath ?? '—'}</span>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-[#848484] dark:text-[#777]">Branch</span>
+                            <span className="font-mono text-[12px]" data-testid="clone-info-branch">{infoRepo.gitInfo?.branch ?? '—'}</span>
+                        </div>
+                        {(infoRepo.workspace.remoteUrl || infoRepo.gitInfo?.remoteUrl) && (
+                            <div className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-[#848484] dark:text-[#777]">Remote URL</span>
+                                <span className="font-mono text-[12px] break-all">{infoRepo.workspace.remoteUrl ?? infoRepo.gitInfo?.remoteUrl ?? '—'}</span>
+                            </div>
+                        )}
+                        {(infoRepo.gitInfo?.ahead != null || infoRepo.gitInfo?.behind != null || infoRepo.gitInfo?.dirty != null) && (
+                            <div className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-[#848484] dark:text-[#777]">Git status</span>
+                                <span className="font-mono text-[12px]">
+                                    {infoRepo.gitInfo?.dirty ? 'dirty · ' : 'clean · '}
+                                    {infoRepo.gitInfo?.ahead != null && <>↑{infoRepo.gitInfo.ahead} </>}
+                                    {infoRepo.gitInfo?.behind != null && <>↓{infoRepo.gitInfo.behind}</>}
+                                </span>
+                            </div>
+                        )}
+                        <div className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-[#848484] dark:text-[#777]">Workspace ID</span>
+                            <span className="font-mono text-[12px] text-[#848484] dark:text-[#777]">{infoRepo.workspace.id}</span>
+                        </div>
+                        <div className="flex items-center gap-2 pt-1">
+                            {isRemoteRepo(infoRepo) ? (
+                                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#8250df]/12 text-[#8250df] dark:bg-[#a371f7]/15 dark:text-[#a371f7]">Remote</span>
+                            ) : (
+                                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#ddf4ff] dark:bg-[#3794ff]/20 text-[#0969da] dark:text-[#79c0ff]">Local</span>
+                            )}
+                        </div>
+                    </div>
+                </Dialog>
+            )}
+
+            {/* ── Remove confirmation dialog ── */}
+            {removeRepo && (
+                <Dialog
+                    open={true}
+                    onClose={() => !removing && setRemoveRepo(null)}
+                    title="Remove from CoC?"
+                    data-testid="clone-remove-dialog"
+                    footer={
+                        <>
+                            <button
+                                onClick={() => setRemoveRepo(null)}
+                                disabled={removing}
+                                className="px-3 py-1.5 rounded-md text-[12px] font-semibold bg-[#f6f8fa] dark:bg-[#2a2a2a] border border-[#d0d7de] dark:border-[#3c3c3c] text-[#1f2328] dark:text-[#cccccc] hover:bg-[#eaeef2] dark:hover:bg-[#3c3c3c] transition-colors disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                data-testid="clone-remove-confirm-btn"
+                                onClick={() => doRemove(removeRepo)}
+                                disabled={removing}
+                                className="px-3 py-1.5 rounded-md text-[12px] font-semibold bg-[#cf222e] hover:bg-[#a40e26] text-white transition-colors disabled:opacity-50"
+                            >
+                                {removing ? 'Removing…' : 'Remove'}
+                            </button>
+                        </>
+                    }
+                >
+                    <p className="text-[13px]">
+                        Remove <strong>{removeRepo.workspace.name}</strong> from CoC?
+                    </p>
+                    <p className="text-[12px] text-[#848484] dark:text-[#777] mt-1">
+                        The folder on disk is left untouched — only the CoC registration is removed.
+                    </p>
+                </Dialog>
+            )}
+
+            <ToastContainer toasts={toasts} removeToast={removeToast} />
         </div>
     );
 }

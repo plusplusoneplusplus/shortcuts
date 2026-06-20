@@ -50,6 +50,10 @@ export function updateWorkspace(workspaceId: string, updates: Partial<Omit<Works
     return getSpaCocClient().workspaces.update(workspaceId, updates);
 }
 
+export function removeWorkspace(workspaceId: string): Promise<void> {
+    return getSpaCocClient().workspaces.delete(workspaceId);
+}
+
 export function discoverWorkspaces(path: string): Promise<DiscoverWorkspacesResponse> {
     return getSpaCocClient().workspaces.discover(path);
 }
