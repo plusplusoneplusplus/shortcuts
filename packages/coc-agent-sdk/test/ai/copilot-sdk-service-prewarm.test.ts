@@ -154,6 +154,66 @@ describe('CopilotSDKService.prewarm — warms without a session (AC-04)', () => 
 });
 
 // ============================================================================
+// onWarmStatusChange — registry transitions reach external subscribers (AC-01b)
+// ============================================================================
+
+describe('CopilotSDKService.onWarmStatusChange — bridges registry transitions (AC-01b)', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        service.dispose();
+        resetCopilotSDKService();
+        resetSDKLogger();
+    });
+
+    function wireMock() {
+        const mod = createMockSDKModule(() => createMockSession());
+        createSdkClientMock.mockImplementation((opts: any) => new mod.MockCopilotClient(opts));
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+        return mod;
+    }
+
+    it('delivers warming→warm for the conversation key on prewarm', async () => {
+        wireMock();
+        const seen: Array<[string, string]> = [];
+        service.onWarmStatusChange((key, status) => seen.push([key, status]));
+
+        await service.prewarm({ workingDirectory: WD });
+
+        expect(seen).toEqual([[KEY, 'warming'], [KEY, 'warm']]);
+    });
+
+    it('delivers active→warm across a warm-eligible send', async () => {
+        wireMock();
+        const seen: Array<[string, string]> = [];
+        service.onWarmStatusChange((key, status) => seen.push([key, status]));
+
+        const result = await warmSend(service);
+
+        expect(result.success).toBe(true);
+        expect(seen).toEqual([[KEY, 'active'], [KEY, 'warm']]);
+    });
+
+    it('unsubscribe stops further deliveries', async () => {
+        wireMock();
+        const seen: Array<[string, string]> = [];
+        const unsub = service.onWarmStatusChange((key, status) => seen.push([key, status]));
+
+        await service.prewarm({ workingDirectory: WD }); // warming, warm
+        unsub();
+        await (service as any).warmRegistry.evict(KEY); // cold — not delivered
+
+        expect(seen).toEqual([[KEY, 'warming'], [KEY, 'warm']]);
+    });
+});
+
+// ============================================================================
 // Warming disabled (TTL = 0)
 // ============================================================================
 

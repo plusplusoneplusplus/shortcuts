@@ -35,6 +35,8 @@ import { RequestRunner } from './request-runner';
 import type { ISDKService, TransformOptions, TransformResult, PrewarmOptions } from './sdk-service-interface';
 import { sdkServiceRegistry, COPILOT_PROVIDER } from './sdk-service-registry';
 import { WarmClientRegistry, makeWarmKey, WarmClientFactory } from './warm-client-registry';
+import type { WarmStateChangeListener } from './warm-client-registry';
+import { WarmStatusBroadcaster } from './warm-status-broadcaster';
 import { runWithWarmClient } from './warm-client-runner';
 import { resolveWarmClientTtlMs } from './warm-client-config';
 
@@ -86,6 +88,8 @@ export class CopilotSDKService implements ISDKService {
     private readonly streamErrorGuard = new StreamErrorGuard();
     private readonly requestRunner: RequestRunner;
     private readonly warmRegistry: WarmClientRegistry;
+    /** Fan-out for warm-client state transitions to external observers (e.g. SSE bridge). */
+    private readonly warmStatus = new WarmStatusBroadcaster();
 
     private static readonly DEFAULT_TIMEOUT_MS = DEFAULT_AI_TIMEOUT_MS;
     private static readonly DEFAULT_IDLE_TIMEOUT_MS = DEFAULT_AI_IDLE_TIMEOUT_MS;
@@ -101,6 +105,7 @@ export class CopilotSDKService implements ISDKService {
         this.warmRegistry = new WarmClientRegistry({
             ttlMs: resolveWarmClientTtlMs(),
             logger: getAIServiceLogger(),
+            onStateChange: this.warmStatus.emit,
         });
     }
 
@@ -281,6 +286,17 @@ export class CopilotSDKService implements ISDKService {
         await this.warmRegistry.prewarm(key, this.buildWarmFactory(options.workingDirectory));
     }
 
+    /**
+     * Subscribe to warm-client state transitions for this service's registry.
+     * The listener receives `(key, status)` on every change, where `key` is
+     * `makeWarmKey(COPILOT_PROVIDER, workingDirectory)`. Used by the CoC SSE
+     * bridge to push warm status to the SPA indicator. Returns an unsubscribe
+     * function.
+     */
+    public onWarmStatusChange(listener: WarmStateChangeListener): () => void {
+        return this.warmStatus.subscribe(listener);
+    }
+
     public async abortSession(sessionId: string): Promise<boolean> {
         return this.sessionManager.abort(sessionId);
     }
@@ -315,6 +331,8 @@ export class CopilotSDKService implements ISDKService {
         await this.sessionManager.abortAll();
         // Stop every warm client so no provider child process outlives the service.
         await this.warmRegistry.evictAll();
+        // Drop warm-status subscribers so no bridge holds a stale service reference.
+        this.warmStatus.clear();
         this.streamErrorGuard.remove();
         this.availabilityCache = null;
     }
