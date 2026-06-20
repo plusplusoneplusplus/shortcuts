@@ -17,6 +17,15 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({ explorer: { reveal: revealMock } }),
 }));
 
+// Stub the editable note body so the panel test stays focused on the body-mode
+// branch (kind: 'note' → editable editor; code → read-only viewer) without
+// pulling in the full NoteEditor / TipTap stack.
+vi.mock('../../../src/server/spa/client/react/features/chat/source-canvas/SourceCanvasNoteEditor', () => ({
+    SourceCanvasNoteEditor: ({ fileRef }: any) => (
+        <div data-testid="source-canvas-note-editor-stub" data-full-path={fileRef.fullPath} />
+    ),
+}));
+
 import { SourceCanvasPanel } from '../../../src/server/spa/client/react/features/chat/source-canvas/SourceCanvasPanel';
 
 beforeEach(() => {
@@ -152,5 +161,41 @@ describe('SourceCanvasPanel', () => {
         expect(source.querySelector('.source-canvas-line-number')?.textContent).toBe('1');
         expect(queryByTestId('source-canvas-loading')).toBeNull();
         expect(queryByTestId('source-canvas-error')).toBeNull();
+    });
+
+    // --- AC-02: single slot, two body modes (note vs code) ---
+
+    it('renders the editable note editor (not the read-only viewer) for a markdown note ref', () => {
+        const { getByTestId, queryByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={{ fullPath: '/home/u/proj/notes/x.md', kind: 'note' }}
+                wsId="ws1"
+                onClose={() => {}}
+            />,
+        );
+        // Editable body present…
+        expect(getByTestId('source-canvas-note-editor-stub')).toBeTruthy();
+        // …and the read-only loading/source viewer is NOT mounted for notes.
+        expect(queryByTestId('source-canvas-loading')).toBeNull();
+        expect(queryByTestId('source-canvas-source')).toBeNull();
+    });
+
+    it('renders the read-only source viewer (not the note editor) for a code ref', () => {
+        const { getByTestId, queryByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={{ fullPath: '/home/u/proj/src/foo.ts', kind: 'code' }}
+                wsId="ws1"
+                content={{
+                    status: 'success',
+                    content: 'const x = 1;\n',
+                    language: 'typescript',
+                    resolvedPath: '/home/u/proj/src/foo.ts',
+                    error: '',
+                }}
+                onClose={() => {}}
+            />,
+        );
+        expect(getByTestId('source-canvas-source')).toBeTruthy();
+        expect(queryByTestId('source-canvas-note-editor-stub')).toBeNull();
     });
 });

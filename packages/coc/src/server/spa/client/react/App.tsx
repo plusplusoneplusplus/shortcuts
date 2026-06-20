@@ -31,7 +31,11 @@ import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
 import { EnqueueDialog } from './queue/EnqueueDialog';
 import { RunScriptDialog } from './queue/RunScriptDialog';
-import { isAbsolutePath, resolveRelativePath } from './utils/path-resolution';
+import {
+    resolveMarkdownReviewTarget,
+    resolveWorkspaceForPath,
+    type WorkspaceLike,
+} from './shared/markdown-review/resolveMarkdownReviewTarget';
 import { buildNotificationEntry } from './utils/build-notification-entry';
 import { WelcomeTour } from './welcome/WelcomeTour';
 import { SHOW_WELCOME_TUTORIAL } from './featureFlags';
@@ -51,12 +55,10 @@ interface MarkdownReviewDialogState {
     taskRootPath?: string | null;
 }
 
-/* @internal – exported for testing only */
-export interface WorkspaceLike {
-    id: string;
-    name?: string;
-    rootPath?: string;
-}
+// `resolveWorkspaceForPath` / `WorkspaceLike` live in the shared markdown-review
+// helper now; re-export here so existing test imports keep resolving.
+export { resolveWorkspaceForPath };
+export type { WorkspaceLike };
 
 const ACTIVE_WORKSPACE_CLIENT_ID_KEY = 'coc-dashboard-active-workspace-client-id';
 const ACTIVE_WORKSPACE_REPORT_INTERVAL_MS = 60 * 1000;
@@ -81,46 +83,9 @@ export function getDashboardClientId(): string {
 }
 
 
-function normalizePath(pathValue: string): string {
-    return toForwardSlashes(pathValue);
-}
-
 /* @internal – exported for testing only */
 export function getFileName(path: string): string {
     return toForwardSlashes(path).split('/').pop() || path;
-}
-
-
-/* @internal – exported for testing only */
-export function resolveWorkspaceForPath(filePath: string, workspaces: WorkspaceLike[]): WorkspaceLike | null {
-    const normalizedPath = normalizePath(filePath).toLowerCase();
-    let best: WorkspaceLike | null = null;
-
-    for (const ws of workspaces) {
-        if (!ws?.rootPath) continue;
-        const normalizedRoot = normalizePath(ws.rootPath).replace(/\/+$/, '').toLowerCase();
-        if (!normalizedRoot) continue;
-
-        if (normalizedPath === normalizedRoot || normalizedPath.startsWith(normalizedRoot + '/')) {
-            if (!best || normalizedRoot.length > normalizePath(best.rootPath || '').toLowerCase().length) {
-                best = ws;
-            }
-        }
-    }
-
-    return best;
-}
-
-function toTaskRelativePath(fullPath: string, workspaceRoot: string): string | null {
-    if (!workspaceRoot) return null;
-    const normalizedPath = normalizePath(fullPath);
-    const normalizedRoot = normalizePath(workspaceRoot).replace(/\/+$/, '');
-    const tasksRoot = `${normalizedRoot}/.vscode/tasks`;
-
-    if (normalizedPath === tasksRoot) return '';
-    if (!normalizedPath.startsWith(tasksRoot + '/')) return null;
-
-    return normalizedPath.slice(tasksRoot.length + 1);
 }
 
 
@@ -380,75 +345,26 @@ function AppInner() {
     useEffect(() => {
         const handleOpenMarkdownReview = (event: Event) => {
             const detail = (event as CustomEvent<{ filePath?: string; sourceFilePath?: string; wsId?: string; taskRootPath?: string }>).detail;
-            let filePath = typeof detail?.filePath === 'string' ? detail.filePath : '';
-            if (!filePath) return;
-
-            const wsIdHint = typeof detail?.wsId === 'string' ? detail.wsId : '';
-            const eventTaskRootPath = typeof detail?.taskRootPath === 'string' ? detail.taskRootPath : undefined;
-
-            // Fast path: wsId hint provided — use workspace directly without path resolution
-            if (wsIdHint) {
-                const hintedWorkspace = (appState.workspaces as WorkspaceLike[] || []).find(ws => ws.id === wsIdHint);
-                if (hintedWorkspace) {
-                    if (isAbsolutePath(filePath)) {
-                        // Absolute path from chat click — determine fetchMode by task membership
-                        const taskRelativePath = toTaskRelativePath(filePath, hintedWorkspace.rootPath || '');
-                        setReviewDialog({
-                            open: true,
-                            minimized: false,
-                            scrollTop: 0,
-                            wsId: hintedWorkspace.id,
-                            filePath: taskRelativePath ?? filePath,
-                            displayPath: filePath,
-                            fetchMode: taskRelativePath !== null ? 'tasks' : 'auto',
-                            taskRootPath: eventTaskRootPath,
-                        });
-                    } else {
-                        // Task-relative path from TaskTree
-                        const displayBase = eventTaskRootPath
-                            ? normalizePath(eventTaskRootPath).replace(/\/+$/, '')
-                            : (() => {
-                                const rootNormalized = normalizePath(hintedWorkspace.rootPath || '').replace(/\/+$/, '');
-                                return rootNormalized ? `${rootNormalized}/.vscode/tasks` : '';
-                            })();
-                        const displayPath = displayBase ? `${displayBase}/${filePath}` : filePath;
-                        setReviewDialog({
-                            open: true,
-                            minimized: false,
-                            scrollTop: 0,
-                            wsId: hintedWorkspace.id,
-                            filePath,
-                            displayPath,
-                            fetchMode: 'tasks',
-                            taskRootPath: eventTaskRootPath,
-                        });
-                    }
-                    return;
-                }
-            }
-
-            // Resolve relative paths against the source file's directory
-            const sourceFilePath = typeof detail?.sourceFilePath === 'string' ? detail.sourceFilePath : '';
-            if (sourceFilePath && !isAbsolutePath(filePath)) {
-                const sourceDir = normalizePath(sourceFilePath).replace(/\/[^/]*$/, '');
-                filePath = resolveRelativePath(sourceDir, filePath);
-            }
-
-            const fullPath = filePath;
-
-            const workspace = resolveWorkspaceForPath(fullPath, appState.workspaces || []);
-            if (!workspace?.id) return;
-
-            const taskRelativePath = toTaskRelativePath(fullPath, workspace.rootPath || '');
+            const target = resolveMarkdownReviewTarget(
+                {
+                    filePath: typeof detail?.filePath === 'string' ? detail.filePath : '',
+                    wsId: typeof detail?.wsId === 'string' ? detail.wsId : undefined,
+                    sourceFilePath: typeof detail?.sourceFilePath === 'string' ? detail.sourceFilePath : undefined,
+                    taskRootPath: typeof detail?.taskRootPath === 'string' ? detail.taskRootPath : undefined,
+                },
+                (appState.workspaces as WorkspaceLike[]) || [],
+            );
+            if (!target) return;
 
             setReviewDialog({
                 open: true,
                 minimized: false,
                 scrollTop: 0,
-                wsId: workspace.id,
-                filePath: taskRelativePath ?? fullPath,
-                displayPath: fullPath,
-                fetchMode: taskRelativePath !== null ? 'tasks' : 'auto',
+                wsId: target.wsId,
+                filePath: target.filePath,
+                displayPath: target.displayPath,
+                fetchMode: target.fetchMode,
+                taskRootPath: target.taskRootPath,
             });
         };
 

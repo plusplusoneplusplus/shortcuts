@@ -1105,7 +1105,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // canvas above (only one of these columns is ever non-null at a time).
     const sourceCanvasFileRef = sourceCanvas.fileRef;
     const sourceCanvasWsId = sourceCanvasFileRef?.wsId ?? workspaceId ?? null;
-    const sourceCanvasContent = useSourceCanvasContent(sourceCanvasFileRef);
+    // Notes (`kind: 'note'`) load/save through the embedded NoteEditor, so skip
+    // the read-only preview fetch for them — it would be unused.
+    const sourceCanvasContent = useSourceCanvasContent(
+        sourceCanvasFileRef?.kind === 'note' ? null : sourceCanvasFileRef,
+    );
     const sourceCanvasColumn = (sourceCanvas.isOpen && sourceCanvasFileRef) ? (
         isMobile ? (
             <BottomSheet
