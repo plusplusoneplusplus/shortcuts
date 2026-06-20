@@ -147,7 +147,7 @@ export function ContextWindowIndicator({
             {/* Breakdown popover — shown on hover/tap; full breakdown when available, simple total otherwise */}
             {popoverOpen && (
                 <div
-                    className="absolute bottom-full left-0 mb-2 z-50 bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded-md shadow-lg p-3 min-w-[220px] text-xs pointer-events-auto"
+                    className="absolute bottom-full right-0 mb-2 z-50 bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded-md shadow-lg p-3 min-w-[220px] text-xs pointer-events-auto"
                     data-testid="ctx-breakdown-popover"
                     onMouseEnter={() => setPopoverOpen(true)}
                     onMouseLeave={() => setPopoverOpen(false)}

@@ -263,4 +263,15 @@ describe('ComposerMetaStrip', () => {
         expect(popover.textContent).toContain('Other');
         expect(popover.textContent).toContain('Total');
     });
+
+    it('right-anchors the breakdown popover so it is not clipped on the right edge', () => {
+        // The ctx fuel gauge sits on the right side of the composer toolbar, so
+        // the popover must open leftward (right-0) rather than overflow past the
+        // panel boundary (which clipped the "% of limit" column). Regression test.
+        render(<ComposerMetaStrip sessionTokenLimit={200000} sessionCurrentTokens={70000} />);
+        fireEvent.mouseEnter(screen.getByTestId('composer-ctx-fuel'));
+        const popover = screen.getByTestId('composer-ctx-breakdown-popover');
+        expect(popover.className).toContain('right-0');
+        expect(popover.className).not.toContain('left-0');
+    });
 });
