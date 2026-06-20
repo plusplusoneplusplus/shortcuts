@@ -1832,3 +1832,167 @@ describe('RepoChatTab: Ralph session and new chat', () => {
         });
     });
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// HOVER-TO-FLOAT PEEK (collapsed rail)
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('RepoChatTab: hover-to-float peek (collapsed rail)', () => {
+    beforeEach(() => {
+        // Render in the collapsed state so the 36px rail shows.
+        localStorage.setItem('activity-list-collapsed', 'true');
+    });
+    afterEach(() => {
+        localStorage.removeItem('activity-list-collapsed');
+        localStorage.removeItem('activity-left-panel-width');
+    });
+
+    it('renders the collapsed rail (not the full list panel) and the peek is closed', async () => {
+        setupFetchMock();
+        await renderTab();
+        expect(screen.getByTestId('activity-list-collapsed')).toBeTruthy();
+        expect(screen.queryByTestId('activity-list-panel')).toBeNull();
+        expect(screen.queryByTestId('activity-list-peek')).toBeNull();
+    });
+
+    it('floats the peek open after hovering the rail, reusing ChatListPane', async () => {
+        const r1 = makeRunningTask('r1');
+        setupFetchMock({ running: [r1] });
+        await renderTab();
+
+        await act(async () => {
+            fireEvent.mouseEnter(screen.getByTestId('activity-list-collapsed'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('activity-list-peek')).toBeTruthy();
+        }, { timeout: 2000 });
+        // Reuses ChatListPane (the mock), not a duplicate list implementation.
+        expect(screen.getByTestId('mock-list-pane')).toBeTruthy();
+        expect(screen.getByTestId('task-r1')).toBeTruthy();
+    });
+
+    it('peek panel uses the saved sidebar width and does not dim the conversation', async () => {
+        setupFetchMock();
+        await renderTab();
+        await act(async () => {
+            fireEvent.mouseEnter(screen.getByTestId('activity-list-collapsed'));
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('activity-list-peek')).toBeTruthy();
+        }, { timeout: 2000 });
+
+        const peek = screen.getByTestId('activity-list-peek');
+        // Same width source as the expanded panel (activity-left-panel-width → 320 default).
+        expect(peek.style.width).toBe('320px');
+        // No dimmed/blurred backdrop element was added for the desktop peek.
+        expect(screen.queryByTestId('sidebar-backdrop')).toBeNull();
+        // Conversation detail pane remains mounted and interactive behind the peek.
+        expect(screen.getByTestId('activity-detail-panel')).toBeTruthy();
+    });
+
+    it('does not open the peek if the pointer leaves the rail before the delay', async () => {
+        setupFetchMock();
+        await renderTab();
+        const rail = screen.getByTestId('activity-list-collapsed');
+
+        await act(async () => {
+            fireEvent.mouseEnter(rail);
+            fireEvent.mouseLeave(rail);
+        });
+        // Wait well beyond the hover-open delay — the peek must never appear.
+        await act(async () => { await new Promise(r => setTimeout(r, 600)); });
+        expect(screen.queryByTestId('activity-list-peek')).toBeNull();
+    });
+
+    it('selecting a conversation from the peek collapses to the rail WITHOUT persisting', async () => {
+        const r1 = makeRunningTask('r1');
+        setupFetchMock({ running: [r1] });
+        await renderTab();
+
+        await act(async () => {
+            fireEvent.mouseEnter(screen.getByTestId('activity-list-collapsed'));
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('activity-list-peek')).toBeTruthy();
+        }, { timeout: 2000 });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('task-r1'));
+        });
+
+        // Peek collapses back to the rail …
+        await waitFor(() => {
+            expect(screen.queryByTestId('activity-list-peek')).toBeNull();
+        });
+        expect(screen.getByTestId('activity-list-collapsed')).toBeTruthy();
+        // … the conversation opens in the main pane …
+        await waitFor(() => {
+            expect(mockDetailPane.mock.calls.at(-1)?.[0]?.selectedTaskId).toBe('proc-r1');
+        });
+        // … and the persisted collapsed state is never written by the peek path.
+        expect(localStorage.getItem('activity-list-collapsed')).toBe('true');
+    });
+
+    it('Escape collapses the peek back to the rail', async () => {
+        setupFetchMock();
+        await renderTab();
+        await act(async () => {
+            fireEvent.mouseEnter(screen.getByTestId('activity-list-collapsed'));
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('activity-list-peek')).toBeTruthy();
+        }, { timeout: 2000 });
+
+        await act(async () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        });
+        await waitFor(() => {
+            expect(screen.queryByTestId('activity-list-peek')).toBeNull();
+        });
+        expect(localStorage.getItem('activity-list-collapsed')).toBe('true');
+    });
+
+    it('clicking outside the peek (in the conversation) collapses it', async () => {
+        setupFetchMock();
+        await renderTab();
+        await act(async () => {
+            fireEvent.mouseEnter(screen.getByTestId('activity-list-collapsed'));
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('activity-list-peek')).toBeTruthy();
+        }, { timeout: 2000 });
+
+        await act(async () => {
+            fireEvent.mouseDown(screen.getByTestId('activity-detail-panel'));
+        });
+        await waitFor(() => {
+            expect(screen.queryByTestId('activity-list-peek')).toBeNull();
+        });
+        expect(localStorage.getItem('activity-list-collapsed')).toBe('true');
+    });
+
+    it('the » expand button still performs a permanent, persisted expand (unchanged)', async () => {
+        setupFetchMock();
+        await renderTab();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('activity-list-expand'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('activity-list-panel')).toBeTruthy();
+        });
+        expect(localStorage.getItem('activity-list-collapsed')).toBe('false');
+    });
+
+    it('does not float the peek on mobile (drawer path is untouched)', async () => {
+        mockBreakpoint = { isMobile: true, isTablet: false };
+        setupFetchMock();
+        await renderTab();
+
+        // Mobile renders the list directly; there is no collapsed rail to hover.
+        expect(screen.queryByTestId('activity-list-collapsed')).toBeNull();
+        expect(screen.queryByTestId('activity-list-peek')).toBeNull();
+    });
+});
