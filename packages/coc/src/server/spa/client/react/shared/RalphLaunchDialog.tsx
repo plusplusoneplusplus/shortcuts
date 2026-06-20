@@ -3,9 +3,14 @@
  * reviewed goal text. Used by goal-file launch and New Chat direct-goal launch.
  */
 import { useEffect, useState } from 'react';
-import { getApiBase } from '../utils/config';
 import { ModalJobAiControls, useModalJobAiSelection } from './ModalJobAiControls';
 import type { ResolvedModalJobAiSelection } from './ModalJobAiControls';
+import {
+    getRalphExecutionRepoApiBase,
+    isSameRalphExecutionTarget,
+    RalphExecutionRepoSelector,
+    useRalphExecutionRepoTargets,
+} from './RalphExecutionRepoSelector';
 
 export interface RalphLaunchDialogProps {
     open: boolean;
@@ -28,7 +33,7 @@ export interface RalphLaunchDialogProps {
     confirmLabel?: string;
     onClose: () => void;
     /** Called with the new processId after successful launch */
-    onLaunched: (processId: string) => void | Promise<void>;
+    onLaunched: (processId: string, workspaceId?: string) => void | Promise<void>;
 }
 
 export function RalphLaunchDialog({
@@ -46,7 +51,9 @@ export function RalphLaunchDialog({
     onClose,
     onLaunched,
 }: RalphLaunchDialogProps) {
-    const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ralph' });
+    const repoSelection = useRalphExecutionRepoTargets({ open, sourceWorkspaceId: workspaceId });
+    const selectedWorkspaceId = repoSelection.selectedTarget?.workspaceId ?? workspaceId;
+    const aiSelection = useModalJobAiSelection({ workspaceId: selectedWorkspaceId, mode: 'ralph' });
     const resolvedAi = resolvedAiSelection ?? aiSelection.resolved;
     const usesExternalAiSelection = !!resolvedAiSelection;
     const [launching, setLaunching] = useState(false);
@@ -76,6 +83,11 @@ export function RalphLaunchDialog({
             setError(`Remove ${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'} before starting from a goal. Direct-goal launch sends goal text only.`);
             return;
         }
+        const selectedTarget = repoSelection.selectedTarget;
+        if (!selectedTarget) {
+            setError('Choose a repository before launching Ralph.');
+            return;
+        }
         setLaunching(true);
         setError(null);
         try {
@@ -83,13 +95,14 @@ export function RalphLaunchDialog({
             if (resolvedAi.model) config.model = resolvedAi.model;
             if (resolvedAi.reasoningEffort) config.reasoningEffort = resolvedAi.reasoningEffort;
             if (resolvedAi.effortTier) config.effortTier = resolvedAi.effortTier;
-            const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId };
+            const sameTarget = isSameRalphExecutionTarget(workspaceId, selectedTarget);
+            const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId: selectedTarget.workspaceId };
             if (resolvedAi.provider) body.provider = resolvedAi.provider;
             if (resolvedAi.autoProviderRouting) body.autoProviderRouting = true;
-            if (folderPath) body.folderPath = folderPath;
-            if (workingDirectory) body.workingDirectory = workingDirectory;
+            if (sameTarget && folderPath) body.folderPath = folderPath;
+            if (sameTarget && workingDirectory) body.workingDirectory = workingDirectory;
             if (Object.keys(config).length > 0) body.config = config;
-            const resp = await fetch(`${getApiBase()}/ralph-launch`, {
+            const resp = await fetch(`${getRalphExecutionRepoApiBase(selectedTarget)}/ralph-launch`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
@@ -108,7 +121,7 @@ export function RalphLaunchDialog({
             if (!processId) {
                 throw new Error('Ralph launch did not return a process id');
             }
-            await onLaunched(processId);
+            await onLaunched(processId, selectedTarget.workspaceId);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to launch Ralph');
         } finally {
@@ -144,6 +157,17 @@ export function RalphLaunchDialog({
                     <div className="text-xs text-[#848484]">
                         Goal source: <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">{sourceLabel}</span>
                     </div>
+
+                    <RalphExecutionRepoSelector
+                        groups={repoSelection.groups}
+                        loading={repoSelection.loading}
+                        loadError={repoSelection.loadError}
+                        warnings={repoSelection.warnings}
+                        selectedKey={repoSelection.selectedKey}
+                        onSelectedKeyChange={repoSelection.setSelectedKey}
+                        disabled={launching}
+                        testIdPrefix="ralph-launch"
+                    />
 
                     {/* Provider/model/effort selector */}
                     <div>
@@ -232,10 +256,10 @@ export function RalphLaunchDialog({
                         type="button"
                         data-testid="ralph-launch-confirm-btn"
                         onClick={handleLaunch}
-                        disabled={launching || (editable && !trimmedGoalSpec) || attachmentsBlocked}
+                        disabled={launching || repoSelection.loading || !repoSelection.selectedTarget || (editable && !trimmedGoalSpec) || attachmentsBlocked}
                         className={
                             'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white transition-colors ' +
-                            (launching || (editable && !trimmedGoalSpec) || attachmentsBlocked
+                            (launching || repoSelection.loading || !repoSelection.selectedTarget || (editable && !trimmedGoalSpec) || attachmentsBlocked
                                 ? 'bg-purple-400 cursor-not-allowed'
                                 : 'bg-purple-600 hover:bg-purple-700')
                         }

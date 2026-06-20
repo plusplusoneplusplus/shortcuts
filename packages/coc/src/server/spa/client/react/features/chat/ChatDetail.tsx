@@ -1965,8 +1965,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                                     workspaceId={workspaceId}
                                     turns={turns}
                                     goalFilePath={goalPath || undefined}
-                                    onStarted={(newProcessId) => {
-                                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
+                                    onStarted={(newProcessId, executionWorkspaceId) => {
+                                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: executionWorkspaceId ?? workspaceId });
                                     }}
                                 />
                             );
@@ -1985,8 +1985,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                                     turns={turns}
                                     goalFilePath={goalPath}
                                     useLaunchEndpoint
-                                    onStarted={(newProcessId) => {
-                                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
+                                    onStarted={(newProcessId, executionWorkspaceId) => {
+                                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: executionWorkspaceId ?? workspaceId });
                                     }}
                                 />
                             );

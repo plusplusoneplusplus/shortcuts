@@ -43,6 +43,20 @@ export { shortenFilePath, linkifyFilePaths, FILE_PATH_RE, parseFilePathRef } fro
 export type { FilePathRef } from './file-path-utils';
 export { RalphLaunchDialog } from './RalphLaunchDialog';
 export type { RalphLaunchDialogProps } from './RalphLaunchDialog';
+export {
+    RalphExecutionRepoSelector,
+    getRalphExecutionRepoApiBase,
+    getRalphExecutionRepoTargetKey,
+    isSameRalphExecutionTarget,
+    useRalphExecutionRepoTargets,
+} from './RalphExecutionRepoSelector';
+export type {
+    RalphExecutionRepoSelectorProps,
+    RalphExecutionRepoTarget,
+    RalphExecutionRepoTargetGroup,
+    UseRalphExecutionRepoTargetsOptions,
+    UseRalphExecutionRepoTargetsResult,
+} from './RalphExecutionRepoSelector';
 export { isGoalFile } from './goal-file-utils';
 export { useUndoRedo } from './useUndoRedo';
 export type { HistorySnapshot } from './useUndoRedo';

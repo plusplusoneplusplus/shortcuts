@@ -104,7 +104,7 @@ export interface InitialChatComposerProps {
     workspaceRoot?: string;
     onBack?: () => void;
     onSubmit: (submission: InitialChatComposerSubmission) => Promise<string | null | void>;
-    onSubmitted?: (taskId: string | null) => Promise<void> | void;
+    onSubmitted?: (taskId: string | null, workspaceId?: string) => Promise<void> | void;
     heroTitle?: string;
     heroDescription?: string;
     placeholder?: string;
@@ -177,9 +177,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         return isQueueProcessId(rawId) ? rawId : toQueueProcessId(rawId);
     }
 
-    async function handleSubmitted(processId: string | null) {
+    async function handleSubmitted(processId: string | null, executionWorkspaceId?: string) {
         if (processId) {
-            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: executionWorkspaceId ?? workspaceId });
         }
         if (!appState.onboardingProgress?.hasUsedChat) {
             await updateOnboarding({ hasUsedChat: true }).catch(() => {});
@@ -780,8 +780,8 @@ export function InitialChatComposer({
         setRalphDirectGoalDraft(input);
     }
 
-    async function handleRalphDirectGoalLaunched(processId: string) {
-        await onSubmitted?.(processId);
+    async function handleRalphDirectGoalLaunched(processId: string, executionWorkspaceId?: string) {
+        await onSubmitted?.(processId, executionWorkspaceId);
         setRalphDirectGoalDraft(null);
         setInput('');
         setCursorPos(0);

@@ -24,6 +24,8 @@ const {
     mockPatchRepoPreferences,
     mockAgentProviders,
     mockModalSelection,
+    mockListWorkspaces,
+    mockListRemoteWorkspaceTargetSources,
 } = vi.hoisted(() => ({
     mockGetRepoPreferences: vi.fn().mockResolvedValue({}),
     mockPatchRepoPreferences: vi.fn().mockResolvedValue({}),
@@ -33,6 +35,8 @@ const {
         { id: 'claude', label: 'Claude', enabled: false, available: false },
     ],
     mockModalSelection: vi.fn(() => ({ resolved: { provider: 'copilot' } })),
+    mockListWorkspaces: vi.fn(),
+    mockListRemoteWorkspaceTargetSources: vi.fn(),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -59,10 +63,15 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useModels', () => ({
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/shared/ModalJobAiControls', () => ({
-    useModalJobAiSelection: () => mockModalSelection(),
+    useModalJobAiSelection: (options: unknown) => mockModalSelection(options),
     ModalJobAiControls: ({ testIdPrefix = 'modal-job' }: { testIdPrefix?: string }) => (
         <div data-testid={`${testIdPrefix}-ai-controls`} />
     ),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/repos/repositoryService', () => ({
+    listWorkspaces: mockListWorkspaces,
+    listRemoteWorkspaceTargetSources: mockListRemoteWorkspaceTargetSources,
 }));
 
 // ---------------------------------------------------------------------------
@@ -70,6 +79,10 @@ vi.mock('../../../../../src/server/spa/client/react/shared/ModalJobAiControls', 
 // ---------------------------------------------------------------------------
 
 import { RalphLaunchDialog } from '../../../../../src/server/spa/client/react/shared/RalphLaunchDialog';
+
+async function waitForRepoSelector() {
+    await waitFor(() => expect(screen.getByTestId('ralph-launch-execution-repo-select')).toBeDefined());
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -94,6 +107,13 @@ describe('RalphLaunchDialog', () => {
         mockPatchRepoPreferences.mockResolvedValue({});
         mockModalSelection.mockReset();
         mockModalSelection.mockReturnValue({ resolved: { provider: 'copilot' } });
+        mockListWorkspaces.mockReset();
+        mockListWorkspaces.mockResolvedValue([
+            { id: 'ws-123', name: 'Source Repo', rootPath: '/repos/source' },
+            { id: 'ws-456', name: 'Other Repo', rootPath: '/repos/other' },
+        ]);
+        mockListRemoteWorkspaceTargetSources.mockReset();
+        mockListRemoteWorkspaceTargetSources.mockResolvedValue({ sources: [], warnings: [] });
         vi.stubGlobal('fetch', vi.fn());
     });
 
@@ -120,6 +140,49 @@ describe('RalphLaunchDialog', () => {
         expect(screen.getByTestId('ralph-launch-ai-controls')).toBeDefined();
     });
 
+    it('renders the execution repo selector and defaults to the source workspace', async () => {
+        render(<RalphLaunchDialog {...defaultProps} />);
+
+        await waitForRepoSelector();
+
+        const select = screen.getByTestId('ralph-launch-execution-repo-select') as HTMLSelectElement;
+        expect(select.value).toBe('local:ws-123');
+        expect(screen.getByTestId('ralph-launch-execution-repo-summary').textContent)
+            .toContain('Ralph will run in Source Repo on Current CoC');
+    });
+
+    it('shows remote workspace options and warnings', async () => {
+        mockListRemoteWorkspaceTargetSources.mockResolvedValue({
+            sources: [{
+                server: { id: 'srv-1', label: 'Remote Lab', effectiveUrl: 'http://127.0.0.1:7777' },
+                workspaces: [{ id: 'remote-ws', name: 'Source Repo', rootPath: '/remote/source' }],
+                gitInfoResults: {},
+            }],
+            warnings: ['Offline Lab: remote CoC is offline'],
+        });
+
+        render(<RalphLaunchDialog {...defaultProps} />);
+
+        await waitForRepoSelector();
+        const select = screen.getByTestId('ralph-launch-execution-repo-select') as HTMLSelectElement;
+        expect([...select.options].map(option => option.value)).toContain('srv-1:remote-ws');
+        expect(screen.getByTestId('ralph-launch-execution-repo-warning').textContent)
+            .toContain('Offline Lab: remote CoC is offline');
+    });
+
+    it('disables confirmation and explains when no selectable workspace exists', async () => {
+        mockListWorkspaces.mockResolvedValue([]);
+        mockListRemoteWorkspaceTargetSources.mockResolvedValue({ sources: [], warnings: [] });
+
+        render(<RalphLaunchDialog {...defaultProps} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('ralph-launch-execution-repo-empty').textContent)
+                .toContain('Register a workspace');
+        });
+        expect(screen.getByTestId('ralph-launch-confirm-btn')).toBeDisabled();
+    });
+
     it('calls onClose when Cancel is clicked', () => {
         render(<RalphLaunchDialog {...defaultProps} />);
         fireEvent.click(screen.getByText('Cancel'));
@@ -140,10 +203,11 @@ describe('RalphLaunchDialog', () => {
         vi.stubGlobal('fetch', mockFetch);
 
         render(<RalphLaunchDialog {...defaultProps} />);
+        await waitForRepoSelector();
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {
-            expect(defaultProps.onLaunched).toHaveBeenCalledWith('new-pid-123');
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('new-pid-123', 'ws-123');
         });
 
         expect(mockFetch).toHaveBeenCalledWith(
@@ -171,10 +235,11 @@ describe('RalphLaunchDialog', () => {
         });
 
         render(<RalphLaunchDialog {...defaultProps} />);
+        await waitForRepoSelector();
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {
-            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-456');
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-456', 'ws-123');
         });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
@@ -190,10 +255,11 @@ describe('RalphLaunchDialog', () => {
         vi.stubGlobal('fetch', mockFetch);
 
         render(<RalphLaunchDialog {...defaultProps} />);
+        await waitForRepoSelector();
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {
-            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-no-config');
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-no-config', 'ws-123');
         });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
@@ -209,6 +275,7 @@ describe('RalphLaunchDialog', () => {
         vi.stubGlobal('fetch', mockFetch);
 
         render(<RalphLaunchDialog {...defaultProps} folderPath="/repo/notes" />);
+        await waitForRepoSelector();
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {
@@ -217,6 +284,59 @@ describe('RalphLaunchDialog', () => {
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
         expect(body.folderPath).toBe('/repo/notes');
+    });
+
+    it('omits source folder paths when launching into another workspace', async () => {
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ processId: 'pid-cross' }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(<RalphLaunchDialog {...defaultProps} folderPath="/repo/notes" workingDirectory="/repo" />);
+        await waitForRepoSelector();
+        fireEvent.change(screen.getByTestId('ralph-launch-execution-repo-select'), { target: { value: 'local:ws-456' } });
+        fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
+
+        await waitFor(() => {
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-cross', 'ws-456');
+        });
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.workspaceId).toBe('ws-456');
+        expect(body.folderPath).toBeUndefined();
+        expect(body.workingDirectory).toBeUndefined();
+    });
+
+    it('posts remote launches to the selected remote CoC server, not the local API base', async () => {
+        mockListRemoteWorkspaceTargetSources.mockResolvedValue({
+            sources: [{
+                server: { id: 'srv-remote', label: 'Remote CoC', effectiveUrl: 'http://127.0.0.1:7777' },
+                workspaces: [{ id: 'remote-ws', name: 'Remote Repo', rootPath: '/remote/repo' }],
+                gitInfoResults: {},
+            }],
+            warnings: [],
+        });
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ processId: 'pid-remote' }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(<RalphLaunchDialog {...defaultProps} folderPath="/repo/notes" />);
+        await waitForRepoSelector();
+        fireEvent.change(screen.getByTestId('ralph-launch-execution-repo-select'), { target: { value: 'srv-remote:remote-ws' } });
+        fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
+
+        await waitFor(() => {
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-remote', 'remote-ws');
+        });
+
+        expect(mockFetch.mock.calls[0][0]).toBe('http://127.0.0.1:7777/api/ralph-launch');
+        expect(mockFetch.mock.calls[0][0]).not.toContain('localhost:4000');
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.workspaceId).toBe('remote-ws');
+        expect(body.folderPath).toBeUndefined();
     });
 
     it('shows error on fetch failure', async () => {
@@ -228,6 +348,7 @@ describe('RalphLaunchDialog', () => {
         vi.stubGlobal('fetch', mockFetch);
 
         render(<RalphLaunchDialog {...defaultProps} />);
+        await waitForRepoSelector();
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {
@@ -239,6 +360,7 @@ describe('RalphLaunchDialog', () => {
 
     it('shows error when goalSpec is empty', async () => {
         render(<RalphLaunchDialog {...defaultProps} goalSpec="   " />);
+        await waitForRepoSelector();
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {

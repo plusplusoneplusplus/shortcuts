@@ -1532,9 +1532,9 @@ export function NoteEditor({
                     goalSpec={getCurrentGoalSpec()}
                     folderPath={notesRoot}
                     onClose={() => setRalphDialogOpen(false)}
-                    onLaunched={(processId) => {
+                    onLaunched={(processId, executionWorkspaceId) => {
                         setRalphDialogOpen(false);
-                        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chats/' + encodeURIComponent(processId);
+                        location.hash = '#repos/' + encodeURIComponent(executionWorkspaceId ?? workspaceId) + '/chats/' + encodeURIComponent(processId);
                     }}
                 />
             )}
