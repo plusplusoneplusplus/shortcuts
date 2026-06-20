@@ -493,14 +493,14 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
         setSyncConflictChoices({});
     }, [workspaceId, workItemId]);
 
-    // Initialize drafts once the item loads.
+    // Initialize drafts once the item loads. Functional updaters guard against a
+    // stale-closure clobber: if an edit lands before this effect flushes, keep it
+    // rather than overwriting the in-progress draft back to the item's values.
     useEffect(() => {
         if (!item || item.id !== workItemId) return;
-        if (draft === null) {
-            setDraft(draftFromItem(item));
-            setPlanDraft(item.plan?.content ?? '');
-        }
-    }, [item, draft, workItemId]);
+        setDraft(prev => prev ?? draftFromItem(item));
+        setPlanDraft(prev => prev ?? (item.plan?.content ?? ''));
+    }, [item, workItemId]);
 
     // Resync drafts from external updates only when there are no unsaved edits.
     useEffect(() => {

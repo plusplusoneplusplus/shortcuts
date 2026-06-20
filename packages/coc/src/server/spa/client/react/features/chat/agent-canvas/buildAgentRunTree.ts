@@ -13,12 +13,14 @@ import { normalizeToolName } from '../conversation/tool-calls/toolNormalization'
 import {
     asRecord,
     asString,
+    buildAgentCompletionByTaskId,
     collectToolCalls,
     firstLine,
     parseTime,
     rawArgs,
     rawToolName,
 } from './agentToolCalls';
+import type { AgentCompletionResult } from './agentToolCalls';
 import type { AgentRunNode, AgentRunStatus } from './types';
 
 export interface AgentRunRootMeta {
@@ -69,7 +71,10 @@ function byStartedAt(a: AgentRunNode, b: AgentRunNode): number {
 }
 
 /** Build a sub-agent node from a normalized `Task` tool call. */
-function nodeFromTaskCall(tc: ClientToolCall): AgentRunNode {
+function nodeFromTaskCall(
+    tc: ClientToolCall,
+    completionByTaskId: Map<string, AgentCompletionResult>,
+): AgentRunNode {
     const args = asRecord(rawArgs(tc));
     const agentType = asString(args.agent_type) || asString(args.subagent_type);
     const agentName = asString(args.name);
@@ -83,7 +88,9 @@ function nodeFromTaskCall(tc: ClientToolCall): AgentRunNode {
         || description
         || (prompt ? (prompt.length > 48 ? `${prompt.slice(0, 45).trimEnd()}…` : prompt) : '')
         || 'sub-agent';
-    const result = typeof tc.result === 'string' && tc.result.trim() ? tc.result.trim() : undefined;
+    const completion = completionByTaskId.get(tc.id);
+    const result = completion?.result
+        ?? (typeof tc.result === 'string' && tc.result.trim() ? tc.result.trim() : undefined);
     return {
         id: tc.id,
         name,
@@ -94,7 +101,7 @@ function nodeFromTaskCall(tc: ClientToolCall): AgentRunNode {
         mode: mode || undefined,
         status: mapToolStatus(tc.status),
         startedAt: parseTime(tc.startTime),
-        completedAt: parseTime(tc.endTime),
+        completedAt: parseTime(completion?.endTime ?? tc.endTime),
         summary: result ? firstLine(result) : undefined,
         prompt: prompt || undefined,
         result,
@@ -136,13 +143,15 @@ export function buildAgentRunTreeFromTurns(
     turns: ClientConversationTurn[] | undefined,
     root?: AgentRunRootMeta,
 ): AgentRunNode {
-    const taskCalls = collectToolCalls(turns || [])
+    const allCalls = collectToolCalls(turns || []);
+    const completionByTaskId = buildAgentCompletionByTaskId(allCalls);
+    const taskCalls = allCalls
         .filter((tc) => normalizeToolName(rawToolName(tc)) === 'task');
 
     const nodeById = new Map<string, AgentRunNode>();
     const parentIdById = new Map<string, string | undefined>();
     for (const tc of taskCalls) {
-        nodeById.set(tc.id, nodeFromTaskCall(tc));
+        nodeById.set(tc.id, nodeFromTaskCall(tc, completionByTaskId));
         parentIdById.set(tc.id, tc.parentToolCallId);
     }
 

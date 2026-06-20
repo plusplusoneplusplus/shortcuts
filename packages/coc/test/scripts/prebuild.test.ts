@@ -40,6 +40,12 @@ describe('prebuild script', () => {
         expect(calls).toEqual([
             {
                 command: 'npm-test',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-agent-sdk'],
+                cwd: '/repo/root',
+                shell: undefined,
+            },
+            {
+                command: 'npm-test',
                 args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-client'],
                 cwd: '/repo/root',
                 shell: undefined,
@@ -71,6 +77,12 @@ describe('prebuild script', () => {
         });
 
         expect(calls).toEqual([
+            {
+                command: 'npm.cmd',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-agent-sdk'],
+                cwd: '/repo/root',
+                shell: true,
+            },
             {
                 command: 'npm.cmd',
                 args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-client'],

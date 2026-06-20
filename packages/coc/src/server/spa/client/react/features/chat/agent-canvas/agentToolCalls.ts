@@ -40,6 +40,9 @@ export function rawArgs(tc: ClientToolCall): unknown {
     return tc.args ?? (tc as { parameters?: unknown }).parameters;
 }
 
+const STARTED_AGENT_ID_RE = /\bagent_id:\s*([^\s,]+)/i;
+const READ_AGENT_TERMINAL_RE = /^Agent (?:completed|failed|cancelled)\.[^\n]*(?:\r?\n){2,}([\s\S]+)$/i;
+
 /** The tool call's args (or parameters) only when it's a non-empty object. */
 export function nonEmptyArgs(tc: ClientToolCall): Record<string, unknown> | undefined {
     const a = rawArgs(tc);
@@ -83,6 +86,11 @@ function latestTime(a: unknown, b: unknown): unknown {
     return ta >= tb ? a : b;
 }
 
+function usefulToolName(tc: ClientToolCall): string | undefined {
+    const name = rawToolName(tc);
+    return name && name !== 'unknown' ? name : undefined;
+}
+
 /** Collect every tool call across turns, deduped by id, preferring terminal state. */
 export function collectToolCalls(turns: ClientConversationTurn[]): ClientToolCall[] {
     const byId = new Map<string, ClientToolCall>();
@@ -102,9 +110,11 @@ export function collectToolCalls(turns: ClientConversationTurn[]): ClientToolCal
         // EMPTY args while an earlier snapshot has the full invocation args —
         // keep whichever args are non-empty so name/model/type survive.
         const mergedArgs = nonEmptyArgs(better) ?? nonEmptyArgs(worse);
+        const mergedToolName = usefulToolName(better) ?? usefulToolName(worse);
         byId.set(tc.id, {
             ...worse,
             ...better,
+            ...(mergedToolName ? { toolName: mergedToolName } : {}),
             ...(mergedArgs ? { args: mergedArgs } : {}),
             startTime: earliestTime(better.startTime, worse.startTime) as ClientToolCall['startTime'],
             endTime: latestTime(better.endTime, worse.endTime) as ClientToolCall['endTime'],
@@ -126,4 +136,68 @@ export function collectToolCalls(turns: ClientConversationTurn[]): ClientToolCal
         }
     }
     return Array.from(byId.values());
+}
+
+export interface AgentCompletionResult {
+    result: string;
+    status: ClientToolCall['status'];
+    endTime?: string;
+}
+
+function startedAgentIdFromTaskResult(result: unknown): string | undefined {
+    if (typeof result !== 'string') {
+        return undefined;
+    }
+    const match = result.match(STARTED_AGENT_ID_RE);
+    return match?.[1]?.trim().replace(/[.)]+$/, '') || undefined;
+}
+
+function readAgentId(tc: ClientToolCall): string | undefined {
+    if (rawToolName(tc) !== 'read_agent') {
+        return undefined;
+    }
+    return asString(asRecord(rawArgs(tc)).agent_id) || undefined;
+}
+
+function displayReadAgentResult(result: string): string {
+    const trimmed = result.trim();
+    const match = trimmed.match(READ_AGENT_TERMINAL_RE);
+    const body = match?.[1]?.trim();
+    return body || trimmed;
+}
+
+function resultSortTime(result: AgentCompletionResult): number {
+    const t = parseTime(result.endTime);
+    return t === undefined ? 0 : t;
+}
+
+/**
+ * Background `task` calls complete immediately with a startup acknowledgement;
+ * their final output is delivered later through a `read_agent` call keyed by the
+ * same agent_id. Build a lookup so the Agents view can display the final output.
+ */
+export function buildAgentCompletionByTaskId(toolCalls: ClientToolCall[]): Map<string, AgentCompletionResult> {
+    const completionByAgentId = new Map<string, AgentCompletionResult>();
+    for (const tc of toolCalls) {
+        const agentId = readAgentId(tc);
+        const result = typeof tc.result === 'string' && tc.result.trim() ? displayReadAgentResult(tc.result) : '';
+        if (!agentId || !result) {
+            continue;
+        }
+        const next: AgentCompletionResult = { result, status: tc.status, endTime: tc.endTime };
+        const existing = completionByAgentId.get(agentId);
+        if (!existing || resultSortTime(next) >= resultSortTime(existing)) {
+            completionByAgentId.set(agentId, next);
+        }
+    }
+
+    const byTaskId = new Map<string, AgentCompletionResult>();
+    for (const tc of toolCalls) {
+        const agentId = startedAgentIdFromTaskResult(tc.result);
+        const completion = agentId ? completionByAgentId.get(agentId) : undefined;
+        if (completion) {
+            byTaskId.set(tc.id, completion);
+        }
+    }
+    return byTaskId;
 }
