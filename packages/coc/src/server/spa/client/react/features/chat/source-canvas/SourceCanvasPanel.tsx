@@ -16,6 +16,7 @@ import { getSpaCocClient } from '../../../api/cocClient';
 import { Spinner } from '../../../ui/Spinner';
 import { SourceCanvasBody } from './SourceCanvasBody';
 import { SourceCanvasNoteEditor } from './SourceCanvasNoteEditor';
+import { SourceCanvasNotePopOutButton } from './SourceCanvasNotePopOutButton';
 import type { SourceCanvasFileRef } from './types';
 import type { SourceCanvasContentState } from './useSourceCanvasContent';
 
@@ -124,6 +125,13 @@ export function SourceCanvasPanel({ fileRef, wsId, content, onClose }: SourceCan
                     >
                         <RevealInExplorerIcon />
                     </button>
+                    {fileRef.kind === 'note' && (
+                        <SourceCanvasNotePopOutButton
+                            fileRef={fileRef}
+                            onClose={onClose}
+                            className={headerBtnClass}
+                        />
+                    )}
                     <button
                         type="button"
                         data-testid="source-canvas-close-btn"

@@ -26,6 +26,14 @@ vi.mock('../../../src/server/spa/client/react/features/chat/source-canvas/Source
     ),
 }));
 
+// Stub the pop-out button (AC-03) — it pulls in App/Toast/MarkdownPopOut
+// contexts; its own behavior is covered in SourceCanvasNotePopOutButton.test.tsx.
+vi.mock('../../../src/server/spa/client/react/features/chat/source-canvas/SourceCanvasNotePopOutButton', () => ({
+    SourceCanvasNotePopOutButton: ({ onClose }: any) => (
+        <button type="button" data-testid="source-canvas-popout-btn" onClick={onClose} />
+    ),
+}));
+
 import { SourceCanvasPanel } from '../../../src/server/spa/client/react/features/chat/source-canvas/SourceCanvasPanel';
 
 beforeEach(() => {
@@ -178,6 +186,34 @@ describe('SourceCanvasPanel', () => {
         // …and the read-only loading/source viewer is NOT mounted for notes.
         expect(queryByTestId('source-canvas-loading')).toBeNull();
         expect(queryByTestId('source-canvas-source')).toBeNull();
+    });
+
+    it('shows all four header actions (incl. Pop out) only in note/editable mode (AC-03)', () => {
+        const { getByTestId, queryByTestId, rerender } = render(
+            <SourceCanvasPanel
+                fileRef={{ fullPath: '/home/u/proj/notes/x.md', kind: 'note' }}
+                wsId="ws1"
+                onClose={() => {}}
+            />,
+        );
+        // Copy path, Reveal, Pop out, Close — and no minimize/maximize.
+        expect(getByTestId('source-canvas-copy-btn')).toBeTruthy();
+        expect(getByTestId('source-canvas-reveal-btn')).toBeTruthy();
+        expect(getByTestId('source-canvas-popout-btn')).toBeTruthy();
+        expect(getByTestId('source-canvas-close-btn')).toBeTruthy();
+        expect(queryByTestId('source-canvas-minimize-btn')).toBeNull();
+        expect(queryByTestId('source-canvas-maximize-btn')).toBeNull();
+
+        // Code mode keeps the original three actions (no Pop out).
+        rerender(
+            <SourceCanvasPanel
+                fileRef={{ fullPath: '/home/u/proj/src/foo.ts', kind: 'code' }}
+                wsId="ws1"
+                content={{ status: 'loading', content: '', language: '', resolvedPath: '', error: '' }}
+                onClose={() => {}}
+            />,
+        );
+        expect(queryByTestId('source-canvas-popout-btn')).toBeNull();
     });
 
     it('renders the read-only source viewer (not the note editor) for a code ref', () => {
