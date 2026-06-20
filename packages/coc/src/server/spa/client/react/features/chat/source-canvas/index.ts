@@ -3,6 +3,8 @@
  */
 export { SourceCanvasPanel } from './SourceCanvasPanel';
 export type { SourceCanvasPanelProps } from './SourceCanvasPanel';
+export { SourceCanvasDock } from './SourceCanvasDock';
+export type { SourceCanvasDockProps } from './SourceCanvasDock';
 export { SourceCanvasBody } from './SourceCanvasBody';
 export type { SourceCanvasBodyProps } from './SourceCanvasBody';
 export { SourceCanvasNoteEditor } from './SourceCanvasNoteEditor';

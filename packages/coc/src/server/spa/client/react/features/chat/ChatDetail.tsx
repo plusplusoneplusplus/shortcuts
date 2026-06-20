@@ -33,8 +33,7 @@ import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
 import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/useChatSSE';
 import { CanvasPanel } from '../canvas/CanvasPanel';
-import { SourceCanvasPanel, useSourceCanvasState, useSourceCanvasContent } from './source-canvas';
-import { BottomSheet } from '../../ui/BottomSheet';
+import { SourceCanvasDock, useSourceCanvasState, useSourceCanvasContent } from './source-canvas';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
@@ -1111,44 +1110,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         sourceCanvasFileRef?.kind === 'note' ? null : sourceCanvasFileRef,
     );
     const sourceCanvasColumn = (sourceCanvas.isOpen && sourceCanvasFileRef) ? (
-        isMobile ? (
-            <BottomSheet
-                isOpen
-                onClose={sourceCanvas.close}
-                title={(sourceCanvasFileRef.displayPath || sourceCanvasFileRef.fullPath).replace(/\\/g, '/').split('/').pop() || 'Source'}
-                height={90}
-            >
-                <SourceCanvasPanel
-                    fileRef={sourceCanvasFileRef}
-                    wsId={sourceCanvasWsId}
-                    content={sourceCanvasContent}
-                    onClose={sourceCanvas.close}
-                />
-            </BottomSheet>
-        ) : (
-            <>
-                <div
-                    className="hidden lg:flex items-center justify-center w-1 cursor-col-resize shrink-0 hover:bg-[#d0d0d0] dark:hover:bg-[#3a3a3c]"
-                    onMouseDown={sourceCanvasResize.handleMouseDown}
-                    onTouchStart={sourceCanvasResize.handleTouchStart}
-                    role="separator"
-                    aria-label="Resize source canvas panel"
-                    data-testid="source-canvas-resize-handle"
-                />
-                <div
-                    style={{ width: sourceCanvasResize.width }}
-                    className="hidden lg:block shrink-0 h-full border-l border-[#e0e0e0] dark:border-[#474749]"
-                    data-testid="source-canvas-column"
-                >
-                    <SourceCanvasPanel
-                        fileRef={sourceCanvasFileRef}
-                        wsId={sourceCanvasWsId}
-                        content={sourceCanvasContent}
-                        onClose={sourceCanvas.close}
-                    />
-                </div>
-            </>
-        )
+        <SourceCanvasDock
+            fileRef={sourceCanvasFileRef}
+            wsId={sourceCanvasWsId}
+            content={sourceCanvasContent}
+            isMobile={isMobile}
+            onClose={sourceCanvas.close}
+            resize={sourceCanvasResize}
+        />
     ) : null;
 
     const { handlePopOut, handleFloat } = useChatWindowActions({ task, taskId, workspaceId });
