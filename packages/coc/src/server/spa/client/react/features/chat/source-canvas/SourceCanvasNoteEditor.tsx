@@ -72,6 +72,7 @@ export function SourceCanvasNoteEditor({ fileRef }: SourceCanvasNoteEditorProps)
                 io={editorIO}
                 commentBackend={noopCommentBackend}
                 notesRoot={target.taskRootPath ?? undefined}
+                scrollToLine={fileRef.line}
             />
         </div>
     );

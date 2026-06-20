@@ -83,6 +83,26 @@ describe('SourceCanvasNoteEditor', () => {
         expect(props.io).toEqual({ __kind: 'workspace' });
     });
 
+    it('forwards the ref line to the editor as scrollToLine (AC-04 best-effort scroll)', () => {
+        render(
+            <SourceCanvasNoteEditor
+                fileRef={{ fullPath: '/home/u/proj/docs/readme.md', kind: 'note', line: 40 }}
+            />,
+        );
+        const props = noteEditorProps.mock.calls[0][0];
+        expect(props.scrollToLine).toBe(40);
+    });
+
+    it('passes no scrollToLine when the ref carried no line (opens at top)', () => {
+        render(
+            <SourceCanvasNoteEditor
+                fileRef={{ fullPath: '/home/u/proj/docs/readme.md', kind: 'note' }}
+            />,
+        );
+        const props = noteEditorProps.mock.calls[0][0];
+        expect(props.scrollToLine).toBeUndefined();
+    });
+
     it('shows an error and does not mount the editor when no workspace resolves', () => {
         workspacesRef.current = [];
         const { getByTestId, queryByTestId } = render(

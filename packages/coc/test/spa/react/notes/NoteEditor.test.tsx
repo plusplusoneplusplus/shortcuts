@@ -239,6 +239,28 @@ describe('NoteEditor', () => {
         });
     });
 
+    // ── Best-effort scroll to line (AC-04) ──────────────────────────────
+
+    it('loads content without throwing when a scrollToLine is provided', async () => {
+        mockLoadContent.mockResolvedValue({ content: '# Hello\n\nline two\nline three', path: 'page.md' });
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} scrollToLine={40} />);
+        });
+        // The best-effort scroll must not break the normal load path.
+        await waitFor(() => {
+            expect(mockLoadContent).toHaveBeenCalledTimes(1);
+            expect(mockSetContent).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    it('loads content normally (opens at top) when no scrollToLine is provided', async () => {
+        mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+        });
+        await waitFor(() => expect(mockSetContent).toHaveBeenCalledTimes(1));
+    });
+
     // ── Load error ──────────────────────────────────────────────────────
 
     it('shows error banner when load fails', async () => {
