@@ -6,9 +6,11 @@ import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import {
     WorkItemGitHubPullPoller,
+    WORK_ITEM_SYNC_MAX_ITEMS,
     importGitHubEpicTreeAsWorkItems,
     type AvailableGitHubWorkItemSyncRepo,
     type GitHubWorkItemIssue,
+    type GitHubWorkItemIssueListFilters,
     type GitHubWorkItemIssueTransport,
     type WorkItemGitHubPullPollerTimerApi,
 } from '../../../src/server/work-items';
@@ -393,5 +395,84 @@ describe('WorkItemGitHubPullPoller', () => {
         const afterOpen = await store.listWorkItems({ repoId: REPO_ID });
         expect(afterOpen.items.map(item => item.githubMirror?.issueNumber).filter(Boolean).sort())
             .toEqual([100, 101]);
+    });
+
+    it('flags and logs truncation when the candidate fetch reaches the cap', async () => {
+        const root = makeIssue(100, 'Remote Epic', {
+            labels: ['coc:type:epic'],
+            body: 'Remote epic',
+        });
+        await importTree(store, new Map([[100, root]]));
+
+        // More remote issues exist than the cap allows; the transport honors the
+        // limit (like the real gh-CLI transport) and returns exactly the cap.
+        const candidates: GitHubWorkItemIssue[] = [root];
+        for (let n = 1; candidates.length < WORK_ITEM_SYNC_MAX_ITEMS + 50; n++) {
+            if (n === 100) continue;
+            candidates.push(makeIssue(n, `Filler ${n}`));
+        }
+        const cappingTransport: GitHubWorkItemIssueTransport = {
+            async getRepository() {},
+            async listIssues(_repo, filters?: GitHubWorkItemIssueListFilters) {
+                const limit = filters?.limit ?? candidates.length;
+                return candidates.slice(0, limit);
+            },
+            async getIssue(_repo: AvailableGitHubWorkItemSyncRepo, issueNumber: number) {
+                return candidates.find(issue => issue.number === issueNumber);
+            },
+            async createIssue(): Promise<GitHubWorkItemIssue> {
+                throw new Error('createIssue is not used by the GitHub pull poller.');
+            },
+            async updateIssue(): Promise<GitHubWorkItemIssue> {
+                throw new Error('updateIssue is not used by the GitHub pull poller.');
+            },
+        };
+
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: { sync: { github: { owner: OWNER, repo: REPO, pollingEnabled: true } } },
+        });
+        const logs: string[] = [];
+        const poller = new WorkItemGitHubPullPoller({
+            dataDir: tmpDir,
+            processStore: processStore(tmpDir),
+            workItemStore: store,
+            transport: cappingTransport,
+            now: () => '2026-01-03T00:00:00.000Z',
+            logError: message => logs.push(message),
+        });
+
+        const pullResult = await poller.pollWorkspace(REPO_ID);
+
+        expect(pullResult.candidatesConsidered).toBe(WORK_ITEM_SYNC_MAX_ITEMS);
+        expect(pullResult.truncated).toBe(true);
+        expect(pullResult.errors).toEqual([]);
+        expect(logs.some(message =>
+            message.includes(String(WORK_ITEM_SYNC_MAX_ITEMS)) && message.toLowerCase().includes('truncated'),
+        )).toBe(true);
+    });
+
+    it('does not flag truncation when the candidate fetch is under the cap', async () => {
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [100, makeIssue(100, 'Remote Epic', { labels: ['coc:type:epic'], body: 'Remote epic' })],
+        ]);
+        await importTree(store, issues);
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: { sync: { github: { owner: OWNER, repo: REPO, pollingEnabled: true } } },
+        });
+        const logs: string[] = [];
+        const poller = new WorkItemGitHubPullPoller({
+            dataDir: tmpDir,
+            processStore: processStore(tmpDir),
+            workItemStore: store,
+            transport: makeTransport(issues),
+            now: () => '2026-01-03T00:00:00.000Z',
+            logError: message => logs.push(message),
+        });
+
+        const pullResult = await poller.pollWorkspace(REPO_ID);
+
+        expect(pullResult.candidatesConsidered).toBe(1);
+        expect(pullResult.truncated).toBe(false);
+        expect(logs).toEqual([]);
     });
 });

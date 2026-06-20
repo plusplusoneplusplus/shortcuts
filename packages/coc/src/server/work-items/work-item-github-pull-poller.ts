@@ -51,6 +51,15 @@ export interface WorkItemGitHubPullWorkspaceResult {
     deleted: number;
     deletedItemIds: string[];
     errors: WorkItemGitHubPullPollError[];
+    /** Number of remote candidate issues fetched for this poll (after the cap). */
+    candidatesConsidered: number;
+    /**
+     * True when the candidate fetch reached {@link WORK_ITEM_SYNC_MAX_ITEMS} and
+     * the remote issue list may have been truncated, so some descendants could be
+     * missing from the mirror. Surfaced in the structured result and logged so the
+     * truncation is observable rather than silent.
+     */
+    truncated: boolean;
 }
 
 interface WorkspaceTimer {
@@ -107,6 +116,8 @@ function blankResult(workspaceId: string): WorkItemGitHubPullWorkspaceResult {
         deleted: 0,
         deletedItemIds: [],
         errors: [],
+        candidatesConsidered: 0,
+        truncated: false,
     };
 }
 
@@ -190,6 +201,18 @@ export class WorkItemGitHubPullPoller {
         const workspace = await this.getWorkspace(workspaceId);
         const repo = this.resolveRepo(workspaceId, workspace);
         const candidateIssues = await this.transport.listIssues(repo, { limit: WORK_ITEM_SYNC_MAX_ITEMS });
+        result.candidatesConsidered = candidateIssues.length;
+        // The transport caps the candidate list at WORK_ITEM_SYNC_MAX_ITEMS, so a
+        // count at the cap means the remote list was (or may have been) truncated
+        // and some descendants could be missing from this pull. Log it so the
+        // truncation is observable instead of silently dropping issues.
+        if (candidateIssues.length >= WORK_ITEM_SYNC_MAX_ITEMS) {
+            result.truncated = true;
+            this.logError(
+                `[work-items/github-poll] ${workspaceId}: reached the ${WORK_ITEM_SYNC_MAX_ITEMS}-issue cap; `
+                + 'the GitHub issue list may be truncated and some descendants could be missing from the mirror.',
+            );
+        }
 
         for (const rootEntry of roots) {
             const root = await this.options.workItemStore.getWorkItem(rootEntry.id, workspaceId);
