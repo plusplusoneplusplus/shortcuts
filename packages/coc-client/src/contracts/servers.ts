@@ -79,6 +79,11 @@ export interface RemoteServerRuntime {
   lastError?: string;
 }
 
+export interface RemoteServerRestartResponse {
+  ok: boolean;
+  message?: string;
+}
+
 export interface CherryPickTransferEndpoint {
   serverId?: string | null;
   workspaceId: string;

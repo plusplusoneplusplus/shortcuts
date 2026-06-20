@@ -13,6 +13,7 @@ describe('ServersClient', () => {
     await client.remove('s1');
     await client.test({ kind: 'url', label: 'Test', url: 'http://localhost:4000' });
     await client.reconnect('s1');
+    await client.restart('s1');
     await client.getHealth('s1');
     await client.cherryPickTransfer({
       source: { serverId: 'source/server', workspaceId: 'source/ws', commitHash: 'abc123' },
@@ -42,6 +43,10 @@ describe('ServersClient', () => {
         options: { method: 'POST' },
       },
       {
+        path: '/servers/s1/restart',
+        options: { method: 'POST' },
+      },
+      {
         path: '/servers/s1/health',
       },
       {
@@ -64,6 +69,7 @@ describe('ServersClient', () => {
     await client.update('id/with spaces', { label: 'x' });
     await client.remove('id/with spaces');
     await client.reconnect('id/with spaces');
+    await client.restart('id/with spaces');
     await client.getHealth('id/with spaces');
 
     const paths = adapter.calls.map(c => c.path);
@@ -72,6 +78,7 @@ describe('ServersClient', () => {
       `/servers/${encoded}`,
       `/servers/${encoded}`,
       `/servers/${encoded}/reconnect`,
+      `/servers/${encoded}/restart`,
       `/servers/${encoded}/health`,
     ]);
   });
