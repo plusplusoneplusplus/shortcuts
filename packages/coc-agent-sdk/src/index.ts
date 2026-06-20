@@ -163,6 +163,8 @@ export type {
     WarmClientFactory,
     WarmAcquireResult,
     WarmClientRegistryOptions,
+    WarmStatus,
+    WarmStateChangeListener,
 } from './warm-client-registry';
 
 export {

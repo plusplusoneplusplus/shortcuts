@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
     WarmClientRegistry,
     WarmClientHandle,
+    WarmStatus,
     makeWarmKey,
 } from '../../src/warm-client-registry';
 
@@ -400,6 +401,163 @@ describe('WarmClientRegistry', () => {
 
         await registry.release(KEY, { keep: true });
         expect(registry.isActive(KEY)).toBe(false);
+        expect(registry.isWarm(KEY)).toBe(true);
+    });
+});
+
+// ── onStateChange notifications (warm_status SSE source — AC-01) ──────────────
+
+describe('WarmClientRegistry — onStateChange notifications', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    function makeRecordingRegistry(ttlMs = TTL) {
+        const events: Array<{ key: string; status: WarmStatus }> = [];
+        const registry = new WarmClientRegistry({
+            ttlMs,
+            onStateChange: (key, status) => events.push({ key, status }),
+        });
+        return { registry, events, statuses: () => events.map((e) => e.status) };
+    }
+
+    it('emits active on cold-miss acquire, warm on clean release, cold on TTL expiry', async () => {
+        const { registry, statuses } = makeRecordingRegistry();
+        const handle = makeHandle();
+
+        await registry.acquire(KEY, () => Promise.resolve(handle));
+        expect(statuses()).toEqual(['active']);
+
+        await registry.release(KEY, { keep: true });
+        expect(statuses()).toEqual(['active', 'warm']);
+
+        await vi.advanceTimersByTimeAsync(TTL + 1);
+        expect(statuses()).toEqual(['active', 'warm', 'cold']);
+    });
+
+    it('emits warming then warm across a prewarm', async () => {
+        const { registry, statuses } = makeRecordingRegistry();
+        await registry.prewarm(KEY, () => Promise.resolve(makeHandle()));
+        expect(statuses()).toEqual(['warming', 'warm']);
+    });
+
+    it('emits warming then cold when a prewarm factory rejects', async () => {
+        const { registry, statuses } = makeRecordingRegistry();
+        await registry.prewarm(KEY, () => Promise.reject(new Error('boom')));
+        expect(statuses()).toEqual(['warming', 'cold']);
+    });
+
+    it('emits warming then active when a send attaches mid-prewarm (no spurious warm)', async () => {
+        const { registry, statuses } = makeRecordingRegistry();
+        const handle = makeHandle();
+        const deferred = makeDeferred<WarmClientHandle>();
+
+        const prewarmP = registry.prewarm(KEY, () => deferred.promise);
+        expect(statuses()).toEqual(['warming']);
+
+        const acquireP = registry.acquire(KEY, () => deferred.promise);
+        expect(statuses()).toEqual(['warming', 'active']);
+
+        deferred.resolve(handle);
+        await acquireP;
+        await prewarmP;
+
+        // The prewarm success callback runs but the key is active — no 'warm'.
+        expect(statuses()).toEqual(['warming', 'active']);
+    });
+
+    it('emits active then warm again on warm-hit reuse', async () => {
+        const { registry, statuses } = makeRecordingRegistry();
+        const handle = makeHandle();
+        const factory = () => Promise.resolve(handle);
+
+        await registry.acquire(KEY, factory);
+        await registry.release(KEY, { keep: true });
+        await registry.acquire(KEY, factory); // warm hit
+        await registry.release(KEY, { keep: true });
+
+        expect(statuses()).toEqual(['active', 'warm', 'active', 'warm']);
+    });
+
+    it('emits cold directly on abort/error release (no warm)', async () => {
+        const { registry, statuses } = makeRecordingRegistry();
+        const handle = makeHandle();
+
+        await registry.acquire(KEY, () => Promise.resolve(handle));
+        await registry.release(KEY, { keep: false });
+
+        expect(statuses()).toEqual(['active', 'cold']);
+    });
+
+    it('coalesces duplicate active emits across concurrent turns', async () => {
+        const { registry, statuses } = makeRecordingRegistry();
+        const handle = makeHandle();
+        const factory = () => Promise.resolve(handle);
+
+        await registry.acquire(KEY, factory);
+        await registry.acquire(KEY, factory); // second concurrent — still active
+        expect(statuses()).toEqual(['active']); // not duplicated
+
+        await registry.release(KEY, { keep: false }); // one turn still active
+        expect(statuses()).toEqual(['active']); // no transition
+
+        await registry.release(KEY, { keep: false }); // last release → cold
+        expect(statuses()).toEqual(['active', 'cold']);
+    });
+
+    it('emits active then cold when a cold-miss factory rejects', async () => {
+        const { registry, statuses } = makeRecordingRegistry();
+        await expect(registry.acquire(KEY, () => Promise.reject(new Error('spawn'))))
+            .rejects.toThrow('spawn');
+        expect(statuses()).toEqual(['active', 'cold']);
+    });
+
+    it('with TTL=0, emits active then cold (warming disabled, no warm state)', async () => {
+        const { registry, statuses } = makeRecordingRegistry(0);
+        const handle = makeHandle();
+
+        await registry.acquire(KEY, () => Promise.resolve(handle));
+        await registry.release(KEY, { keep: true });
+
+        expect(statuses()).toEqual(['active', 'cold']);
+    });
+
+    it('emits cold for each key on evictAll', async () => {
+        const { registry, events } = makeRecordingRegistry();
+        const k1 = makeWarmKey('copilot', '/one');
+        const k2 = makeWarmKey('codex', '/two');
+
+        await registry.acquire(k1, () => Promise.resolve(makeHandle()));
+        await registry.release(k1, { keep: true });
+        await registry.acquire(k2, () => Promise.resolve(makeHandle()));
+        await registry.release(k2, { keep: true });
+
+        const before = events.length;
+        await registry.evictAll();
+        const cold = events.slice(before);
+
+        expect(cold.map((e) => e.status)).toEqual(['cold', 'cold']);
+        expect(new Set(cold.map((e) => e.key))).toEqual(new Set([k1, k2]));
+    });
+
+    it('a throwing listener does not corrupt registry state', async () => {
+        const handle = makeHandle();
+        const registry = new WarmClientRegistry({
+            ttlMs: TTL,
+            onStateChange: () => { throw new Error('listener boom'); },
+        });
+
+        await expect(registry.acquire(KEY, () => Promise.resolve(handle))).resolves.toBeDefined();
+        expect(registry.isActive(KEY)).toBe(true);
+
+        await registry.release(KEY, { keep: true });
+        expect(registry.isWarm(KEY)).toBe(true);
+    });
+
+    it('does not emit when no listener is configured (no throw)', async () => {
+        const registry = new WarmClientRegistry({ ttlMs: TTL });
+        const handle = makeHandle();
+        await registry.acquire(KEY, () => Promise.resolve(handle));
+        await registry.release(KEY, { keep: true });
         expect(registry.isWarm(KEY)).toBe(true);
     });
 });
