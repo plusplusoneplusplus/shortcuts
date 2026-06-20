@@ -24,8 +24,7 @@ const {
     mockPatchRepoPreferences,
     mockAgentProviders,
     mockModalSelection,
-    mockListWorkspaces,
-    mockListRemoteWorkspaceTargetSources,
+    mockUseRepos,
 } = vi.hoisted(() => ({
     mockGetRepoPreferences: vi.fn().mockResolvedValue({}),
     mockPatchRepoPreferences: vi.fn().mockResolvedValue({}),
@@ -35,8 +34,7 @@ const {
         { id: 'claude', label: 'Claude', enabled: false, available: false },
     ],
     mockModalSelection: vi.fn(() => ({ resolved: { provider: 'copilot' } })),
-    mockListWorkspaces: vi.fn(),
-    mockListRemoteWorkspaceTargetSources: vi.fn(),
+    mockUseRepos: vi.fn(),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -69,9 +67,8 @@ vi.mock('../../../../../src/server/spa/client/react/shared/ModalJobAiControls', 
     ),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/repos/repositoryService', () => ({
-    listWorkspaces: mockListWorkspaces,
-    listRemoteWorkspaceTargetSources: mockListRemoteWorkspaceTargetSources,
+vi.mock('../../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
+    useRepos: mockUseRepos,
 }));
 
 // ---------------------------------------------------------------------------
@@ -79,6 +76,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/repositoryService', ()
 // ---------------------------------------------------------------------------
 
 import { RalphLaunchDialog } from '../../../../../src/server/spa/client/react/shared/RalphLaunchDialog';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 async function waitForRepoSelector() {
     await waitFor(() => expect(screen.getByTestId('ralph-launch-execution-repo-select')).toBeDefined());
@@ -107,14 +105,19 @@ describe('RalphLaunchDialog', () => {
         mockPatchRepoPreferences.mockResolvedValue({});
         mockModalSelection.mockReset();
         mockModalSelection.mockReturnValue({ resolved: { provider: 'copilot' } });
-        mockListWorkspaces.mockReset();
-        mockListWorkspaces.mockResolvedValue([
-            { id: 'ws-123', name: 'Source Repo', rootPath: '/repos/source' },
-            { id: 'ws-456', name: 'Other Repo', rootPath: '/repos/other' },
-        ]);
-        mockListRemoteWorkspaceTargetSources.mockReset();
-        mockListRemoteWorkspaceTargetSources.mockResolvedValue({ sources: [], warnings: [] });
+        mockUseRepos.mockReset();
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'ws-123', name: 'Source Repo', rootPath: '/repos/source' } },
+                { workspace: { id: 'ws-456', name: 'Other Repo', rootPath: '/repos/other' } },
+            ],
+            loading: false,
+        });
         vi.stubGlobal('fetch', vi.fn());
+    });
+
+    afterEach(() => {
+        resetCloneRegistryForTests();
     });
 
     it('renders nothing when open is false', () => {
@@ -151,14 +154,26 @@ describe('RalphLaunchDialog', () => {
             .toContain('Ralph will run in Source Repo on Current CoC');
     });
 
-    it('shows remote workspace options and warnings', async () => {
-        mockListRemoteWorkspaceTargetSources.mockResolvedValue({
-            sources: [{
-                server: { id: 'srv-1', label: 'Remote Lab', effectiveUrl: 'http://127.0.0.1:7777' },
-                workspaces: [{ id: 'remote-ws', name: 'Source Repo', rootPath: '/remote/source' }],
-                gitInfoResults: {},
-            }],
-            warnings: ['Offline Lab: remote CoC is offline'],
+    it('shows online remote workspace options', async () => {
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'ws-123', name: 'Source Repo', rootPath: '/repos/source' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Lab Repo',
+                        rootPath: '/remote/source',
+                        baseUrl: 'http://127.0.0.1:7777',
+                        remote: {
+                            serverId: 'srv-1',
+                            serverLabel: 'Remote Lab',
+                            baseUrl: 'http://127.0.0.1:7777',
+                            offline: false,
+                        },
+                    },
+                },
+            ],
+            loading: false,
         });
 
         render(<RalphLaunchDialog {...defaultProps} />);
@@ -166,13 +181,11 @@ describe('RalphLaunchDialog', () => {
         await waitForRepoSelector();
         const select = screen.getByTestId('ralph-launch-execution-repo-select') as HTMLSelectElement;
         expect([...select.options].map(option => option.value)).toContain('srv-1:remote-ws');
-        expect(screen.getByTestId('ralph-launch-execution-repo-warning').textContent)
-            .toContain('Offline Lab: remote CoC is offline');
+        expect(screen.queryByTestId('ralph-launch-execution-repo-warning')).toBeNull();
     });
 
     it('disables confirmation and explains when no selectable workspace exists', async () => {
-        mockListWorkspaces.mockResolvedValue([]);
-        mockListRemoteWorkspaceTargetSources.mockResolvedValue({ sources: [], warnings: [] });
+        mockUseRepos.mockReturnValue({ repos: [], loading: false });
 
         render(<RalphLaunchDialog {...defaultProps} />);
 
@@ -309,13 +322,25 @@ describe('RalphLaunchDialog', () => {
     });
 
     it('posts remote launches to the selected remote CoC server, not the local API base', async () => {
-        mockListRemoteWorkspaceTargetSources.mockResolvedValue({
-            sources: [{
-                server: { id: 'srv-remote', label: 'Remote CoC', effectiveUrl: 'http://127.0.0.1:7777' },
-                workspaces: [{ id: 'remote-ws', name: 'Remote Repo', rootPath: '/remote/repo' }],
-                gitInfoResults: {},
-            }],
-            warnings: [],
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'ws-123', name: 'Source Repo', rootPath: '/repos/source' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Remote Repo',
+                        rootPath: '/remote/repo',
+                        baseUrl: 'http://127.0.0.1:7777',
+                        remote: {
+                            serverId: 'srv-remote',
+                            serverLabel: 'Remote CoC',
+                            baseUrl: 'http://127.0.0.1:7777',
+                            offline: false,
+                        },
+                    },
+                },
+            ],
+            loading: false,
         });
         const mockFetch = vi.fn().mockResolvedValue({
             ok: true,
@@ -374,5 +399,76 @@ describe('RalphLaunchDialog', () => {
         const backdrop = screen.getByTestId('ralph-launch-dialog');
         fireEvent.mouseDown(backdrop);
         expect(defaultProps.onClose).toHaveBeenCalledOnce();
+    });
+
+    // -----------------------------------------------------------------------
+    // Fix 1: same-origin default
+    // -----------------------------------------------------------------------
+
+    it('defaults to the remote-origin target when source is a remote workspace', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-123', baseUrl: 'http://127.0.0.1:8888' }]);
+        mockUseRepos.mockReturnValue({
+            repos: [
+                // Same workspace id exists locally (should NOT be chosen as default).
+                { workspace: { id: 'ws-123', name: 'Local Copy' } },
+                // The remote entry on the same origin as the source workspace.
+                {
+                    workspace: {
+                        id: 'ws-123',
+                        name: 'Remote Source Repo',
+                        rootPath: '/remote/repo',
+                        baseUrl: 'http://127.0.0.1:8888',
+                        remote: {
+                            serverId: 'srv-b',
+                            serverLabel: 'Server B',
+                            baseUrl: 'http://127.0.0.1:8888',
+                            offline: false,
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+
+        render(<RalphLaunchDialog {...defaultProps} workspaceId="ws-123" />);
+
+        await waitFor(() => {
+            const select = screen.getByTestId('ralph-launch-execution-repo-select') as HTMLSelectElement;
+            expect(select.value).toBe('srv-b:ws-123');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // Fix 2: cached list, offline remotes dropped
+    // -----------------------------------------------------------------------
+
+    it('excludes offline remote workspaces from the selector options', async () => {
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'ws-123', name: 'Source Repo' } },
+                {
+                    workspace: {
+                        id: 'offline-ws',
+                        name: 'Offline Repo',
+                        baseUrl: 'http://127.0.0.1:9999',
+                        remote: {
+                            serverId: 'srv-offline',
+                            serverLabel: 'Offline Server',
+                            baseUrl: 'http://127.0.0.1:9999',
+                            offline: true,
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+
+        render(<RalphLaunchDialog {...defaultProps} />);
+
+        await waitForRepoSelector();
+        const select = screen.getByTestId('ralph-launch-execution-repo-select') as HTMLSelectElement;
+        const optionValues = [...select.options].map(o => o.value);
+        expect(optionValues).not.toContain('srv-offline:offline-ws');
+        expect(optionValues).toContain('local:ws-123');
     });
 });

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WorkspaceInfo } from '@plusplusoneplusplus/coc-client';
-import { listRemoteWorkspaceTargetSources, listWorkspaces } from '../repos/repositoryService';
+import { useRepos } from '../contexts/ReposContext';
+import { isRemoteWorkspace } from '../repos/remoteWorkspaceAggregation';
+import type { RepoData } from '../repos/repoGrouping';
 import { lookupCloneBaseUrl } from '../repos/cloneRegistry';
 import { getApiBase } from '../utils/config';
 
@@ -83,61 +85,22 @@ export function useRalphExecutionRepoTargets({
     open,
     sourceWorkspaceId,
 }: UseRalphExecutionRepoTargetsOptions): UseRalphExecutionRepoTargetsResult {
-    const [loading, setLoading] = useState(false);
-    const [loadError, setLoadError] = useState<string | null>(null);
-    const [warnings, setWarnings] = useState<string[]>([]);
-    const [groups, setGroups] = useState<RalphExecutionRepoTargetGroup[]>([]);
+    const { repos, loading } = useRepos();
     const [selectedKey, setSelectedKey] = useState('');
 
-    const targets = useMemo(() => groups.flatMap(group => group.targets), [groups]);
-    const selectedTarget = targets.find(target => target.key === selectedKey) ?? null;
+    const groups = useMemo(() => buildGroupsFromRepos(repos), [repos]);
+    const targets = useMemo(() => groups.flatMap(g => g.targets), [groups]);
+    const selectedTarget = targets.find(t => t.key === selectedKey) ?? null;
 
     useEffect(() => {
-        if (!open) {
-            return;
-        }
-        let cancelled = false;
-        setLoading(true);
-        setLoadError(null);
-        setWarnings([]);
-
-        Promise.all([
-            listWorkspaces(),
-            listRemoteWorkspaceTargetSources().catch(error => ({
-                sources: [],
-                warnings: [error instanceof Error ? error.message : 'Failed to load remote CoC workspaces'],
-            })),
-        ])
-            .then(([workspaces, remoteResult]) => {
-                if (cancelled) return;
-                const nextGroups = buildRalphExecutionRepoTargetGroups(
-                    workspaces,
-                    remoteResult.sources,
-                );
-                setGroups(nextGroups);
-                setWarnings(remoteResult.warnings);
-                setSelectedKey(prev => resolveSelectedKey(prev, sourceWorkspaceId, nextGroups));
-            })
-            .catch(error => {
-                if (cancelled) return;
-                setGroups([]);
-                setWarnings([]);
-                setLoadError(error instanceof Error ? error.message : 'Failed to load registered workspaces');
-                setSelectedKey('');
-            })
-            .finally(() => {
-                if (!cancelled) setLoading(false);
-            });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [open, sourceWorkspaceId]);
+        if (!open) return;
+        setSelectedKey(prev => resolveSelectedKey(prev, sourceWorkspaceId, groups));
+    }, [open, sourceWorkspaceId, groups]);
 
     return {
         loading,
-        loadError,
-        warnings,
+        loadError: null,
+        warnings: [],
         groups,
         targets,
         selectedKey,
@@ -213,44 +176,32 @@ export function RalphExecutionRepoSelector({
     );
 }
 
-function buildRalphExecutionRepoTargetGroups(
-    localWorkspaces: WorkspaceInfo[],
-    remoteSources: Array<{
-        server: { id: string; label?: string; effectiveUrl?: string };
-        workspaces: WorkspaceInfo[];
-    }>,
-): RalphExecutionRepoTargetGroup[] {
+function buildGroupsFromRepos(repos: RepoData[]): RalphExecutionRepoTargetGroup[] {
     const groups: RalphExecutionRepoTargetGroup[] = [];
-    const localTargets = localWorkspaces
-        .filter(workspace => !workspace.virtual)
-        .map(workspaceToLocalTarget);
+
+    const localTargets = repos
+        .filter(r => !isRemoteWorkspace(r.workspace) && !r.workspace.virtual)
+        .map(r => workspaceToLocalTarget(r.workspace));
     if (localTargets.length > 0) {
-        groups.push({
-            key: LOCAL_SERVER_ID,
-            label: LOCAL_SERVER_LABEL,
-            local: true,
-            targets: localTargets,
-        });
+        groups.push({ key: LOCAL_SERVER_ID, label: LOCAL_SERVER_LABEL, local: true, targets: localTargets });
     }
 
-    for (const source of remoteSources) {
-        const baseUrl = source.server.effectiveUrl;
-        if (!baseUrl) {
-            continue;
-        }
-        const targets = source.workspaces
-            .filter(workspace => !workspace.virtual)
-            .map(workspace => workspaceToRemoteTarget(workspace, source.server, baseUrl));
-        if (targets.length > 0) {
-            groups.push({
-                key: source.server.id,
-                label: source.server.label || source.server.id,
-                local: false,
-                targets,
-            });
+    const byServer = new Map<string, { label: string; targets: RalphExecutionRepoTarget[] }>();
+    for (const r of repos) {
+        const ws = r.workspace;
+        if (!isRemoteWorkspace(ws) || ws.virtual) continue;
+        if (ws.remote.offline) continue;
+        const { serverId, serverLabel, baseUrl } = ws.remote;
+        if (!byServer.has(serverId)) byServer.set(serverId, { label: serverLabel, targets: [] });
+        byServer.get(serverId)!.targets.push(
+            workspaceToRemoteTarget(ws, { id: serverId, label: serverLabel }, baseUrl),
+        );
+    }
+    for (const [key, g] of byServer) {
+        if (g.targets.length > 0) {
+            groups.push({ key, label: g.label, local: false, targets: g.targets });
         }
     }
-
     return groups;
 }
 
