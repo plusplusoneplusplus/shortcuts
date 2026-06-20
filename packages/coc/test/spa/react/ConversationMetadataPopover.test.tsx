@@ -207,6 +207,52 @@ describe('ConversationMetadataPopover', () => {
     });
 });
 
+describe('ConversationMetadataPopover – resume / copy actions', () => {
+    async function openWith(props: any) {
+        render(<ConversationMetadataPopover process={BASE_PROCESS} {...props} />);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+        await act(async () => { fireEvent.click(trigger); });
+    }
+
+    it('shows both Resume In CLI and Copy Command when a resumable session and both handlers exist', async () => {
+        await openWith({
+            resumeSessionId: 'sess-1',
+            onLaunchInteractiveResume: vi.fn(),
+            onCopyResumeCommand: vi.fn(),
+        });
+        expect(screen.getByText('Resume In CLI')).toBeDefined();
+        expect(screen.getByText('Copy Command')).toBeDefined();
+    });
+
+    it('fires onCopyResumeCommand and closes the popover when Copy Command is clicked', async () => {
+        const onCopyResumeCommand = vi.fn();
+        await openWith({ resumeSessionId: 'sess-1', onCopyResumeCommand });
+
+        await act(async () => { fireEvent.click(screen.getByText('Copy Command')); });
+
+        expect(onCopyResumeCommand).toHaveBeenCalledTimes(1);
+        expect(screen.queryByText('Conversation metadata')).toBeNull();
+    });
+
+    it('shows Copy Command for a remote-style workspace even without an auto-launch handler', async () => {
+        // Copy is available for both local and remote workspaces; it does not
+        // depend on the auto-launch ("Resume In CLI") handler being present.
+        await openWith({ resumeSessionId: 'sess-1', onCopyResumeCommand: vi.fn() });
+        expect(screen.getByText('Copy Command')).toBeDefined();
+        expect(screen.queryByText('Resume In CLI')).toBeNull();
+    });
+
+    it('hides both actions when there is no resumable session id', async () => {
+        await openWith({
+            resumeSessionId: null,
+            onLaunchInteractiveResume: vi.fn(),
+            onCopyResumeCommand: vi.fn(),
+        });
+        expect(screen.queryByText('Resume In CLI')).toBeNull();
+        expect(screen.queryByText('Copy Command')).toBeNull();
+    });
+});
+
 describe('ConversationMetadataPopover – extra rows', () => {
     const EXTRA_ROWS = [
         { label: 'Repository', value: 'owner/repo', breakAll: true },

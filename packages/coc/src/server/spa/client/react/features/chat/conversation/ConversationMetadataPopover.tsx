@@ -522,6 +522,8 @@ export interface ConversationMetadataPopoverProps {
     resumeSessionId?: string | null;
     resumeLaunching?: boolean;
     onLaunchInteractiveResume?: () => void;
+    /** When provided (and a resumable session exists), a "Copy Command" action button is shown beside "Resume In CLI". */
+    onCopyResumeCommand?: () => void;
     /** When provided, a "Fork conversation" action button is shown at the bottom of the popover. */
     onFork?: () => void;
     forking?: boolean;
@@ -538,7 +540,7 @@ export interface ConversationMetadataPopoverProps {
     extraRows?: MetaRow[];
 }
 
-export function ConversationMetadataPopover({ process, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume, onFork, forking, onStartFreshSameContext, startingFreshSameContext, extraRows }: ConversationMetadataPopoverProps) {
+export function ConversationMetadataPopover({ process, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume, onCopyResumeCommand, onFork, forking, onStartFreshSameContext, startingFreshSameContext, extraRows }: ConversationMetadataPopoverProps) {
     const [open, setOpen] = useState(false);
     const [systemPromptOpen, setSystemPromptOpen] = useState(false);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
@@ -693,7 +695,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                     </div>
                 )}
             </div>
-            {(resumeSessionId && onLaunchInteractiveResume || onFork || onStartFreshSameContext) && (
+            {(resumeSessionId && (onLaunchInteractiveResume || onCopyResumeCommand) || onFork || onStartFreshSameContext) && (
                 <div className="mt-3 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-wrap gap-2">
                     {resumeSessionId && onLaunchInteractiveResume && (
                         <button
@@ -704,6 +706,17 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                         >
                             <span>▶</span>
                             {resumeLaunching ? 'Launching…' : 'Resume In CLI'}
+                        </button>
+                    )}
+                    {resumeSessionId && onCopyResumeCommand && (
+                        <button
+                            type="button"
+                            onClick={() => { onCopyResumeCommand(); setOpen(false); }}
+                            title="Copy a bare, paste-ready resume command to the clipboard"
+                            className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs text-[#0078d4] dark:text-[#3794ff] border border-[#0078d4] dark:border-[#3794ff] hover:bg-[#e8f0fb] dark:hover:bg-[#1a2a40] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <span>⧉</span>
+                            Copy Command
                         </button>
                     )}
                     {onStartFreshSameContext && (
