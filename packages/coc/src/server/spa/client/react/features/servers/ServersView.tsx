@@ -4,6 +4,7 @@ import {
     listRemoteServers,
     reconnectServer,
     removeRemoteServer,
+    restartServer,
     updateRemoteServer,
     type RemoteServer,
     type RemoteServerInput,
@@ -12,6 +13,7 @@ import {
 import { useRemoteServerHealth } from '../../hooks/useRemoteServerHealth';
 import { getHostname } from '../../utils/config';
 import { getSpaCocClient } from '../../api/cocClient';
+import { Button, Dialog } from '../../ui';
 import { ServerCard, formatUptime, timeAgo, type ServerCardHealth } from './ServerCard';
 import { AddServerDialog, EditServerDialog } from './AddServerDialog';
 
@@ -73,6 +75,7 @@ const ICON = {
     external:  'M14 3h7v7M10 14L21 3M19 14v6H4V5h6',
     copy:      'M9 9h10v10H9zM5 5h10v4M5 5v10h4',
     reconnect: 'M3 12a9 9 0 0114-7.5L21 7M21 3v4h-4M21 12a9 9 0 01-14 7.5L3 17M3 21v-4h4',
+    restart:   'M12 3v8M5.6 7.6a9 9 0 1012.8 0',
     edit:      'M4 20h4l11-11-4-4L4 16zM14 5l4 4',
     remove:    'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
 };
@@ -275,10 +278,12 @@ function SummaryStrip({ online, offline, total, procs, tunnels, sshTunnels }: {
 
 // ─── Server Row (split + list views) ─────────────────────────────────────────
 
-function QuickAction({ title, onClick, danger, children }: {
+function QuickAction({ title, onClick, danger, disabled, testId, children }: {
     title: string;
     onClick: React.MouseEventHandler<HTMLButtonElement>;
     danger?: boolean;
+    disabled?: boolean;
+    testId?: string;
     children: React.ReactNode;
 }) {
     return (
@@ -286,7 +291,9 @@ function QuickAction({ title, onClick, danger, children }: {
             type="button"
             title={title}
             onClick={onClick}
-            className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
+            disabled={disabled}
+            data-testid={testId}
+            className={`w-6 h-6 flex items-center justify-center rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                 danger
                     ? 'text-[#848484] dark:text-[#9d9d9d] hover:text-[#f14c4c] dark:hover:text-[#f48771] hover:bg-[#f14c4c]/10'
                     : 'text-[#848484] dark:text-[#9d9d9d] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.06]'
@@ -299,7 +306,7 @@ function QuickAction({ title, onClick, danger, children }: {
 
 function ServerRow({
     health, selected, onClick,
-    onOpen, onReconnect, onCopy, onEdit, onRemove, reconnecting,
+    onOpen, onReconnect, onCopy, onEdit, onRemove, onRestart, reconnecting, restarting,
 }: {
     health: UnifiedHealth;
     selected?: boolean;
@@ -309,7 +316,9 @@ function ServerRow({
     onCopy: () => void;
     onEdit?: () => void;
     onRemove?: () => void;
+    onRestart?: () => void;
     reconnecting?: boolean;
+    restarting?: boolean;
 }) {
     const { server, status, uptime, processCount, kind, isLocal } = health;
     return (
@@ -378,6 +387,20 @@ function ServerRow({
                         onClick={e => { e.stopPropagation(); onReconnect(); }}
                     >
                         <Svg d={ICON.reconnect} size={13} />
+                    </QuickAction>
+                )}
+                {!isLocal && onRestart && (
+                    <QuickAction
+                        testId="server-row-restart"
+                        title={
+                            restarting ? 'Restarting…'
+                                : status !== 'online' ? 'Restart is available only when the server is online'
+                                : 'Restart remote server'
+                        }
+                        disabled={status !== 'online' || restarting}
+                        onClick={e => { e.stopPropagation(); onRestart(); }}
+                    >
+                        <Svg d={ICON.restart} size={13} />
                     </QuickAction>
                 )}
                 <QuickAction title="Copy URL" onClick={e => { e.stopPropagation(); onCopy(); }}>
@@ -463,7 +486,7 @@ function ConnectionRows({ health }: { health: UnifiedHealth }) {
 
 function DetailPanel({
     health,
-    onOpen, onReconnect, onCopy, onEdit, onRemove, reconnecting,
+    onOpen, onReconnect, onCopy, onEdit, onRemove, onRestart, reconnecting, restarting,
 }: {
     health: UnifiedHealth;
     onOpen: () => void;
@@ -471,7 +494,9 @@ function DetailPanel({
     onCopy: () => void;
     onEdit?: () => void;
     onRemove?: () => void;
+    onRestart?: () => void;
     reconnecting?: boolean;
+    restarting?: boolean;
 }) {
     const { server, status, version, uptime, processCount, kind, isLocal, error, lastChecked } = health;
     const endpoint = getEndpoint(health);
@@ -517,6 +542,15 @@ function DetailPanel({
                             <ActionBtn onClick={onReconnect} disabled={reconnecting}>
                                 <Svg d={ICON.reconnect} size={12} />
                                 {reconnecting ? 'Reconnecting…' : 'Reconnect'}
+                            </ActionBtn>
+                        )}
+                        {!isLocal && onRestart && (
+                            <ActionBtn
+                                onClick={onRestart}
+                                disabled={status !== 'online' || restarting}
+                            >
+                                <Svg d={ICON.restart} size={12} />
+                                {restarting ? 'Restarting…' : 'Restart'}
                             </ActionBtn>
                         )}
                         <ActionBtn onClick={onCopy}>
@@ -613,6 +647,9 @@ export function ServersView() {
     const [addOpen, setAddOpen] = useState(false);
     const [editServerId, setEditServerId] = useState<string | undefined>();
     const [reconnectingId, setReconnectingId] = useState<string | undefined>();
+    const [restartConfirmId, setRestartConfirmId] = useState<string | undefined>();
+    const [restartPending, setRestartPending] = useState(false);
+    const [restartError, setRestartError] = useState<string | undefined>();
     const [loadError, setLoadError] = useState<string | undefined>();
     const [view, setView] = useState<ViewMode>('split');
     const [filter, setFilter] = useState<FilterMode>('all');
@@ -718,6 +755,9 @@ export function ServersView() {
     }), [allHealthStates, filter, search]);
 
     const selectedHealth = allHealthStates.find(h => h.server.id === selectedId) ?? allHealthStates[0];
+    const restartTarget = restartConfirmId
+        ? allHealthStates.find(h => h.server.id === restartConfirmId)
+        : undefined;
 
     const handleAdd = async (fields: RemoteServerInput) => {
         await addRemoteServer(fields);
@@ -736,6 +776,34 @@ export function ServersView() {
             setServers(await listRemoteServers());
         } finally {
             setReconnectingId(undefined);
+        }
+    };
+
+    // Restart targets the *remote* process (POST /api/servers/:id/restart). Distinct
+    // from Reconnect, which only re-spawns the local tunnel. Always gated by an
+    // explicit confirmation dialog before any request fires.
+    const requestRestart = (id: string) => {
+        setRestartError(undefined);
+        setRestartConfirmId(id);
+    };
+
+    const cancelRestart = () => {
+        setRestartConfirmId(undefined);
+        setRestartError(undefined);
+    };
+
+    const confirmRestart = async () => {
+        const id = restartConfirmId;
+        if (!id) { return; }
+        setRestartPending(true);
+        setRestartError(undefined);
+        try {
+            await restartServer(id);
+            setRestartConfirmId(undefined);
+        } catch (e) {
+            setRestartError(e instanceof Error ? e.message : 'Restart request failed');
+        } finally {
+            setRestartPending(false);
         }
     };
 
@@ -766,7 +834,9 @@ export function ServersView() {
         onCopy: () => handleCopy(h),
         onEdit:   !h.isLocal ? () => setEditServerId(h.server.id) : undefined,
         onRemove: !h.isLocal ? () => { void handleRemove(h.server.id); } : undefined,
+        onRestart: !h.isLocal ? () => requestRestart(h.server.id) : undefined,
         reconnecting: reconnectingId === h.server.id,
+        restarting: restartPending && restartConfirmId === h.server.id,
     });
 
     return (
@@ -815,6 +885,8 @@ export function ServersView() {
                                 onEdit={h.isLocal ? undefined : setEditServerId}
                                 onReconnect={h.isLocal ? undefined : handleReconnect}
                                 reconnecting={reconnectingId === h.server.id}
+                                onRestart={h.isLocal ? undefined : requestRestart}
+                                restarting={restartPending && restartConfirmId === h.server.id}
                             />
                         ))}
                     </div>
@@ -845,7 +917,9 @@ export function ServersView() {
                                     onCopy={() => handleCopy(selectedHealth)}
                                     onEdit={!selectedHealth.isLocal ? () => setEditServerId(selectedHealth.server.id) : undefined}
                                     onRemove={!selectedHealth.isLocal ? () => { void handleRemove(selectedHealth.server.id); } : undefined}
+                                    onRestart={!selectedHealth.isLocal ? () => requestRestart(selectedHealth.server.id) : undefined}
                                     reconnecting={reconnectingId === selectedHealth.server.id}
+                                    restarting={restartPending && restartConfirmId === selectedHealth.server.id}
                                 />
                             ) : (
                                 <div className="h-full flex items-center justify-center text-xs text-[#999] dark:text-[#6e6e6e]">
@@ -879,6 +953,55 @@ export function ServersView() {
                 onClose={() => setEditServerId(undefined)}
                 onSave={handleEdit}
             />
+
+            <Dialog
+                open={!!restartConfirmId}
+                onClose={cancelRestart}
+                title="Restart server"
+                id="restart-confirm-dialog"
+                footer={
+                    <>
+                        <Button
+                            variant="secondary"
+                            data-testid="restart-confirm-cancel"
+                            onClick={cancelRestart}
+                            disabled={restartPending}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="danger"
+                            data-testid="restart-confirm-submit"
+                            onClick={() => { void confirmRestart(); }}
+                            loading={restartPending}
+                        >
+                            Restart server
+                        </Button>
+                    </>
+                }
+            >
+                <div className="flex flex-col gap-3" data-testid="restart-confirm-body">
+                    <p>
+                        Restart{' '}
+                        <strong>{restartTarget?.server.label ?? 'this server'}</strong>?
+                    </p>
+                    <p className="text-[#848484] dark:text-[#9d9d9d]">
+                        This restarts the remote server process. Any tasks or processes
+                        currently running on it will be interrupted. The server only comes
+                        back if it runs under a process manager (pm2, systemd, or a wrapper
+                        that relaunches it) — otherwise it stays offline until you start it
+                        again manually.
+                    </p>
+                    {restartError && (
+                        <div
+                            data-testid="restart-confirm-error"
+                            className="px-3 py-2 rounded border border-[#f14c4c]/40 bg-[#f14c4c]/10 text-xs text-[#f14c4c]"
+                        >
+                            {restartError}
+                        </div>
+                    )}
+                </div>
+            </Dialog>
         </div>
     );
 }

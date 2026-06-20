@@ -11,9 +11,10 @@ export type {
     RemoteServerPatch,
     RemoteServerHealth,
     RemoteServerRuntime,
+    RemoteServerRestartResponse,
 } from '@plusplusoneplusplus/coc-client';
 
-import type { RemoteServer, RemoteServerHealth, RemoteServerInput, RemoteServerPatch, RemoteServerRuntime, UrlRemoteServer } from '@plusplusoneplusplus/coc-client';
+import type { RemoteServer, RemoteServerHealth, RemoteServerInput, RemoteServerPatch, RemoteServerRestartResponse, RemoteServerRuntime, UrlRemoteServer } from '@plusplusoneplusplus/coc-client';
 
 const LEGACY_REGISTRY_KEY = 'coc-remote-servers';
 const MIGRATION_DONE_KEY = 'coc-remote-servers-api-migrated';
@@ -134,6 +135,10 @@ export async function testRemoteServer(input: RemoteServerInput): Promise<Remote
 
 export async function reconnectServer(id: string): Promise<RemoteServerRuntime> {
     return getSpaCocClient().servers.reconnect(id);
+}
+
+export async function restartServer(id: string): Promise<RemoteServerRestartResponse> {
+    return getSpaCocClient().servers.restart(id);
 }
 
 export function getServerEndpoint(server: RemoteServer): string | undefined {
