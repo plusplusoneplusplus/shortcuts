@@ -5,6 +5,7 @@ import type {
 } from '@plusplusoneplusplus/coc-client';
 import type { WorkItem } from './types';
 import { parseGitHubWorkItemIssue } from './work-item-sync-github-issue';
+import { mapGitHubStateToWorkItemStatus } from './work-item-sync-github-mapping';
 import type { AzureBoardsWorkItem } from './work-item-sync-azure-boards-provider';
 import type { GitHubWorkItemIssue } from './work-item-sync-github-provider';
 import {
@@ -114,7 +115,7 @@ export function buildGitHubWorkItemSyncConflict(
     const parsed = parseGitHubWorkItemIssue(options.remote);
     const remoteStatus = parsed.metadata?.status
         ?? parsed.status
-        ?? (options.remote.state === 'closed' ? 'done' : 'created');
+        ?? mapGitHubStateToWorkItemStatus(options.remote.state);
     const remote: ProviderOwnedFieldValues = {
         title: normalizeText(options.remote.title),
         description: normalizeText(parsed.bodyWithoutMetadata),
