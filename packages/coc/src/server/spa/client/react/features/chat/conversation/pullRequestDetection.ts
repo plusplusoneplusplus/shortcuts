@@ -36,8 +36,12 @@ const ADO_DEV_AZURE_PR_URL_RE = /https:\/\/dev\.azure\.com\/([A-Za-z0-9_.-]+)\/(
 const ADO_VSTS_PR_URL_RE = /https:\/\/([A-Za-z0-9_.-]+)\.visualstudio\.com\/([A-Za-z0-9_. %-]+)\/_git\/([A-Za-z0-9_.-]+)\/pullrequest\/(\d+)/g;
 
 const PR_CREATING_PATTERNS = [
-    /\bgh\s+pr\s+create\b/,
-    /\baz\s+repos\s+pr\s+create\b/,
+    /(?:^|[;&|]\s*|\$\s*)gh\s+pr\s+create\b/,
+    /(?:^|[;&|]\s*|\$\s*)az\s+repos\s+pr\s+create\b/,
+];
+
+const PR_CREATING_WRAPPER_PATTERNS = [
+    /\bsubmit_commits_as_pr\.py\b/,
 ];
 
 const READ_ONLY_PR_PATTERNS = [
@@ -61,8 +65,41 @@ function getCommandString(args: unknown): string {
     return '';
 }
 
+function stripQuotedShellText(command: string): string {
+    let quote: '"' | "'" | null = null;
+    let escaped = false;
+    let stripped = '';
+
+    for (const ch of command) {
+        if (quote) {
+            if (escaped) {
+                escaped = false;
+            } else if (ch === '\\' && quote === '"') {
+                escaped = true;
+            } else if (ch === quote) {
+                quote = null;
+            }
+            stripped += ' ';
+            continue;
+        }
+        if (ch === '"' || ch === "'") {
+            quote = ch;
+            stripped += ' ';
+            continue;
+        }
+        stripped += ch;
+    }
+
+    return stripped;
+}
+
 function isPullRequestCreatingCommand(command: string): boolean {
-    return PR_CREATING_PATTERNS.some(re => re.test(command));
+    const commandOutsideQuotes = stripQuotedShellText(command);
+    return PR_CREATING_PATTERNS.some(re => re.test(commandOutsideQuotes));
+}
+
+function isPullRequestCreatingWrapperCommand(command: string): boolean {
+    return PR_CREATING_WRAPPER_PATTERNS.some(re => re.test(command));
 }
 
 function isReadOnlyPullRequestCommand(command: string): boolean {
@@ -72,15 +109,15 @@ function isReadOnlyPullRequestCommand(command: string): boolean {
 function hasPullRequestCreationEvidence(command: string, result: string): boolean {
     if (isPullRequestCreatingCommand(command)) return true;
     if (!command) return true;
-    return isPullRequestCreatingCommand(result);
+    return isPullRequestCreatingWrapperCommand(command) && isPullRequestCreatingCommand(result);
 }
 
 /**
  * Scans tool calls in a tool group for pull-request URLs emitted by shell tools.
  *
- * Only inspects PR creation commands, wrapper output that ran a PR creation
- * command, or shell output with no command metadata. Read-only PR commands are
- * ignored to avoid counting inspected pull requests.
+ * Only inspects PR creation commands, known PR-creation wrapper output that ran
+ * a PR creation command, or shell output with no command metadata. Read-only PR
+ * commands are ignored to avoid counting inspected pull requests.
  */
 export function detectPullRequestsInToolGroup(toolCalls: ToolCallLike[]): DetectedPullRequest[] {
     const results: DetectedPullRequest[] = [];

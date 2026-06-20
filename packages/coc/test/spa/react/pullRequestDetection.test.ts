@@ -136,6 +136,25 @@ describe('detectPullRequestsInToolGroup', () => {
         });
     });
 
+    it('ignores source search output that contains PR creation fixtures', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'bash',
+                args: {
+                    command: 'rg -n "gh pr create|az repos pr create|pull/" packages/coc/test',
+                },
+                result: [
+                    'packages/coc/test/server/work-items/work-item-execution-routes.test.ts:720: if (command === \'gh\' && args[0] === \'pr\' && args[1] === \'create\') return { stdout: \'https://github.com/example/repo/pull/123\\n\', stderr: \'\' };',
+                    'packages/coc/test/spa/react/pullRequestDetection.test.ts:172: args: { command: \'az repos pr create --title "feat"\' },',
+                    'packages/coc/test/spa/react/pullRequestDetection.test.ts:173: result: \'https://dev.azure.com/myorg/MyProject/_git/MyRepo/pullrequest/12345\',',
+                ].join('\n'),
+            },
+        ]);
+
+        expect(pullRequests).toEqual([]);
+    });
+
     it('detects PR URLs when command metadata is unavailable', () => {
         const pullRequests = detectPullRequestsInToolGroup([
             {
