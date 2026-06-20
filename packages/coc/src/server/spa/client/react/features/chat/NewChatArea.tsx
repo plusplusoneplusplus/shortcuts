@@ -1003,16 +1003,24 @@ export function InitialChatComposer({
                     </button>
                 </div>
                 <div className="space-y-2">
-                    <div className="space-y-1" data-testid="compact-ai-settings-provider-control">
-                        <div className="text-[10px] font-medium uppercase tracking-wide text-[#6e7781] dark:text-[#9e9e9e]">Provider</div>
-                        <AgentSelectorChip
-                            providers={agentProviders}
-                            loading={providersLoading}
-                            selected={selectedProvider}
-                            onChange={handleProviderChange}
-                            disabled={sending}
-                            mobileTapTarget
-                        />
+                    {/* Provider + effort share a row: both are single compact chips,
+                         so pairing them saves a row of vertical space. */}
+                    <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1 space-y-1" data-testid="compact-ai-settings-provider-control">
+                            <div className="text-[10px] font-medium uppercase tracking-wide text-[#6e7781] dark:text-[#9e9e9e]">Provider</div>
+                            <AgentSelectorChip
+                                providers={agentProviders}
+                                loading={providersLoading}
+                                selected={selectedProvider}
+                                onChange={handleProviderChange}
+                                disabled={sending}
+                                mobileTapTarget
+                            />
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-1" data-testid="compact-ai-settings-effort-control">
+                            <div className="text-[10px] font-medium uppercase tracking-wide text-[#6e7781] dark:text-[#9e9e9e]">Effort</div>
+                            {renderEffortControl()}
+                        </div>
                     </div>
                     <div className="space-y-1" data-testid="compact-ai-settings-mode-control">
                         <div className="text-[10px] font-medium uppercase tracking-wide text-[#6e7781] dark:text-[#9e9e9e]">Mode / workflow</div>
@@ -1023,16 +1031,15 @@ export function InitialChatComposer({
                             onChange={setSelectedMode}
                         />
                     </div>
-                    {!autoProviderSelected && (
+                    {/* In effort-tier mode the tier pick supplies both model and
+                         reasoning effort, so the standalone model picker is redundant —
+                         hide it here, matching the full-layout logic above. */}
+                    {!useEffortTierMode && (
                         <div className="space-y-1" data-testid="compact-ai-settings-model-control">
                             <div className="text-[10px] font-medium uppercase tracking-wide text-[#6e7781] dark:text-[#9e9e9e]">Model</div>
                             {renderModelPicker(true)}
                         </div>
                     )}
-                    <div className="space-y-1" data-testid="compact-ai-settings-effort-control">
-                        <div className="text-[10px] font-medium uppercase tracking-wide text-[#6e7781] dark:text-[#9e9e9e]">Effort</div>
-                        {renderEffortControl()}
-                    </div>
                 </div>
             </div>
         );

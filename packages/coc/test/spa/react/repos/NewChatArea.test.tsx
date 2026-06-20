@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -54,6 +54,8 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
     mockRalphEnabled: { value: false },
     mockForEachEnabled: { value: false },
     mockSessionContextAttachmentsEnabled: { value: false },
+    mockEffortLevelsEnabled: { value: false },
+    mockEffortTiers: { value: {} as Record<string, { model: string; reasoningEffort?: string | null }> },
     mockGetLlmToolsConfig: vi.fn(),
     mockAgentProvidersResponse: {
         providers: [
@@ -104,7 +106,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getDefaultProvider: () => 'copilot' as const,
     getConfiguredDefaultProvider: () => 'copilot' as const,
     isAutoAgentProviderRoutingEnabled: () => false,
-    isEffortLevelsEnabled: () => false,
+    isEffortLevelsEnabled: () => mockEffortLevelsEnabled.value,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled.value,
 }));
 
@@ -119,7 +121,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         },
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
         agentProviders: { list: vi.fn().mockResolvedValue(mockAgentProvidersResponse), getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
-            getEffortTiers: vi.fn().mockResolvedValue({ effortTiers: {} }) },
+            getEffortTiers: vi.fn().mockImplementation(() => Promise.resolve({ effortTiers: mockEffortTiers.value })) },
     }),
     getSpaCocClientErrorMessage: (err: any, fallback: string) =>
         (err instanceof Error ? err.message : undefined) || fallback,
@@ -299,6 +301,8 @@ beforeEach(() => {
     mockRalphEnabled.value = false;
     mockForEachEnabled.value = false;
     mockSessionContextAttachmentsEnabled.value = false;
+    mockEffortLevelsEnabled.value = false;
+    mockEffortTiers.value = {};
     mockAgentProvidersResponse.providers = [
         { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
         { id: 'codex', label: 'Codex', enabled: false, available: false },
@@ -1099,6 +1103,44 @@ describe('NewChatArea', () => {
             expect(screen.getByTestId('workflow-mode-trigger')).toBeTruthy();
             expect(screen.getByTestId('model-picker-chip').textContent).toContain('GPT-5.4');
             expect(screen.getByTestId('effort-pill-selector')).toBeTruthy();
+        });
+
+        it('hides the model control in the editor when effort-tier mode is active (tier supplies the model)', async () => {
+            // Concrete provider + effortLevels flag on + provider has tiers → effort-tier mode.
+            mockEffortLevelsEnabled.value = true;
+            mockEffortTiers.value = {
+                low: { model: 'gpt-5-mini', reasoningEffort: 'low' },
+                medium: { model: 'gpt-5.4', reasoningEffort: 'medium' },
+                high: { model: 'gpt-5.4', reasoningEffort: 'high' },
+            };
+            mockDefaultModelResult.effectiveModel = 'gpt-5.4';
+            mockDefaultModelResult.effectiveModelName = 'GPT-5.4';
+
+            renderCompactComposer();
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+
+            // Tier selector replaces the legacy model picker once tiers load.
+            await waitFor(() => {
+                expect(screen.getByTestId('effort-tier-selector')).toBeTruthy();
+            });
+            expect(screen.queryByTestId('compact-ai-settings-model-control')).toBeNull();
+            expect(screen.queryByTestId('model-picker-chip')).toBeNull();
+            // Effort control stays — it now hosts the tier selector.
+            expect(screen.getByTestId('compact-ai-settings-effort-control')).toBeTruthy();
+        });
+
+        it('lays out the provider and effort controls in a shared flex row', () => {
+            renderCompactComposer();
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+
+            const provider = screen.getByTestId('compact-ai-settings-provider-control');
+            const effort = screen.getByTestId('compact-ai-settings-effort-control');
+            const mode = screen.getByTestId('compact-ai-settings-mode-control');
+
+            // Provider and effort share a parent row; mode sits on its own row.
+            expect(provider.parentElement).toBe(effort.parentElement);
+            expect(provider.parentElement).not.toBe(mode.parentElement);
+            expect(provider.parentElement?.className).toContain('flex');
         });
 
         it('anchors the compact settings editor as a popover when the composer can fit it', () => {
