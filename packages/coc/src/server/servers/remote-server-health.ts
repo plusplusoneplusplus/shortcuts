@@ -26,6 +26,46 @@ async function fetchOptionalServerName(baseUrl: string): Promise<string | undefi
     }
 }
 
+/** Outcome of a remote restart request. */
+export interface RemoteRestartResult {
+    /** True when the remote accepted the restart (replied 2xx before exiting). */
+    ok: boolean;
+    /** HTTP status returned by the remote, when a response was received. */
+    status?: number;
+    /** Error detail when the request failed, timed out, or returned non-2xx. */
+    error?: string;
+}
+
+/**
+ * Ask a remote coc server to restart itself by POSTing to its
+ * `/api/admin/restart` endpoint. The remote replies `200` *before* `process.exit`,
+ * so a `2xx` here means the restart was accepted. Reaches the remote the same way
+ * {@link checkRemoteServerHealth} does — a direct `fetch` against the resolved base
+ * URL with the same bounded timeout — and never throws: transport errors,
+ * timeouts, and non-2xx responses all come back as `{ ok: false, error }`.
+ */
+export async function requestRemoteServerRestart(
+    baseUrl: string,
+    timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<RemoteRestartResult> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(`${baseUrl}/api/admin/restart`, {
+            method: 'POST',
+            signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (!res.ok) {
+            return { ok: false, status: res.status, error: `HTTP ${res.status}` };
+        }
+        return { ok: true, status: res.status };
+    } catch (error) {
+        clearTimeout(timer);
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+
 export async function checkRemoteServerHealth(target: HealthTarget): Promise<RemoteServerHealth> {
     const lastChecked = Date.now();
     if (!target.baseUrl) {

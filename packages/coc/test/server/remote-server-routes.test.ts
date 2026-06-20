@@ -548,6 +548,84 @@ describe('remote server routes', () => {
         });
     });
 
+    describe('restart route', () => {
+        let restartServer: http.Server | undefined;
+
+        afterEach(async () => {
+            if (restartServer?.listening) await stop(restartServer);
+            restartServer = undefined;
+        });
+
+        async function startRestartableRemote(options?: { restartStatus?: number }): Promise<{ baseUrl: string; restartCalls: MockCocRequest[] }> {
+            const restartCalls: MockCocRequest[] = [];
+            restartServer = http.createServer(async (req, res) => {
+                if (req.method === 'POST' && req.url === '/api/admin/restart') {
+                    restartCalls.push({ method: req.method, url: req.url, body: await readBody(req) });
+                    // Remote replies *before* it would exit, mirroring admin-handler.
+                    send(res, options?.restartStatus ?? 200, { message: 'Server is restarting...' });
+                    return;
+                }
+                // Health-checker probes so the server can be created as a url-kind remote.
+                if (req.url === '/api/health') {
+                    send(res, 200, { status: 'ok', uptime: 1, processCount: 1 });
+                    return;
+                }
+                if (req.url === '/api/admin/version') {
+                    send(res, 200, { version: '1.0.0', commit: 'abc123' });
+                    return;
+                }
+                if (req.url === '/api/admin/config') {
+                    send(res, 200, { hostname: 'remote-box' });
+                    return;
+                }
+                send(res, 404, { error: `Not found: ${req.method} ${req.url}` });
+            });
+            return { baseUrl: (await start(restartServer)).baseUrl, restartCalls };
+        }
+
+        it('proxies a POST to the remote /api/admin/restart and returns 2xx on success', async () => {
+            const remote = await startRestartableRemote();
+            const baseUrl = await startApi(new DevTunnelConnector());
+            const created = await request(baseUrl, 'POST', '/api/servers', { kind: 'url', label: 'Remote', url: remote.baseUrl });
+
+            const res = await request(baseUrl, 'POST', `/api/servers/${created.body.id}/restart`);
+            expect(res.status).toBeGreaterThanOrEqual(200);
+            expect(res.status).toBeLessThan(300);
+            expect(remote.restartCalls).toHaveLength(1);
+            expect(remote.restartCalls[0]).toMatchObject({ method: 'POST', url: '/api/admin/restart' });
+        });
+
+        it('returns 404 for an unknown server id', async () => {
+            const baseUrl = await startApi(new DevTunnelConnector());
+            const res = await request(baseUrl, 'POST', '/api/servers/does-not-exist/restart');
+            expect(res.status).toBe(404);
+        });
+
+        it('returns an error status when the remote responds non-2xx', async () => {
+            const remote = await startRestartableRemote({ restartStatus: 500 });
+            const baseUrl = await startApi(new DevTunnelConnector());
+            const created = await request(baseUrl, 'POST', '/api/servers', { kind: 'url', label: 'Remote', url: remote.baseUrl });
+
+            const res = await request(baseUrl, 'POST', `/api/servers/${created.body.id}/restart`);
+            expect(res.status).toBe(502);
+            expect(res.body).toHaveProperty('error');
+            expect(remote.restartCalls).toHaveLength(1);
+        });
+
+        it('returns an error status when the remote is unreachable', async () => {
+            // Start then immediately stop a server to obtain a guaranteed-refused endpoint.
+            const deadServer = http.createServer(() => {});
+            const dead = await start(deadServer);
+            await stop(deadServer);
+            const baseUrl = await startApi(new DevTunnelConnector());
+            const created = await request(baseUrl, 'POST', '/api/servers', { kind: 'url', label: 'Dead', url: dead.baseUrl });
+
+            const res = await request(baseUrl, 'POST', `/api/servers/${created.body.id}/restart`);
+            expect(res.status).toBe(502);
+            expect(res.body).toHaveProperty('error');
+        });
+    });
+
     it('reconnect returns 404 for missing server', async () => {
         const baseUrl = await startApi(new DevTunnelConnector());
         const res = await request(baseUrl, 'POST', '/api/servers/nonexistent/reconnect');

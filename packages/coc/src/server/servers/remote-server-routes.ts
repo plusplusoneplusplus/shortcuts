@@ -11,7 +11,7 @@ import type {
 import { readJsonBody, send400, send404, send500, sendError, sendJson } from '../shared/router';
 import type { DevTunnelConnector } from './devtunnel-connector';
 import type { SshConnector, SshConnectionState } from './ssh-connector';
-import { checkRemoteServerHealth } from './remote-server-health';
+import { checkRemoteServerHealth, requestRemoteServerRestart } from './remote-server-health';
 import type {
     DevTunnelRemoteServer,
     RemoteServer,
@@ -643,6 +643,36 @@ export function registerRemoteServerRoutes(
                 // The failed state is stored on the connector and returned below.
             }
             sendJson(res, toRuntime(server, connector, sshConnector, urlHealthCache));
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/servers\/([^/]+)\/restart$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const server = store.get(id);
+            if (!server) {
+                send404(res, `Remote server not found: ${id}`);
+                return;
+            }
+            // Restart the *remote process*, distinct from /reconnect (which only
+            // re-spawns the local tunnel). Reach the remote the same way the health
+            // checker does: build the target from the server's resolved effectiveUrl
+            // (tunnel servers via their local forwarded port, url servers directly).
+            // Stateless proxy — nothing is persisted.
+            const { effectiveUrl } = toRuntime(server, connector, sshConnector, urlHealthCache);
+            if (!effectiveUrl) {
+                sendError(res, 502, `Remote server "${server.label}" has no reachable endpoint to restart`);
+                return;
+            }
+            const result = await requestRemoteServerRestart(effectiveUrl);
+            if (!result.ok) {
+                sendError(res, 502, `Failed to restart remote server "${server.label}": ${result.error ?? 'unknown error'}`);
+                return;
+            }
+            // The remote replied 2xx before exiting → restart accepted.
+            sendJson(res, { ok: true, message: 'Server is restarting...' }, 202);
         },
     });
 
