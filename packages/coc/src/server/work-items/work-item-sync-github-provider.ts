@@ -22,13 +22,14 @@ import type {
     WorkItemStore,
     WorkItemSyncParentReference,
     WorkItemSyncRemoteIdentity,
+    WorkItemStatus,
     WorkItemType,
 } from './types';
 import {
     getEffectiveType,
     isValidParentChildTypes,
 } from './types';
-import { mapWorkItemStatusToGitHubState } from './work-item-sync-github-mapping';
+import { mapGitHubStateToWorkItemStatus, mapWorkItemStatusToGitHubState } from './work-item-sync-github-mapping';
 import {
     WORK_ITEM_SYNC_MAX_ITEMS,
     type WorkItemSyncProviderAdapter,
@@ -401,6 +402,14 @@ function githubMirrorForIssue(issue: GitHubWorkItemIssue, pulledAt: string): Non
         updatedAt: issue.updatedAt,
         lastPulledAt: pulledAt,
     };
+}
+
+function workItemStatusForGitHubIssue(issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue): WorkItemStatus {
+    const issueState = issue.state === 'closed' ? 'closed' : 'open';
+    if (parsed.status && mapWorkItemStatusToGitHubState(parsed.status) === issueState) {
+        return parsed.status;
+    }
+    return mapGitHubStateToWorkItemStatus(issue.state);
 }
 
 function labelsForNewGitHubMirrorIssue(item: WorkItem): string[] {
@@ -1026,6 +1035,7 @@ export async function importGitHubEpicTreeAsWorkItems(
         const commonFields = {
             title: issue.title,
             description: parsed.bodyWithoutMetadata,
+            status: workItemStatusForGitHubIssue(issue, parsed),
             type,
             parentId,
             tracker: isRoot ? githubBackedTrackerForRoot(issue, pulledAt) : undefined,
@@ -1045,7 +1055,6 @@ export async function importGitHubEpicTreeAsWorkItems(
                 id: desiredId,
                 repoId: context.workspaceId,
                 ...commonFields,
-                status: 'created',
                 createdAt: pulledAt,
                 updatedAt: pulledAt,
                 source: 'manual',
