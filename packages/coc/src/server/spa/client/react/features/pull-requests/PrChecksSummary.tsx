@@ -103,6 +103,42 @@ const SUMMARY_CHIPS: Array<{
     { key: 'unknown',   label: 'unknown',   toneClass: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' },
 ];
 
+/**
+ * Just the non-zero summary chips for a set of check rows (problems-first order),
+ * extracted so BOTH the expanded {@link PrChecksCompact} list AND the always-visible
+ * inline summary on the chat card's Checks line render the same chips from one
+ * implementation. Renders nothing when there are no rows. Reuses
+ * {@link summarizeCheckRows} + {@link SUMMARY_CHIPS} (no copy-pasted status logic).
+ */
+export function PrChecksSummaryChips({
+    rows,
+    testId = 'pr-checks-compact',
+}: {
+    rows: readonly PrCheckRow[];
+    /** Namespaces the data-testids so multiple cards don't collide. */
+    testId?: string;
+}) {
+    if (rows.length === 0) return null;
+    const summary = summarizeCheckRows(rows);
+    return (
+        <div className="flex flex-wrap items-center gap-1" data-testid={`${testId}-summary`}>
+            {SUMMARY_CHIPS.filter(chip => summary[chip.key] > 0).map(chip => (
+                <span
+                    key={chip.key}
+                    className={cn(
+                        'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                        chip.toneClass,
+                    )}
+                    data-testid={`${testId}-count-${chip.key}`}
+                    data-count={summary[chip.key]}
+                >
+                    {summary[chip.key]} {chip.label}
+                </span>
+            ))}
+        </div>
+    );
+}
+
 /** Per-PR checks fetch lifecycle. */
 export type PrChecksCompactState = 'loading' | 'ready' | 'error';
 
@@ -168,25 +204,9 @@ export function PrChecksCompact({ state, rows, error, onRetry, testId = 'pr-chec
         );
     }
 
-    const summary = summarizeCheckRows(rows);
-
     return (
         <div className="flex flex-col gap-1" data-testid={`${testId}`}>
-            <div className="flex flex-wrap items-center gap-1" data-testid={`${testId}-summary`}>
-                {SUMMARY_CHIPS.filter(chip => summary[chip.key] > 0).map(chip => (
-                    <span
-                        key={chip.key}
-                        className={cn(
-                            'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
-                            chip.toneClass,
-                        )}
-                        data-testid={`${testId}-count-${chip.key}`}
-                        data-count={summary[chip.key]}
-                    >
-                        {summary[chip.key]} {chip.label}
-                    </span>
-                ))}
-            </div>
+            <PrChecksSummaryChips rows={rows} testId={testId} />
             <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
                 {rows.map(row => (
                     <li

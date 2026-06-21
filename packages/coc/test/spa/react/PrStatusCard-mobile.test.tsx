@@ -183,4 +183,47 @@ describe('PrStatusCard — mobile parity at 375px (AC-06)', () => {
         fireEvent.click(toggle);
         expect(getByTestId('pr-status-card-row-o:1')).toBeTruthy();
     });
+
+    it('inline check summary chips wrap on the Checks line at 375px', () => {
+        viewportCleanup = mockViewport(MOBILE_WIDTH);
+        const item = readyItem({
+            checksState: 'ready',
+            checks: [checkRow('success', 'build'), checkRow('failure', 'unit'), checkRow('pending', 'e2e')],
+        });
+        const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        fireEvent.click(getByTestId('pr-status-card-toggle'));
+
+        // Chips are visible without expanding the per-check list, and wrap so they
+        // can drop below the toggle rather than overflow the 375px row.
+        const inline = getByTestId(`pr-status-card-checks-inline-${item.key}-summary`);
+        expect(inline.className).toContain('flex-wrap');
+        // The toggle + inline summary share a wrapping row.
+        expect(getByTestId(`pr-status-card-checks-toggle-${item.key}`).parentElement!.className).toContain('flex-wrap');
+    });
+
+    it('header merge-status indicator wraps and truncates rather than overflowing at 375px', () => {
+        viewportCleanup = mockViewport(MOBILE_WIDTH);
+        const item = readyItem({
+            pr: {
+                number: 101,
+                title: 'Add PR status card',
+                status: 'open',
+                sourceBranch: 'feature/card',
+                targetBranch: 'main',
+                url: 'https://github.com/o/r/pull/101',
+                autoMerge: { enabled: true, state: 'blocked', blockedReason: 'pending-review' },
+            },
+        });
+        const { getByTestId } = render(
+            <PrStatusCard items={[item]} onRefresh={vi.fn()} lastUpdatedAt={Date.now()} />,
+        );
+
+        // The header wraps so the indicator can drop to its own line.
+        expect(getByTestId('pr-status-card-toggle').parentElement!.className).toContain('flex-wrap');
+        const indicator = getByTestId('pr-status-card-merge-status');
+        // Indicator can shrink (min-w-0) and its reason text truncates.
+        expect(indicator.className).toContain('min-w-0');
+        expect(indicator.querySelector('.truncate')).toBeTruthy();
+        expect(indicator.textContent).toContain('Auto-merge blocked');
+    });
 });

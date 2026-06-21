@@ -121,18 +121,31 @@ mapped server-side from GitHub REST `pulls.get` / ADO `autoCompleteSetBy`) onto
 the card PR, and the pure `describeAutoMerge` reduces it to an armed/queued/blocked
 badge with a provider-aware label (`autoMergeLabel` → "Auto-merge" for GitHub,
 "Auto-complete" for Azure DevOps, with the provider derived from the PR URL via
-`prProviderFromUrl`); not-enabled renders nothing. Each ready row also has a
-"Checks" disclosure (AC-03): expanding it lazily calls
-`usePrChatStatusItems.expandChecks(key)` → `getChecksForOrigin` (deduped — skips
-when already loading/ready), maps the response with the existing
-`buildCheckRowsFromChecks`, and renders the shared
-`features/pull-requests/PrChecksSummary.tsx` `PrChecksCompact` (a summary-count
-line + per-check list with detail links). That module is the single home for the
-check-status → label/summary logic: `PrChecksAndReadiness`'s `PrChecksTable` also
-imports `checkStatusLabel` from it (no copy-pasted check-status logic). Freshness
+`prProviderFromUrl`); not-enabled renders nothing. Each ready row eager-loads its
+CI checks: `usePrChatStatusItems` automatically calls `getChecksForOrigin` once a
+row's detail resolves to `ready` (deduped via `checksStatusRef` — skips when
+already loading/ready/error), maps the response with `buildCheckRowsFromChecks`,
+and renders the shared `features/pull-requests/PrChecksSummary.tsx`
+`PrChecksSummaryChips` (the non-zero summary chips) inline on the row's "Checks"
+line — visible without expanding the toggle. The "Checks" toggle still discloses
+the full `PrChecksCompact` per-check list (chips + list with detail links);
+`expandChecks(key)` only re-fetches on the error/Retry path. That module is the
+single home for the check-status → label/summary logic: `PrChecksAndReadiness`'s
+`PrChecksTable` also imports `checkStatusLabel` from it (no copy-pasted check-status
+logic). The collapsed top-level header also shows an aggregate merge-status
+indicator (pure `conversation/prMergeStatusSummary.ts` `summarizeMergeStatus` →
+`MergeStatusHeaderIndicator`, `data-testid="pr-status-card-merge-status"`): a
+single-PR card mirrors that PR's auto-merge state (blocked/queued/armed,
+provider-aware via `describeAutoMerge`) or terminal lifecycle (`merged`/`closed`
+via `prStatusBadge`); a multi-PR card collapses to per-state counts ordered
+blocked → queued → armed → merged → closed, reusing the exported
+`AUTO_MERGE_TONE_CLASS`/`AUTO_MERGE_TONE_EMOJI` maps. It returns null (header stays
+quiet) when no row is ready or every ready row is a plain open PR. Freshness
 (AC-05) lives in the pure `conversation/prStatusFreshness.ts`: `shouldPollPrStatusItems`
 returns true only while some PR is non-terminal AND has checks pending/running OR
-auto-merge armed/queued (false once all merged/closed), and `formatUpdatedAgo`
+auto-merge armed/queued (false once all merged/closed; because checks are
+eager-loaded, a never-expanded row with pending checks still keeps the poll
+active), and `formatUpdatedAgo`
 renders the "updated Xs ago" label. `usePrChatStatusItems` exposes `refresh`
 (force-refreshes every row's detail + any loaded checks with `{ force: true }`,
 running silently so rows don't flash a skeleton), `refreshing`, `lastUpdatedAt`,
@@ -147,8 +160,9 @@ same component on the dashboard SPA and mobile (AC-06): its header wraps
 `shrink-0`) so the controls drop to a second line rather than overflowing the
 `overflow-x-hidden` `ConversationArea` at the 375px viewport, and the title,
 branch pair, check rows, and auto-merge/summary chips stay legible via
-`truncate` + wrapping meta lines; the Checks and collapse disclosures expand on
-tap.
+`truncate` + wrapping meta lines, and the header merge-status indicator
+(`min-w-0`, truncating reason text) participates in the header wrap; the Checks
+and collapse disclosures expand on tap.
 
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
 the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,
