@@ -44,6 +44,14 @@ const PR_CREATING_WRAPPER_PATTERNS = [
     /\bsubmit_commits_as_pr\.py\b/,
 ];
 
+// The submit_commits_as_pr.py wrapper emits a machine-readable success line on
+// stdout: `JSON: {... "pr_url": "https://...", "status": "done"}`. On an
+// idempotent / resumed run (commits_count: 0) it does not re-run `gh pr create`,
+// and on the first run that echo can be truncated under a large git dump — so the
+// structured success output is the only reliable PR-creation evidence.
+const WRAPPER_PR_URL_KEY_RE = /"pr_url"\s*:\s*"[^"]+"/;
+const WRAPPER_STATUS_DONE_RE = /"status"\s*:\s*"done"/;
+
 const READ_ONLY_PR_PATTERNS = [
     /\bgh\s+pr\s+view\b/,
     /\bgh\s+pr\s+list\b/,
@@ -106,10 +114,16 @@ function isReadOnlyPullRequestCommand(command: string): boolean {
     return READ_ONLY_PR_PATTERNS.some(re => re.test(command));
 }
 
+/** True when the result carries the wrapper's structured success line (a non-empty pr_url plus status: done). */
+function hasWrapperSuccessOutput(result: string): boolean {
+    return WRAPPER_PR_URL_KEY_RE.test(result) && WRAPPER_STATUS_DONE_RE.test(result);
+}
+
 function hasPullRequestCreationEvidence(command: string, result: string): boolean {
     if (isPullRequestCreatingCommand(command)) return true;
     if (!command) return true;
-    return isPullRequestCreatingWrapperCommand(command) && isPullRequestCreatingCommand(result);
+    if (!isPullRequestCreatingWrapperCommand(command)) return false;
+    return isPullRequestCreatingCommand(result) || hasWrapperSuccessOutput(result);
 }
 
 /**
