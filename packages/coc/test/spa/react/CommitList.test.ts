@@ -163,8 +163,12 @@ describe('CommitList', () => {
             expect(source).toContain('listCommitFiles(workspaceId');
         });
 
-        it('imports typed CoC client for file list fetching', () => {
-            expect(source).toContain("import { getSpaCocClient }");
+        it('fetches the file list through the workspace-routed client (remote-aware)', () => {
+            // Must route through getCocClientForWorkspace so a remote workspace's
+            // file list is fetched from its owning server, not the local one.
+            expect(source).toContain("import { getCocClientForWorkspace }");
+            expect(source).toContain('getCocClientForWorkspace(workspaceId).git.listCommitFiles');
+            expect(source).not.toContain('getSpaCocClient().git.listCommitFiles');
         });
 
         it('toggles expand/collapse on commit click via handleCommitClick', () => {
