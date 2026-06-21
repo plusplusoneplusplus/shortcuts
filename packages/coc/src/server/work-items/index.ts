@@ -39,7 +39,7 @@ export {
     toIndexEntry,
 } from './types';
 
-export { FileWorkItemStore, type FileWorkItemStoreOptions } from './work-item-store';
+export { FileWorkItemStore, type FileWorkItemStoreOptions, createWorkItemStore } from './work-item-store';
 export {
     DEFAULT_WORK_ITEM_SYNC_PROVIDER,
     SUPPORTED_WORK_ITEM_SYNC_PROVIDERS,

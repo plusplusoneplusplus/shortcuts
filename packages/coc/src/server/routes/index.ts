@@ -75,7 +75,7 @@ import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
 import { registerWorkItemAiRoutes } from './work-item-ai-routes';
 import { warmWorkItemWorkspaceCache } from './work-item-cache-warming';
 import { createWorkItemAiGenerators } from '../work-items/work-item-ai-generator';
-import { FileWorkItemStore, createWorkItemStorageScopeResolver } from '../work-items/work-item-store';
+import { createWorkItemStore } from '../work-items/work-item-store';
 import { createAzureBoardsWorkItemSyncProviderAdapter } from '../work-items/work-item-sync-azure-boards-provider';
 import { createGitHubWorkItemSyncProviderAdapter } from '../work-items/work-item-sync-github-provider';
 import { WorkItemAzureBoardsPullPoller } from '../work-items/work-item-azure-boards-pull-poller';
@@ -746,10 +746,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         providers: nativeCliSessionProviders,
     });
 
-    const workItemStore = new FileWorkItemStore({
-        dataDir,
-        scopeResolver: createWorkItemStorageScopeResolver(store),
-    });
+    const workItemStore = createWorkItemStore({ dataDir, processStore: store });
 
     // Dreams routes: reviewable, workspace-scoped cards plus manual run trigger.
     // Route registration is always present; the live config guard controls availability.

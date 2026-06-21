@@ -110,6 +110,27 @@ export function createWorkItemStorageScopeResolver(
     };
 }
 
+/**
+ * Create a correctly workspace-scoped `FileWorkItemStore`.
+ *
+ * When `processStore` is provided, the store resolves workspace IDs to their
+ * canonical git-origin IDs (e.g. `ws-xyz` → `gh_owner_repo`) before reading or
+ * writing, matching the behavior of the REST routes.  When omitted, the store
+ * uses an identity scope and is appropriate for callers that already operate on
+ * canonical origin IDs directly.
+ */
+export function createWorkItemStore(opts: {
+    dataDir: string;
+    processStore?: Pick<ProcessStore, 'getWorkspaces' | 'updateWorkspace'>;
+}): FileWorkItemStore {
+    return new FileWorkItemStore({
+        dataDir: opts.dataDir,
+        scopeResolver: opts.processStore
+            ? createWorkItemStorageScopeResolver(opts.processStore)
+            : undefined,
+    });
+}
+
 interface LegacyWorkItemSyncLink {
     provider: WorkItemSyncProvider;
     remote: WorkItemSyncRemoteIdentity;

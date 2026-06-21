@@ -25,6 +25,14 @@ vi.mock('../../src/server/work-items/work-item-store', function () { return ({
         savePlanVersion: mockSavePlanVersion,
         addChange: mockAddChange,
     }); }),
+    createWorkItemStore: vi.fn(() => ({
+        getWorkItem: mockGetWorkItem,
+        listWorkItems: mockListWorkItems,
+        updateWorkItem: mockUpdateWorkItem,
+        addWorkItem: mockAddWorkItem,
+        savePlanVersion: mockSavePlanVersion,
+        addChange: mockAddChange,
+    })),
 }); });
 
 import { createGetWorkItemTool } from '../../src/server/llm-tools/get-work-item-tool';
