@@ -142,6 +142,7 @@ async function writeAndCommitFile(repoPath: string, filePath: string, content: s
 
 async function initGitRepo(repoPath: string): Promise<void> {
     await git(repoPath, ['init', '-b', 'main']);
+    await git(repoPath, ['config', 'core.autocrlf', 'false']);
     await git(repoPath, ['config', 'user.email', 'test@example.com']);
     await git(repoPath, ['config', 'user.name', 'Test User']);
 }
@@ -1050,7 +1051,7 @@ describe('GET /api/origins/:originId/pull-requests/coworker-candidates', () => {
         const otherWorkspace = await fetch(originPullRequestsUrl(`/coworker-candidates?workspaceId=ws-b&repoId=${REPO_ID}&query=al`));
         expect(otherWorkspace.status).toBe(200);
         const otherWorkspaceBody = await otherWorkspace.json() as { candidates: Array<{ id: string; isInRoster: boolean }> };
-        expect(otherWorkspaceBody.candidates.map(candidate => candidate.id)).toEqual(['alice-id', 'alex-id']);
+        expect(otherWorkspaceBody.candidates.map(candidate => candidate.id)).toEqual(['alex-id']);
         expect(otherWorkspaceBody.candidates.every(candidate => candidate.isInRoster === false)).toBe(true);
 
         expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, skip: 0, scope: 'all' });

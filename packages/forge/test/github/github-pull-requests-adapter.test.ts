@@ -664,6 +664,7 @@ describe('GitHubPullRequestsAdapter', () => {
             expect(result.enabledBy).toEqual({
                 id: '7',
                 displayName: 'Carol',
+                login: 'carol',
                 email: undefined,
                 avatarUrl: undefined,
             });

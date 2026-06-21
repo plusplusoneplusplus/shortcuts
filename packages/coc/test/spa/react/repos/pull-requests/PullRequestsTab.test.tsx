@@ -369,6 +369,20 @@ describe('queue filter pills', () => {
             if (url.includes('/recent-opened')) {
                 return Promise.resolve(jsonResponse({ entries: [] }));
             }
+            if (url.includes('/coworker-candidates')) {
+                return Promise.resolve(jsonResponse({
+                    candidates: [
+                        { id: '', displayName: 'Cara Dev', prCount: 1, isInRoster: false },
+                        { id: 'stranger', displayName: 'Stranger Dev', prCount: 1, isInRoster: false },
+                    ],
+                    total: 2,
+                    query: new URL(url, 'http://localhost').searchParams.get('query') ?? '',
+                    minimumQueryLength: 2,
+                    fetchedAt: Date.now(),
+                    scannedPullRequests: allPrs.length,
+                    truncated: false,
+                }));
+            }
 
             if (url.includes('scope=team') || url.includes('scope=all')) {
                 return Promise.resolve(jsonResponse({ pullRequests: allPrs }));
@@ -392,14 +406,10 @@ describe('queue filter pills', () => {
         expect(screen.getByText('Bob PR')).toBeInTheDocument();
         expect(screen.getByText('Bob Follow-up PR')).toBeInTheDocument();
 
-        const picker = screen.getByTestId('team-coworker-picker') as HTMLSelectElement;
-        expect(within(picker).getAllByRole('option').map(option => option.textContent)).toEqual([
-            'Add coworker...',
-            'Cara Dev',
-            'Stranger Dev',
-        ]);
-
-        fireEvent.change(picker, { target: { value: 'cara dev' } });
+        const picker = screen.getByTestId('team-coworker-picker') as HTMLInputElement;
+        fireEvent.change(picker, { target: { value: 'ca' } });
+        const caraOption = await screen.findByRole('option', { name: /Cara Dev/ });
+        fireEvent.click(caraOption);
         await act(async () => {
             fireEvent.click(screen.getByTestId('team-coworker-add'));
         });
@@ -431,7 +441,7 @@ describe('queue filter pills', () => {
         await waitFor(() => expect(screen.getByTestId('no-results')).toHaveTextContent('Choose at least one Team coworker chip'));
     });
 
-    it('shows an empty Team roster CTA with addable loaded authors', async () => {
+    it('shows an empty Team roster CTA with author search prompt', async () => {
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         const allPrs = [
             makePr({ id: 2, number: 2, title: 'Alice PR', author: { id: 'alice-1', displayName: 'Alice Dev' } }),
@@ -462,13 +472,9 @@ describe('queue filter pills', () => {
         });
 
         await waitFor(() => expect(screen.getByTestId('team-roster-empty')).toBeInTheDocument());
-        expect(screen.getByTestId('team-roster-empty')).toHaveTextContent('Add coworkers from loaded PR authors');
-        expect(screen.getByTestId('no-results')).toHaveTextContent('Add coworkers from loaded PR authors to build your Team filter.');
-        expect(within(screen.getByTestId('team-coworker-picker')).getAllByRole('option').map(option => option.textContent)).toEqual([
-            'Add coworker...',
-            'Alice Dev',
-            'Casey Dev',
-        ]);
+        expect(screen.getByTestId('team-roster-empty')).toHaveTextContent('Search repo PR authors across open pull requests to build your Team filter.');
+        expect(screen.getByTestId('no-results')).toHaveTextContent('Search repo PR authors to build your Team filter.');
+        expect(screen.getByTestId('team-coworker-picker')).toHaveAttribute('role', 'combobox');
         expect(consoleError).not.toHaveBeenCalled();
         consoleError.mockRestore();
     });
@@ -556,7 +562,7 @@ describe('queue filter pills', () => {
 
         await waitFor(() => expect(screen.getByTestId('team-roster-empty')).toBeInTheDocument());
         expect(screen.queryByTestId('team-coworker-chip')).not.toBeInTheDocument();
-        expect(screen.getByTestId('no-results')).toHaveTextContent('Add coworkers from loaded PR authors to build your Team filter.');
+        expect(screen.getByTestId('no-results')).toHaveTextContent('Search repo PR authors to build your Team filter.');
         expect(fetchMock.mock.calls.some(call =>
             String(call[0]).includes('/coworker-roster/bob-1') &&
             call[1]?.method === 'DELETE'
