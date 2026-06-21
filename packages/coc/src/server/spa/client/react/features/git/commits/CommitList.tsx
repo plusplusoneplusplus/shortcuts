@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { formatRelativeTime } from '../../../utils/format';
 import { CommitTooltip } from './CommitTooltip';
 import { buildFileTree, compactFolders, FileTreeView, FlatFileList } from '../diff/FileTree';
@@ -391,7 +391,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
         setExpandedHash(initialExpandedHash);
         if (workspaceId) {
             setFilesLoading(initialExpandedHash);
-            getSpaCocClient().git.listCommitFiles(workspaceId, initialExpandedHash)
+            getCocClientForWorkspace(workspaceId).git.listCommitFiles(workspaceId, initialExpandedHash)
                 .then(data => {
                     setFileCache(prev => ({ ...prev, [initialExpandedHash]: data.files || [] }));
                 })
@@ -470,7 +470,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
             setExpandedHash(commit.hash);
             if (!fileCache[commit.hash] && workspaceId) {
                 setFilesLoading(commit.hash);
-                getSpaCocClient().git.listCommitFiles(workspaceId, commit.hash)
+                getCocClientForWorkspace(workspaceId).git.listCommitFiles(workspaceId, commit.hash)
                     .then(data => {
                         setFileCache(prev => ({ ...prev, [commit.hash]: data.files || [] }));
                     })
