@@ -28,12 +28,21 @@ const mocks = vi.hoisted(() => ({
         getForOrigin: vi.fn(),
         getChecksForOrigin: vi.fn(),
     },
+    getCocClientForWorkspace: vi.fn(),
 }));
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({ pullRequests: mocks.pullRequests }),
     getSpaCocClientErrorMessage: (err: unknown, fallback: string) =>
         (err instanceof Error && err.message) || fallback,
+}));
+
+// The hook routes every workspace-scoped REST call through getCocClientForWorkspace
+// so a remote-owned chat resolves the PR against the server that owns it. The
+// default maps any workspace to the shared local client; the remote-routing test
+// below overrides it to assert a remote workspace never hits the local client.
+vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    getCocClientForWorkspace: mocks.getCocClientForWorkspace,
 }));
 
 import { ChatPrStatusCard } from '../../../src/server/spa/client/react/features/chat/conversation/ChatPrStatusCard';
@@ -70,6 +79,9 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
         mocks.pullRequests.getForOrigin.mockReset();
         mocks.pullRequests.getChecksForOrigin.mockReset();
         mocks.pullRequests.createChatBindingForOrigin.mockResolvedValue({ prId: '42', taskId: 't1' });
+        // Default: every workspace resolves to the shared local client.
+        mocks.getCocClientForWorkspace.mockReset();
+        mocks.getCocClientForWorkspace.mockReturnValue({ pullRequests: mocks.pullRequests });
     });
 
     afterEach(() => {
@@ -300,6 +312,43 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
         await waitFor(() => expect(mocks.pullRequests.listChatBindingsForOrigin).toHaveBeenCalled());
         expect(container.querySelector('[data-testid="pr-status-card"]')).toBeNull();
         expect(mocks.pullRequests.getForOrigin).not.toHaveBeenCalled();
+    });
+
+    it('regression: a remote workspace routes through getCocClientForWorkspace, never the local client', async () => {
+        // A remote-owned chat: the workspace id only resolves on its remote server.
+        // Resolving it against the local client 404s with "Repo <ws> not found".
+        const REMOTE_WS = 'ws-xjvuoc';
+        const remotePullRequests = {
+            listChatBindingsForOrigin: vi.fn().mockResolvedValue({ bindings: {} }),
+            createChatBindingForOrigin: vi.fn().mockResolvedValue({ prId: '42', taskId: 't1' }),
+            getForOrigin: vi.fn().mockResolvedValue({
+                number: 42,
+                title: 'Remote PR',
+                status: 'open',
+                sourceBranch: 'feature/card',
+                targetBranch: 'main',
+                createdAt: '2024-01-01T00:00:00Z',
+                url: GH_URL,
+            }),
+            getChecksForOrigin: vi.fn(),
+        };
+        mocks.getCocClientForWorkspace.mockImplementation((wsId: string) =>
+            wsId === REMOTE_WS ? { pullRequests: remotePullRequests } : { pullRequests: mocks.pullRequests },
+        );
+
+        const { findByText, findByTestId } = render(
+            <ChatPrStatusCard turns={[turnWithPrCreate(GH_URL)]} workspaceId={REMOTE_WS} remoteUrl={GH_REMOTE} taskId="t1" />,
+        );
+
+        fireEvent.click(await findByTestId('pr-status-card-toggle'));
+        await findByText('Remote PR');
+
+        // Routed to the workspace's owning (remote) server, keyed by its id.
+        expect(mocks.getCocClientForWorkspace).toHaveBeenCalledWith(REMOTE_WS);
+        expect(remotePullRequests.getForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '42', { workspaceId: REMOTE_WS });
+        // The default local client is never used for a remote workspace.
+        expect(mocks.pullRequests.getForOrigin).not.toHaveBeenCalled();
+        expect(mocks.pullRequests.listChatBindingsForOrigin).not.toHaveBeenCalled();
     });
 });
 
