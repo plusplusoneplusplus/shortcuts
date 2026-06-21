@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
     finalizeOrphanedProcess,
     sweepOrphanedRunningProcesses,
+    collectResumableFollowUpProcessIds,
 } from '../../src/server/processes/finalize-orphaned-turn';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { ConversationTurn } from '@plusplusoneplusplus/forge';
@@ -151,8 +152,8 @@ describe('sweepOrphanedRunningProcesses', () => {
             conversationTurns: [],
         } as any);
 
-        const count = await sweepOrphanedRunningProcesses(store);
-        expect(count).toBe(2);
+        const result = await sweepOrphanedRunningProcesses(store);
+        expect(result).toEqual({ finalized: 2, revived: 0 });
 
         expect(store.processes.get('p1')!.status).toBe('failed');
         expect(store.processes.get('p2')!.status).toBe('cancelled');
@@ -167,8 +168,8 @@ describe('sweepOrphanedRunningProcesses', () => {
             conversationTurns: [],
         } as any);
 
-        const count = await sweepOrphanedRunningProcesses(store);
-        expect(count).toBe(0);
+        const result = await sweepOrphanedRunningProcesses(store);
+        expect(result).toEqual({ finalized: 0, revived: 0 });
     });
 
     it('preserves accumulated assistant content from streaming turns', async () => {
@@ -191,5 +192,139 @@ describe('sweepOrphanedRunningProcesses', () => {
         expect(assistantTurns[0].streaming).toBeFalsy();
         expect(assistantTurns[0].interrupted).toBe(true);
         expect(assistantTurns[0].interruptionReason).toBe('Process orphaned by server restart');
+    });
+
+    it('revives a protected running process to queued instead of failing it', async () => {
+        // Regression: a chat follow-up re-enqueued by queue restore points its
+        // payload.processId back at this conversation, so the process is
+        // recoverable. The sweep must NOT mark it failed.
+        store.processes.set('p1', {
+            id: 'p1', type: 'chat', promptPreview: '', fullPrompt: '',
+            status: 'running', startTime: new Date(),
+            conversationTurns: [
+                { role: 'user', content: 'hi', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'partial', timestamp: new Date(), turnIndex: 1, timeline: [], streaming: true },
+            ],
+        } as any);
+
+        const result = await sweepOrphanedRunningProcesses(store, {
+            protectedProcessIds: new Set(['p1']),
+        });
+        expect(result).toEqual({ finalized: 0, revived: 1 });
+
+        const proc = store.processes.get('p1')!;
+        expect(proc.status).toBe('queued');
+        // Pending, not finished: no error / endTime stamped.
+        expect(proc.error).toBeUndefined();
+        expect(proc.endTime).toBeUndefined();
+        // Dangling streaming turn is still finalized as interrupted so the UI
+        // does not show a perpetually-streaming partial response.
+        const assistantTurns = (proc.conversationTurns ?? []).filter(t => t.role === 'assistant');
+        expect(assistantTurns).toHaveLength(1);
+        expect(assistantTurns[0].streaming).toBeFalsy();
+        expect(assistantTurns[0].interrupted).toBe(true);
+    });
+
+    it('never revives a cancelling process even if protected', async () => {
+        store.processes.set('p1', {
+            id: 'p1', type: 'chat', promptPreview: '', fullPrompt: '',
+            status: 'cancelling', startTime: new Date(),
+            conversationTurns: [],
+        } as any);
+
+        const result = await sweepOrphanedRunningProcesses(store, {
+            protectedProcessIds: new Set(['p1']),
+        });
+        expect(result).toEqual({ finalized: 1, revived: 0 });
+        expect(store.processes.get('p1')!.status).toBe('cancelled');
+    });
+
+    it('fails unprotected running processes while reviving protected ones', async () => {
+        store.processes.set('protected', {
+            id: 'protected', type: 'chat', promptPreview: '', fullPrompt: '',
+            status: 'running', startTime: new Date(), conversationTurns: [],
+        } as any);
+        store.processes.set('orphaned', {
+            id: 'orphaned', type: 'chat', promptPreview: '', fullPrompt: '',
+            status: 'running', startTime: new Date(), conversationTurns: [],
+        } as any);
+
+        const result = await sweepOrphanedRunningProcesses(store, {
+            protectedProcessIds: new Set(['protected']),
+        });
+        expect(result).toEqual({ finalized: 1, revived: 1 });
+        expect(store.processes.get('protected')!.status).toBe('queued');
+        expect(store.processes.get('orphaned')!.status).toBe('failed');
+    });
+});
+
+describe('finalizeOrphanedProcess with queued status', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = asMock(createMockProcessStore());
+    });
+
+    it('sets status to queued without error or endTime, finalizing the streaming turn', async () => {
+        store.processes.set('p1', {
+            id: 'p1', type: 'chat', promptPreview: '', fullPrompt: '',
+            status: 'running', startTime: new Date(),
+            conversationTurns: [
+                { role: 'assistant', content: 'partial output', timestamp: new Date(), turnIndex: 0, timeline: [], streaming: true },
+            ],
+        } as any);
+
+        await finalizeOrphanedProcess(store, 'p1', 'Process orphaned by server restart', { status: 'queued' });
+
+        const proc = store.processes.get('p1')!;
+        expect(proc.status).toBe('queued');
+        expect(proc.error).toBeUndefined();
+        expect(proc.endTime).toBeUndefined();
+        const assistantTurns = (proc.conversationTurns ?? []).filter(t => t.role === 'assistant');
+        expect(assistantTurns).toHaveLength(1);
+        expect(assistantTurns[0].content).toBe('partial output');
+        expect(assistantTurns[0].streaming).toBeFalsy();
+        expect(assistantTurns[0].interrupted).toBe(true);
+    });
+
+    it('sets status to queued via the status-only fallback (no streaming turn)', async () => {
+        store.processes.set('p2', {
+            id: 'p2', type: 'chat', promptPreview: '', fullPrompt: '',
+            status: 'running', startTime: new Date(),
+            conversationTurns: [
+                { role: 'user', content: 'hi', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            ],
+        } as any);
+
+        await finalizeOrphanedProcess(store, 'p2', 'ignored', { status: 'queued' });
+
+        const proc = store.processes.get('p2')!;
+        expect(proc.status).toBe('queued');
+        expect(proc.error).toBeUndefined();
+        expect(proc.endTime).toBeUndefined();
+    });
+});
+
+describe('collectResumableFollowUpProcessIds', () => {
+    it('collects payload.processId from chat follow-up tasks', () => {
+        const ids = collectResumableFollowUpProcessIds([
+            { payload: { kind: 'chat', processId: 'queue_abc' } },
+            { payload: { kind: 'chat', processId: 'queue_def' } },
+        ]);
+        expect(ids).toEqual(new Set(['queue_abc', 'queue_def']));
+    });
+
+    it('ignores fresh chat tasks (no processId) and non-chat tasks', () => {
+        const ids = collectResumableFollowUpProcessIds([
+            { payload: { kind: 'chat', prompt: 'new task' } }, // no processId → not a follow-up
+            { payload: { kind: 'workflow', processId: 'queue_xyz' } }, // not a chat payload
+            { payload: undefined }, // defensive: missing payload
+            { payload: { kind: 'chat', processId: 'queue_keep' } },
+        ]);
+        expect(ids).toEqual(new Set(['queue_keep']));
+    });
+
+    it('returns an empty set for no tasks', () => {
+        expect(collectResumableFollowUpProcessIds([])).toEqual(new Set());
     });
 });

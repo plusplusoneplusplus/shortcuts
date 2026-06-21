@@ -602,6 +602,16 @@ export interface WorkItemStore {
     unpinWorkItem(id: string): Promise<WorkItem | undefined>;
     archiveWorkItem(id: string, archivedAt: string): Promise<WorkItem | undefined>;
     unarchiveWorkItem(id: string): Promise<WorkItem | undefined>;
+
+    /**
+     * Resolve a caller-facing repoId to its canonical origin/storage scope id.
+     * Same-origin clones of one upstream repo (e.g. the per-clone `ws-*`
+     * workspace id and the `gh_<owner>_<repo>` mirror scope) resolve to the same
+     * id, so callers can compare scopes without depending on which URL family
+     * stamped an item. Optional: stores that already operate on canonical origin
+     * ids may omit it, in which case callers fall back to raw equality.
+     */
+    resolveOriginId?(repoId: string): Promise<string>;
 }
 
 // ============================================================================

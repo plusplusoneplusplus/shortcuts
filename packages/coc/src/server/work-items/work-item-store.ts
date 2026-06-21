@@ -242,6 +242,21 @@ export class FileWorkItemStore implements WorkItemStore {
         return { storageRepoId, legacyRepoIds: [...legacyRepoIds] };
     }
 
+    /**
+     * Resolve a caller-facing repoId to its canonical storage scope id without
+     * triggering legacy-scope migration. Reuses the configured scope resolver so
+     * a per-clone `ws-*` workspace id and the `gh_<owner>_<repo>` mirror of the
+     * same upstream repo resolve to one id. Falls back to the input when no
+     * resolver is configured or the id resolves to nothing.
+     */
+    async resolveOriginId(repoId: string): Promise<string> {
+        const resolved = await this.scopeResolver?.(repoId);
+        const baseScope = typeof resolved === 'string'
+            ? { storageRepoId: resolved }
+            : resolved;
+        return baseScope?.storageRepoId?.trim() || repoId;
+    }
+
     private async readRawIndex(repoId: string): Promise<LegacyWorkItemIndexEntry[]> {
         const raw = await this.readJSON<unknown>(this.indexPath(repoId), []);
         if (raw && !Array.isArray(raw)) {

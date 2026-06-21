@@ -62,6 +62,8 @@ Per-repo directory layout under `~/.coc/repos/<workspaceId>/processes/`. Used on
 
 Processes flow through states: `queued → running → completed | failed | cancelled`
 
+**Restart recovery:** On startup the server sweeps processes left `running`/`cancelling` by an unclean shutdown (`sweepOrphanedRunningProcesses`, run *after* the queue persistence layer's `restore()`). They are finalized (`running → failed`, `cancelling → cancelled`) — except a `running` process whose ID a re-enqueued chat follow-up points back at via `payload.processId`: that process is recoverable, so it is revived to `queued` (pending retry) to match the task still in the queue. `cancelling` processes are never revived. Any dangling streaming assistant turn is finalized as `interrupted` in both cases.
+
 Key metadata persisted:
 - `type` — task type (chat, workflow, script, etc.)
 - `config` — model, mode, workspace, tools

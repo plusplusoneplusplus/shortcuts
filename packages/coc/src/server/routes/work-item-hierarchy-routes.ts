@@ -174,7 +174,7 @@ function filterWithAncestors(
 
     // Step 1.5: apply done filter
     if (!opts.includeDone) {
-        working = working.filter(e => e.status !== 'done');
+        working = working.filter(e => !isDoneLikeEntry(e));
     }
 
     if (opts.tracker) {
@@ -233,6 +233,10 @@ function getInheritedTrackerKind(
         current = parent;
     }
     return getOwnWorkItemTrackerKind(current);
+}
+
+function isDoneLikeEntry(entry: WorkItemIndexEntry): boolean {
+    return entry.status === 'done' || entry.githubMirror?.state === 'closed';
 }
 
 export async function buildWorkItemTreeRouteResponse(

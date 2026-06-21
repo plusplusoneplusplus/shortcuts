@@ -144,20 +144,29 @@ review dialog prefilled from the composer and passes its current
 workspace-scoped provider/model/reasoning-effort selection into the launch. The
 New Chat direct-goal path sends goal text only: attachments and images block
 confirmation, no grilling chat is enqueued, and the pasted goal is not saved as
-a note. `folderPath` is the source/context folder for the goal spec, while
-`workingDirectory` is an optional explicit execution directory; when omitted,
-the multi-repo queue router resolves the execution root from `workspaceId`. The
-route validates optional `provider` and `reasoningEffort` inputs and carries
-them, alongside optional `config.model`, onto the first queued Ralph execution
-task.
+a note. The dialog includes the shared Ralph execution repository selector from
+`shared/RalphExecutionRepoSelector.tsx`; it lists registered local workspaces and
+online remote-CoC workspaces, shows remote load warnings without blocking local
+launches, and posts `/api/ralph-launch` to the selected target server with that
+target's `workspaceId`. `folderPath` is the source/context folder for the goal
+spec, while `workingDirectory` is an optional explicit execution directory; both
+are sent only when the selected target is the source workspace/server. When they
+are omitted, the multi-repo queue router resolves the execution root from
+`workspaceId`. The route validates optional `provider` and `reasoningEffort`
+inputs and carries them, alongside optional `config.model`, onto the first
+queued Ralph execution task.
 
 `POST /api/processes/:id/ralph-start`
 (`packages/coc/src/server/routes/queue-ralph-routes.ts`) starts execution from
 a completed grilling-phase session. The SPA `features/chat/RalphStartPanel.tsx`
-uses the same `ModalJobAiControls` as direct launch and sends the resolved
-provider plus optional `config.model`/`config.reasoningEffort`; the route
-validates those overrides and applies them only to the first queued execution
-task.
+uses the same execution repository selector and `ModalJobAiControls` as direct
+launch. If the selected target is the same workspace/server as the completed
+grilling process, it posts to `/api/processes/:id/ralph-start` so the
+grilling-phase Ralph session is reused. If the selected target differs, it posts
+the reviewed `goalSpec` to that target server's `/api/ralph-launch` endpoint and
+mints a fresh execution session. The start route validates the resolved provider
+plus optional `config.model`/`config.reasoningEffort` overrides and applies them
+only to the first queued execution task.
 
 Work Item execution can also start a Ralph loop through
 `POST /api/workspaces/:workspaceId/work-items/:itemId/execute` with

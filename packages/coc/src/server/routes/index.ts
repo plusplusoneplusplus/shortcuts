@@ -394,7 +394,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         // __dirname at runtime = dist/server/routes/; package root is 3 levels up.
         cocInstallDir: path.join(__dirname, '../../..'),
     });
-    registerProcessResumeRoutes(routes, store);
+    registerProcessResumeRoutes(routes, store, undefined, {
+        getDefaultProvider: resolveConcreteDefaultProvider,
+    });
     registerFreshChatTerminalRoutes(routes, undefined, {
         getProvider: resolveConcreteDefaultProvider,
     });

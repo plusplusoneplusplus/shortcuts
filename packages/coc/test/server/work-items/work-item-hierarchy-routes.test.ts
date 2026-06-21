@@ -430,6 +430,34 @@ describe('Work Item Hierarchy Routes', () => {
             expect(res.body.total).toBe(0);
         });
 
+        it('excludes stale closed GitHub mirrors when includeDone is false (default)', async () => {
+            await store.addWorkItem({
+                id: 'closed-github-item',
+                repoId: REPO_ID,
+                title: 'Closed GitHub item',
+                description: '',
+                status: 'created',
+                type: 'work-item',
+                githubMirror: {
+                    issueNumber: 298,
+                    state: 'closed',
+                },
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+                source: 'manual',
+            });
+
+            const defaultRes = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree`);
+            expect(defaultRes.status).toBe(200);
+            expect(defaultRes.body.roots).toHaveLength(0);
+            expect(defaultRes.body.total).toBe(0);
+
+            const includeDoneRes = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree?includeDone=true`);
+            expect(includeDoneRes.status).toBe(200);
+            expect(includeDoneRes.body.roots).toHaveLength(1);
+            expect(includeDoneRes.body.roots[0].item.id).toBe('closed-github-item');
+        });
+
         it('includes done items when includeDone=true', async () => {
             const itemRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
                 title: 'Done item',

@@ -350,6 +350,7 @@ describe('WorkItemGitHubPullPoller', () => {
         const closedChild = imported.items.find(item => item.githubMirror?.issueNumber === 102)!;
         // Closed issues are still part of the initial import.
         expect(closedChild).toBeDefined();
+        expect(closedChild.status).toBe('done');
         expect(closedChild.githubMirror?.state).toBe('closed');
 
         writeRepoPreferences(tmpDir, REPO_ID, {
@@ -374,7 +375,7 @@ describe('WorkItemGitHubPullPoller', () => {
         // An untouched closed mirror is preserved across polls (not pruned, not recreated).
         const firstPoll = await poller.pollWorkspace(REPO_ID);
         expect(firstPoll).toMatchObject({ created: 0, deleted: 0, errors: [] });
-        expect(await store.getWorkItem(closedChild.id, REPO_ID)).toBeDefined();
+        expect(await store.getWorkItem(closedChild.id, REPO_ID)).toMatchObject({ status: 'done' });
 
         // Deleting the closed mirror locally must be durable: the next poll must not recreate it.
         expect(await store.removeWorkItem(closedChild.id)).toBe(true);

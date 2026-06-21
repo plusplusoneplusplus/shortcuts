@@ -20,11 +20,19 @@ const { mockModalSelection } = vi.hoisted(() => ({
     mockModalSelection: vi.fn(() => ({ resolved: { provider: 'copilot' } })),
 }));
 
+const { mockUseRepos } = vi.hoisted(() => ({
+    mockUseRepos: vi.fn(),
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/shared/ModalJobAiControls', () => ({
-    useModalJobAiSelection: () => mockModalSelection(),
+    useModalJobAiSelection: (options: unknown) => mockModalSelection(options),
     ModalJobAiControls: ({ testIdPrefix = 'modal-job' }: { testIdPrefix?: string }) => (
         <div data-testid={`${testIdPrefix}-ai-controls`} />
     ),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
+    useRepos: mockUseRepos,
 }));
 
 // ---------------------------------------------------------------------------
@@ -48,6 +56,10 @@ const GRILLING_TURNS: ClientConversationTurn[] = [
     makeTurn('assistant', '## Goal\nBuild an awesome feature\n\n## Acceptance Criteria\n- AC1'),
 ];
 
+async function waitForRepoSelector() {
+    await waitFor(() => expect(screen.getByTestId('ralph-start-execution-repo-select')).toBeTruthy());
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -59,6 +71,14 @@ describe('RalphStartPanel', () => {
         mockOnStarted.mockClear();
         mockModalSelection.mockReset();
         mockModalSelection.mockReturnValue({ resolved: { provider: 'copilot' } });
+        mockUseRepos.mockReset();
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'ws-1', name: 'Source Repo', rootPath: '/repos/source' } },
+                { workspace: { id: 'ws-2', name: 'Other Repo', rootPath: '/repos/other' } },
+            ],
+            loading: false,
+        });
         vi.stubGlobal('fetch', vi.fn());
     });
 
@@ -130,6 +150,87 @@ describe('RalphStartPanel', () => {
         expect(screen.getByTestId('ralph-start-ai-controls')).toBeTruthy();
     });
 
+    it('renders the execution repo selector and defaults to the source workspace', async () => {
+        render(
+            <RalphStartPanel
+                processId="queue_test-repo-selector"
+                workspaceId="ws-1"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('ralph-start-execution-repo-select')).toBeTruthy();
+        });
+
+        const select = screen.getByTestId('ralph-start-execution-repo-select') as HTMLSelectElement;
+        expect(select.value).toBe('local:ws-1');
+        expect(screen.getByTestId('ralph-start-execution-repo-summary').textContent)
+            .toContain('Ralph will run in Source Repo on Current CoC');
+    });
+
+    it('shows online remote workspace options', async () => {
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'ws-1', name: 'Source Repo', rootPath: '/repos/source' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Lab Repo',
+                        rootPath: '/srv/source',
+                        baseUrl: 'http://127.0.0.1:7777',
+                        remote: {
+                            serverId: 'srv-1',
+                            serverLabel: 'Lab Server',
+                            baseUrl: 'http://127.0.0.1:7777',
+                            offline: false,
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+
+        render(
+            <RalphStartPanel
+                processId="queue_test-remote-options"
+                workspaceId="ws-1"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+
+        await waitFor(() => {
+            const select = screen.getByTestId('ralph-start-execution-repo-select') as HTMLSelectElement;
+            expect([...select.options].map(option => option.value)).toContain('srv-1:remote-ws');
+        });
+        expect(screen.queryByTestId('ralph-start-execution-repo-warning')).toBeNull();
+    });
+
+    it('resolves modal AI defaults against the selected execution workspace', async () => {
+        render(
+            <RalphStartPanel
+                processId="queue_test-ai-workspace"
+                workspaceId="ws-1"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitForRepoSelector();
+        fireEvent.change(screen.getByTestId('ralph-start-execution-repo-select'), { target: { value: 'local:ws-2' } });
+
+        await waitFor(() => {
+            expect(mockModalSelection).toHaveBeenLastCalledWith({ workspaceId: 'ws-2', mode: 'ralph' });
+        });
+    });
+
     it('opens the panel with extracted goal spec when Start Ralph is clicked', async () => {
         render(
             <RalphStartPanel
@@ -163,6 +264,7 @@ describe('RalphStartPanel', () => {
 
         fireEvent.click(screen.getByTestId('ralph-start-btn'));
         await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+        await waitForRepoSelector();
 
         // Clear the textarea and confirm
         const textarea = screen.getByTestId('ralph-goal-spec-input') as HTMLTextAreaElement;
@@ -194,13 +296,14 @@ describe('RalphStartPanel', () => {
 
         fireEvent.click(screen.getByTestId('ralph-start-btn'));
         await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+        await waitForRepoSelector();
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
         });
 
         await waitFor(() => {
-            expect(mockOnStarted).toHaveBeenCalledWith('queue_new-task');
+            expect(mockOnStarted).toHaveBeenCalledWith('queue_new-task', 'ws-1');
         });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
@@ -229,13 +332,14 @@ describe('RalphStartPanel', () => {
 
         fireEvent.click(screen.getByTestId('ralph-start-btn'));
         await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+        await waitForRepoSelector();
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
         });
 
         await waitFor(() => {
-            expect(mockOnStarted).toHaveBeenCalledWith('queue_ai-task');
+            expect(mockOnStarted).toHaveBeenCalledWith('queue_ai-task', 'ws-1');
         });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
@@ -261,6 +365,7 @@ describe('RalphStartPanel', () => {
 
         fireEvent.click(screen.getByTestId('ralph-start-btn'));
         await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+        await waitForRepoSelector();
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
@@ -400,6 +505,7 @@ describe('RalphStartPanel', () => {
 
         fireEvent.click(screen.getByTestId('ralph-start-btn'));
         await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+        await waitForRepoSelector();
 
         // Wait for goal content to load
         await waitFor(() => {
@@ -412,7 +518,7 @@ describe('RalphStartPanel', () => {
         });
 
         await waitFor(() => {
-            expect(mockOnStarted).toHaveBeenCalledWith('queue_launched');
+            expect(mockOnStarted).toHaveBeenCalledWith('queue_launched', 'ws-1');
         });
 
         // Verify the second fetch call went to ralph-launch, not ralph-start
@@ -457,6 +563,7 @@ describe('RalphStartPanel', () => {
 
         fireEvent.click(screen.getByTestId('ralph-start-btn'));
         await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+        await waitForRepoSelector();
 
         // Textarea should contain the long spec from the file, not the short
         // synthesis from the last assistant turn.
@@ -471,7 +578,7 @@ describe('RalphStartPanel', () => {
         });
 
         await waitFor(() => {
-            expect(mockOnStarted).toHaveBeenCalledWith('queue_started');
+            expect(mockOnStarted).toHaveBeenCalledWith('queue_started', 'ws-1');
         });
 
         // Endpoint must be ralph-start (the existing grilling process), not ralph-launch.
@@ -481,5 +588,184 @@ describe('RalphStartPanel', () => {
         // And the body should carry the file's long spec, not the short synthesis.
         const body = JSON.parse(startCall[1].body);
         expect(body.goalSpec).toContain('Long, detailed goal spec');
+    });
+
+    it('uses ralph-launch with the selected workspace id when a grilling launch targets another local workspace', async () => {
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ processId: 'queue_cross_local' }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(
+            <RalphStartPanel
+                processId="queue_grill-cross"
+                workspaceId="ws-1"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitFor(() => expect(screen.getByTestId('ralph-start-execution-repo-select')).toBeTruthy());
+        fireEvent.change(screen.getByTestId('ralph-start-execution-repo-select'), { target: { value: 'local:ws-2' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+        });
+
+        await waitFor(() => {
+            expect(mockOnStarted).toHaveBeenCalledWith('queue_cross_local', 'ws-2');
+        });
+
+        const startCall = mockFetch.mock.calls[0];
+        expect(startCall[0]).toBe('http://localhost:4000/api/ralph-launch');
+        expect(startCall[0]).not.toContain('/processes/queue_grill-cross/ralph-start');
+        const body = JSON.parse(startCall[1].body);
+        expect(body.workspaceId).toBe('ws-2');
+    });
+
+    it('routes a remote execution target to the remote ralph-launch endpoint without local fallthrough', async () => {
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'ws-1', name: 'Source Repo', rootPath: '/repos/source' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Remote Repo',
+                        rootPath: '/remote/repo',
+                        baseUrl: 'http://127.0.0.1:7777',
+                        remote: {
+                            serverId: 'srv-remote',
+                            serverLabel: 'Remote CoC',
+                            baseUrl: 'http://127.0.0.1:7777',
+                            offline: false,
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ processId: 'queue_remote_started' }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(
+            <RalphStartPanel
+                processId="queue_grill-remote"
+                workspaceId="ws-1"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitFor(() => expect(screen.getByTestId('ralph-start-execution-repo-select')).toBeTruthy());
+        fireEvent.change(screen.getByTestId('ralph-start-execution-repo-select'), { target: { value: 'srv-remote:remote-ws' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+        });
+
+        await waitFor(() => {
+            expect(mockOnStarted).toHaveBeenCalledWith('queue_remote_started', 'remote-ws');
+        });
+
+        const startCall = mockFetch.mock.calls[0];
+        expect(startCall[0]).toBe('http://127.0.0.1:7777/api/ralph-launch');
+        expect(startCall[0]).not.toContain('localhost:4000');
+        const body = JSON.parse(startCall[1].body);
+        expect(body.workspaceId).toBe('remote-ws');
+    });
+
+    // -----------------------------------------------------------------------
+    // Fix 1: same-origin default
+    // -----------------------------------------------------------------------
+
+    it('defaults to the remote-origin target when source is a remote workspace', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: 'http://127.0.0.1:7777' }]);
+        mockUseRepos.mockReturnValue({
+            repos: [
+                // Same workspace id exists locally (should NOT be chosen as default).
+                { workspace: { id: 'remote-ws', name: 'Local Copy' } },
+                // The remote entry on the same origin as the source workspace.
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Remote Source Repo',
+                        rootPath: '/remote/repo',
+                        baseUrl: 'http://127.0.0.1:7777',
+                        remote: {
+                            serverId: 'srv-a',
+                            serverLabel: 'Server A',
+                            baseUrl: 'http://127.0.0.1:7777',
+                            offline: false,
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+
+        render(
+            <RalphStartPanel
+                processId="queue_same-origin"
+                workspaceId="remote-ws"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitFor(() => {
+            const select = screen.getByTestId('ralph-start-execution-repo-select') as HTMLSelectElement;
+            expect(select.value).toBe('srv-a:remote-ws');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // Fix 2: cached list, no on-demand fetch; offline remotes dropped
+    // -----------------------------------------------------------------------
+
+    it('excludes offline remote workspaces from the selector options', async () => {
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'ws-1', name: 'Local Repo' } },
+                {
+                    workspace: {
+                        id: 'offline-ws',
+                        name: 'Offline Repo',
+                        baseUrl: 'http://127.0.0.1:9999',
+                        remote: {
+                            serverId: 'srv-offline',
+                            serverLabel: 'Offline Server',
+                            baseUrl: 'http://127.0.0.1:9999',
+                            offline: true,
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+
+        render(
+            <RalphStartPanel
+                processId="queue_offline-test"
+                workspaceId="ws-1"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitFor(() => {
+            expect(screen.getByTestId('ralph-start-execution-repo-select')).toBeTruthy();
+        });
+        const select = screen.getByTestId('ralph-start-execution-repo-select') as HTMLSelectElement;
+        const optionValues = [...select.options].map(o => o.value);
+        expect(optionValues).not.toContain('srv-offline:offline-ws');
+        expect(optionValues).toContain('local:ws-1');
     });
 });

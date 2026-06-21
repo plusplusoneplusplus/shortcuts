@@ -485,8 +485,32 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         expect(res.body.error).toMatch(/No GitHub repository configured/i);
     });
 
-    it('imports epic roots with created local status while mirroring GitHub state', async () => {
+    it('imports open epic roots with parsed CoC status while mirroring GitHub state', async () => {
         const issueNumber = 77;
+        const issues = new Map([[issueNumber, makeMockIssue(issueNumber, 'Open epic', 'open', {
+            body: 'Issue body',
+            labels: [
+                { name: 'coc:type:epic' },
+                { name: 'coc:status:planning' },
+                { name: 'coc:priority:high' },
+            ],
+        })]]);
+        await startServer(issues);
+
+        const res = await post(importUrl(), {
+            issueUrl: `https://github.com/${CONFIGURED_OWNER}/${CONFIGURED_REPO}/issues/${issueNumber}`,
+        });
+
+        expect(res.status).toBe(201);
+        expect(res.body.status).toBe('planning');
+        expect(res.body.type).toBe('epic');
+        expect(res.body.priority).toBe('high');
+        expect(res.body.githubMirror).toMatchObject({ issueNumber, state: 'open' });
+        expect(res.body.syncLinks).toBeUndefined();
+    });
+
+    it('imports closed epic roots as done when CoC status is stale', async () => {
+        const issueNumber = 78;
         const issues = new Map([[issueNumber, makeMockIssue(issueNumber, 'Closed epic', 'closed', {
             body: 'Issue body',
             labels: [
@@ -502,14 +526,14 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         });
 
         expect(res.status).toBe(201);
-        expect(res.body.status).toBe('created');
+        expect(res.body.status).toBe('done');
         expect(res.body.type).toBe('epic');
         expect(res.body.priority).toBe('high');
         expect(res.body.githubMirror).toMatchObject({ issueNumber, state: 'closed' });
         expect(res.body.syncLinks).toBeUndefined();
     });
 
-    it('re-pulls GitHub-owned fields while preserving local lifecycle fields', async () => {
+    it('re-pulls GitHub-owned fields and status while preserving plans and execution history', async () => {
         const issues = new Map<number, GitHubWorkItemIssue>([
             [70, makeMockIssue(70, 'Remote Epic', 'open', {
                 labels: ['coc:type:epic', 'remote-tag'],
@@ -541,7 +565,7 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
             }],
         });
         issues.set(70, makeMockIssue(70, 'Remote Epic Updated', 'closed', {
-            labels: ['coc:type:epic', 'github-tag'],
+            labels: ['coc:type:epic', 'coc:status:done', 'github-tag'],
             body: 'Remote body updated',
             updatedAt: '2026-01-02T00:00:00.000Z',
         }));
@@ -560,7 +584,7 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
             title: 'Remote Epic Updated',
             description: 'Remote body updated',
             type: 'epic',
-            status: 'planning',
+            status: 'done',
             tags: ['github-tag'],
             githubMirror: {
                 issueNumber: 70,

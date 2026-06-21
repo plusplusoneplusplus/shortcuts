@@ -3,6 +3,7 @@ import { getSpaCocClient } from '../api/cocClient';
 import { Button, Spinner } from '../ui';
 import { PendingTaskPayload, MetaRow, FilePathValue } from './PendingTaskPayload';
 import { useQueue } from '../contexts/QueueContext';
+import { ProviderBadge, getTaskProviderBadgeProvider } from '../features/chat/ProviderBadge';
 
 export interface PendingTaskInfoPanelProps {
     task: any;
@@ -39,11 +40,13 @@ export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTas
     const priorityLabel = task.priority || 'normal';
     const created = task.createdAt ? new Date(task.createdAt).toLocaleString() : '';
     const model = task.config?.model || '';
+    const effortTier = task.config?.effortTier || '';
     const workingDir = task.payload?.workingDirectory || '';
     const planFilePath = task.payload?.planFilePath || '';
     const filePath = task.payload?.filePath || '';
     const workflowPath = task.payload?.workflowPath || '';
     const repoId = task.repoId || '';
+    const providerBadgeProvider = getTaskProviderBadgeProvider(task);
 
     return (
         <div className="pending-task-info space-y-5">
@@ -61,6 +64,13 @@ export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTas
                 {queuePosition > 0 && <MetaRow label="Queue Position" value={`${queuePosition} of ${queueTotal}`} />}
                 {created && <MetaRow label="Created" value={created} />}
                 {model && <MetaRow label="Model" value={model} />}
+                {effortTier && <MetaRow label="Effort Tier" value={effortTier} />}
+                {providerBadgeProvider && (
+                    <>
+                        <span className="text-[#848484]">Provider</span>
+                        <span><ProviderBadge provider={providerBadgeProvider} /></span>
+                    </>
+                )}
                 {workingDir && <FilePathValue label="Working Directory" value={workingDir} />}
                 {planFilePath && <FilePathValue label="Plan File" value={planFilePath} />}
                 {filePath && <FilePathValue label="File" value={filePath} />}

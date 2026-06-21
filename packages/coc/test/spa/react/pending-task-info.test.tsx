@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
@@ -508,5 +508,174 @@ describe('PendingTaskInfoPanel', () => {
             expect(screen.getByText('Task ID')).toBeTruthy();
         });
         expect(screen.queryByText('Queue Position')).toBeNull();
+    });
+
+    // AC-04: Provider row
+    it('shows Provider badge when task has a concrete provider', async () => {
+        const task = makePendingTask({ provider: 'claude' });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Provider')).toBeTruthy();
+        });
+        const panel = document.querySelector('.pending-task-info')!;
+        const badge = within(panel).getByTestId('provider-badge');
+        expect(badge.getAttribute('data-provider')).toBe('claude');
+        expect(badge.textContent).toContain('Claude');
+    });
+
+    it('shows "Auto (pending)" Provider badge when auto-routing is requested but not yet resolved', async () => {
+        const task = makePendingTask({
+            status: 'queued',
+            payload: {
+                kind: 'chat',
+                workingDirectory: '/home/user/project',
+                context: {
+                    autoProviderRouting: { requested: true },
+                },
+            },
+        });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Provider')).toBeTruthy();
+        });
+        const panel = document.querySelector('.pending-task-info')!;
+        const badge = within(panel).getByTestId('provider-badge');
+        expect(badge.getAttribute('data-provider')).toBe('auto-pending');
+        expect(badge.textContent).toContain('Auto (pending)');
+    });
+
+    it('reads provider from task.metadata.provider when task.provider is absent', async () => {
+        const task = makePendingTask({ metadata: { provider: 'codex' } });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Provider')).toBeTruthy();
+        });
+        const panel = document.querySelector('.pending-task-info')!;
+        const badge = within(panel).getByTestId('provider-badge');
+        expect(badge.getAttribute('data-provider')).toBe('codex');
+    });
+
+    it('does not show Provider row when no provider metadata is present', async () => {
+        const task = makePendingTask();
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Task ID')).toBeTruthy();
+        });
+        expect(screen.queryByText('Provider')).toBeNull();
+        expect(screen.queryByTestId('provider-badge')).toBeNull();
+    });
+
+    // AC-05: Effort Tier row
+    it('shows Effort Tier row when task.config.effortTier is set', async () => {
+        const task = makePendingTask({ config: { model: 'gpt-4', effortTier: 'medium' } });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Effort Tier')).toBeTruthy();
+        });
+        expect(screen.getByText('medium')).toBeTruthy();
+    });
+
+    it('shows Effort Tier row for all valid tier values', async () => {
+        for (const tier of ['very-low', 'low', 'high']) {
+            const task = makePendingTask({ config: { model: 'gpt-4', effortTier: tier } });
+            setupFetchForTask(task);
+
+            const { unmount } = render(
+                <Wrap>
+                    <SeededChatDetail task={task} />
+                </Wrap>
+            );
+
+            await waitFor(() => {
+                expect(screen.getByText('Effort Tier')).toBeTruthy();
+            });
+            expect(screen.getByText(tier)).toBeTruthy();
+            unmount();
+        }
+    });
+
+    it('does not show Effort Tier row when effortTier is absent', async () => {
+        const task = makePendingTask({ config: { model: 'gpt-4' } });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Model')).toBeTruthy();
+        });
+        expect(screen.queryByText('Effort Tier')).toBeNull();
+    });
+
+    it('does not show Effort Tier row when config is absent', async () => {
+        const task = makePendingTask({ config: undefined });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Task ID')).toBeTruthy();
+        });
+        expect(screen.queryByText('Effort Tier')).toBeNull();
+    });
+
+    it('existing Model row is unaffected when both model and effortTier are present', async () => {
+        const task = makePendingTask({ config: { model: 'gpt-4', effortTier: 'high' } });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Model')).toBeTruthy();
+        });
+        expect(screen.getByText('gpt-4')).toBeTruthy();
+        expect(screen.getByText('Effort Tier')).toBeTruthy();
+        expect(screen.getByText('high')).toBeTruthy();
     });
 });

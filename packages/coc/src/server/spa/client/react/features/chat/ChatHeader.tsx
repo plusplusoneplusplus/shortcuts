@@ -71,6 +71,8 @@ export interface ChatHeaderProps {
     setCopied: (v: boolean) => void;
     taskId: string;
     onLaunchInteractiveResume: () => void;
+    /** Copies the bare provider-specific resume command to the clipboard. Shown beside "Resume In CLI". */
+    onCopyResumeCommand?: () => void;
     onPopOut: () => void;
     onFloat: () => void;
     /** Override the default "Chat" title */
@@ -125,6 +127,7 @@ function buildOverflowItems(
         resumeSessionId: string | null | undefined;
         resumeLaunching: boolean;
         onLaunchInteractiveResume: () => void;
+        onCopyResumeCommand?: () => void;
         metadataProcess: any;
         planPath: string;
         createdFiles: { filePath: string }[];
@@ -231,6 +234,16 @@ function buildOverflowItems(
             icon: <span className="text-xs">▶</span>,
             onClick: props.onLaunchInteractiveResume,
         });
+        // Copy Command — bare, paste-ready resume invocation. Shown alongside
+        // Resume In CLI for both local and remote workspaces.
+        if (props.onCopyResumeCommand) {
+            items.push({
+                key: 'copy-resume-cli',
+                label: 'Copy Command',
+                icon: <span className="text-xs">⧉</span>,
+                onClick: props.onCopyResumeCommand,
+            });
+        }
     }
 
     // Duration
@@ -339,6 +352,7 @@ export function ChatHeader({
     setCopied,
     taskId,
     onLaunchInteractiveResume,
+    onCopyResumeCommand,
     onPopOut,
     onFloat,
     title,
@@ -418,6 +432,7 @@ export function ChatHeader({
         resumeSessionId,
         resumeLaunching,
         onLaunchInteractiveResume,
+        onCopyResumeCommand,
         metadataProcess,
         planPath,
         createdFiles,
@@ -448,7 +463,7 @@ export function ChatHeader({
         onStartFreshSameContext,
         startingFreshSameContext,
         metadataExtraRows,
-    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, sessionSystemTokens, sessionToolTokens, sessionConversationTokens, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking, onStartFreshSameContext, startingFreshSameContext, metadataExtraRows]); // eslint-disable-line react-hooks/exhaustive-deps
+    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, sessionSystemTokens, sessionToolTokens, sessionConversationTokens, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, onCopyResumeCommand, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking, onStartFreshSameContext, startingFreshSameContext, metadataExtraRows]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div
@@ -641,6 +656,7 @@ export function ChatHeader({
                                 resumeSessionId={isMobile ? undefined : resumeSessionId}
                                 resumeLaunching={resumeLaunching}
                                 onLaunchInteractiveResume={isMobile ? undefined : onLaunchInteractiveResume}
+                                onCopyResumeCommand={isMobile ? undefined : onCopyResumeCommand}
                                 onFork={onFork}
                                 forking={forking}
                                 onStartFreshSameContext={onStartFreshSameContext}

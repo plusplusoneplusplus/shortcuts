@@ -22,12 +22,18 @@ import { cloneApiBase } from '../../repos/cloneRegistry';
 import { cn } from '../../ui/cn';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import { ModalJobAiControls, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
+import {
+    getRalphExecutionRepoApiBase,
+    isSameRalphExecutionTarget,
+    RalphExecutionRepoSelector,
+    useRalphExecutionRepoTargets,
+} from '../../shared/RalphExecutionRepoSelector';
 
 export interface RalphStartPanelProps {
     processId: string;
     workspaceId?: string;
     turns: ClientConversationTurn[];
-    onStarted: (newProcessId: string) => void;
+    onStarted: (newProcessId: string, workspaceId?: string) => void;
     /**
      * Optional path to a goal spec file. When set, the panel loads the goal
      * text from this file instead of extracting it from the conversation
@@ -53,8 +59,10 @@ function extractGoalSpec(turns: ClientConversationTurn[]): string {
 }
 
 export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goalFilePath, useLaunchEndpoint }: RalphStartPanelProps) {
-    const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ralph' });
     const [open, setOpen] = useState(false);
+    const repoSelection = useRalphExecutionRepoTargets({ open, sourceWorkspaceId: workspaceId });
+    const selectedWorkspaceId = repoSelection.selectedTarget?.workspaceId ?? workspaceId;
+    const aiSelection = useModalJobAiSelection({ workspaceId: selectedWorkspaceId, mode: 'ralph' });
     const [goalSpec, setGoalSpec] = useState('');
     const [starting, setStarting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -88,6 +96,8 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
     async function handleConfirm() {
         const trimmed = goalSpec.trim();
         if (!trimmed) { setError('Goal spec cannot be empty.'); return; }
+        const selectedTarget = repoSelection.selectedTarget;
+        if (!selectedTarget) { setError('Choose a repository before starting Ralph.'); return; }
         setStarting(true);
         setError(null);
         try {
@@ -95,15 +105,17 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
             // whether the goal came from a file. Grilling-phase callers pass a
             // `goalFilePath` to load the file's content but keep the
             // ralph-start endpoint so the existing process/session is reused.
-            const url = useLaunchEndpoint
-                ? `${cloneApiBase(workspaceId)}/ralph-launch`
-                : `${cloneApiBase(workspaceId)}/processes/${encodeURIComponent(processId)}/ralph-start`;
+            const sameSourceTarget = isSameRalphExecutionTarget(workspaceId, selectedTarget);
+            const targetApiBase = getRalphExecutionRepoApiBase(selectedTarget);
+            const url = useLaunchEndpoint || !sameSourceTarget
+                ? `${targetApiBase}/ralph-launch`
+                : `${targetApiBase}/processes/${encodeURIComponent(processId)}/ralph-start`;
             const resolvedAi = aiSelection.resolved;
             const config: Record<string, unknown> = {};
             if (resolvedAi.model) config.model = resolvedAi.model;
             if (resolvedAi.reasoningEffort) config.reasoningEffort = resolvedAi.reasoningEffort;
             if (resolvedAi.effortTier) config.effortTier = resolvedAi.effortTier;
-            const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId };
+            const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId: selectedTarget.workspaceId };
             if (resolvedAi.provider) body.provider = resolvedAi.provider;
             if (resolvedAi.autoProviderRouting) body.autoProviderRouting = true;
             if (Object.keys(config).length > 0) body.config = config;
@@ -122,7 +134,7 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
                 throw new Error(msg || `HTTP ${resp.status}`);
             }
             const result = await resp.json();
-            onStarted(result.processId);
+            onStarted(result.processId, selectedTarget.workspaceId);
             setOpen(false);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to start Ralph');
@@ -174,6 +186,18 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
                 Edit the goal spec below, then click <strong>Confirm &amp; Start</strong> to begin the Ralph execution loop.
             </p>
             <div>
+                <RalphExecutionRepoSelector
+                    groups={repoSelection.groups}
+                    loading={repoSelection.loading}
+                    loadError={repoSelection.loadError}
+                    warnings={repoSelection.warnings}
+                    selectedKey={repoSelection.selectedKey}
+                    onSelectedKeyChange={repoSelection.setSelectedKey}
+                    disabled={starting || loadingFile}
+                    testIdPrefix="ralph-start"
+                />
+            </div>
+            <div>
                 <div className="block text-xs text-[#848484] mb-1">
                     Agent:
                 </div>
@@ -198,10 +222,10 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
                     type="button"
                     data-testid="ralph-confirm-start-btn"
                     onClick={handleConfirm}
-                    disabled={starting}
+                    disabled={starting || loadingFile || repoSelection.loading || !repoSelection.selectedTarget}
                     className={cn(
                         'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white transition-colors',
-                        starting
+                        starting || loadingFile || repoSelection.loading || !repoSelection.selectedTarget
                             ? 'bg-purple-400 cursor-not-allowed'
                             : 'bg-purple-600 hover:bg-purple-700',
                     )}

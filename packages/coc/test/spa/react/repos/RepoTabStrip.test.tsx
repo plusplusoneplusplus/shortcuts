@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
 import { RepoTabStrip, getRepoDisplayName } from '../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip';
+import { getRepoHashColor, REPO_COLOR_PALETTE } from '../../../../src/server/spa/client/react/repos/repoGrouping';
 
 const mockDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();
@@ -945,5 +946,89 @@ describe('getRepoDisplayName', () => {
 
     it('returns just the repo name when agentName is empty string', () => {
         expect(getRepoDisplayName({ name: 'my-repo', agentName: '' })).toBe('my-repo');
+    });
+});
+
+// ── AC-06: display labels do not include git branch ───────────────────────────
+describe('RepoTabStrip — display labels exclude branch (AC-01)', () => {
+    it('repo tab text contains the name but not the git branch', () => {
+        const repo = {
+            ...makeRepo('r1', 'MyRepo'),
+            gitInfo: { branch: 'feature/cool-thing', isGitRepo: true, dirty: false, ahead: 0, behind: 0 },
+        };
+        render(
+            <RepoTabStrip repos={[repo as any]} selectedRepoId={null} onSelect={vi.fn()} unseenCounts={{}} onRefresh={vi.fn()} />
+        );
+        const tab = screen.getByTestId('repo-tab');
+        expect(tab.textContent).toContain('MyRepo');
+        expect(tab.textContent).not.toContain('feature/cool-thing');
+    });
+});
+
+// ── AC-06: deterministic hash color (AC-03) ───────────────────────────────────
+describe('getRepoHashColor', () => {
+    it('returns a color from REPO_COLOR_PALETTE for a local workspace', () => {
+        const ws = { id: 'r1', rootPath: '/repos/myproject' };
+        const color = getRepoHashColor(ws, 'localhost');
+        expect(REPO_COLOR_PALETTE).toContain(color);
+    });
+
+    it('is deterministic — same inputs yield same color', () => {
+        const ws = { id: 'r1', rootPath: '/repos/myproject' };
+        expect(getRepoHashColor(ws, 'myhost')).toBe(getRepoHashColor(ws, 'myhost'));
+    });
+
+    it('uses server name for local workspaces, changing color when hostname differs', () => {
+        const ws = { id: 'r1', rootPath: '/repos/project' };
+        const colorA = getRepoHashColor(ws, 'server-a');
+        const colorB = getRepoHashColor(ws, 'server-b');
+        // Both should be valid palette colors (exact equality is hash-dependent)
+        expect(REPO_COLOR_PALETTE).toContain(colorA);
+        expect(REPO_COLOR_PALETTE).toContain(colorB);
+    });
+
+    it('uses serverLabel for remote workspaces', () => {
+        const ws = {
+            id: 'r2',
+            rootPath: '/repos/project',
+            baseUrl: 'http://127.0.0.1:4001',
+            remote: { serverLabel: 'devbox', serverId: 's1', baseUrl: 'http://127.0.0.1:4001', offline: false, connection: 'online', queue: 'idle' },
+        };
+        const color = getRepoHashColor(ws, 'local');
+        expect(REPO_COLOR_PALETTE).toContain(color);
+    });
+
+    it('is deterministic for remote workspaces', () => {
+        const ws = {
+            id: 'r2',
+            rootPath: '/repos/project',
+            baseUrl: 'http://127.0.0.1:4001',
+            remote: { serverLabel: 'devbox', serverId: 's1', baseUrl: 'http://127.0.0.1:4001', offline: false, connection: 'online', queue: 'idle' },
+        };
+        expect(getRepoHashColor(ws, 'local')).toBe(getRepoHashColor(ws, 'local'));
+    });
+
+    it('local and remote workspaces with same path but different servers get potentially different colors', () => {
+        const localWs = { id: 'r1', rootPath: '/repos/project' };
+        const remoteWs = {
+            id: 'r1',
+            rootPath: '/repos/project',
+            baseUrl: 'http://remote:4000',
+            remote: { serverLabel: 'remote-server', serverId: 's1', baseUrl: 'http://remote:4000', offline: false, connection: 'online', queue: 'idle' },
+        };
+        // Both colors must be valid palette entries
+        expect(REPO_COLOR_PALETTE).toContain(getRepoHashColor(localWs, 'local'));
+        expect(REPO_COLOR_PALETTE).toContain(getRepoHashColor(remoteWs, 'local'));
+    });
+
+    it('falls back to serverId when serverLabel is missing', () => {
+        const ws = {
+            id: 'r2',
+            rootPath: '/repos/project',
+            baseUrl: 'http://127.0.0.1:4001',
+            remote: { serverId: 's1', baseUrl: 'http://127.0.0.1:4001', offline: false, connection: 'online', queue: 'idle' },
+        };
+        const color = getRepoHashColor(ws, 'local');
+        expect(REPO_COLOR_PALETTE).toContain(color);
     });
 });

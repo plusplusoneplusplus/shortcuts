@@ -53,7 +53,7 @@ import { AgentCanvas, AgentCascadeMenu, SubAgentDetailView, ChatViewToggle, view
 import type { AgentRunNode, ChatView } from './agent-canvas';
 import { useConversationSelection } from './hooks/useConversationSelection';
 import { snapshotConversation } from '../../utils/snapshot-copy-utils';
-import { copyHtmlToClipboard } from '../../utils/format';
+import { copyHtmlToClipboard, copyToClipboard } from '../../utils/format';
 import { useScratchpadEnabled } from '../../hooks/feature-flags/useScratchpadEnabled';
 import { useDisplaySettings } from '../../hooks/preferences/useDisplaySettings';
 import { useScratchpadState } from './scratchpad/useScratchpadState';
@@ -1610,13 +1610,31 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             const launched = body.launched !== false;
             setResumeFeedback({
                 type: 'success',
-                message: launched ? 'Opened Terminal with Copilot resume command.' : 'Auto-launch unavailable. Run this command manually.',
+                message: launched ? 'Opened terminal with resume command.' : 'Auto-launch unavailable. Run this command manually.',
                 command: !launched && typeof body?.command === 'string' ? body.command : undefined,
             });
         } catch (err) {
-            setResumeFeedback({ type: 'error', message: getSpaCocClientErrorMessage(err, 'Failed to launch Copilot resume command.') });
+            setResumeFeedback({ type: 'error', message: getSpaCocClientErrorMessage(err, 'Failed to launch resume command.') });
         } finally {
             setResumeLaunching(false);
+        }
+    };
+
+    // Copy a bare, paste-ready resume invocation (no `cd`) to the clipboard. The
+    // command string is resolved by the server (`launch: false`) so the provider
+    // and any remote/WSL path translation match the session — we never build it
+    // in the browser.
+    const copyResumeCommand = async () => {
+        if (!processId || !resumeSessionId) return;
+        setResumeFeedback(null);
+        try {
+            const body = await client.processes.resumeCli(processId, { launch: false });
+            const command = typeof body?.command === 'string' ? body.command : '';
+            if (!command) throw new Error('No resume command was returned.');
+            await copyToClipboard(command);
+            setResumeFeedback({ type: 'success', message: 'Copied resume command.', command });
+        } catch (err) {
+            setResumeFeedback({ type: 'error', message: getSpaCocClientErrorMessage(err, 'Failed to copy resume command.') });
         }
     };
 
@@ -1791,6 +1809,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 setCopied={setCopied}
                 taskId={taskId}
                 onLaunchInteractiveResume={() => { void launchInteractiveResume(); }}
+                onCopyResumeCommand={() => { void copyResumeCommand(); }}
                 onPopOut={handlePopOut}
                 onFloat={handleFloat}
                 title={(task?.customTitle as string | undefined) || title || task?.title || task?.displayName}
@@ -1946,8 +1965,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                                     workspaceId={workspaceId}
                                     turns={turns}
                                     goalFilePath={goalPath || undefined}
-                                    onStarted={(newProcessId) => {
-                                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
+                                    onStarted={(newProcessId, executionWorkspaceId) => {
+                                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: executionWorkspaceId ?? workspaceId });
                                     }}
                                 />
                             );
@@ -1966,8 +1985,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                                     turns={turns}
                                     goalFilePath={goalPath}
                                     useLaunchEndpoint
-                                    onStarted={(newProcessId) => {
-                                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
+                                    onStarted={(newProcessId, executionWorkspaceId) => {
+                                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: executionWorkspaceId ?? workspaceId });
                                     }}
                                 />
                             );
@@ -2022,6 +2041,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             isCancelling={isCancelling}
                             error={error}
                             resumeFeedback={resumeFeedback}
+                            onDismissResumeFeedback={() => setResumeFeedback(null)}
                             suggestions={suggestions}
                             followUpInput={followUpInput}
                             setFollowUpInput={setFollowUpInput}
@@ -2151,6 +2171,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     isCancelling={isCancelling}
                     error={error}
                     resumeFeedback={resumeFeedback}
+                    onDismissResumeFeedback={() => setResumeFeedback(null)}
                     suggestions={suggestions}
                     followUpInput={followUpInput}
                     setFollowUpInput={setFollowUpInput}

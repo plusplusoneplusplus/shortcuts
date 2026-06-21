@@ -415,6 +415,36 @@ function isSyncEnabled(ctx: WorkItemCommandContext): boolean {
     return ctx.getSyncEnabled?.() ?? true;
 }
 
+/**
+ * True when two repoId strings refer to the same upstream origin.
+ *
+ * The same upstream repo carries two identity layers: a per-clone workspace id
+ * (`ws-*`, hashed from the filesystem path) and a canonical origin scope
+ * (`gh_<owner>_<repo>`, derived from the git remote). Work items are physically
+ * stored under the canonical origin scope, but each item's `repoId` is stamped
+ * with whatever id the caller's URL family used — so two items in the same
+ * store can hold different `repoId` strings. A raw string compare therefore
+ * falsely rejects linking a `ws-*`-stamped child to a `gh_*`-stamped parent of
+ * the same repo.
+ *
+ * Normalize both ids to their canonical storage scope (reusing the store's
+ * origin-id resolution, including the `legacyRepoIds` migration machinery)
+ * before comparing. Falls back to raw equality when the store does not expose
+ * origin resolution, preserving behavior for callers that operate on canonical
+ * ids directly.
+ */
+async function isSameWorkItemOrigin(
+    ctx: WorkItemCommandContext,
+    repoIdA: string,
+    repoIdB: string,
+): Promise<boolean> {
+    if (repoIdA === repoIdB) return true;
+    const resolve = ctx.workItemStore.resolveOriginId?.bind(ctx.workItemStore);
+    if (!resolve) return false;
+    const [a, b] = await Promise.all([resolve(repoIdA), resolve(repoIdB)]);
+    return a === b;
+}
+
 async function findTreeRoot(ctx: WorkItemCommandContext, item: WorkItem, repoId: string): Promise<WorkItem> {
     let current = item;
     const visited = new Set<string>();
@@ -943,7 +973,7 @@ export async function createWorkItemCommand(
         if (!parentItem) {
             throw badRequest(`Parent work item not found: ${input.parentId}`);
         }
-        if (parentItem.repoId !== repoId) {
+        if (!await isSameWorkItemOrigin(ctx, parentItem.repoId, repoId)) {
             throw badRequest('Parent work item must be in the same workspace');
         }
         const childType = resolvedType ?? 'work-item';
@@ -1163,7 +1193,7 @@ export async function updateWorkItemCommand(
             if (!newParent) {
                 throw badRequest(`Parent work item not found: ${input.parentId}`);
             }
-            if (newParent.repoId !== repoId) {
+            if (!await isSameWorkItemOrigin(ctx, newParent.repoId, repoId)) {
                 throw badRequest('Parent work item must be in the same workspace');
             }
             // Validate the parent-child type combination for the current item

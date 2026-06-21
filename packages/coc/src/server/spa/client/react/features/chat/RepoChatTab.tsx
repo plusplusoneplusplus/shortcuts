@@ -6,7 +6,7 @@
  * All task types are handled by the unified ChatDetail component.
  */
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, cloneElement } from 'react';
 import { cn } from '../../ui';
 import { useCocClient } from '../../repos/cloneRouting';
 import { isContainerMode, isForEachEnabled, isMapReduceEnabled } from '../../utils/config';
@@ -22,6 +22,7 @@ import { ForEachRunPane } from './ForEachRunPane';
 import { MapReduceRunPane } from './MapReduceRunPane';
 import { useUnseenChat } from './hooks/useUnseenChat';
 import { useChatPaneNavigation } from './hooks/useChatPaneNavigation';
+import { useHoverPeek } from './hooks/useHoverPeek';
 import { ChatPreferencesProvider, ChatPrefsSync } from '../../contexts/ChatPreferencesContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useProcessSearch } from '../../processes/hooks/useProcessSearch';
@@ -82,6 +83,20 @@ function isQueuePauseOptions(value: unknown): value is QueuePauseOptions {
 
 function getActiveProcessIds(tasks: any[]): string[] {
     return tasks.map((task: any) => task.processId ?? toQueueProcessId(task.id));
+}
+
+/**
+ * True on pointer/desktop devices (mouse/trackpad with hover). Gates the
+ * hover-to-float peek so touch devices keep the existing drawer behavior.
+ * Defaults to true when matchMedia is unavailable (SSR / jsdom).
+ */
+function hasFinePointerDevice(): boolean {
+    try {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+        return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    } catch {
+        return true;
+    }
 }
 
 export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
@@ -157,6 +172,24 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     }, []);
     const listContainerRef = useRef<HTMLDivElement | null>(null);
     const detailContainerRef = useRef<HTMLDivElement | null>(null);
+    const peekPanelRef = useRef<HTMLDivElement | null>(null);
+    // Hover-to-float peek: only on pointer/desktop devices while the list is
+    // collapsed. This is a temporary overlay layer — it never persists state.
+    const [hasFinePointer] = useState(hasFinePointerDevice);
+    const hoverPeek = useHoverPeek({
+        enabled: !isMobile && listCollapsed && hasFinePointer,
+        panelRef: peekPanelRef,
+    });
+    // Drive a one-shot slide-in once the peek mounts (matches the ~200ms drawer timing).
+    const [peekVisible, setPeekVisible] = useState(false);
+    useEffect(() => {
+        if (!hoverPeek.isOpen) {
+            setPeekVisible(false);
+            return;
+        }
+        const raf = requestAnimationFrame(() => setPeekVisible(true));
+        return () => cancelAnimationFrame(raf);
+    }, [hoverPeek.isOpen]);
     // Ref to signal that mobileShowDetail=true was set intentionally for the new-chat flow,
     // so the selectedTaskId=null reset effect does not immediately clear it.
     const mobileNewChatRef = useRef(false);
@@ -519,6 +552,13 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         const tabSegment = mode === 'tasks' ? 'tasks' : mode === 'chats' ? 'chats' : 'activity';
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment + '/' + encodeURIComponent(processId);
     }, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen, markReadByProcessId, mode]);
+
+    // Selecting a conversation from the floating peek opens it in the main pane
+    // and collapses the list back to the rail — without persisting (AC-05).
+    const handlePeekSelectTask = useCallback((id: string, task?: any) => {
+        selectTask(id, task);
+        hoverPeek.close();
+    }, [selectTask, hoverPeek]);
 
     // Auto-dismiss notification when a deep-linked task is viewed via hash URL
     useEffect(() => {
@@ -963,12 +1003,16 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     return (
         <ChatPreferencesProvider workspaceId={workspaceId}>
             <ChatPrefsSync history={history} workspaceId={workspaceId} />
-            <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="activity-split-panel">
+            <div className={cn('relative flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="activity-split-panel">
             {listCollapsed ? (
-                /* Collapsed rail — a thin strip with an expand affordance */
+                <>
+                {/* Collapsed rail — a thin strip with an expand affordance.
+                    Hovering it floats the full list open as a temporary peek (AC-01). */}
                 <div
                     className="w-9 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col items-center pt-2"
                     data-testid="activity-list-collapsed"
+                    onMouseEnter={hoverPeek.onRailPointerEnter}
+                    onMouseLeave={hoverPeek.onRailPointerLeave}
                 >
                     <button
                         type="button"
@@ -987,6 +1031,27 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                         Chats
                     </span>
                 </div>
+                {/* Floating peek — the full list overlaid on the conversation
+                    (AC-02): no backdrop, no focus trap, reuses ChatListPane. */}
+                {hoverPeek.isOpen && (
+                    <div
+                        ref={peekPanelRef}
+                        className={cn(
+                            'absolute inset-y-0 left-0 z-30 flex flex-col overflow-hidden',
+                            'border-r border-[#e0e0e0] dark:border-[#3c3c3c]',
+                            'bg-[#fafafa] dark:bg-[#1e1e1e] shadow-xl',
+                            'transition-transform duration-200 ease-out',
+                            peekVisible ? 'translate-x-0' : '-translate-x-full',
+                        )}
+                        style={{ width: leftPanelWidth }}
+                        data-testid="activity-list-peek"
+                        onMouseEnter={hoverPeek.onPanelPointerEnter}
+                        onMouseLeave={hoverPeek.onPanelPointerLeave}
+                    >
+                        {cloneElement(listPane, { onSelectTask: handlePeekSelectTask })}
+                    </div>
+                )}
+                </>
             ) : (
                 <>
                 {/* Left panel — task list */}

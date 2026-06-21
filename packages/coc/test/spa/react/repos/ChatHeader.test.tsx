@@ -66,11 +66,12 @@ vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
-    ConversationMetadataPopover: ({ resumeSessionId, onLaunchInteractiveResume, onStartFreshSameContext, startingFreshSameContext, extraRows }: any) => (
+    ConversationMetadataPopover: ({ resumeSessionId, onLaunchInteractiveResume, onCopyResumeCommand, onStartFreshSameContext, startingFreshSameContext, extraRows }: any) => (
         <span
             data-testid="metadata-popover"
             data-resume-session-id={resumeSessionId ?? ''}
             data-has-resume-handler={onLaunchInteractiveResume ? 'true' : 'false'}
+            data-has-copy-handler={onCopyResumeCommand ? 'true' : 'false'}
             data-has-fresh-handler={onStartFreshSameContext ? 'true' : 'false'}
             data-starting-fresh={startingFreshSameContext ? 'true' : 'false'}
             data-extra-row-labels={(extraRows ?? []).map((r: any) => r.label).join('|')}
@@ -155,6 +156,7 @@ function defaultProps(overrides: Partial<ChatHeaderProps> = {}): ChatHeaderProps
         setCopied: vi.fn(),
         taskId: 'task-1',
         onLaunchInteractiveResume: vi.fn(),
+        onCopyResumeCommand: vi.fn(),
         onPopOut: vi.fn(),
         onFloat: vi.fn(),
         onBack: vi.fn(),
@@ -433,6 +435,42 @@ describe('ChatHeader', () => {
             expect(menu.getAttribute('data-keys')?.split(',')).not.toContain('resume-cli');
         });
 
+        it('includes Copy Command beside resume CLI in overflow at medium tier on desktop', () => {
+            setTier('medium');
+            render(<ChatHeader {...defaultProps()} />);
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).toContain('copy-resume-cli');
+            expect(menu.getAttribute('data-labels')?.split('|')).toContain('Copy Command');
+        });
+
+        it('fires onCopyResumeCommand when the Copy Command overflow item is clicked', () => {
+            setTier('medium');
+            const onCopyResumeCommand = vi.fn();
+            render(<ChatHeader {...defaultProps({ onCopyResumeCommand })} />);
+            screen.getByTestId('overflow-item-copy-resume-cli').click();
+            expect(onCopyResumeCommand).toHaveBeenCalledTimes(1);
+        });
+
+        it('omits Copy Command when no copy handler is provided', () => {
+            setTier('medium');
+            render(<ChatHeader {...defaultProps({ onCopyResumeCommand: undefined })} />);
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).toContain('resume-cli');
+            expect(menu.getAttribute('data-keys')?.split(',')).not.toContain('copy-resume-cli');
+        });
+
+        it('does not include Copy Command in overflow on mobile', () => {
+            setTier('medium');
+            mockBreakpoint.isMobile = true;
+            mockBreakpoint.isDesktop = false;
+            mockBreakpoint.breakpoint = 'mobile';
+
+            render(<ChatHeader {...defaultProps()} />);
+
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).not.toContain('copy-resume-cli');
+        });
+
         it('does not pass resume CLI props to metadata popover on mobile', () => {
             setTier('wide');
             mockBreakpoint.isMobile = true;
@@ -444,6 +482,14 @@ describe('ChatHeader', () => {
             const metadataPopover = screen.getByTestId('metadata-popover');
             expect(metadataPopover.getAttribute('data-resume-session-id')).toBe('');
             expect(metadataPopover.getAttribute('data-has-resume-handler')).toBe('false');
+            expect(metadataPopover.getAttribute('data-has-copy-handler')).toBe('false');
+        });
+
+        it('passes the Copy Command handler to the metadata popover on desktop', () => {
+            setTier('wide');
+            render(<ChatHeader {...defaultProps()} />);
+            const metadataPopover = screen.getByTestId('metadata-popover');
+            expect(metadataPopover.getAttribute('data-has-copy-handler')).toBe('true');
         });
 
         it('has no overflow items when everything is hidden by props', () => {

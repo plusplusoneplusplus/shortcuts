@@ -13,9 +13,12 @@ import { resolveWorkspaceExecutionContext, translatePathForHostFilesystem } from
 import { sendError, sendJSON, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
 
+export type ResumeProvider = 'copilot' | 'codex' | 'claude';
+
 export interface LaunchResumeInput {
     sessionId: string;
     workingDirectory: string;
+    provider?: ResumeProvider;
 }
 
 export interface LaunchResumeResult {
@@ -26,6 +29,18 @@ export interface LaunchResumeResult {
 }
 
 export type ResumeCommandLauncher = (input: LaunchResumeInput) => Promise<LaunchResumeResult>;
+
+/** Normalize an arbitrary value to a concrete resume provider, defaulting to copilot. */
+function normalizeResumeProvider(value: unknown): ResumeProvider {
+    return value === 'codex' ? 'codex'
+        : value === 'claude' ? 'claude'
+        : 'copilot';
+}
+
+/** Return the validated provider, or undefined when the value is not a known provider. */
+function asResumeProvider(value: unknown): ResumeProvider | undefined {
+    return value === 'copilot' || value === 'codex' || value === 'claude' ? value : undefined;
+}
 
 function toNonEmptyString(value: unknown): string | undefined {
     if (typeof value !== 'string') return undefined;
@@ -59,15 +74,40 @@ function quoteWindows(value: string): string {
     return `"${value.replace(/"/g, '""')}"`;
 }
 
+/**
+ * Bare, paste-ready resume invocation (no `cd`) for the given provider.
+ * `quotedSessionId` must already be shell-quoted for the target platform.
+ */
+function buildResumeInvocation(provider: ResumeProvider, quotedSessionId: string): string {
+    if (provider === 'codex') {
+        return `codex resume ${quotedSessionId} --dangerously-bypass-approvals-and-sandbox`;
+    }
+    if (provider === 'claude') {
+        return `claude --dangerously-skip-permissions --resume ${quotedSessionId}`;
+    }
+    return `copilot --yolo --resume ${quotedSessionId}`;
+}
+
+/** Bare provider resume invocation with the session ID shell-quoted for the platform. */
+function buildBareResumeCommand(
+    sessionId: string,
+    provider: ResumeProvider = 'copilot',
+    platform: NodeJS.Platform = process.platform
+): string {
+    const quote = platform === 'win32' ? quoteWindows : quotePosix;
+    return buildResumeInvocation(provider, quote(sessionId));
+}
+
 function buildResumeCommand(
     sessionId: string,
     workingDirectory: string,
-    platform: NodeJS.Platform = process.platform
+    platform: NodeJS.Platform = process.platform,
+    provider: ResumeProvider = 'copilot'
 ): string {
     if (platform === 'win32') {
-        return `cd /d ${quoteWindows(workingDirectory)} && copilot --yolo --resume ${quoteWindows(sessionId)}`;
+        return `cd /d ${quoteWindows(workingDirectory)} && ${buildResumeInvocation(provider, quoteWindows(sessionId))}`;
     }
-    return `cd ${quotePosix(workingDirectory)} && copilot --yolo --resume ${quotePosix(sessionId)}`;
+    return `cd ${quotePosix(workingDirectory)} && ${buildResumeInvocation(provider, quotePosix(sessionId))}`;
 }
 
 function escapeAppleScriptString(value: string): string {
@@ -189,10 +229,11 @@ async function tryLinuxTerminalLaunchers(
 
 export async function launchResumeCommandInTerminal(input: LaunchResumeInput): Promise<LaunchResumeResult> {
     const platform = process.platform;
+    const provider = normalizeResumeProvider(input.provider);
     const terminalWorkingDirectory = platform === 'win32'
         ? translatePathForHostFilesystem(input.workingDirectory)
         : input.workingDirectory;
-    const command = buildResumeCommand(input.sessionId, terminalWorkingDirectory, platform);
+    const command = buildResumeCommand(input.sessionId, terminalWorkingDirectory, platform, provider);
 
     if (platform === 'darwin') {
         const scriptBody = escapeAppleScriptString(command);
@@ -215,7 +256,7 @@ export async function launchResumeCommandInTerminal(input: LaunchResumeInput): P
         // The `&&` approach fails because the outer `cmd.exe /c` interprets `&&`
         // as its own command separator, so `start` only receives the `cd /d` part.
         // `windowsVerbatimArguments` prevents Node.js from C-runtime-escaping quotes.
-        const resumeCmd = `copilot --yolo --resume ${quoteWindows(input.sessionId)}`;
+        const resumeCmd = buildResumeInvocation(provider, quoteWindows(input.sessionId));
         const startLine = `/c start "" /D ${quoteWindows(terminalWorkingDirectory)} powershell.exe -NoExit -Command ${resumeCmd}`;
         await spawnDetached('cmd.exe', [startLine], { windowsVerbatimArguments: true });
         return {
@@ -226,7 +267,7 @@ export async function launchResumeCommandInTerminal(input: LaunchResumeInput): P
     }
 
     // Linux / Unix-like environments.
-    const posixCommand = buildResumeCommand(input.sessionId, input.workingDirectory, 'linux');
+    const posixCommand = buildResumeCommand(input.sessionId, input.workingDirectory, 'linux', provider);
     return tryLinuxTerminalLaunchers(posixCommand);
 }
 
@@ -349,12 +390,13 @@ export function registerFreshChatTerminalRoutes(
 export function registerProcessResumeRoutes(
     routes: Route[],
     store: ProcessStore,
-    launcher: ResumeCommandLauncher = launchResumeCommandInTerminal
+    launcher: ResumeCommandLauncher = launchResumeCommandInTerminal,
+    options?: { getDefaultProvider?: () => MaybePromise<ResumeProvider> }
 ): void {
     routes.push({
         method: 'POST',
         pattern: /^\/api\/processes\/([^/]+)\/resume-cli$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const processRecord = await store.getProcess(id);
             if (!processRecord) {
@@ -366,15 +408,45 @@ export function registerProcessResumeRoutes(
                 return sendError(res, 409, 'Process has no resumable session ID');
             }
 
+            let body: { launch?: unknown } = {};
+            try {
+                body = (await parseBody(req)) as { launch?: unknown };
+            } catch {
+                // Empty/invalid body is fine — launch defaults to true.
+            }
+            const launch = body?.launch !== false;
+
+            // Provider = the session's own metadata.provider; fall back to the
+            // configured default provider when absent/invalid. Session IDs are
+            // tool-specific, so the resume command must match the creating tool.
+            let provider = asResumeProvider(processRecord?.metadata?.provider);
+            if (!provider) {
+                provider = normalizeResumeProvider(await options?.getDefaultProvider?.());
+            }
+
             const workingDirectory = await resolveWorkingDirectory(store, processRecord);
 
-            try {
-                const result = await launcher({ sessionId, workingDirectory });
-                process.stderr.write(`[Process] resume-cli id=${id} sessionId=${sessionId} launched=${result.launched}\n`);
+            if (!launch) {
+                const command = buildBareResumeCommand(sessionId, provider);
+                process.stderr.write(`[Process] resume-cli id=${id} sessionId=${sessionId} provider=${provider} launched=false (copy)\n`);
                 return sendJSON(res, 200, {
                     processId: id,
                     sessionId,
                     workingDirectory,
+                    provider,
+                    launched: false,
+                    command,
+                });
+            }
+
+            try {
+                const result = await launcher({ sessionId, workingDirectory, provider });
+                process.stderr.write(`[Process] resume-cli id=${id} sessionId=${sessionId} provider=${provider} launched=${result.launched}\n`);
+                return sendJSON(res, 200, {
+                    processId: id,
+                    sessionId,
+                    workingDirectory,
+                    provider,
                     launched: result.launched,
                     terminal: result.terminal,
                     reason: result.reason,
@@ -384,7 +456,7 @@ export function registerProcessResumeRoutes(
                 return sendError(
                     res,
                     500,
-                    error?.message || 'Failed to launch interactive Copilot resume command'
+                    error?.message || 'Failed to launch interactive resume command'
                 );
             }
         },
