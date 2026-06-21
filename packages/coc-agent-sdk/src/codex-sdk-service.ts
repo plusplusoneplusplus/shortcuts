@@ -25,6 +25,8 @@ import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-s
 import type { ToolCall } from './tool-call';
 import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
 import { WarmClientRegistry, makeWarmKey, WarmClientFactory } from './warm-client-registry';
+import type { WarmStateChangeListener } from './warm-client-registry';
+import { WarmStatusBroadcaster } from './warm-status-broadcaster';
 import { runWithWarmClient } from './warm-client-runner';
 import { resolveWarmClientTtlMs } from './warm-client-config';
 import { getSDKLogger } from './logger';
@@ -559,9 +561,18 @@ export class CodexSDKService implements ISDKService {
      * risk a stale allow-list. This keeps warming faithful to the "MCP is a
      * per-turn session option that does not force teardown" decision.
      */
+    /**
+     * Fan-out for warm-client state transitions to external observers (e.g. the
+     * CoC SSE bridge). Declared before {@link warmRegistry} so its field
+     * initializer runs first and `this.warmStatus.emit` is bound when the
+     * registry is constructed below.
+     */
+    private readonly warmStatus = new WarmStatusBroadcaster();
+
     private readonly warmRegistry = new WarmClientRegistry({
         ttlMs: resolveWarmClientTtlMs(),
         logger: getSDKLogger(),
+        onStateChange: this.warmStatus.emit,
     });
 
     // ── Auth checker injection (AC-08) ────────────────────────────────────────
@@ -966,6 +977,16 @@ export class CodexSDKService implements ISDKService {
         if (!avail.available) return;
         const key = makeWarmKey(CODEX_PROVIDER, options.workingDirectory);
         await this.warmRegistry.prewarm(key, this.buildWarmFactory());
+    }
+
+    /**
+     * Subscribe to warm-client state transitions for this service's registry.
+     * The listener receives `(key, status)` on every change, where `key` is
+     * `makeWarmKey(CODEX_PROVIDER, workingDirectory)`. Used by the CoC SSE bridge
+     * to push warm status to the SPA indicator. Returns an unsubscribe function.
+     */
+    public onWarmStatusChange(listener: WarmStateChangeListener): () => void {
+        return this.warmStatus.subscribe(listener);
     }
 
     /**
@@ -1694,6 +1715,8 @@ export class CodexSDKService implements ISDKService {
         this.sessions.clear();
         // Stop every warm client so no provider client outlives the service.
         await this.warmRegistry.evictAll();
+        // Drop warm-status subscribers so no bridge holds a stale service reference.
+        this.warmStatus.clear();
         this.availabilityCache = null;
         this.sdk = null;
         this.codexCtor = null;

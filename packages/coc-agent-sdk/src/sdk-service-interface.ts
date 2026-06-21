@@ -10,6 +10,7 @@
  */
 
 import type { SendMessageOptions, TokenUsage, PermissionHandler } from './types';
+import type { WarmStateChangeListener } from './warm-client-registry';
 
 // ============================================================================
 // Provider-Agnostic Primitive Types
@@ -213,6 +214,20 @@ export interface ISDKService {
      * duplicated.
      */
     prewarm?(options: PrewarmOptions): Promise<void>;
+
+    /**
+     * Subscribe to warm-client state transitions for this provider — pushing the
+     * registry's `(key, status)` changes (cold → warming → warm → active → cold)
+     * to external observers such as the CoC SSE bridge that drives the SPA warm
+     * indicator. `key` is `makeWarmKey(provider, workingDirectory)`. Returns an
+     * unsubscribe function.
+     *
+     * Optional: providers that never stay warm (e.g. Claude) omit this method, so
+     * their conversations simply never receive a warm transition and the
+     * indicator stays cold/invisible. Pairs with {@link prewarm} — a provider
+     * that implements one implements the other.
+     */
+    onWarmStatusChange?(listener: WarmStateChangeListener): () => void;
 
     // ------------------------------------------------------------------
     // Session management

@@ -3,6 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@plusplusoneplusplus/forge', () => ({
     getDefaultWslDistro: vi.fn(),
     getWslExecutablePath: vi.fn().mockReturnValue('C:\\Windows\\System32\\wsl.exe'),
+    // Importing api-fs-routes transitively loads sse-handler, whose module-level
+    // WarmStatusBridge singleton defaults its registry to forge's
+    // `sdkServiceRegistry`. A full forge mock must stub it (the bridge only calls
+    // `.get()`, defensively) or the import graph throws on a missing export.
+    sdkServiceRegistry: { get: () => undefined },
 }));
 
 vi.mock('child_process', async () => {

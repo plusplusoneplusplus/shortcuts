@@ -58,6 +58,10 @@ function registry(svc: CodexSDKService): { size(): number; isWarm(key: string): 
     return (svc as unknown as { warmRegistry: { size(): number; isWarm(key: string): boolean } }).warmRegistry;
 }
 
+function registryFull(svc: CodexSDKService): { evict(key: string): Promise<void> } {
+    return (svc as unknown as { warmRegistry: { evict(key: string): Promise<void> } }).warmRegistry;
+}
+
 describe('CodexSDKService.prewarm — warms without a session (AC-04)', () => {
     let svc: CodexSDKService | undefined;
 
@@ -132,6 +136,41 @@ describe('CodexSDKService.prewarm — warms without a session (AC-04)', () => {
 
         expect(ctor).not.toHaveBeenCalled();
         expect(registry(svc).size()).toBe(0);
+    });
+});
+
+describe('CodexSDKService.onWarmStatusChange — bridges registry transitions (AC-01b)', () => {
+    let svc: CodexSDKService | undefined;
+
+    afterEach(() => {
+        svc?.dispose();
+        svc = undefined;
+        cocToolBridgeServer.closeAll();
+        resetSDKLogger();
+    });
+
+    it('delivers warming→warm for the conversation key on prewarm', async () => {
+        const { ctor } = makeRecordingCtor();
+        svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
+        const seen: Array<[string, string]> = [];
+        svc.onWarmStatusChange((key, status) => seen.push([key, status]));
+
+        await svc.prewarm({ workingDirectory: WD });
+
+        expect(seen).toEqual([[KEY, 'warming'], [KEY, 'warm']]);
+    });
+
+    it('unsubscribe stops further deliveries', async () => {
+        const { ctor } = makeRecordingCtor();
+        svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
+        const seen: Array<[string, string]> = [];
+        const unsub = svc.onWarmStatusChange((key, status) => seen.push([key, status]));
+
+        await svc.prewarm({ workingDirectory: WD }); // warming, warm
+        unsub();
+        await registryFull(svc).evict(KEY); // cold — not delivered
+
+        expect(seen).toEqual([[KEY, 'warming'], [KEY, 'warm']]);
     });
 });
 

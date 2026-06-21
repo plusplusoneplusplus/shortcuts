@@ -9,41 +9,41 @@ export interface WarmIndicatorDotProps {
 }
 
 /**
- * Tiny (~6px) optimistic "session warm" indicator shown next to the send button
- * (AC-03). It is a cosmetic, best-effort signal fed solely by
- * {@link usePrewarmClient}'s status:
- *  - `unsupported` → renders **nothing** — providers that can never stay warm
- *    (e.g. Claude) make no false promise;
- *  - `idle`        → a transparent spacer that reserves the dot's footprint so
- *    the send button never shifts as warmth comes and goes;
- *  - `warming`     → a subtle pulsing amber dot;
- *  - `warm`        → a solid green "ready" dot.
+ * Tiny (~6px) "session warm" indicator shown next to the send button (AC-02).
+ * It is a cosmetic signal fed solely by {@link usePrewarmClient}'s SSE-pushed
+ * status, which mirrors the backend `WarmClientRegistry`:
+ *  - `cold`            → a transparent spacer that reserves the dot's footprint
+ *    so the send button never shifts as warmth comes and goes. Providers that
+ *    never stay warm (e.g. Claude) stay permanently cold, so their indicator is
+ *    always this invisible spacer — no false promise;
+ *  - `warming`         → a subtle pulsing amber dot;
+ *  - `warm` / `active` → a solid green "ready" dot.
  *
  * The wrapper is fixed-size, `pointer-events-none`, and the coloured dot itself
  * is `aria-hidden`, so the indicator can neither relayout the toolbar nor steal
- * the send button's hit target. The `warming`/`warm` states expose an
- * accessible label + native tooltip; `idle` is a silent spacer (nothing to
+ * the send button's hit target. The `warming`/`warm`/`active` states expose an
+ * accessible label + native tooltip; `cold` is a silent spacer (nothing to
  * announce).
  */
 export function WarmIndicatorDot({ status, className }: WarmIndicatorDotProps) {
-    // No dot at all for providers that cannot stay warm — no false promise.
-    if (status === 'unsupported') return null;
-
-    // Idle is a quiet, transparent spacer. Keeping its footprint means the send
-    // button does not jump left/right when the dot appears (warming/warm) or
-    // decays back to idle.
-    if (status === 'idle') {
+    // Cold is a quiet, transparent spacer. Keeping its footprint means the send
+    // button does not jump left/right when the dot appears (warming/warm/active)
+    // or fades back to cold. Permanently-cold providers (Claude) live here too.
+    if (status === 'cold') {
         return (
             <span
                 aria-hidden="true"
                 data-testid="warm-indicator-dot"
-                data-status="idle"
+                data-status="cold"
                 className={cn('inline-block shrink-0 w-2 h-2 pointer-events-none', className)}
             />
         );
     }
 
-    const label = status === 'warm'
+    // `warm` (parked, ready) and `active` (a turn already in flight on a live
+    // client) both mean the next reply starts fast → the same green "ready" dot.
+    const isReady = status === 'warm' || status === 'active';
+    const label = isReady
         ? 'Session warm — next reply starts fast'
         : 'Warming…';
 
@@ -60,7 +60,7 @@ export function WarmIndicatorDot({ status, className }: WarmIndicatorDotProps) {
                 aria-hidden="true"
                 className={cn(
                     'block w-1.5 h-1.5 rounded-full',
-                    status === 'warm'
+                    isReady
                         ? 'bg-[#6a9955] dark:bg-[#89d185]'
                         : 'bg-[#c8a13a] dark:bg-[#d7ba7d] animate-pulse',
                 )}

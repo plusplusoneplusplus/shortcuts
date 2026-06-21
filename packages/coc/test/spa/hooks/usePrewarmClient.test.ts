@@ -1,36 +1,81 @@
 /**
- * Tests for usePrewarmClient — debounced, latched, workspace-routed prewarm of
- * the provider client while the user types a follow-up (AC-05).
+ * Tests for usePrewarmClient — the SSE subscriber that drives the tiny "session
+ * warm" indicator (AC-02, AC-03).
  *
- * DoD: single debounced call; workspace-scoped routing; no fire on empty input;
- * cleaned up on unmount.
+ * The hook opens a warm-only SSE stream (`/processes/:id/stream?warm=1`) routed
+ * through `cloneApiBase`, maps incoming `warm_status` events to PrewarmStatus,
+ * and holds no client-side timer/debounce/POST. DoD: subscribes when a process
+ * is present; maps cold/warming/warm/active; resets to cold on a dropped stream,
+ * a process change, disable, and unmount; routes remote clones correctly.
  */
 /* @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
-// Hoisted spies so the vi.mock factory can reference them before imports.
-const { prewarmSpy, getClientSpy } = vi.hoisted(() => ({
-    prewarmSpy: vi.fn(),
-    getClientSpy: vi.fn(),
+// Hoisted spy so the vi.mock factory can reference it before imports.
+const { cloneApiBaseSpy } = vi.hoisted(() => ({
+    cloneApiBaseSpy: vi.fn((ws: string | null | undefined) => `https://api.test/${ws}/api`),
 }));
 
 vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
-    getCocClientForWorkspace: (workspaceId: string | null | undefined) => {
-        getClientSpy(workspaceId);
-        return { processes: { prewarm: prewarmSpy } };
-    },
+    cloneApiBase: (workspaceId: string | null | undefined) => cloneApiBaseSpy(workspaceId),
 }));
+
+// ── Minimal EventSource double ──────────────────────────────────────────────
+// Records every instance so a test can drive `warm_status` / `error` frames and
+// assert open/close lifecycle.
+class MockEventSource {
+    static instances: MockEventSource[] = [];
+    url: string;
+    closed = false;
+    private listeners: Record<string, Array<(e: any) => void>> = {};
+
+    constructor(url: string) {
+        this.url = url;
+        MockEventSource.instances.push(this);
+    }
+
+    addEventListener(type: string, fn: (e: any) => void) {
+        (this.listeners[type] ||= []).push(fn);
+    }
+
+    close() {
+        this.closed = true;
+    }
+
+    /** Test helper: dispatch a `warm_status` frame with the given JSON data. */
+    emitWarm(status: unknown) {
+        const data = JSON.stringify({ status });
+        (this.listeners['warm_status'] || []).forEach((fn) => fn({ data }));
+    }
+
+    /** Test helper: dispatch a raw `warm_status` frame (possibly malformed). */
+    emitRaw(data: string) {
+        (this.listeners['warm_status'] || []).forEach((fn) => fn({ data }));
+    }
+
+    /** Test helper: dispatch an `error` frame (transient disconnect). */
+    emitError() {
+        (this.listeners['error'] || []).forEach((fn) => fn({}));
+    }
+
+    static reset() {
+        MockEventSource.instances = [];
+    }
+
+    static get last(): MockEventSource | undefined {
+        return MockEventSource.instances[MockEventSource.instances.length - 1];
+    }
+}
 
 import {
     usePrewarmClient,
-    PREWARM_DEBOUNCE_MS,
     type UsePrewarmClientOptions,
+    type PrewarmStatus,
 } from '../../../src/server/spa/client/react/features/chat/hooks/usePrewarmClient';
 
 function baseProps(overrides: Partial<UsePrewarmClientOptions> = {}): UsePrewarmClientOptions {
     return {
-        input: '',
         workspaceId: 'ws-1',
         processId: 'proc-1',
         enabled: true,
@@ -38,275 +83,151 @@ function baseProps(overrides: Partial<UsePrewarmClientOptions> = {}): UsePrewarm
     };
 }
 
+const originalEventSource = (globalThis as any).EventSource;
+
 beforeEach(() => {
-    vi.useFakeTimers();
-    prewarmSpy.mockReset().mockResolvedValue({ warming: true });
-    getClientSpy.mockReset();
+    MockEventSource.reset();
+    cloneApiBaseSpy.mockClear();
+    (globalThis as any).EventSource = MockEventSource;
 });
 
 afterEach(() => {
-    vi.clearAllTimers();
-    vi.useRealTimers();
+    (globalThis as any).EventSource = originalEventSource;
 });
 
-describe('usePrewarmClient', () => {
-    it('fires a single debounced prewarm on non-empty input', () => {
-        const { rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+describe('usePrewarmClient — SSE subscription', () => {
+    it('opens the warm-only stream for the workspace-routed process', () => {
+        renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
             initialProps: baseProps(),
         });
 
-        rerender(baseProps({ input: 'hello' }));
-        // Not yet — still inside the debounce window.
-        expect(prewarmSpy).not.toHaveBeenCalled();
-
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-
-        expect(prewarmSpy).toHaveBeenCalledTimes(1);
-        expect(prewarmSpy).toHaveBeenCalledWith('proc-1', { workspace: 'ws-1' });
+        expect(cloneApiBaseSpy).toHaveBeenCalledWith('ws-1');
+        expect(MockEventSource.instances).toHaveLength(1);
+        expect(MockEventSource.last!.url).toBe('https://api.test/ws-1/api/processes/proc-1/stream?warm=1');
     });
 
-    it('routes through the workspace-scoped client (remote-clone safe)', () => {
-        const { rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+    it('routes through the workspace-scoped clone base (remote-clone safe)', () => {
+        renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
             initialProps: baseProps({ workspaceId: 'ws-remote' }),
         });
-        rerender(baseProps({ input: 'hi', workspaceId: 'ws-remote' }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-
-        expect(getClientSpy).toHaveBeenCalledWith('ws-remote');
-        expect(prewarmSpy).toHaveBeenCalledWith('proc-1', { workspace: 'ws-remote' });
+        expect(cloneApiBaseSpy).toHaveBeenCalledWith('ws-remote');
+        expect(MockEventSource.last!.url).toContain('https://api.test/ws-remote/api/');
     });
 
-    it('does not fire on empty / whitespace-only input', () => {
-        const { rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+    it('starts cold and maps each warm_status push', () => {
+        const { result } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
             initialProps: baseProps(),
         });
-        rerender(baseProps({ input: '   ' }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS * 4); });
-        expect(prewarmSpy).not.toHaveBeenCalled();
+        expect(result.current).toBe('cold');
+
+        act(() => { MockEventSource.last!.emitWarm('warming'); });
+        expect(result.current).toBe('warming');
+
+        act(() => { MockEventSource.last!.emitWarm('warm'); });
+        expect(result.current).toBe('warm');
+
+        act(() => { MockEventSource.last!.emitWarm('active'); });
+        expect(result.current).toBe('active');
+
+        act(() => { MockEventSource.last!.emitWarm('cold'); });
+        expect(result.current).toBe('cold');
     });
 
-    it('debounces rapid typing into a single call', () => {
-        const { rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+    it('reflects the active → warm transition (the completed-conversation case)', () => {
+        const { result } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
             initialProps: baseProps(),
         });
-        rerender(baseProps({ input: 'h' }));
-        act(() => { vi.advanceTimersByTime(200); });
-        rerender(baseProps({ input: 'he' }));
-        act(() => { vi.advanceTimersByTime(200); });
-        rerender(baseProps({ input: 'hel' }));
-        // Only 200ms elapsed since the last keystroke → nothing yet.
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        expect(prewarmSpy).toHaveBeenCalledTimes(1);
+        act(() => { MockEventSource.last!.emitWarm('active'); });
+        expect(result.current).toBe('active');
+        // Turn finishes → the client is parked → registry pushes warm.
+        act(() => { MockEventSource.last!.emitWarm('warm'); });
+        expect(result.current).toBe('warm');
     });
 
-    it('fires at most once per warm window even as typing continues', () => {
-        const { rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+    it('ignores unknown statuses and malformed frames', () => {
+        const { result } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
             initialProps: baseProps(),
         });
-        rerender(baseProps({ input: 'hello' }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        expect(prewarmSpy).toHaveBeenCalledTimes(1);
+        act(() => { MockEventSource.last!.emitWarm('warm'); });
+        expect(result.current).toBe('warm');
 
-        // Continued typing must NOT issue a second prewarm in the same window.
-        rerender(baseProps({ input: 'hello world' }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS * 2); });
-        expect(prewarmSpy).toHaveBeenCalledTimes(1);
+        // Unknown status string → ignored, status unchanged.
+        act(() => { MockEventSource.last!.emitWarm('bogus'); });
+        expect(result.current).toBe('warm');
+
+        // Malformed JSON → swallowed, status unchanged.
+        act(() => { MockEventSource.last!.emitRaw('not json'); });
+        expect(result.current).toBe('warm');
     });
 
-    it('re-arms after the composer empties (send / clear)', () => {
-        const { rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+    it('drops back to cold when the stream errors (reconnect gap)', () => {
+        const { result } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
             initialProps: baseProps(),
         });
-        rerender(baseProps({ input: 'first' }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        expect(prewarmSpy).toHaveBeenCalledTimes(1);
+        act(() => { MockEventSource.last!.emitWarm('warm'); });
+        expect(result.current).toBe('warm');
 
-        // Send clears the composer → latch resets.
-        rerender(baseProps({ input: '' }));
-        // Next follow-up types → a fresh prewarm fires.
-        rerender(baseProps({ input: 'second' }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        expect(prewarmSpy).toHaveBeenCalledTimes(2);
+        act(() => { MockEventSource.last!.emitError(); });
+        expect(result.current).toBe('cold');
     });
 
-    it('cancels a pending prewarm when the composer clears before the debounce (send)', () => {
-        const { rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
-            initialProps: baseProps(),
-        });
-        rerender(baseProps({ input: 'typing' }));
-        act(() => { vi.advanceTimersByTime(200); }); // still mid-debounce
-        rerender(baseProps({ input: '' }));          // send clears the input
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        expect(prewarmSpy).not.toHaveBeenCalled();
-    });
-
-    it('cleans up the pending prewarm on unmount', () => {
-        const { rerender, unmount } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
-            initialProps: baseProps(),
-        });
-        rerender(baseProps({ input: 'hello' }));
-        unmount();
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS * 4); });
-        expect(prewarmSpy).not.toHaveBeenCalled();
-    });
-
-    it('does not fire when disabled', () => {
-        const { rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+    it('does not open a stream when disabled, and stays cold', () => {
+        const { result } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
             initialProps: baseProps({ enabled: false }),
         });
-        rerender(baseProps({ input: 'hello', enabled: false }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS * 4); });
-        expect(prewarmSpy).not.toHaveBeenCalled();
+        expect(MockEventSource.instances).toHaveLength(0);
+        expect(result.current).toBe('cold');
     });
 
-    it('does not fire when processId or workspaceId is missing', () => {
+    it('does not open a stream when processId or workspaceId is missing', () => {
         const { rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
             initialProps: baseProps({ processId: null }),
         });
-        rerender(baseProps({ input: 'hello', processId: null }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS * 4); });
-        expect(prewarmSpy).not.toHaveBeenCalled();
+        expect(MockEventSource.instances).toHaveLength(0);
 
-        rerender(baseProps({ input: 'hello', workspaceId: null }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS * 4); });
-        expect(prewarmSpy).not.toHaveBeenCalled();
+        rerender(baseProps({ workspaceId: null }));
+        expect(MockEventSource.instances).toHaveLength(0);
     });
 
-    it('honours a custom debounce window', () => {
-        const { rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
-            initialProps: baseProps({ debounceMs: 1000 }),
+    it('reopens the stream and resets to cold when the process changes', () => {
+        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+            initialProps: baseProps(),
         });
-        rerender(baseProps({ input: 'hello', debounceMs: 1000 }));
-        act(() => { vi.advanceTimersByTime(500); });
-        expect(prewarmSpy).not.toHaveBeenCalled();
-        act(() => { vi.advanceTimersByTime(500); });
-        expect(prewarmSpy).toHaveBeenCalledTimes(1);
+        act(() => { MockEventSource.last!.emitWarm('warm'); });
+        expect(result.current).toBe('warm');
+        const first = MockEventSource.last!;
+
+        rerender(baseProps({ processId: 'proc-2' }));
+        // Old stream closed, new stream opened, status reset to cold.
+        expect(first.closed).toBe(true);
+        expect(MockEventSource.instances).toHaveLength(2);
+        expect(MockEventSource.last!.url).toContain('/processes/proc-2/stream?warm=1');
+        expect(result.current).toBe('cold');
+    });
+
+    it('closes the stream on unmount', () => {
+        const { unmount } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+            initialProps: baseProps(),
+        });
+        const es = MockEventSource.last!;
+        expect(es.closed).toBe(false);
+        unmount();
+        expect(es.closed).toBe(true);
+    });
+
+    it('stays cold and opens nothing when EventSource is unavailable', () => {
+        (globalThis as any).EventSource = undefined;
+        const { result } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+            initialProps: baseProps(),
+        });
+        expect(result.current).toBe('cold');
+        expect(MockEventSource.instances).toHaveLength(0);
     });
 });
 
-describe('usePrewarmClient — warm status (AC-02)', () => {
-    const TTL = 1000;
-
-    // Drive the prewarm-response promise to resolution under fake timers.
-    async function flush() {
-        await act(async () => {
-            await Promise.resolve();
-            await Promise.resolve();
-        });
-    }
-
-    it('walks idle → warming → warm across a successful prewarm', async () => {
-        prewarmSpy.mockResolvedValue({ warming: true, provider: 'copilot' });
-        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
-            initialProps: baseProps({ ttlMs: TTL }),
-        });
-        expect(result.current).toBe('idle');
-
-        rerender(baseProps({ input: 'hello', ttlMs: TTL }));
-        // Still inside the debounce window — not warming yet.
-        expect(result.current).toBe('idle');
-
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        // Debounce fired → POST is in flight.
-        expect(result.current).toBe('warming');
-
-        await flush();
-        // POST resolved { warming: true } → warm.
-        expect(result.current).toBe('warm');
-    });
-
-    it('decays from warm back to idle after the TTL window', async () => {
-        prewarmSpy.mockResolvedValue({ warming: true, provider: 'copilot' });
-        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
-            initialProps: baseProps({ ttlMs: TTL }),
-        });
-        rerender(baseProps({ input: 'hello', ttlMs: TTL }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        await flush();
-        expect(result.current).toBe('warm');
-
-        // Composer still has text (latched), so nothing re-fires — warmth simply
-        // lapses once the TTL elapses.
-        await act(async () => { vi.advanceTimersByTime(TTL); });
-        expect(result.current).toBe('idle');
-    });
-
-    it('becomes unsupported and never flips to warm afterward (sticky)', async () => {
-        prewarmSpy.mockResolvedValue({ warming: false, provider: 'claude', reason: 'unsupported' });
-        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
-            initialProps: baseProps({ ttlMs: TTL }),
-        });
-        rerender(baseProps({ input: 'hello', ttlMs: TTL }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        await flush();
-        expect(result.current).toBe('unsupported');
-
-        // A later prewarm that *would* report warm must not override the sticky
-        // unsupported verdict for the session.
-        prewarmSpy.mockResolvedValue({ warming: true, provider: 'claude' });
-        rerender(baseProps({ input: '', ttlMs: TTL }));   // composer cleared
-        expect(result.current).toBe('unsupported');        // survives the reset
-        rerender(baseProps({ input: 'again', ttlMs: TTL }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        await flush();
-        expect(result.current).toBe('unsupported');
-    });
-
-    it('resets to idle when the composer is cleared', async () => {
-        prewarmSpy.mockResolvedValue({ warming: true, provider: 'copilot' });
-        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
-            initialProps: baseProps({ ttlMs: TTL }),
-        });
-        rerender(baseProps({ input: 'hello', ttlMs: TTL }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        await flush();
-        expect(result.current).toBe('warm');
-
-        rerender(baseProps({ input: '', ttlMs: TTL }));   // send / manual clear
-        expect(result.current).toBe('idle');
-    });
-
-    it('goes back to idle when the prewarm reports an error', async () => {
-        prewarmSpy.mockResolvedValue({ warming: false, provider: 'copilot', reason: 'error' });
-        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
-            initialProps: baseProps({ ttlMs: TTL }),
-        });
-        rerender(baseProps({ input: 'hello', ttlMs: TTL }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        expect(result.current).toBe('warming');
-        await flush();
-        expect(result.current).toBe('idle');
-    });
-
-    it('stays idle when warming is disabled (ttlMs === 0 kill-switch)', async () => {
-        prewarmSpy.mockResolvedValue({ warming: true, provider: 'copilot' });
-        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
-            initialProps: baseProps({ ttlMs: 0 }),
-        });
-        rerender(baseProps({ input: 'hello', ttlMs: 0 }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        // Never claims warm, never pulses.
-        expect(result.current).toBe('idle');
-        await flush();
-        expect(result.current).toBe('idle');
-        // The prewarm POST still fires (server no-ops) — existing behavior intact.
-        expect(prewarmSpy).toHaveBeenCalledTimes(1);
-    });
-
-    it('clears the decay timer on unmount (no timer leaks)', async () => {
-        prewarmSpy.mockResolvedValue({ warming: true, provider: 'copilot' });
-        const { result, rerender, unmount } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
-            initialProps: baseProps({ ttlMs: TTL }),
-        });
-        rerender(baseProps({ input: 'hello', ttlMs: TTL }));
-        act(() => { vi.advanceTimersByTime(PREWARM_DEBOUNCE_MS); });
-        await flush();
-        expect(result.current).toBe('warm');   // decay timer is now scheduled
-
-        unmount();
-        // The pending decay timer must be cancelled on unmount.
-        expect(vi.getTimerCount()).toBe(0);
-        // Advancing past the TTL must not throw or setState on the torn-down hook.
-        expect(() => { act(() => { vi.advanceTimersByTime(TTL * 2); }); }).not.toThrow();
+describe('usePrewarmClient — PrewarmStatus contract', () => {
+    it('is the four-state WarmStatus union (no idle/unsupported)', () => {
+        const valid: PrewarmStatus[] = ['cold', 'warming', 'warm', 'active'];
+        expect(valid).toHaveLength(4);
     });
 });

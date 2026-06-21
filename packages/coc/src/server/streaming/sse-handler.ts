@@ -12,8 +12,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProcessStore, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
+import type { WarmStatus } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getServerLogger } from '../logging/server-logger';
 import type { RalphGrillPlanningProgress } from '../ralph/grill-planning';
+import { warmStatusBridge, type WarmStatusBridge } from './warm-status-bridge';
 
 // ============================================================================
 // SSE Event Payload Types
@@ -54,6 +56,16 @@ export interface CanvasUpdatedPayload {
     title: string;
     revision: number;
     editor: 'ai' | 'user';
+}
+
+/**
+ * Fired on every `WarmClientRegistry` state transition for the conversation's
+ * `(provider, cwd)` key (AC-01). The SPA maps `status` to its warm indicator:
+ * `warm`/`active` → green, `warming` → amber-pulse, `cold` → invisible. Providers
+ * that never stay warm (e.g. Claude) never emit, so the indicator stays invisible.
+ */
+export interface WarmStatusPayload {
+    status: WarmStatus;
 }
 
 // ============================================================================
@@ -102,6 +114,18 @@ export function emitCanvasUpdated(store: ProcessStore, processId: string, payloa
 }
 
 /**
+ * Emit a `warm-status` event on a process's SSE channel. Relayed to the SPA as a
+ * `warm_status` SSE event carrying `{ status }` (AC-01). The {@link WarmStatusBridge}
+ * is the normal producer; this helper exists for server-internal callers and tests.
+ */
+export function emitWarmStatus(store: ProcessStore, processId: string, status: WarmStatus): void {
+    store.emitProcessEvent(processId, {
+        type: 'warm-status',
+        warmStatus: status,
+    } as unknown as ProcessOutputEvent);
+}
+
+/**
  * Handle SSE streaming for a single process.
  *
  * Protocol:
@@ -120,6 +144,7 @@ export function emitCanvasUpdated(store: ProcessStore, processId: string, payloa
  *   event: background-tasks  → { backgroundAgents, backgroundShells, backgroundTotalActive, backgroundWaitingForDrain }
  *   event: ralph-grill-planning → { status, depth, agentCount, agents, message, warnings }
  *   event: canvas-updated    → { canvasId, title, revision, editor }
+ *   event: warm_status       → { status: 'warming' | 'warm' | 'active' | 'cold' }
  *   event: status             → { status, result?, error?, duration? }
  *   event: done               → { processId }
  *   event: heartbeat          → {}
@@ -128,11 +153,18 @@ export async function handleProcessStream(
     req: IncomingMessage,
     res: ServerResponse,
     processId: string,
-    store: ProcessStore
+    store: ProcessStore,
+    warmBridge: WarmStatusBridge = warmStatusBridge
 ): Promise<void> {
     // Parse workspaceId hint from the query string for direct-path lookup
     const parsed = new URL(req.url ?? '/', 'http://x');
     const wsId = parsed.searchParams.get('workspace') ?? undefined;
+    // Warm-only mode: the SPA opens this lightweight stream purely to receive
+    // `warm_status` pushes (AC-02). Unlike the main stream it skips the
+    // conversation replay and stays open for completed/failed/cancelled
+    // processes — the dominant warm case is typing a follow-up on a finished
+    // conversation whose provider client is still parked warm.
+    const warmOnly = parsed.searchParams.get('warm') === '1';
 
     // 1. Look up the process — 404 if not found
     let process = await store.getProcess(processId, wsId);
@@ -151,7 +183,12 @@ export async function handleProcessStream(
         'X-Accel-Buffering': 'no',
     });
     res.flushHeaders();
-    getServerLogger().debug({ processId }, 'SSE stream started');
+    getServerLogger().debug({ processId, warmOnly }, 'SSE stream started');
+
+    if (warmOnly) {
+        streamWarmStatusOnly(req, res, processId, process, store, warmBridge);
+        return;
+    }
 
     // 3. For running processes, flush buffered content before replay
     if ((process.status === 'running') && store.requestFlush) {
@@ -190,11 +227,23 @@ export async function handleProcessStream(
     // 6. Subscribe to output chunks via store.onProcessOutput
     let cleaned = false;
     let eventCount = 0;
+
+    // Relay WarmClientRegistry transitions for this conversation's (provider, cwd)
+    // key onto this stream as `warm_status` events (AC-01). Interest lives for the
+    // life of the stream; providers that never warm (e.g. Claude) simply never fire.
+    const unregisterWarm = warmBridge.register({
+        store,
+        processId,
+        provider: resolveProviderId(process.metadata?.provider),
+        workingDirectory: process.workingDirectory,
+    });
+
     const cleanup = () => {
         if (cleaned) { return; }
         cleaned = true;
         clearInterval(heartbeat);
         unsubscribe();
+        unregisterWarm();
         getServerLogger().debug({ processId, eventCount }, 'SSE stream ended');
     };
 
@@ -298,6 +347,11 @@ export async function handleProcessStream(
             if (canvasUpdate) {
                 sendEvent(res, 'canvas-updated', canvasUpdate);
             }
+        } else if (eventType === 'warm-status') {
+            const warmStatus = (event as { warmStatus?: WarmStatus }).warmStatus;
+            if (warmStatus) {
+                sendEvent(res, 'warm_status', { status: warmStatus } satisfies WarmStatusPayload);
+            }
         } else if (event.type === 'complete') {
             sendEvent(res, 'status', {
                 status: event.status,
@@ -321,9 +375,73 @@ export async function handleProcessStream(
     req.on('close', cleanup);
 }
 
+/**
+ * Lightweight warm-status-only stream (the `?warm=1` variant of the process
+ * stream). It exists so the SPA warm indicator can receive `warm_status` pushes
+ * even when the conversation is not running (AC-02): unlike {@link
+ * handleProcessStream} it sends no conversation snapshot, relays nothing but
+ * `warm-status` events, and never self-closes on a terminal process status — it
+ * stays open until the client disconnects. Heartbeats keep the connection alive
+ * and let the client detect a stale socket.
+ */
+function streamWarmStatusOnly(
+    req: IncomingMessage,
+    res: ServerResponse,
+    processId: string,
+    process: AIProcess,
+    store: ProcessStore,
+    warmBridge: WarmStatusBridge,
+): void {
+    let cleaned = false;
+
+    const unregisterWarm = warmBridge.register({
+        store,
+        processId,
+        provider: resolveProviderId(process.metadata?.provider),
+        workingDirectory: process.workingDirectory,
+    });
+
+    const unsubscribe = store.onProcessOutput(processId, (event) => {
+        if ((event as { type: string }).type !== 'warm-status') { return; }
+        const warmStatus = (event as { warmStatus?: WarmStatus }).warmStatus;
+        if (warmStatus) {
+            sendEvent(res, 'warm_status', { status: warmStatus } satisfies WarmStatusPayload);
+        }
+    });
+
+    const cleanup = () => {
+        if (cleaned) { return; }
+        cleaned = true;
+        clearInterval(heartbeat);
+        unsubscribe();
+        unregisterWarm();
+        getServerLogger().debug({ processId }, 'SSE warm stream ended');
+    };
+
+    // Immediate heartbeat signals the client the stream is ready; periodic
+    // heartbeats keep the connection alive and detect stale sockets.
+    sendEvent(res, 'heartbeat', {});
+    const heartbeat = setInterval(() => {
+        sendEvent(res, 'heartbeat', {});
+    }, 15_000);
+
+    req.on('close', cleanup);
+}
+
 /** Write a single SSE event frame. */
 function sendEvent(res: ServerResponse, event: string, data: unknown): void {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+/**
+ * Normalize a process's `metadata.provider` to the warm-key provider id. Mirrors
+ * the prewarm route: unknown/absent providers default to `copilot` so the warm
+ * key matches the SDK service that owns the registry for that conversation.
+ */
+function resolveProviderId(provider: unknown): string {
+    return provider === 'codex' || provider === 'claude' || provider === 'copilot'
+        ? provider
+        : 'copilot';
 }
 
 /**
