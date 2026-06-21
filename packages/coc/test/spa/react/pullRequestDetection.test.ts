@@ -193,15 +193,47 @@ describe('detectPullRequestsInToolGroup', () => {
         });
     });
 
-    it('does not detect a non-wrapper command whose output contains a structured pr_url/status line', () => {
-        // The structured-success evidence is gated on a wrapper command, so a
-        // plain shell read of wrapper output (e.g. cat-ing a log) must not count.
+    it('detects a wrapper PR recovered by grepping the wrapper\'s persisted stdout', () => {
+        // Real-world repro (PR #374): the wrapper's own 269KB output was truncated
+        // to a head preview — a large `git rev-list` dump — so the trailing success
+        // line never reached the captured result. The model recovered it by
+        // grepping the persisted stdout file, leaving a bare `JSON: {...}` success
+        // line under a (non-creating, non-wrapper) grep command.
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'Bash',
+                args: { command: 'grep -a "JSON:" /tmp/tool-results/byixuxzao.txt | tail -20' },
+                result: 'JSON: {"commits_count": 0, "commits_submitted": [], "new_branch": "pr/x", "original_branch": "main", "pr_url": "https://github.com/plusplusoneplusplus/shortcuts/pull/374", "status": "done"}',
+            },
+        ]);
+
+        expect(pullRequests).toHaveLength(1);
+        expect(pullRequests[0]).toMatchObject({
+            number: 374,
+            url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/374',
+            provider: 'github',
+            owner: 'plusplusoneplusplus',
+            repo: 'shortcuts',
+            toolCallId: 'tool-1',
+        });
+    });
+
+    it('does not detect a structured pr_url/status line embedded in source-search output', () => {
+        // A `rg`/`cat` over source can surface the wrapper's success line from a
+        // test fixture, but there it is indented inside a string literal or behind a
+        // `path:line:` prefix — never at the start of a line. The line-start anchor
+        // (which runs before the command checks) keeps these out, so the result is
+        // not detected even though it contains `pr_url` + `status: "done"`.
         const pullRequests = detectPullRequestsInToolGroup([
             {
                 id: 'tool-1',
                 toolName: 'bash',
-                args: { command: 'cat submit_commits_as_pr.log' },
-                result: 'JSON: {"pr_url": "https://github.com/org/repo/pull/371", "status": "done"}',
+                args: { command: 'rg -n "pr_url" packages/coc/test' },
+                result: [
+                    'packages/coc/test/spa/react/pullRequestDetection.test.ts:152:    result: \'JSON: {"commits_count": 0, "pr_url": "https://github.com/org/repo/pull/371", "status": "done"}\',',
+                    '                result: \'JSON: {"pr_url": "https://github.com/org/repo/pull/371", "status": "done"}\',',
+                ].join('\n'),
             },
         ]);
 

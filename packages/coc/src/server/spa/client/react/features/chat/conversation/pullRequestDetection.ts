@@ -44,11 +44,23 @@ const PR_CREATING_WRAPPER_PATTERNS = [
     /\bsubmit_commits_as_pr\.py\b/,
 ];
 
-// The submit_commits_as_pr.py wrapper emits a machine-readable success line on
-// stdout: `JSON: {... "pr_url": "https://...", "status": "done"}`. On an
-// idempotent / resumed run (commits_count: 0) it does not re-run `gh pr create`,
-// and on the first run that echo can be truncated under a large git dump — so the
-// structured success output is the only reliable PR-creation evidence.
+// The submit_commits_as_pr.py wrapper prints a machine-readable status line that
+// starts with `JSON: {...}` (see its emit()). A successful run carries a
+// non-empty `pr_url` together with `status: "done"`, e.g.
+//   JSON: {... "pr_url": "https://...", "status": "done"}
+//
+// This line is the only reliable PR-creation evidence when the wrapper's own
+// output is too large to keep: the captured result is truncated to a head preview
+// (a big `git rev-list` dump) and the trailing success line is dropped, so the URL
+// is recovered later by grepping/tailing the wrapper's persisted stdout. On an
+// idempotent / resumed run (commits_count: 0) `gh pr create` is never re-run, so
+// there is no command echo to fall back on either.
+//
+// We anchor on the `JSON:` line start so a genuine emit — or a faithful grep/tail
+// of the wrapper's stdout — counts, while source-search output does not: there the
+// same text appears indented inside a string literal or behind a `path:line:`
+// prefix, never at the start of a line.
+const WRAPPER_SUCCESS_LINE_RE = /^[ \t]*JSON:\s*\{.*\}\s*$/;
 const WRAPPER_PR_URL_KEY_RE = /"pr_url"\s*:\s*"[^"]+"/;
 const WRAPPER_STATUS_DONE_RE = /"status"\s*:\s*"done"/;
 
@@ -114,24 +126,43 @@ function isReadOnlyPullRequestCommand(command: string): boolean {
     return READ_ONLY_PR_PATTERNS.some(re => re.test(command));
 }
 
-/** True when the result carries the wrapper's structured success line (a non-empty pr_url plus status: done). */
+/**
+ * True when any line is the wrapper's structured success status — a `JSON: {...}`
+ * line (at line start) carrying a non-empty pr_url together with status: "done".
+ */
 function hasWrapperSuccessOutput(result: string): boolean {
-    return WRAPPER_PR_URL_KEY_RE.test(result) && WRAPPER_STATUS_DONE_RE.test(result);
+    for (const line of result.split('\n')) {
+        if (!WRAPPER_SUCCESS_LINE_RE.test(line)) continue;
+        if (WRAPPER_PR_URL_KEY_RE.test(line) && WRAPPER_STATUS_DONE_RE.test(line)) return true;
+    }
+    return false;
 }
 
 function hasPullRequestCreationEvidence(command: string, result: string): boolean {
+    // The command itself runs a PR-creating CLI.
     if (isPullRequestCreatingCommand(command)) return true;
+    // The wrapper's machine-readable success line is strong, specific evidence a
+    // PR was created — including when it surfaces via a later grep/tail of the
+    // wrapper's persisted stdout, because the original command's result is often
+    // truncated under a large git dump before the success line is reached.
+    if (hasWrapperSuccessOutput(result)) return true;
+    // No command metadata: fall back to scanning the raw output.
     if (!command) return true;
-    if (!isPullRequestCreatingWrapperCommand(command)) return false;
-    return isPullRequestCreatingCommand(result) || hasWrapperSuccessOutput(result);
+    // A known PR-creation wrapper whose (untruncated) result still echoes the
+    // creating command counts even without the structured success line.
+    if (isPullRequestCreatingWrapperCommand(command)) return isPullRequestCreatingCommand(result);
+    return false;
 }
 
 /**
  * Scans tool calls in a tool group for pull-request URLs emitted by shell tools.
  *
- * Only inspects PR creation commands, known PR-creation wrapper output that ran
- * a PR creation command, or shell output with no command metadata. Read-only PR
- * commands are ignored to avoid counting inspected pull requests.
+ * Only inspects PR creation commands, results carrying the wrapper's structured
+ * success line (a `JSON: {... pr_url ... status: "done"}` line — recognized even
+ * when surfaced by a later grep/tail of the wrapper's persisted stdout), known
+ * PR-creation wrapper output that echoed a creating command, or shell output with
+ * no command metadata. Read-only PR commands are ignored to avoid counting
+ * inspected pull requests.
  */
 export function detectPullRequestsInToolGroup(toolCalls: ToolCallLike[]): DetectedPullRequest[] {
     const results: DetectedPullRequest[] = [];
