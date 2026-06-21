@@ -163,7 +163,25 @@ def current_branch() -> str:
     return name
 
 
-def resolve_commits(spec: str) -> list[str]:
+def validate_commit_spec(spec: str) -> str:
+    """Validate commit spec format and provide helpful error messages."""
+    spec = spec.strip()
+    if not spec:
+        raise argparse.ArgumentTypeError("commit spec cannot be empty")
+    # Check for common mistakes
+    if " " in spec and ".." not in spec and "," not in spec:
+        raise argparse.ArgumentTypeError(
+            f"invalid commit spec: '{spec}'\n"
+            "Multiple commits must be separated by commas (no spaces).\n"
+            "Valid formats:\n"
+            "  • Single:   04fd2c891\n"
+            "  • Multiple: 04fd2c891,e30ea774d\n"
+            "  • Range:    e30ea774d..04fd2c891"
+        )
+    return spec
+
+
+def resolve_commits(spec: str, expected_count: int | None = None) -> list[str]:
     """Resolve a single SHA, comma-separated SHAs, or a `A..B` range
     into an ordered list of full commit SHAs (oldest first)."""
     spec = spec.strip()
@@ -189,6 +207,12 @@ def resolve_commits(spec: str) -> list[str]:
 
     if not commits:
         raise SystemExit(f"commit spec resolved to zero commits: {spec}")
+
+    # Warn if we got fewer commits than expected (e.g., some already merged)
+    if expected_count is not None and len(commits) < expected_count:
+        log(f"warning: expected {expected_count} commit(s) but found {len(commits)}")
+        log("(some commits may already be merged to the base branch)")
+
     return commits
 
 
@@ -403,6 +427,8 @@ def finalize(state: State) -> None:
         pr_url=state.pr_url,
         new_branch=state.new_branch,
         original_branch=state.original_branch,
+        commits_submitted=state.commits,
+        commits_count=len(state.commits),
     )
     state.clear()
 
@@ -422,8 +448,16 @@ def cmd_start(args: argparse.Namespace) -> None:
     ensure_clean_worktree()
     original = current_branch()
     if args.commits:
-        commits = resolve_commits(args.commits)
+        # Count expected commits from input format
+        expected_count = None
+        if "," in args.commits:
+            expected_count = len([t.strip() for t in args.commits.split(",") if t.strip()])
+
+        commits = resolve_commits(args.commits, expected_count=expected_count)
         log(f"resolved {len(commits)} commit(s): {', '.join(c[:8] for c in commits)}")
+        for sha in commits:
+            subject = git_out("log", "-1", "--pretty=%s", sha)
+            log(f"  • {sha[:8]} - {subject}")
         log(f"fetching {args.remote}/{args.base}")
         git("fetch", args.remote, args.base)
     else:
@@ -534,8 +568,12 @@ def build_parser() -> argparse.ArgumentParser:
         "commits",
         nargs="?",
         default=None,
+        type=validate_commit_spec,
         help=(
-            "Commit SHA, comma-separated SHAs, or range (A..B or A^..B). "
+            "Commit selection. Formats:\n"
+            "  • Single:        04fd2c891\n"
+            "  • Multiple:      04fd2c891,e30ea774d\n"
+            "  • Range:         e30ea774d..04fd2c891 (oldest..newest)\n"
             "If omitted, defaults to all outgoing commits on HEAD that are "
             "not yet on <remote>/<base>."
         ),
