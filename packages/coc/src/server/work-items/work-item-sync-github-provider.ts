@@ -26,9 +26,9 @@ import type {
 } from './types';
 import {
     getEffectiveType,
-    isTerminalStatus,
     isValidParentChildTypes,
 } from './types';
+import { mapWorkItemStatusToGitHubState } from './work-item-sync-github-mapping';
 import {
     WORK_ITEM_SYNC_MAX_ITEMS,
     type WorkItemSyncProviderAdapter,
@@ -499,11 +499,6 @@ export async function createGitHubIssueForLocalEpicRoot(
     };
 }
 
-/** Map a CoC work-item status to a GitHub issue open/closed state. */
-function githubStateForStatus(status: WorkItem['status']): 'open' | 'closed' {
-    return isTerminalStatus(status) ? 'closed' : 'open';
-}
-
 /**
  * Push provider-owned local edits of an already-mirrored item to its backing
  * GitHub issue, then return the refreshed mirror metadata. This is the GitHub
@@ -539,7 +534,7 @@ export async function updateGitHubIssueForLocalMirror(
         title: options.item.title,
         body: update.body,
         labels: update.labels,
-        state: githubStateForStatus(options.item.status),
+        state: mapWorkItemStatusToGitHubState(options.item.status),
     });
     return {
         issue: updated,

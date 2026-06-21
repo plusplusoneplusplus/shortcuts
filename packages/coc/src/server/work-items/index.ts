@@ -68,6 +68,13 @@ export {
     type ParsedGitHubWorkItemIssue,
 } from './work-item-sync-github-issue';
 export {
+    COC_STATUS_TO_GITHUB_STATE,
+    GITHUB_STATE_TO_COC_STATUS,
+    mapGitHubStateToWorkItemStatus,
+    mapWorkItemStatusToGitHubState,
+    type GitHubIssueState,
+} from './work-item-sync-github-mapping';
+export {
     GhCliGitHubWorkItemIssueTransport,
     convertLocalEpicTreeToGitHubBacked,
     createGitHubWorkItemSyncProviderAdapter,
