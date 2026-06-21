@@ -41,6 +41,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getActiveProvider: () => 'copilot' as const,
     isSessionContextAttachmentsEnabled: () => false,
     isCanvasEnabled: () => false,
+    isRemoteShellEnabled: () => false,
     getPrewarmDebounceMs: () => 500,
     getWarmClientTtlMs: () => 300000,
 }));

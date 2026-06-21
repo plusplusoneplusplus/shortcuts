@@ -10,10 +10,12 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useCocClient } from '../../repos/cloneRouting';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { getConversationTurns } from './conversation/chatConversationUtils';
 import { getSessionIdFromProcess } from './conversation/ConversationMetadataPopover';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
+import { useReposOptional } from '../../contexts/ReposContext';
 import { useFileAttachments } from './hooks/useFileAttachments';
 import { useTextPaste } from './hooks/useTextPaste';
 import { useAttachedContext } from './hooks/useAttachedContext';
@@ -62,7 +64,7 @@ import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, isCanvasEnabled } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, isCanvasEnabled, isRemoteShellEnabled } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -72,6 +74,7 @@ import { deriveEffort } from '../../utils/effortUtils';
 import { RalphStartPanel } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
 import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './ImplementPlanCard';
+import { buildImplementTargets } from './implementTargets';
 import { ForEachPlanReviewCard, type ForEachGenerationMetadata } from './ForEachPlanReviewCard';
 import { MapReducePlanReviewCard, type MapReduceGenerationMetadata } from './MapReducePlanReviewCard';
 import { getRalphContext } from '../../../../../tasks/task-types';
@@ -294,6 +297,27 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
         return typeof workspace?.remoteUrl === 'string' ? workspace.remoteUrl : null;
     }, [appState.workspaces, workspaceId]);
+
+    // ── Implement-plan target repos (AC-02/AC-06) ──────────────────────────
+    // Build the selectable target list from the dashboard repo list: current repo
+    // + local repos + ONLINE remote clones (offline hidden). Gated by existing
+    // remote-server availability (no new flag): when remote shell is OFF, or we
+    // are outside a ReposProvider (pop-out window), the card keeps its local-only
+    // UI by receiving no extra targets.
+    const reposCtx = useReposOptional();
+    const workspaceName = useMemo(() => {
+        const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
+        return typeof workspace?.name === 'string' ? workspace.name : undefined;
+    }, [appState.workspaces, workspaceId]);
+    const implementTargets = useMemo(() => {
+        if (!isRemoteShellEnabled() || !reposCtx) return undefined;
+        return buildImplementTargets(reposCtx.repos, {
+            workspaceId,
+            label: workspaceName,
+            workingDirectory: workspaceRootPath || undefined,
+        });
+    }, [reposCtx, reposCtx?.repos, workspaceId, workspaceName, workspaceRootPath]);
+
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
 
@@ -600,8 +624,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         implFetchedRef.current = true;
         Promise.all(
             unknown.map(async (run) => {
+                // Remote runs live on the target server, so resolve their status via
+                // the target-routed client; local runs use the default client (AC-05).
+                const runClient = run.isRemoteTarget
+                    ? getCocClientForWorkspace(run.targetWorkspaceId)
+                    : client;
                 try {
-                    const data = await client.processes.get(run.processId);
+                    const data = await runClient.processes.get(run.processId);
                     return { processId: run.processId, status: data?.process?.status as RunLiveStatus ?? 'unknown' };
                 } catch {
                     return { processId: run.processId, status: 'unknown' as RunLiveStatus };
@@ -1978,10 +2007,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             workspaceId={workspaceId}
                             workingDirectory={workingDirectory}
                             existingRuns={resolvedRuns}
+                            availableTargets={implementTargets}
                             sourceProcessId={processId ?? undefined}
                             sourceMetadata={task?.metadata}
-                            onViewRun={(runProcessId) => {
-                                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: runProcessId, repoId: workspaceId });
+                            onViewRun={(runProcessId, targetWorkspaceId) => {
+                                // Open the run on the server it was dispatched to: a remote
+                                // run resolves to its target workspace/server, local runs to
+                                // the current repo (AC-05).
+                                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: runProcessId, repoId: targetWorkspaceId ?? workspaceId });
                             }}
                             onRecordPersisted={(record) => {
                                 setTask((prev: any) => {

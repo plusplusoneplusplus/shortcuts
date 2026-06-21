@@ -398,3 +398,12 @@ export function useRepos(): ReposContextValue {
     if (!ctx) throw new Error('useRepos must be used within ReposProvider');
     return ctx;
 }
+
+/**
+ * Non-throwing variant: returns the repos context, or `null` when used outside a
+ * ReposProvider (e.g. the pop-out chat window, which boots a minimal provider
+ * stack). Callers degrade gracefully instead of crashing the subtree.
+ */
+export function useReposOptional(): ReposContextValue | null {
+    return useContext(ReposContext);
+}

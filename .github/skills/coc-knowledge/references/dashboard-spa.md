@@ -382,6 +382,47 @@ server/Forge layer); cells without a displayable USD value show explicit
 `USD pricing unavailable` copy instead of silently leaving cost blank. The UI
 does not render Copilot premium request units.
 
+### Implement-plan card (plan → autopilot handoff)
+
+`ImplementPlanCard` (`features/chat/ImplementPlanCard.tsx`) is the thread-only
+flow card shown after a completed **Ask-mode plan-file chat** (gated in
+`ChatDetail` on terminal status, not busy, Ask mode, and a known
+`effectivePlanPath`). It enqueues a new autopilot task that executes the plan,
+and renders a status banner over the CTA when prior runs exist (live status of
+the latest run, total run count, an expandable per-run list, and a `View →`
+action per run).
+
+A compact **target-repo selector** ("Run in …") lets the user run the plan in
+the current repo or in an already-registered, **online** remote clone:
+- The target list comes from the pure helper `buildImplementTargets(repos,
+  current)` (`features/chat/implementTargets.ts`): current repo + local repos +
+  **online** remote clones (`remote.offline === false && remote.connection ===
+  'online'`); offline/connecting remotes and virtual workspaces are excluded so
+  they can never be selected. The current repo is guaranteed present and ordered
+  first, so it stays the default and the existing one-click local behavior is
+  unchanged. `ChatDetail` builds the list from `useReposOptional()` and gates it
+  on `isRemoteShellEnabled()` — no new feature flag. The selector renders only
+  when more than one target exists; outside a `ReposProvider` (e.g. the pop-out
+  chat window) the card degrades to local-only.
+- **Local target** → keeps the path-based prompt
+  (`Read and implement the plan file at <path>` + `context.files`) and enqueues
+  on the current repo's client.
+- **Remote target** → reads the plan content on the *initiating* (source) server
+  via `explorer.readTrustedBlob(planFilePath)`, inlines it in the prompt (the
+  remote machine can't read the source machine's local path), drops
+  `context.files`, and enqueues on the **target** repo's routed CoC client (a
+  `{ id, baseUrl, remote: {} }` `CloneRef` through `useCocClient`). A failed
+  source read surfaces an inline error and never enqueues.
+
+Each run records an `ImplementationRecord` (process id, plan path, enqueue time,
+plus target identity: `targetWorkspaceId`, `targetLabel`, `targetServerLabel`,
+`isRemoteTarget`) into `task.metadata.implementations` on the **source** task via
+the source client. The banner shows the target repo/server for each run, and
+`onViewRun(processId, targetWorkspaceId)` opens the run on the server it was
+dispatched to. `ChatDetail` resolves a remote run's live status via
+`getCocClientForWorkspace(run.targetWorkspaceId)`; local runs use the default
+client.
+
 ### Agents view (sub-agent canvas)
 
 `ChatHeader` exposes a `Thread | Agents` segmented toggle (`ChatViewToggle`,

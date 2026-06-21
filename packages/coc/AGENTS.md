@@ -111,6 +111,16 @@ all have their own `references/*.md`.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
+- **Implement-plan target routing** (`ImplementPlanCard` + `implementTargets.ts`)
+  keeps local runs path-based and remote runs content-embedded: a **local**
+  target enqueues `Read and implement the plan file at <path>` + `context.files`
+  on the current client, while a **remote** target reads the plan on the source
+  client (`explorer.readTrustedBlob`), inlines it in the prompt, drops
+  `context.files`, and enqueues on the target repo's routed `useCocClient`
+  `CloneRef`. Targets come from `buildImplementTargets` (current repo + local +
+  **online** remote clones only); the selector is gated on `isRemoteShellEnabled()`
+  with no new flag. Implementation records (target identity + status) always
+  persist on the **source** task via the source client.
 - **Copilot long-context tier** is automatic at the provider boundary: chat
   and follow-up executors derive `contextTier` only via
   `getCopilotContextTierForModel` (tiered billing metadata —

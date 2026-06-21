@@ -61,6 +61,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getPrewarmDebounceMs: () => 500,
     getWarmClientTtlMs: () => 300000,
     isCanvasEnabled: () => false,
+    isRemoteShellEnabled: () => false,
 }));
 
 // Display settings
