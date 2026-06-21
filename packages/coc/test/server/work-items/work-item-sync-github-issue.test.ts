@@ -3,6 +3,7 @@ import {
     buildGitHubWorkItemIssueUpdate,
     buildGitHubWorkItemLabels,
     formatGitHubWorkItemSyncMetadataBlock,
+    githubIssueContentRevision,
     hasExactlyOneGitHubWorkItemSyncMetadataBlock,
     parseGitHubWorkItemIssue,
     parseGitHubWorkItemSyncMetadataBlocks,
@@ -235,5 +236,57 @@ describe('work item GitHub issue mapping', () => {
         expect(rawMetadata).not.toContain('/home/example/repo');
         expect(rawMetadata).not.toContain('accessToken');
         expect(rawMetadata).not.toContain('localPath');
+    });
+});
+
+describe('githubIssueContentRevision', () => {
+    const baseIssue = {
+        title: 'Implement sync',
+        body: 'Prose for the issue.',
+        state: 'open',
+        labels: ['coc:type:feature', 'coc:status:planning', 'customer'],
+    };
+
+    it('is stable across label reordering and label object/string forms', () => {
+        const reordered = {
+            ...baseIssue,
+            labels: [{ name: 'customer' }, { name: 'coc:status:planning' }, 'coc:type:feature'],
+        };
+        expect(githubIssueContentRevision(reordered)).toBe(githubIssueContentRevision(baseIssue));
+    });
+
+    it('ignores the hidden coc-work-item-sync metadata block so per-push lastSyncedAt churn does not move it', () => {
+        const block = formatGitHubWorkItemSyncMetadataBlock({
+            schemaVersion: 1,
+            provider: 'github',
+            remote: { owner: 'octo-org', repo: 'octo-repo' },
+            type: 'feature',
+            status: 'planning',
+            lastSyncedAt: '2026-03-03T03:03:03.000Z',
+        });
+        const laterBlock = formatGitHubWorkItemSyncMetadataBlock({
+            schemaVersion: 1,
+            provider: 'github',
+            remote: { owner: 'octo-org', repo: 'octo-repo' },
+            type: 'feature',
+            status: 'planning',
+            lastSyncedAt: '2026-09-09T09:09:09.000Z',
+        });
+        const first = { ...baseIssue, body: `${baseIssue.body}\n\n${block}` };
+        const second = { ...baseIssue, body: `${baseIssue.body}\n\n${laterBlock}` };
+        expect(githubIssueContentRevision(second)).toBe(githubIssueContentRevision(first));
+        // And equal to the bare-prose revision, since the block is stripped.
+        expect(githubIssueContentRevision(first)).toBe(githubIssueContentRevision(baseIssue));
+    });
+
+    it('changes when CoC-owned content (title, body, state, or labels) changes', () => {
+        const base = githubIssueContentRevision(baseIssue);
+        expect(githubIssueContentRevision({ ...baseIssue, title: 'Renamed' })).not.toBe(base);
+        expect(githubIssueContentRevision({ ...baseIssue, body: 'Different prose.' })).not.toBe(base);
+        expect(githubIssueContentRevision({ ...baseIssue, state: 'closed' })).not.toBe(base);
+        expect(githubIssueContentRevision({
+            ...baseIssue,
+            labels: [...baseIssue.labels, 'coc:status:executing'],
+        })).not.toBe(base);
     });
 });
