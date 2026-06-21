@@ -19,11 +19,13 @@ export interface WarmIndicatorDotProps {
  *  - `warming`         → a subtle pulsing amber dot;
  *  - `warm` / `active` → a solid green "ready" dot.
  *
- * The wrapper is fixed-size, `pointer-events-none`, and the coloured dot itself
- * is `aria-hidden`, so the indicator can neither relayout the toolbar nor steal
- * the send button's hit target. The `warming`/`warm`/`active` states expose an
- * accessible label + native tooltip; `cold` is a silent spacer (nothing to
- * announce).
+ * The wrapper is fixed-size and the coloured dot itself is `aria-hidden`, so the
+ * indicator can neither relayout the toolbar nor steal the send button's hit
+ * target (it is a separate, non-overlapping sibling). The `warming`/`warm`/
+ * `active` states expose an accessible label + native hover tooltip, so the
+ * visible dot opts back into pointer events (`pointer-events-auto`) — otherwise
+ * the browser skips hit-testing it and the `title` tooltip never shows. `cold`
+ * is a silent, `pointer-events-none` spacer (nothing to announce or hover).
  */
 export function WarmIndicatorDot({ status, className }: WarmIndicatorDotProps) {
     // Cold is a quiet, transparent spacer. Keeping its footprint means the send
@@ -54,7 +56,7 @@ export function WarmIndicatorDot({ status, className }: WarmIndicatorDotProps) {
             role="img"
             aria-label={label}
             title={label}
-            className={cn('inline-flex shrink-0 items-center justify-center w-2 h-2 pointer-events-none', className)}
+            className={cn('inline-flex shrink-0 items-center justify-center w-2 h-2 pointer-events-auto', className)}
         >
             <span
                 aria-hidden="true"

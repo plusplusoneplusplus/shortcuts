@@ -177,6 +177,22 @@ describe('FollowUpInputArea — warm indicator dot (AC-02)', () => {
         expect(dot.getAttribute('title')).toBe(dot.getAttribute('aria-label'));
     });
 
+    it('lets the visible dot receive hover so its title tooltip can show', () => {
+        const props = makeProps();
+        const { getByTestId } = render(<FollowUpInputArea {...props} />);
+
+        // Cold spacer is non-interactive (nothing to hover/announce).
+        expect(getByTestId(DOT).className).toContain('pointer-events-none');
+
+        // Once warm, the dot opts back into pointer events so the browser
+        // hit-tests it and renders the native `title` tooltip on hover.
+        act(() => { MockEventSource.last!.emitWarm('warm'); });
+        const warmDot = getByTestId(DOT);
+        expect(warmDot.className).toContain('pointer-events-auto');
+        expect(warmDot.className).not.toContain('pointer-events-none');
+        expect(warmDot.getAttribute('title')).toMatch(/warm/i);
+    });
+
     it('stays an invisible spacer for providers that never warm (Claude → no push)', () => {
         const props = makeProps();
         const { getByTestId, queryByLabelText } = render(<FollowUpInputArea {...props} />);
