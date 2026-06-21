@@ -104,6 +104,35 @@ describe('ClaudeSDKService MCP tool wiring', () => {
         expect(opts.allowedTools).toBeUndefined();
     });
 
+    // Regression: the native built-in `AskUserQuestion` shares no name with CoC's
+    // `ask_user`, so `overridesBuiltInTool` cannot suppress it. CoC services
+    // `ask_user` but not the built-in, so when the model called the built-in the
+    // SDK auto-failed the call before the user could answer. We block the built-in
+    // whenever `ask_user` is present so the model is steered to the serviceable tool.
+    it('disallows the native AskUserQuestion built-in when ask_user is present', async () => {
+        queryFn.mockReturnValue(makeHandle([SUCCESS]));
+        await svc.sendMessage({ prompt: 'hi', tools: [tool('ask_user'), tool('search_conversations')] });
+
+        const opts = (queryFn.mock.calls[0][0] as any).options;
+        expect(opts.disallowedTools).toEqual(['AskUserQuestion']);
+        // The replacement stays auto-approved.
+        expect(opts.allowedTools).toContain('mcp__coc_llm_tools__ask_user');
+    });
+
+    it('does not disallow AskUserQuestion when ask_user is not registered', async () => {
+        queryFn.mockReturnValue(makeHandle([SUCCESS]));
+        await svc.sendMessage({ prompt: 'hi', tools: [tool('search_conversations')] });
+        const opts = (queryFn.mock.calls[0][0] as any).options;
+        expect(opts.disallowedTools).toBeUndefined();
+    });
+
+    it('does not set disallowedTools when there are no CoC tools', async () => {
+        queryFn.mockReturnValue(makeHandle([SUCCESS]));
+        await svc.sendMessage({ prompt: 'hi' });
+        const opts = (queryFn.mock.calls[0][0] as any).options;
+        expect(opts.disallowedTools).toBeUndefined();
+    });
+
     it('tears down the bridge registration after the turn', async () => {
         queryFn.mockReturnValue(makeHandle([SUCCESS]));
         expect(cocToolBridgeServer.activeCount).toBe(0);
