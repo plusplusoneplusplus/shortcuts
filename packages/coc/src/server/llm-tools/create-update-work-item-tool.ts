@@ -19,7 +19,7 @@ import { resolveConfig, CONFIG_FILE_NAME } from '../../config';
 import { APIError } from '../errors';
 import { createWorkItemStore } from '../work-items/work-item-store';
 import type { WorkItem, WorkItemPriority, WorkItemStatus, WorkItemStore, WorkItemType } from '../work-items/types';
-import { WORK_ITEM_TYPES } from '../work-items/types';
+import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES, isKnownWorkItemStatus } from '../work-items/types';
 import { WORK_ITEM_PLAN_TEMPLATE } from '../work-items/plan-template';
 import {
     createWorkItemCommand,
@@ -47,6 +47,11 @@ export interface CreateUpdateWorkItemArgs {
     title?: string;
     description?: string;
     priority?: 'high' | 'normal' | 'low';
+    /**
+     * New lifecycle status for an existing work item (e.g. `done` to close it).
+     * Update mode only; validated against the work item status transition rules.
+     */
+    status?: WorkItemStatus;
     tags?: string[];
     /** Complete markdown plan. Required when updating an existing work item. */
     plan?: string;
@@ -166,6 +171,16 @@ function buildCommonFieldPatch(
             return { error: `Unsupported work item priority: ${String(args.priority)}` };
         }
         patch.priority = args.priority;
+    }
+
+    if (hasOwn(args, 'status') && args.status !== undefined) {
+        if (!isKnownWorkItemStatus(args.status)) {
+            return {
+                error: `Unsupported work item status: ${String(args.status)}. `
+                    + `Allowed statuses: ${WORK_ITEM_STATUSES.join(', ')}`,
+            };
+        }
+        patch.status = args.status;
     }
 
     if (hasOwn(args, 'tags') && args.tags !== undefined) {
@@ -337,7 +352,9 @@ export function createCreateUpdateWorkItemTool(
             'To create the item as a child of an existing parent (Epic → Feature → PBI → Work Item/Bug/Goal), also pass ' +
             '`parentId` (UUID), `parentTarget` (UUID or WI-N), or `parentWorkItemNumber`; no REST call is needed. ' +
             'Field-update mode: provide `workItemId`, `target` (UUID or WI-N), or `workItemNumber`, and one or more of ' +
-            '`title`, `description`, `priority`, or `tags`; this preserves status and does not create a plan version. ' +
+            '`title`, `description`, `priority`, `tags`, or `status`; this preserves plan history and does not create a ' +
+            'plan version. Use `status` (e.g. `done`) to transition or close an existing item without editing the plan; ' +
+            'the transition is validated and synced to the GitHub/Azure Boards mirror (a terminal status closes the issue). ' +
             'Update-plan mode: provide an existing target and the complete revised Markdown plan in `plan`; this saves a new ' +
             'plan version, resets status to `planning`, opens a change record, and broadcasts a dashboard update. ' +
             'Hierarchy-link mode: provide an existing target plus `parentId`/`parentTarget`/`parentWorkItemNumber` to move ' +
@@ -384,6 +401,14 @@ export function createCreateUpdateWorkItemTool(
                     type: 'string',
                     enum: ['high', 'normal', 'low'],
                     description: 'Priority of a new or existing item (create default: normal).',
+                },
+                status: {
+                    type: 'string',
+                    enum: [...WORK_ITEM_STATUSES],
+                    description:
+                        'New lifecycle status for an existing work item, e.g. "done" to close it. Update mode only; '
+                        + 'the transition is validated against the work item status rules and synced to the GitHub/Azure '
+                        + 'Boards mirror (a terminal status closes the mirrored issue). Ignored in create mode.',
                 },
                 tags: {
                     type: 'array',
@@ -567,7 +592,7 @@ async function updateExistingWorkItem(
         return {
             updated: false,
             id: existing.id,
-            error: 'No update requested: provide at least one of title, description, priority, tags, '
+            error: 'No update requested: provide at least one of title, description, priority, status, tags, '
                 + 'a parent link change, or a complete revised plan',
         };
     }
@@ -601,7 +626,7 @@ async function updateExistingWorkItem(
     try {
         const updated = await updateWorkItemCommand(ctx, repoId, existing.id, {
             ...(patchResult.patch as UpdateWorkItemCommandInput),
-            status: 'planning',
+            status: patchResult.patch.status ?? 'planning',
             skipStatusTransitionValidation: true,
             plan: {
                 content,
@@ -662,9 +687,9 @@ async function updateWorkItemLink(
             reason: summary,
             summary,
         };
-        // The tool always resets to planning on plan updates regardless of the
-        // current lifecycle state (legacy tool behavior).
-        input.status = 'planning';
+        // Plan updates reset to planning unless an explicit status was supplied,
+        // regardless of the current lifecycle state (legacy tool behavior).
+        input.status = (patch.status as WorkItemStatus | undefined) ?? 'planning';
         input.skipStatusTransitionValidation = true;
     }
 
