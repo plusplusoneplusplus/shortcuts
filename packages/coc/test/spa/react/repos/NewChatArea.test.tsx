@@ -94,6 +94,18 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: mockAppState, dispatch: mockAppDispatch }),
 }));
 
+// RalphLaunchDialog → useRalphExecutionRepoTargets reads the repo list from
+// ReposContext. Provide the source workspace so the execution-repo selector
+// defaults to it and the launch posts the expected workspace root.
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
+    useRepos: () => ({
+        repos: [{ workspace: { id: 'ws-1', name: 'repo', rootPath: '/home/user/repo' } }],
+        loading: false,
+        fetchRepos: vi.fn(),
+        unseenCounts: {},
+    }),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '/api',
