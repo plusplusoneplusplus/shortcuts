@@ -75,7 +75,7 @@ function createMockRes(): ServerResponse & { _chunks: string[]; _ended: boolean 
 function createSpyBridge(currentStatus: 'cold' | 'warming' | 'warm' | 'active' = 'cold') {
     const unregister = vi.fn();
     const register = vi.fn(() => unregister);
-    const getCurrentStatus = vi.fn(() => currentStatus);
+    const getCurrentStatus = vi.fn((_provider: string, _processId: string, _workingDirectory?: string) => currentStatus);
     return { register, unregister, getCurrentStatus } as unknown as WarmStatusBridge & {
         register: ReturnType<typeof vi.fn>;
         unregister: ReturnType<typeof vi.fn>;
@@ -339,7 +339,7 @@ describe('handleProcessStream warm-only mode (?warm=1)', () => {
         const res = createMockRes();
         await handleProcessStream(warmReq(), res, 'p-warm-snap', store, bridge);
 
-        expect(bridge.getCurrentStatus).toHaveBeenCalledWith('copilot', '/repo');
+        expect(bridge.getCurrentStatus).toHaveBeenCalledWith('copilot', 'p-warm-snap', '/repo');
         const warm = parseSSEFrames(res._chunks).filter(f => f.event === 'warm_status');
         expect(warm).toHaveLength(1);
         expect(warm[0].data).toEqual({ status: 'warm' });

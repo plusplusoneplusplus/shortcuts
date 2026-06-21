@@ -4,7 +4,7 @@
  * Verifies Codex reuses the SAME shared warm-client abstraction as Copilot
  * (`runWithWarmClient` + `WarmClientRegistry`): warm-eligible turns reuse a live
  * base client across turns, park it on clean completion, tear it down on failure
- * and on cleanup(), keep exactly one warm client per `(provider, workingDirectory)`
+ * and on cleanup(), keep exactly one warm client per `(provider, warmKey)`
  * key, stay cold for one-shot turns, and transparently fall back to a cold run
  * when the warm client cannot be started (leaving no registry entry).
  */
@@ -13,6 +13,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CodexSDKService } from '../../src/codex-sdk-service';
 import { cocToolBridgeServer } from '../../src/llm-tools/bridge-server';
 import { initSDKLogger, resetSDKLogger } from '../../src/logger';
+
+const WD = '/test/project';
+const PROCESS_A = 'process-a';
+const PROCESS_B = 'process-b';
 
 /** A thread mock that streams a single successful agent message. */
 function makeThread(threadId = 'thread-1') {
@@ -81,8 +85,8 @@ describe('CodexSDKService — warm-client reuse (AC-02)', () => {
         const defaultSdk = { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() };
         svc = makeService({ ctor, sdk: defaultSdk });
 
-        const r1 = await svc.sendMessage({ prompt: 'hello', keepWarm: true });
-        const r2 = await svc.sendMessage({ prompt: 'again', keepWarm: true });
+        const r1 = await svc.sendMessage({ prompt: 'hello', keepWarm: true, warmKey: PROCESS_A, workingDirectory: WD });
+        const r2 = await svc.sendMessage({ prompt: 'again', keepWarm: true, warmKey: PROCESS_A, workingDirectory: WD });
 
         expect(r1.success).toBe(true);
         expect(r2.success).toBe(true);
@@ -95,6 +99,17 @@ describe('CodexSDKService — warm-client reuse (AC-02)', () => {
         expect(defaultSdk.startThread).not.toHaveBeenCalled();
         // Exactly one warm client parked for this key.
         expect(registrySize(svc)).toBe(1);
+    });
+
+    it('keeps separate warm clients for different process warm keys in the same cwd', async () => {
+        const { ctor } = makeRecordingCtor();
+        svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
+
+        await svc.sendMessage({ prompt: 'hello', keepWarm: true, warmKey: PROCESS_A, workingDirectory: WD });
+        await svc.sendMessage({ prompt: 'again', keepWarm: true, warmKey: PROCESS_B, workingDirectory: WD });
+
+        expect(ctor).toHaveBeenCalledTimes(2);
+        expect(registrySize(svc)).toBe(2);
     });
 
     it('logs a per-turn cold-miss then warm-hit line', async () => {
@@ -114,8 +129,8 @@ describe('CodexSDKService — warm-client reuse (AC-02)', () => {
         };
         initSDKLogger(spyLogger);
 
-        await svc.sendMessage({ prompt: 'hello', keepWarm: true });
-        await svc.sendMessage({ prompt: 'again', keepWarm: true });
+        await svc.sendMessage({ prompt: 'hello', keepWarm: true, warmKey: PROCESS_A, workingDirectory: WD });
+        await svc.sendMessage({ prompt: 'again', keepWarm: true, warmKey: PROCESS_A, workingDirectory: WD });
 
         const warmHitFlags = debugSpy.mock.calls
             .map(([obj]) => obj)
@@ -133,7 +148,7 @@ describe('CodexSDKService — warm-client reuse (AC-02)', () => {
         const { ctor } = makeRecordingCtor();
         svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
 
-        await svc.sendMessage({ prompt: 'hello', keepWarm: true });
+        await svc.sendMessage({ prompt: 'hello', keepWarm: true, warmKey: PROCESS_A, workingDirectory: WD });
         expect(registrySize(svc)).toBe(1);
 
         await svc.cleanup();
@@ -145,7 +160,7 @@ describe('CodexSDKService — warm-client reuse (AC-02)', () => {
         const { ctor } = makeRecordingCtor(makeFailingThread);
         svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeFailingThread()), resumeThread: vi.fn() } });
 
-        const result = await svc.sendMessage({ prompt: 'hello', keepWarm: true });
+        const result = await svc.sendMessage({ prompt: 'hello', keepWarm: true, warmKey: PROCESS_A, workingDirectory: WD });
 
         expect(result.success).toBe(false);
         // No warm entry left behind after an unclean outcome.
@@ -160,6 +175,7 @@ describe('CodexSDKService — cold paths leave no warm entry (AC-02)', () => {
         svc?.dispose();
         svc = undefined;
         cocToolBridgeServer.closeAll();
+        resetSDKLogger();
     });
 
     it('does not warm when keepWarm is unset (one-shot turns stay cold)', async () => {
@@ -185,13 +201,42 @@ describe('CodexSDKService — cold paths leave no warm entry (AC-02)', () => {
         const defaultSdk = { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() };
         svc = makeService({ ctor: throwingCtor, sdk: defaultSdk });
 
-        const result = await svc.sendMessage({ prompt: 'hello', keepWarm: true });
+        const result = await svc.sendMessage({ prompt: 'hello', keepWarm: true, warmKey: PROCESS_A, workingDirectory: WD });
 
         expect(result.success).toBe(true);
         // Warm acquisition failed → cold fallback ran the turn on the singleton…
         expect(defaultSdk.startThread).toHaveBeenCalledTimes(1);
         // …and the registry rolled its entry back — no leak.
         expect(registrySize(svc)).toBe(0);
+    });
+
+    it('runs cold and logs when keepWarm is true without a warmKey', async () => {
+        const { ctor } = makeRecordingCtor();
+        const defaultSdk = { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() };
+        svc = makeService({ ctor, sdk: defaultSdk });
+        const warnSpy = vi.fn();
+        const spyLogger: any = {
+            debug: vi.fn(),
+            info: vi.fn(),
+            warn: warnSpy,
+            error: vi.fn(),
+            fatal: vi.fn(),
+            trace: vi.fn(),
+            level: 'debug',
+            child: () => spyLogger,
+        };
+        initSDKLogger(spyLogger);
+
+        const result = await svc.sendMessage({ prompt: 'hello', keepWarm: true, workingDirectory: WD });
+
+        expect(result.success).toBe(true);
+        expect(ctor).not.toHaveBeenCalled();
+        expect(defaultSdk.startThread).toHaveBeenCalledTimes(1);
+        expect(registrySize(svc)).toBe(0);
+        expect(warnSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ provider: 'codex', workingDirectory: WD }),
+            expect.stringContaining('without warmKey'),
+        );
     });
 });
 
@@ -228,7 +273,7 @@ describe('CodexSDKService — abort/interrupt tears down the warm entry (AC-03)'
         const { ctor, clients } = makeRecordingCtor(abortingThread as unknown as () => ReturnType<typeof makeThread>);
         svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
 
-        const result = await svc.sendMessage({ prompt: 'hello', keepWarm: true, signal: controller.signal });
+        const result = await svc.sendMessage({ prompt: 'hello', keepWarm: true, warmKey: PROCESS_A, workingDirectory: WD, signal: controller.signal });
 
         // The turn itself produced a response on a freshly cold-started warm client…
         expect(result.success).toBe(true);

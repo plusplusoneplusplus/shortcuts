@@ -60,7 +60,7 @@ export interface CanvasUpdatedPayload {
 
 /**
  * Fired on every `WarmClientRegistry` state transition for the conversation's
- * `(provider, cwd)` key (AC-01). The SPA maps `status` to its warm indicator:
+ * `(provider, processId)` key (AC-01). The SPA maps `status` to its warm indicator:
  * `warm`/`active` → green, `warming` → amber-pulse, `cold` → invisible. Providers
  * that never stay warm (e.g. Claude) never emit, so the indicator stays invisible.
  */
@@ -228,9 +228,9 @@ export async function handleProcessStream(
     let cleaned = false;
     let eventCount = 0;
 
-    // Relay WarmClientRegistry transitions for this conversation's (provider, cwd)
-    // key onto this stream as `warm_status` events (AC-01). Interest lives for the
-    // life of the stream; providers that never warm (e.g. Claude) simply never fire.
+    // Relay WarmClientRegistry transitions for this conversation process onto
+    // this stream as `warm_status` events (AC-01). Interest lives for the life of
+    // the stream; providers that never warm (e.g. Claude) simply never fire.
     const unregisterWarm = warmBridge.register({
         store,
         processId,
@@ -431,7 +431,7 @@ function streamWarmStatusOnly(
     // Initial snapshot of the current warm status. `cold` is sent too — it is a
     // valid, useful state after reconnects, unsupported providers, TTL expiry, or
     // a server restart, and the SPA hook accepts it.
-    sendWarmStatus(warmBridge.getCurrentStatus(provider, workingDirectory));
+    sendWarmStatus(warmBridge.getCurrentStatus(provider, processId, workingDirectory));
 
     // Immediate heartbeat signals the client the stream is ready; periodic
     // heartbeats keep the connection alive and detect stale sockets.

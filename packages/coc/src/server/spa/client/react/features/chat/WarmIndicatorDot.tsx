@@ -9,7 +9,7 @@ export interface WarmIndicatorDotProps {
 }
 
 /**
- * Tiny (~6px) "session warm" indicator shown next to the send button (AC-02).
+ * Tiny (~6px) conversation-warm indicator shown next to the send button (AC-02).
  * It is a cosmetic signal fed solely by {@link useWarmClientStatus}'s SSE-pushed
  * status, which mirrors the backend `WarmClientRegistry`:
  *  - `cold`            → a transparent spacer that reserves the dot's footprint
@@ -46,8 +46,8 @@ export function WarmIndicatorDot({ status, className }: WarmIndicatorDotProps) {
     // client) both mean the next reply starts fast → the same green "ready" dot.
     const isReady = status === 'warm' || status === 'active';
     const label = isReady
-        ? 'Session warm — next reply starts fast'
-        : 'Warming…';
+        ? 'Conversation warm - next reply starts fast'
+        : 'Warming this conversation...';
 
     return (
         <span

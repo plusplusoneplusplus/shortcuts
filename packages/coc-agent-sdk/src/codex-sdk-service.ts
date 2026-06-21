@@ -553,7 +553,7 @@ export class CodexSDKService implements ISDKService {
     /**
      * Warm-client keep-alive for chat turns (AC-02). Codex routes warm-eligible
      * turns through the same shared {@link runWithWarmClient} abstraction as
-     * Copilot, keyed per `(provider, workingDirectory)`. The warm unit is the
+     * Copilot, keyed per `(provider, warmKey)`. The warm unit is the
      * base Codex client (built without per-turn MCP config); the per-turn
      * CoC LLM-tool MCP bridge stays per-invocation because Codex bakes
      * `mcp_servers`/`enabled_tools` into the client constructor and the tool set
@@ -908,12 +908,19 @@ export class CodexSDKService implements ISDKService {
         if (!options.keepWarm || !this.warmRegistry.warmingEnabled) {
             return this.runTurn(options);
         }
+        if (!options.warmKey) {
+            getSDKLogger().warn(
+                { provider: CODEX_PROVIDER, workingDirectory: options.workingDirectory },
+                'Warm client requested without warmKey; running cold',
+            );
+            return this.runTurn(options);
+        }
         return this.sendWarm(options);
     }
 
     /**
      * Run a warm-eligible Codex turn: reuse a parked base client for this
-     * `(provider, workingDirectory)` when available, otherwise cold-start one and
+     * `(provider, warmKey)` when available, otherwise cold-start one and
      * park it for the next turn. A fresh thread is still started/resumed per turn,
      * so conversation continuity is unaffected. When the turn uses CoC LLM tools,
      * the per-turn MCP bridge is still built and torn down per invocation (the
@@ -922,7 +929,7 @@ export class CodexSDKService implements ISDKService {
      */
     private async sendWarm(options: SendMessageOptions): Promise<IInvocationResult> {
         const log = getSDKLogger();
-        const key = makeWarmKey(CODEX_PROVIDER, options.workingDirectory);
+        const key = makeWarmKey(CODEX_PROVIDER, options.warmKey);
 
         return runWithWarmClient<IInvocationResult>({
             registry: this.warmRegistry,
@@ -932,7 +939,7 @@ export class CodexSDKService implements ISDKService {
             coldFallback: () => this.runTurn(options),
             run: async (handle, warmHit) => {
                 log.debug(
-                    { key, provider: CODEX_PROVIDER, warmHit },
+                    { key, provider: CODEX_PROVIDER, warmKey: options.warmKey, workingDirectory: options.workingDirectory, warmHit },
                     warmHit ? 'Warm client hit — reusing live process' : 'Warm client miss — cold start',
                 );
                 const result = await this.runTurn(options, handle.client as CodexClient);
@@ -950,7 +957,7 @@ export class CodexSDKService implements ISDKService {
      * under the same key. Codex's base client owns no child process of its own
      * (the codex CLI spawns per `thread.run()`), so `stop` is a no-op and the
      * working directory is not baked in here — it is a per-thread option, while
-     * the warm key still namespaces by `(provider, workingDirectory)`.
+     * the warm key still namespaces by `(provider, warmKey)`.
      */
     private buildWarmFactory(): WarmClientFactory {
         return async () => {
@@ -966,33 +973,41 @@ export class CodexSDKService implements ISDKService {
      * session (AC-04). Idempotent and best-effort: no-ops when warming is
      * disabled (TTL <= 0), when the Codex SDK is unavailable, or while a turn is
      * in flight on the same key (handled by the registry). The base client is
-     * parked under `makeWarmKey(CODEX_PROVIDER, workingDirectory)` so the next
+     * parked under `makeWarmKey(CODEX_PROVIDER, warmKey)` so the next
      * {@link sendMessage} reuses it for a no-tools turn (tools turns still build
      * a per-invocation MCP-configured client); a send arriving mid-warm attaches
      * to the in-flight warming.
      */
     public async prewarm(options: PrewarmOptions): Promise<void> {
         if (this.disposed || !this.warmRegistry.warmingEnabled) return;
+        if (!options.warmKey) {
+            getSDKLogger().warn(
+                { provider: CODEX_PROVIDER, workingDirectory: options.workingDirectory },
+                'Prewarm requested without warmKey; skipping',
+            );
+            return;
+        }
         const avail = await this.isAvailable();
         if (!avail.available) return;
-        const key = makeWarmKey(CODEX_PROVIDER, options.workingDirectory);
+        const key = makeWarmKey(CODEX_PROVIDER, options.warmKey);
         await this.warmRegistry.prewarm(key, this.buildWarmFactory());
     }
 
     /**
-     * Current warm {@link WarmStatus} for a conversation's `(codex, cwd)` key —
+     * Current warm {@link WarmStatus} for a conversation's `(codex, warmKey)` key —
      * the synchronous snapshot read used by the CoC SSE bridge to emit an initial
      * warm-status frame. Uses the same key as {@link prewarm}, so a freshly
      * subscribed stream sees the live state (`warm`/`active`/`warming`/`cold`).
      */
     public getWarmStatus(options: PrewarmOptions): WarmStatus {
-        return this.warmRegistry.getStatus(makeWarmKey(CODEX_PROVIDER, options.workingDirectory));
+        if (!options.warmKey) return 'cold';
+        return this.warmRegistry.getStatus(makeWarmKey(CODEX_PROVIDER, options.warmKey));
     }
 
     /**
      * Subscribe to warm-client state transitions for this service's registry.
      * The listener receives `(key, status)` on every change, where `key` is
-     * `makeWarmKey(CODEX_PROVIDER, workingDirectory)`. Used by the CoC SSE bridge
+     * `makeWarmKey(CODEX_PROVIDER, warmKey)`. Used by the CoC SSE bridge
      * to push warm status to the SPA indicator. Returns an unsubscribe function.
      */
     public onWarmStatusChange(listener: WarmStateChangeListener): () => void {

@@ -275,9 +275,9 @@ export function FollowUpInputArea({
     );
     const canRetrieveConversations = canRetrieveConversationsProp ?? localCanRetrieveConversations;
 
-    // Subscribe to the conversation's real-time warm status, pushed from the
+    // Subscribe to the conversation process's real-time warm status, pushed from the
     // backend WarmClientRegistry over a warm-only SSE channel (AC-02). The
-    // returned status feeds the tiny "session warm" indicator next to the send
+    // returned status feeds the tiny warm indicator next to the send
     // button. The subscription stays open across an active turn (so the dot
     // shows green while a reply is generating) and across completion (so it
     // catches the active → warm transition on a finished conversation); only the

@@ -325,13 +325,13 @@ Without a call to `initSDKLogger`, all internal SDK log statements are silently 
 
 ## Warm-client registry (session prewarming)
 
-`WarmClientRegistry` (`warm-client-registry.ts`) keeps a provider client process alive between turns, keyed by `makeWarmKey(provider, workingDirectory)`, for a short idle TTL (`COC_WARM_CLIENT_TTL_MS`; `<= 0` disables warming). Per-key status: `cold` (absent) → `warming` (factory in flight) → `warm` (parked, idle TTL ticking) → `active` (≥1 turn in flight). Copilot and Codex route `sendMessage`/`prewarm` through it; Claude cannot stay warm and never enters it.
+`WarmClientRegistry` (`warm-client-registry.ts`) keeps a provider client process alive between turns, keyed by `makeWarmKey(provider, warmKey)`, for a short idle TTL (`COC_WARM_CLIENT_TTL_MS`; `<= 0` disables warming). CoC passes the conversation process id as `warmKey`; `workingDirectory` remains client construction/per-turn execution context and is not part of the registry key. Per-key status: `cold` (absent) → `warming` (factory in flight) → `warm` (parked, idle TTL ticking) → `active` (≥1 turn in flight). Copilot and Codex route warm-scoped `sendMessage`/`prewarm` through it; Claude cannot stay warm and never enters it. If a caller sets `keepWarm: true` without `warmKey`, Copilot/Codex log a warning and run the turn cold rather than falling back to cwd-scoped warming.
 
 Status surfaces two ways, both off the same canonical `currentStatus(key)` calc so they never disagree:
 - **Push:** `onStateChange` → `WarmStatusBroadcaster` → `ISDKService.onWarmStatusChange(listener)` (the CoC `WarmStatusBridge` subscribes here and fans transitions onto process SSE streams).
 - **Read:** `WarmClientRegistry.getStatus(key)` → `ISDKService.getWarmStatus(options)` — the synchronous snapshot side. Copilot/Codex compute their `makeWarmKey(...)` and return `getStatus`; Claude omits the method. CoC's warm-only SSE stream calls this (via the bridge) to send an initial `warm_status` frame on connect.
 
-`prewarm(options)` warms without creating a session (idempotent, no-op while active or when warming is disabled, best-effort); a real send arriving mid-warm attaches to the same in-flight warming. `cleanup()`/`dispose()` evict every warm client so no child process outlives the service.
+`prewarm({ warmKey, workingDirectory })` warms without creating a session (idempotent, no-op while active or when warming is disabled, best-effort); a real send with the same `warmKey` arriving mid-warm attaches to the same in-flight warming. A fresh SDK session is still created/resumed/disconnected per turn via the existing `sdkSessionId` flow — no provider session objects are cached. `cleanup()`/`dispose()` evict every warm client so no child process outlives the service.
 
 ## Cleanup
 

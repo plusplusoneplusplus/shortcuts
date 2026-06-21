@@ -21,10 +21,11 @@ export interface UseTypingPrewarmClientOptions {
  * Trigger backend client prewarming while the user types a follow-up.
  *
  * This is the side-effect half of the warm-client UX, deliberately split from the
- * stream-observing {@link useWarmClientStatus}: typing drives the server-side
- * warm lifecycle (`POST /processes/:id/prewarm`), and the SSE stream — not this
- * hook — is the single source of truth for the warm dot. The prewarm response is
- * intentionally ignored; only the stream may change the displayed status.
+ * stream-observing {@link useWarmClientStatus}: typing drives this conversation
+ * process's server-side warm lifecycle (`POST /processes/:id/prewarm`), and the
+ * SSE stream — not this hook — is the single source of truth for the warm dot.
+ * The prewarm response is intentionally ignored; only the stream may change the
+ * displayed status.
  *
  * Behaviour:
  *  - Empty (`input.trim()` is `''`) clears any pending timer and resets the

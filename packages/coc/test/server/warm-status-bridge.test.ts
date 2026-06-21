@@ -51,7 +51,7 @@ describe('WarmStatusBridge', () => {
         const store = createMockStore();
 
         bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo' });
-        copilot.emit(makeWarmKey('copilot', '/repo'), 'warm');
+        copilot.emit(makeWarmKey('copilot', 'p1'), 'warm');
 
         expect(store.emitProcessEvent).toHaveBeenCalledTimes(1);
         expect(store.emitProcessEvent).toHaveBeenCalledWith('p1', { type: 'warm-status', warmStatus: 'warm' });
@@ -61,7 +61,7 @@ describe('WarmStatusBridge', () => {
         const copilot = createWarmingService();
         const bridge = new WarmStatusBridge(createRegistry({ copilot }));
         const store = createMockStore();
-        const key = makeWarmKey('copilot', '/repo');
+        const key = makeWarmKey('copilot', 'p1');
 
         bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo' });
         for (const status of ['warming', 'active', 'warm', 'cold'] as const) {
@@ -72,30 +72,30 @@ describe('WarmStatusBridge', () => {
         expect(statuses).toEqual(['warming', 'active', 'warm', 'cold']);
     });
 
-    it('does not relay a transition for a different key', () => {
+    it('does not relay a transition for a different process key in the same cwd', () => {
         const copilot = createWarmingService();
         const bridge = new WarmStatusBridge(createRegistry({ copilot }));
         const store = createMockStore();
 
-        bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo-a' });
-        copilot.emit(makeWarmKey('copilot', '/repo-b'), 'warm');
+        bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo' });
+        copilot.emit(makeWarmKey('copilot', 'p2'), 'warm');
 
         expect(store.emitProcessEvent).not.toHaveBeenCalled();
     });
 
-    it('fans a transition out to every process interested in the same key', () => {
+    it('keeps processes in the same cwd isolated by process id', () => {
         const copilot = createWarmingService();
         const bridge = new WarmStatusBridge(createRegistry({ copilot }));
         const storeA = createMockStore();
         const storeB = createMockStore();
-        const key = makeWarmKey('copilot', '/repo');
+        const key = makeWarmKey('copilot', 'pA');
 
         bridge.register({ store: storeA as any, processId: 'pA', provider: 'copilot', workingDirectory: '/repo' });
         bridge.register({ store: storeB as any, processId: 'pB', provider: 'copilot', workingDirectory: '/repo' });
         copilot.emit(key, 'active');
 
         expect(storeA.emitProcessEvent).toHaveBeenCalledWith('pA', { type: 'warm-status', warmStatus: 'active' });
-        expect(storeB.emitProcessEvent).toHaveBeenCalledWith('pB', { type: 'warm-status', warmStatus: 'active' });
+        expect(storeB.emitProcessEvent).not.toHaveBeenCalled();
     });
 
     it('subscribes to a provider service only once across many registrations', () => {
@@ -114,7 +114,7 @@ describe('WarmStatusBridge', () => {
         const copilot = createWarmingService();
         const bridge = new WarmStatusBridge(createRegistry({ copilot }));
         const store = createMockStore();
-        const key = makeWarmKey('copilot', '/repo');
+        const key = makeWarmKey('copilot', 'p1');
 
         const unregister = bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo' });
         copilot.emit(key, 'warm');
@@ -130,7 +130,7 @@ describe('WarmStatusBridge', () => {
         const bridge = new WarmStatusBridge(createRegistry({ copilot }));
         const storeA = createMockStore();
         const storeB = createMockStore();
-        const key = makeWarmKey('copilot', '/repo');
+        const key = makeWarmKey('copilot', 'pB');
 
         const unregisterA = bridge.register({ store: storeA as any, processId: 'pA', provider: 'copilot', workingDirectory: '/repo' });
         bridge.register({ store: storeB as any, processId: 'pB', provider: 'copilot', workingDirectory: '/repo' });
@@ -151,7 +151,7 @@ describe('WarmStatusBridge', () => {
         const copilot = createWarmingService();
         const bridge = new WarmStatusBridge(createRegistry({ copilot }));
         const store = createMockStore();
-        const key = makeWarmKey('copilot', '/repo');
+        const key = makeWarmKey('copilot', 'p1');
 
         const closeMain = bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo' });
         const closeWarm = bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo' });
@@ -173,7 +173,7 @@ describe('WarmStatusBridge', () => {
         const copilot = createWarmingService();
         const bridge = new WarmStatusBridge(createRegistry({ copilot }));
         const store = createMockStore();
-        const key = makeWarmKey('copilot', '/repo');
+        const key = makeWarmKey('copilot', 'p1');
 
         bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo' });
         bridge.register({ store: store as any, processId: 'p1', provider: 'copilot', workingDirectory: '/repo' });
@@ -217,7 +217,7 @@ describe('WarmStatusBridge', () => {
         expect(copilot.listenerCount).toBe(0);
 
         // After dispose, a stale transition reaches no one.
-        copilot.emit(makeWarmKey('copilot', '/repo'), 'warm');
+        copilot.emit(makeWarmKey('copilot', 'p1'), 'warm');
         expect(store.emitProcessEvent).not.toHaveBeenCalled();
     });
 });
@@ -227,37 +227,37 @@ describe('WarmStatusBridge', () => {
 // ---------------------------------------------------------------------------
 
 describe('WarmStatusBridge.getCurrentStatus', () => {
-    it('returns the provider status for a supported provider, passing through the cwd', () => {
-        const copilot = { getWarmStatus: vi.fn((_opts: { workingDirectory?: string }) => 'warm' as WarmStatus) };
+    it('returns the provider status for a supported provider, passing through the process key and cwd', () => {
+        const copilot = { getWarmStatus: vi.fn((_opts: { warmKey: string; workingDirectory?: string }) => 'warm' as WarmStatus) };
         const bridge = new WarmStatusBridge(createRegistry({ copilot }));
 
-        expect(bridge.getCurrentStatus('copilot', '/repo')).toBe('warm');
-        expect(copilot.getWarmStatus).toHaveBeenCalledWith({ workingDirectory: '/repo' });
+        expect(bridge.getCurrentStatus('copilot', 'p1', '/repo')).toBe('warm');
+        expect(copilot.getWarmStatus).toHaveBeenCalledWith({ warmKey: 'p1', workingDirectory: '/repo' });
     });
 
     it('reflects each lifecycle status the provider reports', () => {
         for (const status of ['cold', 'warming', 'warm', 'active'] as const) {
             const codex = { getWarmStatus: vi.fn(() => status as WarmStatus) };
             const bridge = new WarmStatusBridge(createRegistry({ codex }));
-            expect(bridge.getCurrentStatus('codex', '/repo')).toBe(status);
+            expect(bridge.getCurrentStatus('codex', 'p1', '/repo')).toBe(status);
         }
     });
 
     it('returns cold when the provider service is missing', () => {
         const bridge = new WarmStatusBridge(createRegistry({}));
-        expect(bridge.getCurrentStatus('copilot', '/repo')).toBe('cold');
+        expect(bridge.getCurrentStatus('copilot', 'p1', '/repo')).toBe('cold');
     });
 
     it('returns cold when the service lacks getWarmStatus (e.g. Claude)', () => {
         const claude = { onWarmStatusChange: () => () => { /* warm transitions only */ } };
         const bridge = new WarmStatusBridge(createRegistry({ claude }));
-        expect(bridge.getCurrentStatus('claude', '/repo')).toBe('cold');
+        expect(bridge.getCurrentStatus('claude', 'p1', '/repo')).toBe('cold');
     });
 
     it('returns cold when getWarmStatus throws (best-effort isolation)', () => {
         const copilot = { getWarmStatus: () => { throw new Error('registry boom'); } };
         const bridge = new WarmStatusBridge(createRegistry({ copilot }));
-        expect(bridge.getCurrentStatus('copilot', '/repo')).toBe('cold');
+        expect(bridge.getCurrentStatus('copilot', 'p1', '/repo')).toBe('cold');
     });
 
     it('returns cold when the registry lookup itself throws', () => {
@@ -265,6 +265,6 @@ describe('WarmStatusBridge.getCurrentStatus', () => {
             get: () => { throw new Error('lookup boom'); },
         };
         const bridge = new WarmStatusBridge(throwingRegistry);
-        expect(bridge.getCurrentStatus('copilot', '/repo')).toBe('cold');
+        expect(bridge.getCurrentStatus('copilot', 'p1', '/repo')).toBe('cold');
     });
 });

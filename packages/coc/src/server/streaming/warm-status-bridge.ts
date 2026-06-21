@@ -1,9 +1,9 @@
 /**
  * WarmStatusBridge — relays WarmClientRegistry transitions to process SSE streams.
  *
- * The SDK services own a `WarmClientRegistry` keyed by `(provider, workingDirectory)`
+ * The SDK services own a `WarmClientRegistry` keyed by `(provider, warmKey)`
  * and expose `onWarmStatusChange((key, status) => …)`. A conversation process maps
- * to such a key via its `metadata.provider` + `workingDirectory`. This bridge keeps
+ * to such a key via its `metadata.provider` + process id. This bridge keeps
  * a `warmKey → interested-process` map: when an SSE stream opens for a process it
  * registers interest; on every registry transition for that key the bridge emits a
  * `warm-status` process event, which `handleProcessStream` relays to the SPA as a
@@ -27,7 +27,7 @@ import { makeWarmKey, type WarmStatus } from '@plusplusoneplusplus/coc-agent-sdk
 export interface WarmStatusServiceLookup {
     get(name: string): {
         onWarmStatusChange?(listener: (key: string, status: WarmStatus) => void): () => void;
-        getWarmStatus?(options: { workingDirectory?: string }): WarmStatus;
+        getWarmStatus?(options: { warmKey: string; workingDirectory?: string }): WarmStatus;
     } | undefined;
 }
 
@@ -38,7 +38,7 @@ export interface RegisterWarmInterestOptions {
     processId: string;
     /** Provider id ('copilot' | 'codex' | 'claude' | …) — one half of the warm key. */
     provider: string;
-    /** Working directory — the other half of the warm key. */
+    /** Working directory for provider diagnostics/future validation; not part of the warm key. */
     workingDirectory?: string;
 }
 
@@ -60,7 +60,7 @@ export class WarmStatusBridge {
     constructor(private readonly registry: WarmStatusServiceLookup = sdkServiceRegistry) {}
 
     /**
-     * Register interest in warm-status transitions for a process's `(provider, cwd)`
+     * Register interest in warm-status transitions for a process's `(provider, processId)`
      * key. Returns an idempotent unregister function to call when the stream closes.
      *
      * Interest is ref-counted per processId: a conversation can have two streams
@@ -74,7 +74,7 @@ export class WarmStatusBridge {
         const { store, processId, provider, workingDirectory } = options;
         this.ensureSubscribed(provider);
 
-        const key = makeWarmKey(provider, workingDirectory);
+        const key = makeWarmKey(provider, processId);
         let byProcess = this.interests.get(key);
         if (!byProcess) {
             byProcess = new Map();
@@ -144,7 +144,7 @@ export class WarmStatusBridge {
     }
 
     /**
-     * Read the current warm {@link WarmStatus} for a process's `(provider, cwd)`
+     * Read the current warm {@link WarmStatus} for a process's `(provider, processId)`
      * key, so a freshly-opened warm-only SSE stream can emit an initial snapshot
      * instead of waiting for the next transition (AC-02). The bridge owns this
      * lookup — not the SSE handler — because it already knows the provider-service
@@ -155,11 +155,11 @@ export class WarmStatusBridge {
      * Claude), or throws: warming is a latency hint, never a hard dependency, so a
      * malformed registry must surface as an invisible dot, not a stream error.
      */
-    getCurrentStatus(provider: string, workingDirectory?: string): WarmStatus {
+    getCurrentStatus(provider: string, processId: string, workingDirectory?: string): WarmStatus {
         try {
             const service = this.registry?.get?.(provider);
             if (!service || typeof service.getWarmStatus !== 'function') { return 'cold'; }
-            return service.getWarmStatus({ workingDirectory });
+            return service.getWarmStatus({ warmKey: processId, workingDirectory });
         } catch {
             return 'cold';
         }

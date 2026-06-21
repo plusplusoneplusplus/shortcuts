@@ -483,7 +483,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
                 ...(contextTier ? { contextTier } : {}),
                 infiniteSessions: { enabled: true } as const,
-                ...(this.keepClientWarm() ? { keepWarm: true as const } : {}),
+                ...(this.keepClientWarm() ? { keepWarm: true as const, warmKey: processId } : {}),
                 systemMessage: historySystemMessage,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,

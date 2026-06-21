@@ -214,12 +214,19 @@ export class CopilotSDKService implements ISDKService {
         if (!options.keepWarm || !this.warmRegistry.warmingEnabled || options.client) {
             return this.requestRunner.send(options);
         }
+        if (!options.warmKey) {
+            getAIServiceLogger().warn(
+                { provider: COPILOT_PROVIDER, workingDirectory: options.workingDirectory },
+                'Warm client requested without warmKey; running cold',
+            );
+            return this.requestRunner.send(options);
+        }
         return this.sendWarm(options);
     }
 
     /**
      * Run a warm-eligible turn: reuse the live client process for this
-     * `(provider, workingDirectory)` when one is parked, otherwise cold-start
+     * `(provider, warmKey)` when one is parked, otherwise cold-start
      * and park it for the next turn. The client is injected as
      * `options.client` so `RequestRunner` skips `client.stop()` — a fresh
      * session is still created/resumed and disconnected per turn, so
@@ -227,7 +234,7 @@ export class CopilotSDKService implements ISDKService {
      */
     private async sendWarm(options: SendMessageOptions): Promise<SDKInvocationResult> {
         const aiLog = getAIServiceLogger();
-        const key = makeWarmKey(COPILOT_PROVIDER, options.workingDirectory);
+        const key = makeWarmKey(COPILOT_PROVIDER, options.warmKey);
 
         return runWithWarmClient({
             registry: this.warmRegistry,
@@ -237,7 +244,7 @@ export class CopilotSDKService implements ISDKService {
             coldFallback: () => this.requestRunner.send(options),
             run: async (handle, warmHit) => {
                 aiLog.debug(
-                    { key, provider: COPILOT_PROVIDER, warmHit },
+                    { key, provider: COPILOT_PROVIDER, warmKey: options.warmKey, workingDirectory: options.workingDirectory, warmHit },
                     warmHit ? 'Warm client hit — reusing live process' : 'Warm client miss — cold start',
                 );
                 const result = await this.requestRunner.send({
@@ -274,32 +281,40 @@ export class CopilotSDKService implements ISDKService {
      * session (AC-04). Idempotent and best-effort: no-ops when warming is
      * disabled (TTL <= 0), when the SDK is unavailable, or while a turn is in
      * flight on the same key (handled by the registry). The client is parked
-     * under `makeWarmKey(COPILOT_PROVIDER, workingDirectory)` so the next
+     * under `makeWarmKey(COPILOT_PROVIDER, warmKey)` so the next
      * {@link sendMessage} reuses it; a send arriving mid-warm attaches to the
      * in-flight warming.
      */
     public async prewarm(options: PrewarmOptions): Promise<void> {
         if (this.disposed || !this.warmRegistry.warmingEnabled) return;
+        if (!options.warmKey) {
+            getAIServiceLogger().warn(
+                { provider: COPILOT_PROVIDER, workingDirectory: options.workingDirectory },
+                'Prewarm requested without warmKey; skipping',
+            );
+            return;
+        }
         const availability = await this.isAvailable();
         if (!availability.available) return;
-        const key = makeWarmKey(COPILOT_PROVIDER, options.workingDirectory);
+        const key = makeWarmKey(COPILOT_PROVIDER, options.warmKey);
         await this.warmRegistry.prewarm(key, this.buildWarmFactory(options.workingDirectory));
     }
 
     /**
-     * Current warm {@link WarmStatus} for a conversation's `(copilot, cwd)` key —
+     * Current warm {@link WarmStatus} for a conversation's `(copilot, warmKey)` key —
      * the synchronous snapshot read used by the CoC SSE bridge to emit an initial
      * warm-status frame. Uses the same key as {@link prewarm}, so a freshly
      * subscribed stream sees the live state (`warm`/`active`/`warming`/`cold`).
      */
     public getWarmStatus(options: PrewarmOptions): WarmStatus {
-        return this.warmRegistry.getStatus(makeWarmKey(COPILOT_PROVIDER, options.workingDirectory));
+        if (!options.warmKey) return 'cold';
+        return this.warmRegistry.getStatus(makeWarmKey(COPILOT_PROVIDER, options.warmKey));
     }
 
     /**
      * Subscribe to warm-client state transitions for this service's registry.
      * The listener receives `(key, status)` on every change, where `key` is
-     * `makeWarmKey(COPILOT_PROVIDER, workingDirectory)`. Used by the CoC SSE
+     * `makeWarmKey(COPILOT_PROVIDER, warmKey)`. Used by the CoC SSE
      * bridge to push warm status to the SPA indicator. Returns an unsubscribe
      * function.
      */

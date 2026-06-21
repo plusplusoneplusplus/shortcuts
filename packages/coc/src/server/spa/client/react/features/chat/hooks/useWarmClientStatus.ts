@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { cloneApiBase } from '../../../repos/cloneRegistry';
 
 /**
- * Real-time warm status for a conversation, pushed from the backend
+ * Real-time process-scoped warm status for a conversation, pushed from the backend
  * `WarmClientRegistry` over a dedicated warm-only SSE channel (AC-02). It mirrors
  * the server `WarmStatus` union one-to-one:
  *  - `cold`    — not in the registry (or the stream is down / reconnecting);
@@ -33,8 +33,8 @@ export interface UseWarmClientStatusOptions {
 }
 
 /**
- * Subscribe to a conversation's real-time warm status for the tiny "session
- * warm" indicator (AC-02).
+ * Subscribe to a conversation process's real-time warm status for the tiny warm
+ * indicator (AC-02).
  *
  * Opens a dedicated warm-only SSE stream (`/processes/:id/stream?warm=1`) that
  * the backend keeps open across conversation completion. The backend sends an

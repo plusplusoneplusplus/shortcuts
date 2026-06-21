@@ -3,7 +3,7 @@
  *
  * Verifies the service reuses a live client process across warm-eligible turns
  * (`keepWarm: true`), parks it on clean completion, tears it down on TTL expiry
- * and on error, keeps exactly one warm client per `(provider, workingDirectory)`
+ * and on error, keeps exactly one warm client per `(provider, warmKey)`
  * key, and stays cold for one-shot turns and caller-supplied clients.
  */
 
@@ -31,12 +31,15 @@ vi.mock('../../src/sdk-client-factory', () => ({
 }));
 
 const WD = '/test/project';
+const PROCESS_A = 'process-a';
+const PROCESS_B = 'process-b';
 
 /** A non-streaming send that resolves quickly via sendAndWait. */
 function warmSend(service: CopilotSDKService, overrides?: Record<string, unknown>) {
     return service.sendMessage({
         prompt: 'hello',
         workingDirectory: WD,
+        warmKey: PROCESS_A,
         timeoutMs: 10000, // non-streaming path (<= 120000)
         loadDefaultMcpConfig: false,
         keepWarm: true,
@@ -94,6 +97,16 @@ describe('CopilotSDKService — warm-client reuse (AC-01)', () => {
         await warmSend(service);
 
         expect((service as any).warmRegistry.size()).toBe(1);
+    });
+
+    it('keeps separate warm clients for different process warm keys in the same cwd', async () => {
+        wireMock();
+
+        await warmSend(service, { warmKey: PROCESS_A });
+        await warmSend(service, { warmKey: PROCESS_B });
+
+        expect(createSdkClientMock).toHaveBeenCalledTimes(2);
+        expect((service as any).warmRegistry.size()).toBe(2);
     });
 
     it('logs a per-turn cold-miss then warm-hit line', async () => {
@@ -170,6 +183,7 @@ describe('CopilotSDKService — cold paths leave no warm entry (AC-01)', () => {
     afterEach(() => {
         service.dispose();
         resetCopilotSDKService();
+        resetSDKLogger();
     });
 
     it('does not warm when keepWarm is unset (one-shot turns stay cold)', async () => {
@@ -202,6 +216,35 @@ describe('CopilotSDKService — cold paths leave no warm entry (AC-01)', () => {
         expect(createSdkClientMock).not.toHaveBeenCalled();
         expect(externalClient.stop).not.toHaveBeenCalled();
         expect((service as any).warmRegistry.size()).toBe(0);
+    });
+
+    it('runs cold and logs when keepWarm is true without a warmKey', async () => {
+        const mod = createMockSDKModule(() => createMockSession());
+        createSdkClientMock.mockImplementation((opts: any) => new mod.MockCopilotClient(opts));
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+        const warnSpy = vi.fn();
+        const spyLogger: any = {
+            debug: vi.fn(),
+            info: vi.fn(),
+            warn: warnSpy,
+            error: vi.fn(),
+            fatal: vi.fn(),
+            trace: vi.fn(),
+            level: 'debug',
+            child: () => spyLogger,
+        };
+        initSDKLogger(spyLogger);
+
+        const result = await warmSend(service, { warmKey: undefined });
+
+        expect(result.success).toBe(true);
+        expect(createSdkClientMock).toHaveBeenCalledTimes(1);
+        expect(mod.mockClient.stop).toHaveBeenCalledTimes(1);
+        expect((service as any).warmRegistry.size()).toBe(0);
+        expect(warnSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ provider: 'copilot', workingDirectory: WD }),
+            expect.stringContaining('without warmKey'),
+        );
     });
 });
 

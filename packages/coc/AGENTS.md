@@ -111,6 +111,10 @@ all have their own `references/*.md`.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
+- **Warm-client prewarming/status** is conversation-process scoped. Chat and
+  follow-up send paths pass `warmKey: processId` whenever `keepWarm: true`;
+  `/api/processes/:id/prewarm` and warm-only SSE status use that same process id.
+  `workingDirectory` remains provider execution context only, not the warm key.
 - **Implement-plan target routing** (`ImplementPlanCard` + `implementTargets.ts`)
   keeps local runs path-based and remote runs content-embedded: a **local**
   target enqueues `Read and implement the plan file at <path>` + `context.files`

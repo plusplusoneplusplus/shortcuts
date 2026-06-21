@@ -42,16 +42,16 @@ function makeHandle(): WarmClientHandle & { stop: ReturnType<typeof vi.fn> } {
 }
 
 const TTL = 5000;
-const KEY = makeWarmKey('copilot', '/repo');
+const KEY = makeWarmKey('copilot', 'process-a');
 
 describe('makeWarmKey', () => {
-    it('namespaces by provider and working directory', () => {
-        expect(makeWarmKey('copilot', '/a')).not.toBe(makeWarmKey('codex', '/a'));
-        expect(makeWarmKey('copilot', '/a')).not.toBe(makeWarmKey('copilot', '/b'));
-        expect(makeWarmKey('copilot', '/a')).toBe(makeWarmKey('copilot', '/a'));
+    it('namespaces by provider and warm scope key', () => {
+        expect(makeWarmKey('copilot', 'process-a')).not.toBe(makeWarmKey('codex', 'process-a'));
+        expect(makeWarmKey('copilot', 'process-a')).not.toBe(makeWarmKey('copilot', 'process-b'));
+        expect(makeWarmKey('copilot', 'process-a')).toBe(makeWarmKey('copilot', 'process-a'));
     });
 
-    it('treats a missing working directory as the empty string', () => {
+    it('treats a missing warm scope key as the empty string', () => {
         expect(makeWarmKey('copilot')).toBe(makeWarmKey('copilot', ''));
     });
 });

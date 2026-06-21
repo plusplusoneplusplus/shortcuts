@@ -42,7 +42,7 @@ interface WarmRunLogger {
 export interface WarmRunParams<T> {
     /** The registry owning warm clients for this provider. */
     registry: WarmClientRegistry;
-    /** Registry key for this turn — typically `makeWarmKey(provider, workingDirectory)`. */
+    /** Registry key for this turn — typically `makeWarmKey(provider, warmKey)`. */
     key: string;
     /** Creates and starts a warm client handle on a cold miss. */
     factory: WarmClientFactory;

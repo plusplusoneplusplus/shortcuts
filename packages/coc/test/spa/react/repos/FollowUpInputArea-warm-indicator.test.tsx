@@ -1,7 +1,7 @@
 /**
  * Render test for FollowUpInputArea → WarmIndicatorDot (AC-02).
  *
- * Proves the tiny "session warm" dot next to the send button reflects the
+ * Proves the tiny conversation-warm dot next to the send button reflects the
  * SSE-pushed warm status from useWarmClientStatus: invisible spacer while cold
  * (incl. permanently-cold providers like Claude), amber-pulse while warming,
  * green while warm/active. It exposes an accessible label and never displaces
@@ -149,6 +149,7 @@ describe('FollowUpInputArea — warm indicator dot (AC-02)', () => {
         // Backend pushes warming → amber-pulse.
         act(() => { MockEventSource.last!.emitWarm('warming'); });
         expect(getByTestId(DOT).getAttribute('data-status')).toBe('warming');
+        expect(getByTestId(DOT).getAttribute('aria-label')).toBe('Warming this conversation...');
 
         // Backend pushes warm → green.
         act(() => { MockEventSource.last!.emitWarm('warm'); });
@@ -163,7 +164,7 @@ describe('FollowUpInputArea — warm indicator dot (AC-02)', () => {
         const dot = getByTestId(DOT);
         expect(dot.getAttribute('data-status')).toBe('active');
         // Active reuses the same "ready" green + label as warm.
-        expect(dot.getAttribute('aria-label')).toMatch(/warm/i);
+        expect(dot.getAttribute('aria-label')).toBe('Conversation warm - next reply starts fast');
     });
 
     it('exposes an accessible label / tooltip for warm', () => {
@@ -173,7 +174,7 @@ describe('FollowUpInputArea — warm indicator dot (AC-02)', () => {
 
         const dot = getByTestId(DOT);
         expect(dot.getAttribute('role')).toBe('img');
-        expect(dot.getAttribute('aria-label')).toMatch(/warm/i);
+        expect(dot.getAttribute('aria-label')).toBe('Conversation warm - next reply starts fast');
         expect(dot.getAttribute('title')).toBe(dot.getAttribute('aria-label'));
     });
 
@@ -190,7 +191,7 @@ describe('FollowUpInputArea — warm indicator dot (AC-02)', () => {
         const warmDot = getByTestId(DOT);
         expect(warmDot.className).toContain('pointer-events-auto');
         expect(warmDot.className).not.toContain('pointer-events-none');
-        expect(warmDot.getAttribute('title')).toMatch(/warm/i);
+        expect(warmDot.getAttribute('title')).toBe('Conversation warm - next reply starts fast');
     });
 
     it('stays an invisible spacer for providers that never warm (Claude → no push)', () => {
