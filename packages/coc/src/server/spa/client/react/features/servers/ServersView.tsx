@@ -512,11 +512,15 @@ function DetailPanel({
         <div className="overflow-y-auto bg-white dark:bg-[#1e1e1e] h-full">
             <div className="p-6 max-w-3xl">
                 {/* Head */}
-                <div className="flex items-start justify-between gap-4 pb-5 border-b border-[#ebebeb] dark:border-[#333334] mb-5 flex-wrap">
-                    <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2.5 mb-1.5">
+                <div data-testid="server-detail-head" className="flex items-start justify-between gap-4 pb-5 border-b border-[#ebebeb] dark:border-[#333334] mb-5 flex-wrap">
+                    <div className="min-w-0 flex-[1_1_240px]">
+                        <div className="flex items-center gap-2.5 mb-1.5 min-w-0">
                             <SrvStatusDot status={status} />
-                            <h2 className="text-[22px] font-semibold tracking-tight text-[#1e1e1e] dark:text-[#e8e8e8]">
+                            <h2
+                                data-testid="server-detail-title"
+                                title={server.label}
+                                className="min-w-0 truncate text-[22px] font-semibold tracking-tight text-[#1e1e1e] dark:text-[#e8e8e8]"
+                            >
                                 {server.label}
                             </h2>
                             <KindBadge kind={kind} />
@@ -533,7 +537,7 @@ function DetailPanel({
                             )}
                         </div>
                     </div>
-                    <div className="flex items-center gap-1.5 flex-wrap flex-shrink-0">
+                    <div data-testid="server-detail-actions" className="flex items-center gap-1.5 flex-wrap flex-shrink-0">
                         {endpoint && (
                             <a
                                 href={endpoint}

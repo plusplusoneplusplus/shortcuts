@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react';
 import { ServersView } from '../../../../../src/server/spa/client/react/features/servers/ServersView';
 import type { RemoteServer } from '../../../../../src/server/spa/client/react/utils/serverRegistry';
 import { useRemoteServerHealth } from '../../../../../src/server/spa/client/react/hooks/useRemoteServerHealth';
@@ -666,5 +666,43 @@ describe('ServersView', () => {
         render(<ServersView />);
         await waitFor(() => expect(screen.getByTestId('servers-view-load-error')).toBeTruthy());
         expect(screen.getByTestId('servers-view-load-error').textContent).toContain('network error');
+    });
+});
+
+describe('ServersView — detail header layout', () => {
+    // Opens the SSH server's detail panel in the default split view by clicking its row.
+    async function openSshDetail() {
+        registryMocks.listRemoteServers.mockResolvedValue([SSH_REMOTE]);
+        render(<ServersView />);
+        const row = await screen.findByText('ubuntu-arm');
+        fireEvent.click(row);
+        return screen.findByTestId('server-detail-head');
+    }
+
+    it('keeps the title column from collapsing so the action toolbar wraps below instead of squeezing the name', async () => {
+        const head = await openSshDetail();
+        // The header is a wrapping flex row.
+        expect(head.className).toContain('flex-wrap');
+        // The title column has a real flex-basis (not `flex-1`/basis-0), so when the
+        // panel is narrow the toolbar wraps to its own line rather than collapsing the
+        // title column to ~0 width.
+        const titleCol = head.firstElementChild as HTMLElement;
+        expect(titleCol.className).toContain('flex-[1_1_240px]');
+        // The toolbar itself can wrap its buttons.
+        expect(screen.getByTestId('server-detail-actions').className).toContain('flex-wrap');
+    });
+
+    it('truncates a long server name instead of wrapping mid-word, keeping the kind badge visible', async () => {
+        const head = await openSshDetail();
+        const title = within(head).getByTestId('server-detail-title');
+        expect(title.textContent).toBe('ubuntu-arm');
+        // Truncation + min-w-0 prevents mid-word wrap and stops the name from
+        // overflowing under the action buttons.
+        expect(title.className).toContain('truncate');
+        expect(title.className).toContain('min-w-0');
+        // Full name stays available on hover.
+        expect(title.getAttribute('title')).toBe('ubuntu-arm');
+        // The SSH kind badge sits inside the header next to the title (not hidden).
+        expect(within(head).getByText('SSH')).toBeTruthy();
     });
 });
