@@ -222,6 +222,10 @@ closes sibling right-side panels, and mounts `SourceCanvasPanel` as the right
 column on desktop or a bottom sheet on mobile. Flag-off, user-message, and
 non-chat file references continue to route to the floating
 `MarkdownReviewDialog`.
+The source canvas header shows project-relative paths for files inside the
+current workspace root while retaining the full absolute path in the hover
+tooltip; files outside the workspace root continue to display their absolute
+path.
 
 ## Key Contexts
 

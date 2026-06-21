@@ -17,6 +17,7 @@ import { Spinner } from '../../../ui/Spinner';
 import { SourceCanvasBody } from './SourceCanvasBody';
 import { SourceCanvasNoteEditor } from './SourceCanvasNoteEditor';
 import { SourceCanvasNotePopOutButton } from './SourceCanvasNotePopOutButton';
+import { getSourceCanvasDisplayPath } from './resolve';
 import type { SourceCanvasFileRef } from './types';
 import type { SourceCanvasContentState } from './useSourceCanvasContent';
 
@@ -54,15 +55,23 @@ export interface SourceCanvasPanelProps {
     fileRef: SourceCanvasFileRef;
     /** Resolved workspace id, used for reveal-in-explorer. */
     wsId?: string | null;
+    /** Current workspace root, used to show project-relative paths in the header. */
+    workspaceRootPath?: string | null;
     /** Loaded content + load/error state (AC-06). Loading when omitted. */
     content?: SourceCanvasContentState;
     /** Close the canvas (X button). */
     onClose: () => void;
 }
 
-export function SourceCanvasPanel({ fileRef, wsId, content, onClose }: SourceCanvasPanelProps) {
+export function SourceCanvasPanel({
+    fileRef,
+    wsId,
+    workspaceRootPath,
+    content,
+    onClose,
+}: SourceCanvasPanelProps) {
     const { fullPath, displayPath } = fileRef;
-    const path = displayPath || fullPath;
+    const path = displayPath || getSourceCanvasDisplayPath(fullPath, workspaceRootPath);
     const fileName = basename(path);
     const [copied, setCopied] = useState(false);
 
@@ -97,7 +106,7 @@ export function SourceCanvasPanel({ fileRef, wsId, content, onClose }: SourceCan
                     </div>
                     <div
                         className="text-xs text-[#848484] truncate mt-0.5"
-                        title={path}
+                        title={fullPath}
                         data-testid="source-canvas-path"
                     >
                         {path}

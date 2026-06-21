@@ -22,6 +22,7 @@ export type {
     SourceCanvasContentStatus,
 } from './useSourceCanvasContent';
 export {
+    getSourceCanvasDisplayPath,
     resolveSourceCanvasTarget,
     isSourceCanvasResolveError,
 } from './resolve';

@@ -1113,6 +1113,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         <SourceCanvasDock
             fileRef={sourceCanvasFileRef}
             wsId={sourceCanvasWsId}
+            workspaceRootPath={workspaceRootPath}
             content={sourceCanvasContent}
             isMobile={isMobile}
             onClose={sourceCanvas.close}

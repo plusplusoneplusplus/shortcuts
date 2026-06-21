@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+    getSourceCanvasDisplayPath,
     resolveSourceCanvasTarget,
     isSourceCanvasResolveError,
 } from '../../../src/server/spa/client/react/features/chat/source-canvas/resolve';
@@ -183,5 +184,48 @@ describe('resolveSourceCanvasTarget', () => {
             wsId: 'ws-remote',
             path: '/home/remote/.coc/repos/ws-remote/notes/r.md',
         });
+    });
+});
+
+describe('getSourceCanvasDisplayPath', () => {
+    it('returns a path relative to the workspace root when the file is inside it', () => {
+        expect(getSourceCanvasDisplayPath(
+            '/home/u/proj/packages/coc/src/foo.ts',
+            '/home/u/proj',
+        )).toBe('packages/coc/src/foo.ts');
+    });
+
+    it('keeps the absolute path when the file is outside the workspace root', () => {
+        expect(getSourceCanvasDisplayPath(
+            '/home/u/other/src/foo.ts',
+            '/home/u/proj',
+        )).toBe('/home/u/other/src/foo.ts');
+    });
+
+    it('keeps the absolute path when no workspace root is available', () => {
+        expect(getSourceCanvasDisplayPath('/home/u/proj/src/foo.ts', '')).toBe(
+            '/home/u/proj/src/foo.ts',
+        );
+        expect(getSourceCanvasDisplayPath('/home/u/proj/src/foo.ts', null)).toBe(
+            '/home/u/proj/src/foo.ts',
+        );
+    });
+
+    it('handles Windows separators and returns a forward-slash relative path', () => {
+        expect(getSourceCanvasDisplayPath(
+            'C:\\work\\proj\\src\\foo.ts',
+            'C:/work/proj',
+        )).toBe('src/foo.ts');
+    });
+
+    it('handles trailing root separators without matching sibling paths', () => {
+        expect(getSourceCanvasDisplayPath(
+            '/home/u/proj/src/foo.ts',
+            '/home/u/proj/',
+        )).toBe('src/foo.ts');
+        expect(getSourceCanvasDisplayPath(
+            '/home/u/project/src/foo.ts',
+            '/home/u/proj/',
+        )).toBe('/home/u/project/src/foo.ts');
     });
 });
