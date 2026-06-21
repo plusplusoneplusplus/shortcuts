@@ -300,16 +300,6 @@ export function formatRelativeTime(iso: string | null | undefined): string {
 }
 
 /**
- * Deterministic queue review-time estimate from real diff size:
- * max(1, round(changedLines / 25 + changedFiles * 0.5)).
- */
-export function estimateReviewMinutes(diffStats: PullRequestDiffStats | null | undefined): number | null {
-    if (!diffStats) return null;
-    const changedLines = diffStats.additions + diffStats.deletions;
-    return Math.max(1, Math.round(changedLines / 25 + diffStats.changedFiles * 0.5));
-}
-
-/**
  * Deterministic queue risk heuristic from real PR diff stats.
  * Risk is based on changed lines and may be bumped once by real blocking signals.
  */

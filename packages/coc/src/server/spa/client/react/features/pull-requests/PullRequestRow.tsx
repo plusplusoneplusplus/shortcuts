@@ -1,9 +1,9 @@
 /**
  * PullRequestRow — single PR queue row in the redesigned review command
- * queue. Shows a state dot, the PR title, a `#number / files / minutes`
- * meta line, and a deterministic risk pill.
+ * queue. Shows a state dot, the PR title, a `#number / files` meta line,
+ * and a deterministic risk pill.
  *
- * Real provider/git diff stats drive file count, review minutes, and risk.
+ * Real provider/git diff stats drive file count and risk.
  */
 
 import { cn } from '../../ui';
@@ -13,7 +13,7 @@ import {
     queueRiskClass,
 } from './pr-derived-data';
 import type { QueueDotState } from './pr-derived-data';
-import { deriveQueueRisk, estimateReviewMinutes, formatTimestamp } from './pr-utils';
+import { deriveQueueRisk, formatTimestamp } from './pr-utils';
 import type { PullRequest, QueueRiskBadge } from './pr-utils';
 import { type PullRequestContextDragPayload, writePointerContextDragData } from '../chat/sessionContextDrag';
 
@@ -99,11 +99,9 @@ export function PullRequestRow({
     const effectiveRisk: QueueRiskBadge = risk ?? deriveQueueRisk(pr.diffStats);
     const effectiveDot: QueueDotState = dotState ?? deriveDotState(pr, effectiveRisk);
     const fileCount = pr.diffStats?.changedFiles;
-    const minutes = estimateReviewMinutes(pr.diffStats);
     const filesLabel = fileCount == null
         ? 'n/a files'
         : `${fileCount} file${fileCount === 1 ? '' : 's'}`;
-    const minutesLabel = minutes == null ? 'n/a min' : `${minutes} min`;
 
     if (compact) {
         return (
@@ -202,7 +200,6 @@ export function PullRequestRow({
                         <span className="pr-number font-mono tabular-nums">#{pr.number}</span>
                     )}
                     <span>{filesLabel}</span>
-                    <span>{minutesLabel}</span>
                     {pr.updatedAt && (
                         <span
                             className="pr-updated-at"
