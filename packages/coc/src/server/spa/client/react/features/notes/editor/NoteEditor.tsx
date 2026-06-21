@@ -22,6 +22,7 @@ import { extractHeadings } from './noteTocUtils';
 import './noteEditor.css';
 
 import { NoteConflictBanner } from './NoteConflictBanner';
+import { computeBestEffortScrollTop } from './noteScrollToLine';
 import { resetEditorHistory } from './editorHistory';
 import { FilePreviewTooltip } from './FilePreviewTooltip';
 import { NoteVersionHistoryPanel } from './NoteVersionHistoryPanel';
@@ -80,6 +81,11 @@ export interface NoteEditorProps {
     isDefaultRoot?: boolean;
     /** Root identifier for multi-root notes support. When set, scopes content/image API calls. */
     root?: string;
+    /** Best-effort: 1-based source line to scroll near when the note opens. When
+     *  set, the editor proportionally scrolls toward this line once content has
+     *  loaded; it falls back to the top when a precise jump is not feasible.
+     *  No range highlight is applied. */
+    scrollToLine?: number | null;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict';
@@ -181,6 +187,7 @@ export function NoteEditor({
     onAddNoteReference,
     isDefaultRoot = true,
     root,
+    scrollToLine,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
@@ -1138,6 +1145,39 @@ export function NoteEditor({
     }, [dirty]);
 
     const isEmpty = notePath === null;
+
+    // ── Best-effort scroll to a referenced source line (AC-04) ──────────────
+    //
+    // Runs once content has loaded (loading flips false) for the current note.
+    // The rich editor has no exact line→position map, so we scroll the editor
+    // container proportionally; when nothing is scrollable (e.g. jsdom, or a
+    // short note) it simply stays at the top. No range is highlighted.
+    useEffect(() => {
+        if (!scrollToLine || scrollToLine <= 1) return;
+        if (isEmpty || loading || loadError) return;
+        let raf = 0;
+        const run = () => {
+            const container = editorScrollContainerRef.current;
+            if (!container) return;
+            const totalLines = Math.max(1, rawMarkdownRef.current.split('\n').length);
+            const top = computeBestEffortScrollTop({
+                line: scrollToLine,
+                totalLines,
+                scrollHeight: container.scrollHeight,
+                clientHeight: container.clientHeight,
+            });
+            if (top > 0) container.scrollTop = top;
+        };
+        if (typeof requestAnimationFrame === 'function') {
+            raf = requestAnimationFrame(run);
+        } else {
+            run();
+        }
+        return () => {
+            if (raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [notePath, scrollToLine, loading, loadError]);
 
     // ── Render ────────────────────────────────────────────────────────────────
     //

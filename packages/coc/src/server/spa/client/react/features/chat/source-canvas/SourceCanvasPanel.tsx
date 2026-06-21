@@ -1,18 +1,22 @@
 /**
- * SourceCanvasPanel — docked, read-only viewer chrome for a single source file.
+ * SourceCanvasPanel — docked viewer chrome for a single source file, with two
+ * body modes in one slot:
+ *  - `kind: 'code'` (default) → read-only syntax-highlighted / rendered-markdown
+ *    viewer (`SourceCanvasBody`) over content loaded by `useSourceCanvasContent`.
+ *  - `kind: 'note'` (AC-02) → the editable `SourceCanvasNoteEditor` (full
+ *    `NoteEditor`, inline edit + auto-save), which loads/saves its own content.
  *
  * Renders the panel header (file name + full path, copy-path, reveal-in-explorer,
- * close) and a body region. The body is a placeholder here; later slices fill it
- * with markdown/syntax-highlighted rendering (AC-04), line jump + highlight
- * (AC-05), and loading/error states (AC-06).
- *
- * Layout (docked column vs mobile BottomSheet) and resizing are owned by the
- * host (`ChatDetail`); this component is the inner chrome only.
+ * close) and the body region. Layout (docked column vs mobile BottomSheet) and
+ * resizing are owned by the host (`ChatDetail`); this component is the inner
+ * chrome only.
  */
 import { useCallback, useState } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { Spinner } from '../../../ui/Spinner';
 import { SourceCanvasBody } from './SourceCanvasBody';
+import { SourceCanvasNoteEditor } from './SourceCanvasNoteEditor';
+import { SourceCanvasNotePopOutButton } from './SourceCanvasNotePopOutButton';
 import type { SourceCanvasFileRef } from './types';
 import type { SourceCanvasContentState } from './useSourceCanvasContent';
 
@@ -121,6 +125,13 @@ export function SourceCanvasPanel({ fileRef, wsId, content, onClose }: SourceCan
                     >
                         <RevealInExplorerIcon />
                     </button>
+                    {fileRef.kind === 'note' && (
+                        <SourceCanvasNotePopOutButton
+                            fileRef={fileRef}
+                            onClose={onClose}
+                            className={headerBtnClass}
+                        />
+                    )}
                     <button
                         type="button"
                         data-testid="source-canvas-close-btn"
@@ -132,40 +143,51 @@ export function SourceCanvasPanel({ fileRef, wsId, content, onClose }: SourceCan
                     </button>
                 </div>
             </div>
-            <div className="flex-1 min-h-0 overflow-auto" data-testid="source-canvas-body">
-                {/* AC-06 loading / error states; AC-04 success rendering
-                    (formatted markdown vs syntax-highlighted source). */}
-                {(!content || content.status === 'loading') && (
-                    <div
-                        className="flex items-center gap-2 p-4 text-xs text-[#848484]"
-                        data-testid="source-canvas-loading"
-                    >
-                        <Spinner size="sm" /> Loading {fileName}…
-                    </div>
-                )}
-                {content && content.status === 'error' && (
-                    <div className="p-4 text-xs" data-testid="source-canvas-error">
+            {fileRef.kind === 'note' ? (
+                /* Editable markdown mode (AC-02): the NoteEditor loads + saves
+                   its own content, so the read-only fetch/states are skipped. */
+                <div
+                    className="flex-1 min-h-0 overflow-hidden flex flex-col"
+                    data-testid="source-canvas-body"
+                >
+                    <SourceCanvasNoteEditor fileRef={fileRef} />
+                </div>
+            ) : (
+                <div className="flex-1 min-h-0 overflow-auto" data-testid="source-canvas-body">
+                    {/* Read-only code mode: AC-06 loading / error states; AC-04
+                        success rendering (markdown vs syntax-highlighted source). */}
+                    {(!content || content.status === 'loading') && (
                         <div
-                            className="font-medium text-[#cc4444] dark:text-[#f48771]"
-                            data-testid="source-canvas-error-msg"
+                            className="flex items-center gap-2 p-4 text-xs text-[#848484]"
+                            data-testid="source-canvas-loading"
                         >
-                            {`Couldn't load ${content.resolvedPath || path}`}
+                            <Spinner size="sm" /> Loading {fileName}…
                         </div>
-                        {content.error && (
-                            <div className="mt-1 text-[#848484]">{content.error}</div>
-                        )}
-                    </div>
-                )}
-                {content && content.status === 'success' && (
-                    <SourceCanvasBody
-                        fileName={fileName}
-                        content={content.content}
-                        language={content.language}
-                        line={fileRef.line}
-                        endLine={fileRef.endLine}
-                    />
-                )}
-            </div>
+                    )}
+                    {content && content.status === 'error' && (
+                        <div className="p-4 text-xs" data-testid="source-canvas-error">
+                            <div
+                                className="font-medium text-[#cc4444] dark:text-[#f48771]"
+                                data-testid="source-canvas-error-msg"
+                            >
+                                {`Couldn't load ${content.resolvedPath || path}`}
+                            </div>
+                            {content.error && (
+                                <div className="mt-1 text-[#848484]">{content.error}</div>
+                            )}
+                        </div>
+                    )}
+                    {content && content.status === 'success' && (
+                        <SourceCanvasBody
+                            fileName={fileName}
+                            content={content.content}
+                            language={content.language}
+                            line={fileRef.line}
+                            endLine={fileRef.endLine}
+                        />
+                    )}
+                </div>
+            )}
         </div>
     );
 }

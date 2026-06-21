@@ -718,6 +718,239 @@ describe('source-canvas routing for chat AI-response file-path links (AC-03)', (
     });
 });
 
+describe('editable-note canvas routing for markdown chat links (AC-01)', () => {
+    const PREVIEW_MODULE = '../../../src/server/spa/client/react/shared/file-path/file-path-preview';
+    const FLAGS_MODULE = '../../../src/server/spa/client/react/featureFlags';
+
+    function freshBody(): void {
+        document.body = document.createElement('body');
+    }
+
+    beforeEach(() => {
+        freshBody();
+        vi.resetModules();
+        vi.doUnmock(FLAGS_MODULE);
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ workspaces: [] }),
+        }) as any);
+    });
+
+    afterEach(() => {
+        vi.doUnmock(FLAGS_MODULE);
+        vi.resetModules();
+        vi.restoreAllMocks();
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+        freshBody();
+    });
+
+    function mockFlagOff(): void {
+        vi.doMock(FLAGS_MODULE, () => ({
+            SHOW_WELCOME_TUTORIAL: true,
+            SHOW_FOCUSED_DIFF: true,
+            SHOW_EXCALIDRAW_DIAGRAMS: true,
+            SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS: false,
+            RALPH_MULTI_LOOP: false,
+        }));
+    }
+
+    function clickLink(selector = '.file-path-link'): ReturnType<typeof vi.spyOn> {
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+        const link = document.querySelector(selector) as HTMLElement;
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        return dispatchSpy as any;
+    }
+
+    function eventCalls(dispatchSpy: ReturnType<typeof vi.spyOn>, eventType: string): any[] {
+        return (dispatchSpy.mock.calls as any[]).filter(
+            ([e]) => (e as Event)?.type === eventType
+        );
+    }
+
+    // ── Flag ON ─────────────────────────────────────────────────────────────
+
+    it('markdown + assistant message → source canvas as an editable note (kind: note)', async () => {
+        const fullPath = '/repo/docs/plan.md';
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-1">
+                <span class="file-path-link" data-full-path="${fullPath}" data-line="40">plan.md:40</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink();
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        expect(call[0].detail).toEqual(expect.objectContaining({
+            filePath: fullPath,
+            wsId: 'ws-1',
+            line: 40,
+            kind: 'note',
+        }));
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
+    it('markdown + USER message → source canvas as an editable note (widened beyond assistant)', async () => {
+        const fullPath = '/repo/docs/note.markdown';
+        document.body.innerHTML = `
+            <div class="chat-message user" data-ws-id="ws-1">
+                <span class="file-path-link" data-full-path="${fullPath}">note.markdown</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink();
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        expect(call[0].detail).toEqual(expect.objectContaining({
+            filePath: fullPath,
+            kind: 'note',
+        }));
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
+    it('markdown md-link anchor in a chat message → editable note from data-href', async () => {
+        const fullPath = '/repo/docs/spec.mdx';
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-1" data-source-file="/repo/docs/current.md">
+                <span class="md-link" data-href="${fullPath}:12">
+                    <span class="md-link-text">[open spec]</span>
+                </span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.md-link-text');
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        expect(call[0].detail).toEqual(expect.objectContaining({
+            filePath: fullPath,
+            wsId: 'ws-1',
+            line: 12,
+            sourceFilePath: '/repo/docs/current.md',
+            kind: 'note',
+        }));
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
+    it('markdown + non-chat surface (tasks tree) → keeps floating dialog', async () => {
+        const fullPath = '/repo/tasks/plan.md';
+        document.body.innerHTML = `
+            <div class="task-tree">
+                <span class="file-path-link" data-full-path="${fullPath}">plan.md</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink();
+
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'coc-open-markdown-review',
+                detail: { filePath: fullPath },
+            })
+        );
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+    });
+
+    it('code + assistant message → read-only source canvas (no note kind)', async () => {
+        const fullPath = '/repo/src/foo.ts';
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-1">
+                <span class="file-path-link" data-full-path="${fullPath}" data-line="42">foo.ts:42</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink();
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        expect(call[0].detail.filePath).toBe(fullPath);
+        expect(call[0].detail.kind).toBeUndefined();
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
+    it('code + USER message → keeps floating dialog (code stays assistant-only)', async () => {
+        const fullPath = '/repo/src/foo.ts';
+        document.body.innerHTML = `
+            <div class="chat-message user">
+                <span class="file-path-link" data-full-path="${fullPath}">foo.ts</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink();
+
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'coc-open-markdown-review' })
+        );
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+    });
+
+    it('code + non-chat surface → keeps floating dialog', async () => {
+        const fullPath = '/repo/src/foo.ts';
+        document.body.innerHTML = `
+            <div class="task-tree">
+                <span class="file-path-link" data-full-path="${fullPath}">foo.ts</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink();
+
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'coc-open-markdown-review' })
+        );
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+    });
+
+    // ── Flag OFF → every chat link falls back to the floating dialog ─────────
+
+    it('flag OFF + markdown + assistant message → floating dialog', async () => {
+        mockFlagOff();
+        const fullPath = '/repo/docs/plan.md';
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-1">
+                <span class="file-path-link" data-full-path="${fullPath}">plan.md</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink();
+
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'coc-open-markdown-review',
+                detail: { filePath: fullPath, wsId: 'ws-1' },
+            })
+        );
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+    });
+
+    it('flag OFF + markdown + USER message → floating dialog', async () => {
+        mockFlagOff();
+        const fullPath = '/repo/docs/plan.md';
+        document.body.innerHTML = `
+            <div class="chat-message user">
+                <span class="file-path-link" data-full-path="${fullPath}">plan.md</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink();
+
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'coc-open-markdown-review' })
+        );
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+    });
+});
+
 function mockWorkspaceAndDirectoryPreview(fetchMock: ReturnType<typeof vi.fn>, overrides?: {
     dirName?: string;
     entries?: { name: string; isDirectory: boolean }[];

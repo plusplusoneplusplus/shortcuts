@@ -236,7 +236,21 @@ function readSourceFilePath(el: HTMLElement): string | undefined {
     return el.closest('[data-source-file]')?.getAttribute('data-source-file') || undefined;
 }
 
-function dispatchOpenSourceCanvas(ref: FileReference): void {
+const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
+
+/** A `.md`/`.markdown`/`.mdx` path (ignoring any `?query`/`#hash` suffix). */
+function isMarkdownPath(path: string): boolean {
+    const clean = path.split(/[?#]/)[0];
+    const ext = clean.split('.').pop()?.toLowerCase() || '';
+    return MARKDOWN_EXTENSIONS.has(ext);
+}
+
+/**
+ * Open the docked source canvas. `kind` discriminates the body mode the host
+ * renders: `'note'` → the editable markdown NoteEditor, otherwise → the
+ * read-only syntax-highlighted source viewer.
+ */
+function dispatchOpenSourceCanvas(ref: FileReference, kind?: 'note'): void {
     window.dispatchEvent(new CustomEvent('coc-open-source-canvas', {
         detail: {
             filePath: ref.filePath,
@@ -244,6 +258,7 @@ function dispatchOpenSourceCanvas(ref: FileReference): void {
             line: ref.line,
             endLine: ref.endLine,
             sourceFilePath: ref.sourceFilePath,
+            ...(kind ? { kind } : {}),
         },
     }));
 }
@@ -264,20 +279,29 @@ function dispatchOpenMarkdownReview(ref: FileReference): void {
 /**
  * Open a clicked local file reference.
  *
- * Inside a chat AI response (`.chat-message.assistant`) — and when the
- * source-canvas feature flag is ON — this routes to the docked, read-only
- * source-file canvas via `coc-open-source-canvas`, carrying any `:line` /
- * `:start-end` info separately from the bare path. Everywhere else (flag OFF,
- * or non-chat surfaces like the tasks tree / notes) it falls back to the
- * floating `MarkdownReviewDialog`.
+ * When the source-canvas feature flag is ON, chat-message links route to the
+ * docked canvas via `coc-open-source-canvas` (carrying any `:line`/`:start-end`
+ * info separately from the bare path):
+ *  - **markdown** (`.md`/`.markdown`/`.mdx`) opens the editable NoteEditor from
+ *    ANY `.chat-message` (user or assistant), tagged `kind: 'note'`;
+ *  - **code** opens the read-only source viewer from a `.chat-message.assistant`
+ *    only (user-message code keeps the floating dialog).
+ *
+ * Everywhere else (flag OFF, or non-chat surfaces like the tasks tree / notes)
+ * it falls back to the floating `MarkdownReviewDialog`.
  */
 function openFileReference(sourceEl: HTMLElement, ref: FileReference): void {
     hideTooltip();
 
-    const inChatResponse = !!sourceEl.closest('.chat-message.assistant');
-    if (SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS && inChatResponse) {
-        dispatchOpenSourceCanvas(ref);
-        return;
+    if (SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS) {
+        if (isMarkdownPath(ref.filePath) && sourceEl.closest('.chat-message')) {
+            dispatchOpenSourceCanvas(ref, 'note');
+            return;
+        }
+        if (!isMarkdownPath(ref.filePath) && sourceEl.closest('.chat-message.assistant')) {
+            dispatchOpenSourceCanvas(ref);
+            return;
+        }
     }
 
     dispatchOpenMarkdownReview(ref);
