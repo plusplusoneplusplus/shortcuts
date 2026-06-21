@@ -19,7 +19,8 @@ import { ComposerMetaStrip } from './ComposerMetaStrip';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
-import { usePrewarmClient } from './hooks/usePrewarmClient';
+import { useWarmClientStatus } from './hooks/useWarmClientStatus';
+import { useTypingPrewarmClient } from './hooks/useTypingPrewarmClient';
 import { WarmIndicatorDot } from './WarmIndicatorDot';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
 import { MODE_BORDER_COLORS, MODE_ICONS, MODE_TOOLTIPS, cycleMode } from '../../repos/modeConfig';
@@ -35,7 +36,7 @@ import {
 } from '../../utils/composerKeyboardShortcuts';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import type { ChatAttachment } from '../../types/attachments';
-import { isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { getPrewarmDebounceMs, isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
 import {
     dataTransferHasAnyData,
@@ -275,16 +276,28 @@ export function FollowUpInputArea({
     const canRetrieveConversations = canRetrieveConversationsProp ?? localCanRetrieveConversations;
 
     // Subscribe to the conversation's real-time warm status, pushed from the
-    // backend WarmClientRegistry over the existing SSE channel (AC-02). The
+    // backend WarmClientRegistry over a warm-only SSE channel (AC-02). The
     // returned status feeds the tiny "session warm" indicator next to the send
     // button. The subscription stays open across an active turn (so the dot
     // shows green while a reply is generating) and across completion (so it
     // catches the active → warm transition on a finished conversation); only the
-    // absence of a process gates it. Providers that never warm (e.g. Claude)
-    // never emit, so the dot simply stays invisible.
-    const warmStatus = usePrewarmClient({
+    // absence of a process gates it. The stream is the single source of truth for
+    // the dot — providers that never warm (e.g. Claude) emit only `cold`.
+    const warmStatus = useWarmClientStatus({
         workspaceId: activeWorkspaceId,
         processId: activeProcessId,
+    });
+
+    // Side-effect half: prewarm the backend client while the user types a
+    // follow-up, so a cold completed chat actually warms (and the stream above
+    // can then show the transition). Gated off while the session is unavailable
+    // or a turn is already in flight; the prewarm response never sets the dot.
+    useTypingPrewarmClient({
+        input: followUpInput,
+        workspaceId: activeWorkspaceId,
+        processId: activeProcessId,
+        enabled: !inputDisabled && !sending && !isActiveGeneration,
+        debounceMs: getPrewarmDebounceMs(),
     });
 
     // Reset dismiss state whenever a new set of suggestions arrives.

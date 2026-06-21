@@ -221,3 +221,50 @@ describe('WarmStatusBridge', () => {
         expect(store.emitProcessEvent).not.toHaveBeenCalled();
     });
 });
+
+// ---------------------------------------------------------------------------
+// getCurrentStatus — synchronous snapshot read for the warm-only SSE stream (AC-02)
+// ---------------------------------------------------------------------------
+
+describe('WarmStatusBridge.getCurrentStatus', () => {
+    it('returns the provider status for a supported provider, passing through the cwd', () => {
+        const copilot = { getWarmStatus: vi.fn((_opts: { workingDirectory?: string }) => 'warm' as WarmStatus) };
+        const bridge = new WarmStatusBridge(createRegistry({ copilot }));
+
+        expect(bridge.getCurrentStatus('copilot', '/repo')).toBe('warm');
+        expect(copilot.getWarmStatus).toHaveBeenCalledWith({ workingDirectory: '/repo' });
+    });
+
+    it('reflects each lifecycle status the provider reports', () => {
+        for (const status of ['cold', 'warming', 'warm', 'active'] as const) {
+            const codex = { getWarmStatus: vi.fn(() => status as WarmStatus) };
+            const bridge = new WarmStatusBridge(createRegistry({ codex }));
+            expect(bridge.getCurrentStatus('codex', '/repo')).toBe(status);
+        }
+    });
+
+    it('returns cold when the provider service is missing', () => {
+        const bridge = new WarmStatusBridge(createRegistry({}));
+        expect(bridge.getCurrentStatus('copilot', '/repo')).toBe('cold');
+    });
+
+    it('returns cold when the service lacks getWarmStatus (e.g. Claude)', () => {
+        const claude = { onWarmStatusChange: () => () => { /* warm transitions only */ } };
+        const bridge = new WarmStatusBridge(createRegistry({ claude }));
+        expect(bridge.getCurrentStatus('claude', '/repo')).toBe('cold');
+    });
+
+    it('returns cold when getWarmStatus throws (best-effort isolation)', () => {
+        const copilot = { getWarmStatus: () => { throw new Error('registry boom'); } };
+        const bridge = new WarmStatusBridge(createRegistry({ copilot }));
+        expect(bridge.getCurrentStatus('copilot', '/repo')).toBe('cold');
+    });
+
+    it('returns cold when the registry lookup itself throws', () => {
+        const throwingRegistry: WarmStatusServiceLookup = {
+            get: () => { throw new Error('lookup boom'); },
+        };
+        const bridge = new WarmStatusBridge(throwingRegistry);
+        expect(bridge.getCurrentStatus('copilot', '/repo')).toBe('cold');
+    });
+});

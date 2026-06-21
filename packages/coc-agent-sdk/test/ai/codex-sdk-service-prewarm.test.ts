@@ -174,6 +174,44 @@ describe('CodexSDKService.onWarmStatusChange — bridges registry transitions (A
     });
 });
 
+describe('CodexSDKService.getWarmStatus — current warm snapshot (AC-02)', () => {
+    let svc: CodexSDKService | undefined;
+
+    afterEach(() => {
+        svc?.dispose();
+        svc = undefined;
+        cocToolBridgeServer.closeAll();
+        resetSDKLogger();
+    });
+
+    it('returns cold for a never-warmed conversation', () => {
+        const { ctor } = makeRecordingCtor();
+        svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
+        expect(svc.getWarmStatus({ workingDirectory: WD })).toBe('cold');
+    });
+
+    it('returns warm after a prewarm — same key as prewarm()', async () => {
+        const { ctor } = makeRecordingCtor();
+        svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
+
+        await svc.prewarm({ workingDirectory: WD });
+
+        expect(svc.getWarmStatus({ workingDirectory: WD })).toBe('warm');
+        // A different cwd is a different key → still cold.
+        expect(svc.getWarmStatus({ workingDirectory: '/other' })).toBe('cold');
+    });
+
+    it('returns warm after a warm-eligible send parks the client', async () => {
+        const { ctor } = makeRecordingCtor();
+        svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
+
+        const result = await svc.sendMessage({ prompt: 'hello', workingDirectory: WD, keepWarm: true });
+
+        expect(result.success).toBe(true);
+        expect(svc.getWarmStatus({ workingDirectory: WD })).toBe('warm');
+    });
+});
+
 describe('CodexSDKService.prewarm — TTL=0 disables warming (AC-04/AC-06)', () => {
     let svc: CodexSDKService | undefined;
 
@@ -194,5 +232,7 @@ describe('CodexSDKService.prewarm — TTL=0 disables warming (AC-04/AC-06)', () 
 
         expect(ctor).not.toHaveBeenCalled();
         expect(registry(svc).size()).toBe(0);
+        // The snapshot read also reports cold when warming is disabled.
+        expect(svc.getWarmStatus({ workingDirectory: WD })).toBe('cold');
     });
 });

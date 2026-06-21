@@ -1,16 +1,16 @@
 import { cn } from '../../ui/cn';
-import type { PrewarmStatus } from './hooks/usePrewarmClient';
+import type { WarmClientStatus } from './hooks/useWarmClientStatus';
 
 export interface WarmIndicatorDotProps {
-    /** Optimistic warm status from {@link usePrewarmClient}. */
-    status: PrewarmStatus;
+    /** Stream-derived warm status from {@link useWarmClientStatus}. */
+    status: WarmClientStatus;
     /** Extra classes for positioning within the toolbar. */
     className?: string;
 }
 
 /**
  * Tiny (~6px) "session warm" indicator shown next to the send button (AC-02).
- * It is a cosmetic signal fed solely by {@link usePrewarmClient}'s SSE-pushed
+ * It is a cosmetic signal fed solely by {@link useWarmClientStatus}'s SSE-pushed
  * status, which mirrors the backend `WarmClientRegistry`:
  *  - `cold`            → a transparent spacer that reserves the dot's footprint
  *    so the send button never shifts as warmth comes and goes. Providers that

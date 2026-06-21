@@ -1,9 +1,9 @@
 /**
- * Tests for usePrewarmClient — the SSE subscriber that drives the tiny "session
+ * Tests for useWarmClientStatus — the SSE subscriber that drives the tiny "session
  * warm" indicator (AC-02, AC-03).
  *
  * The hook opens a warm-only SSE stream (`/processes/:id/stream?warm=1`) routed
- * through `cloneApiBase`, maps incoming `warm_status` events to PrewarmStatus,
+ * through `cloneApiBase`, maps incoming `warm_status` events to WarmClientStatus,
  * and holds no client-side timer/debounce/POST. DoD: subscribes when a process
  * is present; maps cold/warming/warm/active; resets to cold on a dropped stream,
  * a process change, disable, and unmount; routes remote clones correctly.
@@ -69,12 +69,12 @@ class MockEventSource {
 }
 
 import {
-    usePrewarmClient,
-    type UsePrewarmClientOptions,
-    type PrewarmStatus,
-} from '../../../src/server/spa/client/react/features/chat/hooks/usePrewarmClient';
+    useWarmClientStatus,
+    type UseWarmClientStatusOptions,
+    type WarmClientStatus,
+} from '../../../src/server/spa/client/react/features/chat/hooks/useWarmClientStatus';
 
-function baseProps(overrides: Partial<UsePrewarmClientOptions> = {}): UsePrewarmClientOptions {
+function baseProps(overrides: Partial<UseWarmClientStatusOptions> = {}): UseWarmClientStatusOptions {
     return {
         workspaceId: 'ws-1',
         processId: 'proc-1',
@@ -95,9 +95,9 @@ afterEach(() => {
     (globalThis as any).EventSource = originalEventSource;
 });
 
-describe('usePrewarmClient — SSE subscription', () => {
+describe('useWarmClientStatus — SSE subscription', () => {
     it('opens the warm-only stream for the workspace-routed process', () => {
-        renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+        renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
             initialProps: baseProps(),
         });
 
@@ -107,7 +107,7 @@ describe('usePrewarmClient — SSE subscription', () => {
     });
 
     it('routes through the workspace-scoped clone base (remote-clone safe)', () => {
-        renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+        renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
             initialProps: baseProps({ workspaceId: 'ws-remote' }),
         });
         expect(cloneApiBaseSpy).toHaveBeenCalledWith('ws-remote');
@@ -115,7 +115,7 @@ describe('usePrewarmClient — SSE subscription', () => {
     });
 
     it('starts cold and maps each warm_status push', () => {
-        const { result } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+        const { result } = renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
             initialProps: baseProps(),
         });
         expect(result.current).toBe('cold');
@@ -134,7 +134,7 @@ describe('usePrewarmClient — SSE subscription', () => {
     });
 
     it('reflects the active → warm transition (the completed-conversation case)', () => {
-        const { result } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+        const { result } = renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
             initialProps: baseProps(),
         });
         act(() => { MockEventSource.last!.emitWarm('active'); });
@@ -145,7 +145,7 @@ describe('usePrewarmClient — SSE subscription', () => {
     });
 
     it('ignores unknown statuses and malformed frames', () => {
-        const { result } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+        const { result } = renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
             initialProps: baseProps(),
         });
         act(() => { MockEventSource.last!.emitWarm('warm'); });
@@ -161,7 +161,7 @@ describe('usePrewarmClient — SSE subscription', () => {
     });
 
     it('drops back to cold when the stream errors (reconnect gap)', () => {
-        const { result } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+        const { result } = renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
             initialProps: baseProps(),
         });
         act(() => { MockEventSource.last!.emitWarm('warm'); });
@@ -172,7 +172,7 @@ describe('usePrewarmClient — SSE subscription', () => {
     });
 
     it('does not open a stream when disabled, and stays cold', () => {
-        const { result } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+        const { result } = renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
             initialProps: baseProps({ enabled: false }),
         });
         expect(MockEventSource.instances).toHaveLength(0);
@@ -180,7 +180,7 @@ describe('usePrewarmClient — SSE subscription', () => {
     });
 
     it('does not open a stream when processId or workspaceId is missing', () => {
-        const { rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+        const { rerender } = renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
             initialProps: baseProps({ processId: null }),
         });
         expect(MockEventSource.instances).toHaveLength(0);
@@ -190,7 +190,7 @@ describe('usePrewarmClient — SSE subscription', () => {
     });
 
     it('reopens the stream and resets to cold when the process changes', () => {
-        const { result, rerender } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+        const { result, rerender } = renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
             initialProps: baseProps(),
         });
         act(() => { MockEventSource.last!.emitWarm('warm'); });
@@ -206,7 +206,7 @@ describe('usePrewarmClient — SSE subscription', () => {
     });
 
     it('closes the stream on unmount', () => {
-        const { unmount } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+        const { unmount } = renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
             initialProps: baseProps(),
         });
         const es = MockEventSource.last!;
@@ -217,7 +217,7 @@ describe('usePrewarmClient — SSE subscription', () => {
 
     it('stays cold and opens nothing when EventSource is unavailable', () => {
         (globalThis as any).EventSource = undefined;
-        const { result } = renderHook((props: UsePrewarmClientOptions) => usePrewarmClient(props), {
+        const { result } = renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
             initialProps: baseProps(),
         });
         expect(result.current).toBe('cold');
@@ -225,9 +225,9 @@ describe('usePrewarmClient — SSE subscription', () => {
     });
 });
 
-describe('usePrewarmClient — PrewarmStatus contract', () => {
+describe('useWarmClientStatus — WarmClientStatus contract', () => {
     it('is the four-state WarmStatus union (no idle/unsupported)', () => {
-        const valid: PrewarmStatus[] = ['cold', 'warming', 'warm', 'active'];
+        const valid: WarmClientStatus[] = ['cold', 'warming', 'warm', 'active'];
         expect(valid).toHaveLength(4);
     });
 });

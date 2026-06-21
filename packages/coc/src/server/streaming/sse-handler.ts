@@ -393,21 +393,31 @@ function streamWarmStatusOnly(
     warmBridge: WarmStatusBridge,
 ): void {
     let cleaned = false;
+    const provider = resolveProviderId(process.metadata?.provider);
+    const workingDirectory = process.workingDirectory;
 
-    const unregisterWarm = warmBridge.register({
-        store,
-        processId,
-        provider: resolveProviderId(process.metadata?.provider),
-        workingDirectory: process.workingDirectory,
-    });
+    const sendWarmStatus = (status: WarmStatus) => {
+        sendEvent(res, 'warm_status', { status } satisfies WarmStatusPayload);
+    };
 
+    // Order matters (closes two gaps):
+    //   1. Subscribe to process output FIRST, so a transition emitted between the
+    //      bridge registration and now cannot slip past an unattached listener.
+    //   2. Register bridge interest, then read the current registry status and
+    //      send it as an initial snapshot. If the client warmed before the
+    //      browser subscribed, this snapshot delivers that state immediately
+    //      instead of waiting for the next transition (AC-02).
+    // A transition racing the snapshot can produce a duplicate frame (e.g. `warm`
+    // twice); the SPA hook assigns status idempotently, so duplicates are benign.
     const unsubscribe = store.onProcessOutput(processId, (event) => {
         if ((event as { type: string }).type !== 'warm-status') { return; }
         const warmStatus = (event as { warmStatus?: WarmStatus }).warmStatus;
         if (warmStatus) {
-            sendEvent(res, 'warm_status', { status: warmStatus } satisfies WarmStatusPayload);
+            sendWarmStatus(warmStatus);
         }
     });
+
+    const unregisterWarm = warmBridge.register({ store, processId, provider, workingDirectory });
 
     const cleanup = () => {
         if (cleaned) { return; }
@@ -417,6 +427,11 @@ function streamWarmStatusOnly(
         unregisterWarm();
         getServerLogger().debug({ processId }, 'SSE warm stream ended');
     };
+
+    // Initial snapshot of the current warm status. `cold` is sent too — it is a
+    // valid, useful state after reconnects, unsupported providers, TTL expiry, or
+    // a server restart, and the SPA hook accepts it.
+    sendWarmStatus(warmBridge.getCurrentStatus(provider, workingDirectory));
 
     // Immediate heartbeat signals the client the stream is ready; periodic
     // heartbeats keep the connection alive and detect stale sockets.

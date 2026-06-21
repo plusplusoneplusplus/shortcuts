@@ -214,6 +214,55 @@ describe('CopilotSDKService.onWarmStatusChange — bridges registry transitions 
 });
 
 // ============================================================================
+// getWarmStatus — synchronous snapshot read (AC-02)
+// ============================================================================
+
+describe('CopilotSDKService.getWarmStatus — current warm snapshot (AC-02)', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        service.dispose();
+        resetCopilotSDKService();
+        resetSDKLogger();
+    });
+
+    function wireMock() {
+        const mod = createMockSDKModule(() => createMockSession());
+        createSdkClientMock.mockImplementation((opts: any) => new mod.MockCopilotClient(opts));
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+        return mod;
+    }
+
+    it('returns cold for a never-warmed conversation', () => {
+        wireMock();
+        expect(service.getWarmStatus({ workingDirectory: WD })).toBe('cold');
+    });
+
+    it('returns warm after a prewarm — same key as prewarm()', async () => {
+        wireMock();
+        await service.prewarm({ workingDirectory: WD });
+        expect(service.getWarmStatus({ workingDirectory: WD })).toBe('warm');
+        // A different cwd is a different key → still cold.
+        expect(service.getWarmStatus({ workingDirectory: '/other' })).toBe('cold');
+    });
+
+    it('returns active while a turn holds the key', async () => {
+        wireMock();
+        const sendP = warmSend(service);
+        expect(service.getWarmStatus({ workingDirectory: WD })).toBe('active');
+        await sendP;
+        // Clean completion parks the client → warm.
+        expect(service.getWarmStatus({ workingDirectory: WD })).toBe('warm');
+    });
+});
+
+// ============================================================================
 // Warming disabled (TTL = 0)
 // ============================================================================
 
@@ -243,5 +292,7 @@ describe('CopilotSDKService.prewarm — TTL=0 disables warming (AC-04/AC-06)', (
 
         expect(createSdkClientMock).not.toHaveBeenCalled();
         expect((service as any).warmRegistry.size()).toBe(0);
+        // The snapshot read also reports cold when warming is disabled.
+        expect(service.getWarmStatus({ workingDirectory: WD })).toBe('cold');
     });
 });

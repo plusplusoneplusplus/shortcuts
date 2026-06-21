@@ -35,7 +35,7 @@ import { RequestRunner } from './request-runner';
 import type { ISDKService, TransformOptions, TransformResult, PrewarmOptions } from './sdk-service-interface';
 import { sdkServiceRegistry, COPILOT_PROVIDER } from './sdk-service-registry';
 import { WarmClientRegistry, makeWarmKey, WarmClientFactory } from './warm-client-registry';
-import type { WarmStateChangeListener } from './warm-client-registry';
+import type { WarmStateChangeListener, WarmStatus } from './warm-client-registry';
 import { WarmStatusBroadcaster } from './warm-status-broadcaster';
 import { runWithWarmClient } from './warm-client-runner';
 import { resolveWarmClientTtlMs } from './warm-client-config';
@@ -284,6 +284,16 @@ export class CopilotSDKService implements ISDKService {
         if (!availability.available) return;
         const key = makeWarmKey(COPILOT_PROVIDER, options.workingDirectory);
         await this.warmRegistry.prewarm(key, this.buildWarmFactory(options.workingDirectory));
+    }
+
+    /**
+     * Current warm {@link WarmStatus} for a conversation's `(copilot, cwd)` key —
+     * the synchronous snapshot read used by the CoC SSE bridge to emit an initial
+     * warm-status frame. Uses the same key as {@link prewarm}, so a freshly
+     * subscribed stream sees the live state (`warm`/`active`/`warming`/`cold`).
+     */
+    public getWarmStatus(options: PrewarmOptions): WarmStatus {
+        return this.warmRegistry.getStatus(makeWarmKey(COPILOT_PROVIDER, options.workingDirectory));
     }
 
     /**

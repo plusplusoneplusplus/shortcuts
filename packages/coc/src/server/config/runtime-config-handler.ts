@@ -25,7 +25,7 @@ export function buildRuntimeFeatures(config: Partial<ResolvedCLIConfig>): Runtim
         ...buildRuntimeFeatureFlags(config),
         gitCommitLookupEnabled: config.features?.gitCommitLookup ?? false,
         // Env-driven (COC_WARM_PREWARM_DEBOUNCE_MS), mirroring the warm-client
-        // idle TTL. Surfaced so usePrewarmClient debounces by the configured
+        // idle TTL. Surfaced so useTypingPrewarmClient debounces by the configured
         // window instead of a hardcoded default. Not an admin/CLI setting.
         prewarmDebounceMs: resolveWarmPrewarmDebounceMs(),
         // Env-driven (COC_WARM_CLIENT_TTL_MS). Surfaced so the SPA can decay the

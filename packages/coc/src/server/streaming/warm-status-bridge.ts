@@ -27,6 +27,7 @@ import { makeWarmKey, type WarmStatus } from '@plusplusoneplusplus/coc-agent-sdk
 export interface WarmStatusServiceLookup {
     get(name: string): {
         onWarmStatusChange?(listener: (key: string, status: WarmStatus) => void): () => void;
+        getWarmStatus?(options: { workingDirectory?: string }): WarmStatus;
     } | undefined;
 }
 
@@ -140,6 +141,28 @@ export class WarmStatusBridge {
             }
         });
         this.subscriptions.set(provider, unsubscribe);
+    }
+
+    /**
+     * Read the current warm {@link WarmStatus} for a process's `(provider, cwd)`
+     * key, so a freshly-opened warm-only SSE stream can emit an initial snapshot
+     * instead of waiting for the next transition (AC-02). The bridge owns this
+     * lookup — not the SSE handler — because it already knows the provider-service
+     * registry and the "unsupported providers are cold" policy, and it keeps the
+     * best-effort error isolation in one place.
+     *
+     * Returns `cold` when the service is missing, lacks `getWarmStatus` (e.g.
+     * Claude), or throws: warming is a latency hint, never a hard dependency, so a
+     * malformed registry must surface as an invisible dot, not a stream error.
+     */
+    getCurrentStatus(provider: string, workingDirectory?: string): WarmStatus {
+        try {
+            const service = this.registry?.get?.(provider);
+            if (!service || typeof service.getWarmStatus !== 'function') { return 'cold'; }
+            return service.getWarmStatus({ workingDirectory });
+        } catch {
+            return 'cold';
+        }
     }
 
     /** Tear down all provider subscriptions and interests. Test/shutdown helper. */

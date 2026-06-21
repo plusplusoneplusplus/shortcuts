@@ -561,3 +561,80 @@ describe('WarmClientRegistry — onStateChange notifications', () => {
         expect(registry.isWarm(KEY)).toBe(true);
     });
 });
+
+// ── getStatus snapshot read (warm-only SSE initial frame source — AC-02) ──────
+
+describe('WarmClientRegistry — getStatus', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    function makeRegistry(ttlMs = TTL) {
+        return new WarmClientRegistry({ ttlMs });
+    }
+
+    it('returns cold for an absent key', () => {
+        const registry = makeRegistry();
+        expect(registry.getStatus(KEY)).toBe('cold');
+    });
+
+    it('returns warming while a prewarm factory is in flight', async () => {
+        const registry = makeRegistry();
+        const deferred = makeDeferred<WarmClientHandle>();
+        const prewarmP = registry.prewarm(KEY, () => deferred.promise);
+
+        expect(registry.getStatus(KEY)).toBe('warming');
+
+        deferred.resolve(makeHandle());
+        await prewarmP;
+    });
+
+    it('returns warm after a successful prewarm', async () => {
+        const registry = makeRegistry();
+        await registry.prewarm(KEY, () => Promise.resolve(makeHandle()));
+        expect(registry.getStatus(KEY)).toBe('warm');
+    });
+
+    it('returns active while a turn holds the key', async () => {
+        const registry = makeRegistry();
+        await registry.acquire(KEY, () => Promise.resolve(makeHandle()));
+        expect(registry.getStatus(KEY)).toBe('active');
+    });
+
+    it('returns warm after a clean release, then cold once the TTL expires', async () => {
+        const registry = makeRegistry();
+        const handle = makeHandle();
+        await registry.acquire(KEY, () => Promise.resolve(handle));
+        await registry.release(KEY, { keep: true });
+
+        expect(registry.getStatus(KEY)).toBe('warm');
+
+        await vi.advanceTimersByTimeAsync(TTL + 1);
+        expect(registry.getStatus(KEY)).toBe('cold');
+    });
+
+    it('returns cold after an explicit eviction', async () => {
+        const registry = makeRegistry();
+        await registry.acquire(KEY, () => Promise.resolve(makeHandle()));
+        await registry.release(KEY, { keep: true });
+        await registry.evict(KEY);
+        expect(registry.getStatus(KEY)).toBe('cold');
+    });
+
+    it('agrees with the matching onStateChange transition for the key', async () => {
+        const seen: WarmStatus[] = [];
+        const registry = new WarmClientRegistry({
+            ttlMs: TTL,
+            onStateChange: (_key, status) => seen.push(status),
+        });
+        await registry.prewarm(KEY, () => Promise.resolve(makeHandle()));
+        // The last pushed transition and the snapshot read never disagree.
+        expect(seen.at(-1)).toBe('warm');
+        expect(registry.getStatus(KEY)).toBe('warm');
+    });
+
+    it('stays cold with TTL=0 (warming disabled, prewarm no-ops)', async () => {
+        const registry = makeRegistry(0);
+        await registry.prewarm(KEY, () => Promise.resolve(makeHandle()));
+        expect(registry.getStatus(KEY)).toBe('cold');
+    });
+});

@@ -10,7 +10,7 @@
  */
 
 import type { SendMessageOptions, TokenUsage, PermissionHandler } from './types';
-import type { WarmStateChangeListener } from './warm-client-registry';
+import type { WarmStateChangeListener, WarmStatus } from './warm-client-registry';
 
 // ============================================================================
 // Provider-Agnostic Primitive Types
@@ -214,6 +214,21 @@ export interface ISDKService {
      * duplicated.
      */
     prewarm?(options: PrewarmOptions): Promise<void>;
+
+    /**
+     * Read the current warm-client {@link WarmStatus} for a `(provider,
+     * workingDirectory)` key — the synchronous snapshot side of warm state that
+     * complements the push-based {@link onWarmStatusChange}. Used by the CoC SSE
+     * bridge to send an initial warm-status frame when a warm-only stream opens,
+     * so a chat that is already warm before the browser subscribes shows the dot
+     * without waiting for the next transition.
+     *
+     * Optional and synchronous (it only reads in-memory registry state): providers
+     * that cannot stay warm (e.g. Claude) omit it, and callers treat a missing
+     * method as `cold`. Pairs with {@link prewarm}/{@link onWarmStatusChange} — a
+     * provider that implements those implements this.
+     */
+    getWarmStatus?(options: PrewarmOptions): WarmStatus;
 
     /**
      * Subscribe to warm-client state transitions for this provider — pushing the

@@ -3,24 +3,24 @@ import { cloneApiBase } from '../../../repos/cloneRegistry';
 
 /**
  * Real-time warm status for a conversation, pushed from the backend
- * `WarmClientRegistry` over the existing SSE channel (AC-02). It mirrors the
- * server `WarmStatus` union one-to-one:
+ * `WarmClientRegistry` over a dedicated warm-only SSE channel (AC-02). It mirrors
+ * the server `WarmStatus` union one-to-one:
  *  - `cold`    — not in the registry (or the stream is down / reconnecting);
  *                the indicator renders nothing;
  *  - `warming` — a client is being prewarmed (amber-pulse dot);
  *  - `warm`    — a live client is parked and ready (green dot);
  *  - `active`  — a turn is in flight on a live client (green dot).
  *
- * Providers that never enter the registry (e.g. Claude) never emit a
- * `warm_status` event, so the status stays `cold` and the dot stays invisible —
- * no special-casing needed on the SPA side.
+ * Providers that never enter the registry (e.g. Claude) emit an explicit `cold`
+ * snapshot and no further transitions, so the dot stays invisible — no
+ * special-casing needed on the SPA side.
  */
-export type PrewarmStatus = 'cold' | 'warming' | 'warm' | 'active';
+export type WarmClientStatus = 'cold' | 'warming' | 'warm' | 'active';
 
 /** Runtime guard for the four valid statuses pushed over SSE. */
-const WARM_STATUSES: readonly PrewarmStatus[] = ['cold', 'warming', 'warm', 'active'];
+const WARM_STATUSES: readonly WarmClientStatus[] = ['cold', 'warming', 'warm', 'active'];
 
-export interface UsePrewarmClientOptions {
+export interface UseWarmClientStatusOptions {
     /** Workspace the conversation belongs to — drives remote-clone routing. */
     workspaceId: string | null | undefined;
     /** Conversation/process id whose warm state should be reflected. */
@@ -37,21 +37,24 @@ export interface UsePrewarmClientOptions {
  * warm" indicator (AC-02).
  *
  * Opens a dedicated warm-only SSE stream (`/processes/:id/stream?warm=1`) that
- * the backend keeps open across conversation completion, so the indicator can
- * still reflect the `active → warm` transition when a follow-up finishes on a
- * previously-completed conversation. Incoming `warm_status` events map directly
- * onto {@link PrewarmStatus}.
+ * the backend keeps open across conversation completion. The backend sends an
+ * initial `warm_status` snapshot on connect (so an already-warm chat shows the
+ * dot immediately) and then streams every subsequent transition, including the
+ * `active → warm` change when a follow-up finishes on a completed conversation.
+ * Incoming `warm_status` events map directly onto {@link WarmClientStatus}.
  *
  * Truth lives entirely in the stream — there is no client-side debounce, POST,
- * or decay timer (AC-03). The status resets to `cold` on a processId/workspace
- * change, on unmount, and whenever the stream drops; the next push restores it.
+ * or decay timer. Typing-driven prewarming is a separate side-effect hook
+ * (`useTypingPrewarmClient`); this hook only observes. The status resets to
+ * `cold` on a processId/workspace change, on unmount, and whenever the stream
+ * drops; the next push (an initial snapshot or a transition) restores it.
  */
-export function usePrewarmClient({
+export function useWarmClientStatus({
     workspaceId,
     processId,
     enabled = true,
-}: UsePrewarmClientOptions): PrewarmStatus {
-    const [status, setStatus] = useState<PrewarmStatus>('cold');
+}: UseWarmClientStatusOptions): WarmClientStatus {
+    const [status, setStatus] = useState<WarmClientStatus>('cold');
 
     useEffect(() => {
         // No conversation to reflect (or disabled) → stay invisible.
@@ -66,8 +69,8 @@ export function usePrewarmClient({
             return;
         }
 
-        // A fresh subscription starts cold; the backend pushes no initial
-        // snapshot, so we wait for the first real transition.
+        // A fresh subscription starts cold; the backend pushes the current
+        // snapshot right away, so the dot settles to the real state quickly.
         setStatus('cold');
 
         const es = new EventSource(
@@ -78,7 +81,7 @@ export function usePrewarmClient({
             try {
                 const data = JSON.parse((event as MessageEvent).data);
                 if (WARM_STATUSES.includes(data?.status)) {
-                    setStatus(data.status as PrewarmStatus);
+                    setStatus(data.status as WarmClientStatus);
                 }
             } catch {
                 /* ignore malformed frames */

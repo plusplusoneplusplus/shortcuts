@@ -1,18 +1,18 @@
 /**
- * Render test for FollowUpInputArea → WarmIndicatorDot (AC-02).
+ * Integration test for FollowUpInputArea → useTypingPrewarmClient + the warm dot.
  *
- * Proves the tiny "session warm" dot next to the send button reflects the
- * SSE-pushed warm status from useWarmClientStatus: invisible spacer while cold
- * (incl. permanently-cold providers like Claude), amber-pulse while warming,
- * green while warm/active. It exposes an accessible label and never displaces
- * the send button.
+ * Proves the two halves of the warm-client UX stay separate:
+ *  - typing a follow-up POSTs `/processes/:id/prewarm` once after the debounce,
+ *    routed through the workspace-specific client;
+ *  - the warm dot is driven ONLY by the SSE stream (initial snapshot + later
+ *    transitions), never by the prewarm response.
  */
 /* @vitest-environment jsdom */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 import React, { createRef } from 'react';
 
-// ── Minimal EventSource double ──────────────────────────────────────────────
+// ── Minimal EventSource double (warm-only stream) ───────────────────────────
 class MockEventSource {
     static instances: MockEventSource[] = [];
     url: string;
@@ -37,8 +37,13 @@ class MockEventSource {
     }
 }
 
-// Minimal RichTextInput double — composer text is driven by the followUpInput
-// prop, so the double only needs a stable imperative handle.
+// Hoisted prewarm spy referenced by the cloneRegistry mock.
+const { getClientSpy, prewarmSpy } = vi.hoisted(() => {
+    const prewarmSpy = vi.fn().mockResolvedValue({ warming: true, provider: 'copilot' });
+    const getClientSpy = vi.fn((_ws: string | null | undefined) => ({ processes: { prewarm: prewarmSpy } }));
+    return { getClientSpy, prewarmSpy };
+});
+
 vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async () => {
     const R = await import('react');
     return {
@@ -57,20 +62,21 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => false,
     isForEachEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
-    getPrewarmDebounceMs: () => 0,
+    getPrewarmDebounceMs: () => 500,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({ preferences: { getLlmToolsConfig: vi.fn().mockResolvedValue({ tools: [], disabledLlmTools: [] }) } }),
 }));
 
-// Partial mock: keep the real cloneRegistry surface (used by sibling chat hooks)
-// and only pin cloneApiBase so the warm EventSource URL is deterministic.
+// Partial mock: keep the real cloneRegistry surface and only pin cloneApiBase
+// (deterministic SSE URL) + getCocClientForWorkspace (prewarm spy).
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/repos/cloneRegistry')>();
     return {
         ...actual,
         cloneApiBase: (ws: string | null | undefined) => `https://api.test/${ws}/api`,
+        getCocClientForWorkspace: (ws: string | null | undefined) => getClientSpy(ws),
     };
 });
 
@@ -78,18 +84,21 @@ import { FollowUpInputArea } from '../../../../src/server/spa/client/react/featu
 import type { FollowUpInputAreaProps } from '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
 import type { RichTextInputHandle } from '../../../../src/server/spa/client/react/shared/RichTextInput';
 
-const SEND_BTN = 'activity-chat-send-btn';
 const DOT = 'warm-indicator-dot';
-
 const originalEventSource = (globalThis as any).EventSource;
 
 beforeEach(() => {
+    vi.useFakeTimers();
     MockEventSource.reset();
+    getClientSpy.mockClear();
+    prewarmSpy.mockClear();
     (globalThis as any).EventSource = MockEventSource;
     Element.prototype.scrollIntoView = vi.fn();
 });
 
 afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
     (globalThis as any).EventSource = originalEventSource;
     vi.restoreAllMocks();
 });
@@ -136,70 +145,48 @@ function makeProps(overrides: Partial<FollowUpInputAreaProps> = {}): FollowUpInp
     };
 }
 
-describe('FollowUpInputArea — warm indicator dot (AC-02)', () => {
-    it('opens the warm SSE stream and walks cold → warming → warm', () => {
-        const props = makeProps();
-        const { getByTestId } = render(<FollowUpInputArea {...props} />);
+describe('FollowUpInputArea — typing-driven prewarm', () => {
+    it('POSTs prewarm once after the debounce when the composer has text', () => {
+        const { rerender } = render(<FollowUpInputArea {...makeProps({ followUpInput: '' })} />);
+        // Empty → no prewarm.
+        act(() => { vi.advanceTimersByTime(500); });
+        expect(prewarmSpy).not.toHaveBeenCalled();
 
-        // Subscription opened for this process; no push yet → cold spacer.
-        expect(MockEventSource.last!.url).toContain('/processes/proc-1/stream?warm=1');
+        // Typing → one debounced prewarm routed through the workspace client.
+        rerender(<FollowUpInputArea {...makeProps({ followUpInput: 'hello' })} />);
+        act(() => { vi.advanceTimersByTime(499); });
+        expect(prewarmSpy).not.toHaveBeenCalled();
+        act(() => { vi.advanceTimersByTime(1); });
+        expect(prewarmSpy).toHaveBeenCalledTimes(1);
+        expect(getClientSpy).toHaveBeenCalledWith('ws-1');
+        expect(prewarmSpy).toHaveBeenCalledWith('proc-1', { workspace: 'ws-1' });
+    });
+
+    it('does not prewarm while a generation is active (suppressed)', () => {
+        render(<FollowUpInputArea {...makeProps({ followUpInput: 'hello', isActiveGeneration: true })} />);
+        act(() => { vi.advanceTimersByTime(1000); });
+        expect(prewarmSpy).not.toHaveBeenCalled();
+    });
+
+    it('keeps the warm dot driven by SSE — the prewarm response never sets it', () => {
+        const { getByTestId } = render(<FollowUpInputArea {...makeProps({ followUpInput: 'hello' })} />);
+        // Prewarm fires (resolves warming:true)…
+        act(() => { vi.advanceTimersByTime(500); });
+        expect(prewarmSpy).toHaveBeenCalledTimes(1);
+        // …but the dot stays cold until the SSE stream says otherwise.
         expect(getByTestId(DOT).getAttribute('data-status')).toBe('cold');
-        expect(getByTestId(DOT).getAttribute('aria-hidden')).toBe('true');
 
-        // Backend pushes warming → amber-pulse.
-        act(() => { MockEventSource.last!.emitWarm('warming'); });
-        expect(getByTestId(DOT).getAttribute('data-status')).toBe('warming');
-
-        // Backend pushes warm → green.
+        // Stream pushes warm → dot turns green.
         act(() => { MockEventSource.last!.emitWarm('warm'); });
         expect(getByTestId(DOT).getAttribute('data-status')).toBe('warm');
     });
 
-    it('shows green for the active status (turn in flight)', () => {
-        const props = makeProps();
-        const { getByTestId } = render(<FollowUpInputArea {...props} />);
-        act(() => { MockEventSource.last!.emitWarm('active'); });
-
-        const dot = getByTestId(DOT);
-        expect(dot.getAttribute('data-status')).toBe('active');
-        // Active reuses the same "ready" green + label as warm.
-        expect(dot.getAttribute('aria-label')).toMatch(/warm/i);
-    });
-
-    it('exposes an accessible label / tooltip for warm', () => {
-        const props = makeProps();
-        const { getByTestId } = render(<FollowUpInputArea {...props} />);
+    it('shows green immediately when the stream sends warm as its initial snapshot', () => {
+        const { getByTestId } = render(<FollowUpInputArea {...makeProps()} />);
+        // Backend's initial snapshot for an already-warm chat.
         act(() => { MockEventSource.last!.emitWarm('warm'); });
-
-        const dot = getByTestId(DOT);
-        expect(dot.getAttribute('role')).toBe('img');
-        expect(dot.getAttribute('aria-label')).toMatch(/warm/i);
-        expect(dot.getAttribute('title')).toBe(dot.getAttribute('aria-label'));
-    });
-
-    it('stays an invisible spacer for providers that never warm (Claude → no push)', () => {
-        const props = makeProps();
-        const { getByTestId, queryByLabelText } = render(<FollowUpInputArea {...props} />);
-
-        // Claude never enters the registry → no warm_status ever arrives.
-        const dot = getByTestId(DOT);
-        expect(dot.getAttribute('data-status')).toBe('cold');
-        expect(dot.getAttribute('aria-hidden')).toBe('true');
-        expect(queryByLabelText(/warm/i)).toBeNull();
-    });
-
-    it('does not displace or overlap the send button', () => {
-        const props = makeProps();
-        const { getByTestId } = render(<FollowUpInputArea {...props} />);
-
-        const dot = getByTestId(DOT);
-        const sendBtn = getByTestId(SEND_BTN);
-
-        expect(sendBtn).toBeTruthy();
-        expect(dot.contains(sendBtn)).toBe(false);
-        expect(dot.className).toContain('pointer-events-none');
-        expect(dot.className).toContain('shrink-0');
-        // Dot sits before the send button in DOM order.
-        expect(dot.compareDocumentPosition(sendBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(getByTestId(DOT).getAttribute('data-status')).toBe('warm');
+        // No prewarm needed for the dot to be green.
+        expect(prewarmSpy).not.toHaveBeenCalled();
     });
 });
