@@ -2,8 +2,13 @@
  * MarkdownReviewDialog E2E Tests
  *
  * Tests the full lifecycle of the MarkdownReviewDialog opened by clicking
- * a `.file-path-link` outside an assistant response: open → display →
- * minimize → chip (pill) → restore → close.
+ * a `.file-path-link` in a user message for a non-markdown file: open →
+ * display → minimize → chip (pill) → restore → close.
+ *
+ * NOTE: Markdown file links inside any `.chat-message` are intercepted by the
+ * SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS feature flag and routed to the docked
+ * canvas. To keep the MarkdownReviewDialog reachable we use a non-markdown
+ * file path (`.ts`), which falls through to the floating dialog.
  */
 
 import { test, expect } from './fixtures/server-fixture';
@@ -13,7 +18,9 @@ import type { Page } from '@playwright/test';
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 const WORKSPACE_ROOT = '/tmp/review-ws';
-const FILE_PATH = '/tmp/review-ws/docs/README.md';
+// Use a non-markdown extension so the click falls through to MarkdownReviewDialog.
+// Markdown links inside .chat-message are intercepted by SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS.
+const FILE_PATH = '/tmp/review-ws/src/main.ts';
 
 async function waitForTaskStatus(
     serverUrl: string,
@@ -156,7 +163,7 @@ test.describe('MarkdownReviewDialog', () => {
         await expect(pill).toBeVisible({ timeout: 3_000 });
 
         // Pill text should contain the filename
-        await expect(pill).toContainText('README.md');
+        await expect(pill).toContainText('main.ts');
     });
 
     test('restore from chip reopens the dialog', async ({
