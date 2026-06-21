@@ -12,13 +12,21 @@
  *   5. fetches PR detail per association, mapping it to a {@link PrStatusCardItem}
  *      with per-row loading / ready / error state and a retry.
  *
+ * Every REST call (binding list/upsert, detail, checks) is routed through
+ * {@link getCocClientForWorkspace} keyed by the chat's `workspaceId`, so a chat
+ * owned by a REMOTE workspace resolves the PR against the server that actually
+ * owns that workspace. Resolving a remote workspace id against the local server
+ * would 404 (`Repo <ws> not found`). Local workspaces fall through to the default
+ * page-origin client, unchanged.
+ *
  * All the union / detection / origin logic lives in the pure
  * {@link ./prChatAssociation} module (unit-tested independently); this hook is the
  * thin async/React layer over it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClientConversationTurn } from '../../../types/dashboard';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { resolveCanonicalOriginId } from '../../../repos/originScope';
 import { buildCheckRowsFromChecks } from '../../pull-requests/pr-derived-data';
 import type { PullRequestCheck } from '../../pull-requests/pr-utils';
@@ -179,7 +187,7 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
                     ),
                 );
             }
-            return getSpaCocClient()
+            return getCocClientForWorkspace(repoId)
                 .pullRequests.getForOrigin(association.originId, association.prId, {
                     workspaceId: repoId,
                     ...(force ? { force: true } : {}),
@@ -235,7 +243,7 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
                     ),
                 );
             }
-            getSpaCocClient()
+            getCocClientForWorkspace(repoId)
                 .pullRequests.getChecksForOrigin(association.originId, association.prId, {
                     workspaceId: repoId,
                     ...(force ? { force: true } : {}),
@@ -280,7 +288,7 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
             return;
         }
         const generation = ++generationRef.current;
-        const client = getSpaCocClient();
+        const client = getCocClientForWorkspace(workspaceId);
 
         (async () => {
             let bindings: PrChatBindingLike[] = [];
