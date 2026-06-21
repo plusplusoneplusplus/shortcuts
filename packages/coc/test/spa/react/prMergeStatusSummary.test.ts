@@ -1,14 +1,17 @@
 /**
- * Unit tests for the pure aggregate merge-status reducer that drives the chat PR
- * card's collapsed-header indicator.
+ * Unit tests for the pure header-status reducers that drive the chat PR card's
+ * collapsed-header indicators.
  *
- * Covers: the "quiet" cases (no ready row / plain open PRs → null), the single-PR
- * detail shape (auto-merge armed/queued/blocked, provider-aware label, terminal
- * lifecycle), and the multi-PR per-state count shape (attention ordering +
- * same-kind aggregation).
+ * - summarizeLifecycleStatus: the always-shown PR lifecycle (open/draft/merged/
+ *   closed) — single badge vs per-status counts; null only when no row is ready.
+ * - summarizeMergeStatus: the auto-merge augmentation (armed/queued/blocked only),
+ *   single detail vs per-state counts; null when no ready row has active auto-merge.
  */
 import { describe, it, expect } from 'vitest';
-import { summarizeMergeStatus } from '../../../src/server/spa/client/react/features/chat/conversation/prMergeStatusSummary';
+import {
+    summarizeLifecycleStatus,
+    summarizeMergeStatus,
+} from '../../../src/server/spa/client/react/features/chat/conversation/prMergeStatusSummary';
 import type { PrStatusCardItem, PrAutoMergeInfo } from '../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
 
 let nextKey = 0;
@@ -31,102 +34,112 @@ function prItem(status: string, autoMerge?: PrAutoMergeInfo, url?: string): PrSt
     });
 }
 
-describe('summarizeMergeStatus — quiet cases', () => {
-    it('returns null for an empty list', () => {
-        expect(summarizeMergeStatus([])).toBeNull();
-    });
-
+describe('summarizeLifecycleStatus (always shown)', () => {
     it('returns null when no row is ready yet', () => {
+        expect(summarizeLifecycleStatus([])).toBeNull();
         expect(
-            summarizeMergeStatus([
+            summarizeLifecycleStatus([
                 readyItem({ state: 'loading', pr: undefined }),
                 readyItem({ state: 'error', pr: undefined, error: 'x' }),
             ]),
         ).toBeNull();
     });
 
-    it('returns null for plain open PRs with no auto-merge', () => {
-        expect(summarizeMergeStatus([prItem('open'), prItem('draft')])).toBeNull();
+    it('single PR: mirrors the lifecycle status badge (including a plain open PR)', () => {
+        expect(summarizeLifecycleStatus([prItem('open')])).toEqual({
+            kind: 'single', status: 'open', emoji: '🟢', toneClass: 'bg-green-100 text-green-800', label: 'Open',
+        });
+        expect(summarizeLifecycleStatus([prItem('merged')])).toMatchObject({ kind: 'single', status: 'merged', label: 'Merged' });
+        expect(summarizeLifecycleStatus([prItem('draft')])).toMatchObject({ kind: 'single', status: 'draft', label: 'Draft' });
+        expect(summarizeLifecycleStatus([prItem('closed')])).toMatchObject({ kind: 'single', status: 'closed', label: 'Closed' });
+    });
+
+    it('is shown for an open PR even when auto-merge is armed (lifecycle is independent)', () => {
+        const summary = summarizeLifecycleStatus([
+            prItem('open', { enabled: true, state: 'armed' }, 'https://github.com/o/r/pull/1'),
+        ]);
+        expect(summary).toMatchObject({ kind: 'single', status: 'open', label: 'Open' });
+    });
+
+    it('multi PR: per-status counts ordered open → draft → merged → closed', () => {
+        const summary = summarizeLifecycleStatus([
+            prItem('merged'),
+            prItem('open'),
+            prItem('closed'),
+            prItem('open'),
+            prItem('draft'),
+        ]);
+        expect(summary?.kind).toBe('multi');
+        const segments = (summary as { segments: Array<{ status: string; count: number; label: string }> }).segments;
+        expect(segments.map(s => s.status)).toEqual(['open', 'draft', 'merged', 'closed']);
+        expect(segments.map(s => s.count)).toEqual([2, 1, 1, 1]);
+        // Count chips use lowercased labels ("2 open", "1 merged").
+        expect(segments.map(s => s.label)).toEqual(['open', 'draft', 'merged', 'closed']);
+    });
+
+    it('multi PR: ignores non-ready rows', () => {
+        const summary = summarizeLifecycleStatus([
+            readyItem({ state: 'loading', pr: undefined }),
+            prItem('open'),
+            prItem('merged'),
+        ]);
+        const segments = (summary as { segments: Array<{ status: string; count: number }> }).segments;
+        expect(segments.map(s => s.status)).toEqual(['open', 'merged']);
     });
 });
 
-describe('summarizeMergeStatus — single PR', () => {
-    it('mirrors an armed auto-merge with the GitHub label', () => {
+describe('summarizeMergeStatus (auto-merge only)', () => {
+    it('returns null when no ready row has active auto-merge', () => {
+        expect(summarizeMergeStatus([])).toBeNull();
+        expect(summarizeMergeStatus([prItem('open'), prItem('merged'), prItem('closed')])).toBeNull();
+        expect(summarizeMergeStatus([readyItem({ state: 'loading', pr: undefined })])).toBeNull();
+    });
+
+    it('single auto-merge PR: mirrors the auto-merge with the GitHub label', () => {
         const summary = summarizeMergeStatus([
             prItem('open', { enabled: true, state: 'armed', mergeMethod: 'squash', enabledBy: { displayName: 'Carol' } }, 'https://github.com/o/r/pull/1'),
         ]);
         expect(summary).toEqual({
             kind: 'single',
             autoMerge: { label: 'Auto-merge', state: 'armed', mergeMethod: 'squash', enabledBy: 'Carol', blockedReason: undefined },
-            lifecycle: undefined,
         });
     });
 
-    it('mirrors a blocked auto-merge with the human reason', () => {
+    it('single auto-merge PR: blocked carries the human reason, provider-aware (ADO)', () => {
         const summary = summarizeMergeStatus([
-            prItem('open', { enabled: true, state: 'blocked', blockedReason: 'pending-review' }, 'https://github.com/o/r/pull/1'),
+            prItem('open', { enabled: true, state: 'blocked', blockedReason: 'pending-review' }, 'https://dev.azure.com/org/proj/_git/r/pullrequest/1'),
         ]);
-        expect(summary).toMatchObject({ kind: 'single', autoMerge: { state: 'blocked', blockedReason: 'pending review' } });
+        expect(summary).toMatchObject({ kind: 'single', autoMerge: { label: 'Auto-complete', state: 'blocked', blockedReason: 'pending review' } });
     });
 
-    it('is provider-aware (ADO → Auto-complete)', () => {
-        const summary = summarizeMergeStatus([
-            prItem('open', { enabled: true, state: 'armed' }, 'https://dev.azure.com/org/proj/_git/r/pullrequest/1'),
-        ]);
-        expect(summary).toMatchObject({ kind: 'single', autoMerge: { label: 'Auto-complete', state: 'armed' } });
-    });
-
-    it('falls back to terminal lifecycle when there is no active auto-merge', () => {
-        expect(summarizeMergeStatus([prItem('merged')])).toEqual({ kind: 'single', autoMerge: undefined, lifecycle: 'merged' });
-        expect(summarizeMergeStatus([prItem('closed')])).toEqual({ kind: 'single', autoMerge: undefined, lifecycle: 'closed' });
-    });
-
-    it('reports the single auto-merge PR even when other rows are plain open', () => {
+    it('reports the single auto-merge PR among other plain/terminal rows', () => {
         const summary = summarizeMergeStatus([
             prItem('open'),
-            prItem('open', { enabled: true, state: 'queued' }, 'https://github.com/o/r/pull/2'),
-            prItem('open'),
+            prItem('merged'),
+            prItem('open', { enabled: true, state: 'queued' }, 'https://github.com/o/r/pull/3'),
         ]);
         expect(summary).toMatchObject({ kind: 'single', autoMerge: { state: 'queued' } });
     });
-});
 
-describe('summarizeMergeStatus — multi PR', () => {
-    it('collapses two or more reportable rows to per-state counts ordered by attention', () => {
+    it('multi auto-merge PRs: per-state counts ordered blocked → queued → armed', () => {
         const summary = summarizeMergeStatus([
-            prItem('merged'),
-            prItem('open', { enabled: true, state: 'armed' }, 'https://github.com/o/r/pull/2'),
-            prItem('open', { enabled: true, state: 'blocked', blockedReason: 'conflicts' }, 'https://github.com/o/r/pull/3'),
+            prItem('open', { enabled: true, state: 'armed' }, 'https://github.com/o/r/pull/1'),
+            prItem('open', { enabled: true, state: 'blocked', blockedReason: 'conflicts' }, 'https://github.com/o/r/pull/2'),
+            prItem('open', { enabled: true, state: 'armed' }, 'https://github.com/o/r/pull/3'),
         ]);
-        expect(summary?.kind).toBe('multi');
         const segments = (summary as { kind: 'multi'; segments: Array<{ state: string; count: number; emoji: string }> }).segments;
-        expect(segments.map(s => s.state)).toEqual(['blocked', 'armed', 'merged']);
-        expect(segments.map(s => s.count)).toEqual([1, 1, 1]);
-        expect(segments.map(s => s.emoji)).toEqual(['⛔', '⚡', '🟣']);
-        expect(segments.map(s => s.label)).toEqual(['blocked', 'armed', 'merged']);
+        expect(segments.map(s => s.state)).toEqual(['blocked', 'armed']);
+        expect(segments.map(s => s.count)).toEqual([1, 2]);
+        expect(segments.map(s => s.emoji)).toEqual(['⛔', '⚡']);
     });
 
-    it('aggregates the count for repeated states', () => {
+    it('does not count merged/closed lifecycle (that is the lifecycle summary)', () => {
         const summary = summarizeMergeStatus([
-            prItem('open', { enabled: true, state: 'blocked', blockedReason: 'conflicts' }, 'https://github.com/o/r/pull/1'),
-            prItem('open', { enabled: true, state: 'blocked', blockedReason: 'pending-review' }, 'https://github.com/o/r/pull/2'),
-            prItem('closed'),
-        ]);
-        const segments = (summary as { segments: Array<{ state: string; count: number }> }).segments;
-        expect(segments).toEqual([
-            expect.objectContaining({ state: 'blocked', count: 2 }),
-            expect.objectContaining({ state: 'closed', count: 1 }),
-        ]);
-    });
-
-    it('ignores non-ready and plain-open rows when counting', () => {
-        const summary = summarizeMergeStatus([
-            readyItem({ state: 'loading', pr: undefined }),
-            prItem('open'),
             prItem('merged'),
             prItem('closed'),
+            prItem('open', { enabled: true, state: 'armed' }, 'https://github.com/o/r/pull/3'),
         ]);
-        const segments = (summary as { segments: Array<{ state: string; count: number }> }).segments;
-        expect(segments.map(s => s.state)).toEqual(['merged', 'closed']);
+        // Only one active auto-merge → single, lifecycle handled separately.
+        expect(summary).toMatchObject({ kind: 'single', autoMerge: { state: 'armed' } });
     });
 });

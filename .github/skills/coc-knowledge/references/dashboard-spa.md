@@ -132,15 +132,21 @@ the full `PrChecksCompact` per-check list (chips + list with detail links);
 `expandChecks(key)` only re-fetches on the error/Retry path. That module is the
 single home for the check-status → label/summary logic: `PrChecksAndReadiness`'s
 `PrChecksTable` also imports `checkStatusLabel` from it (no copy-pasted check-status
-logic). The collapsed top-level header also shows an aggregate merge-status
-indicator (pure `conversation/prMergeStatusSummary.ts` `summarizeMergeStatus` →
-`MergeStatusHeaderIndicator`, `data-testid="pr-status-card-merge-status"`): a
-single-PR card mirrors that PR's auto-merge state (blocked/queued/armed,
-provider-aware via `describeAutoMerge`) or terminal lifecycle (`merged`/`closed`
-via `prStatusBadge`); a multi-PR card collapses to per-state counts ordered
-blocked → queued → armed → merged → closed, reusing the exported
-`AUTO_MERGE_TONE_CLASS`/`AUTO_MERGE_TONE_EMOJI` maps. It returns null (header stays
-quiet) when no row is ready or every ready row is a plain open PR. Freshness
+logic). The collapsed top-level header shows two pure status indicators from
+`conversation/prMergeStatusSummary.ts`. (1) An always-on PR lifecycle indicator
+(`summarizeLifecycleStatus` → `PrLifecycleStatusIndicator`,
+`data-testid="pr-status-card-pr-status"`): a single-PR card shows that PR's
+`prStatusBadge` (Open / Draft / Merged / Closed — so "is it merged?" is answerable
+without expanding), a multi-PR card shows per-status counts ordered open → draft →
+merged → closed; it returns null only when no row is `ready`. (2) An additional
+auto-merge indicator shown next to it only when auto-merge is active
+(`summarizeMergeStatus` → `MergeStatusHeaderIndicator`,
+`data-testid="pr-status-card-merge-status"`): single-PR mirrors that PR's
+auto-merge state (blocked/queued/armed, provider-aware via `describeAutoMerge`),
+multi-PR shows per-state counts ordered blocked → queued → armed, reusing the
+exported `AUTO_MERGE_TONE_CLASS`/`AUTO_MERGE_TONE_EMOJI` maps; it returns null when
+no ready row has active auto-merge (lifecycle merged/closed belongs to the
+lifecycle indicator, not here). Freshness
 (AC-05) lives in the pure `conversation/prStatusFreshness.ts`: `shouldPollPrStatusItems`
 returns true only while some PR is non-terminal AND has checks pending/running OR
 auto-merge armed/queued (false once all merged/closed; because checks are
@@ -160,8 +166,8 @@ same component on the dashboard SPA and mobile (AC-06): its header wraps
 `shrink-0`) so the controls drop to a second line rather than overflowing the
 `overflow-x-hidden` `ConversationArea` at the 375px viewport, and the title,
 branch pair, check rows, and auto-merge/summary chips stay legible via
-`truncate` + wrapping meta lines, and the header merge-status indicator
-(`min-w-0`, truncating reason text) participates in the header wrap; the Checks
+`truncate` + wrapping meta lines, and the header PR-status + auto-merge indicators
+(`min-w-0`, truncating reason text) participate in the header wrap; the Checks
 and collapse disclosures expand on tap.
 
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by

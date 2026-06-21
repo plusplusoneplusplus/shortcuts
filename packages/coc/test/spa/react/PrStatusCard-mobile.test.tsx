@@ -201,7 +201,7 @@ describe('PrStatusCard — mobile parity at 375px (AC-06)', () => {
         expect(getByTestId(`pr-status-card-checks-toggle-${item.key}`).parentElement!.className).toContain('flex-wrap');
     });
 
-    it('header merge-status indicator wraps and truncates rather than overflowing at 375px', () => {
+    it('header status indicators wrap and truncate rather than overflowing at 375px', () => {
         viewportCleanup = mockViewport(MOBILE_WIDTH);
         const item = readyItem({
             pr: {
@@ -218,12 +218,14 @@ describe('PrStatusCard — mobile parity at 375px (AC-06)', () => {
             <PrStatusCard items={[item]} onRefresh={vi.fn()} lastUpdatedAt={Date.now()} />,
         );
 
-        // The header wraps so the indicator can drop to its own line.
+        // The header wraps so the indicators can drop to their own line.
         expect(getByTestId('pr-status-card-toggle').parentElement!.className).toContain('flex-wrap');
-        const indicator = getByTestId('pr-status-card-merge-status');
-        // Indicator can shrink (min-w-0) and its reason text truncates.
-        expect(indicator.className).toContain('min-w-0');
-        expect(indicator.querySelector('.truncate')).toBeTruthy();
-        expect(indicator.textContent).toContain('Auto-merge blocked');
+        // Lifecycle status is always visible (Open) even on mobile.
+        expect(getByTestId('pr-status-card-pr-status').textContent).toContain('Open');
+        // The auto-merge indicator can shrink (min-w-0) and its reason text truncates.
+        const merge = getByTestId('pr-status-card-merge-status');
+        expect(merge.className).toContain('min-w-0');
+        expect(merge.querySelector('.truncate')).toBeTruthy();
+        expect(merge.textContent).toContain('Auto-merge blocked');
     });
 });

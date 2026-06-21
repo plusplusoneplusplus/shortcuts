@@ -27,7 +27,7 @@ import { buildPrDetailHash } from '../../pull-requests/pr-open-utils';
 import { PrChecksCompact, PrChecksSummaryChips, type PrChecksCompactState } from '../../pull-requests/PrChecksSummary';
 import type { PrCheckRow } from '../../pull-requests/pr-derived-data';
 import { formatUpdatedAgo } from './prStatusFreshness';
-import { summarizeMergeStatus, type MergeStatusSummary } from './prMergeStatusSummary';
+import { summarizeLifecycleStatus, summarizeMergeStatus, type LifecycleStatusSummary, type MergeStatusSummary } from './prMergeStatusSummary';
 
 /** Per-PR fetch lifecycle for a card row. */
 export type PrStatusCardItemState = 'loading' | 'ready' | 'error';
@@ -225,62 +225,92 @@ function AutoMergeIndicator({ model, testKey }: { model: AutoMergeIndicatorModel
 }
 
 /**
- * Aggregate merge-status indicator for the collapsed top-level header — visible
- * without expanding the card. Single-PR cards mirror that PR's auto-merge /
- * lifecycle (label + reason); multi-PR cards show per-state counts ordered by
- * attention. Read-only text (not a toggle); truncates on narrow widths and
- * participates in the header's `flex-wrap`.
+ * PR lifecycle-status indicator for the collapsed top-level header — ALWAYS shown
+ * (for ready rows) so the user can tell at a glance whether the PR is open, a
+ * draft, already merged, or closed, without expanding the card. Single-PR cards
+ * show one status badge; multi-PR cards show per-status counts. Reuses
+ * {@link prStatusBadge} (no new lifecycle logic).
+ */
+function PrLifecycleStatusIndicator({ summary }: { summary: LifecycleStatusSummary }) {
+    const chipBase = 'inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ';
+
+    if (summary.kind === 'single') {
+        return (
+            <span
+                className="flex min-w-0 items-center"
+                data-testid="pr-status-card-pr-status"
+                data-pr-status-kind="single"
+                data-pr-status={summary.status}
+                title={summary.label}
+            >
+                <span className={chipBase + summary.toneClass}>
+                    <span aria-hidden="true">{summary.emoji}</span>
+                    <span>{summary.label}</span>
+                </span>
+            </span>
+        );
+    }
+
+    const title = summary.segments.map(segment => `${segment.count} ${segment.label}`).join(' · ');
+    return (
+        <span
+            className="flex min-w-0 flex-wrap items-center gap-1"
+            data-testid="pr-status-card-pr-status"
+            data-pr-status-kind="multi"
+            title={title}
+        >
+            {summary.segments.map(segment => (
+                <span
+                    key={segment.status}
+                    className={chipBase + segment.toneClass}
+                    data-pr-status-segment={segment.status}
+                    data-count={segment.count}
+                >
+                    <span aria-hidden="true">{segment.emoji}</span>
+                    <span>{segment.count} {segment.label}</span>
+                </span>
+            ))}
+        </span>
+    );
+}
+
+/**
+ * Auto-merge status indicator for the collapsed top-level header — shown
+ * additionally (next to the lifecycle status) only when auto-merge / auto-complete
+ * is active. Single-PR cards mirror that PR's auto-merge (label + reason); multi-PR
+ * cards show per-state counts ordered by attention. Read-only text (not a toggle);
+ * truncates on narrow widths and participates in the header's `flex-wrap`.
  */
 function MergeStatusHeaderIndicator({ summary }: { summary: MergeStatusSummary }) {
     const chipBase = 'inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ';
 
     if (summary.kind === 'single') {
-        if (summary.autoMerge) {
-            const model = summary.autoMerge;
-            const visibleParts: string[] = [];
-            if (model.state === 'blocked' && model.blockedReason) visibleParts.push(model.blockedReason);
-            const visibleDetail = visibleParts.join(' · ');
-            const titleParts: string[] = [];
-            if (model.state === 'blocked' && model.blockedReason) titleParts.push(model.blockedReason);
-            if (model.mergeMethod) titleParts.push(model.mergeMethod);
-            if (model.enabledBy) titleParts.push(`by ${model.enabledBy}`);
-            const title = `${model.label} ${model.state}${titleParts.length ? ` — ${titleParts.join(' · ')}` : ''}`;
-            return (
-                <span
-                    className="flex min-w-0 items-center"
-                    data-testid="pr-status-card-merge-status"
-                    data-merge-kind="single"
-                    data-merge-state={model.state}
-                    title={title}
-                >
-                    <span className={chipBase + 'min-w-0 ' + AUTO_MERGE_TONE_CLASS[model.state]}>
-                        <span aria-hidden="true">{AUTO_MERGE_TONE_EMOJI[model.state]}</span>
-                        <span className="truncate">
-                            {model.label} {model.state}
-                            {visibleDetail && <span className="font-normal opacity-90"> · {visibleDetail}</span>}
-                        </span>
+        const model = summary.autoMerge;
+        const visibleParts: string[] = [];
+        if (model.state === 'blocked' && model.blockedReason) visibleParts.push(model.blockedReason);
+        const visibleDetail = visibleParts.join(' · ');
+        const titleParts: string[] = [];
+        if (model.state === 'blocked' && model.blockedReason) titleParts.push(model.blockedReason);
+        if (model.mergeMethod) titleParts.push(model.mergeMethod);
+        if (model.enabledBy) titleParts.push(`by ${model.enabledBy}`);
+        const title = `${model.label} ${model.state}${titleParts.length ? ` — ${titleParts.join(' · ')}` : ''}`;
+        return (
+            <span
+                className="flex min-w-0 items-center"
+                data-testid="pr-status-card-merge-status"
+                data-merge-kind="single"
+                data-merge-state={model.state}
+                title={title}
+            >
+                <span className={chipBase + 'min-w-0 ' + AUTO_MERGE_TONE_CLASS[model.state]}>
+                    <span aria-hidden="true">{AUTO_MERGE_TONE_EMOJI[model.state]}</span>
+                    <span className="truncate">
+                        {model.label} {model.state}
+                        {visibleDetail && <span className="font-normal opacity-90"> · {visibleDetail}</span>}
                     </span>
                 </span>
-            );
-        }
-        if (summary.lifecycle) {
-            const badge = prStatusBadge(summary.lifecycle);
-            return (
-                <span
-                    className="flex min-w-0 items-center"
-                    data-testid="pr-status-card-merge-status"
-                    data-merge-kind="single"
-                    data-merge-state={summary.lifecycle}
-                    title={badge.label}
-                >
-                    <span className={chipBase + badge.className}>
-                        <span aria-hidden="true">{badge.emoji}</span>
-                        <span>{badge.label}</span>
-                    </span>
-                </span>
-            );
-        }
-        return null;
+            </span>
+        );
     }
 
     const title = summary.segments.map(segment => `${segment.count} ${segment.label}`).join(' · ');
@@ -356,7 +386,9 @@ export function PrStatusCard({
     if (sorted.length === 0) return null;
 
     const updatedLabel = formatUpdatedAgo(lastUpdatedAt, now);
-    // Aggregate merge status shown on the collapsed header (always visible).
+    // Lifecycle status (open/draft/merged/closed) is always shown on the collapsed
+    // header; the auto-merge status is shown next to it only when active.
+    const lifecycleStatus = summarizeLifecycleStatus(sorted);
     const mergeStatus = summarizeMergeStatus(sorted);
 
     const showRows = expanded;
@@ -395,6 +427,7 @@ export function PrStatusCard({
                     <span className="shrink-0" aria-hidden="true">{showRows ? '▾' : '▸'}</span>
                 </button>
 
+                {lifecycleStatus && <PrLifecycleStatusIndicator summary={lifecycleStatus} />}
                 {mergeStatus && <MergeStatusHeaderIndicator summary={mergeStatus} />}
 
                 <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-[#57606a] dark:text-[#8b949e]">

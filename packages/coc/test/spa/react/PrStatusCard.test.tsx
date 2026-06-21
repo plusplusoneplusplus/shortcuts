@@ -459,71 +459,97 @@ describe('PrStatusCard inline checks summary (always-visible chips on the Checks
     });
 });
 
-describe('PrStatusCard aggregate merge-status header indicator', () => {
-    it('single PR: shows the auto-merge status on the collapsed header (no expansion)', () => {
+describe('PrStatusCard aggregate header status indicators', () => {
+    it('single PR: always shows the lifecycle status on the collapsed header (e.g. Open)', () => {
+        const { getByTestId, queryByTestId } = render(<PrStatusCard items={[readyItem()]} />);
+        // Rows collapsed, but the lifecycle status is visible.
+        expect(queryByTestId('pr-status-card-row-origin-1:101')).toBeNull();
+        const status = getByTestId('pr-status-card-pr-status');
+        expect(status.getAttribute('data-pr-status-kind')).toBe('single');
+        expect(status.getAttribute('data-pr-status')).toBe('open');
+        expect(status.textContent).toContain('Open');
+        // No auto-merge → the auto-merge indicator stays absent.
+        expect(queryByTestId('pr-status-card-merge-status')).toBeNull();
+    });
+
+    it('single PR: a merged PR shows "Merged" on the header without expanding', () => {
+        const item = readyItem({
+            pr: { number: 55, title: 'Done', status: 'merged', sourceBranch: 'f', targetBranch: 'main', mergedAt: '2026-01-02T00:00:00Z' },
+        });
+        const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        const status = getByTestId('pr-status-card-pr-status');
+        expect(status.getAttribute('data-pr-status')).toBe('merged');
+        expect(status.textContent).toContain('Merged');
+    });
+
+    it('single PR: shows lifecycle AND the auto-merge indicator when auto-merge is active', () => {
         const item = autoMergeItem(
             { enabled: true, state: 'armed', mergeMethod: 'squash', enabledBy: { displayName: 'Carol' } },
             'https://github.com/o/r/pull/101',
         );
-        const { getByTestId, queryByTestId } = render(<PrStatusCard items={[item]} />);
-        // Rows are collapsed, but the header indicator is visible.
-        expect(queryByTestId(`pr-status-card-row-${item.key}`)).toBeNull();
-        const indicator = getByTestId('pr-status-card-merge-status');
-        expect(indicator.getAttribute('data-merge-kind')).toBe('single');
-        expect(indicator.getAttribute('data-merge-state')).toBe('armed');
-        expect(indicator.textContent).toContain('Auto-merge armed');
+        const { getByTestId } = render(<PrStatusCard items={[item]} />);
+        // The PR is still open → lifecycle shows Open…
+        expect(getByTestId('pr-status-card-pr-status').textContent).toContain('Open');
+        // …and the auto-merge indicator is shown next to it.
+        const merge = getByTestId('pr-status-card-merge-status');
+        expect(merge.getAttribute('data-merge-state')).toBe('armed');
+        expect(merge.textContent).toContain('Auto-merge armed');
     });
 
-    it('single PR: blocked shows the reason and is provider-aware (ADO → Auto-complete)', () => {
+    it('single PR: blocked auto-merge shows the reason and is provider-aware (ADO)', () => {
         const item = autoMergeItem(
             { enabled: true, state: 'blocked', blockedReason: 'pending-review' },
             'https://dev.azure.com/org/proj/_git/repo/pullrequest/101',
         );
         const { getByTestId } = render(<PrStatusCard items={[item]} />);
-        const indicator = getByTestId('pr-status-card-merge-status');
-        expect(indicator.textContent).toContain('Auto-complete blocked');
-        expect(indicator.textContent).toContain('pending review');
-        expect(indicator.textContent).not.toContain('Auto-merge');
+        const merge = getByTestId('pr-status-card-merge-status');
+        expect(merge.textContent).toContain('Auto-complete blocked');
+        expect(merge.textContent).toContain('pending review');
+        expect(merge.textContent).not.toContain('Auto-merge');
     });
 
-    it('single PR: terminal lifecycle shows the merged badge when there is no active auto-merge', () => {
-        const item = readyItem({
-            pr: { number: 55, title: 'Done', status: 'merged', sourceBranch: 'f', targetBranch: 'main', mergedAt: '2026-01-02T00:00:00Z' },
-        });
-        const { getByTestId } = render(<PrStatusCard items={[item]} />);
-        const indicator = getByTestId('pr-status-card-merge-status');
-        expect(indicator.getAttribute('data-merge-state')).toBe('merged');
-        expect(indicator.textContent).toContain('Merged');
-    });
-
-    it('multi PR: shows per-state counts ordered by attention (blocked → armed → merged)', () => {
+    it('multi PR: shows per-status lifecycle counts ordered open → draft → merged → closed', () => {
         const items = [
             readyItem({ key: 'm:1', pr: { number: 1, title: 'A', status: 'merged', sourceBranch: 'a', targetBranch: 'main', mergedAt: '2026-01-01T00:00:00Z' } }),
+            readyItem({ key: 'm:2', pr: { number: 2, title: 'B', status: 'open', sourceBranch: 'b', targetBranch: 'main' } }),
+            readyItem({ key: 'm:3', pr: { number: 3, title: 'C', status: 'open', sourceBranch: 'c', targetBranch: 'main' } }),
+        ];
+        const { getByTestId } = render(<PrStatusCard items={items} />);
+        const status = getByTestId('pr-status-card-pr-status');
+        expect(status.getAttribute('data-pr-status-kind')).toBe('multi');
+        const segments = Array.from(status.querySelectorAll('[data-pr-status-segment]')).map(el => ({
+            status: el.getAttribute('data-pr-status-segment'),
+            count: el.getAttribute('data-count'),
+        }));
+        expect(segments).toEqual([
+            { status: 'open', count: '2' },
+            { status: 'merged', count: '1' },
+        ]);
+    });
+
+    it('multi PR: shows auto-merge counts next to the lifecycle counts when active', () => {
+        const items = [
+            readyItem({ key: 'm:1', pr: { number: 1, title: 'A', status: 'open', sourceBranch: 'a', targetBranch: 'main' } }),
             autoMergeItem({ enabled: true, state: 'armed' }, 'https://github.com/o/r/pull/2', 'm:2'),
             autoMergeItem({ enabled: true, state: 'blocked', blockedReason: 'conflicts' }, 'https://github.com/o/r/pull/3', 'm:3'),
         ];
         const { getByTestId } = render(<PrStatusCard items={items} />);
-        const indicator = getByTestId('pr-status-card-merge-status');
-        expect(indicator.getAttribute('data-merge-kind')).toBe('multi');
-        const segments = Array.from(indicator.querySelectorAll('[data-merge-segment]')).map(el => ({
+        const merge = getByTestId('pr-status-card-merge-status');
+        expect(merge.getAttribute('data-merge-kind')).toBe('multi');
+        const segments = Array.from(merge.querySelectorAll('[data-merge-segment]')).map(el => ({
             state: el.getAttribute('data-merge-segment'),
             count: el.getAttribute('data-count'),
         }));
         expect(segments).toEqual([
             { state: 'blocked', count: '1' },
             { state: 'armed', count: '1' },
-            { state: 'merged', count: '1' },
         ]);
     });
 
-    it('stays quiet (no indicator) for plain open PRs with no auto-merge', () => {
-        const { queryByTestId } = render(<PrStatusCard items={[readyItem()]} />);
-        expect(queryByTestId('pr-status-card-merge-status')).toBeNull();
-    });
-
-    it('omits the indicator until at least one row is ready', () => {
+    it('omits both indicators until at least one row is ready', () => {
         const loading = readyItem({ state: 'loading', pr: undefined });
         const { queryByTestId } = render(<PrStatusCard items={[loading]} />);
+        expect(queryByTestId('pr-status-card-pr-status')).toBeNull();
         expect(queryByTestId('pr-status-card-merge-status')).toBeNull();
     });
 });
