@@ -26,6 +26,9 @@ export interface ServerCardProps {
     onEdit?: (id: string) => void;
     onReconnect?: (id: string) => void | Promise<void>;
     reconnecting?: boolean;
+    /** Restart the remote process itself (distinct from Reconnect). */
+    onRestart?: (id: string) => void | Promise<void>;
+    restarting?: boolean;
 }
 
 function isRemoteServer(server: CardServer): server is RemoteServer {
@@ -65,7 +68,7 @@ export function timeAgo(ts: number, now: number = Date.now()): string {
     return `${Math.floor(diff / 3600)}h ago`;
 }
 
-export function ServerCard({ health, isLocal, onRemove, onEdit, onReconnect, reconnecting }: ServerCardProps) {
+export function ServerCard({ health, isLocal, onRemove, onEdit, onReconnect, reconnecting, onRestart, restarting }: ServerCardProps) {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuWrapRef = useRef<HTMLDivElement | null>(null);
     const endpoint = isRemoteServer(health.server)
@@ -167,6 +170,18 @@ export function ServerCard({ health, isLocal, onRemove, onEdit, onReconnect, rec
                                         {reconnecting ? 'Reconnecting…' : 'Reconnect'}
                                     </button>
                                 )}
+                                {isRemoteServer(health.server) && onRestart && (
+                                    <button
+                                        type="button"
+                                        data-testid="server-card-menu-restart"
+                                        className="w-full text-left px-3 py-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-[#1e1e1e] dark:text-[#cccccc] disabled:opacity-40 disabled:cursor-not-allowed"
+                                        disabled={health.status !== 'online' || restarting}
+                                        title={health.status !== 'online' ? 'Restart is available only when the server is online' : undefined}
+                                        onClick={() => { setMenuOpen(false); void onRestart(health.server.id); }}
+                                    >
+                                        {restarting ? 'Restarting…' : 'Restart'}
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     data-testid="server-card-menu-remove"
@@ -182,6 +197,11 @@ export function ServerCard({ health, isLocal, onRemove, onEdit, onReconnect, rec
             </div>
 
             <div className="px-4 py-3 flex flex-col gap-1.5 text-xs text-[#848484] dark:text-[#999] flex-1">
+                {restarting && (
+                    <div className="text-[#e5a92b] font-medium" data-testid="server-card-restarting">
+                        ↻ Restarting…
+                    </div>
+                )}
                 {health.serverName && (
                     <div className="text-[#1e1e1e] dark:text-[#cccccc] font-medium text-xs truncate" data-testid="server-card-hostname">
                         CoC @ {health.serverName}

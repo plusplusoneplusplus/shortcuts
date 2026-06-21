@@ -11,7 +11,12 @@ const registryMocks = vi.hoisted(() => ({
     removeRemoteServer: vi.fn(),
     testRemoteServer: vi.fn(),
     reconnectServer: vi.fn(),
+    restartServer: vi.fn(),
 }));
+
+// Stable refetch spy shared by every useRemoteServerHealth mock so tests can assert
+// the immediate re-poll fires after a restart (AC-05).
+const healthMocks = vi.hoisted(() => ({ refetch: vi.fn() }));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/serverRegistry', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../../../../../src/server/spa/client/react/utils/serverRegistry')>();
@@ -23,6 +28,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/serverRegistry', async
         removeRemoteServer: registryMocks.removeRemoteServer,
         testRemoteServer: registryMocks.testRemoteServer,
         reconnectServer: registryMocks.reconnectServer,
+        restartServer: registryMocks.restartServer,
     };
 });
 
@@ -36,8 +42,8 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () 
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/useRemoteServerHealth', () => ({
-    useRemoteServerHealth: vi.fn((servers: RemoteServer[]) =>
-        servers.map(s => ({
+    useRemoteServerHealth: vi.fn((servers: RemoteServer[]) => ({
+        healthStates: servers.map(s => ({
             server: s,
             kind: s.kind,
             status: 'online' as const,
@@ -45,8 +51,9 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useRemoteServerHealth'
             effectiveUrl: s.kind === 'devtunnel' ? s.effectiveUrl : s.url,
             localPort: s.kind === 'devtunnel' ? s.localPort : undefined,
             tunnelId: s.kind === 'devtunnel' ? s.tunnelId : undefined,
-        }))
-    ),
+        })),
+        refetch: healthMocks.refetch,
+    })),
 }));
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -94,6 +101,7 @@ beforeEach(() => {
     registryMocks.removeRemoteServer.mockResolvedValue(undefined);
     registryMocks.testRemoteServer.mockResolvedValue({ serverId: 'test', kind: 'url', status: 'online', lastChecked: 1 });
     registryMocks.reconnectServer.mockResolvedValue({ serverId: 'c', kind: 'ssh', status: 'online' });
+    registryMocks.restartServer.mockResolvedValue({ ok: true, message: 'Server is restarting...' });
     const fetchMock = vi.fn().mockImplementation((url: string) => {
         if (url.endsWith('/health') || url.endsWith('/api/health')) {
             return Promise.resolve(jsonResponse({ uptime: 100, processCount: 2 }));
@@ -109,8 +117,8 @@ beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
 });
 
-const defaultHealthImpl = (servers: RemoteServer[]) =>
-    servers.map(s => ({
+const defaultHealthImpl = (servers: RemoteServer[]) => ({
+    healthStates: servers.map(s => ({
         server: s,
         kind: s.kind,
         status: 'online' as const,
@@ -118,7 +126,9 @@ const defaultHealthImpl = (servers: RemoteServer[]) =>
         effectiveUrl: s.kind === 'devtunnel' ? s.effectiveUrl : s.url,
         localPort: s.kind === 'devtunnel' ? s.localPort : undefined,
         tunnelId: s.kind === 'devtunnel' ? s.tunnelId : undefined,
-    }));
+    })),
+    refetch: healthMocks.refetch,
+});
 
 afterEach(() => {
     cleanup();
@@ -126,6 +136,7 @@ afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     Object.values(registryMocks).forEach(mock => mock.mockReset());
+    healthMocks.refetch.mockReset();
     vi.mocked(useRemoteServerHealth).mockReset().mockImplementation(defaultHealthImpl);
 });
 
@@ -227,6 +238,141 @@ describe('ServersView', () => {
 
         expect(registryMocks.reconnectServer).toHaveBeenCalledWith('c');
         await waitFor(() => expect(registryMocks.listRemoteServers).toHaveBeenCalledTimes(2));
+    });
+
+    it('clicking Restart opens a confirmation dialog with a disruption warning and sends nothing yet', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
+
+        render(<ServersView />);
+        switchToGrid();
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
+
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        fireEvent.click(screen.getByTestId('server-card-menu-restart'));
+
+        const body = screen.getByTestId('restart-confirm-body');
+        expect(body.textContent).toContain('Box A');
+        expect(body.textContent?.toLowerCase()).toContain('interrupt');
+        expect(body.textContent?.toLowerCase()).toContain('process manager');
+        expect(registryMocks.restartServer).not.toHaveBeenCalled();
+    });
+
+    it('cancelling the restart dialog sends no request and closes it', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
+
+        render(<ServersView />);
+        switchToGrid();
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
+
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        fireEvent.click(screen.getByTestId('server-card-menu-restart'));
+        fireEvent.click(screen.getByTestId('restart-confirm-cancel'));
+
+        expect(registryMocks.restartServer).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('restart-confirm-body')).toBeNull();
+    });
+
+    it('confirming the restart dialog calls backend restart with the server id and closes', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
+
+        render(<ServersView />);
+        switchToGrid();
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
+
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        fireEvent.click(screen.getByTestId('server-card-menu-restart'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('restart-confirm-submit'));
+        });
+
+        expect(registryMocks.restartServer).toHaveBeenCalledWith('a');
+        await waitFor(() => expect(screen.queryByTestId('restart-confirm-body')).toBeNull());
+    });
+
+    it('surfaces an inline error and keeps the dialog open when restart fails', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
+        registryMocks.restartServer.mockRejectedValueOnce(new Error('remote unreachable'));
+
+        render(<ServersView />);
+        switchToGrid();
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
+
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        fireEvent.click(screen.getByTestId('server-card-menu-restart'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('restart-confirm-submit'));
+        });
+
+        expect(registryMocks.restartServer).toHaveBeenCalledWith('a');
+        await waitFor(() => expect(screen.getByTestId('restart-confirm-error').textContent).toContain('remote unreachable'));
+        expect(screen.getByTestId('restart-confirm-body')).toBeTruthy();
+    });
+
+    it('confirming a restart shows an optimistic "Restarting…" indicator and re-polls health immediately', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
+
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getByTestId('server-row-restart')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('server-row-restart'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('restart-confirm-submit'));
+        });
+
+        // Optimistic transient surfaces on the row and outlives the request.
+        await waitFor(() => expect(screen.getByTestId('server-row-restarting')).toBeTruthy());
+        // Immediate re-poll instead of waiting for the 30s POLL_INTERVAL_MS cycle.
+        expect(healthMocks.refetch).toHaveBeenCalled();
+    });
+
+    it('a failed restart neither re-polls nor leaves an optimistic "Restarting…" indicator', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
+        registryMocks.restartServer.mockRejectedValueOnce(new Error('remote unreachable'));
+
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getByTestId('server-row-restart')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('server-row-restart'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('restart-confirm-submit'));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('restart-confirm-error').textContent).toContain('remote unreachable'));
+        expect(healthMocks.refetch).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('server-row-restarting')).toBeNull();
+    });
+
+    it('row Restart action is enabled for an online remote server', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
+
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getByTestId('server-row-restart')).toBeTruthy());
+        expect((screen.getByTestId('server-row-restart') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('row Restart action is disabled when the server is offline', async () => {
+        vi.mocked(useRemoteServerHealth).mockImplementation(servers => ({
+            healthStates: servers.map(s => ({
+                server: s,
+                kind: s.kind,
+                status: 'offline' as const,
+                effectiveUrl: s.kind === 'url' ? (s as typeof URL_REMOTE).url : undefined,
+            })),
+            refetch: healthMocks.refetch,
+        }));
+        registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
+
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getByTestId('server-row-restart')).toBeTruthy());
+        expect((screen.getByTestId('server-row-restart') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('never offers a Restart action for the local-only server list', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([]);
+
+        render(<ServersView />);
+        await waitFor(() => expect(registryMocks.listRemoteServers).toHaveBeenCalled());
+        expect(screen.queryByTestId('server-row-restart')).toBeNull();
     });
 
     it('clicking Edit server opens a prefilled edit dialog for a Direct URL server', async () => {
@@ -440,8 +586,8 @@ describe('ServersView', () => {
     });
 
     it('filter "Offline" shows only offline-status servers', async () => {
-        vi.mocked(useRemoteServerHealth).mockImplementation(servers =>
-            servers.map(s => ({
+        vi.mocked(useRemoteServerHealth).mockImplementation(servers => ({
+            healthStates: servers.map(s => ({
                 server: s,
                 kind: s.kind,
                 status: 'offline' as const,
@@ -450,8 +596,9 @@ describe('ServersView', () => {
                     : (s as typeof URL_REMOTE).url,
                 localPort: s.kind === 'devtunnel' ? (s as typeof TUNNEL_REMOTE).localPort : undefined,
                 tunnelId: s.kind === 'devtunnel' ? (s as typeof TUNNEL_REMOTE).tunnelId : undefined,
-            }))
-        );
+            })),
+            refetch: healthMocks.refetch,
+        }));
         registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
         render(<ServersView />);
         switchToGrid();

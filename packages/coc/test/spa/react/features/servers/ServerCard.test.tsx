@@ -300,6 +300,54 @@ describe('ServerCard — menu actions', () => {
     });
 });
 
+describe('ServerCard — restart menu item', () => {
+    it.each([
+        ['URL', REMOTE_BASE, 'r1'],
+        ['DevTunnel', DEVTUNNEL_BASE, 'd1'],
+        ['SSH', SSH_BASE, 's1'],
+    ] as const)('shows an enabled Restart item for online %s servers and calls onRestart', (_label, health, id) => {
+        const onRestart = vi.fn();
+        render(<ServerCard health={health} isLocal={false} onRestart={onRestart} />);
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        const btn = screen.getByTestId('server-card-menu-restart') as HTMLButtonElement;
+        expect(btn.disabled).toBe(false);
+        fireEvent.click(btn);
+        expect(onRestart).toHaveBeenCalledWith(id);
+        expect(screen.queryByTestId('server-card-menu')).toBeNull();
+    });
+
+    it('disables Restart and does not fire onRestart when the server is offline', () => {
+        const onRestart = vi.fn();
+        render(<ServerCard health={{ ...REMOTE_BASE, status: 'offline' }} isLocal={false} onRestart={onRestart} />);
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        const btn = screen.getByTestId('server-card-menu-restart') as HTMLButtonElement;
+        expect(btn.disabled).toBe(true);
+        fireEvent.click(btn);
+        expect(onRestart).not.toHaveBeenCalled();
+    });
+
+    it('shows "Restarting…" and disables the item while restarting', () => {
+        render(<ServerCard health={REMOTE_BASE} isLocal={false} onRestart={vi.fn()} restarting />);
+        expect(screen.getByTestId('server-card-restarting').textContent).toContain('Restarting');
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        const btn = screen.getByTestId('server-card-menu-restart') as HTMLButtonElement;
+        expect(btn.disabled).toBe(true);
+        expect(btn.textContent).toContain('Restarting');
+    });
+
+    it('does not render a Restart item when onRestart is not provided', () => {
+        render(<ServerCard health={REMOTE_BASE} isLocal={false} />);
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        expect(screen.queryByTestId('server-card-menu-restart')).toBeNull();
+    });
+
+    it('never renders a Restart item for the local server (no menu at all)', () => {
+        render(<ServerCard health={LOCAL_BASE} isLocal onRestart={vi.fn()} />);
+        expect(screen.queryByTestId('server-card-menu-btn')).toBeNull();
+        expect(screen.queryByTestId('server-card-menu-restart')).toBeNull();
+    });
+});
+
 describe('ServerCard — stats rendering', () => {
     it('renders process count, uptime, and version when defined', () => {
         render(<ServerCard health={REMOTE_BASE} isLocal={false} />);

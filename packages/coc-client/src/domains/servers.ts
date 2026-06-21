@@ -5,6 +5,7 @@ import type {
   RemoteServerHealth,
   RemoteServerInput,
   RemoteServerPatch,
+  RemoteServerRestartResponse,
   RemoteServerRuntime,
 } from '../contracts';
 import type { RequestAdapter } from '../types';
@@ -49,6 +50,12 @@ export class ServersClient {
 
   reconnect(id: string): Promise<RemoteServerRuntime> {
     return this.transport.request<RemoteServerRuntime>(serverPath(id, '/reconnect'), {
+      method: 'POST',
+    });
+  }
+
+  restart(id: string): Promise<RemoteServerRestartResponse> {
+    return this.transport.request<RemoteServerRestartResponse>(serverPath(id, '/restart'), {
       method: 'POST',
     });
   }
