@@ -456,13 +456,13 @@ function AttachedPointerContextBlockCard({ context }: { context: ParsedPointerCo
             data-context-kind={context.kind}
         >
             <summary className="cursor-pointer select-none list-none px-3 py-2 flex items-center gap-2">
-                <span aria-hidden="true">▣</span>
-                <span className="font-medium text-sky-800 dark:text-sky-200">Attached {kindLabel} context</span>
+                <span aria-hidden="true" className="shrink-0">▣</span>
+                <span className="shrink-0 whitespace-nowrap font-medium text-sky-800 dark:text-sky-200">Attached {kindLabel} context</span>
                 <span className="min-w-0 flex-1 truncate text-sky-800/80 dark:text-sky-200/80" data-testid="attached-pointer-context-summary">
                     {context.label}
                 </span>
                 {meta && (
-                    <span className="shrink-0 font-mono text-[10px] text-sky-700/80 dark:text-sky-300/80" data-testid="attached-pointer-context-meta">
+                    <span className="min-w-0 max-w-[50%] truncate font-mono text-[10px] text-sky-700/80 dark:text-sky-300/80" data-testid="attached-pointer-context-meta">
                         {meta}
                     </span>
                 )}
