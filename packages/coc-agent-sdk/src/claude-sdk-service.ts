@@ -42,7 +42,7 @@ import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
 import { evaluateClaudeImageFile } from './image-converter';
-import { spawn } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import { createRequire } from 'module';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -602,7 +602,11 @@ export class ClaudeSDKService implements ISDKService {
         if (this.disposed) throw new Error('ClaudeSDKService has been disposed');
         const avail = await this.isAvailable();
         if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
-        if (process.platform === 'linux') return fetchClaudeOAuthQuota();
+        // Linux reads the on-disk credentials file; macOS additionally falls back
+        // to the Keychain (where `claude login` stores credentials). Both route to
+        // the credential-backed OAuth usage path. Windows keeps the cached-info
+        // fallback below.
+        if (process.platform === 'linux' || process.platform === 'darwin') return fetchClaudeOAuthQuota();
         if (this.lastRateLimitInfo) return mapClaudeRateLimitInfoToQuota(this.lastRateLimitInfo);
         if (this.lastAccountInfo) return mapClaudeAccountInfoToQuota(this.lastAccountInfo);
         return { quotaSnapshots: {} };
@@ -2027,21 +2031,108 @@ export function extractClaudeAccessToken(credentials: Record<string, unknown>): 
 }
 
 /**
- * Reads the Claude OAuth credentials from disk and calls the Anthropic OAuth
- * usage endpoint. Linux-only; returns empty snapshots on any I/O or network
- * error so callers never need to handle rejections.
+ * macOS Keychain service name under which `claude login` stores the OAuth
+ * credentials JSON (the same `{ claudeAiOauth: { accessToken, … } }` shape the
+ * Linux on-disk file uses). Read with
+ * `security find-generic-password -s "Claude Code-credentials" -w`.
  */
-async function fetchClaudeOAuthQuota(): Promise<IAccountQuotaResult> {
-    try {
-        const credentialsFile = process.env['CLAUDE_CREDENTIALS_FILE']
-            ?? path.join(os.homedir(), '.claude', '.credentials.json');
+const MACOS_KEYCHAIN_SERVICE = 'Claude Code-credentials';
 
-        let rawContent: string;
-        try {
-            rawContent = fs.readFileSync(credentialsFile, 'utf8');
-        } catch {
-            return { quotaSnapshots: {} };
-        }
+/**
+ * Reads the raw Claude credentials JSON from the macOS Keychain by shelling out
+ * to the `security` CLI with an argument array (no shell string interpolation,
+ * so no injection surface). Returns the trimmed payload, or `undefined` on any
+ * failure — binary absent, non-zero exit (no matching entry), or empty output.
+ *
+ * Only meaningful on darwin; on other platforms the `security` binary is absent
+ * so the call throws and is swallowed, yielding `undefined`. The `exec`
+ * parameter is injectable so unit tests never invoke the real binary.
+ */
+export function readKeychainCredentials(
+    exec: typeof execFileSync = execFileSync,
+): string | undefined {
+    try {
+        const output = exec(
+            'security',
+            ['find-generic-password', '-s', MACOS_KEYCHAIN_SERVICE, '-w'],
+            { encoding: 'utf8' },
+        );
+        const text = String(output).trim();
+        return text ? text : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/** Reads a UTF-8 file synchronously, returning `undefined` on any error. */
+function safeReadFileUtf8(filePath: string): string | undefined {
+    try {
+        return fs.readFileSync(filePath, 'utf8');
+    } catch {
+        return undefined;
+    }
+}
+
+/** Injectable credential sources for {@link resolveClaudeCredentialsRaw}. */
+export interface ClaudeCredentialSources {
+    /** Value of `$CLAUDE_CREDENTIALS_FILE`, or `undefined` when unset. */
+    credentialsFileEnv: string | undefined;
+    /** Home directory used to locate `~/.claude/.credentials.json`. */
+    homeDir: string;
+    /** Reads a file's UTF-8 contents; returns `undefined` on any error. */
+    readFile: (filePath: string) => string | undefined;
+    /** Reads raw credentials JSON from the macOS Keychain; `undefined` on failure. */
+    readKeychain: () => string | undefined;
+}
+
+/**
+ * Resolves the raw Claude credentials JSON string from the first available
+ * source, in priority order:
+ *   (a) `$CLAUDE_CREDENTIALS_FILE`, when set — used exclusively; the Keychain is
+ *       never consulted in this case, preserving existing Linux behaviour.
+ *   (b) `~/.claude/.credentials.json`, when it exists and is non-empty.
+ *   (c) the macOS Keychain (darwin only; the reader yields `undefined` elsewhere).
+ *
+ * Returns `undefined` when no source yields a non-empty payload. Parsing/token
+ * extraction happens later, so a present-but-malformed payload still "wins" here
+ * and is rejected downstream.
+ */
+export function resolveClaudeCredentialsRaw(sources: ClaudeCredentialSources): string | undefined {
+    const { credentialsFileEnv, homeDir, readFile, readKeychain } = sources;
+
+    if (credentialsFileEnv) {
+        const content = readFile(credentialsFileEnv);
+        return content && content.trim() ? content : undefined;
+    }
+
+    const defaultFile = path.join(homeDir, '.claude', '.credentials.json');
+    const fileContent = readFile(defaultFile);
+    if (fileContent && fileContent.trim()) return fileContent;
+
+    const keychainContent = readKeychain();
+    return keychainContent && keychainContent.trim() ? keychainContent : undefined;
+}
+
+/**
+ * Reads the current Claude OAuth credentials (file or, on macOS, the Keychain)
+ * and calls the Anthropic OAuth usage endpoint. Credentials are read fresh on
+ * every call — no token is cached here. Returns empty snapshots on any I/O,
+ * Keychain, parse, or network error so callers never need to handle rejections;
+ * CoC never writes credentials back.
+ */
+export async function fetchClaudeOAuthQuota(deps: {
+    readKeychain?: () => string | undefined;
+    readFile?: (filePath: string) => string | undefined;
+    homeDir?: string;
+} = {}): Promise<IAccountQuotaResult> {
+    try {
+        const rawContent = resolveClaudeCredentialsRaw({
+            credentialsFileEnv: process.env['CLAUDE_CREDENTIALS_FILE'],
+            homeDir: deps.homeDir ?? os.homedir(),
+            readFile: deps.readFile ?? safeReadFileUtf8,
+            readKeychain: deps.readKeychain ?? readKeychainCredentials,
+        });
+        if (!rawContent) return { quotaSnapshots: {} };
 
         let credentials: unknown;
         try {
