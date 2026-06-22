@@ -19,7 +19,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Marked } from 'marked';
 import { cn } from '../../ui';
 import { useApp } from '../../contexts/AppContext';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { formatTimestamp, prStatusBadge } from './pr-utils';
 import { ReviewerBadge } from './ReviewerBadge';
 import { ThreadList } from './ThreadList';
@@ -68,6 +69,7 @@ const descMarked = new Marked({ gfm: true, breaks: true, renderer: descRenderer 
 
 export interface PullRequestDetailProps {
     repoId: string;
+    workspaceId: string;
     remoteUrl?: string | null;
     prId: number | string;
     onBack: () => void;
@@ -84,8 +86,9 @@ const TAB_DEFINITIONS: Array<{ id: PrDetailTab; label: string }> = [
 
 const EMPTY_FILES: FileChange[] = [];
 
-export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = false }: PullRequestDetailProps) {
+export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack, isMobile = false }: PullRequestDetailProps) {
     const { state, dispatch } = useApp();
+    const cloneClient = useCocClient(workspaceId);
     const [pr, setPr] = useState<PullRequest | null>(null);
     const [threads, setThreads] = useState<CommentThread[]>([]);
     const [commits, setCommits] = useState<PullRequestCommit[]>([]);
@@ -105,8 +108,6 @@ export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = 
 
     // Pop-out context for opening PR review in a separate window
     const { markPoppedOut } = useGitReviewPopOut();
-    const workspaceId = state.workspace ?? String(repoId);
-    const placementWorkspaceId = state.selectedRepoId ?? String(repoId);
     const originId = useMemo(
         () => resolveCanonicalOriginId({ workspaceId, remoteUrl }),
         [workspaceId, remoteUrl],
@@ -127,11 +128,11 @@ export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = 
             : undefined;
     const prChatTarget = useMemo<ReviewChatTarget>(() => ({
         type: 'pr',
-        workspaceId: placementWorkspaceId,
+        workspaceId,
         repoId: String(repoId),
         prId: String(prId),
         headSha,
-    }), [placementWorkspaceId, repoId, prId, headSha]);
+    }), [workspaceId, repoId, prId, headSha]);
     const {
         chatOpen: assistantOpen,
         toggleChat: toggleAssistant,
@@ -177,34 +178,33 @@ export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = 
         setCommitsError(null);
         setChecks([]);
         setChecksError(null);
-        const client = getSpaCocClient();
         const prIdStr = String(prId);
         const repoIdStr = String(repoId);
         const providerOptions = { workspaceId, repoId: repoIdStr };
 
         Promise.all([
-            client.pullRequests
+            cloneClient.pullRequests
                 .getForOrigin(originId, prIdStr, { ...providerOptions, force })
                 .then(body => body as PullRequest),
-            client.pullRequests
+            cloneClient.pullRequests
                 .getThreadsForOrigin(originId, prIdStr, providerOptions)
                 .then(body => (body.threads ?? []) as CommentThread[])
                 .catch(() => [] as CommentThread[]),
-            client.pullRequests
+            cloneClient.pullRequests
                 .getDiffForOrigin(originId, prIdStr, providerOptions)
                 .then(text => ({ kind: 'ok' as const, parsed: parseDiffFileList(text) }))
                 .catch((err: unknown) => ({
                     kind: 'err' as const,
                     message: getSpaCocClientErrorMessage(err, 'Failed to load diff'),
                 })),
-            client.pullRequests
+            cloneClient.pullRequests
                 .getCommitsForOrigin(originId, prIdStr, providerOptions)
                 .then(body => ({ kind: 'ok' as const, commits: (body.commits ?? []) as PullRequestCommit[] }))
                 .catch((err: unknown) => ({
                     kind: 'err' as const,
                     message: getSpaCocClientErrorMessage(err, 'Failed to load commits'),
                 })),
-            client.pullRequests
+            cloneClient.pullRequests
                 .getChecksForOrigin(originId, prIdStr, providerOptions)
                 .then(body => ({ kind: 'ok' as const, checks: (body.checks ?? []) as PullRequestCheck[] }))
                 .catch((err: unknown) => ({
@@ -236,7 +236,7 @@ export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = 
                 setLoading(false);
                 setRefreshing(false);
             });
-    }, [repoId, prId, originId, workspaceId]);
+    }, [repoId, prId, originId, workspaceId, cloneClient]);
 
     useEffect(() => {
         fetchAll();
@@ -648,7 +648,7 @@ export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = 
 
             {assistantOpen && assistantPresentation === 'lens' && (
                 <PullRequestChatPlacementFrame
-                    workspaceId={String(repoId)}
+                    workspaceId={workspaceId}
                     remoteUrl={remoteUrl}
                     repoId={String(repoId)}
                     prId={String(prId)}
@@ -667,7 +667,7 @@ export function PullRequestDetail({ repoId, remoteUrl, prId, onBack, isMobile = 
                 <PrAiAssistantDrawer
                     open={assistantOpen}
                     onClose={closeAssistant}
-                    workspaceId={String(repoId)}
+                    workspaceId={workspaceId}
                     remoteUrl={remoteUrl}
                     repoId={String(repoId)}
                     prId={String(prId)}

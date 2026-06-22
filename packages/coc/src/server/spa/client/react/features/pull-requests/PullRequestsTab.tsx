@@ -1671,6 +1671,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
     ) : state.selectedPrId != null ? (
         <PullRequestDetail
             repoId={repoId}
+            workspaceId={workspaceId}
             remoteUrl={remoteUrl}
             prId={state.selectedPrId}
             onBack={() => { if (isMobile) setMobileShowDetail(false); }}
