@@ -165,20 +165,16 @@ export function createTavilyWebSearchTool(options: TavilyWebSearchToolOptions) {
 
     const tool = defineTool<TavilyWebSearchArgs>('tavily_web_search', {
         description:
-            'Search the live web via Tavily for current, authoritative information. ' +
-            'USE PROACTIVELY when the user asks about recent events, version-specific behavior, ' +
-            'newly released libraries/APIs, ongoing incidents, or anything likely to be past your knowledge cutoff. ' +
-            'Prefer this over `web_fetch` when starting from a question (not a known URL); ' +
-            'it returns ranked results with snippets and an optional one-shot `answer` summary. ' +
-            'Set `searchDepth: "advanced"` for higher-quality (more expensive) retrieval; ' +
-            '`topic: "news"` plus `days: N` for recent news; ' +
-            '`includeRawContent: true` only when you really need full page text (large).',
+            'Search the live web via Tavily for current information. ' +
+            'Use proactively when the user asks about recent events, new releases, or anything likely past your knowledge cutoff. ' +
+            'Prefer this over `web_fetch` when starting from a question rather than a known URL. ' +
+            'Returns ranked results with snippets and an optional one-shot `answer` summary.',
         parameters: {
             type: 'object',
             properties: {
                 query: {
                     type: 'string',
-                    description: 'The search query — write a focused, well-formed question or keyword phrase.',
+                    description: 'Search query — a focused question or keyword phrase.',
                 },
                 searchDepth: {
                     type: 'string',
@@ -205,7 +201,7 @@ export function createTavilyWebSearchTool(options: TavilyWebSearchToolOptions) {
                 includeDomains: {
                     type: 'array',
                     items: { type: 'string' },
-                    description: 'Optional allow-list of domains to restrict results to (e.g. ["docs.example.com"]).',
+                    description: 'Optional allow-list of domains to restrict results to.',
                 },
                 excludeDomains: {
                     type: 'array',

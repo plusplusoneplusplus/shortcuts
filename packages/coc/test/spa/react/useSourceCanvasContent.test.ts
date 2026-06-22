@@ -10,17 +10,36 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
-const { previewMock, workspacesRef } = vi.hoisted(() => ({
+type TestWorkspace = { id: string; rootPath?: string; baseUrl?: string };
+
+const { previewMock, getClientMock, workspacesRef, reposRef } = vi.hoisted(() => ({
     previewMock: vi.fn(),
-    workspacesRef: { current: [] as Array<{ id: string; rootPath?: string }> },
+    getClientMock: vi.fn(),
+    workspacesRef: { current: [] as TestWorkspace[] },
+    reposRef: {
+        current: null as null | { repos: Array<{ workspace: TestWorkspace }> },
+    },
 }));
 
 vi.mock('../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: { workspaces: workspacesRef.current }, dispatch: vi.fn() }),
 }));
 
+vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
+    useReposOptional: () => reposRef.current,
+}));
+
+// Clone registry routes a workspace id to its (local-default or remote) client.
+vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    getCocClientForWorkspace: getClientMock,
+}));
+
+// Remote workspaces are tagged with a `baseUrl`; mirror that here.
+vi.mock('../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation', () => ({
+    isRemoteWorkspace: (ws: TestWorkspace) => typeof ws?.baseUrl === 'string',
+}));
+
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ tasks: { previewWorkspaceFile: previewMock } }),
     getSpaCocClientErrorMessage: (_err: unknown, fallback: string) => fallback,
 }));
 
@@ -28,7 +47,10 @@ import { useSourceCanvasContent } from '../../../src/server/spa/client/react/fea
 
 beforeEach(() => {
     previewMock.mockReset();
+    getClientMock.mockReset();
+    getClientMock.mockReturnValue({ tasks: { previewWorkspaceFile: previewMock } });
     workspacesRef.current = [{ id: 'ws1', rootPath: '/home/u/proj' }];
+    reposRef.current = null;
 });
 
 describe('useSourceCanvasContent', () => {
@@ -42,6 +64,8 @@ describe('useSourceCanvasContent', () => {
         expect(result.current.content).toBe('hello world\n');
         expect(result.current.language).toBe('typescript');
         expect(result.current.resolvedPath).toBe('/home/u/proj/src/a.ts');
+        // Local workspace ids route through the clone registry's default client.
+        expect(getClientMock).toHaveBeenCalledWith('ws1');
         expect(previewMock).toHaveBeenCalledWith('ws1', '/home/u/proj/src/a.ts', { lines: 0 });
     });
 
@@ -107,5 +131,59 @@ describe('useSourceCanvasContent', () => {
         expect(previewMock).toHaveBeenCalledWith('ws1', '/home/u/proj/src/from-chat.ts', {
             lines: 0,
         });
+    });
+
+    // Regression: a chat link clicked in a REMOTE conversation carries the remote
+    // workspace id. That workspace lives only in the repos list (not
+    // `state.workspaces`), so before the fix resolution failed with "No workspace
+    // root available" and never reached a fetch. The hook must fold remote
+    // workspaces in, anchor the relative path against the remote rootPath, and
+    // fetch via the clone-routed client (not the local default).
+    it('resolves a remote-workspace chat link and fetches via the clone-routed client', async () => {
+        reposRef.current = {
+            repos: [
+                { workspace: { id: 'ws1', rootPath: '/home/u/proj' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        rootPath: '/home/remote/repo',
+                        baseUrl: 'http://127.0.0.1:4000',
+                    },
+                },
+            ],
+        };
+        previewMock.mockResolvedValue({ content: 'remote!', language: 'typescript' });
+        const { result } = renderHook(() =>
+            useSourceCanvasContent({
+                fullPath: 'packages/coc/RalphWorkflowPane.tsx',
+                wsId: 'remote-ws',
+            }),
+        );
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        expect(result.current.content).toBe('remote!');
+        expect(result.current.resolvedPath).toBe(
+            '/home/remote/repo/packages/coc/RalphWorkflowPane.tsx',
+        );
+        expect(getClientMock).toHaveBeenCalledWith('remote-ws');
+        expect(previewMock).toHaveBeenCalledWith(
+            'remote-ws',
+            '/home/remote/repo/packages/coc/RalphWorkflowPane.tsx',
+            { lines: 0 },
+        );
+    });
+
+    // Regression guard for the original failure: with the remote workspace absent
+    // from BOTH state.workspaces and the repos list, a remote-id relative ref has
+    // no rootPath to anchor against and must still surface a clear error.
+    it('errors with "No workspace root available" when the hinted workspace is unknown', async () => {
+        const { result } = renderHook(() =>
+            useSourceCanvasContent({
+                fullPath: 'packages/coc/RalphWorkflowPane.tsx',
+                wsId: 'remote-ws',
+            }),
+        );
+        await waitFor(() => expect(result.current.status).toBe('error'));
+        expect(result.current.error).toBe('No workspace root available');
+        expect(previewMock).not.toHaveBeenCalled();
     });
 });

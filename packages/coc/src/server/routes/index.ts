@@ -637,7 +637,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Ralph routes
     registerRalphRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
-    registerRalphSessionRoutes(routes, { dataDir, store });
+    registerRalphSessionRoutes(routes, { dataDir, store, bridge: bridgeWithResolvedDefaults });
     registerRalphContinueRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphNewLoopRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphPromoteRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });

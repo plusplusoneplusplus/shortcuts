@@ -12,17 +12,20 @@ import { sendJSON, sendError } from '../core/api-handler';
 import type { Route } from '../types';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { recoverIterationPaths } from './ralph-route-utils';
+import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
+import { findInFlightRalphTask, recoverIterationPaths } from './ralph-route-utils';
 
 export interface RalphSessionRouteContext {
     /** Repo-scoped data root (`~/.coc` or override). */
     dataDir: string;
     /** Optional process store used to recover transient Resume AI defaults. */
     store?: ProcessStore;
+    /** Queue router used to detect whether a Ralph task is still in flight. */
+    bridge: MultiRepoQueueRouter;
 }
 
 export function registerRalphSessionRoutes(routes: Route[], ctx: RalphSessionRouteContext): void {
-    const { dataDir, store: processStore } = ctx;
+    const { dataDir, store: processStore, bridge } = ctx;
 
     routes.push({
         method: 'GET',
@@ -47,11 +50,20 @@ export function registerRalphSessionRoutes(routes: Route[], ctx: RalphSessionRou
             const resumeDefaults = processStore
                 ? compactResumeDefaults(await recoverIterationPaths(record, processStore, workspaceId))
                 : undefined;
+            // Authoritative "is the loop actually live" signal. The session
+            // record alone cannot tell a healthy in-progress session from one
+            // wedged in phase=executing, because iterations are only persisted
+            // on completion: a running first iteration looks identical to a
+            // cancelled one (currentIteration=0, iterations=[]). The SPA gates
+            // the stuck-session Resume control on this instead of the iteration
+            // counter.
+            const hasInFlightTask = !!findInFlightRalphTask(bridge, sessionId);
 
             sendJSON(res, 200, {
                 record,
                 sections,
                 files,
+                hasInFlightTask,
                 ...(resumeDefaults ? { resumeDefaults } : {}),
             });
         },

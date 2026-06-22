@@ -15,6 +15,7 @@ const mockListWorkItems = vi.fn();
 const mockUpdateWorkItem = vi.fn();
 const mockSavePlanVersion = vi.fn();
 const mockAddChange = vi.fn();
+const mockListChildren = vi.fn();
 vi.mock('../../src/server/work-items/work-item-store', function () { return ({
     FileWorkItemStore: vi.fn().mockImplementation(function () { return ({
         addWorkItem: mockAddWorkItem,
@@ -23,6 +24,7 @@ vi.mock('../../src/server/work-items/work-item-store', function () { return ({
         updateWorkItem: mockUpdateWorkItem,
         savePlanVersion: mockSavePlanVersion,
         addChange: mockAddChange,
+        listChildren: mockListChildren,
     }); }),
     createWorkItemStore: vi.fn(() => ({
         addWorkItem: mockAddWorkItem,
@@ -31,6 +33,7 @@ vi.mock('../../src/server/work-items/work-item-store', function () { return ({
         updateWorkItem: mockUpdateWorkItem,
         savePlanVersion: mockSavePlanVersion,
         addChange: mockAddChange,
+        listChildren: mockListChildren,
     })),
 }); });
 
@@ -74,6 +77,8 @@ describe('createCreateUpdateWorkItemTool', () => {
         mockSavePlanVersion.mockResolvedValue(undefined);
         mockAddChange.mockReset();
         mockAddChange.mockResolvedValue(undefined);
+        mockListChildren.mockReset();
+        mockListChildren.mockResolvedValue([]);
     });
 
     it('returns an object with a tool property', () => {
@@ -484,8 +489,10 @@ describe('createCreateUpdateWorkItemTool', () => {
         expect(result).toMatchObject({ updated: true, id: EXISTING_ITEM.id, status: 'done' });
     });
 
-    it('update mode rejects type mismatch without changing the item', async () => {
-        mockGetWorkItem.mockResolvedValue({ ...EXISTING_ITEM, type: 'bug' });
+    it('update mode changes the type when the resulting hierarchy is valid, preserving plan and status', async () => {
+        const existingBug = { ...EXISTING_ITEM, type: 'bug' as const };
+        mockGetWorkItem.mockResolvedValue(existingBug);
+        mockUpdateWorkItem.mockImplementation(async (_id, patch) => ({ ...existingBug, ...patch }));
         const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
 
         const result = await tool.handler({
@@ -494,11 +501,50 @@ describe('createCreateUpdateWorkItemTool', () => {
             priority: 'high',
         });
 
-        expect(result).toMatchObject({ updated: false, id: EXISTING_ITEM.id });
-        expect((result as any).error).toContain('Cannot change work item type');
-        expect(mockUpdateWorkItem).not.toHaveBeenCalled();
+        expect(result).toMatchObject({ updated: true, id: EXISTING_ITEM.id });
+        // The type change is persisted as a common field-update.
+        expect(mockUpdateWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, { type: 'work-item' }, repoId);
+        // It composes with other field updates (priority) ...
+        expect(mockUpdateWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, { priority: 'high' }, repoId);
+        // ... and preserves plan/status: no plan version, no change record.
         expect(mockSavePlanVersion).not.toHaveBeenCalled();
         expect(mockAddChange).not.toHaveBeenCalled();
+    });
+
+    it('update mode rejects a type change that orphans existing children, naming the blockers', async () => {
+        const existingPbi = { ...EXISTING_ITEM, type: 'pbi' as const, status: 'planning' as const };
+        mockGetWorkItem.mockResolvedValue(existingPbi);
+        mockListChildren.mockResolvedValue([
+            { id: 'child-1', workItemNumber: 21, repoId, title: 'A child', status: 'created', source: 'manual', type: 'work-item', createdAt: '', updatedAt: '' },
+        ]);
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({ workItemId: EXISTING_ITEM.id, type: 'work-item' });
+
+        expect(result).toMatchObject({ updated: false, id: EXISTING_ITEM.id });
+        expect((result as any).error).toContain('WI-21');
+        expect((result as any).error).toContain('cannot parent');
+        expect(mockUpdateWorkItem).not.toHaveBeenCalled();
+        expect(mockSavePlanVersion).not.toHaveBeenCalled();
+    });
+
+    it('update mode rejects a type change when the existing parent is no longer valid', async () => {
+        const existingPbi = { ...EXISTING_ITEM, type: 'pbi' as const, parentId: 'feature-1' };
+        mockGetWorkItem.mockImplementation(async (id: string) => {
+            if (id === 'feature-1') {
+                return { ...EXISTING_ITEM, id: 'feature-1', workItemNumber: 3, type: 'feature', title: 'A feature' };
+            }
+            return existingPbi;
+        });
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        // pbi → epic: an epic cannot live under a feature, and no new parent is supplied.
+        const result = await tool.handler({ workItemId: EXISTING_ITEM.id, type: 'epic' });
+
+        expect(result).toMatchObject({ updated: false, id: EXISTING_ITEM.id });
+        expect((result as any).error).toContain('WI-3');
+        expect((result as any).error).toContain("cannot be a parent of 'epic'");
+        expect(mockUpdateWorkItem).not.toHaveBeenCalled();
     });
 
     it('update mode rejects unsupported validation type values', async () => {

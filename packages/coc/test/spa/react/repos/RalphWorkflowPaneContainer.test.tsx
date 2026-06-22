@@ -266,6 +266,8 @@ describe('RalphWorkflowPaneContainer', () => {
                     { iteration: 2, signal: 'NONE', timestamp: new Date().toISOString(), body: 'two' },
                 ],
                 resumeDefaults,
+                // Stuck executing: last iteration failed, no task in flight → Resume offered.
+                hasInFlightTask: false,
             })
             .mockResolvedValueOnce({
                 record: makeRecord(),

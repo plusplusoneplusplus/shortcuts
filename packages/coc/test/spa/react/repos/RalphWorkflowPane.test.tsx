@@ -817,7 +817,12 @@ describe('RalphWorkflowPane — final-check timeline', () => {
 // ---------------------------------------------------------------------------
 
 describe('RalphWorkflowPane — resume stuck executing session', () => {
-    function makeStuckView(overrides: Partial<RalphSessionRecord> = {}): RalphSessionView {
+    // A stuck session defaults to hasInFlightTask=false (the server found no
+    // queued/running task backing it). viewOverrides lets a test flip that.
+    function makeStuckView(
+        overrides: Partial<RalphSessionRecord> = {},
+        viewOverrides: Partial<RalphSessionView> = {},
+    ): RalphSessionView {
         return {
             record: makeRecord({
                 phase: 'executing',
@@ -830,6 +835,8 @@ describe('RalphWorkflowPane — resume stuck executing session', () => {
                 ...overrides,
             }),
             sections: [makeSection(1), makeSection(2), makeSection(3)],
+            hasInFlightTask: false,
+            ...viewOverrides,
         };
     }
 
@@ -839,21 +846,38 @@ describe('RalphWorkflowPane — resume stuck executing session', () => {
         expect(screen.getByTestId('ralph-workflow-resume')).toBeInTheDocument();
     });
 
-    it('does not show Resume when an iteration is still running', () => {
-        const view = makeStuckView({
-            iterations: [
-                makeIter(1),
-                makeIter(2),
-                makeIter(3, 'running'),
-            ],
-        });
+    it('does not show Resume when a Ralph task is still in flight', () => {
+        const view = makeStuckView({}, { hasInFlightTask: true });
         render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
         expect(screen.queryByTestId('ralph-workflow-resume')).toBeNull();
         expect(screen.queryByTestId('ralph-workflow-resume-ai-controls')).toBeNull();
     });
 
-    it('does not show Resume when currentIteration is 0', () => {
+    // Regression: a session cancelled during its first iteration — before any
+    // iteration was recorded — has currentIteration=0 and iterations=[]. It must
+    // still offer Resume, because no task is in flight. (Previously the
+    // currentIteration>0 guard hid the button and left the session un-resumable
+    // from the UI.)
+    it('shows Resume for a first-iteration cancellation (currentIteration 0, no in-flight task)', () => {
         const view = makeStuckView({ currentIteration: 0, iterations: [] });
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.getByTestId('ralph-workflow-resume')).toBeInTheDocument();
+    });
+
+    // The mirror case: a freshly launched session whose first iteration is
+    // genuinely running also has currentIteration=0 / iterations=[], but a task
+    // IS in flight, so Resume must stay hidden.
+    it('does not show Resume for a freshly launched session whose first iteration is running', () => {
+        const view = makeStuckView({ currentIteration: 0, iterations: [] }, { hasInFlightTask: true });
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-workflow-resume')).toBeNull();
+    });
+
+    // Backward compatibility: an older/remote server that does not send
+    // hasInFlightTask leaves it undefined; Resume stays hidden (no false
+    // positives), matching prior behavior.
+    it('does not show Resume when hasInFlightTask is absent (older/remote server)', () => {
+        const view = makeStuckView({}, { hasInFlightTask: undefined });
         render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
         expect(screen.queryByTestId('ralph-workflow-resume')).toBeNull();
     });

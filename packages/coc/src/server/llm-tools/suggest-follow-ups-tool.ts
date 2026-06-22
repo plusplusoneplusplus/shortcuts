@@ -19,7 +19,7 @@ export interface FollowUpSuggestion {
 export function createSuggestFollowUpsTool() {
     return defineTool<FollowUpSuggestion>('suggest_follow_ups', {
         description:
-            'After completing your response, call this tool to suggest exactly 3 brief follow-up actions the user might want to take next. Each suggestion should be a short, direct action phrase (imperative, not a question) that continues the conversation — e.g., "Show an example", "Explain the config options", "Generate the fix". IMPORTANT: Never list follow-up suggestions in your response text. Always call this tool instead.',
+            'At the end of your response, call this to suggest exactly 3 follow-up actions. Each is a short imperative action phrase, not a question. Never list follow-ups in your response text — always call this tool instead.',
         parameters: {
             type: 'object',
             properties: {

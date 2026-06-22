@@ -106,24 +106,20 @@ export function createExcalidrawTools(deps: ExcalidrawToolsDeps): {
     // ------------------------------------------------------------------
     const createOrUpdate = defineTool<CreateOrUpdateExcalidrawArgs>('create_or_update_excalidraw', {
         description:
-            'Create or update an Excalidraw diagram file. Provide the full Excalidraw scene JSON — ' +
-            'the tool performs a full-replace (not a patch). The filename is auto-suffixed with ' +
-            '`.excalidraw` if missing. Returns an `excalidrawLink` that renders inline in chat ' +
-            'when included in your response.',
+            'Create or update an Excalidraw diagram file (full-replace, not a patch). The filename is ' +
+            'auto-suffixed with `.excalidraw` if missing. Returns an `excalidrawLink` that renders inline ' +
+            'in chat when included in your response.',
         parameters: {
             type: 'object',
             properties: {
                 filename: {
                     type: 'string',
-                    description:
-                        'Diagram filename (e.g. "architecture" or "architecture.excalidraw"). ' +
-                        'Must not contain path separators or "..".',
+                    description: 'Diagram filename. Must not contain path separators or "..".',
                 },
                 content: {
                     type: 'object',
                     description:
-                        'The complete Excalidraw scene JSON object. Must include at minimum ' +
-                        'an "elements" array and an "appState" object.',
+                        'The complete Excalidraw scene JSON. Must include an "elements" array and an "appState" object.',
                 },
             },
             required: ['filename', 'content'],
@@ -171,16 +167,14 @@ export function createExcalidrawTools(deps: ExcalidrawToolsDeps): {
     // ------------------------------------------------------------------
     const read = defineTool<ReadExcalidrawArgs>('read_excalidraw', {
         description:
-            'Read an existing Excalidraw diagram file and return its full scene JSON. ' +
-            'Use this to inspect a diagram before modifying it with `create_or_update_excalidraw`.',
+            'Read an existing Excalidraw diagram and return its full scene JSON. ' +
+            'Use before modifying it with `create_or_update_excalidraw`.',
         parameters: {
             type: 'object',
             properties: {
                 filename: {
                     type: 'string',
-                    description:
-                        'Diagram filename (e.g. "architecture" or "architecture.excalidraw"). ' +
-                        'Must not contain path separators or "..".',
+                    description: 'Diagram filename. Must not contain path separators or "..".',
                 },
             },
             required: ['filename'],

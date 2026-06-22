@@ -357,32 +357,32 @@ export function createGetConversationTool(options: GetConversationToolOptions) {
 
     const tool = defineTool<GetConversationArgs>('get_conversation', {
         description:
-            'Fetch the full transcript of a past conversation by processId, compacted to fit a token budget. ' +
-            'Use this AFTER `search_conversations` returns a relevant session and you need to see what was actually discussed or done. ' +
-            'TIP: call with `includeToolCalls: false` first for a prose-only view (much cheaper); re-call with tool calls only if you need to see what was executed. ' +
-            'Use `fromTurn`/`toTurn` to page into a long conversation.',
+            "Fetch a past conversation's transcript by processId, compacted to a token budget. " +
+            'Use AFTER `search_conversations` finds a relevant session and you need to see what was discussed or done. ' +
+            'Call with `includeToolCalls: false` first for a cheaper prose-only view; re-call with tool calls if you need to see what was executed. ' +
+            'Use `fromTurn`/`toTurn` to page a long conversation.',
         parameters: {
             type: 'object',
             properties: {
                 processId: {
                     type: 'string',
-                    description: 'The process ID of the conversation to fetch (from `search_conversations` results).',
+                    description: 'Process ID to fetch (from `search_conversations` results).',
                 },
                 maxChars: {
                     type: 'number',
-                    description: `Maximum characters in the rendered transcript (default: ${DEFAULT_MAX_CHARS}, max: ${HARD_MAX_CHARS}). Larger budgets = more context but more tokens.`,
+                    description: `Max characters in the transcript (default: ${DEFAULT_MAX_CHARS}, max: ${HARD_MAX_CHARS}).`,
                 },
                 includeToolCalls: {
                     type: 'boolean',
-                    description: 'When true (default), include compacted tool-call summaries. Set to false for a prose-only view.',
+                    description: 'When true (default), include compacted tool-call summaries. Set false for a prose-only view.',
                 },
                 fromTurn: {
                     type: 'number',
-                    description: 'Optional: start at this zero-based turn index (inclusive). Useful for paging.',
+                    description: 'Optional zero-based start turn index (inclusive).',
                 },
                 toTurn: {
                     type: 'number',
-                    description: 'Optional: end at this zero-based turn index (inclusive). Useful for paging.',
+                    description: 'Optional zero-based end turn index (inclusive).',
                 },
             },
             required: ['processId'],

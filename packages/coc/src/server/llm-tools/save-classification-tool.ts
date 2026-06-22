@@ -46,12 +46,8 @@ export function createSaveClassificationTool(deps: SaveClassificationDeps) {
         description:
             'Persist the final hunk classifications for this diff. ' +
             'Call this exactly once, AFTER you have classified every `@@` hunk in the diff. ' +
-            'Pass the full array of classifications (one entry per hunk). ' +
-            'Each entry must include: file, hunkIndex (0-based within the file), ' +
-            'category (logic|mechanical|test|simple|generated), intensity (high|low), and a one-sentence reason. ' +
-            'Test hunks must include testFidelityComment. Logic hunks must include summaryComment. ' +
-            'Critical existing-function hunks may include critical metadata with label, impactSummary, up to 3 usages, and a callPath up to 4 frames. ' +
-            'If validation fails the tool returns an error — read the message, correct the offending entries, and call the tool again.',
+            'Test hunks must include testFidelityComment; logic hunks must include summaryComment. ' +
+            'If validation fails the tool returns an error — read the message, fix the offending entries, and call again.',
         parameters: {
             type: 'object',
             properties: {

@@ -62,6 +62,7 @@ export function useRalphSessionView(
                     sections: res.sections,
                     files: res.files,
                     resumeDefaults: res.resumeDefaults,
+                    hasInFlightTask: res.hasInFlightTask,
                 });
             })
             .catch((err: any) => {

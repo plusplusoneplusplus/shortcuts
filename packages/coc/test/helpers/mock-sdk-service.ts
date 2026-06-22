@@ -12,6 +12,7 @@ import {
     createUnavailableMock as _createUnavailableMock,
     createStreamingMock as _createStreamingMock,
     createFailingMock as _createFailingMock,
+    createSubAgentMock as _createSubAgentMock,
     createMockBridge as _createMockBridge,
     createExpiredSessionBridge as _createExpiredSessionBridge,
 } from '@plusplusoneplusplus/coc-agent-sdk/testing';
@@ -20,6 +21,7 @@ import type {
     MockSDKServiceResult,
     MockSDKService,
     MockFnFactory,
+    SubAgentSpec,
 } from '@plusplusoneplusplus/coc-agent-sdk/testing';
 import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-bridge';
 
@@ -63,7 +65,7 @@ const viFnFactory: MockFnFactory = (impl) => {
 /** @deprecated Use `MockSDKService` from `@plusplusoneplusplus/coc-agent-sdk/testing` */
 export type MockCopilotSDKService = MockSDKService;
 
-export type { MockSDKServiceOptions, MockSDKServiceResult };
+export type { MockSDKServiceOptions, MockSDKServiceResult, SubAgentSpec };
 
 // ---------------------------------------------------------------------------
 // Factory wrappers (inject vi.fn)
@@ -83,6 +85,17 @@ export function createStreamingMock(chunks: string[]): MockSDKServiceResult {
 
 export function createFailingMock(error: string): MockSDKServiceResult {
     return _createFailingMock(error, viFnFactory);
+}
+
+/**
+ * Mock where `sendMessage` fires the sub-agent `ToolEvent[]` from
+ * `createSubAgentToolEvents(specs)` via `onToolEvent`, then resolves success.
+ * vi.fn-bound twin of the shared `createSubAgentMock` preset so coc-package
+ * unit/integration tests can inject a sub-agent-emitting service the same way
+ * `createStreamingMock` is injected.
+ */
+export function createSubAgentMock(specs: SubAgentSpec[]): MockSDKServiceResult {
+    return _createSubAgentMock(specs, viFnFactory);
 }
 
 // ---------------------------------------------------------------------------

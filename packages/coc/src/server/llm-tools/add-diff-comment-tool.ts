@@ -72,14 +72,13 @@ export function createAddDiffCommentTool(deps: AddDiffCommentDeps) {
 
     const tool = defineTool<AddDiffCommentArgs>('add_diff_comment', {
         description:
-            'Leave a review comment anchored to specific lines of the commit diff. ' +
-            'Use this to flag bugs, suggest improvements, ask questions, or praise good code.',
+            'Leave a review comment anchored to specific lines of the commit diff — to flag bugs, suggest improvements, ask questions, or praise.',
         parameters: {
             type: 'object',
             properties: {
                 filePath: {
                     type: 'string',
-                    description: 'Repo-relative file path (e.g. "src/server/index.ts")',
+                    description: 'Repo-relative file path',
                 },
                 lineStart: {
                     type: 'number',
@@ -92,7 +91,7 @@ export function createAddDiffCommentTool(deps: AddDiffCommentDeps) {
                 side: {
                     type: 'string',
                     enum: ['added', 'removed', 'context'],
-                    description: 'Which side of the diff: "added" for new lines, "removed" for deleted lines, "context" for unchanged lines',
+                    description: 'Diff side: "added" = new lines, "removed" = deleted lines, "context" = unchanged lines',
                 },
                 comment: {
                     type: 'string',

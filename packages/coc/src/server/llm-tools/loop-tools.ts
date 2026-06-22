@@ -137,9 +137,8 @@ export function parseDuration(input: string | number): number {
 export function createCreateLoopTool(deps: LoopToolDeps) {
     const tool = defineTool<CreateLoopArgs>('createLoop', {
         description:
-            'Create a recurring loop that sends follow-up messages into this conversation at a fixed interval. ' +
-            'The first tick fires after one full interval (the current turn is the implicit first run). ' +
-            'Use interval strings like "30s", "5m", "1h", "1d" or milliseconds.',
+            'Create a recurring loop that sends a follow-up prompt into this conversation at a fixed interval. ' +
+            'The first tick fires after one full interval (the current turn is the implicit first run).',
         parameters: {
             type: 'object',
             properties: {
@@ -326,9 +325,8 @@ export function createListLoopsTool(deps: LoopToolDeps) {
 export function createScheduleWakeupTool(deps: WakeupToolDeps) {
     const tool = defineTool<ScheduleWakeupArgs>('scheduleWakeup', {
         description:
-            'Schedule a one-shot delayed follow-up message into this conversation. ' +
-            'After the delay, the prompt will be sent as a new message. ' +
-            'Use delay strings like "5s", "30s", "5m", "1h" or milliseconds. Minimum delay is 1 second.',
+            'Schedule a one-shot delayed follow-up: after the delay, the prompt is sent into this conversation ' +
+            'as a new message. Minimum delay is 1 second.',
         parameters: {
             type: 'object',
             properties: {

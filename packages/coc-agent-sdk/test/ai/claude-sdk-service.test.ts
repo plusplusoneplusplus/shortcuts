@@ -22,9 +22,12 @@ import {
     ClaudeSDKService,
     addClaudeContextUsage,
     extractClaudeAccessToken,
+    fetchClaudeOAuthQuota,
     mapClaudeAccountInfoToQuota,
     mapClaudeRateLimitInfoToQuota,
     mapOAuthUsageToQuota,
+    readKeychainCredentials,
+    resolveClaudeCredentialsRaw,
     registerClaudeSDKService,
 } from '../../src/claude-sdk-service';
 import {
@@ -1904,8 +1907,10 @@ describe('ClaudeSDKService.sendMessage', () => {
         }
     });
 
-    it('captures rate_limit_event messages for non-Linux quota fallback reporting', async () => {
-        const restorePlatform = stubProcessPlatform('darwin');
+    it('captures rate_limit_event messages for Windows quota fallback reporting', async () => {
+        // Windows is the only platform that still uses the cached rate-limit
+        // fallback; Linux and macOS route to the credential-backed OAuth path.
+        const restorePlatform = stubProcessPlatform('win32');
         try {
             queryFn.mockReturnValueOnce(makeMessages([
                 {
@@ -2059,13 +2064,15 @@ describe('ClaudeSDKService.getAccountQuota', () => {
     let restorePlatform: () => void;
 
     beforeEach(() => {
-        restorePlatform = stubProcessPlatform('darwin');
+        // Windows keeps the cached rate-limit/accountInfo fallback (Linux and
+        // macOS route to the credential-backed OAuth path instead).
+        restorePlatform = stubProcessPlatform('win32');
         svc = new ClaudeSDKService();
         mockDynamicImport.mockReset();
         queryFn.mockReset();
         mockDynamicImport.mockResolvedValue({ query: queryFn });
-        // Point to a nonexistent file so the OAuth path fails gracefully and
-        // tests are deterministic on machines that have Claude installed.
+        // Point to a nonexistent file so any credential path stays deterministic
+        // on machines that have Claude installed.
         process.env['CLAUDE_CREDENTIALS_FILE'] = '/nonexistent/__test_credentials__.json';
     });
 
@@ -2445,6 +2452,262 @@ describe('ClaudeSDKService.getAccountQuota (Linux OAuth)', () => {
         expect(accountInfoFn).toHaveBeenCalled();
         expect(fetchSpy).toHaveBeenCalledOnce();
         expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(10);
+    });
+});
+
+// ============================================================================
+// readKeychainCredentials (macOS Keychain reader — injectable exec)
+// ============================================================================
+
+describe('readKeychainCredentials', () => {
+    it('shells out to `security` with an argument array (no shell interpolation)', () => {
+        const exec = vi.fn().mockReturnValue('{"access_token":"kc-tok"}\n');
+        const result = readKeychainCredentials(exec as unknown as typeof import('child_process').execFileSync);
+
+        expect(exec).toHaveBeenCalledWith(
+            'security',
+            ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+            { encoding: 'utf8' },
+        );
+        // Trailing newline from the CLI is stripped.
+        expect(result).toBe('{"access_token":"kc-tok"}');
+    });
+
+    it('returns undefined when `security` exits non-zero / has no matching entry', () => {
+        const exec = vi.fn(() => { throw new Error('SecKeychainSearchCopyNext: not found'); });
+        expect(readKeychainCredentials(exec as unknown as typeof import('child_process').execFileSync)).toBeUndefined();
+    });
+
+    it('returns undefined when the `security` binary is absent (ENOENT)', () => {
+        const exec = vi.fn(() => {
+            const err = new Error('spawn security ENOENT') as NodeJS.ErrnoException;
+            err.code = 'ENOENT';
+            throw err;
+        });
+        expect(readKeychainCredentials(exec as unknown as typeof import('child_process').execFileSync)).toBeUndefined();
+    });
+
+    it('returns undefined for empty / whitespace-only output', () => {
+        const empty = vi.fn().mockReturnValue('');
+        const blank = vi.fn().mockReturnValue('   \n');
+        expect(readKeychainCredentials(empty as unknown as typeof import('child_process').execFileSync)).toBeUndefined();
+        expect(readKeychainCredentials(blank as unknown as typeof import('child_process').execFileSync)).toBeUndefined();
+    });
+});
+
+// ============================================================================
+// resolveClaudeCredentialsRaw (credential source resolution order)
+// ============================================================================
+
+describe('resolveClaudeCredentialsRaw', () => {
+    it('uses $CLAUDE_CREDENTIALS_FILE when set and never reads the Keychain', () => {
+        const readKeychain = vi.fn();
+        const readFile = vi.fn((p: string) => (p === '/env/creds.json' ? '{"access_token":"env"}' : undefined));
+
+        const raw = resolveClaudeCredentialsRaw({
+            credentialsFileEnv: '/env/creds.json',
+            homeDir: '/home/user',
+            readFile,
+            readKeychain,
+        });
+
+        expect(raw).toBe('{"access_token":"env"}');
+        expect(readFile).toHaveBeenCalledWith('/env/creds.json');
+        expect(readKeychain).not.toHaveBeenCalled();
+    });
+
+    it('returns undefined (and never reads the Keychain) when the env-var file is missing', () => {
+        const readKeychain = vi.fn().mockReturnValue('{"access_token":"kc"}');
+        const readFile = vi.fn(() => undefined);
+
+        const raw = resolveClaudeCredentialsRaw({
+            credentialsFileEnv: '/env/missing.json',
+            homeDir: '/home/user',
+            readFile,
+            readKeychain,
+        });
+
+        expect(raw).toBeUndefined();
+        expect(readKeychain).not.toHaveBeenCalled();
+    });
+
+    it('falls back to ~/.claude/.credentials.json when no env var is set', () => {
+        const expected = path.join('/home/user', '.claude', '.credentials.json');
+        const readKeychain = vi.fn();
+        const readFile = vi.fn((p: string) => (p === expected ? '{"access_token":"file"}' : undefined));
+
+        const raw = resolveClaudeCredentialsRaw({
+            credentialsFileEnv: undefined,
+            homeDir: '/home/user',
+            readFile,
+            readKeychain,
+        });
+
+        expect(raw).toBe('{"access_token":"file"}');
+        expect(readKeychain).not.toHaveBeenCalled();
+    });
+
+    it('invokes the Keychain reader when there is no env var and no on-disk file', () => {
+        const readKeychain = vi.fn().mockReturnValue('{"claudeAiOauth":{"accessToken":"kc-tok"}}');
+        const readFile = vi.fn(() => undefined);
+
+        const raw = resolveClaudeCredentialsRaw({
+            credentialsFileEnv: undefined,
+            homeDir: '/home/user',
+            readFile,
+            readKeychain,
+        });
+
+        expect(readFile).toHaveBeenCalledWith(path.join('/home/user', '.claude', '.credentials.json'));
+        expect(readKeychain).toHaveBeenCalledOnce();
+        expect(raw).toBe('{"claudeAiOauth":{"accessToken":"kc-tok"}}');
+    });
+
+    it('returns undefined when neither the file nor the Keychain yield content', () => {
+        const raw = resolveClaudeCredentialsRaw({
+            credentialsFileEnv: undefined,
+            homeDir: '/home/user',
+            readFile: () => undefined,
+            readKeychain: () => undefined,
+        });
+        expect(raw).toBeUndefined();
+    });
+});
+
+// ============================================================================
+// getAccountQuota — macOS / Keychain integration
+// ============================================================================
+
+describe('ClaudeSDKService.getAccountQuota (macOS / Keychain)', () => {
+    let svc: ClaudeSDKService;
+    const queryFn = vi.fn();
+    let fetchSpy: ReturnType<typeof vi.fn>;
+    let tempCredFile: string;
+    let restorePlatform: () => void;
+
+    beforeEach(() => {
+        restorePlatform = stubProcessPlatform('darwin');
+        svc = new ClaudeSDKService();
+        mockDynamicImport.mockReset();
+        queryFn.mockReset();
+        mockDynamicImport.mockResolvedValue({ query: queryFn });
+        fetchSpy = vi.fn();
+        vi.stubGlobal('fetch', fetchSpy);
+        tempCredFile = path.join(os.tmpdir(), `coc-test-creds-darwin-${Date.now()}.json`);
+        delete process.env['CLAUDE_CREDENTIALS_FILE'];
+    });
+
+    afterEach(() => {
+        svc.dispose();
+        restorePlatform();
+        vi.unstubAllGlobals();
+        delete process.env['CLAUDE_CREDENTIALS_FILE'];
+        try { fs.unlinkSync(tempCredFile); } catch { /* already removed or never created */ }
+    });
+
+    it('routes the darwin branch to the credential-backed OAuth path (AC-01)', async () => {
+        // With the env-var file present, getAccountQuota() must take the OAuth
+        // path on darwin rather than the cached rate-limit fallback.
+        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile;
+        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'darwin-tok' }));
+        fetchSpy.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ five_hour: { utilization: 55 }, seven_day: { utilization: 22 } }),
+        });
+
+        const quota = await svc.getAccountQuota();
+
+        expect(fetchSpy).toHaveBeenCalledWith(
+            'https://api.anthropic.com/api/oauth/usage',
+            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer darwin-tok' }) }),
+        );
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(55);
+        expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(22);
+    });
+
+    it('populates five_hour/seven_day from valid Keychain credentials (AC-04)', async () => {
+        const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-home-'));
+        const readKeychain = vi.fn().mockReturnValue(JSON.stringify({
+            claudeAiOauth: { accessToken: 'kc-access-tok', refreshToken: 'r', expiresAt: 9999999999999 },
+        }));
+        fetchSpy.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                five_hour: { utilization: 40, resets_at: '2026-06-04T12:00:00.000Z' },
+                seven_day: { utilization: 18, resets_at: '2026-06-11T00:00:00.000Z' },
+            }),
+        });
+
+        const quota = await fetchClaudeOAuthQuota({ readKeychain, homeDir: emptyHome });
+
+        expect(readKeychain).toHaveBeenCalledOnce();
+        expect(fetchSpy).toHaveBeenCalledWith(
+            'https://api.anthropic.com/api/oauth/usage',
+            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer kc-access-tok' }) }),
+        );
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(40);
+        expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(18);
+        try { fs.rmSync(emptyHome, { recursive: true, force: true }); } catch { /* best effort */ }
+    });
+
+    it('returns empty snapshots when there is no Keychain entry (AC-04)', async () => {
+        const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-home-'));
+        const readKeychain = vi.fn().mockReturnValue(undefined);
+
+        const quota = await fetchClaudeOAuthQuota({ readKeychain, homeDir: emptyHome });
+
+        expect(quota).toEqual({ quotaSnapshots: {} });
+        expect(fetchSpy).not.toHaveBeenCalled();
+        try { fs.rmSync(emptyHome, { recursive: true, force: true }); } catch { /* best effort */ }
+    });
+
+    it('returns empty snapshots for a malformed Keychain payload (AC-04)', async () => {
+        const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-home-'));
+        const readKeychain = vi.fn().mockReturnValue('not-json{{{');
+
+        const quota = await fetchClaudeOAuthQuota({ readKeychain, homeDir: emptyHome });
+
+        expect(quota).toEqual({ quotaSnapshots: {} });
+        expect(fetchSpy).not.toHaveBeenCalled();
+        try { fs.rmSync(emptyHome, { recursive: true, force: true }); } catch { /* best effort */ }
+    });
+
+    it('returns empty snapshots on a 401 from the usage API with Keychain creds (AC-04)', async () => {
+        const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-home-'));
+        const readKeychain = vi.fn().mockReturnValue(JSON.stringify({ claudeAiOauth: { accessToken: 'kc-tok' } }));
+        fetchSpy.mockResolvedValueOnce({ ok: false, status: 401 });
+
+        const quota = await fetchClaudeOAuthQuota({ readKeychain, homeDir: emptyHome });
+
+        expect(quota).toEqual({ quotaSnapshots: {} });
+        try { fs.rmSync(emptyHome, { recursive: true, force: true }); } catch { /* best effort */ }
+    });
+
+    it('returns empty snapshots on a network error with Keychain creds (AC-04)', async () => {
+        const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-home-'));
+        const readKeychain = vi.fn().mockReturnValue(JSON.stringify({ claudeAiOauth: { accessToken: 'kc-tok' } }));
+        fetchSpy.mockRejectedValueOnce(new Error('Network failure'));
+
+        const quota = await fetchClaudeOAuthQuota({ readKeychain, homeDir: emptyHome });
+
+        expect(quota).toEqual({ quotaSnapshots: {} });
+        try { fs.rmSync(emptyHome, { recursive: true, force: true }); } catch { /* best effort */ }
+    });
+
+    it('prefers $CLAUDE_CREDENTIALS_FILE over the Keychain on darwin (AC-02)', async () => {
+        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile;
+        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'file-wins' }));
+        const readKeychain = vi.fn().mockReturnValue(JSON.stringify({ claudeAiOauth: { accessToken: 'kc-loses' } }));
+        fetchSpy.mockResolvedValueOnce({ ok: true, json: async () => ({ five_hour: { utilization: 5 } }) });
+
+        const quota = await fetchClaudeOAuthQuota({ readKeychain });
+
+        expect(readKeychain).not.toHaveBeenCalled();
+        expect(fetchSpy).toHaveBeenCalledWith(
+            'https://api.anthropic.com/api/oauth/usage',
+            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer file-wins' }) }),
+        );
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(5);
     });
 });
 

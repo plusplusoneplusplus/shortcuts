@@ -73,7 +73,9 @@ Readers, including REST handlers and the SPA `useRalphSessionView` hook, treat
 session read route also returns raw text for every direct file in the session
 folder as `files: { name, content }[]`, sorted alphabetically by filename, plus
 optional transient `resumeDefaults` recovered from the latest iteration process
-for stuck-session Resume controls. A missing journal is surfaced as `null` or
+for stuck-session Resume controls, plus `hasInFlightTask` (computed via
+`findInFlightRalphTask`) telling the SPA whether a queued/running Ralph task
+still backs the session. A missing journal is surfaced as `null` or
 empty state. A partially written `session.json` is tolerated as `null`; the next
 mutator pass rewrites it.
 
@@ -329,8 +331,13 @@ provider/model/reasoning-effort when recoverable, except that an explicit
 select the resumed iteration's concrete model and effort.
 
 The SPA `RalphWorkflowPane` shows a "Resume" button (amber) when it detects
-a stuck executing session (phase executing, iterations > 0, no iteration with
-status `running`). Its confirmation panel renders shared `ModalJobAiControls`
+a stuck executing session: `phase === 'executing'` and the read route's
+`hasInFlightTask === false`. Gating on the server-computed in-flight signal
+rather than the iteration counter covers a first-iteration cancellation
+(`currentIteration === 0`, `iterations === []`) without falsely offering Resume
+on a freshly launched session whose first iteration is still running; the
+`=== false` check keeps Resume hidden when an older/remote server omits the
+field. Its confirmation panel renders shared `ModalJobAiControls`
 initialized from `resumeDefaults` when available; unchanged recovered defaults
 are omitted from the request so the route preserves prior settings, while
 changed or unrecovered defaults are sent through `resumeRalphSession()`.

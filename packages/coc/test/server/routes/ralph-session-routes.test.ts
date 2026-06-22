@@ -39,11 +39,26 @@ function getJson(baseUrl: string, urlPath: string): Promise<{ status: number; bo
     });
 }
 
+/**
+ * Minimal MultiRepoQueueRouter stub exposing only what
+ * `findInFlightRalphTask` reads: `registry.getAllQueues()` → managers with
+ * `getAll()`. The task list is mutable so individual tests can seed in-flight
+ * tasks for the session under test.
+ */
+function makeBridgeStub(tasksRef: { tasks: any[] }) {
+    return {
+        registry: {
+            getAllQueues: () => new Map([['repo-1', { getAll: () => tasksRef.tasks }]]),
+        },
+    } as any;
+}
+
 describe('GET /api/workspaces/:workspaceId/ralph-sessions/:sessionId', () => {
     let server: http.Server;
     let baseUrl: string;
     let dataDir: string;
     let processStore: MockProcessStore;
+    const tasksRef: { tasks: any[] } = { tasks: [] };
 
     const WS = 'ws-1';
     const SID = 'session-1';
@@ -53,7 +68,7 @@ describe('GET /api/workspaces/:workspaceId/ralph-sessions/:sessionId', () => {
         processStore = createMockProcessStore();
 
         const routes: Route[] = [];
-        registerRalphSessionRoutes(routes, { dataDir, store: processStore });
+        registerRalphSessionRoutes(routes, { dataDir, store: processStore, bridge: makeBridgeStub(tasksRef) });
 
         const router = createRouter({ routes, spaHtml: '' });
         server = http.createServer(router);
@@ -71,6 +86,7 @@ describe('GET /api/workspaces/:workspaceId/ralph-sessions/:sessionId', () => {
     beforeEach(async () => {
         // Reset session dir between tests
         processStore.processes.clear();
+        tasksRef.tasks = [];
         const sessionDir = path.join(dataDir, 'repos', WS, 'ralph-sessions', SID);
         try { fs.rmSync(sessionDir, { recursive: true, force: true }); } catch { /* ignore */ }
     });
@@ -222,6 +238,55 @@ describe('GET /api/workspaces/:workspaceId/ralph-sessions/:sessionId', () => {
 
         expect(r.status).toBe(200);
         expect(r.body.resumeDefaults).toBeUndefined();
+    });
+
+    it('reports hasInFlightTask=false when no queued/running task backs the session', async () => {
+        const store = new RalphSessionStore({ dataDir });
+        // Mirror the user-reported stuck state: executing, but the first
+        // iteration was cancelled before it was ever recorded.
+        await store.initSession(WS, SID, { originalGoal: 'stuck', maxIterations: 20 });
+
+        const r = await getJson(baseUrl, `/api/workspaces/${WS}/ralph-sessions/${SID}`);
+
+        expect(r.status).toBe(200);
+        expect(r.body.record.phase).toBe('executing');
+        expect(r.body.record.currentIteration).toBe(0);
+        expect(r.body.record.iterations).toEqual([]);
+        expect(r.body.hasInFlightTask).toBe(false);
+    });
+
+    it('reports hasInFlightTask=true when a queued/running task exists for the session', async () => {
+        const store = new RalphSessionStore({ dataDir });
+        await store.initSession(WS, SID, { originalGoal: 'running', maxIterations: 20 });
+        tasksRef.tasks = [
+            {
+                id: 'queue_running',
+                status: 'running',
+                payload: { context: { ralph: { sessionId: SID } } },
+            },
+        ];
+
+        const r = await getJson(baseUrl, `/api/workspaces/${WS}/ralph-sessions/${SID}`);
+
+        expect(r.status).toBe(200);
+        expect(r.body.hasInFlightTask).toBe(true);
+    });
+
+    it('does not count an in-flight task belonging to a different session', async () => {
+        const store = new RalphSessionStore({ dataDir });
+        await store.initSession(WS, SID, { originalGoal: 'other', maxIterations: 20 });
+        tasksRef.tasks = [
+            {
+                id: 'queue_other',
+                status: 'queued',
+                payload: { context: { ralph: { sessionId: 'some-other-session' } } },
+            },
+        ];
+
+        const r = await getJson(baseUrl, `/api/workspaces/${WS}/ralph-sessions/${SID}`);
+
+        expect(r.status).toBe(200);
+        expect(r.body.hasInFlightTask).toBe(false);
     });
 
     it('URL-decodes workspaceId and sessionId path segments', async () => {

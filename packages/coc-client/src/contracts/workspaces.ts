@@ -470,6 +470,13 @@ export interface RalphSessionResponse {
   record: RalphSessionRecord;
   sections: ParsedProgressSection[];
   files: RalphSessionFile[];
+  /**
+   * True when a queued/running Ralph task still exists for this session.
+   * Distinguishes a stuck `phase=executing` session (no in-flight task) from
+   * a healthy in-progress one. Optional for backward compatibility with
+   * servers that predate this field.
+   */
+  hasInFlightTask?: boolean;
   resumeDefaults?: RalphResumeAiDefaults;
 }
 

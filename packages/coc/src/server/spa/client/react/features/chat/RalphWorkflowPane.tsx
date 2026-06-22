@@ -34,6 +34,8 @@ export interface RalphSessionView {
     sections: ParsedProgressSection[];
     files?: RalphSessionFile[];
     resumeDefaults?: RalphResumeAiDefaults;
+    /** True when a queued/running Ralph task still exists for this session. */
+    hasInFlightTask?: boolean;
 }
 
 export interface RalphWorkflowPaneProps {
@@ -354,9 +356,15 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
     const isRalphComplete = record.phase === 'complete'
         && record.terminalReason === 'RALPH_COMPLETE';
 
+    // Stuck = still in the executing phase but no queued/running task backs it
+    // (the iteration was cancelled, or the server crashed mid-loop). Gate on the
+    // server-computed in-flight signal rather than the iteration counter: a
+    // freshly launched first iteration also has currentIteration=0 /
+    // iterations=[] and must NOT be offered Resume while it is genuinely
+    // running. `=== false` keeps Resume hidden when an older/remote server omits
+    // the field, preserving prior behavior (no false positives).
     const isStuckExecuting = record.phase === 'executing'
-        && record.currentIteration > 0
-        && !record.iterations.some(i => i.status === 'running');
+        && view.hasInFlightTask === false;
 
     const handleResumeConfirmed = async () => {
         setResumeState('submitting');

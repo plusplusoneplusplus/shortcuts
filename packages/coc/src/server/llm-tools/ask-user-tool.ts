@@ -159,11 +159,10 @@ export function createAskUserTool(deps: AskUserToolDeps) {
     const tool = defineTool<AskUserArgs>('ask_user', {
         overridesBuiltInTool: true,
         description:
-            'Ask the user one or more questions and wait for their responses. Use this when you need ' +
-            'clarification, confirmation, or choices from the user before proceeding. ' +
-            'Questions render together as one interactive UI widget. ' +
-            'If a response has deferred=true and reason="needs-context", the user needs more context; explain and re-ask the question if it is still needed instead of treating it as skipped. ' +
-            'IMPORTANT: Only use this in interactive Ask or Ralph contexts, never in autopilot.',
+            'Ask the user one or more questions and wait for their answers. Use when you need ' +
+            'clarification, confirmation, or choices before proceeding. ' +
+            'If a response has deferred=true and reason="needs-context", the user needs more context; explain and re-ask the question if still needed instead of treating it as skipped. ' +
+            'Only use in interactive Ask or Ralph contexts, never in autopilot.',
         parameters: {
             type: 'object' as const,
             properties: {
@@ -175,12 +174,12 @@ export function createAskUserTool(deps: AskUserToolDeps) {
                         properties: {
                             question: {
                                 type: 'string',
-                                description: 'The question text to display to the user.',
+                                description: 'Question text shown to the user.',
                             },
                             type: {
                                 type: 'string',
                                 enum: ['select', 'multi-select', 'yes-no', 'confirm', 'text'],
-                                description: 'The type of question: select (radio buttons), multi-select (checkboxes), yes-no (two buttons), confirm (Confirm/Cancel buttons), text (free-text input).',
+                                description: 'Question type: select (single choice), multi-select (multiple choices), yes-no, confirm (Confirm/Cancel), text (free-text input).',
                             },
                             options: {
                                 type: 'array',
@@ -193,7 +192,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
                                     },
                                     required: ['value', 'label'],
                                 },
-                                description: 'Options for select/multi-select questions. Required when type is select or multi-select.',
+                                description: 'Options for select/multi-select. Required when type is select or multi-select.',
                             },
                             defaultValue: {
                                 description: 'Pre-selected default value(s).',
@@ -201,7 +200,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
                         },
                         required: ['question', 'type'],
                     },
-                    description: 'Questions to ask together. Ask related clarification questions in one call.',
+                    description: 'Questions to ask together — batch related ones in one call.',
                 },
             },
             required: ['questions'],
