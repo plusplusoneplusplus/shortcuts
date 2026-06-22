@@ -167,6 +167,7 @@ async function renderDetail(props: Partial<any> = {}) {
     return render(
         <PullRequestDetail
             repoId="repo-1"
+            workspaceId="repo-1"
             remoteUrl="https://github.com/octo/repo.git"
             prId={142}
             onBack={onBack}

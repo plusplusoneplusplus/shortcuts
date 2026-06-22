@@ -48,7 +48,10 @@ describe('PullRequestDetail — URL construction', () => {
 
     it('uses the typed cocClient for PR detail (no raw template-literal URL construction)', () => {
         // After migrating to cocClient, URLs are built inside the client library.
-        expect(source).toMatch(/getSpaCocClient\(\)/);
+        // PR detail routes through the clone-aware useCocClient(workspaceId) so a
+        // remote clone targets its own server; either typed client entry point
+        // satisfies "no raw URL building".
+        expect(source).toMatch(/getSpaCocClient\(\)|useCocClient\(/);
         expect(source).not.toMatch(/`\$\{base\}\/repos\//);
     });
 
