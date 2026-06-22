@@ -11,3 +11,12 @@ export {
 
 export type { MockBridge } from './mock-bridge';
 export { createMockBridge, createExpiredSessionBridge } from './mock-bridge';
+
+export type { SubAgentSpec, SubAgentKind, SubAgentStatus } from './mock-sub-agent';
+export {
+    createSubAgentToolEvents,
+    createSubAgentMock,
+    formatBackgroundStartedResult,
+    formatAgentCompletedResult,
+    readAgentToolCallId,
+} from './mock-sub-agent';
