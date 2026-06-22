@@ -112,6 +112,7 @@ export interface WorkItemSyncProviderStatus {
     | 'missing-origin'
     | 'missing-org-url'
     | 'missing-project'
+    | 'mismatched-remote'
     | 'non-github-origin'
     | 'auth-unavailable'
     | 'unknown';

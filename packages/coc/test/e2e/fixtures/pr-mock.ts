@@ -15,8 +15,24 @@ import {
     MOCK_PR_THREADS,
 } from './pr-fixtures.js';
 
+interface MockCoworkerCandidate {
+    id: string;
+    displayName: string;
+    login?: string;
+    email?: string;
+    avatarUrl?: string;
+    prCount: number;
+    isInRoster?: boolean;
+}
+
 export interface PrMockOptions {
     pullRequests?: PullRequest[];
+    coworkerCandidates?: MockCoworkerCandidate[];
+    coworkerCandidateError?: {
+        status: number;
+        body?: unknown;
+    };
+    coworkerCandidateDelayMs?: number;
     prDetail?: PullRequest;
     threads?: CommentThread[];
     reviewers?: Reviewer[];
@@ -31,6 +47,42 @@ export interface PrMockOptions {
     remoteUrl?: string;
 }
 
+function buildCoworkerCandidatesFromPullRequests(pullRequests: readonly PullRequest[]): MockCoworkerCandidate[] {
+    const byKey = new Map<string, MockCoworkerCandidate>();
+
+    for (const pr of pullRequests) {
+        const displayName = pr.author?.displayName?.trim();
+        if (!displayName) continue;
+        const id = pr.author?.id == null ? '' : String(pr.author.id).trim();
+        const key = id ? `id:${id}` : `name:${displayName.toLowerCase()}`;
+        const existing = byKey.get(key);
+        if (existing) {
+            existing.prCount += 1;
+            existing.email ??= pr.author?.email;
+            existing.avatarUrl ??= pr.author?.avatarUrl;
+            continue;
+        }
+        byKey.set(key, {
+            id,
+            displayName,
+            ...(pr.author?.login ? { login: pr.author.login } : {}),
+            ...(pr.author?.email ? { email: pr.author.email } : {}),
+            ...(pr.author?.avatarUrl ? { avatarUrl: pr.author.avatarUrl } : {}),
+            prCount: 1,
+        });
+    }
+
+    return [...byKey.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+function coworkerCandidateMatches(candidate: MockCoworkerCandidate, query: string): boolean {
+    const normalizedQuery = query.toLowerCase();
+    return candidate.displayName.toLowerCase().includes(normalizedQuery) ||
+        (candidate.login?.toLowerCase().includes(normalizedQuery) ?? false) ||
+        (candidate.email?.toLowerCase().includes(normalizedQuery) ?? false) ||
+        candidate.id.toLowerCase().includes(normalizedQuery);
+}
+
 export async function setupPrRoutes(
     page: Page,
     serverUrl: string,
@@ -39,6 +91,9 @@ export async function setupPrRoutes(
 ): Promise<() => Promise<void>> {
     const {
         pullRequests = MOCK_PR_LIST,
+        coworkerCandidates,
+        coworkerCandidateError,
+        coworkerCandidateDelayMs = 0,
         prDetail = MOCK_PR_OPEN,
         threads = MOCK_PR_THREADS,
         reviewers = [],
@@ -62,9 +117,11 @@ export async function setupPrRoutes(
     const commitsPatterns   = bases.map(base => `${base}/**/commits**`);
     const checksPatterns    = bases.map(base => `${base}/**/checks**`);
     const diffPatterns      = bases.map(base => `${base}/**/diff**`);
+    const coworkerCandidatesPatterns = bases.map(base => `${base}/coworker-candidates?*`);
     const baseUrls = bases.map(base => new URL(base));
     const collectionSegments = new Set([
         'recent-opened',
+        'coworker-candidates',
         'coworker-roster',
         'review-history',
         'suggestions',
@@ -85,6 +142,7 @@ export async function setupPrRoutes(
         detected: detectedProvider,
         remoteUrl,
     };
+    const candidateSource = coworkerCandidates ?? buildCoworkerCandidatesFromPullRequests(pullRequests);
 
     const threadsHandler = (route: Route) => {
         if (unconfigured) {
@@ -130,6 +188,46 @@ export async function setupPrRoutes(
     };
     for (const pattern of diffPatterns) await page.route(pattern, diffHandler);
 
+    const coworkerCandidatesHandler = async (route: Route) => {
+        if (unconfigured) {
+            return route.fulfill({ status: 401, json: unconfiguredBody });
+        }
+        if (coworkerCandidateError) {
+            return route.fulfill({
+                status: coworkerCandidateError.status,
+                json: coworkerCandidateError.body ?? { error: 'candidate search failed' },
+            });
+        }
+        if (coworkerCandidateDelayMs > 0) {
+            await new Promise(resolve => setTimeout(resolve, coworkerCandidateDelayMs));
+        }
+        const url = new URL(route.request().url());
+        const query = (url.searchParams.get('query') ?? '').trim();
+        if (query.length < 2) {
+            return route.fulfill({
+                status: 400,
+                json: { error: 'query must be at least 2 characters', minimumQueryLength: 2 },
+            });
+        }
+        const topRaw = Number(url.searchParams.get('top') ?? '20');
+        const top = Number.isFinite(topRaw) && topRaw > 0 ? Math.min(Math.floor(topRaw), 50) : 20;
+        const matching = candidateSource.filter(candidate => coworkerCandidateMatches(candidate, query));
+        const candidates = matching.slice(0, top);
+        return route.fulfill({
+            status: 200,
+            json: {
+                candidates,
+                total: matching.length,
+                query,
+                minimumQueryLength: 2,
+                fetchedAt: Date.now(),
+                scannedPullRequests: pullRequests.length,
+                truncated: matching.length > candidates.length,
+            },
+        });
+    };
+    for (const pattern of coworkerCandidatesPatterns) await page.route(pattern, coworkerCandidatesHandler);
+
     // single PR detail — must come after sub-resources, before list
     await page.route(detailPattern, (route) => {
         if (unconfigured) {
@@ -146,13 +244,18 @@ export async function setupPrRoutes(
         }
         const url = new URL(route.request().url());
         const statusParam = url.searchParams.get('status');
+        const topRaw = Number(url.searchParams.get('top') ?? '0');
+        const skipRaw = Number(url.searchParams.get('skip') ?? '0');
+        const top = Number.isFinite(topRaw) && topRaw > 0 ? Math.floor(topRaw) : undefined;
+        const skip = Number.isFinite(skipRaw) && skipRaw > 0 ? Math.floor(skipRaw) : 0;
         const filtered =
             !statusParam || statusParam === 'open' || statusParam === 'all'
                 ? pullRequests
                 : pullRequests.filter(pr => pr.status === statusParam);
+        const page = top === undefined ? filtered.slice(skip) : filtered.slice(skip, skip + top);
         return route.fulfill({
             status: 200,
-            json: { pullRequests: filtered, total: filtered.length },
+            json: { pullRequests: page, total: filtered.length },
         });
     };
     for (const pattern of listPatterns) await page.route(pattern, listHandler);
@@ -163,6 +266,7 @@ export async function setupPrRoutes(
         for (const pattern of commitsPatterns) await page.unroute(pattern);
         for (const pattern of checksPatterns) await page.unroute(pattern);
         for (const pattern of diffPatterns) await page.unroute(pattern);
+        for (const pattern of coworkerCandidatesPatterns) await page.unroute(pattern);
         await page.unroute(detailPattern);
         for (const pattern of listPatterns) await page.unroute(pattern);
     };

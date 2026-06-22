@@ -30,7 +30,7 @@ export interface SanitizedProviderConfigResponse {
 export interface PullRequestListQuery {
   workspaceId?: string;
   status?: string;
-  scope?: 'mine' | 'all';
+  scope?: 'mine' | 'all' | 'team';
   top?: number;
   skip?: number;
   force?: boolean;
@@ -89,6 +89,7 @@ export interface RecordRecentOpenedPullRequestRequest {
 export interface PullRequestCoworkerRosterEntry {
   id: string;
   displayName: string;
+  login?: string;
   email?: string;
   avatarUrl?: string;
   /** ISO 8601 string. */
@@ -102,8 +103,39 @@ export interface PullRequestCoworkerRosterResponse {
 export interface AddPullRequestCoworkerRosterEntryRequest {
   id?: string;
   displayName: string;
+  login?: string;
   email?: string;
   avatarUrl?: string;
+}
+
+export interface PullRequestCoworkerCandidateSearchQuery {
+  workspaceId?: string;
+  repoId?: string;
+  query: string;
+  status?: string;
+  scope?: 'mine' | 'all';
+  top?: number;
+  includeRoster?: boolean;
+}
+
+export interface PullRequestCoworkerCandidate {
+  id: string;
+  displayName: string;
+  login?: string;
+  email?: string;
+  avatarUrl?: string;
+  prCount: number;
+  isInRoster?: boolean;
+}
+
+export interface PullRequestCoworkerCandidateSearchResponse {
+  candidates: PullRequestCoworkerCandidate[];
+  total: number;
+  query: string;
+  minimumQueryLength: number;
+  fetchedAt: number;
+  scannedPullRequests: number;
+  truncated: boolean;
 }
 
 export interface PullRequestThreadsResponse {

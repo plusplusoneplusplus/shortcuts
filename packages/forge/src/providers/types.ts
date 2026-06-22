@@ -9,6 +9,8 @@ export enum ProviderType {
 export interface Identity {
     id: string;
     displayName: string;
+    /** Provider login/username (e.g. GitHub login). Distinct from displayName which may be a full name. */
+    login?: string;
     email?: string;
     avatarUrl?: string;
 }

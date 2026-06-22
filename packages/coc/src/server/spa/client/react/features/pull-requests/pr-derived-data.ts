@@ -386,8 +386,9 @@ export function getQueueFilterDefinitions(options?: { suggestionsEnabled?: boole
 export { ALL_FILTERS as QUEUE_FILTERS };
 
 /** Map a queue filter pill to the server scope it requires. */
-export function scopeForFilter(filter: QueueFilter): 'mine' | 'all' {
-    return (filter === 'all' || filter === 'team' || filter === 'foryou') ? 'all' : 'mine';
+export function scopeForFilter(filter: QueueFilter): 'mine' | 'all' | 'team' {
+    if (filter === 'team') return 'team';
+    return (filter === 'all' || filter === 'foryou') ? 'all' : 'mine';
 }
 
 export interface QueueFilterMatchOptions {
@@ -417,7 +418,7 @@ export function matchesFilter(
 
 export function buildQueueFilterCounts(
     pullRequests: readonly PullRequest[],
-    options: QueueFilterMatchOptions & { effectiveScope: 'mine' | 'all' },
+    options: QueueFilterMatchOptions & { effectiveScope: 'mine' | 'all' | 'team' },
 ): QueueFilterCounts {
     const counts: QueueFilterCounts = { all: 0, mine: 0, team: 0, blocked: 0, ready: 0, foryou: 0 };
     // 'all' / 'mine' counts represent the size of the currently fetched

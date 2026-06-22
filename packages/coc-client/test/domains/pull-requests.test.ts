@@ -257,6 +257,40 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
+  it('searches Team coworker candidates with workspace scope and bounded query options', async () => {
+    const adapter = createMockAdapter({ candidates: [] });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.searchCoworkerCandidatesForOrigin('gh_owner_repo', {
+      workspaceId: 'ws/a',
+      repoId: 'repo/a',
+      query: 'mo',
+      status: 'open',
+      scope: 'all',
+      top: 25,
+      includeRoster: true,
+    }, { signal: controller.signal });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/origins/gh_owner_repo/pull-requests/coworker-candidates',
+        options: {
+          query: {
+            workspaceId: 'ws/a',
+            repoId: 'repo/a',
+            query: 'mo',
+            status: 'open',
+            scope: 'all',
+            top: 25,
+            includeRoster: 'true',
+          },
+          signal: controller.signal,
+        },
+      },
+    ]);
+  });
+
   it('omits force query param when not true', async () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);
@@ -302,6 +336,7 @@ describe('PullRequestsClient', () => {
 
     await client.listForOrigin('gh_owner_repo', { workspaceId: 'ws1', repoId: 'r1', status: 'open' }, { signal: controller.signal });
     await client.getForOrigin('gh_owner_repo', '10', options);
+    await client.searchCoworkerCandidatesForOrigin('gh_owner_repo', { workspaceId: 'ws1', repoId: 'r1', query: 'mo' }, { signal: controller.signal });
     await client.getThreadsForOrigin('gh_owner_repo', '10', options);
     await client.getReviewersForOrigin('gh_owner_repo', '10', options);
     await client.getCommitsForOrigin('gh_owner_repo', '10', options);
@@ -321,6 +356,7 @@ describe('PullRequestsClient', () => {
 
     await client.listForOrigin('gh_owner_repo', { workspaceId: 'ws1', repoId: 'r1' });
     await client.getForOrigin('gh_owner_repo', '1', options);
+    await client.searchCoworkerCandidatesForOrigin('gh_owner_repo', { workspaceId: 'ws1', repoId: 'r1', query: 'mo' });
     await client.getThreadsForOrigin('gh_owner_repo', '1', options);
     await client.getReviewersForOrigin('gh_owner_repo', '1', options);
     await client.getCommitsForOrigin('gh_owner_repo', '1', options);

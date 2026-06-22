@@ -259,7 +259,7 @@ describe('Import from remote work item placement', () => {
         expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).not.toContain('github-backed');
     });
 
-    it('shows Azure Boards project-missing status messaging', async () => {
+    it('shows actionable Azure Boards missing-setup status messaging', async () => {
         mocks.isWorkItemsSyncEnabled.mockReturnValue(true);
         mocks.syncStatus.mockResolvedValue({
             enabled: true,
@@ -269,21 +269,13 @@ describe('Import from remote work item placement', () => {
             provider: {
                 provider: 'azure-boards',
                 available: false,
-                reason: 'missing-project',
-                repository: {
-                    provider: 'azure-boards',
-                    organizationUrl: 'https://dev.azure.com/example',
-                },
+                reason: 'missing-org-url',
                 auth: { mode: 'external', authenticated: true },
             },
             providers: [{
                 provider: 'azure-boards',
                 available: false,
-                reason: 'missing-project',
-                repository: {
-                    provider: 'azure-boards',
-                    organizationUrl: 'https://dev.azure.com/example',
-                },
+                reason: 'missing-org-url',
                 auth: { mode: 'external', authenticated: true },
             }],
         });
@@ -302,7 +294,7 @@ describe('Import from remote work item placement', () => {
             />,
         );
 
-        const status = await screen.findByText(/Azure Boards unavailable: Azure Boards project is not configured for this workspace/);
+        const status = await screen.findByText(/Azure Boards unavailable: Azure Boards import requires either an Azure DevOps repo remote or configured ADO organization URL and workspace Azure Boards project/);
         expect(status).toBeTruthy();
     });
 
@@ -322,7 +314,11 @@ describe('Import from remote work item placement', () => {
                     organizationUrl: 'https://dev.azure.com/example',
                     project: 'Payments',
                 },
-                auth: { mode: 'external', authenticated: false },
+                auth: {
+                    mode: 'external',
+                    authenticated: false,
+                    message: 'Run az login so CoC can request Azure DevOps access from Azure CLI.',
+                },
             },
             providers: [{
                 provider: 'azure-boards',
@@ -333,7 +329,11 @@ describe('Import from remote work item placement', () => {
                     organizationUrl: 'https://dev.azure.com/example',
                     project: 'Payments',
                 },
-                auth: { mode: 'external', authenticated: false },
+                auth: {
+                    mode: 'external',
+                    authenticated: false,
+                    message: 'Run az login so CoC can request Azure DevOps access from Azure CLI.',
+                },
             }],
         });
 
@@ -351,7 +351,7 @@ describe('Import from remote work item placement', () => {
             />,
         );
 
-        const status = await screen.findByText(/Azure Boards unavailable: Azure CLI authentication is unavailable/);
+        const status = await screen.findByText(/Azure Boards unavailable: Run az login so CoC can request Azure DevOps access from Azure CLI/);
         expect(status.textContent).not.toMatch(/bearer|token|pat|authorization/i);
     });
 

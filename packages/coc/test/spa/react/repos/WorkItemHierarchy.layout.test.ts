@@ -188,11 +188,11 @@ describe('WorkItemHierarchyTree — Remote tracker workflow', () => {
     });
 
     it('checks and renders provider availability in the Remote tracker header', () => {
-        expect(src).toContain('workItems.syncStatus');
+        expect(src).toContain('workItems.syncStatusForOrigin');
         expect(src).toContain('remote-sync-status-message');
         expect(src).toContain('isWorkItemsSyncEnabled');
-        expect(src).toContain('Azure Boards project is not configured for this workspace');
-        expect(src).toContain('Azure CLI authentication is unavailable');
+        expect(src).toContain('Azure Boards import requires either an Azure DevOps repo remote or configured ADO organization URL and workspace Azure Boards project');
+        expect(src).toContain('Azure CLI authentication is unavailable. Run az login and ensure Azure DevOps access.');
     });
 
     it('does not expose manual provider pulls as per-Epic context actions', () => {

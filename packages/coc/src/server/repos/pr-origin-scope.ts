@@ -1,9 +1,11 @@
 import {
-    detectRemoteUrl,
-    resolveCanonicalOriginId,
     type ProcessStore,
     type WorkspaceInfo,
 } from '@plusplusoneplusplus/forge';
+import {
+    detectRemoteUrl,
+    resolveCanonicalOriginId,
+} from '@plusplusoneplusplus/forge/git';
 
 export interface PullRequestLegacyStorageScope {
     workspaceId: string;

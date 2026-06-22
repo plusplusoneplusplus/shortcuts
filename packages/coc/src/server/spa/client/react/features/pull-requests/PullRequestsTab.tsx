@@ -14,7 +14,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
-import type { PullRequestCoworkerRosterEntry, PrSuggestion, RecentOpenedPullRequestEntry } from '@plusplusoneplusplus/coc-client';
+import type {
+    PullRequestCoworkerCandidate,
+    PullRequestCoworkerRosterEntry,
+    PrSuggestion,
+    RecentOpenedPullRequestEntry,
+} from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useCocClient } from '../../repos/cloneRouting';
 import { resolveCanonicalOriginId } from '../../repos/originScope';
@@ -46,7 +51,6 @@ import {
 import { buildQueueFilterCounts, matchesFilter, scopeForFilter } from './pr-derived-data';
 import type { QueueFilter, QueueFilterCounts } from './pr-derived-data';
 import {
-    buildCoworkerRosterCandidates,
     getCoworkerRosterIdentityKey,
     pullRequestMatchesCoworkerRoster,
     type PullRequest,
@@ -61,6 +65,10 @@ export interface PullRequestsTabProps {
 }
 
 const PAGE_SIZE = 25;
+const COWORKER_SEARCH_MIN_QUERY_LENGTH = 2;
+const COWORKER_SEARCH_DEBOUNCE_MS = 300;
+const COWORKER_SEARCH_TOP = 20;
+const COWORKER_SEARCH_LISTBOX_ID = 'team-coworker-candidate-results';
 
 interface PrListCacheEntry {
     prs: PullRequest[];
@@ -204,7 +212,13 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
     const [recentOpenedPrs, setRecentOpenedPrs] = useState<RecentOpenedPullRequestEntry[]>([]);
     const [coworkerRoster, setCoworkerRoster] = useState<PullRequestCoworkerRosterEntry[]>([]);
     const [inactiveCoworkerKeys, setInactiveCoworkerKeys] = useState<Set<string>>(new Set());
-    const [coworkerPickerKey, setCoworkerPickerKey] = useState('');
+    const [coworkerSearchText, setCoworkerSearchText] = useState('');
+    const [coworkerSearchCandidates, setCoworkerSearchCandidates] = useState<PullRequestCoworkerCandidate[]>([]);
+    const [coworkerSearchLoading, setCoworkerSearchLoading] = useState(false);
+    const [coworkerSearchError, setCoworkerSearchError] = useState<string | null>(null);
+    const [coworkerSearchCompletedQuery, setCoworkerSearchCompletedQuery] = useState<string | null>(null);
+    const [coworkerSearchOpen, setCoworkerSearchOpen] = useState(false);
+    const [selectedCoworkerCandidate, setSelectedCoworkerCandidate] = useState<PullRequestCoworkerCandidate | null>(null);
     const [coworkerRosterError, setCoworkerRosterError] = useState<string | null>(null);
     const [coworkerRosterSavingKey, setCoworkerRosterSavingKey] = useState<string | null>(null);
 
@@ -248,6 +262,8 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
 
     const skipRef = useRef(0);
     const abortRef = useRef<AbortController | null>(null);
+    const coworkerSearchAbortRef = useRef<AbortController | null>(null);
+    const coworkerSearchRequestRef = useRef(0);
 
     const effectiveScope = scopeForFilter(activeFilter);
 
@@ -365,7 +381,12 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         let cancelled = false;
         setCoworkerRoster([]);
         setInactiveCoworkerKeys(new Set());
-        setCoworkerPickerKey('');
+        setCoworkerSearchText('');
+        setCoworkerSearchLoading(false);
+        setCoworkerSearchError(null);
+        setCoworkerSearchCompletedQuery(null);
+        setCoworkerSearchOpen(false);
+        setSelectedCoworkerCandidate(null);
         setCoworkerRosterError(null);
         cloneClient.pullRequests.listCoworkerRosterForOrigin(originId, { workspaceId, repoId })
             .then(data => {
@@ -459,15 +480,59 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         [coworkerRoster],
     );
 
-    const coworkerCandidates = useMemo(
-        () => buildCoworkerRosterCandidates(prs),
-        [prs],
+    const addableCoworkerCandidates = useMemo(
+        () => coworkerSearchCandidates.filter(candidate => !coworkerRosterKeys.has(getCoworkerRosterIdentityKey(candidate))),
+        [coworkerSearchCandidates, coworkerRosterKeys],
     );
 
-    const addableCoworkerCandidates = useMemo(
-        () => coworkerCandidates.filter(candidate => !coworkerRosterKeys.has(getCoworkerRosterIdentityKey(candidate))),
-        [coworkerCandidates, coworkerRosterKeys],
-    );
+    const selectedCoworkerCandidateKey = selectedCoworkerCandidate
+        ? getCoworkerRosterIdentityKey(selectedCoworkerCandidate)
+        : '';
+
+    const trimmedCoworkerSearchText = coworkerSearchText.trim();
+
+    const coworkerSearchListVisible =
+        coworkerSearchOpen &&
+        !coworkerSearchLoading &&
+        !coworkerSearchError &&
+        trimmedCoworkerSearchText.length >= COWORKER_SEARCH_MIN_QUERY_LENGTH &&
+        addableCoworkerCandidates.length > 0;
+
+    const coworkerSearchStatusText = useMemo(() => {
+        if (coworkerRosterSavingKey === 'add') {
+            return 'Adding selected coworker to the Team roster...';
+        }
+        if (coworkerSearchError) {
+            return coworkerSearchError;
+        }
+        if (trimmedCoworkerSearchText.length === 0) {
+            return 'Search repo PR authors across open pull requests.';
+        }
+        if (trimmedCoworkerSearchText.length < COWORKER_SEARCH_MIN_QUERY_LENGTH) {
+            return `Type at least ${COWORKER_SEARCH_MIN_QUERY_LENGTH} characters to search repo PR authors.`;
+        }
+        if (coworkerSearchLoading) {
+            return 'Searching repo PR authors...';
+        }
+        if (selectedCoworkerCandidate) {
+            return `Selected ${selectedCoworkerCandidate.displayName}. Click Add to save this coworker.`;
+        }
+        if (coworkerSearchCompletedQuery === trimmedCoworkerSearchText) {
+            if (addableCoworkerCandidates.length === 0) {
+                return 'No matching repo PR authors found.';
+            }
+            return `Showing ${pluralize(addableCoworkerCandidates.length, 'repo PR author candidate')}.`;
+        }
+        return 'Search will start after you pause typing.';
+    }, [
+        addableCoworkerCandidates.length,
+        coworkerRosterSavingKey,
+        coworkerSearchCompletedQuery,
+        coworkerSearchError,
+        coworkerSearchLoading,
+        selectedCoworkerCandidate,
+        trimmedCoworkerSearchText,
+    ]);
 
     const teamAutoClassificationPrs = useMemo(
         () => coworkerRoster.length === 0
@@ -641,10 +706,82 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
     ]);
 
     useEffect(() => {
-        if (!coworkerPickerKey) return;
-        if (addableCoworkerCandidates.some(candidate => getCoworkerRosterIdentityKey(candidate) === coworkerPickerKey)) return;
-        setCoworkerPickerKey('');
-    }, [addableCoworkerCandidates, coworkerPickerKey]);
+        if (!selectedCoworkerCandidateKey) return;
+        if (!coworkerRosterKeys.has(selectedCoworkerCandidateKey)) return;
+        setSelectedCoworkerCandidate(null);
+    }, [coworkerRosterKeys, selectedCoworkerCandidateKey]);
+
+    useEffect(() => {
+        coworkerSearchRequestRef.current += 1;
+        const requestId = coworkerSearchRequestRef.current;
+
+        if (coworkerSearchAbortRef.current) {
+            coworkerSearchAbortRef.current.abort();
+            coworkerSearchAbortRef.current = null;
+        }
+
+        if (activeFilter !== 'team' || queueCollapsed) {
+            setCoworkerSearchLoading(false);
+            return;
+        }
+
+        const query = trimmedCoworkerSearchText;
+        if (query.length < COWORKER_SEARCH_MIN_QUERY_LENGTH) {
+            setCoworkerSearchCandidates([]);
+            setCoworkerSearchLoading(false);
+            setCoworkerSearchError(null);
+            setCoworkerSearchCompletedQuery(null);
+            return;
+        }
+
+        setCoworkerSearchCandidates([]);
+        setCoworkerSearchLoading(false);
+        setCoworkerSearchError(null);
+        setCoworkerSearchCompletedQuery(null);
+
+        const controller = new AbortController();
+        coworkerSearchAbortRef.current = controller;
+        const timer = window.setTimeout(() => {
+            if (requestId !== coworkerSearchRequestRef.current) return;
+            setCoworkerSearchLoading(true);
+            cloneClient.pullRequests.searchCoworkerCandidatesForOrigin(
+                originId,
+                {
+                    workspaceId,
+                    repoId,
+                    query,
+                    status: STATUS_FILTER,
+                    scope: 'all',
+                    top: COWORKER_SEARCH_TOP,
+                },
+                { signal: controller.signal },
+            )
+                .then(data => {
+                    if (requestId !== coworkerSearchRequestRef.current) return;
+                    setCoworkerSearchCandidates(data.candidates ?? []);
+                    setCoworkerSearchCompletedQuery(query);
+                })
+                .catch(err => {
+                    if (err instanceof Error && err.name === 'AbortError') return;
+                    if (requestId !== coworkerSearchRequestRef.current) return;
+                    setCoworkerSearchError(getSpaCocClientErrorMessage(err, 'Failed to search repo PR authors.'));
+                    setCoworkerSearchCompletedQuery(query);
+                })
+                .finally(() => {
+                    if (coworkerSearchAbortRef.current === controller) {
+                        coworkerSearchAbortRef.current = null;
+                    }
+                    if (requestId === coworkerSearchRequestRef.current) {
+                        setCoworkerSearchLoading(false);
+                    }
+                });
+        }, COWORKER_SEARCH_DEBOUNCE_MS);
+
+        return () => {
+            window.clearTimeout(timer);
+            controller.abort();
+        };
+    }, [activeFilter, queueCollapsed, repoId, originId, trimmedCoworkerSearchText, workspaceId, cloneClient]);
 
     const filteredByPill = useMemo(
         () => filteredBySearch.filter(pr => matchesFilter(pr, activeFilter, { suggestedPrNumbers, coworkerRoster: coworkerFilterRoster })),
@@ -708,16 +845,17 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         });
     }
 
-    const handleAddCoworker = useCallback(async () => {
-        if (!coworkerPickerKey) {
-            setCoworkerRosterError('Select a coworker from loaded pull request authors.');
-            return;
-        }
+    function handleSelectCoworkerCandidate(candidate: PullRequestCoworkerCandidate) {
+        setSelectedCoworkerCandidate(candidate);
+        setCoworkerSearchText(candidate.displayName);
+        setCoworkerSearchOpen(false);
+        setCoworkerSearchError(null);
+        if (coworkerRosterError) setCoworkerRosterError(null);
+    }
 
-        const candidate = addableCoworkerCandidates.find(item => getCoworkerRosterIdentityKey(item) === coworkerPickerKey);
-        if (!candidate) {
-            setCoworkerRosterError('That coworker is no longer available in the loaded pull requests.');
-            setCoworkerPickerKey('');
+    const handleAddCoworker = useCallback(async () => {
+        if (!selectedCoworkerCandidate) {
+            setCoworkerRosterError('Select a coworker from searched repo PR authors.');
             return;
         }
 
@@ -725,19 +863,24 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         setCoworkerRosterError(null);
         try {
             const data = await cloneClient.pullRequests.addCoworkerToRosterForOrigin(originId, {
-                id: candidate.id,
-                displayName: candidate.displayName,
-                ...(candidate.email ? { email: candidate.email } : {}),
-                ...(candidate.avatarUrl ? { avatarUrl: candidate.avatarUrl } : {}),
+                id: selectedCoworkerCandidate.id,
+                displayName: selectedCoworkerCandidate.displayName,
+                ...(selectedCoworkerCandidate.login ? { login: selectedCoworkerCandidate.login } : {}),
+                ...(selectedCoworkerCandidate.email ? { email: selectedCoworkerCandidate.email } : {}),
+                ...(selectedCoworkerCandidate.avatarUrl ? { avatarUrl: selectedCoworkerCandidate.avatarUrl } : {}),
             }, { workspaceId, repoId });
             setCoworkerRoster(data.entries ?? []);
-            setCoworkerPickerKey('');
+            setSelectedCoworkerCandidate(null);
+            setCoworkerSearchText('');
+            setCoworkerSearchCandidates([]);
+            setCoworkerSearchCompletedQuery(null);
+            setCoworkerSearchOpen(false);
         } catch (err) {
             setCoworkerRosterError(getSpaCocClientErrorMessage(err, 'Failed to add coworker to Team roster.'));
         } finally {
             setCoworkerRosterSavingKey(null);
         }
-    }, [addableCoworkerCandidates, coworkerPickerKey, repoId, workspaceId, originId, cloneClient]);
+    }, [repoId, selectedCoworkerCandidate, workspaceId, originId, cloneClient]);
 
     const handleRemoveCoworker = useCallback(async (entry: Pick<PullRequestCoworkerRosterEntry, 'id' | 'displayName'>) => {
         const key = getCoworkerRosterIdentityKey(entry);
@@ -1121,7 +1264,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
 
                         {coworkerRoster.length === 0 ? (
                             <div className="rounded-md border border-dashed border-blue-200 bg-white/70 px-2 py-1 text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100" data-testid="team-roster-empty">
-                                Add coworkers from loaded PR authors to build your Team filter.
+                                Search repo PR authors across open pull requests to build your Team filter.
                             </div>
                         ) : (
                             <div className="flex flex-wrap gap-1" data-testid="team-coworker-chips">
@@ -1226,39 +1369,112 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
                             )}
                         </div>
 
-                        <div className="flex items-center gap-1.5">
-                            <select
-                                value={coworkerPickerKey}
-                                onChange={e => {
-                                    setCoworkerPickerKey(e.target.value);
-                                    if (coworkerRosterError) setCoworkerRosterError(null);
-                                }}
-                                disabled={addableCoworkerCandidates.length === 0 || coworkerRosterSavingKey != null}
-                                aria-label="Add coworker from loaded pull request authors"
-                                className="min-w-0 flex-1 rounded-md border border-blue-200 bg-white px-1.5 py-0.5 text-[11px] text-blue-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-100"
-                                data-testid="team-coworker-picker"
+                        <div className="flex flex-col gap-1">
+                            <div className="text-[10px] text-blue-700/80 dark:text-blue-200/80">
+                                Type a few characters to search repo PR authors, not just currently loaded rows.
+                            </div>
+                            <div className="flex items-start gap-1.5">
+                                <div className="relative min-w-0 flex-1">
+                                    <input
+                                        type="text"
+                                        role="combobox"
+                                        aria-autocomplete="list"
+                                        aria-controls={COWORKER_SEARCH_LISTBOX_ID}
+                                        aria-expanded={coworkerSearchListVisible}
+                                        aria-describedby="team-coworker-search-status"
+                                        value={coworkerSearchText}
+                                        onChange={e => {
+                                            setCoworkerSearchText(e.target.value);
+                                            setSelectedCoworkerCandidate(null);
+                                            setCoworkerSearchOpen(true);
+                                            setCoworkerSearchCandidates([]);
+                                            setCoworkerSearchCompletedQuery(null);
+                                            if (coworkerSearchError) setCoworkerSearchError(null);
+                                            if (coworkerRosterError) setCoworkerRosterError(null);
+                                        }}
+                                        onFocus={() => setCoworkerSearchOpen(true)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Escape') {
+                                                setCoworkerSearchOpen(false);
+                                                return;
+                                            }
+                                            if (e.key !== 'Enter') return;
+                                            e.preventDefault();
+                                            if (selectedCoworkerCandidate) {
+                                                void handleAddCoworker();
+                                            } else if (addableCoworkerCandidates.length > 0) {
+                                                handleSelectCoworkerCandidate(addableCoworkerCandidates[0]);
+                                            }
+                                        }}
+                                        disabled={coworkerRosterSavingKey === 'add'}
+                                        placeholder="Search repo PR authors..."
+                                        aria-label="Search repo PR authors to add a Team coworker"
+                                        className="w-full rounded-md border border-blue-200 bg-white px-1.5 py-0.5 text-[11px] text-blue-900 outline-none placeholder:text-blue-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-100 dark:placeholder:text-blue-300/60"
+                                        data-testid="team-coworker-picker"
+                                    />
+                                    {coworkerSearchListVisible && (
+                                        <div
+                                            id={COWORKER_SEARCH_LISTBOX_ID}
+                                            role="listbox"
+                                            className="absolute z-20 mt-1 max-h-44 w-full overflow-y-auto rounded-md border border-blue-200 bg-white py-1 shadow-lg dark:border-blue-800 dark:bg-gray-950"
+                                            data-testid="team-coworker-results"
+                                        >
+                                            {addableCoworkerCandidates.map(candidate => {
+                                                const key = getCoworkerRosterIdentityKey(candidate);
+                                                return (
+                                                    <button
+                                                        key={key}
+                                                        type="button"
+                                                        role="option"
+                                                        aria-selected={selectedCoworkerCandidateKey === key}
+                                                        onMouseDown={e => e.preventDefault()}
+                                                        onClick={() => handleSelectCoworkerCandidate(candidate)}
+                                                        className="flex w-full min-w-0 items-center gap-1.5 px-2 py-1 text-left text-[11px] text-blue-900 hover:bg-blue-50 dark:text-blue-100 dark:hover:bg-blue-900/40"
+                                                        data-testid="team-coworker-option"
+                                                    >
+                                                        {candidate.avatarUrl && (
+                                                            <img
+                                                                src={candidate.avatarUrl}
+                                                                alt=""
+                                                                className="h-4 w-4 shrink-0 rounded-full"
+                                                            />
+                                                        )}
+                                                        <span className="min-w-0 flex-1 truncate">
+                                                            {candidate.displayName}
+                                                        </span>
+                                                        <span className="shrink-0 text-[10px] text-blue-600 dark:text-blue-300">
+                                                            {pluralize(candidate.prCount, 'PR')}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => { void handleAddCoworker(); }}
+                                    disabled={!selectedCoworkerCandidate || coworkerRosterSavingKey != null}
+                                    className="inline-flex h-[24px] shrink-0 items-center rounded-md border border-blue-300 bg-white px-2 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-100 dark:hover:bg-blue-900/50"
+                                    data-testid="team-coworker-add"
+                                >
+                                    {coworkerRosterSavingKey === 'add' ? 'Adding...' : 'Add'}
+                                </button>
+                            </div>
+                            <div
+                                id="team-coworker-search-status"
+                                className={cn(
+                                    'text-[10px]',
+                                    coworkerSearchError
+                                        ? 'text-red-700 dark:text-red-300'
+                                        : 'text-blue-700/80 dark:text-blue-200/80',
+                                )}
+                                role={coworkerSearchError ? 'alert' : 'status'}
+                                aria-live="polite"
+                                data-testid="team-coworker-search-status"
                             >
-                                <option value="">
-                                    {addableCoworkerCandidates.length > 0 ? 'Add coworker...' : 'No loaded authors to add'}
-                                </option>
-                                {addableCoworkerCandidates.map(candidate => {
-                                    const key = getCoworkerRosterIdentityKey(candidate);
-                                    return (
-                                        <option key={key} value={key}>
-                                            {candidate.displayName}{candidate.prCount > 1 ? ` (${candidate.prCount})` : ''}
-                                        </option>
-                                    );
-                                })}
-                            </select>
-                            <button
-                                type="button"
-                                onClick={() => { void handleAddCoworker(); }}
-                                disabled={!coworkerPickerKey || coworkerRosterSavingKey != null}
-                                className="inline-flex h-[24px] shrink-0 items-center rounded-md border border-blue-300 bg-white px-2 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-100 dark:hover:bg-blue-900/50"
-                                data-testid="team-coworker-add"
-                            >
-                                {coworkerRosterSavingKey === 'add' ? 'Adding...' : 'Add'}
-                            </button>
+                                {coworkerSearchStatusText}
+                            </div>
                         </div>
 
                         {coworkerRosterError && (
@@ -1403,7 +1619,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
                         <div className="px-4 py-6 text-center text-sm text-gray-500" data-testid="no-results">
                             {activeFilter === 'team'
                                 ? coworkerRoster.length === 0
-                                    ? 'Add coworkers from loaded PR authors to build your Team filter.'
+                                    ? 'Search repo PR authors to build your Team filter.'
                                     : activeCoworkerRoster.length === 0
                                         ? 'Choose at least one Team coworker chip to show matching pull requests.'
                                         : 'No loaded pull requests are authored by the active Team roster.'

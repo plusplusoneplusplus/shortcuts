@@ -86,9 +86,9 @@ function unavailableStatusMessage(status: WorkItemSyncProviderStatus): string {
     if (status.provider === 'azure-boards') {
         switch (status.reason) {
             case 'missing-org-url':
-                return 'Azure DevOps organization URL is not configured in Provider Tokens.';
+                return 'Azure Boards import requires either an Azure DevOps repo remote or configured ADO organization URL and workspace Azure Boards project.';
             case 'missing-project':
-                return 'Azure Boards project is not configured for this workspace.';
+                return 'Azure Boards import requires either an Azure DevOps repo remote or a workspace Azure Boards project preference.';
             case 'auth-unavailable':
                 return status.auth?.message ?? 'Azure CLI authentication is unavailable. Run az login and ensure Azure DevOps access.';
             case 'missing-workspace':

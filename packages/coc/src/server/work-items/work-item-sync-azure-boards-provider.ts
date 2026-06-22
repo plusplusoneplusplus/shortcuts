@@ -42,6 +42,7 @@ type ExecFileAsync = (
 ) => Promise<{ stdout: string; stderr: string }>;
 
 export type AzureBoardsAccessTokenResolver = () => Promise<string | undefined>;
+export type AzureBoardsWorkItemSyncProjectSource = 'preference' | 'workspaceRemote';
 
 export interface AvailableAzureBoardsWorkItemSyncProject {
     available: true;
@@ -50,7 +51,13 @@ export interface AvailableAzureBoardsWorkItemSyncProject {
     project: string;
     projectId: string;
     url: string;
-    source: 'preference';
+    source: AzureBoardsWorkItemSyncProjectSource;
+}
+
+export interface AzureBoardsWorkItemUrlReference {
+    organizationUrl: string;
+    project: string;
+    workItemId: number;
 }
 
 export interface AzureBoardsWorkItemRelation {
@@ -190,6 +197,16 @@ interface AzureBoardsJsonPatchOperation {
 }
 
 const AZURE_BOARDS_REMOTE_WINS_FIELDS = ['title', 'description', 'status', 'priority', 'tags', 'parentId'];
+const AZURE_DEVOPS_ACCESS_TOKEN_ARGS = [
+    'account',
+    'get-access-token',
+    '--resource',
+    ADO_RESOURCE_ID,
+    '--query',
+    'accessToken',
+    '-o',
+    'tsv',
+];
 
 // Resolve child_process.execFile lazily so importing this module has no
 // load-time side effects (tests with partial child_process mocks would
@@ -200,11 +217,13 @@ const execFileAsync: ExecFileAsync = (file, args, options) => {
     return lazyExecFileAsync(file, args, options);
 };
 
-function authNotChecked(): WorkItemSyncProviderStatus['auth'] {
+function authNotChecked(
+    message = 'Azure CLI authentication was not checked because Azure Boards configuration is incomplete.',
+): WorkItemSyncProviderStatus['auth'] {
     return {
         mode: 'external',
         authenticated: false,
-        message: 'Azure CLI authentication was not checked because Azure Boards configuration is incomplete.',
+        message,
     };
 }
 
@@ -212,8 +231,141 @@ function normalizeOrgUrl(orgUrl: string): string {
     return orgUrl.trim().replace(/\/+$/, '');
 }
 
+function decodeUrlSegment(segment: string): string {
+    try {
+        return decodeURIComponent(segment);
+    } catch {
+        return segment;
+    }
+}
+
+function pathSegments(pathname: string): string[] {
+    return pathname.split('/').filter(Boolean).map(decodeUrlSegment);
+}
+
+function devAzureOrgUrl(org: string): string {
+    return `https://dev.azure.com/${encodeURIComponent(org.trim())}`;
+}
+
 function projectUrl(orgUrl: string, project: string): string {
     return `${normalizeOrgUrl(orgUrl)}/${encodeURIComponent(project)}`;
+}
+
+function availableProject(
+    orgUrl: string,
+    project: string,
+    source: AzureBoardsWorkItemSyncProjectSource,
+): AvailableAzureBoardsWorkItemSyncProject {
+    const organizationUrl = normalizeOrgUrl(orgUrl);
+    return {
+        available: true,
+        provider: 'azure-boards',
+        organizationUrl,
+        project,
+        projectId: project,
+        url: projectUrl(organizationUrl, project),
+        source,
+    };
+}
+
+function projectRepository(project: AvailableAzureBoardsWorkItemSyncProject): WorkItemSyncProviderStatus['repository'] {
+    return {
+        provider: 'azure-boards',
+        organizationUrl: project.organizationUrl,
+        project: project.project,
+        projectId: project.projectId,
+        url: project.url,
+        source: project.source,
+    };
+}
+
+function organizationKey(orgUrl: string): string {
+    const normalized = normalizeOrgUrl(orgUrl);
+    try {
+        const parsed = new URL(normalized);
+        const host = parsed.hostname.toLowerCase();
+        if (host === 'dev.azure.com') {
+            const [org] = pathSegments(parsed.pathname);
+            if (org) return org.toLowerCase();
+        }
+        if (host.endsWith('.visualstudio.com')) {
+            return host.slice(0, -'.visualstudio.com'.length).toLowerCase();
+        }
+    } catch {
+        // Fall through to compare the normalized value.
+    }
+    return normalized.toLowerCase();
+}
+
+function sameOrganization(left: string, right: string): boolean {
+    return organizationKey(left) === organizationKey(right);
+}
+
+function sameProject(left: string, right: string): boolean {
+    return decodeUrlSegment(left).trim().toLowerCase() === decodeUrlSegment(right).trim().toLowerCase();
+}
+
+export function azureBoardsProjectFromRemoteUrl(remoteUrl?: string | null): AvailableAzureBoardsWorkItemSyncProject | undefined {
+    const trimmed = remoteUrl?.trim();
+    if (!trimmed) return undefined;
+
+    const normalized = trimmed.replace(/^git\+/, '');
+    const scpLike = /^[^@]+@ssh\.dev\.azure\.com:v3\/([^/]+)\/([^/]+)\/.+$/i.exec(normalized);
+    if (scpLike) {
+        const org = decodeUrlSegment(scpLike[1]);
+        const project = decodeUrlSegment(scpLike[2]);
+        if (org && project) return availableProject(devAzureOrgUrl(org), project, 'workspaceRemote');
+    }
+
+    let parsed: URL;
+    try {
+        parsed = new URL(normalized);
+    } catch {
+        return undefined;
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    const segments = pathSegments(parsed.pathname);
+    if (host === 'dev.azure.com') {
+        const [org, project, marker] = segments;
+        if (org && project && marker?.toLowerCase() === '_git') {
+            return availableProject(devAzureOrgUrl(org), project, 'workspaceRemote');
+        }
+    }
+    if (host.endsWith('.visualstudio.com')) {
+        const org = host.slice(0, -'.visualstudio.com'.length);
+        const markerIndex = segments.findIndex(segment => segment.toLowerCase() === '_git');
+        const project = markerIndex > 0 ? segments[markerIndex - 1] : undefined;
+        if (org && project) {
+            return availableProject(devAzureOrgUrl(org), project, 'workspaceRemote');
+        }
+    }
+    if (host === 'ssh.dev.azure.com') {
+        const [version, org, project] = segments;
+        if (version?.toLowerCase() === 'v3' && org && project) {
+            return availableProject(devAzureOrgUrl(org), project, 'workspaceRemote');
+        }
+    }
+    return undefined;
+}
+
+function azureBoardsConfigMismatchStatus(
+    remoteProject: AvailableAzureBoardsWorkItemSyncProject,
+    configuredOrgUrl: string | undefined,
+    configuredProject: string | undefined,
+): WorkItemSyncProviderStatus {
+    const configuredParts = [
+        configuredOrgUrl ? `organization '${normalizeOrgUrl(configuredOrgUrl)}'` : undefined,
+        configuredProject ? `project '${configuredProject}'` : undefined,
+    ].filter((part): part is string => Boolean(part));
+    return {
+        provider: 'azure-boards',
+        available: false,
+        reason: 'mismatched-remote',
+        message: `Azure Boards configuration does not match this workspace repository remote. The remote resolves to organization '${remoteProject.organizationUrl}' and project '${remoteProject.project}', but the configured ${configuredParts.join(' and ')} differs.`,
+        repository: projectRepository(remoteProject),
+        auth: authNotChecked('Azure CLI authentication was not checked because Azure Boards configuration does not match the workspace remote.'),
+    };
 }
 
 function missingOrgUrlStatus(): WorkItemSyncProviderStatus {
@@ -221,7 +373,7 @@ function missingOrgUrlStatus(): WorkItemSyncProviderStatus {
         provider: 'azure-boards',
         available: false,
         reason: 'missing-org-url',
-        message: 'Azure Boards sync requires an Azure DevOps organization URL in provider configuration.',
+        message: 'Azure Boards import requires either an Azure DevOps repo remote or configured ADO organization URL and workspace Azure Boards project.',
         auth: authNotChecked(),
     };
 }
@@ -232,7 +384,7 @@ function missingProjectStatus(orgUrl: string): WorkItemSyncProviderStatus {
         provider: 'azure-boards',
         available: false,
         reason: 'missing-project',
-        message: 'Azure Boards sync requires a workspace Azure Boards project preference.',
+        message: 'Azure Boards import requires either an Azure DevOps repo remote or a workspace Azure Boards project preference.',
         repository: {
             provider: 'azure-boards',
             organizationUrl: normalizedOrgUrl,
@@ -243,21 +395,18 @@ function missingProjectStatus(orgUrl: string): WorkItemSyncProviderStatus {
     };
 }
 
-function authUnavailableStatus(orgUrl: string, project: string): WorkItemSyncProviderStatus {
-    const normalizedOrgUrl = normalizeOrgUrl(orgUrl);
+function authUnavailableStatus(
+    orgUrl: string,
+    project: string,
+    source: AzureBoardsWorkItemSyncProjectSource,
+): WorkItemSyncProviderStatus {
+    const resolvedProject = availableProject(orgUrl, project, source);
     return {
         provider: 'azure-boards',
         available: false,
         reason: 'auth-unavailable',
         message: `Azure Boards sync could not authenticate through Azure CLI for project '${project}'.`,
-        repository: {
-            provider: 'azure-boards',
-            organizationUrl: normalizedOrgUrl,
-            project,
-            projectId: project,
-            url: projectUrl(normalizedOrgUrl, project),
-            source: 'preference',
-        },
+        repository: projectRepository(resolvedProject),
         auth: {
             mode: 'external',
             authenticated: false,
@@ -266,19 +415,16 @@ function authUnavailableStatus(orgUrl: string, project: string): WorkItemSyncPro
     };
 }
 
-function availableStatus(orgUrl: string, project: string): WorkItemSyncProviderStatus {
-    const normalizedOrgUrl = normalizeOrgUrl(orgUrl);
+function availableStatus(
+    orgUrl: string,
+    project: string,
+    source: AzureBoardsWorkItemSyncProjectSource,
+): WorkItemSyncProviderStatus {
+    const resolvedProject = availableProject(orgUrl, project, source);
     return {
         provider: 'azure-boards',
         available: true,
-        repository: {
-            provider: 'azure-boards',
-            organizationUrl: normalizedOrgUrl,
-            project,
-            projectId: project,
-            url: projectUrl(normalizedOrgUrl, project),
-            source: 'preference',
-        },
+        repository: projectRepository(resolvedProject),
         auth: {
             mode: 'external',
             authenticated: true,
@@ -331,14 +477,52 @@ export function azureBoardsProjectFromStatus(status: WorkItemSyncProviderStatus)
     const organizationUrl = status.repository?.organizationUrl?.trim();
     const project = status.repository?.project?.trim();
     if (!organizationUrl || !project) return undefined;
+    const source = status.repository?.source === 'workspaceRemote' ? 'workspaceRemote' : 'preference';
+    const resolvedProject = availableProject(organizationUrl, project, source);
     return {
-        available: true,
-        provider: 'azure-boards',
-        organizationUrl: normalizeOrgUrl(organizationUrl),
-        project,
+        ...resolvedProject,
         projectId: status.repository?.projectId?.trim() || project,
-        url: status.repository?.url?.trim() || projectUrl(organizationUrl, project),
-        source: 'preference',
+        url: status.repository?.url?.trim() || resolvedProject.url,
+    };
+}
+
+export function azureBoardsWorkItemReferenceFromUrl(workItemUrlValue: string): AzureBoardsWorkItemUrlReference | undefined {
+    let parsed: URL;
+    try {
+        parsed = new URL(workItemUrlValue);
+    } catch {
+        return undefined;
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    const segments = pathSegments(parsed.pathname);
+    let org: string | undefined;
+    let project: string | undefined;
+    let markerIndex: number | undefined;
+    if (host === 'dev.azure.com') {
+        [org, project] = segments;
+        markerIndex = 2;
+    } else if (host.endsWith('.visualstudio.com')) {
+        org = host.slice(0, -'.visualstudio.com'.length);
+        [project] = segments;
+        markerIndex = 1;
+    } else {
+        return undefined;
+    }
+
+    if (!org || !project || markerIndex === undefined) return undefined;
+    if (
+        segments[markerIndex]?.toLowerCase() !== '_workitems'
+        || segments[markerIndex + 1]?.toLowerCase() !== 'edit'
+    ) {
+        return undefined;
+    }
+    const id = Number.parseInt(segments[markerIndex + 2] ?? '', 10);
+    if (!Number.isInteger(id) || id <= 0) return undefined;
+    return {
+        organizationUrl: devAzureOrgUrl(org),
+        project,
+        workItemId: id,
     };
 }
 
@@ -346,29 +530,11 @@ export function azureBoardsWorkItemIdFromUrl(
     workItemUrlValue: string,
     project: AvailableAzureBoardsWorkItemSyncProject,
 ): number | undefined {
-    let parsed: URL;
-    let org: URL;
-    try {
-        parsed = new URL(workItemUrlValue);
-        org = new URL(project.organizationUrl);
-    } catch {
-        return undefined;
-    }
-    if (parsed.origin.toLowerCase() !== org.origin.toLowerCase()) return undefined;
-
-    const orgSegments = org.pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment).toLowerCase());
-    const parsedSegments = parsed.pathname.split('/').filter(Boolean);
-    const parsedLower = parsedSegments.map(segment => decodeURIComponent(segment).toLowerCase());
-    for (let i = 0; i < orgSegments.length; i++) {
-        if (parsedLower[i] !== orgSegments[i]) return undefined;
-    }
-    const projectIndex = orgSegments.length;
-    if (parsedLower[projectIndex] !== project.project.toLowerCase()) return undefined;
-    if (parsedLower[projectIndex + 1] !== '_workitems' || parsedLower[projectIndex + 2] !== 'edit') {
-        return undefined;
-    }
-    const id = Number.parseInt(parsedSegments[projectIndex + 3] ?? '', 10);
-    return Number.isInteger(id) && id > 0 ? id : undefined;
+    const reference = azureBoardsWorkItemReferenceFromUrl(workItemUrlValue);
+    if (!reference) return undefined;
+    if (!sameOrganization(reference.organizationUrl, project.organizationUrl)) return undefined;
+    if (!sameProject(reference.project, project.project)) return undefined;
+    return reference.workItemId;
 }
 
 function azureApiUrl(project: AvailableAzureBoardsWorkItemSyncProject, pathSuffix: string): URL {
@@ -1062,18 +1228,21 @@ export async function importAzureBoardsEpicTreeAsWorkItems(
 
 export async function resolveAzureDevOpsCliAccessToken(
     run: ExecFileAsync = execFileAsync,
+    platform: NodeJS.Platform = process.platform,
+    comSpec: string | undefined = process.env.ComSpec,
 ): Promise<string | undefined> {
     try {
-        const { stdout } = await run('az', [
-            'account',
-            'get-access-token',
-            '--resource',
-            ADO_RESOURCE_ID,
-            '--query',
-            'accessToken',
-            '-o',
-            'tsv',
-        ], {
+        const accessTokenArgs = [...AZURE_DEVOPS_ACCESS_TOKEN_ARGS];
+        const command = platform === 'win32'
+            ? {
+                file: comSpec?.trim() || 'cmd.exe',
+                args: ['/d', '/s', '/c', 'az', ...accessTokenArgs],
+            }
+            : {
+                file: 'az',
+                args: accessTokenArgs,
+            };
+        const { stdout } = await run(command.file, command.args, {
             encoding: 'utf8',
             windowsHide: true,
             maxBuffer: 1024 * 1024,
@@ -1095,15 +1264,28 @@ export function createAzureBoardsWorkItemSyncProviderAdapter(
         async getStatus(context: WorkItemSyncProviderContext) {
             const config = await readProvidersConfig(options.dataDir);
             const orgUrl = config.providers.ado?.orgUrl?.trim();
-            if (!orgUrl) return missingOrgUrlStatus();
-
             const project = context.preferences.workItems?.sync?.azureBoards?.project?.trim();
+            const remoteProject = azureBoardsProjectFromRemoteUrl(context.workspace?.remoteUrl);
+            if (remoteProject) {
+                const orgMismatches = orgUrl ? !sameOrganization(orgUrl, remoteProject.organizationUrl) : false;
+                const projectMismatches = project ? !sameProject(project, remoteProject.project) : false;
+                if (orgMismatches || projectMismatches) {
+                    return azureBoardsConfigMismatchStatus(remoteProject, orgUrl, project);
+                }
+
+                const accessToken = await resolveAccessToken();
+                if (!accessToken) return authUnavailableStatus(remoteProject.organizationUrl, remoteProject.project, remoteProject.source);
+
+                return availableStatus(remoteProject.organizationUrl, remoteProject.project, remoteProject.source);
+            }
+
+            if (!orgUrl) return missingOrgUrlStatus();
             if (!project) return missingProjectStatus(orgUrl);
 
             const accessToken = await resolveAccessToken();
-            if (!accessToken) return authUnavailableStatus(orgUrl, project);
+            if (!accessToken) return authUnavailableStatus(orgUrl, project, 'preference');
 
-            return availableStatus(orgUrl, project);
+            return availableStatus(orgUrl, project, 'preference');
         },
     };
 }

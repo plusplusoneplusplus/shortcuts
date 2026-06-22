@@ -95,6 +95,16 @@ async function expectRosterEntryPersisted(
     ]));
 }
 
+async function searchAndSelectCoworker(page: any, query: string, displayName: string): Promise<void> {
+    const picker = page.locator('[data-testid="team-coworker-picker"]');
+    await expect(picker).toHaveAttribute('role', 'combobox', { timeout: 10000 });
+    await picker.fill(query);
+    const option = page.locator('[data-testid="team-coworker-option"]').filter({ hasText: displayName });
+    await expect(option).toBeVisible({ timeout: 10000 });
+    await option.click();
+    await expect(page.locator('[data-testid="team-coworker-search-status"]')).toContainText(`Selected ${displayName}`, { timeout: 10000 });
+}
+
 async function runTeamFilterProviderDemo(
     page: any,
     serverUrl: string,
@@ -145,7 +155,8 @@ async function runTeamFilterProviderDemo(
         await expect(page.locator('[data-testid="team-roster-empty"]')).toBeVisible({ timeout: 10000 });
         await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(0, { timeout: 10000 });
 
-        await page.locator('[data-testid="team-coworker-picker"]').selectOption({ label: scenario.teammateDisplayName });
+        await expect(page.locator('[data-testid="team-coworker-search-status"]')).toContainText('Search repo PR authors', { timeout: 10000 });
+        await searchAndSelectCoworker(page, 'Team', scenario.teammateDisplayName);
         await page.locator('[data-testid="team-coworker-add"]').click();
 
         await expect(page.locator('[data-testid="team-coworker-chip"]')).toContainText(scenario.teammateDisplayName, { timeout: 10000 });
@@ -212,6 +223,31 @@ test.describe('Pull Requests tab — list', () => {
             await expect(firstRow.locator('.pr-number')).toContainText(`#${MOCK_PR_LIST[0].id}`, { timeout: 10000 });
             await expect(firstRow.locator('[data-testid="pr-state-dot"]')).toBeVisible({ timeout: 10000 });
             await expect(firstRow.locator('[data-testid="pr-risk-pill"]')).toBeVisible({ timeout: 10000 });
+        } finally {
+            await routeCleanup();
+            cleanup();
+        }
+    });
+
+    test('Load more appends the next PR page and keeps title search working', async ({ page, serverUrl }) => {
+        const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-load-more', 'My Repo');
+        const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
+            pullRequests: createMockPrList(30),
+        });
+        try {
+            await openPrTab(page, serverUrl, repoId);
+
+            await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(25, { timeout: 10000 });
+            await expect(page.locator('[data-testid="load-more"]')).toBeVisible({ timeout: 10000 });
+
+            await page.locator('[data-testid="load-more"]').click();
+
+            await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(30, { timeout: 10000 });
+            await expect(page.locator('[data-testid="load-more"]')).toHaveCount(0);
+
+            await page.locator('[data-testid="search-input"]').fill('number 30');
+            await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="pr-row"]').first().locator('.pr-title')).toHaveText('feat: pull request number 30', { timeout: 10000 });
         } finally {
             await routeCleanup();
             cleanup();
@@ -427,5 +463,96 @@ test.describe('Pull Requests tab — list', () => {
             otherDisplayName: 'ADO Other',
             otherTitle: 'ADO other PR',
         });
+    });
+
+    test('Team coworker picker adds API candidates that are not in loaded PR rows', async ({ page, serverUrl }) => {
+        const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-team-api-candidate', 'My Repo');
+        const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
+            pullRequests: [
+                createMockPullRequest({
+                    id: 1,
+                    number: 1,
+                    title: 'Loaded author PR',
+                    author: { id: 'loaded-author', displayName: 'Loaded Author' },
+                }),
+            ],
+            coworkerCandidates: [
+                {
+                    id: 'remote-author',
+                    displayName: 'Remote Candidate',
+                    email: 'remote@example.invalid',
+                    prCount: 7,
+                },
+            ],
+        });
+        try {
+            await openPrTab(page, serverUrl, repoId);
+            await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(1, { timeout: 10000 });
+
+            const teamFilter = page.locator('[data-testid="pr-queue-filter-team"]');
+            await teamFilter.click();
+            await expect(page.locator('[data-testid="team-roster-empty"]')).toContainText('Search repo PR authors', { timeout: 10000 });
+
+            await searchAndSelectCoworker(page, 'Remote', 'Remote Candidate');
+            await page.locator('[data-testid="team-coworker-add"]').click();
+
+            await expect(page.locator('[data-testid="team-coworker-chip"]')).toContainText('Remote Candidate', { timeout: 10000 });
+            await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(0, { timeout: 10000 });
+            await expectRosterEntryPersisted(serverUrl, repoId, {
+                id: 'remote-author',
+                displayName: 'Remote Candidate',
+            });
+        } finally {
+            await routeCleanup();
+            cleanup();
+        }
+    });
+
+    test('Team coworker picker shows minimum-length and no-results states', async ({ page, serverUrl }) => {
+        const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-team-no-results', 'My Repo');
+        const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
+            pullRequests: MOCK_PR_LIST,
+            coworkerCandidates: [],
+            coworkerCandidateDelayMs: 300,
+        });
+        try {
+            await openPrTab(page, serverUrl, repoId);
+            await page.locator('[data-testid="pr-queue-filter-team"]').click();
+
+            const picker = page.locator('[data-testid="team-coworker-picker"]');
+            await picker.fill('z');
+            await expect(page.locator('[data-testid="team-coworker-search-status"]')).toContainText('Type at least 2 characters', { timeout: 10000 });
+            await expect(page.locator('[data-testid="team-coworker-add"]')).toBeDisabled({ timeout: 10000 });
+
+            await picker.fill('zz');
+            await expect(page.locator('[data-testid="team-coworker-search-status"]')).toContainText('Searching repo PR authors', { timeout: 10000 });
+            await expect(page.locator('[data-testid="team-coworker-search-status"]')).toContainText('No matching repo PR authors found', { timeout: 10000 });
+            await expect(page.locator('[data-testid="team-coworker-option"]')).toHaveCount(0);
+        } finally {
+            await routeCleanup();
+            cleanup();
+        }
+    });
+
+    test('Team coworker picker surfaces candidate search API errors', async ({ page, serverUrl }) => {
+        const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-team-search-error', 'My Repo');
+        const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
+            pullRequests: MOCK_PR_LIST,
+            coworkerCandidateError: {
+                status: 503,
+                body: { error: 'candidate search temporarily unavailable' },
+            },
+        });
+        try {
+            await openPrTab(page, serverUrl, repoId);
+            await page.locator('[data-testid="pr-queue-filter-team"]').click();
+
+            await page.locator('[data-testid="team-coworker-picker"]').fill('al');
+            await expect(page.locator('[data-testid="team-coworker-search-status"]')).toContainText('candidate search temporarily unavailable', { timeout: 10000 });
+            await expect(page.locator('[data-testid="team-coworker-add"]')).toBeDisabled({ timeout: 10000 });
+        } finally {
+            await routeCleanup();
+            cleanup();
+        }
     });
 });

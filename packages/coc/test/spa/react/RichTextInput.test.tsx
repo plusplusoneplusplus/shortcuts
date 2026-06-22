@@ -251,6 +251,19 @@ describe('RichTextInput', () => {
         expect(document.execCommand).not.toHaveBeenCalled();
     });
 
+    it('paste with clipboard data missing getData does not throw or call execCommand', () => {
+        document.execCommand = vi.fn().mockReturnValue(true);
+        render(<RichTextInput onChange={vi.fn()} data-testid="rich" />);
+        const div = screen.getByTestId('rich');
+
+        expect(() => {
+            fireEvent.paste(div, {
+                clipboardData: { items: [] },
+            });
+        }).not.toThrow();
+        expect(document.execCommand).not.toHaveBeenCalled();
+    });
+
     it('contentEditable div has whitespace-pre-wrap class (browser trailing-space preservation)', () => {
         render(<RichTextInput onChange={vi.fn()} data-testid="rich-ws" />);
         const div = screen.getByTestId('rich-ws');

@@ -167,3 +167,23 @@ export interface GitHubIssue {
     html_url: string;
     labels: GitHubLabel[];
 }
+
+/** Shape returned by GitHub Search Issues/PRs API for PR results. */
+export interface GitHubSearchPrItem {
+    id: number;
+    number: number;
+    title: string;
+    body: string | null;
+    user: GitHubUser;
+    state: 'open' | 'closed';
+    draft?: boolean;
+    created_at: string;
+    updated_at: string;
+    closed_at: string | null;
+    html_url: string;
+    labels: GitHubLabel[];
+    pull_request?: {
+        merged_at?: string | null;
+        html_url?: string;
+    };
+}

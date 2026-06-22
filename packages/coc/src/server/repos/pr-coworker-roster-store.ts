@@ -28,6 +28,8 @@ export const MAX_PR_COWORKER_AVATAR_URL_LENGTH = 2048;
 export interface PullRequestCoworkerRosterEntry {
     id: string;
     displayName: string;
+    /** Provider login/username (e.g. GitHub login). Used for per-author PR queries. */
+    login?: string;
     email?: string;
     avatarUrl?: string;
     addedAt: string;
@@ -44,6 +46,7 @@ export type PullRequestCoworkerRosterValidation =
         entry: {
             id: string;
             displayName: string;
+            login?: string;
             email?: string;
             avatarUrl?: string;
         };
@@ -135,6 +138,9 @@ export function validatePullRequestCoworkerRosterInput(input: unknown): PullRequ
     const emailResult = sanitizeOptionalString(body.email, 'email', MAX_PR_COWORKER_EMAIL_LENGTH);
     if (!emailResult.ok) return emailResult;
 
+    const loginResult = sanitizeOptionalString(body.login, 'login', MAX_PR_COWORKER_ID_LENGTH);
+    if (!loginResult.ok) return loginResult;
+
     const avatarUrlResult = sanitizeAvatarUrl(body.avatarUrl);
     if (!avatarUrlResult.ok) return avatarUrlResult;
 
@@ -143,6 +149,7 @@ export function validatePullRequestCoworkerRosterInput(input: unknown): PullRequ
         entry: {
             id: idResult.value ?? '',
             displayName,
+            ...(loginResult.value ? { login: loginResult.value } : {}),
             ...(emailResult.value ? { email: emailResult.value } : {}),
             ...(avatarUrlResult.avatarUrl ? { avatarUrl: avatarUrlResult.avatarUrl } : {}),
         },
@@ -266,6 +273,7 @@ export function addPullRequestCoworkerToRoster(
     entry: {
         id: string;
         displayName: string;
+        login?: string;
         email?: string;
         avatarUrl?: string;
     },
@@ -277,6 +285,7 @@ export function addPullRequestCoworkerToRoster(
     const nextEntry: PullRequestCoworkerRosterEntry = {
         id: entry.id,
         displayName: entry.displayName,
+        ...(entry.login ? { login: entry.login } : {}),
         ...(entry.email ? { email: entry.email } : {}),
         ...(entry.avatarUrl ? { avatarUrl: entry.avatarUrl } : {}),
         addedAt,
