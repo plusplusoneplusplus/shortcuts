@@ -267,6 +267,20 @@ describe('useMarkdownPreview', () => {
             expect(lastCall[0].current).toBeNull();
         });
 
+        it('passes rendered HTML as the Mermaid content key', () => {
+            const containerRef = createRef(document.createElement('div'));
+            const { result, rerender } = renderHook(
+                ({ content }) => useMarkdownPreview({ content, containerRef }),
+                { initialProps: { content: '```mermaid\nflowchart TD\n  A --> B\n```' } },
+            );
+
+            const useMermaidMock = useMermaid as ReturnType<typeof vi.fn>;
+            expect(useMermaidMock.mock.calls.at(-1)?.[1]).toBe(result.current.html);
+
+            rerender({ content: '```mermaid\nflowchart TD\n  B --> C\n```' });
+            expect(useMermaidMock.mock.calls.at(-1)?.[1]).toBe(result.current.html);
+        });
+
         it('source mode suppresses hljs', () => {
             const highlightElementSpy = vi.fn();
             (window as any).hljs = {

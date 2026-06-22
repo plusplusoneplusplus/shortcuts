@@ -107,6 +107,17 @@ describe('CanvasPanel', () => {
         expect(mocks.get).toHaveBeenCalledWith('ws-1', 'doc-abc123');
     });
 
+    it('marks the preview for canvas-specific Mermaid sizing', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({
+            content: '```mermaid\nflowchart TD\n  A --> B\n```',
+        }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan'));
+        expect(screen.getByTestId('canvas-panel-preview').className).toContain('canvas-mermaid-preview');
+    });
+
     it('autosaves user edits with the expected revision', async () => {
         vi.useFakeTimers();
         try {

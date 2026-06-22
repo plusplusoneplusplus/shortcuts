@@ -739,7 +739,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                 ) : (
                     <div
                         ref={previewRef}
-                        className="markdown-body text-xs p-3"
+                        className="markdown-body canvas-mermaid-preview text-xs p-3"
                         data-testid="canvas-panel-preview"
                         onMouseUp={handlePreviewMouseUp}
                         dangerouslySetInnerHTML={{ __html: html || '<span class="italic text-[#848484]">Empty canvas.</span>' }}

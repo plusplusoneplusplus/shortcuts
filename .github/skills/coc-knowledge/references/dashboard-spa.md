@@ -187,7 +187,9 @@ callback) to mount the panel as a desktop-only (`lg:`) resizable right column
 beside the conversation, with width persisted under
 `coc.canvasPanel.width.<workspaceId>` via `useResizablePanel`. The panel shows
 the canvas title, revision, and a Preview (shared `useMarkdownPreview`
-pipeline) / Edit (plain textarea) toggle. User edits autosave with a debounce
+pipeline, with rendered HTML passed through to `useMermaid` as its re-render key
+and `.canvas-mermaid-preview` fit-to-pane SVG sizing) / Edit (plain textarea)
+toggle. User edits autosave with a debounce
 through `client.canvases.save(...)` carrying `expectedRevision`; an HTTP 409
 shows a conflict banner with a "Load latest" action, and a live AI update
 arriving over unsaved local edits shows a pending-update banner instead of
