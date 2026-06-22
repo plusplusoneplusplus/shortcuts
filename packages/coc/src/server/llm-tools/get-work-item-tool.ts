@@ -14,7 +14,7 @@
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { createWorkItemStore } from '../work-items/work-item-store';
-import type { WorkItem, WorkItemStore } from '../work-items/types';
+import type { WorkItem, WorkItemIndexEntry, WorkItemStatus, WorkItemStore, WorkItemType } from '../work-items/types';
 
 // ============================================================================
 // Types
@@ -40,9 +40,32 @@ export interface GetWorkItemToolDeps {
     processStore?: ProcessStore;
 }
 
+/**
+ * Lightweight hierarchy node carried by every ancestor and descendant. Deliberately
+ * omits `description`, `plan`, and rollup counts so hierarchy context stays cheap.
+ */
+export interface WorkItemHierarchyNode {
+    id: string;
+    workItemNumber?: number;
+    title: string;
+    type?: WorkItemType;
+    status: WorkItemStatus;
+}
+
+/** Descendant node: a lightweight node plus its own recursive subtree. */
+export interface WorkItemDescendantNode extends WorkItemHierarchyNode {
+    children: WorkItemDescendantNode[];
+}
+
+/** The queried item in full detail, augmented with its recursive descendant subtree. */
+export type GetWorkItemWithChildren = WorkItem & { children: WorkItemDescendantNode[] };
+
 export interface GetWorkItemSuccess {
     found: true;
-    item: WorkItem;
+    /** The queried item in full detail, plus a recursive `children` descendant subtree. */
+    item: GetWorkItemWithChildren;
+    /** Flat ancestor chain ordered from the epic root down to the direct parent. */
+    ancestors: WorkItemHierarchyNode[];
 }
 
 export interface GetWorkItemNotFound {
@@ -106,6 +129,115 @@ async function resolveWorkItem(
 }
 
 // ============================================================================
+// Hierarchy helpers
+// ============================================================================
+
+/** Reduce a full index entry to the lightweight hierarchy node shape. */
+function toHierarchyNode(entry: WorkItemIndexEntry): WorkItemHierarchyNode {
+    return {
+        id: entry.id,
+        workItemNumber: entry.workItemNumber,
+        title: entry.title,
+        type: entry.type,
+        status: entry.status,
+    };
+}
+
+/**
+ * Sort index entries the same way the hierarchy tree route does: pinned-first,
+ * then by lastRunAt/updatedAt descending. Mutates and returns the array.
+ */
+function sortHierarchyEntries(entries: WorkItemIndexEntry[]): WorkItemIndexEntry[] {
+    return entries.sort((a, b) => {
+        if (a.pinnedAt && !b.pinnedAt) return -1;
+        if (!a.pinnedAt && b.pinnedAt) return 1;
+        const aTime = a.lastRunAt ?? a.updatedAt ?? '';
+        const bTime = b.lastRunAt ?? b.updatedAt ?? '';
+        return bTime.localeCompare(aTime);
+    });
+}
+
+/**
+ * Walk parent links from `item` up to the epic root, returning lightweight nodes
+ * ordered epic-root → direct-parent. Cycle-safe via a visited set seeded with the
+ * queried item so a malformed parent loop cannot recurse forever.
+ */
+function buildAncestors(
+    item: WorkItem,
+    entriesById: Map<string, WorkItemIndexEntry>,
+): WorkItemHierarchyNode[] {
+    const ancestors: WorkItemHierarchyNode[] = [];
+    const visited = new Set<string>([item.id]);
+    let parentId = item.parentId;
+    while (parentId && !visited.has(parentId)) {
+        visited.add(parentId);
+        const parent = entriesById.get(parentId);
+        if (!parent) break;
+        ancestors.push(toHierarchyNode(parent));
+        parentId = parent.parentId;
+    }
+    ancestors.reverse();
+    return ancestors;
+}
+
+/**
+ * Build the recursive descendant subtree rooted at `parentId`. The `visited` set
+ * (seeded with the queried item id) keeps the build cycle-safe so a parent loop
+ * cannot cause infinite recursion.
+ */
+function buildDescendants(
+    parentId: string,
+    childrenByParent: Map<string, WorkItemIndexEntry[]>,
+    visited: Set<string>,
+): WorkItemDescendantNode[] {
+    const directChildren = sortHierarchyEntries(
+        (childrenByParent.get(parentId) ?? []).filter(child => !visited.has(child.id)),
+    );
+    const nodes: WorkItemDescendantNode[] = [];
+    for (const child of directChildren) {
+        visited.add(child.id);
+        nodes.push({
+            ...toHierarchyNode(child),
+            children: buildDescendants(child.id, childrenByParent, visited),
+        });
+    }
+    return nodes;
+}
+
+/**
+ * Read the workspace index once and derive the queried item's ancestor chain and
+ * recursive descendant subtree. Degrades to empty arrays if the index read fails,
+ * so a hierarchy-read hiccup never breaks the primary lookup.
+ */
+async function buildHierarchyContext(
+    store: WorkItemStore,
+    repoId: string,
+    item: WorkItem,
+): Promise<{ children: WorkItemDescendantNode[]; ancestors: WorkItemHierarchyNode[] }> {
+    let entries: WorkItemIndexEntry[] = [];
+    try {
+        const result = await store.listWorkItems({ repoId });
+        entries = result?.items ?? [];
+    } catch {
+        return { children: [], ancestors: [] };
+    }
+
+    const entriesById = new Map<string, WorkItemIndexEntry>(entries.map(e => [e.id, e]));
+    const childrenByParent = new Map<string, WorkItemIndexEntry[]>();
+    for (const entry of entries) {
+        if (!entry.parentId) continue;
+        const list = childrenByParent.get(entry.parentId) ?? [];
+        list.push(entry);
+        childrenByParent.set(entry.parentId, list);
+    }
+
+    const visited = new Set<string>([item.id]);
+    const children = buildDescendants(item.id, childrenByParent, visited);
+    const ancestors = buildAncestors(item, entriesById);
+    return { children, ancestors };
+}
+
+// ============================================================================
 // Factory
 // ============================================================================
 
@@ -127,9 +259,15 @@ export function createGetWorkItemTool(
         description:
             'Read the current detail of an existing work item in this repository by UUID, WI-N, or work-item number. ' +
             'Provide exactly one of `workItemId` (UUID or WI-N), `target` (UUID or WI-N), or `workItemNumber` ' +
-            '(e.g. 20 or "WI-20"). Returns `{ found: true, item }` with the full work item (title, description, status, ' +
-            'priority, tags, parentId, plan, and metadata) when it exists, or `{ found: false, error }` when the target ' +
-            'is missing or invalid. This tool is read-only: it never creates, updates, or deletes a work item. ' +
+            '(e.g. 20 or "WI-20"). Returns `{ found: true, item, ancestors }` when it exists, or `{ found: false, error }` ' +
+            'when the target is missing or invalid. On success the queried `item` carries its full detail (title, ' +
+            'description, status, priority, tags, parentId, plan, and metadata) plus `item.children`: the recursive ' +
+            'descendant subtree, where each node is a lightweight `{ id, workItemNumber, title, type, status, children }`. ' +
+            'The top-level `ancestors` is a flat array of those same lightweight nodes (without `children`) ordered from ' +
+            'the epic root down to the direct parent; both `item.children` and `ancestors` are empty arrays when the ' +
+            'item has no descendants / no parent. This gives you sibling, parent, and child context without extra ' +
+            'lookups; only the queried item includes `description`/`plan`. This tool is read-only: it never creates, ' +
+            'updates, or deletes a work item. ' +
             'Use it when the user references an existing work item, or when attached context supplies a work-item pointer, ' +
             'before drafting changes — unless the full detail is already present in the prompt. ' +
             'Do not use it as a substitute for conversation retrieval; use `get_conversation` for prior chat transcripts. ' +
@@ -166,7 +304,8 @@ export function createGetWorkItemTool(
                 return { found: false, error: `Work item not found: ${String(target)}` };
             }
 
-            return { found: true, item };
+            const { children, ancestors } = await buildHierarchyContext(store, repoId, item);
+            return { found: true, item: { ...item, children }, ancestors };
         },
     });
 
