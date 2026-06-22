@@ -3,7 +3,7 @@
  *
  * Focused tests for the admin global-system-prompt block helper and the
  * `appendGlobalSystemPrompt()` builder step (AC-03). The block must be a
- * labeled, supplement-framed wrapper and inert when no prompt is set.
+ * labeled wrapper around the raw prompt and inert when no prompt is set.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -14,15 +14,15 @@ import {
 } from '../../../src/server/executors/system-message-builder';
 
 describe('buildGlobalSystemPromptBlock', () => {
-    it('wraps the prompt in a labeled, supplement-framed block', () => {
+    it('wraps the prompt in a labeled block', () => {
         const block = buildGlobalSystemPromptBlock('Cite all sources.');
         expect(block).toBeDefined();
         expect(block).toContain(`<${GLOBAL_SYSTEM_PROMPT_TAG}>`);
         expect(block).toContain(`</${GLOBAL_SYSTEM_PROMPT_TAG}>`);
         expect(block).toContain('Cite all sources.');
-        // Framed as supplementing — not overriding — runtime constraints.
-        expect(block!.toLowerCase()).toContain('supplement');
-        expect(block!.toLowerCase()).toContain('do not override');
+        // The wrapper is just the labeled tag around the raw prompt — no extra
+        // framing prose is injected (removed in the doc cleanup refactor).
+        expect(block).toBe(`<${GLOBAL_SYSTEM_PROMPT_TAG}>\nCite all sources.\n</${GLOBAL_SYSTEM_PROMPT_TAG}>`);
     });
 
     it('trims surrounding whitespace from the prompt', () => {
