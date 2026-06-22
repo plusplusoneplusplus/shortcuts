@@ -204,6 +204,27 @@ describe('parseFilePathRef', () => {
         expect(parseFilePathRef('C:/Users/alice/app.ts')).toEqual({ path: 'C:/Users/alice/app.ts' });
     });
 
+    it('parses GitHub-style #L hash line references', () => {
+        expect(parseFilePathRef('src/foo.ts#L42')).toEqual({ path: 'src/foo.ts', line: 42 });
+        expect(parseFilePathRef('src/foo.ts#L42-L58')).toEqual({ path: 'src/foo.ts', line: 42, endLine: 58 });
+    });
+
+    it('converts Windows file:// links with #L hashes to filesystem paths', () => {
+        expect(parseFilePathRef('file:///C:/workspace/sample-repo/src/lib/cache.ts#L798'))
+            .toEqual({
+                path: 'C:/workspace/sample-repo/src/lib/cache.ts',
+                line: 798,
+            });
+    });
+
+    it('converts Unix file:// links and decodes escaped path characters', () => {
+        expect(parseFilePathRef('file:///home/alice/my%20repo/src/foo.ts#L3-L5')).toEqual({
+            path: '/home/alice/my repo/src/foo.ts',
+            line: 3,
+            endLine: 5,
+        });
+    });
+
     it('ignores a dangling range dash with no end number', () => {
         expect(parseFilePathRef('/a/b.ts:42-')).toEqual({ path: '/a/b.ts:42-' });
     });

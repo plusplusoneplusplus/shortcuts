@@ -136,6 +136,14 @@ describe('resolveSourceCanvasTarget', () => {
         expect(r).toEqual({ wsId: 'ws-win', path: 'C:\\work\\proj\\src\\foo.ts' });
     });
 
+    it('normalizes file:// URLs before workspace matching', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: 'file:///C:/work/proj/src/foo.ts#L42' },
+            [{ id: 'ws-win', rootPath: 'C:/work/proj' }],
+        );
+        expect(r).toEqual({ wsId: 'ws-win', path: 'C:/work/proj/src/foo.ts' });
+    });
+
     it('resolves a Windows workspace-relative path against the hinted workspace root', () => {
         const r = resolveSourceCanvasTarget(
             { fullPath: 'src\\foo.ts', wsId: 'ws-win' },

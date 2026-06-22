@@ -242,7 +242,10 @@ file-path delegation normalizes bare `.file-path-link` spans, shared renderer
 renderer into one file-reference path; when `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS`
 is enabled, assistant-response clicks dispatch `coc-open-source-canvas` with the
 bare path, workspace hint, optional `sourceFilePath`, and optional line/range
-metadata. The source-canvas resolver chooses the explicit workspace hint when
+metadata. Local `file://` hrefs are converted to filesystem paths and
+GitHub-style `#L<line>` / `#L<start>-L<end>` hashes are carried as line metadata,
+so the resolver never treats a file URI as workspace-relative text. The
+source-canvas resolver chooses the explicit workspace hint when
 present, otherwise the longest matching workspace root, and resolves relative
 paths against `sourceFilePath` when available or the selected workspace root
 before calling the workspace file preview API. `useSourceCanvasContent` folds the

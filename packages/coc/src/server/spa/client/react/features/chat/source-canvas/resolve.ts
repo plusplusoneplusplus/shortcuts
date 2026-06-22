@@ -23,6 +23,7 @@ import {
     toForwardSlashes,
     trimTrailingPathSeparators,
 } from '@plusplusoneplusplus/forge/utils/path-utils';
+import { parseFilePathRef } from '../../../shared/file-path-utils';
 import type { SourceCanvasFileRef } from './types';
 
 export interface SourceCanvasWorkspace {
@@ -121,7 +122,7 @@ export function resolveSourceCanvasTarget(
     // 0. Expand `~`-prefixed CoC note hrefs (e.g. `~/.coc/repos/<wsId>/...`) to
     // an absolute path through the hinted workspace's home, so they resolve
     // instead of being treated as workspace-relative.
-    let path = fileRef.fullPath;
+    let path = parseFilePathRef(fileRef.fullPath).path;
     if (path.startsWith('~')) {
         path = expandTildePath(path, deriveHomeDirFromWorkspaces(fileRef.wsId, workspaces));
     }

@@ -69,26 +69,96 @@ export interface FilePathRef {
     endLine?: number;
 }
 
+function safeDecodeURIComponent(value: string): string {
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return value;
+    }
+}
+
+function normalizeFileUriPath(token: string): string {
+    if (!/^file:/i.test(token)) {
+        return token;
+    }
+
+    try {
+        const url = new URL(token);
+        if (url.protocol.toLowerCase() !== 'file:') {
+            return token;
+        }
+
+        let pathname = safeDecodeURIComponent(url.pathname);
+        if (/^\/[A-Za-z]:\//.test(pathname)) {
+            pathname = pathname.slice(1);
+        }
+
+        const host = url.hostname;
+        if (host && host.toLowerCase() !== 'localhost') {
+            if (/^[A-Za-z]$/.test(host) && pathname.startsWith('/')) {
+                return `${host}:${pathname}`;
+            }
+            return `//${host}${pathname.startsWith('/') ? pathname : `/${pathname}`}`;
+        }
+
+        return pathname || token;
+    } catch {
+        const match = token.match(/^file:\/+(.+)$/i);
+        if (!match) {
+            return token;
+        }
+        const pathname = safeDecodeURIComponent(match[1]);
+        return /^[A-Za-z]:\//.test(pathname) ? pathname : `/${pathname.replace(/^\/+/, '')}`;
+    }
+}
+
+function splitHashLineRef(token: string): FilePathRef {
+    const m = token.match(/^(.*)#L(\d+)(?:-L?(\d+))?$/i);
+    if (!m) {
+        return { path: token };
+    }
+    const line = Number(m[2]);
+    const endLine = m[3] !== undefined ? Number(m[3]) : undefined;
+    return endLine !== undefined
+        ? { path: m[1], line, endLine }
+        : { path: m[1], line };
+}
+
 /**
  * Split an optional trailing `:line` or `:startLine-endLine` suffix from a
- * matched file-path token. The bare path is returned verbatim (no slash
- * normalization) so callers can normalize as they see fit.
+ * matched file-path token, or a `#Lline` / `#Lstart-Lend` hash from local file
+ * links. Local `file://` URLs are converted to filesystem paths.
  *
  * Examples:
  *   '/a/b.ts'        → { path: '/a/b.ts' }
  *   '/a/b.ts:42'     → { path: '/a/b.ts', line: 42 }
  *   '/a/b.ts:42-58'  → { path: '/a/b.ts', line: 42, endLine: 58 }
  *   'src/foo.ts:42'  → { path: 'src/foo.ts', line: 42 }
+ *   'src/foo.ts#L42' → { path: 'src/foo.ts', line: 42 }
+ *   'file:///C:/repo/foo.ts#L42' → { path: 'C:/repo/foo.ts', line: 42 }
  *
  * Only a *trailing* numeric suffix is stripped; an interior colon (e.g. a
  * Windows drive letter or `:` inside a directory name) is left untouched.
  */
 export function parseFilePathRef(token: string): FilePathRef {
-    const m = token.match(/^(.+):(\d+)(?:-(\d+))?$/);
-    if (!m) return { path: token };
+    const hashRef = splitHashLineRef(token);
+    const path = normalizeFileUriPath(hashRef.path);
+    const m = path.match(/^(.+):(\d+)(?:-(\d+))?$/);
+    if (!m) {
+        if (hashRef.line === undefined) {
+            return { path };
+        }
+        return hashRef.endLine === undefined
+            ? { path, line: hashRef.line }
+            : { path, line: hashRef.line, endLine: hashRef.endLine };
+    }
     const line = Number(m[2]);
     const endLine = m[3] !== undefined ? Number(m[3]) : undefined;
-    return endLine !== undefined ? { path: m[1], line, endLine } : { path: m[1], line };
+    const resolvedLine = hashRef.line ?? line;
+    const resolvedEndLine = hashRef.endLine ?? endLine;
+    return resolvedEndLine !== undefined
+        ? { path: m[1], line: resolvedLine, endLine: resolvedEndLine }
+        : { path: m[1], line: resolvedLine };
 }
 
 /**

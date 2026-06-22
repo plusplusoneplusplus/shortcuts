@@ -598,6 +598,28 @@ describe('source-canvas routing for chat AI-response file-path links (AC-03)', (
         expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
     });
 
+    it('flag ON + chat AI file:// anchor with #L hash → opens source canvas with a bare path and line', async () => {
+        const href = 'file:///C:/workspace/sample-repo/src/lib/cache.ts#L798';
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-1">
+                <a href="${href}"><span class="label">cache.ts#L798</span></a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.label');
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        expect(call[0].detail).toEqual(expect.objectContaining({
+            filePath: 'C:/workspace/sample-repo/src/lib/cache.ts',
+            wsId: 'ws-1',
+            line: 798,
+        }));
+        expect(call[0].detail.endLine).toBeUndefined();
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
     it('flag ON + chat AI md-link span with non-path label → opens source canvas from data-href', async () => {
         const fullPath = '/repo/src/foo.ts';
         document.body.innerHTML = `
