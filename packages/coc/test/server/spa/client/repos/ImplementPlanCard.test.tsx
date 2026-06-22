@@ -21,14 +21,14 @@ const mockRemoteReadTrustedBlob = vi.fn();
 // Stable remote client so observing fns survive useCocClient's memo per baseUrl.
 const remoteClient = {
     queue: { enqueue: mockRemoteEnqueue },
-    processes: { update: mockRemoteUpdate },
+    processes: { patchMetadata: mockRemoteUpdate },
     explorer: { readTrustedBlob: mockRemoteReadTrustedBlob },
 };
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         queue: { enqueue: mockEnqueue },
-        processes: { update: mockProcessUpdate },
+        processes: { patchMetadata: mockProcessUpdate },
         explorer: { readTrustedBlob: mockReadTrustedBlob },
     }),
     // Routed remote client (remote target → baseUrl → getCocClientFor).
@@ -343,9 +343,9 @@ describe('ImplementPlanCard', () => {
             expect(mockProcessUpdate).toHaveBeenCalledTimes(1);
         });
 
-        const [pid, updates] = mockProcessUpdate.mock.calls[0];
+        const [pid, patch] = mockProcessUpdate.mock.calls[0];
         expect(pid).toBe('queue_source-1');
-        const impls = updates.metadata.implementations;
+        const impls = patch.set.implementations;
         expect(impls).toHaveLength(1);
         expect(impls[0].processId).toBe('queue_task-new');
         expect(impls[0].planFilePath).toBe('/plan.md');
@@ -384,7 +384,7 @@ describe('ImplementPlanCard', () => {
             expect(mockProcessUpdate).toHaveBeenCalledTimes(1);
         });
 
-        const impls = mockProcessUpdate.mock.calls[0][1].metadata.implementations;
+        const impls = mockProcessUpdate.mock.calls[0][1].set.implementations;
         expect(impls).toHaveLength(2);
         expect(impls[0].processId).toBe('queue_first');
         expect(impls[1].processId).toBe('queue_task-second');
@@ -625,9 +625,9 @@ describe('ImplementPlanCard', () => {
         await waitFor(() => expect(mockProcessUpdate).toHaveBeenCalledTimes(1));
         expect(mockRemoteUpdate).not.toHaveBeenCalled();
 
-        const [pid, updates] = mockProcessUpdate.mock.calls[0];
+        const [pid, patch] = mockProcessUpdate.mock.calls[0];
         expect(pid).toBe('queue_source-1');
-        const rec = updates.metadata.implementations[0];
+        const rec = patch.set.implementations[0];
         expect(rec.processId).toBe('queue_task-remote');
         expect(rec.isRemoteTarget).toBe(true);
         expect(rec.targetWorkspaceId).toBe('ws-remote');
@@ -656,7 +656,7 @@ describe('ImplementPlanCard', () => {
         });
 
         await waitFor(() => expect(mockProcessUpdate).toHaveBeenCalledTimes(1));
-        const rec = mockProcessUpdate.mock.calls[0][1].metadata.implementations[0];
+        const rec = mockProcessUpdate.mock.calls[0][1].set.implementations[0];
         expect(rec.isRemoteTarget).toBe(false);
         expect(rec.targetWorkspaceId).toBe('ws-local');
         expect(rec.targetServerLabel).toBeUndefined();

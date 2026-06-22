@@ -111,6 +111,10 @@ all have their own `references/*.md`.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
+- **Process metadata field updates** from dashboard/server callers should use
+  `client.processes.patchMetadata(...)` or API `metadataPatch` unless a full
+  metadata replacement is intentional; full `metadata` on
+  `PATCH /api/processes/:id` replaces the stored object.
 - **Warm-client prewarming/status** is conversation-process scoped. Chat and
   follow-up send paths pass `warmKey: processId` whenever `keepWarm: true`;
   `/api/processes/:id/prewarm` and warm-only SSE status use that same process id.

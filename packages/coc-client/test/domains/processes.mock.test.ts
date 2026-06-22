@@ -238,6 +238,31 @@ describe('ProcessesClient mock server contract', () => {
     expect(mock.requests[1].headers['content-type']).toBeUndefined();
   });
 
+  it('patches process metadata with encoded IDs and workspace query', async () => {
+    mock = await startMockServer();
+    const updated = mockProcess({
+      id: 'proc/with/slashes',
+      metadata: { mode: 'ask', workspaceId: 'repo/with/slashes', planFilePath: '/tmp/p.plan.md' },
+    });
+    mock.on('PATCH', '/api/processes/proc%2Fwith%2Fslashes', { body: { process: updated } });
+    const client = createClient(mock);
+
+    await expect(client.processes.patchMetadata(
+      'proc/with/slashes',
+      { set: { planFilePath: '/tmp/p.plan.md' }, unset: ['staleField'] },
+      { workspace: 'repo/with/slashes' },
+    )).resolves.toEqual({ process: updated });
+
+    expectJsonRequest(mock.requests[0], 'PATCH', '/api/processes/proc%2Fwith%2Fslashes', {
+      metadataPatch: {
+        set: { planFilePath: '/tmp/p.plan.md' },
+        unset: ['staleField'],
+      },
+    }, {
+      workspace: 'repo/with/slashes',
+    });
+  });
+
   it('cancels processes with POST and propagates cancel errors', async () => {
     mock = await startMockServer();
     const cancelled = mockProcess({ id: 'proc/with/slashes', status: 'cancelled' });

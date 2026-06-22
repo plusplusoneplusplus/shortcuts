@@ -1154,7 +1154,7 @@ describe('ChatDetail', () => {
                 source.indexOf('planPatchedRef.current = true'),
                 source.indexOf('planPatchedRef.current = true') + 400,
             );
-            expect(patchBlock).toContain('client.processes.update');
+            expect(patchBlock).toContain('client.processes.patchMetadata');
         });
 
         it('PATCH guard checks: no detectedPlanFile, or planPath already set, or metadata already has it', () => {
@@ -1168,13 +1168,14 @@ describe('ChatDetail', () => {
             expect(guardBlock).toContain('!processId');
         });
 
-        it('PATCH merges existing metadata with planFilePath', () => {
-            const mergeBlock = source.substring(
-                source.indexOf('const merged'),
-                source.indexOf('const merged') + 200,
+        it('PATCHes only planFilePath instead of full metadata replacement', () => {
+            const patchBlock = source.substring(
+                source.indexOf('planPatchedRef.current = true'),
+                source.indexOf('planPatchedRef.current = true') + 400,
             );
-            expect(mergeBlock).toContain('...(task?.metadata ?? {})');
-            expect(mergeBlock).toContain('planFilePath: detectedPlanFile');
+            expect(patchBlock).toContain('patchMetadata(processId');
+            expect(patchBlock).toContain('set: { planFilePath: detectedPlanFile }');
+            expect(patchBlock).not.toContain('...(task?.metadata ?? {})');
         });
 
         it('updates local task state from PATCH response', () => {

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
-    AIProcess,
     ForEachChildMode,
     ForEachItem,
     ForEachPlanArtifact,
@@ -328,11 +327,8 @@ export function ForEachPlanReviewCard({
             };
             delete nextForEach.lastPlanError;
             delete nextForEach.lastPlanErrorTurnIndex;
-            await client.processes.update(processId, {
-                metadata: {
-                    ...currentMetadata,
-                    forEach: nextForEach,
-                } as AIProcess['metadata'],
+            await client.processes.patchMetadata(processId, {
+                set: { forEach: nextForEach },
             }, { workspace: workspaceId });
             onApprovedRun?.(approved.runId);
         } catch (err) {

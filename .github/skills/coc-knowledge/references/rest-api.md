@@ -89,6 +89,7 @@ Chat canvas side panel (gated by `canvas.enabled`, default off). Markdown or cod
 |--------|------|-------------|
 | GET | `/api/processes` | List processes (with search/filter) |
 | GET | `/api/processes/:id` | Process detail |
+| PATCH | `/api/processes/:id` | Partial process update. Full `metadata` still replaces the stored metadata object; callers that only need to add/remove metadata fields should send `metadataPatch: { set?: object, unset?: string[] }`, which the server merges into current stored metadata. `metadata` and `metadataPatch` are mutually exclusive. |
 | DELETE | `/api/processes/:id` | Delete process |
 | POST | `/api/processes/:id/message` | Follow-up message. Body accepts `content`, optional `mode` (`ask` or `autopilot`; legacy `plan` is accepted as Ask), `deliveryMode`, `images`, `skillNames`, `model`, and `reasoningEffort` (`'low'\|'medium'\|'high'\|'xhigh'`) for a per-turn override. |
 | POST | `/api/processes/:id/ask-user-response` | Resolve the active ask-user batch. Body `{ batchId, answers }`; each answer has `questionId` plus either `answer`, `skipped: true`, or `deferred: true` with `reason: "needs-context"` and optional `note`. |

@@ -74,6 +74,35 @@ function normalizeAskUserRouteAnswer(answer: AskUserRouteAnswer): AskUserAnswerI
     };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseMetadataPatch(
+    value: unknown,
+): { set: Record<string, unknown>; unset: string[] } | { error: string } {
+    if (!isRecord(value)) {
+        return { error: 'metadataPatch must be an object' };
+    }
+
+    const setValue = value.set;
+    const unsetValue = value.unset;
+    const set = setValue === undefined ? {} : setValue;
+    if (!isRecord(set)) {
+        return { error: 'metadataPatch.set must be an object when provided' };
+    }
+
+    if (unsetValue !== undefined && !Array.isArray(unsetValue)) {
+        return { error: 'metadataPatch.unset must be an array of field names when provided' };
+    }
+    const unset = unsetValue === undefined ? [] : unsetValue;
+    if (unset.some(item => typeof item !== 'string' || item.trim().length === 0)) {
+        return { error: 'metadataPatch.unset must contain only non-empty field names' };
+    }
+
+    return { set, unset };
+}
+
 /**
  * Synthesize a minimal AIProcess from a QueuedTask.
  * Used when a process record hasn't been created yet — either because the
@@ -404,6 +433,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
+            if (body.metadata !== undefined && body.metadataPatch !== undefined) {
+                return void handleAPIError(res, badRequest('metadata and metadataPatch cannot be provided together'));
+            }
+
             const updates: Partial<AIProcess> = {};
             if (body.status !== undefined) { updates.status = body.status; }
             if (body.result !== undefined) { updates.result = body.result; }
@@ -411,6 +444,20 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (body.endTime !== undefined) { updates.endTime = new Date(body.endTime); }
             if (body.structuredResult !== undefined) { updates.structuredResult = body.structuredResult; }
             if (body.metadata !== undefined) { updates.metadata = body.metadata; }
+            if (body.metadataPatch !== undefined) {
+                const parsed = parseMetadataPatch(body.metadataPatch);
+                if ('error' in parsed) {
+                    return void handleAPIError(res, badRequest(parsed.error));
+                }
+                const nextMetadata: Record<string, unknown> = { ...(existing.metadata ?? {}) };
+                for (const [key, value] of Object.entries(parsed.set)) {
+                    nextMetadata[key] = value;
+                }
+                for (const key of parsed.unset) {
+                    delete nextMetadata[key];
+                }
+                updates.metadata = nextMetadata as AIProcess['metadata'];
+            }
             if (body.sdkSessionId !== undefined) { updates.sdkSessionId = body.sdkSessionId; }
             if (body.conversationTurns !== undefined) { updates.conversationTurns = body.conversationTurns; }
             if (body.customTitle !== undefined) {

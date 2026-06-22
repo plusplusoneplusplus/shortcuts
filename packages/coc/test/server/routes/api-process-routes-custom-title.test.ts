@@ -107,4 +107,76 @@ describe('PATCH /api/processes/:id — customTitle', () => {
         expect(loaded?.title).toBe('AI Generated Title');
         expect(loaded?.customTitle).toBe('User Pick');
     });
+
+    it('merges metadataPatch into existing metadata without dropping mode or workspaceId', async () => {
+        await addProcess('p-metadata-patch-1', {
+            metadata: {
+                type: 'chat',
+                workspaceId: wsId,
+                mode: 'ask',
+                provider: 'claude',
+                staleField: 'remove-me',
+            },
+        });
+
+        const res = await patchJSON(`${baseUrl}/api/processes/p-metadata-patch-1`, {
+            metadataPatch: {
+                set: {
+                    planFilePath: '/tmp/new.plan.md',
+                },
+                unset: ['staleField'],
+            },
+        });
+
+        expect(res.status).toBe(200);
+        const loaded = await store.getProcess('p-metadata-patch-1');
+        expect(loaded?.metadata).toMatchObject({
+            type: 'chat',
+            workspaceId: wsId,
+            mode: 'ask',
+            provider: 'claude',
+            planFilePath: '/tmp/new.plan.md',
+        });
+        expect(loaded?.metadata?.staleField).toBeUndefined();
+    });
+
+    it('rejects requests that mix full metadata replacement with metadataPatch', async () => {
+        await addProcess('p-metadata-patch-2');
+
+        const res = await patchJSON(`${baseUrl}/api/processes/p-metadata-patch-2`, {
+            metadata: { planFilePath: '/tmp/full-overwrite.plan.md' },
+            metadataPatch: { set: { goalFilePath: '/tmp/goal.goal.md' } },
+        });
+
+        expect(res.status).toBe(400);
+        const loaded = await store.getProcess('p-metadata-patch-2');
+        expect(loaded?.metadata).toMatchObject({ type: 'ai', workspaceId: wsId });
+        expect(loaded?.metadata?.planFilePath).toBeUndefined();
+        expect(loaded?.metadata?.goalFilePath).toBeUndefined();
+    });
+
+    it('rejects malformed metadataPatch without mutating metadata', async () => {
+        await addProcess('p-metadata-patch-3', {
+            metadata: {
+                type: 'chat',
+                workspaceId: wsId,
+                mode: 'ask',
+            },
+        });
+
+        const res = await patchJSON(`${baseUrl}/api/processes/p-metadata-patch-3`, {
+            metadataPatch: {
+                set: ['not-an-object'],
+            },
+        });
+
+        expect(res.status).toBe(400);
+        const loaded = await store.getProcess('p-metadata-patch-3');
+        expect(loaded?.metadata).toMatchObject({
+            type: 'chat',
+            workspaceId: wsId,
+            mode: 'ask',
+        });
+        expect(loaded?.metadata?.planFilePath).toBeUndefined();
+    });
 });
