@@ -196,50 +196,44 @@ export function createSearchConversationsTool(
 
     const tool = defineTool<SearchConversationsArgs>('search_conversations', {
         description:
-            'Search your conversation history in this workspace, or browse recent sessions. This is not a Teams or Slack chat history search tool. ' +
-            'TWO MODES: (1) Recent sessions — call with no query to list metadata-only sessions, optionally scoped by workspaceId and since/until activity window. ' +
-            '(2) Keyword search — search for specific topics across all past sessions, optionally with AI-generated summaries. ' +
-            'For periodic tasks, use no query plus workspaceId + since/until to discover candidate processIds, then call get_conversation only for selected sessions. ' +
-            'USE PROACTIVELY when the user says "we did this before", "remember when", "last time", "as I mentioned", ' +
-            'or references a topic from a previous session. Better to search and confirm than to guess.',
+            'Search your past conversation history in this workspace, or browse recent sessions. Not a Teams/Slack chat search. ' +
+            'Two modes: (1) Recent sessions — no query, lists session metadata only (no LLM cost), scoped by workspaceId and since/until. ' +
+            '(2) Keyword search — find topics across past sessions, optionally with AI summaries. ' +
+            'For periodic tasks, use no query + workspaceId + since/until to find processIds, then call get_conversation on the ones you want. ' +
+            'Use proactively when the user says "remember when", "last time", "we did this before", or "as I mentioned", or references a past session. ' +
+            'Better to search and confirm than to guess.',
         parameters: {
             type: 'object',
             properties: {
                 query: {
                     type: 'string',
                     description:
-                        'The search query (supports FTS5 syntax: quoted phrases, AND/OR/NOT operators). ' +
-                        'Omit or leave empty to browse recent sessions.',
+                        'Search query (FTS5 syntax: quoted phrases, AND/OR/NOT). Omit to browse recent sessions.',
                 },
                 workspaceId: {
                     type: 'string',
-                    description: 'Optional workspace ID to scope the search to a specific repository',
+                    description: 'Optional workspace ID to scope the search.',
                 },
                 since: {
                     type: 'string',
-                    description:
-                        'Optional ISO datetime lower bound on conversation activity time ' +
-                        '(inclusive). Uses COALESCE(lastEventAt, startTime).',
+                    description: 'Optional ISO datetime lower bound on activity time (inclusive).',
                 },
                 until: {
                     type: 'string',
-                    description:
-                        'Optional ISO datetime upper bound on conversation activity time ' +
-                        '(exclusive). Uses COALESCE(lastEventAt, startTime).',
+                    description: 'Optional ISO datetime upper bound on activity time (exclusive).',
                 },
                 limit: {
                     type: 'number',
-                    description: `Maximum number of results to return (default: ${DEFAULT_LIMIT}, max: ${MAX_RESULTS})`,
+                    description: `Max results (default: ${DEFAULT_LIMIT}, max: ${MAX_RESULTS}).`,
                 },
                 offset: {
                     type: 'number',
-                    description: 'Optional pagination offset (default: 0)',
+                    description: 'Optional pagination offset (default: 0).',
                 },
                 summarize: {
                     type: 'boolean',
                     description:
-                        'When true and searching by keyword, return AI-generated summaries for each matched session ' +
-                        'instead of raw snippets. More context but slightly slower. Default: false.',
+                        'When true (keyword search only), return AI summaries per session instead of raw snippets. Default: false.',
                 },
             },
             required: [],
