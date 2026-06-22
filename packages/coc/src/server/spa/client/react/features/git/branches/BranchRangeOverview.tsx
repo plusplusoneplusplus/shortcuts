@@ -17,6 +17,7 @@ import type { BranchRangeInfo } from './BranchChanges';
 import { useGitReviewPopOut, gitReviewBranchPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { buildGitBranchRangePopOutUrl } from '../../../layout/Router';
 import { createGitRangeContextDragPayload } from '../../chat/sessionContextDrag';
+import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 
 const RANGE_STORAGE_KEY = 'coc.branchRangeOverview.upperHeight';
@@ -61,7 +62,7 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
         : null;
 
     const handlePopOut = useCallback(() => {
-        const url = buildGitBranchRangePopOutUrl(workspaceId);
+        const url = buildGitBranchRangePopOutUrl(workspaceId, lookupCloneBaseUrl(workspaceId));
         const win = window.open(url, `coc-git-review-branch-${workspaceId}`, 'width=1200,height=800');
         if (win) {
             markPoppedOut(gitReviewBranchPopOutKey(workspaceId));

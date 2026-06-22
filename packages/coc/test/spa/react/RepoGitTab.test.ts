@@ -1202,7 +1202,8 @@ describe('RepoGitTab', () => {
         it('defines handleOpenAsPopup with the commit pop-out URL and window target', () => {
             const block = source.match(/const handleOpenAsPopup = useCallback[\s\S]*?\}, \[workspaceId, closeContextMenu, markPoppedOut\]\)/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('buildGitReviewPopOutUrl(workspaceId, commit.hash)');
+            // Must pass cloneBaseUrl so remote workspaces route to the remote server.
+            expect(block![0]).toContain('buildGitReviewPopOutUrl(workspaceId, commit.hash, lookupCloneBaseUrl(workspaceId))');
             expect(block![0]).toContain("window.open(url, `coc-git-review-${commit.hash}`, 'width=1200,height=800')");
             expect(block![0]).toContain('markPoppedOut(gitReviewPopOutKey(workspaceId, commit.hash))');
         });

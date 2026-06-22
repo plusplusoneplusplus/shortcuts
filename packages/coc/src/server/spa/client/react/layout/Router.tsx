@@ -144,19 +144,22 @@ export function parseGitFileDeepLink(hash: string): { commitHash: string; filePa
 }
 
 /** Build a pop-out URL for git commit review. */
-export function buildGitReviewPopOutUrl(workspaceId: string, commitHash: string): string {
-    return `/?workspace=${encodeURIComponent(workspaceId)}#popout/git-review/${encodeURIComponent(commitHash)}`;
+export function buildGitReviewPopOutUrl(workspaceId: string, commitHash: string, cloneBaseUrl?: string): string {
+    const cloneParam = cloneBaseUrl ? `&cloneBaseUrl=${encodeURIComponent(cloneBaseUrl)}` : '';
+    return `/?workspace=${encodeURIComponent(workspaceId)}${cloneParam}#popout/git-review/${encodeURIComponent(commitHash)}`;
 }
 
 /** Build a pop-out URL for branch-range review. */
-export function buildGitBranchRangePopOutUrl(workspaceId: string): string {
-    return `/?workspace=${encodeURIComponent(workspaceId)}#popout/git-review/branch-range`;
+export function buildGitBranchRangePopOutUrl(workspaceId: string, cloneBaseUrl?: string): string {
+    const cloneParam = cloneBaseUrl ? `&cloneBaseUrl=${encodeURIComponent(cloneBaseUrl)}` : '';
+    return `/?workspace=${encodeURIComponent(workspaceId)}${cloneParam}#popout/git-review/branch-range`;
 }
 
 /** Build a pop-out URL for PR review. */
-export function buildGitPrPopOutUrl(workspaceId: string, repoId: string, prId: string | number, originId?: string): string {
+export function buildGitPrPopOutUrl(workspaceId: string, repoId: string, prId: string | number, originId?: string, cloneBaseUrl?: string): string {
     const originParam = originId ? `&origin=${encodeURIComponent(originId)}` : '';
-    return `/?workspace=${encodeURIComponent(workspaceId)}&repo=${encodeURIComponent(repoId)}${originParam}#popout/git-review/pr/${encodeURIComponent(String(prId))}`;
+    const cloneParam = cloneBaseUrl ? `&cloneBaseUrl=${encodeURIComponent(cloneBaseUrl)}` : '';
+    return `/?workspace=${encodeURIComponent(workspaceId)}&repo=${encodeURIComponent(repoId)}${originParam}${cloneParam}#popout/git-review/pr/${encodeURIComponent(String(prId))}`;
 }
 
 export function parseWorkflowDeepLink(hash: string): { repoId: string; processId: string } | null {

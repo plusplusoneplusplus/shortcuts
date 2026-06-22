@@ -37,6 +37,7 @@ import type { ClassificationKey } from '../git/diff/diffSource';
 import { buildGitPrPopOutUrl } from '../../layout/Router';
 import { resolveCanonicalOriginId } from '../../repos/originScope';
 import { useGitReviewPopOut, gitReviewPrPopOutKey } from '../../contexts/GitReviewPopOutContext';
+import { lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { useReviewChatPresentation } from '../git/hooks/useReviewChatPresentation';
 import type { ReviewChatTarget } from '../git/commits/commitChatPlacement';
 import {
@@ -152,7 +153,7 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
     }, [assistantOpen, toggleAssistant]);
 
     const handleFileClick = useCallback((filePath: string) => {
-        const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId), originId);
+        const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId), originId, lookupCloneBaseUrl(workspaceId));
         const win = window.open(url, `coc-git-review-pr-${prId}`, 'width=1200,height=800');
         if (win) {
             markPoppedOut(gitReviewPrPopOutKey(workspaceId, String(prId)));
