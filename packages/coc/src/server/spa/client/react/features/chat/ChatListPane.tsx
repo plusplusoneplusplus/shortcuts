@@ -101,6 +101,36 @@ export function isAutomationTask(task: any): boolean {
 }
 const isAutomation = isAutomationTask;
 
+/** Returns true if a task is a scheduled-job run — i.e. it carries a
+ *  `scheduleId` (on `payload.scheduleId` or top-level `task.scheduleId`).
+ *  Mirrors the 📅 icon check in {@link getTaskTypeIcon}. The Activity-tab
+ *  "Scheduled" scope (internal id `'loops'`) groups these runs together with
+ *  chats that have an attached `/loop`. */
+export function isScheduledTask(task: any): boolean {
+    return Boolean(task?.payload?.scheduleId || task?.scheduleId);
+}
+
+/** Internal scope id for the Activity segmented control. Note the id `'loops'`
+ *  is retained for backwards compatibility (localStorage value + test ids) even
+ *  though its visible label is now "Scheduled". */
+export type ActivityScope = 'chat' | 'auto' | 'loops' | 'all';
+
+/** Pure membership test for the Activity scope segmented control. `hasLoop`
+ *  indicates the task's process has an active/paused `/loop` attached.
+ *  - `chat` → chat tasks that are NOT scheduled runs
+ *  - `auto` → automations that are NOT scheduled runs
+ *  - `loops` (labelled "Scheduled") → scheduled runs OR chats with a `/loop`
+ *  - `all` → everything (true superset, still includes scheduled runs)
+ *  Extracted as a pure helper so scope membership is unit-testable without
+ *  rendering the component. */
+export function taskInScope(scope: ActivityScope, task: any, hasLoop: boolean): boolean {
+    if (scope === 'all') return true;
+    if (scope === 'chat') return isChatTask(task) && !isScheduledTask(task);
+    if (scope === 'auto') return isAutomationTask(task) && !isScheduledTask(task);
+    if (scope === 'loops') return isScheduledTask(task) || hasLoop;
+    return true;
+}
+
 /** Get a display title for a chat task, falling back to a truncated prompt preview. */
 function getChatTitle(task: any): string {
     if (task.displayName) return task.displayName;
@@ -777,13 +807,15 @@ export function ChatListPane({
 
     /**
      * Activity-tab scope segmented control: filters by task source.
-     *   - 'chat' → only chat tasks
-     *   - 'auto' → only automations (run-script / run-workflow)
-     *   - 'all'  → no source filter
+     *   - 'chat'  → chat tasks that are not scheduled runs
+     *   - 'auto'  → automations (run-script / run-workflow) that are not scheduled runs
+     *   - 'loops' → "Scheduled" scope: scheduled-job runs ∪ chats with a `/loop`
+     *               (id kept as 'loops' for the persisted value + test ids)
+     *   - 'all'   → no source filter
      * Persisted in localStorage so the user's choice survives reloads.
      * Default is 'all' to preserve the pre-existing behavior of showing every task.
      */
-    const [activeScope, setActiveScopeState] = useState<'chat' | 'auto' | 'loops' | 'all'>(() => {
+    const [activeScope, setActiveScopeState] = useState<ActivityScope>(() => {
         if (typeof window === 'undefined') return 'all';
         try {
             const saved = localStorage.getItem('coc-activity-scope');
@@ -791,7 +823,7 @@ export function ChatListPane({
         } catch { /* ignore localStorage errors (e.g. private mode) */ }
         return 'all';
     });
-    const setActiveScope = useCallback((next: 'chat' | 'auto' | 'loops' | 'all') => {
+    const setActiveScope = useCallback((next: ActivityScope) => {
         setActiveScopeState(next);
         try { localStorage.setItem('coc-activity-scope', next); } catch { /* ignore */ }
     }, []);
@@ -951,11 +983,8 @@ export function ChatListPane({
      *  Chats and Tasks branches keep their existing per-tab filters intact. */
     const passesScope = useCallback((task: any): boolean => {
         if (activeTab === 'chats' || activeTab === 'tasks') return true;
-        if (activeScope === 'all') return true;
-        if (activeScope === 'chat') return isChat(task);
-        if (activeScope === 'auto') return isAutomation(task);
-        if (activeScope === 'loops') return processIdsWithLoops.has(task.id) || processIdsWithLoops.has(task.processId);
-        return true;
+        const hasLoop = processIdsWithLoops.has(task.id) || processIdsWithLoops.has(task.processId);
+        return taskInScope(activeScope, task, hasLoop);
     }, [activeTab, activeScope, processIdsWithLoops]);
 
     const tabFilteredRunning = useMemo(() => {
@@ -1092,15 +1121,23 @@ export function ChatListPane({
         const all = allRaw.filter((task: any) => !taskIdentityMatches(task, groupedTaskIds));
         let chat = forEachRunGroups.length + mapReduceRunGroups.length;
         let auto = 0;
-        let loops = 0;
         for (const t of all) {
+            // Scheduled runs are pulled out of Chats/Automations and shown under
+            // the "Scheduled" scope instead, so exclude them from those counts.
+            if (isScheduledTask(t)) continue;
             if (isChat(t)) chat++;
             else if (isAutomation(t)) auto++;
         }
+        // "Scheduled" scope (internal id `loops`) = scheduled runs ∪ chats with a
+        // `/loop`. A task that is BOTH is counted once via the single guard.
+        let loops = 0;
+        let hasScheduledRuns = false;
         for (const t of allRaw) {
-            if (processIdsWithLoops.has(t.id) || processIdsWithLoops.has(t.processId)) loops++;
+            const scheduled = isScheduledTask(t);
+            if (scheduled) hasScheduledRuns = true;
+            if (scheduled || processIdsWithLoops.has(t.id) || processIdsWithLoops.has(t.processId)) loops++;
         }
-        return { chat, auto, loops, all: all.length + forEachRunGroups.length + mapReduceRunGroups.length };
+        return { chat, auto, loops, all: all.length + forEachRunGroups.length + mapReduceRunGroups.length, hasScheduledRuns };
     }, [running, queued, history, processIdsWithLoops, groupedTaskIds, forEachRunGroups.length, mapReduceRunGroups.length]);
 
     // Separate archived from non-archived history (uses tab-filtered history for proper exclusions)
@@ -3116,16 +3153,18 @@ export function ChatListPane({
                     </div>
                 </div>
 
-                {/* Scope segmented control — Chats / [Loops] / Automations / All. Only
-                    rendered in the Activity branch (`!activeTab`); Chats and
-                    Tasks tabs already have their own narrow scope. The Loops
-                    segment is only shown when loops.enabled is true. Inner spans
-                    use `whitespace-nowrap` and `min-w-0 truncate` on the label
-                    so narrow widths show ellipsis on the longest label
-                    ("Automations") instead of wrapping the count below. */}
+                {/* Scope segmented control — Chats / [Scheduled] / Automations / All.
+                    Only rendered in the Activity branch (`!activeTab`); Chats and
+                    Tasks tabs already have their own narrow scope. The "Scheduled"
+                    segment (internal id `loops`) is shown when loops are enabled OR
+                    any scheduled-job run exists, so it appears whenever it has
+                    content even if the loops feature flag is off. Inner spans use
+                    `whitespace-nowrap` and `min-w-0 truncate` on the label so narrow
+                    widths show ellipsis on the longest label ("Automations")
+                    instead of wrapping the count below. */}
                 {!activeTab && (
                     <div
-                        className={cn('grid gap-0 p-0.5 bg-[#f5f5f5] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#474749] rounded-md', loopsEnabled ? 'grid-cols-4' : 'grid-cols-3')}
+                        className={cn('grid gap-0 p-0.5 bg-[#f5f5f5] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#474749] rounded-md', (loopsEnabled || scopeCounts.hasScheduledRuns) ? 'grid-cols-4' : 'grid-cols-3')}
                         role="tablist"
                         aria-label="Activity scope"
                         data-testid="activity-scope-tabs"
@@ -3143,11 +3182,18 @@ export function ChatListPane({
                                 hidden: false,
                             },
                             {
+                                // Internal id stays `loops` (localStorage value + test ids
+                                // unchanged); only the visible label reads "Scheduled".
                                 id: 'loops' as const,
-                                label: 'Loops',
+                                label: 'Scheduled',
                                 count: scopeCounts.loops,
-                                icon: <LoopIcon className="w-3 h-3" />,
-                                hidden: !loopsEnabled,
+                                icon: (
+                                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+                                        <rect x="2" y="3" width="10" height="9" rx="1.5" />
+                                        <path d="M2 6h10M5 1.5v2.5M9 1.5v2.5" />
+                                    </svg>
+                                ),
+                                hidden: !(loopsEnabled || scopeCounts.hasScheduledRuns),
                             },
                             {
                                 id: 'auto' as const,
