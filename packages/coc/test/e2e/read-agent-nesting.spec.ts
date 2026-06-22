@@ -9,6 +9,10 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import {
+    createSubAgentToolEvents,
+    readAgentToolCallId,
+} from '@plusplusoneplusplus/coc-agent-sdk/testing';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedQueueTask, seedWorkspace, request } from './fixtures/seed';
 import type { Page } from '@playwright/test';
@@ -99,6 +103,34 @@ async function waitForBubbles(page: Page, count: number, timeoutMs = 6_000): Pro
     );
 }
 
+type ProducerToolEvent = ReturnType<typeof createSubAgentToolEvents>[number];
+
+/**
+ * Drive a sub-agent producer's `ToolEvent[]` through `onToolEvent`, optionally
+ * streaming a chunk right after each `read_agent` `tool-start` — mirroring the
+ * runtime, where a sub-agent's output streams while its `read_agent` call is the
+ * active tool. `chunkFor(agentId)` returns the chunk text for that read_agent, or
+ * `undefined` to stream nothing. Sourcing the events from the shared producer
+ * keeps these specs free of hand-authored tool-event arrays; only the streamed
+ * chunks (which are not producer output) remain inline.
+ */
+function emitSubAgentEvents(
+    opts: { onToolEvent?: (e: ProducerToolEvent) => void; onStreamingChunk?: (c: string) => void },
+    events: ProducerToolEvent[],
+    chunkFor?: (agentId: string | undefined) => string | undefined,
+): void {
+    for (const event of events) {
+        opts.onToolEvent?.(event);
+        if (event.type === 'tool-start' && event.toolName === 'read_agent') {
+            const agentId = (event.parameters as Record<string, unknown> | undefined)?.agent_id;
+            const chunk = chunkFor?.(typeof agentId === 'string' ? agentId : undefined);
+            if (chunk) {
+                opts.onStreamingChunk?.(chunk);
+            }
+        }
+    }
+}
+
 test.describe('read_agent content nesting', () => {
     test('content during read_agent renders inside its card, not at top level', async ({
         serverUrl,
@@ -109,35 +141,23 @@ test.describe('read_agent content nesting', () => {
         await setToolCompactness(serverUrl);
         try {
             mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                const onToolEvent = opts?.onToolEvent as ((e: any) => void) | undefined;
                 const onChunk = opts?.onStreamingChunk as ((c: string) => void) | undefined;
 
-                onToolEvent?.({
-                    type: 'tool-start',
-                    toolCallId: 'tc-task',
-                    toolName: 'task',
-                    parameters: { agent_type: 'explore', description: 'Report current time' },
-                });
-                onToolEvent?.({
-                    type: 'tool-complete',
-                    toolCallId: 'tc-task',
-                    toolName: 'task',
-                    result: 'Agent started in background with agent_id: agent-0',
-                });
-
-                onToolEvent?.({
-                    type: 'tool-start',
-                    toolCallId: 'tc-ra',
-                    toolName: 'read_agent',
-                    parameters: { agent_id: 'agent-0', wait: true, timeout: 10 },
-                });
-                onChunk?.('The system time is unavailable from this agent.');
-                onToolEvent?.({
-                    type: 'tool-complete',
-                    toolCallId: 'tc-ra',
-                    toolName: 'read_agent',
-                    result: 'agent completed',
-                });
+                const events = createSubAgentToolEvents([
+                    {
+                        id: 'tc-task',
+                        kind: 'background',
+                        agentType: 'explore',
+                        description: 'Report current time',
+                        agentId: 'agent-0',
+                        result: 'The current time could not be determined.',
+                    },
+                ]);
+                emitSubAgentEvents(opts, events, (agentId) =>
+                    agentId === 'agent-0'
+                        ? 'The system time is unavailable from this agent.'
+                        : undefined,
+                );
 
                 onChunk?.('Done reading agent results.');
 
@@ -156,7 +176,9 @@ test.describe('read_agent content nesting', () => {
             await gotoConversation(page, serverUrl, wsId, task.id as string);
             await waitForBubbles(page, 1);
 
-            const raCard = page.locator('.tool-call-card[data-tool-id="tc-ra"]');
+            const raCard = page.locator(
+                `.tool-call-card[data-tool-id="${readAgentToolCallId('tc-task')}"]`,
+            );
             await expect(raCard).toHaveCount(1);
 
             await expect(raCard.locator('.tool-call-name')).toContainText('read_agent');
@@ -180,20 +202,15 @@ test.describe('read_agent content nesting', () => {
         await setToolCompactness(serverUrl);
         try {
             mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                const onToolEvent = opts?.onToolEvent as ((e: any) => void) | undefined;
-
-                onToolEvent?.({
-                    type: 'tool-start',
-                    toolCallId: 'tc-ra-summary',
-                    toolName: 'read_agent',
-                    parameters: { agent_id: 'agent-42', wait: true },
-                });
-                onToolEvent?.({
-                    type: 'tool-complete',
-                    toolCallId: 'tc-ra-summary',
-                    toolName: 'read_agent',
-                    result: 'agent done',
-                });
+                const events = createSubAgentToolEvents([
+                    {
+                        id: 'tc-task-summary',
+                        kind: 'background',
+                        agentId: 'agent-42',
+                        result: 'Result received.',
+                    },
+                ]);
+                emitSubAgentEvents(opts, events);
 
                 return {
                     success: true,
@@ -210,7 +227,9 @@ test.describe('read_agent content nesting', () => {
             await gotoConversation(page, serverUrl, wsId, task.id as string);
             await waitForBubbles(page, 1);
 
-            const raHeader = page.locator('.tool-call-card[data-tool-id="tc-ra-summary"] .tool-call-header');
+            const raHeader = page.locator(
+                `.tool-call-card[data-tool-id="${readAgentToolCallId('tc-task-summary')}"] .tool-call-header`,
+            );
             await expect(raHeader).toContainText('Agent agent-42');
             await expect(raHeader).toContainText('(wait)');
         } finally {
@@ -227,60 +246,28 @@ test.describe('read_agent content nesting', () => {
         await setToolCompactness(serverUrl);
         try {
             mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                const onToolEvent = opts?.onToolEvent as ((e: any) => void) | undefined;
                 const onChunk = opts?.onStreamingChunk as ((c: string) => void) | undefined;
 
-                onToolEvent?.({
-                    type: 'tool-start',
-                    toolCallId: 'tc-task-a',
-                    toolName: 'task',
-                    parameters: { description: 'Task A' },
-                });
-                onToolEvent?.({
-                    type: 'tool-start',
-                    toolCallId: 'tc-task-b',
-                    toolName: 'task',
-                    parameters: { description: 'Task B' },
-                });
-                onToolEvent?.({
-                    type: 'tool-complete',
-                    toolCallId: 'tc-task-a',
-                    toolName: 'task',
-                    result: 'Agent started with agent_id: agent-a',
-                });
-                onToolEvent?.({
-                    type: 'tool-complete',
-                    toolCallId: 'tc-task-b',
-                    toolName: 'task',
-                    result: 'Agent started with agent_id: agent-b',
-                });
-
-                onToolEvent?.({
-                    type: 'tool-start',
-                    toolCallId: 'tc-ra-a',
-                    toolName: 'read_agent',
-                    parameters: { agent_id: 'agent-a', wait: true },
-                });
-                onChunk?.('Result from agent Alpha');
-                onToolEvent?.({
-                    type: 'tool-complete',
-                    toolCallId: 'tc-ra-a',
-                    toolName: 'read_agent',
-                    result: 'agent-a done',
-                });
-
-                onToolEvent?.({
-                    type: 'tool-start',
-                    toolCallId: 'tc-ra-b',
-                    toolName: 'read_agent',
-                    parameters: { agent_id: 'agent-b', wait: true },
-                });
-                onChunk?.('Result from agent Bravo');
-                onToolEvent?.({
-                    type: 'tool-complete',
-                    toolCallId: 'tc-ra-b',
-                    toolName: 'read_agent',
-                    result: 'agent-b done',
+                const events = createSubAgentToolEvents([
+                    {
+                        id: 'tc-task-a',
+                        kind: 'background',
+                        description: 'Task A',
+                        agentId: 'agent-a',
+                        result: 'Alpha final output',
+                    },
+                    {
+                        id: 'tc-task-b',
+                        kind: 'background',
+                        description: 'Task B',
+                        agentId: 'agent-b',
+                        result: 'Bravo final output',
+                    },
+                ]);
+                emitSubAgentEvents(opts, events, (agentId) => {
+                    if (agentId === 'agent-a') return 'Result from agent Alpha';
+                    if (agentId === 'agent-b') return 'Result from agent Bravo';
+                    return undefined;
                 });
 
                 onChunk?.('Both agents completed successfully.');
@@ -300,8 +287,12 @@ test.describe('read_agent content nesting', () => {
             await gotoConversation(page, serverUrl, wsId, task.id as string);
             await waitForBubbles(page, 1);
 
-            const raA = page.locator('.tool-call-card[data-tool-id="tc-ra-a"]');
-            const raB = page.locator('.tool-call-card[data-tool-id="tc-ra-b"]');
+            const raA = page.locator(
+                `.tool-call-card[data-tool-id="${readAgentToolCallId('tc-task-a')}"]`,
+            );
+            const raB = page.locator(
+                `.tool-call-card[data-tool-id="${readAgentToolCallId('tc-task-b')}"]`,
+            );
             await expect(raA).toHaveCount(1);
             await expect(raB).toHaveCount(1);
 
@@ -329,32 +320,16 @@ test.describe('read_agent content nesting', () => {
         await setToolCompactness(serverUrl);
         try {
             mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                const onToolEvent = opts?.onToolEvent as ((e: any) => void) | undefined;
-
-                onToolEvent?.({
-                    type: 'tool-start',
-                    toolCallId: 'tc-task-solo',
-                    toolName: 'task',
-                    parameters: { description: 'Solo task' },
-                });
-                onToolEvent?.({
-                    type: 'tool-complete',
-                    toolCallId: 'tc-task-solo',
-                    toolName: 'task',
-                    result: 'Agent started with agent_id: agent-solo',
-                });
-                onToolEvent?.({
-                    type: 'tool-start',
-                    toolCallId: 'tc-ra-solo',
-                    toolName: 'read_agent',
-                    parameters: { agent_id: 'agent-solo', wait: true },
-                });
-                onToolEvent?.({
-                    type: 'tool-complete',
-                    toolCallId: 'tc-ra-solo',
-                    toolName: 'read_agent',
-                    result: 'solo agent done',
-                });
+                const events = createSubAgentToolEvents([
+                    {
+                        id: 'tc-task-solo',
+                        kind: 'background',
+                        description: 'Solo task',
+                        agentId: 'agent-solo',
+                        result: 'Solo final output',
+                    },
+                ]);
+                emitSubAgentEvents(opts, events);
 
                 return {
                     success: true,
@@ -371,12 +346,13 @@ test.describe('read_agent content nesting', () => {
             await gotoConversation(page, serverUrl, wsId, task.id as string);
             await waitForBubbles(page, 1);
 
+            const raSoloId = readAgentToolCallId('tc-task-solo');
             const taskCard = page.locator('.tool-call-card[data-tool-id="tc-task-solo"]');
-            const raCard = page.locator('.tool-call-card[data-tool-id="tc-ra-solo"]');
+            const raCard = page.locator(`.tool-call-card[data-tool-id="${raSoloId}"]`);
             await expect(taskCard).toHaveCount(1);
             await expect(raCard).toHaveCount(1);
 
-            const raInsideTask = taskCard.locator('.tool-call-card[data-tool-id="tc-ra-solo"]');
+            const raInsideTask = taskCard.locator(`.tool-call-card[data-tool-id="${raSoloId}"]`);
             await expect(raInsideTask).toHaveCount(0);
         } finally {
             cleanup();

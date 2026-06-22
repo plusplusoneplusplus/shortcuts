@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { createSubAgentToolEvents } from '@plusplusoneplusplus/coc-agent-sdk/testing';
 import { createE2EMockSDKService, type MockToolEvent } from './mock-ai';
 
 describe('MockAI streaming and tool-event helpers', () => {
@@ -232,6 +233,41 @@ describe('MockAI streaming and tool-event helpers', () => {
                 parentToolCallId: 'parent-1',
                 parameters: { path: '/src' },
             });
+        });
+
+        // The dedupe contract: `createToolCallResponse` accepts the shared
+        // sub-agent producer's `ToolEvent[]` output directly (no hand-authored
+        // arrays), because `MockToolEvent = ToolEvent & { delayMsBefore? }`.
+        it('accepts createSubAgentToolEvents output directly (sync + background)', async () => {
+            const fired: Record<string, unknown>[] = [];
+            const events = createSubAgentToolEvents([
+                { id: 'sync-1', kind: 'sync', agentType: 'explore', result: 'sync output' },
+                { id: 'bg-1', kind: 'background', agentId: 'agent-bg', result: 'bg output' },
+            ]);
+            // The producer's ToolEvent[] is assignable to the fixture's param type.
+            const impl = mockAI.createToolCallResponse(events);
+
+            await impl({
+                prompt: 'x',
+                onToolEvent: (e: Record<string, unknown>) => fired.push(e),
+            });
+
+            // sync: Task start + complete; background: Task ack + read_agent start + complete.
+            expect(fired.map((e) => `${e.toolName}:${e.type}`)).toEqual([
+                'Task:tool-start',
+                'Task:tool-complete',
+                'Task:tool-start',
+                'Task:tool-complete',
+                'read_agent:tool-start',
+                'read_agent:tool-complete',
+            ]);
+            // The background Task ack carries the agent_id that keys its read_agent.
+            const ack = fired.find((e) => e.toolCallId === 'bg-1' && e.type === 'tool-complete');
+            expect(ack?.result).toContain('agent_id: agent-bg');
+            const readDone = fired.find(
+                (e) => e.toolName === 'read_agent' && e.type === 'tool-complete',
+            );
+            expect(readDone?.result).toContain('bg output');
         });
     });
 });

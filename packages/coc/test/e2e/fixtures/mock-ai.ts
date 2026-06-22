@@ -18,7 +18,7 @@ import {
     type MockFnHandle,
     type MockFnFactory,
 } from '@plusplusoneplusplus/coc-agent-sdk/testing';
-import type { IInvocationResult } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { IInvocationResult, ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ---------------------------------------------------------------------------
 // Background-aware mock-fn factory (Vitest-free)
@@ -115,17 +115,17 @@ export interface ChunkGate {
 // Mock Tool Event
 // ---------------------------------------------------------------------------
 
-export interface MockToolEvent {
-    type: 'tool-start' | 'tool-complete' | 'tool-failed';
-    toolCallId: string;
-    toolName: string;
-    parameters?: Record<string, unknown>;
-    result?: string;
-    error?: string;
-    parentToolCallId?: string;
+/**
+ * A unified-seam `ToolEvent` plus an optional pre-fire delay. Aliasing the SDK
+ * `ToolEvent` (rather than re-declaring its shape) keeps this fixture in lockstep
+ * with the real `onToolEvent` channel and lets `createToolCallResponse` accept
+ * the `createSubAgentToolEvents(...)` producer output directly — a `ToolEvent[]`
+ * is assignable here because `delayMsBefore` is optional.
+ */
+export type MockToolEvent = ToolEvent & {
     /** Optional milliseconds to wait before firing this event */
     delayMsBefore?: number;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Mock AI Service
