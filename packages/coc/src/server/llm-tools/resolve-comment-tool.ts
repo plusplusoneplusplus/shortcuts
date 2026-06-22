@@ -20,7 +20,7 @@ export function createResolveCommentTool() {
     const resolvedIds = new Map<string, string>(); // commentId → summary
 
     const tool = defineTool<ResolveCommentArgs>('resolve_comment', {
-        description: 'Mark a comment as resolved after addressing it in the revised document. Call once per comment you actually fix.',
+        description: 'Mark a comment resolved after addressing it in the revised document. Call once per comment you actually fix.',
         parameters: {
             type: 'object',
             properties: {
