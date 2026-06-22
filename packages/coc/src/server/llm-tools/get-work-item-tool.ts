@@ -257,21 +257,19 @@ export function createGetWorkItemTool(
 
     const tool = defineTool<GetWorkItemArgs>('get_work_item', {
         description:
-            'Read the current detail of an existing work item in this repository by UUID, WI-N, or work-item number. ' +
-            'Provide exactly one of `workItemId` (UUID or WI-N), `target` (UUID or WI-N), or `workItemNumber` ' +
-            '(e.g. 20 or "WI-20"). Returns `{ found: true, item, ancestors }` when it exists, or `{ found: false, error }` ' +
-            'when the target is missing or invalid. On success the queried `item` carries its full detail (title, ' +
-            'description, status, priority, tags, parentId, plan, and metadata) plus `item.children`: the recursive ' +
-            'descendant subtree, where each node is a lightweight `{ id, workItemNumber, title, type, status, children }`. ' +
-            'The top-level `ancestors` is a flat array of those same lightweight nodes (without `children`) ordered from ' +
-            'the epic root down to the direct parent; both `item.children` and `ancestors` are empty arrays when the ' +
-            'item has no descendants / no parent. This gives you sibling, parent, and child context without extra ' +
-            'lookups; only the queried item includes `description`/`plan`. This tool is read-only: it never creates, ' +
-            'updates, or deletes a work item. ' +
-            'Use it when the user references an existing work item, or when attached context supplies a work-item pointer, ' +
-            'before drafting changes — unless the full detail is already present in the prompt. ' +
-            'Do not use it as a substitute for conversation retrieval; use `get_conversation` for prior chat transcripts. ' +
-            'Use `create_update_work_item` (after presenting a draft and receiving user confirmation) to make changes.',
+            'Read an existing work item in this repository by UUID, WI-N, or work-item number. ' +
+            'Provide exactly one of `workItemId`, `target`, or `workItemNumber`. ' +
+            'Returns `{ found: true, item, ancestors }` when it exists, else `{ found: false, error }`. ' +
+            'The `item` has full detail (title, description, status, priority, tags, parentId, plan, metadata) plus ' +
+            '`item.children`, the recursive descendant subtree of lightweight ' +
+            '`{ id, workItemNumber, title, type, status, children }` nodes; `ancestors` is a flat array of those ' +
+            'lightweight nodes ordered epic-root → direct parent. Both are empty when there are no descendants / no ' +
+            'parent, and only the queried item carries description/plan. ' +
+            'Read-only: never creates, updates, or deletes. ' +
+            'Use it when the user references an existing work item, or context supplies a work-item pointer, before ' +
+            'drafting changes — unless the full detail is already in the prompt. ' +
+            'Not for conversation retrieval; use `get_conversation` for chat transcripts. ' +
+            'Use `create_update_work_item` (after presenting a draft and getting user confirmation) to make changes.',
         parameters: {
             type: 'object',
             properties: {
