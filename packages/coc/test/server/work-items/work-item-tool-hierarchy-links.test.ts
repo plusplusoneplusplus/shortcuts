@@ -473,6 +473,124 @@ describe('create_update_work_item hierarchy links — update mode', () => {
     });
 });
 
+describe('create_update_work_item type change — update mode', () => {
+    it('changes a PBI to a work-item and reparents it under another PBI in one call', async () => {
+        // Manual demo: WI-34 (a PBI) becomes a work-item so WI-17 (a PBI) can parent it.
+        const pbi17 = await seed({ id: 'pbi-17', title: 'PBI Seventeen', type: 'pbi' });
+        const item = await seed({
+            id: 'pbi-34',
+            title: 'Item Thirty-Four',
+            type: 'pbi',
+            status: 'readyToExecute',
+            plan: { version: 1, currentVersion: 1, content: 'Original plan', updatedAt: NOW },
+        });
+        const broadcast = vi.fn();
+        const tool = makeTool({ broadcast });
+
+        const result: any = await tool.handler({
+            workItemId: item.id,
+            type: 'work-item',
+            parentWorkItemNumber: pbi17.workItemNumber,
+        });
+
+        expect(result.updated).toBe(true);
+        const stored = await store.getWorkItem(item.id, REPO_ID);
+        expect(stored?.type).toBe('work-item');
+        expect(stored?.parentId).toBe(pbi17.id);
+        // Plan and status are preserved (no new plan version, no reset to planning).
+        expect(stored?.status).toBe('readyToExecute');
+        expect(stored?.plan?.version).toBe(1);
+        expect(stored?.plan?.content).toBe('Original plan');
+        // A single coherent broadcast for the whole update.
+        expect(broadcast).toHaveBeenCalledOnce();
+        expect(broadcast.mock.calls[0][0].type).toBe('work-item-updated');
+    });
+
+    it('rejects changing a PBI with child work-items into a work-item, naming the blocking child', async () => {
+        const pbi = await seed({ id: 'pbi-1', title: 'Parent PBI', type: 'pbi' });
+        const child = await seed({ id: 'leaf-1', title: 'Child leaf', type: 'work-item', parentId: pbi.id });
+        const tool = makeTool();
+
+        const result: any = await tool.handler({ workItemId: pbi.id, type: 'work-item' });
+
+        expect(result.updated).toBe(false);
+        expect(result.error).toContain(`WI-${child.workItemNumber}`);
+        expect(result.error).toContain('cannot parent');
+        // No change: the item keeps its original type.
+        const stored = await store.getWorkItem(pbi.id, REPO_ID);
+        expect(stored?.type).toBe('pbi');
+    });
+
+    it('rejects a type change that leaves the existing parent invalid when no new parent is supplied', async () => {
+        const pbi = await seed({ id: 'pbi-1', title: 'A PBI', type: 'pbi' });
+        const item = await seed({ id: 'leaf-1', title: 'Leaf', type: 'work-item', parentId: pbi.id });
+        const tool = makeTool();
+
+        // work-item → feature: a feature must live under an epic, not a PBI.
+        const result: any = await tool.handler({ workItemId: item.id, type: 'feature' });
+
+        expect(result.updated).toBe(false);
+        expect(result.error).toContain(`WI-${pbi.workItemNumber}`);
+        expect(result.error).toContain("cannot be a parent of 'feature'");
+        const stored = await store.getWorkItem(item.id, REPO_ID);
+        expect(stored?.type).toBe('work-item');
+        expect(stored?.parentId).toBe(pbi.id);
+    });
+
+    it('fixes an otherwise-invalid parent by reparenting in the same type-change call', async () => {
+        const pbi = await seed({ id: 'pbi-1', title: 'A PBI', type: 'pbi' });
+        const epic = await seed({ id: 'epic-1', title: 'An Epic', type: 'epic' });
+        const item = await seed({ id: 'feat-candidate', title: 'Candidate', type: 'work-item', parentId: pbi.id });
+        const tool = makeTool();
+
+        // work-item → feature is invalid under the current PBI parent, but valid
+        // when reparented to the Epic in the same call.
+        const result: any = await tool.handler({
+            workItemId: item.id,
+            type: 'feature',
+            parentId: epic.id,
+        });
+
+        expect(result.updated).toBe(true);
+        const stored = await store.getWorkItem(item.id, REPO_ID);
+        expect(stored?.type).toBe('feature');
+        expect(stored?.parentId).toBe(epic.id);
+    });
+
+    it('changes the type of a standalone item, preserving plan and status', async () => {
+        const item = await seed({
+            id: 'solo-1',
+            title: 'Standalone',
+            type: 'work-item',
+            status: 'readyToExecute',
+            plan: { version: 2, currentVersion: 2, content: 'Solo plan', updatedAt: NOW },
+        });
+        const broadcast = vi.fn();
+        const tool = makeTool({ broadcast });
+
+        const result: any = await tool.handler({ workItemId: item.id, type: 'goal' });
+
+        expect(result.updated).toBe(true);
+        const stored = await store.getWorkItem(item.id, REPO_ID);
+        expect(stored?.type).toBe('goal');
+        expect(stored?.status).toBe('readyToExecute');
+        expect(stored?.plan?.version).toBe(2);
+        expect(stored?.plan?.content).toBe('Solo plan');
+        expect(broadcast).toHaveBeenCalledOnce();
+    });
+
+    it('treats a same-type "change" as a no-op-eligible validation only', async () => {
+        const item = await seed({ id: 'bug-1', title: 'A bug', type: 'bug' });
+        const tool = makeTool();
+
+        // type matches and nothing else is supplied → still a no-op.
+        const result: any = await tool.handler({ workItemId: item.id, type: 'bug' });
+
+        expect(result.updated).toBe(false);
+        expect(result.error).toContain('No update requested');
+    });
+});
+
 describe('REST/tool parity through the shared command service', () => {
     it('REST PATCH and the AI tool produce the same reparented state', async () => {
         const pbi1 = await seed({ id: 'pbi-1', title: 'PBI One', type: 'pbi' });

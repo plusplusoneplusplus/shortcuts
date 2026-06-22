@@ -19,7 +19,15 @@ import { resolveConfig, CONFIG_FILE_NAME } from '../../config';
 import { APIError } from '../errors';
 import { createWorkItemStore } from '../work-items/work-item-store';
 import type { WorkItem, WorkItemPriority, WorkItemStatus, WorkItemStore, WorkItemType } from '../work-items/types';
-import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES, isKnownWorkItemStatus } from '../work-items/types';
+import {
+    WORK_ITEM_TYPES,
+    WORK_ITEM_STATUSES,
+    isKnownWorkItemStatus,
+    getEffectiveType,
+    isValidParentChildTypes,
+    ALLOWED_PARENT_TYPES,
+    ALLOWED_CHILD_TYPES,
+} from '../work-items/types';
 import { WORK_ITEM_PLAN_TEMPLATE } from '../work-items/plan-template';
 import {
     createWorkItemCommand,
@@ -42,7 +50,11 @@ export interface CreateUpdateWorkItemArgs {
     target?: string;
     /** Existing sequential work item number. Omit for create mode. */
     workItemNumber?: number | string;
-    /** Work item type for create mode. Defaults to 'work-item'. In update mode this is validation-only. */
+    /**
+     * Work item type. On create, sets the type (defaults to 'work-item'). In
+     * update mode, a value different from the current type changes it, provided
+     * the resulting parent/child hierarchy stays valid.
+     */
     type?: WorkItemType;
     title?: string;
     description?: string;
@@ -283,6 +295,102 @@ function commandErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
+// ============================================================================
+// Type-change helpers
+// ============================================================================
+
+/** Short human-readable label (WI-N, or quoted title) for a work item in errors. */
+function formatWorkItemLabel(item: { workItemNumber?: number; title: string }): string {
+    return item.workItemNumber !== undefined ? `WI-${item.workItemNumber}` : `"${item.title}"`;
+}
+
+/**
+ * Resolve the parent the item will have after the update: a parent supplied in
+ * the same call (reparent) takes precedence, an unlink yields no parent, and an
+ * absent parent field keeps the item's existing parent.
+ */
+async function resolveResultingParent(
+    store: WorkItemStore,
+    repoId: string,
+    existing: WorkItem,
+    parentSpec: ParentSpec,
+): Promise<{ parent?: WorkItem } | { error: string }> {
+    if (parentSpec.kind === 'unlink') {
+        return { parent: undefined };
+    }
+    if (parentSpec.kind === 'ref') {
+        const resolved = await resolveParentWorkItem(store, repoId, parentSpec.value);
+        if ('error' in resolved) return { error: resolved.error };
+        return { parent: resolved.item };
+    }
+    // kind === 'none': the item keeps its existing parent (if any).
+    if (existing.parentId) {
+        const parent = await store.getWorkItem(existing.parentId, repoId);
+        return { parent: parent ?? undefined };
+    }
+    return { parent: undefined };
+}
+
+/**
+ * Resolve and validate a requested work item type change for update mode.
+ *
+ * Returns `{ newType }` when the type should change (the resulting hierarchy is
+ * valid), `{}` when no change is requested or the type already matches, or
+ * `{ error }` when the change must be rejected. Validation mirrors the
+ * create/reparent hierarchy checks: the resulting parent must be a legal parent
+ * for the new type, and every existing child must remain a legal child of it.
+ */
+async function resolveTypeChange(
+    store: WorkItemStore,
+    repoId: string,
+    existing: WorkItem,
+    args: CreateUpdateWorkItemArgs,
+    parentSpec: ParentSpec,
+): Promise<{ newType?: WorkItemType } | { error: string }> {
+    if (args.type === undefined) {
+        return {};
+    }
+    if (!isWorkItemType(args.type)) {
+        return { error: `Unsupported work item type: ${String(args.type)}` };
+    }
+    const newType = args.type;
+    if (newType === getEffectiveType(existing.type)) {
+        return {}; // No-op: the requested type already matches the current type.
+    }
+
+    // Validate the resulting parent is a legal parent for the new type.
+    const resultingParent = await resolveResultingParent(store, repoId, existing, parentSpec);
+    if ('error' in resultingParent) {
+        return { error: resultingParent.error };
+    }
+    const parent = resultingParent.parent;
+    if (parent && !isValidParentChildTypes(newType, getEffectiveType(parent.type))) {
+        const allowed = ALLOWED_PARENT_TYPES[newType];
+        return {
+            error: `Cannot change type to '${newType}': its parent ${formatWorkItemLabel(parent)} is a `
+                + `'${getEffectiveType(parent.type)}', which cannot be a parent of '${newType}'. `
+                + `Supply a valid parent (or unlink it) in the same call. `
+                + `Valid parent types for '${newType}': ${allowed.length ? allowed.join(', ') : 'none (top-level only)'}.`,
+        };
+    }
+
+    // Validate every existing child remains a legal child of the new type.
+    const children = await store.listChildren(existing.id, repoId);
+    const blockers = children.filter(child => !isValidParentChildTypes(getEffectiveType(child.type), newType));
+    if (blockers.length > 0) {
+        const allowed = ALLOWED_CHILD_TYPES[newType];
+        const names = blockers
+            .map(child => `${formatWorkItemLabel(child)} (${getEffectiveType(child.type)})`)
+            .join(', ');
+        return {
+            error: `Cannot change type to '${newType}': it has child item(s) that a '${newType}' cannot parent: `
+                + `${names}. A '${newType}' allows child types: ${allowed.length ? allowed.join(', ') : 'none'}.`,
+        };
+    }
+
+    return { newType };
+}
+
 /**
  * Resolve the effective repoId for an operation, honoring an explicit
  * `targetWorkspaceId` when supplied. A target is normalized to its canonical
@@ -350,15 +458,17 @@ export function createCreateUpdateWorkItemTool(
             '`type` (default `work-item`; use `bug` to file bugs), `description`, `priority`, `tags`, and a full `plan`. ' +
             'To create it under a parent (Epic → Feature → PBI → Work Item/Bug/Goal), also pass `parentId`, ' +
             '`parentTarget`, or `parentWorkItemNumber`. ' +
-            'Field-update mode: give an existing target plus any of `title`, `description`, `priority`, `tags`, or ' +
-            '`status`; this preserves plan history and creates no plan version. `status` (e.g. `done`) transitions or ' +
-            'closes the item without editing the plan and syncs to the GitHub/Azure Boards mirror. ' +
+            'Field-update mode: give an existing target plus any of `title`, `description`, `priority`, `tags`, ' +
+            '`type`, or `status`; this preserves plan history and creates no plan version. `status` (e.g. `done`) ' +
+            'transitions or closes the item without editing the plan and syncs to the GitHub/Azure Boards mirror. ' +
             'Update-plan mode: give an existing target and the complete revised Markdown plan in `plan`; this saves a ' +
             'new plan version, resets status to `planning`, opens a change record, and broadcasts a dashboard update. ' +
             'Hierarchy-link mode: give an existing target plus `parentId`/`parentTarget`/`parentWorkItemNumber` to ' +
             'reparent the item, or `parentId: null` to unlink it. Link changes can combine with field or plan updates ' +
             'and are validated against the allowed parent/child hierarchy. ' +
-            '`type` cannot change in update mode; when supplied it must match the existing type. ' +
+            'In update mode, `type` may be changed: the switch is applied when the resulting parent and children ' +
+            'still satisfy the hierarchy rules (supply a valid new parent in the same call if the old one no longer ' +
+            'fits), and it preserves the plan and status. ' +
             'Pass `targetWorkspaceId` to scope the create/update to a different workspace of the same upstream repo ' +
             '(e.g. to file under a mirrored parent); omit to use the active workspace. ' +
             'Do not append raw text or a partial diff for `plan`; always send the full revised plan. ' +
@@ -384,7 +494,8 @@ export function createCreateUpdateWorkItemTool(
                 type: {
                     type: 'string',
                     enum: [...WORK_ITEM_TYPES],
-                    description: 'Work item type for create mode (default: work-item). In update mode this must match the existing item type.',
+                    description: 'Work item type. On create, sets the type (default: work-item). In update mode, '
+                        + 'a different value changes the type when the resulting parent/child hierarchy stays valid.',
                 },
                 title: {
                     type: 'string',
@@ -545,19 +656,19 @@ async function updateExistingWorkItem(
         return { updated: false, error: `Work item not found: ${String(target)}` };
     }
 
-    if (args.type !== undefined) {
-        if (!isWorkItemType(args.type)) {
-            return { updated: false, id: existing.id, error: `Unsupported work item type: ${String(args.type)}` };
-        }
-        const existingType = existing.type ?? 'work-item';
-        if (args.type !== existingType) {
-            return {
-                updated: false,
-                id: existing.id,
-                error: `Cannot change work item type from ${existingType} to ${args.type}`,
-            };
-        }
+    const parentSpec = getParentSpec(args);
+    if ('error' in parentSpec) {
+        return { updated: false, id: existing.id, error: parentSpec.error };
     }
+
+    // Resolve and validate a requested type change against the resulting
+    // hierarchy (parent legal for the new type, every child legal under it).
+    // Any rejection here happens before any write, so the item is untouched.
+    const typeChange = await resolveTypeChange(store, repoId, existing, args, parentSpec);
+    if ('error' in typeChange) {
+        return { updated: false, id: existing.id, error: typeChange.error };
+    }
+    const newType = typeChange.newType;
 
     const patchResult = buildCommonFieldPatch(args);
     if ('error' in patchResult) {
@@ -574,20 +685,25 @@ async function updateExistingWorkItem(
         };
     }
 
-    const parentSpec = getParentSpec(args);
-    if ('error' in parentSpec) {
-        return { updated: false, id: existing.id, error: parentSpec.error };
+    // Persist the type change first — as a common field-update that preserves
+    // plan and status — so the shared command service observes the new type when
+    // it validates a reparent and when it broadcasts the work-item-updated event.
+    // CoC type is local-only and not mirrored, so a direct store write is the
+    // correct persistence path; the command run below provides the broadcast.
+    if (newType !== undefined) {
+        await store.updateWorkItem(existing.id, { type: newType }, repoId);
+        existing.type = newType;
     }
 
     if (parentSpec.kind !== 'none') {
         return updateWorkItemLink(ctx, repoId, args, existing, patchResult.patch, parentSpec, content);
     }
 
-    if (!content && !patchResult.hasPatch) {
+    if (!content && !patchResult.hasPatch && newType === undefined) {
         return {
             updated: false,
             id: existing.id,
-            error: 'No update requested: provide at least one of title, description, priority, status, tags, '
+            error: 'No update requested: provide at least one of title, description, priority, status, tags, type, '
                 + 'a parent link change, or a complete revised plan',
         };
     }
