@@ -9,6 +9,7 @@ import {
     deleteGitHubEpicMirrorTree,
     importGitHubEpicTreeAsWorkItems,
     type AvailableGitHubWorkItemSyncRepo,
+    type GitHubSyncWarning,
     type GitHubWorkItemIssue,
     type GitHubWorkItemIssueTransport,
     type ImportGitHubEpicTreeResult,
@@ -16,7 +17,7 @@ import {
 import { parseGitHubWorkItemIssue } from './work-item-sync-github-issue';
 import type { WorkItem, WorkItemIndexEntry, WorkItemStore } from './types';
 import { WORK_ITEM_SYNC_MAX_ITEMS } from './work-item-sync-provider';
-import { clearWorkItemResponseCacheForWorkspace } from './work-item-response-cache';
+import { clearWorkItemResponseCacheForResolvedWorkspace } from './work-item-response-cache';
 
 export const DEFAULT_WORK_ITEM_GITHUB_PULL_INTERVAL_MINUTES = 5;
 
@@ -51,6 +52,20 @@ export interface WorkItemGitHubPullWorkspaceResult {
     deleted: number;
     deletedItemIds: string[];
     errors: WorkItemGitHubPullPollError[];
+    /**
+     * Conflicts where a locally-dirty/unpushed field was preserved over a
+     * competing remote change. Surfaced so the divergence is observable in logs.
+     */
+    warnings: GitHubSyncWarning[];
+    /** Number of remote candidate issues fetched for this poll (after the cap). */
+    candidatesConsidered: number;
+    /**
+     * True when the candidate fetch reached {@link WORK_ITEM_SYNC_MAX_ITEMS} and
+     * the remote issue list may have been truncated, so some descendants could be
+     * missing from the mirror. Surfaced in the structured result and logged so the
+     * truncation is observable rather than silent.
+     */
+    truncated: boolean;
 }
 
 interface WorkspaceTimer {
@@ -107,6 +122,9 @@ function blankResult(workspaceId: string): WorkItemGitHubPullWorkspaceResult {
         deleted: 0,
         deletedItemIds: [],
         errors: [],
+        warnings: [],
+        candidatesConsidered: 0,
+        truncated: false,
     };
 }
 
@@ -190,6 +208,18 @@ export class WorkItemGitHubPullPoller {
         const workspace = await this.getWorkspace(workspaceId);
         const repo = this.resolveRepo(workspaceId, workspace);
         const candidateIssues = await this.transport.listIssues(repo, { limit: WORK_ITEM_SYNC_MAX_ITEMS });
+        result.candidatesConsidered = candidateIssues.length;
+        // The transport caps the candidate list at WORK_ITEM_SYNC_MAX_ITEMS, so a
+        // count at the cap means the remote list was (or may have been) truncated
+        // and some descendants could be missing from this pull. Log it so the
+        // truncation is observable instead of silently dropping issues.
+        if (candidateIssues.length >= WORK_ITEM_SYNC_MAX_ITEMS) {
+            result.truncated = true;
+            this.logError(
+                `[work-items/github-poll] ${workspaceId}: reached the ${WORK_ITEM_SYNC_MAX_ITEMS}-issue cap; `
+                + 'the GitHub issue list may be truncated and some descendants could be missing from the mirror.',
+            );
+        }
 
         for (const rootEntry of roots) {
             const root = await this.options.workItemStore.getWorkItem(rootEntry.id, workspaceId);
@@ -202,6 +232,7 @@ export class WorkItemGitHubPullPoller {
                 result.updated += syncResult.updated;
                 result.deleted += syncResult.deleted;
                 result.deletedItemIds.push(...syncResult.deletedItemIds);
+                result.warnings.push(...syncResult.warnings);
             } catch (error) {
                 result.errors.push({
                     workItemId: root.id,
@@ -214,7 +245,7 @@ export class WorkItemGitHubPullPoller {
         }
 
         if (result.created > 0 || result.updated > 0 || result.deleted > 0) {
-            clearWorkItemResponseCacheForWorkspace(workspaceId);
+            await clearWorkItemResponseCacheForResolvedWorkspace(this.options.workItemStore, workspaceId);
         }
         return result;
     }
@@ -222,6 +253,9 @@ export class WorkItemGitHubPullPoller {
     private async pollWorkspaceSafely(workspaceId: string): Promise<void> {
         try {
             const result = await this.pollWorkspace(workspaceId);
+            for (const warning of result.warnings) {
+                this.logError(`[work-items/github-poll] ${workspaceId}: ${warning.message}`);
+            }
             for (const error of result.errors) {
                 this.logError(`[work-items/github-poll] ${workspaceId}: ${error.message}`);
             }
@@ -284,6 +318,7 @@ export class WorkItemGitHubPullPoller {
                 items: [],
                 created: 0,
                 updated: 0,
+                warnings: [],
                 ...deleteResult,
             };
         }

@@ -46,7 +46,7 @@ export const WARM_PREWARM_DEBOUNCE_ENV = 'COC_WARM_PREWARM_DEBOUNCE_MS';
  * Resolve the typing-driven prewarm debounce (ms) from the environment.
  *
  * The server resolves this once and surfaces it to the SPA via the runtime
- * feature-flag channel, so the `usePrewarmClient` hook waits the configured
+ * feature-flag channel, so the `useTypingPrewarmClient` hook waits the configured
  * window before firing a prewarm. Falls back to
  * {@link DEFAULT_WARM_PREWARM_DEBOUNCE_MS} when the override is absent, blank,
  * non-numeric, or negative. A value of `0` fires the prewarm without debouncing.

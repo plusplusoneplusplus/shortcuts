@@ -459,8 +459,8 @@ export interface SendMessageOptions {
      * Opt this turn into warm-client keep-alive. When `true` and the provider
      * supports warming (and warming is enabled via TTL), the provider keeps its
      * client process alive after a clean completion — keyed per
-     * `(provider, workingDirectory)` — so the next opted-in turn reuses a warm
-     * process instead of paying full cold-start cost.
+     * `(provider, warmKey)` — so the next opted-in turn for the same warm scope
+     * reuses a warm process instead of paying full cold-start cost.
      *
      * Chat-process turns (manual, queued, autopilot, ralph) set this; one-shot
      * background jobs (title generation, dream, other `transform()` callers)
@@ -468,6 +468,14 @@ export interface SendMessageOptions {
      * its own {@link client} (the caller then owns that client's lifecycle).
      */
     keepWarm?: boolean;
+    /**
+     * Provider-neutral warm scope key used when {@link keepWarm} is true.
+     *
+     * CoC passes the conversation process id here, while `workingDirectory`
+     * remains execution context only. Providers must not fall back to cwd-scoped
+     * warming when this is missing; they should run the turn cold.
+     */
+    warmKey?: string;
     /** Optional model override (e.g., 'gpt-5', 'claude-sonnet-4.6') */
     model?: string;
     /**

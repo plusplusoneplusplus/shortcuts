@@ -6,6 +6,7 @@ import {
     buildGitHubWorkItemIssueUpdate,
     buildGitHubWorkItemLabels,
     buildGitHubWorkItemSyncMetadata,
+    githubIssueContentRevision,
     parseGitHubWorkItemIssue,
     upsertGitHubWorkItemSyncMetadataBlock,
     type GitHubIssueLabel,
@@ -93,6 +94,20 @@ type ExecFileAsync = (
     options: { encoding: 'utf8'; windowsHide: true; maxBuffer: number },
 ) => Promise<{ stdout: string; stderr: string }>;
 
+/**
+ * Surfaced when a GitHub→local pull kept an unpushed local edit instead of
+ * applying the conflicting remote value, so the divergence is observable.
+ */
+export interface GitHubSyncWarning {
+    provider: 'github';
+    code: 'local-edits-preserved';
+    workItemId: string;
+    issueNumber?: number;
+    /** GitHub-owned fields whose local edits were kept over a conflicting remote change. */
+    fields: string[];
+    message: string;
+}
+
 export interface ImportGitHubEpicTreeResult {
     root: WorkItem;
     items: WorkItem[];
@@ -100,6 +115,11 @@ export interface ImportGitHubEpicTreeResult {
     updated: number;
     deleted: number;
     deletedItemIds: string[];
+    /**
+     * Conflicts where a locally-dirty/unpushed field was preserved over a
+     * competing remote change during this pull. Empty when nothing conflicted.
+     */
+    warnings: GitHubSyncWarning[];
 }
 
 export interface ImportGitHubEpicTreeOptions {
@@ -401,6 +421,7 @@ function githubMirrorForIssue(issue: GitHubWorkItemIssue, pulledAt: string): Non
         state: issue.state,
         updatedAt: issue.updatedAt,
         lastPulledAt: pulledAt,
+        lastSyncedRemoteRevision: githubIssueContentRevision(issue),
     };
 }
 
@@ -984,6 +1005,118 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
 }
 
 /**
+ * GitHub-owned content fields a local user can edit between pulls. On re-pull
+ * these are reconciled with a 3-way merge (base = last-synced value) so an
+ * unpushed local edit survives instead of being clobbered by the remote value.
+ * Structural fields (type, parentId, tracker, githubMirror) stay remote-derived
+ * because they are recomputed from the issue tree on every pull.
+ */
+const GITHUB_MERGE_FIELDS = ['title', 'description', 'status', 'tags'] as const;
+type GitHubMergeField = (typeof GITHUB_MERGE_FIELDS)[number];
+
+interface GitHubOwnedFields {
+    title: string;
+    description: string;
+    status: WorkItemStatus;
+    tags: string[] | undefined;
+}
+
+interface GitHubOwnedFieldMergeResult {
+    fields: GitHubOwnedFields;
+    /** Per-field base hashes to persist as the next pull's last-synced fingerprint. */
+    baseHashes: Record<string, string>;
+    /** Fields where the local edit was kept over a conflicting remote change. */
+    conflictFields: GitHubMergeField[];
+}
+
+function normalizeGitHubMergeTags(tags: readonly string[] | undefined): string[] {
+    return [...(tags ?? [])]
+        .map(tag => tag.trim())
+        .filter(Boolean)
+        .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()) || a.localeCompare(b));
+}
+
+function githubFieldFingerprint(field: GitHubMergeField, value: unknown): string {
+    const normalized = field === 'tags'
+        ? normalizeGitHubMergeTags(value as string[] | undefined)
+        : String(value ?? '');
+    return crypto.createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+}
+
+function githubOwnedFieldHashes(fields: GitHubOwnedFields): Record<string, string> {
+    const hashes: Record<string, string> = {};
+    for (const field of GITHUB_MERGE_FIELDS) {
+        hashes[field] = githubFieldFingerprint(field, fields[field]);
+    }
+    return hashes;
+}
+
+function assignGitHubOwnedField(
+    target: GitHubOwnedFields,
+    field: GitHubMergeField,
+    source: GitHubOwnedFields,
+): void {
+    switch (field) {
+        case 'title': target.title = source.title; break;
+        case 'description': target.description = source.description; break;
+        case 'status': target.status = source.status; break;
+        case 'tags': target.tags = source.tags; break;
+    }
+}
+
+/**
+ * Three-way merge of GitHub-owned fields between an existing local mirror and an
+ * incoming remote pull. A field is kept local only when it diverged from the
+ * last synced value (`lastSyncedFieldHashes`); otherwise the remote value wins,
+ * preserving the prior remote-authoritative behavior for clean and legacy items.
+ */
+function mergeGitHubOwnedFields(
+    existing: WorkItem,
+    remote: GitHubOwnedFields,
+): GitHubOwnedFieldMergeResult {
+    const base = existing.githubMirror?.lastSyncedFieldHashes;
+    const local: GitHubOwnedFields = {
+        title: existing.title,
+        description: existing.description ?? '',
+        status: existing.status,
+        tags: existing.tags,
+    };
+    const fields: GitHubOwnedFields = { ...remote };
+    const baseHashes: Record<string, string> = {};
+    const conflictFields: GitHubMergeField[] = [];
+
+    for (const field of GITHUB_MERGE_FIELDS) {
+        const remoteHash = githubFieldFingerprint(field, remote[field]);
+        const localHash = githubFieldFingerprint(field, local[field]);
+        const baseHash = base?.[field];
+
+        if (localHash === remoteHash) {
+            // Local already equals remote (untouched, or pushed): take remote.
+            baseHashes[field] = remoteHash;
+            continue;
+        }
+        if (baseHash === undefined || localHash === baseHash) {
+            // No recorded base (legacy/first pull) or local untouched since the
+            // last sync: remote wins, matching the prior behavior.
+            baseHashes[field] = remoteHash;
+            continue;
+        }
+        // Local diverged from the last sync: keep the unpushed local edit so it
+        // survives the pull. Hold the prior base so the field stays "dirty" and
+        // keeps surviving on later pulls until it is pushed.
+        assignGitHubOwnedField(fields, field, local);
+        baseHashes[field] = baseHash;
+        if (remoteHash !== baseHash) {
+            // Remote also moved since the last sync: a genuine conflict the user
+            // should know about.
+            conflictFields.push(field);
+        }
+    }
+
+    return { fields, baseHashes, conflictFields };
+}
+
+/**
  * Import or re-pull a GitHub-backed Epic tree into CoC's read mirror.
  *
  * The tree root is the imported GitHub issue. Descendants are discovered only
@@ -1006,6 +1139,7 @@ export async function importGitHubEpicTreeAsWorkItems(
     const items: WorkItem[] = [];
     let created = 0;
     let updated = 0;
+    const warnings: GitHubSyncWarning[] = [];
 
     for (const { issue, parsed } of tree) {
         const existing = await findLocalMirrorForIssue(context, repo, index, issue, parsed);
@@ -1032,15 +1166,38 @@ export async function importGitHubEpicTreeAsWorkItems(
             : undefined;
         const isRoot = issue.number === rootIssue.number;
         const desiredId = existing?.id ?? parsed.metadata?.workItemId ?? crypto.randomUUID();
-        const commonFields = {
+        const remoteOwned: GitHubOwnedFields = {
             title: issue.title,
             description: parsed.bodyWithoutMetadata,
             status: workItemStatusForGitHubIssue(issue, parsed),
+            tags: tagsForMirror(parsed),
+        };
+        // Re-pull keeps unpushed local edits to GitHub-owned fields via a 3-way
+        // merge; a fresh mirror records the remote values as the synced base.
+        const merge = existing
+            ? mergeGitHubOwnedFields(existing, remoteOwned)
+            : { fields: remoteOwned, baseHashes: githubOwnedFieldHashes(remoteOwned), conflictFields: [] };
+        if (existing && merge.conflictFields.length > 0) {
+            warnings.push({
+                provider: 'github',
+                code: 'local-edits-preserved',
+                workItemId: existing.id,
+                issueNumber: issue.number,
+                fields: merge.conflictFields,
+                message: `GitHub issue #${issue.number} changed remotely while local edits to `
+                    + `${merge.conflictFields.join(', ')} were unpushed; the local edits were kept `
+                    + 'and the remote values were not applied.',
+            });
+        }
+        const commonFields = {
+            title: merge.fields.title,
+            description: merge.fields.description,
+            status: merge.fields.status,
             type,
             parentId,
             tracker: isRoot ? githubBackedTrackerForRoot(issue, pulledAt) : undefined,
-            githubMirror: githubMirrorForIssue(issue, pulledAt),
-            tags: tagsForMirror(parsed),
+            githubMirror: { ...githubMirrorForIssue(issue, pulledAt), lastSyncedFieldHashes: merge.baseHashes },
+            tags: merge.fields.tags,
         };
 
         let item: WorkItem;
@@ -1080,5 +1237,5 @@ export async function importGitHubEpicTreeAsWorkItems(
             new Set(tree.map(({ issue }) => issue.number)),
         )
         : { deleted: 0, deletedItemIds: [] };
-    return { root, items, created, updated, ...pruneResult };
+    return { root, items, created, updated, warnings, ...pruneResult };
 }

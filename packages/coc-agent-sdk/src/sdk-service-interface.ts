@@ -10,7 +10,7 @@
  */
 
 import type { SendMessageOptions, TokenUsage, PermissionHandler } from './types';
-import type { WarmStateChangeListener } from './warm-client-registry';
+import type { WarmStateChangeListener, WarmStatus } from './warm-client-registry';
 
 // ============================================================================
 // Provider-Agnostic Primitive Types
@@ -126,15 +126,18 @@ export interface TransformResult {
  * Options for a {@link ISDKService.prewarm} call.
  *
  * Prewarm spins up (or keeps alive) the provider client process for the next
- * turn without creating a session. The working directory is the only input that
- * matters: together with the provider it forms the warm-client key, so a
- * prewarm and the follow-up send for the same conversation reuse one client.
+ * turn without creating a session. `warmKey` is a provider-neutral scope key:
+ * together with the provider it forms the warm-client key, so a prewarm and the
+ * follow-up send for the same conversation reuse one client.
  */
 export interface PrewarmOptions {
     /**
-     * Working directory for the warm client. Part of the warm-client key
-     * `(provider, workingDirectory)`; for a given conversation the cwd is stable
-     * across turns, so a prewarm here is reused by the next send.
+     * Provider-neutral warm scope key. CoC supplies the conversation process id.
+     */
+    warmKey: string;
+    /**
+     * Working directory for the warm client process and per-turn execution
+     * context. This is not part of the warm-client key.
      */
     workingDirectory?: string;
 }
@@ -216,10 +219,25 @@ export interface ISDKService {
     prewarm?(options: PrewarmOptions): Promise<void>;
 
     /**
+     * Read the current warm-client {@link WarmStatus} for a `(provider,
+     * warmKey)` key — the synchronous snapshot side of warm state that
+     * complements the push-based {@link onWarmStatusChange}. Used by the CoC SSE
+     * bridge to send an initial warm-status frame when a warm-only stream opens,
+     * so a chat that is already warm before the browser subscribes shows the dot
+     * without waiting for the next transition.
+     *
+     * Optional and synchronous (it only reads in-memory registry state): providers
+     * that cannot stay warm (e.g. Claude) omit it, and callers treat a missing
+     * method as `cold`. Pairs with {@link prewarm}/{@link onWarmStatusChange} — a
+     * provider that implements those implements this.
+     */
+    getWarmStatus?(options: PrewarmOptions): WarmStatus;
+
+    /**
      * Subscribe to warm-client state transitions for this provider — pushing the
      * registry's `(key, status)` changes (cold → warming → warm → active → cold)
      * to external observers such as the CoC SSE bridge that drives the SPA warm
-     * indicator. `key` is `makeWarmKey(provider, workingDirectory)`. Returns an
+     * indicator. `key` is `makeWarmKey(provider, warmKey)`. Returns an
      * unsubscribe function.
      *
      * Optional: providers that never stay warm (e.g. Claude) omit this method, so

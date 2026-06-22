@@ -4,7 +4,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -327,6 +328,9 @@ export function useTaskTree(wsId: string): UseTaskTreeResult {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const hasLoadedOnce = useRef(false);
+    // Route through the clone's own server so a remote workspace's task tree and
+    // comment counts resolve on their owning host instead of 404ing the local one.
+    const client = useCocClient(wsId);
 
     const refresh = useCallback(() => {
         if (!wsId) return;
@@ -335,7 +339,7 @@ export function useTaskTree(wsId: string): UseTaskTreeResult {
         }
         setError(null);
 
-        const tasksClient = getSpaCocClient().tasks;
+        const tasksClient = client.tasks;
         Promise.all([
             tasksClient.getTree(wsId, { showArchived: true }),
             tasksClient.getCommentCounts(wsId).catch(() => null),
@@ -353,7 +357,7 @@ export function useTaskTree(wsId: string): UseTaskTreeResult {
             setError(getSpaCocClientErrorMessage(err, 'Failed to load tasks'));
             setLoading(false);
         });
-    }, [wsId]);
+    }, [wsId, client]);
 
     useEffect(() => {
         refresh();

@@ -35,7 +35,11 @@ import { DiffCommentsManager } from '../tasks/comments/diff-comments-manager';
 import { buildBatchResolvePrompt } from '../tasks/comments/task-comments-ai';
 import { buildMultiFileBatchResolvePrompt } from '../tasks/comments/diff-comments-ai';
 import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
-import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
+import {
+    clearWorkItemResponseCacheForWorkspace,
+    clearWorkItemResponseCacheForWorkspaces,
+    resolveWorkItemResponseCacheWorkspaceIds,
+} from '../work-items/work-item-response-cache';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 
 const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
@@ -970,8 +974,11 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     : 'Auto-generated plan template',
             });
 
-            clearWorkItemResponseCacheForWorkspace(repoId);
-            getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-added', workspaceId: repoId, item });
+            const scopeIds = await resolveWorkItemResponseCacheWorkspaceIds(workItemStore, repoId);
+            clearWorkItemResponseCacheForWorkspaces(scopeIds);
+            for (const scopeId of scopeIds) {
+                getWsServer?.()?.broadcastProcessEvent({ type: 'work-item-added', workspaceId: scopeId, item });
+            }
             sendJSON(res, 201, item);
         },
     });

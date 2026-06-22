@@ -27,6 +27,8 @@ export interface SourceCanvasDockProps {
     fileRef: SourceCanvasFileRef;
     /** Resolved workspace id, used for reveal-in-explorer. */
     wsId?: string | null;
+    /** Current workspace root, used to show project-relative paths in panel chrome. */
+    workspaceRootPath?: string | null;
     /** Loaded content for the read-only viewer (unused for notes). */
     content?: SourceCanvasContentState;
     /** Mobile breakpoint → render inside a BottomSheet instead of a column. */
@@ -37,7 +39,15 @@ export interface SourceCanvasDockProps {
     resize: Pick<UseResizablePanelReturn, 'width' | 'handleMouseDown' | 'handleTouchStart'>;
 }
 
-export function SourceCanvasDock({ fileRef, wsId, content, isMobile, onClose, resize }: SourceCanvasDockProps) {
+export function SourceCanvasDock({
+    fileRef,
+    wsId,
+    workspaceRootPath,
+    content,
+    isMobile,
+    onClose,
+    resize,
+}: SourceCanvasDockProps) {
     if (isMobile) {
         return (
             <BottomSheet
@@ -49,6 +59,7 @@ export function SourceCanvasDock({ fileRef, wsId, content, isMobile, onClose, re
                 <SourceCanvasPanel
                     fileRef={fileRef}
                     wsId={wsId}
+                    workspaceRootPath={workspaceRootPath}
                     content={content}
                     onClose={onClose}
                 />
@@ -74,6 +85,7 @@ export function SourceCanvasDock({ fileRef, wsId, content, isMobile, onClose, re
                 <SourceCanvasPanel
                     fileRef={fileRef}
                     wsId={wsId}
+                    workspaceRootPath={workspaceRootPath}
                     content={content}
                     onClose={onClose}
                 />

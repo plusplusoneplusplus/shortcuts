@@ -9,6 +9,7 @@ import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-rou
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import type { WorkItem } from '../../../src/server/work-items/types';
 import {
+    githubIssueContentRevision,
     parseGitHubWorkItemIssue,
     type GitHubWorkItemIssue,
     type GitHubWorkItemIssueTransport,
@@ -465,6 +466,93 @@ describe('GitHub-backed work item edits', () => {
 
         expect(res.status).toBe(200);
         expect(mock.calls.getIssue).toHaveLength(0);
+        expect(mock.calls.updateIssue).toHaveLength(0);
+    });
+});
+
+describe('GitHub-backed edit conflict detection via content revision', () => {
+    const EPIC_LABELS = ['coc:type:epic', 'coc:status:created', 'coc:priority:normal'];
+
+    function epicRemoteIssue(overrides: Partial<GitHubWorkItemIssue> = {}): GitHubWorkItemIssue {
+        return mirroredIssue(10, {
+            title: 'GitHub Epic',
+            body: 'Remote prose',
+            labels: EPIC_LABELS,
+            ...overrides,
+        });
+    }
+
+    function rootWithRevision(remote: GitHubWorkItemIssue, overrides: Partial<WorkItem> = {}): WorkItem {
+        return githubBackedRoot({
+            githubMirror: {
+                issueId: 'I_10',
+                issueNumber: 10,
+                issueUrl: issueUrl(10),
+                state: 'open',
+                updatedAt: NOW,
+                lastPulledAt: NOW,
+                lastSyncedRemoteRevision: githubIssueContentRevision(remote),
+            },
+            ...overrides,
+        });
+    }
+
+    it('allows a local save when only the remote updated_at moved but CoC-owned content is unchanged', async () => {
+        // Same content the mirror last synced, but GitHub bumped updated_at for a
+        // non-content reason (a reaction/comment). The old timestamp-string check
+        // would have raised a spurious WORK_ITEM_SYNC_CONFLICT here.
+        const remote = epicRemoteIssue({ updatedAt: LATER });
+        await store.addWorkItem(rootWithRevision(remote));
+        const mock = makeMockTransport([remote]);
+        await startServer(mock);
+
+        const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/epic-1`, {
+            title: 'Locally renamed epic',
+        });
+
+        expect(res.status).toBe(200);
+        expect(mock.calls.updateIssue).toHaveLength(1);
+        const stored = await store.getWorkItem('epic-1', REPO_ID);
+        expect(stored?.title).toBe('Locally renamed epic');
+        // The mirror records the revision of the just-pushed issue, so it
+        // round-trips and a follow-up edit does not spuriously conflict.
+        expect(stored?.githubMirror?.lastSyncedRemoteRevision)
+            .toBe(githubIssueContentRevision(mock.issues.get(10)!));
+    });
+
+    it('rejects a local save when the remote CoC-owned content actually changed (revision diverged)', async () => {
+        const syncedRemote = epicRemoteIssue();
+        await store.addWorkItem(rootWithRevision(syncedRemote));
+        // Remote title changed AND updated_at moved — a genuine remote edit.
+        const mock = makeMockTransport([epicRemoteIssue({ title: 'Remote changed title', updatedAt: LATER })]);
+        await startServer(mock);
+
+        const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/epic-1`, {
+            title: 'Stale local title',
+        });
+
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('WORK_ITEM_SYNC_CONFLICT');
+        expect(mock.calls.updateIssue).toHaveLength(0);
+        const stored = await store.getWorkItem('epic-1', REPO_ID);
+        expect(stored?.title).toBe('GitHub Epic');
+    });
+
+    it('catches a remote content change even when updated_at is byte-identical (revision, not timestamp)', async () => {
+        const syncedRemote = epicRemoteIssue();
+        await store.addWorkItem(rootWithRevision(syncedRemote));
+        // Content changed but updated_at is unchanged (NOW). The old
+        // timestamp-string-equality check would have missed this and silently
+        // overwritten the remote edit; the revision check still flags it.
+        const mock = makeMockTransport([epicRemoteIssue({ body: 'Remote prose edited elsewhere', updatedAt: NOW })]);
+        await startServer(mock);
+
+        const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/epic-1`, {
+            title: 'Local title that should not clobber remote',
+        });
+
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('WORK_ITEM_SYNC_CONFLICT');
         expect(mock.calls.updateIssue).toHaveLength(0);
     });
 });

@@ -254,7 +254,7 @@ test.describe('Pull Requests tab — list', () => {
         }
     });
 
-    test('shows file count and review minutes in each row meta line', async ({ page, serverUrl }) => {
+    test('shows file count in each row meta line', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-4', 'My Repo');
         const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
             pullRequests: MOCK_PR_LIST_WITH_DIFF_STATS,
@@ -268,10 +268,10 @@ test.describe('Pull Requests tab — list', () => {
             const count = await rows.count();
             for (let i = 0; i < count; i++) {
                 await expect(rows.nth(i).locator('.pr-meta')).toContainText(/\d+ files?/, { timeout: 10000 });
-                await expect(rows.nth(i).locator('.pr-meta')).toContainText(/\d+ min/, { timeout: 10000 });
             }
             await expect(rows.nth(0).locator('.pr-meta')).toContainText('2 files', { timeout: 10000 });
-            await expect(rows.nth(0).locator('.pr-meta')).toContainText('2 min', { timeout: 10000 });
+            // Review-minutes estimate was removed from the row meta line.
+            await expect(rows.nth(0).locator('.pr-meta')).not.toContainText(/\d+ min/, { timeout: 10000 });
         } finally {
             await routeCleanup();
             cleanup();

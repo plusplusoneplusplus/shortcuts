@@ -15,6 +15,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, within } from '@testing-library/react';
 import {
     PrChecksCompact,
+    PrChecksSummaryChips,
     summarizeCheckRows,
     checkStatusLabel,
     checkStatusEmoji,
@@ -144,5 +145,32 @@ describe('PrChecksCompact', () => {
     it('namespaces test ids via the testId prop', () => {
         const { getByTestId } = render(<PrChecksCompact state="ready" rows={MIXED_ROWS} testId="pr-checks-compact-x:1" />);
         expect(getByTestId('pr-checks-compact-x:1-summary')).toBeTruthy();
+    });
+});
+
+describe('PrChecksSummaryChips (shared between the expanded list and the inline summary)', () => {
+    it('renders one non-zero chip per bucket in problems-first order', () => {
+        const { getByTestId, queryByTestId } = render(<PrChecksSummaryChips rows={MIXED_ROWS} />);
+        const summary = getByTestId('pr-checks-compact-summary');
+        expect(within(summary).getByTestId('pr-checks-compact-count-failing').getAttribute('data-count')).toBe('1');
+        expect(within(summary).getByTestId('pr-checks-compact-count-pending').getAttribute('data-count')).toBe('2');
+        expect(within(summary).getByTestId('pr-checks-compact-count-passing').getAttribute('data-count')).toBe('2');
+        // No list rows here — chips only.
+        expect(queryByTestId('pr-checks-compact-row')).toBeNull();
+
+        // Problems-first: failing precedes passing in document order.
+        const order = Array.from(summary.children).map(el => el.getAttribute('data-testid'));
+        expect(order.indexOf('pr-checks-compact-count-failing')).toBeLessThan(order.indexOf('pr-checks-compact-count-passing'));
+    });
+
+    it('renders nothing when there are no rows', () => {
+        const { container } = render(<PrChecksSummaryChips rows={[]} />);
+        expect(container.firstChild).toBeNull();
+    });
+
+    it('namespaces the chip test ids via testId', () => {
+        const { getByTestId } = render(<PrChecksSummaryChips rows={MIXED_ROWS} testId="pr-status-card-checks-inline-o:1" />);
+        expect(getByTestId('pr-status-card-checks-inline-o:1-summary')).toBeTruthy();
+        expect(getByTestId('pr-status-card-checks-inline-o:1-count-failing').getAttribute('data-count')).toBe('1');
     });
 });

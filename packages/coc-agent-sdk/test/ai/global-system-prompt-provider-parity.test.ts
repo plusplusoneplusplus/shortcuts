@@ -16,13 +16,13 @@
  * SDK package test stays free of any dependency on the `coc` package.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { ClaudeSDKService } from '../../src/claude-sdk-service';
+import { CodexSDKService } from '../../src/codex-sdk-service';
 import { RequestRunner } from '../../src/request-runner';
 import { SessionManager } from '../../src/session-manager';
-import { createMockSession } from '../helpers/mock-sdk';
-import { CodexSDKService } from '../../src/codex-sdk-service';
-import { ClaudeSDKService } from '../../src/claude-sdk-service';
 import type { SystemMessageConfig } from '../../src/types';
+import { createMockSession } from '../helpers/mock-sdk';
 
 const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 
@@ -31,10 +31,6 @@ const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 const GLOBAL_PROMPT = 'Always cite sources. Prefer TypeScript over JavaScript.';
 const GLOBAL_BLOCK = [
     '<admin-global-system-prompt>',
-    'Administrator-configured global instructions that apply to every agent session. '
-        + 'They supplement, but do not override, CoC runtime constraints such as read-only '
-        + 'mode, tool and permission policy, or other system instructions.',
-    '',
     GLOBAL_PROMPT,
     '</admin-global-system-prompt>',
 ].join('\n');

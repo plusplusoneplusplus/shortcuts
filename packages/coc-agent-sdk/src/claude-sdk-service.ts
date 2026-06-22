@@ -233,6 +233,8 @@ interface ClaudeQueryOptions {
         allowDangerouslySkipPermissions?: boolean;
         /** Tool names auto-allowed without a permission prompt (CoC bridge tools). */
         allowedTools?: string[];
+        /** Built-in tool names the model is blocked from calling (e.g. native AskUserQuestion CoC supersedes). */
+        disallowedTools?: string[];
         /** MCP servers to expose to the Claude Code session (CoC LLM-tool bridge + caller servers). */
         mcpServers?: Record<string, ClaudeMcpServerConfig>;
         /** Resume a persisted Claude Code transcript session. */
@@ -668,6 +670,7 @@ export class ClaudeSDKService implements ISDKService {
             const { servers: mcpServers, allowedTools, cleanup } = await this.buildClaudeMcpServers(options);
             mcpServerNames = Object.keys(mcpServers).sort();
             mcpCleanup = cleanup;
+            const disallowedTools = resolveClaudeDisallowedTools(options);
             const systemPromptOptions = resolveClaudeSystemPromptOptions(options.systemMessage);
             const queryOptions: ClaudeQueryOptions = {
                 prompt: this.buildClaudePrompt(options),
@@ -680,6 +683,7 @@ export class ClaudeSDKService implements ISDKService {
                     ...systemPromptOptions,
                     ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
                     ...(allowedTools.length > 0 ? { allowedTools } : {}),
+                    ...(disallowedTools.length > 0 ? { disallowedTools } : {}),
                     ...(options.sessionId ? { resume: options.sessionId } : { sessionId }),
                     ...permissionOptions,
                 },
@@ -1581,6 +1585,31 @@ function inferClaudeMcpServerNamesFromOptions(options: SendMessageOptions): stri
         names.add(COC_LLM_TOOLS_MCP_SERVER_NAME);
     }
     return Array.from(names).sort();
+}
+
+/**
+ * Native Claude Code built-in for posing multiple-choice questions to the user.
+ * CoC supersedes it with its own `ask_user` tool, but the two have different
+ * names, so the SDK's `overridesBuiltInTool` flag — which only overrides a
+ * built-in of the SAME name — cannot suppress it. CoC also wires none of the
+ * host callbacks (`onUserDialog`, `onElicitation`, `canUseTool`) the native tool
+ * needs, so if the model ever calls it the SDK auto-fails the call before the
+ * user can answer. We disable it explicitly so the model is steered to `ask_user`.
+ */
+const NATIVE_ASK_USER_BUILT_IN_TOOL = 'AskUserQuestion';
+
+/**
+ * Built-in tool names to block on the Claude Code session. We block the native
+ * `AskUserQuestion` whenever CoC's own `ask_user` replacement is present (the
+ * interactive Ask/Ralph contexts), since CoC can service `ask_user` but not the
+ * native built-in.
+ */
+function resolveClaudeDisallowedTools(options: SendMessageOptions): string[] {
+    const disallowed: string[] = [];
+    if (options.tools?.some(tool => tool.name === 'ask_user')) {
+        disallowed.push(NATIVE_ASK_USER_BUILT_IN_TOOL);
+    }
+    return disallowed;
 }
 
 /**

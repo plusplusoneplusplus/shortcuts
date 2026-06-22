@@ -130,6 +130,21 @@ export interface WorkItemGitHubMirrorMetadata {
     updatedAt?: string;
     /** Last successful GitHub→local pull timestamp for this item. */
     lastPulledAt?: string;
+    /**
+     * Per-field hashes of GitHub-owned local fields (title, description, status,
+     * tags) after the last successful pull. The next pull uses these as the merge
+     * base so a locally-dirty/unpushed edit survives instead of being clobbered.
+     */
+    lastSyncedFieldHashes?: Record<string, string>;
+    /**
+     * Content revision of the remote GitHub issue (a hash of its CoC-owned
+     * content — title, metadata-stripped body, state, labels) recorded at the
+     * last successful pull/push. The push gate compares this against the current
+     * remote revision so a "changed remotely" conflict reflects a real edit to
+     * CoC-owned content, not a benign `updated_at` bump (a reaction, comment,
+     * cross-reference, or unrelated label) or a timestamp reformat.
+     */
+    lastSyncedRemoteRevision?: string;
 }
 
 /** Azure Boards-backed Epic root metadata. Organization/project identity is workspace-scoped config. */
@@ -199,6 +214,17 @@ export interface WorkItemSyncRemoteIdentity {
     /** Browser URL for the remote issue/work item. */
     issueUrl?: string;
 }
+
+/**
+ * Provider that owns the canonical origin scope a work item is stored under.
+ *
+ * Derived once from the item's resolved origin id (e.g. `gh_*` → `github`) and
+ * persisted on the item so "is this GitHub-mirrored?" no longer has to be
+ * recomputed from the remote URL host on demand. This is the *git host* of the
+ * scope the item physically lives in — distinct from `WorkItemSyncProvider`,
+ * which describes the external tracker an Epic tree syncs with.
+ */
+export type WorkItemOriginProvider = 'local' | 'github' | 'azure-devops' | 'git';
 
 /** Parent reference captured in provider-owned metadata for hierarchy reconstruction. */
 export interface WorkItemSyncParentReference {
@@ -393,8 +419,21 @@ export interface WorkItem {
     id: string;
     /** Sequential human-readable number (e.g. 1 → displayed as WI-1). Per-repo, never reused. */
     workItemNumber?: number;
-    /** Workspace/repo this work item belongs to. */
+    /**
+     * Caller-facing workspace/repo id the item was stamped with at create time
+     * (e.g. a per-clone `ws-*` id or a `gh_*` origin id). Kept for provenance and
+     * backward compatibility; scope comparisons should use `originId` instead.
+     */
     repoId: string;
+    /**
+     * Stable canonical origin scope id this item is stored under
+     * (e.g. `gh_<owner>_<repo>`, `local_<workspaceId>`). Independent of which
+     * caller URL family stamped `repoId`, so same-origin clones resolve equal.
+     * Stamped on create and backfilled on read for pre-existing items.
+     */
+    originId?: string;
+    /** Git host that owns `originId`. Distinguishes local from github-mirrored items without re-parsing the remote URL. */
+    originProvider?: WorkItemOriginProvider;
     /** Short title. */
     title: string;
     /** Markdown description of what needs to be done. */
@@ -499,6 +538,10 @@ export interface WorkItemIndexEntry {
     /** Sequential human-readable number (e.g. 1 → displayed as WI-1). */
     workItemNumber?: number;
     repoId: string;
+    /** Stable canonical origin scope id (mirrors {@link WorkItem.originId}). */
+    originId?: string;
+    /** Git host that owns `originId` (mirrors {@link WorkItem.originProvider}). */
+    originProvider?: WorkItemOriginProvider;
     title: string;
     /** Description excerpt for search (may be truncated). */
     description?: string;
@@ -575,7 +618,7 @@ export interface WorkItemStore {
     // CRUD
     addWorkItem(item: WorkItem): Promise<void>;
     getWorkItem(id: string, repoId?: string): Promise<WorkItem | undefined>;
-    updateWorkItem(id: string, updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>>, repoId?: string): Promise<WorkItem | undefined>;
+    updateWorkItem(id: string, updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'originId' | 'originProvider' | 'createdAt'>>, repoId?: string): Promise<WorkItem | undefined>;
     removeWorkItem(id: string, repoId?: string): Promise<boolean>;
     listWorkItems(filter?: WorkItemFilter): Promise<WorkItemListResult>;
     /** List work items grouped by status with per-group pagination. */
@@ -667,12 +710,28 @@ export function getOwnWorkItemTrackerKind(item: { tracker?: WorkItemTrackerMetad
     return item.tracker?.kind ?? 'local-only';
 }
 
+/**
+ * Derive the origin provider from a canonical origin/scope id by its prefix.
+ *
+ * Mirrors forge's `resolveCanonicalOrigin` provider mapping
+ * (`gh_*` → github, `ado_*` → azure-devops, `git_*` → git) and defaults to
+ * `local` for `local_*` ids and any non-canonical caller stamp (e.g. `ws-*`).
+ */
+export function deriveWorkItemOriginProvider(originId: string | undefined): WorkItemOriginProvider {
+    if (originId?.startsWith('gh_')) return 'github';
+    if (originId?.startsWith('ado_')) return 'azure-devops';
+    if (originId?.startsWith('git_')) return 'git';
+    return 'local';
+}
+
 /** Extract an index entry from a full work item. */
 export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
     return {
         id: item.id,
         workItemNumber: item.workItemNumber,
         repoId: item.repoId,
+        originId: item.originId,
+        originProvider: item.originProvider,
         title: item.title,
         description: item.description || undefined,
         status: item.status,

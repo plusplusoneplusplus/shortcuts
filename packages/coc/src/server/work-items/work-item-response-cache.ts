@@ -3,6 +3,7 @@ import type {
     WorkItemPriority,
     WorkItemSource,
     WorkItemStatus,
+    WorkItemStore,
     WorkItemSyncProvider,
     WorkItemTrackerKind,
     WorkItemType,
@@ -163,11 +164,46 @@ export async function getOrRefreshWorkItemResponseCacheEntry<T>(
 }
 
 export function clearWorkItemResponseCacheForWorkspace(workspaceId: string): void {
+    clearWorkItemResponseCacheForWorkspaces([workspaceId]);
+}
+
+export function clearWorkItemResponseCacheForWorkspaces(workspaceIds: Iterable<string>): void {
+    const ids = new Set(
+        [...workspaceIds]
+            .map(id => id.trim())
+            .filter(Boolean),
+    );
+    if (ids.size === 0) return;
     for (const [key, entry] of workItemResponseCache) {
-        if (entry.workspaceId === workspaceId) {
+        if (ids.has(entry.workspaceId)) {
             workItemResponseCache.delete(key);
         }
     }
+}
+
+export async function resolveWorkItemResponseCacheWorkspaceIds(
+    workItemStore: Pick<WorkItemStore, 'resolveOriginId'>,
+    workspaceId: string,
+    additionalWorkspaceIds: readonly (string | undefined)[] = [],
+): Promise<string[]> {
+    const ids = new Set<string>();
+    for (const id of [workspaceId, ...additionalWorkspaceIds]) {
+        const normalized = id?.trim();
+        if (normalized) ids.add(normalized);
+    }
+    const resolved = await workItemStore.resolveOriginId?.(workspaceId);
+    if (resolved?.trim()) ids.add(resolved.trim());
+    return [...ids];
+}
+
+export async function clearWorkItemResponseCacheForResolvedWorkspace(
+    workItemStore: Pick<WorkItemStore, 'resolveOriginId'>,
+    workspaceId: string,
+    additionalWorkspaceIds: readonly (string | undefined)[] = [],
+): Promise<void> {
+    clearWorkItemResponseCacheForWorkspaces(
+        await resolveWorkItemResponseCacheWorkspaceIds(workItemStore, workspaceId, additionalWorkspaceIds),
+    );
 }
 
 export function clearWorkItemResponseCache(): void {

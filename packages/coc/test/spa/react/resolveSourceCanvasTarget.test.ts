@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+    getSourceCanvasDisplayPath,
     resolveSourceCanvasTarget,
     isSourceCanvasResolveError,
 } from '../../../src/server/spa/client/react/features/chat/source-canvas/resolve';
@@ -141,5 +142,90 @@ describe('resolveSourceCanvasTarget', () => {
             [{ id: 'ws-win', rootPath: 'C:\\work\\proj' }],
         );
         expect(r).toEqual({ wsId: 'ws-win', path: 'C:/work/proj/src/foo.ts' });
+    });
+
+    // ── Tilde-prefixed CoC note hrefs ────────────────────────────────────────
+    const HOME_WS = [
+        { id: 'ws-hcv3mg', rootPath: '/Users/yihengtao/.coc/repos/ws-hcv3mg' },
+    ];
+
+    it('expands `~/.coc/repos/<wsId>/...` through the hinted workspace home', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: '~/.coc/repos/ws-hcv3mg/notes/Plans/foo.md', wsId: 'ws-hcv3mg' },
+            HOME_WS,
+        );
+        expect(r).toEqual({
+            wsId: 'ws-hcv3mg',
+            path: '/Users/yihengtao/.coc/repos/ws-hcv3mg/notes/Plans/foo.md',
+        });
+    });
+
+    it('expands a tilde href without a wsId hint via prefix matching', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: '~/.coc/repos/ws-hcv3mg/src/foo.ts' },
+            HOME_WS,
+        );
+        expect(r).toEqual({
+            wsId: 'ws-hcv3mg',
+            path: '/Users/yihengtao/.coc/repos/ws-hcv3mg/src/foo.ts',
+        });
+    });
+
+    it('derives home from the hinted workspace in multi-repo (remote-clone home differs)', () => {
+        const multi = [
+            { id: 'ws-local', rootPath: '/Users/local/.coc/repos/ws-local' },
+            { id: 'ws-remote', rootPath: '/home/remote/.coc/repos/ws-remote' },
+        ];
+        const r = resolveSourceCanvasTarget(
+            { fullPath: '~/.coc/repos/ws-remote/notes/r.md', wsId: 'ws-remote' },
+            multi,
+        );
+        expect(r).toEqual({
+            wsId: 'ws-remote',
+            path: '/home/remote/.coc/repos/ws-remote/notes/r.md',
+        });
+    });
+});
+
+describe('getSourceCanvasDisplayPath', () => {
+    it('returns a path relative to the workspace root when the file is inside it', () => {
+        expect(getSourceCanvasDisplayPath(
+            '/home/u/proj/packages/coc/src/foo.ts',
+            '/home/u/proj',
+        )).toBe('packages/coc/src/foo.ts');
+    });
+
+    it('keeps the absolute path when the file is outside the workspace root', () => {
+        expect(getSourceCanvasDisplayPath(
+            '/home/u/other/src/foo.ts',
+            '/home/u/proj',
+        )).toBe('/home/u/other/src/foo.ts');
+    });
+
+    it('keeps the absolute path when no workspace root is available', () => {
+        expect(getSourceCanvasDisplayPath('/home/u/proj/src/foo.ts', '')).toBe(
+            '/home/u/proj/src/foo.ts',
+        );
+        expect(getSourceCanvasDisplayPath('/home/u/proj/src/foo.ts', null)).toBe(
+            '/home/u/proj/src/foo.ts',
+        );
+    });
+
+    it('handles Windows separators and returns a forward-slash relative path', () => {
+        expect(getSourceCanvasDisplayPath(
+            'C:\\work\\proj\\src\\foo.ts',
+            'C:/work/proj',
+        )).toBe('src/foo.ts');
+    });
+
+    it('handles trailing root separators without matching sibling paths', () => {
+        expect(getSourceCanvasDisplayPath(
+            '/home/u/proj/src/foo.ts',
+            '/home/u/proj/',
+        )).toBe('src/foo.ts');
+        expect(getSourceCanvasDisplayPath(
+            '/home/u/project/src/foo.ts',
+            '/home/u/proj/',
+        )).toBe('/home/u/project/src/foo.ts');
     });
 });

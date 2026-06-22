@@ -83,7 +83,9 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
             // Always paste as plain text to avoid formatting issues
             // in the contentEditable div (bold, colors, etc.).
             e.preventDefault();
-            const text = e.clipboardData?.getData('text/plain') ?? '';
+            const text = typeof e.clipboardData?.getData === 'function'
+                ? e.clipboardData.getData('text/plain')
+                : '';
             if (!text) return;
             // execCommand maintains undo history in most browsers
             if (document.execCommand) {

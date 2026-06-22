@@ -7,13 +7,11 @@
  * next version, or move/unlink an existing work item in the Epic → Feature → PBI →
  * Work Item/Bug/Goal hierarchy.
  *
- * Hierarchy-sensitive operations (create-with-parent, reparent, unlink) and all
- * creates run through the shared work-item command service so the tool reuses the
- * same validation, remote-provider sync, cache invalidation, and dashboard
- * broadcast behavior as the Work Items REST routes.
+ * Creates and updates run through the shared work-item command service so the
+ * tool reuses the same validation, remote-provider sync, cache invalidation, and
+ * dashboard broadcast behavior as the Work Items REST routes.
  */
 
-import * as crypto from 'crypto';
 import * as path from 'path';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -21,7 +19,7 @@ import { resolveConfig, CONFIG_FILE_NAME } from '../../config';
 import { APIError } from '../errors';
 import { createWorkItemStore } from '../work-items/work-item-store';
 import type { WorkItem, WorkItemPriority, WorkItemStatus, WorkItemStore, WorkItemType } from '../work-items/types';
-import { WORK_ITEM_TYPES } from '../work-items/types';
+import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES, isKnownWorkItemStatus } from '../work-items/types';
 import { WORK_ITEM_PLAN_TEMPLATE } from '../work-items/plan-template';
 import {
     createWorkItemCommand,
@@ -49,6 +47,11 @@ export interface CreateUpdateWorkItemArgs {
     title?: string;
     description?: string;
     priority?: 'high' | 'normal' | 'low';
+    /**
+     * New lifecycle status for an existing work item (e.g. `done` to close it).
+     * Update mode only; validated against the work item status transition rules.
+     */
+    status?: WorkItemStatus;
     tags?: string[];
     /** Complete markdown plan. Required when updating an existing work item. */
     plan?: string;
@@ -60,6 +63,14 @@ export interface CreateUpdateWorkItemArgs {
     parentTarget?: string;
     /** Parent sequential work item number, e.g. 12 or "WI-12". */
     parentWorkItemNumber?: number | string;
+    /**
+     * Explicit target workspace or canonical origin id (e.g. a per-clone `ws-*`
+     * workspace id or a `gh_<owner>_<repo>` mirror). When provided, the operation
+     * is scoped to that workspace's canonical origin instead of the active one,
+     * so an item can be created directly under a mirrored parent. Omit to use the
+     * active workspace.
+     */
+    targetWorkspaceId?: string;
 }
 
 export type BroadcastWorkItemFn = (event: {
@@ -162,6 +173,16 @@ function buildCommonFieldPatch(
         patch.priority = args.priority;
     }
 
+    if (hasOwn(args, 'status') && args.status !== undefined) {
+        if (!isKnownWorkItemStatus(args.status)) {
+            return {
+                error: `Unsupported work item status: ${String(args.status)}. `
+                    + `Allowed statuses: ${WORK_ITEM_STATUSES.join(', ')}`,
+            };
+        }
+        patch.status = args.status;
+    }
+
     if (hasOwn(args, 'tags') && args.tags !== undefined) {
         if (!Array.isArray(args.tags) || args.tags.some(tag => typeof tag !== 'string')) {
             return { error: 'Field update rejected: tags must be an array of strings' };
@@ -262,6 +283,31 @@ function commandErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Resolve the effective repoId for an operation, honoring an explicit
+ * `targetWorkspaceId` when supplied. A target is normalized to its canonical
+ * origin scope via the store's `resolveOriginId` (reusing the same scope
+ * resolution + `legacyRepoIds` machinery as the REST routes), so an item can be
+ * created under, or linked to, a mirrored parent of the same upstream repo.
+ *
+ * When no target is given the baked-in `repoId` is returned unchanged, keeping
+ * the active-workspace behavior byte-for-byte identical to today.
+ */
+async function resolveEffectiveRepoId(
+    store: WorkItemStore,
+    repoId: string,
+    target: string | undefined,
+): Promise<string> {
+    const trimmed = target?.trim();
+    if (!trimmed) {
+        return repoId;
+    }
+    if (store.resolveOriginId) {
+        return store.resolveOriginId(trimmed);
+    }
+    return trimmed;
+}
+
 // ============================================================================
 // Factory
 // ============================================================================
@@ -306,13 +352,18 @@ export function createCreateUpdateWorkItemTool(
             'To create the item as a child of an existing parent (Epic → Feature → PBI → Work Item/Bug/Goal), also pass ' +
             '`parentId` (UUID), `parentTarget` (UUID or WI-N), or `parentWorkItemNumber`; no REST call is needed. ' +
             'Field-update mode: provide `workItemId`, `target` (UUID or WI-N), or `workItemNumber`, and one or more of ' +
-            '`title`, `description`, `priority`, or `tags`; this preserves status and does not create a plan version. ' +
+            '`title`, `description`, `priority`, `tags`, or `status`; this preserves plan history and does not create a ' +
+            'plan version. Use `status` (e.g. `done`) to transition or close an existing item without editing the plan; ' +
+            'the transition is validated and synced to the GitHub/Azure Boards mirror (a terminal status closes the issue). ' +
             'Update-plan mode: provide an existing target and the complete revised Markdown plan in `plan`; this saves a new ' +
             'plan version, resets status to `planning`, opens a change record, and broadcasts a dashboard update. ' +
             'Hierarchy-link mode: provide an existing target plus `parentId`/`parentTarget`/`parentWorkItemNumber` to move ' +
             'the item under a new valid parent, or `parentId: null` to unlink it from its current parent. Link updates can ' +
             'be combined with field or plan updates and are validated against the allowed parent/child type hierarchy. ' +
             '`type` cannot be changed in update mode; when supplied it must match the existing item type. ' +
+            'Pass `targetWorkspaceId` (a "ws-*" workspace id or "gh_<owner>_<repo>" mirror) to scope the create/update ' +
+            'to a different workspace of the same upstream repo — e.g. to file an item directly under a mirrored parent; ' +
+            'omit it to use the active workspace. ' +
             'Do not append raw text or submit a partial diff for `plan`; always send the full revised plan. ' +
             'IMPORTANT: Before calling this tool, you MUST first present a draft summary to the user ' +
             'and only call this tool once the user confirms. ' +
@@ -351,6 +402,14 @@ export function createCreateUpdateWorkItemTool(
                     enum: ['high', 'normal', 'low'],
                     description: 'Priority of a new or existing item (create default: normal).',
                 },
+                status: {
+                    type: 'string',
+                    enum: [...WORK_ITEM_STATUSES],
+                    description:
+                        'New lifecycle status for an existing work item, e.g. "done" to close it. Update mode only; '
+                        + 'the transition is validated against the work item status rules and synced to the GitHub/Azure '
+                        + 'Boards mirror (a terminal status closes the mirrored issue). Ignored in create mode.',
+                },
                 tags: {
                     type: 'array',
                     items: { type: 'string' },
@@ -382,16 +441,26 @@ export function createCreateUpdateWorkItemTool(
                     oneOf: [{ type: 'number' }, { type: 'string' }],
                     description: 'Parent sequential work item number, e.g. 12 or "WI-12". Alternative to parentId.',
                 },
+                targetWorkspaceId: {
+                    type: 'string',
+                    description:
+                        'Explicit target workspace or canonical origin id (e.g. a per-clone "ws-*" workspace id or a ' +
+                        '"gh_<owner>_<repo>" mirror). When provided, the create/update is scoped to that workspace\'s ' +
+                        'canonical origin instead of the active one — use it to create an item directly under a ' +
+                        'mirrored parent that lives in a different workspace of the same upstream repo. Omit to use ' +
+                        'the active workspace.',
+                },
             },
             required: [],
         },
         handler: async (rawArgs: CreateUpdateWorkItemArgs) => {
             const args = normalizePlanFromDescription(rawArgs);
+            const effectiveRepoId = await resolveEffectiveRepoId(store, repoId, args.targetWorkspaceId);
             const existingTarget = getExistingTarget(args);
             if (existingTarget !== undefined && String(existingTarget).trim() !== '') {
-                return updateExistingWorkItem(commandCtx, repoId, args);
+                return updateExistingWorkItem(commandCtx, effectiveRepoId, args);
             }
-            return createNewWorkItem(commandCtx, repoId, args);
+            return createNewWorkItem(commandCtx, effectiveRepoId, args);
         },
     });
 
@@ -523,19 +592,49 @@ async function updateExistingWorkItem(
         return {
             updated: false,
             id: existing.id,
-            error: 'No update requested: provide at least one of title, description, priority, tags, '
+            error: 'No update requested: provide at least one of title, description, priority, status, tags, '
                 + 'a parent link change, or a complete revised plan',
         };
     }
 
     if (!content) {
-        const updated = await store.updateWorkItem(existing.id, patchResult.patch, repoId);
-        if (!updated) {
-            return { updated: false, error: `Failed to update work item: ${existing.id}` };
+        try {
+            const updated = await updateWorkItemCommand(
+                ctx,
+                repoId,
+                existing.id,
+                patchResult.patch as UpdateWorkItemCommandInput,
+            );
+            return {
+                updated: true,
+                id: updated.id,
+                title: updated.title,
+                status: updated.status,
+                planVersion: updated.plan?.version,
+            };
+        } catch (error) {
+            if (error instanceof APIError) {
+                return { updated: false, id: existing.id, error: error.message };
+            }
+            throw error;
         }
+    }
 
-        ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+    const nextVersion = (existing.plan?.version ?? 0) + 1;
+    const summary = args.summary ?? `Plan updated from chat (v${nextVersion})`;
 
+    try {
+        const updated = await updateWorkItemCommand(ctx, repoId, existing.id, {
+            ...(patchResult.patch as UpdateWorkItemCommandInput),
+            status: patchResult.patch.status ?? 'planning',
+            skipStatusTransitionValidation: true,
+            plan: {
+                content,
+                resolvedBy: 'ai',
+                reason: summary,
+                summary,
+            },
+        });
         return {
             updated: true,
             id: updated.id,
@@ -543,57 +642,12 @@ async function updateExistingWorkItem(
             status: updated.status,
             planVersion: updated.plan?.version,
         };
+    } catch (error) {
+        if (error instanceof APIError) {
+            return { updated: false, id: existing.id, error: error.message };
+        }
+        throw error;
     }
-
-    const now = new Date().toISOString();
-    const nextVersion = (existing.plan?.version ?? 0) + 1;
-    const planVersion = {
-        version: nextVersion,
-        content,
-        createdAt: now,
-        resolvedBy: 'ai' as const,
-        source: 'ai' as const,
-        authorType: 'ai' as const,
-        reason: args.summary ?? `Plan updated from chat (v${nextVersion})`,
-        summary: args.summary ?? `Plan updated from chat (v${nextVersion})`,
-    };
-
-    await store.savePlanVersion(existing.id, planVersion, repoId);
-    const updated = await store.updateWorkItem(existing.id, {
-        ...patchResult.patch,
-        status: 'planning',
-        currentContentVersion: nextVersion,
-        plan: {
-            version: nextVersion,
-            currentVersion: nextVersion,
-            content,
-            updatedAt: now,
-            resolvedBy: 'ai',
-            source: 'ai',
-            reason: planVersion.reason,
-        },
-    }, repoId);
-    if (!updated) {
-        return { updated: false, error: `Failed to update work item: ${existing.id}` };
-    }
-
-    await store.addChange(existing.id, {
-        id: crypto.randomUUID(),
-        planVersion: nextVersion,
-        commits: [],
-        startedAt: now,
-        status: 'open',
-    }, repoId);
-
-    ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: updated });
-
-    return {
-        updated: true,
-        id: updated.id,
-        title: updated.title,
-        status: updated.status,
-        planVersion: updated.plan?.version,
-    };
 }
 
 /**
@@ -633,9 +687,9 @@ async function updateWorkItemLink(
             reason: summary,
             summary,
         };
-        // The tool always resets to planning on plan updates regardless of the
-        // current lifecycle state (legacy tool behavior).
-        input.status = 'planning';
+        // Plan updates reset to planning unless an explicit status was supplied,
+        // regardless of the current lifecycle state (legacy tool behavior).
+        input.status = (patch.status as WorkItemStatus | undefined) ?? 'planning';
         input.skipStatusTransitionValidation = true;
     }
 

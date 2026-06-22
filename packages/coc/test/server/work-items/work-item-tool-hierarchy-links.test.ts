@@ -618,4 +618,39 @@ describe('provider-backed hierarchy operations through the AI tool', () => {
         expect(result.error).toContain('not mirrored to GitHub');
         expect(mock.calls.createIssue).toHaveLength(0);
     });
+
+    it('closing a GitHub-backed item via status pushes the mirror issue to closed', async () => {
+        const mock = makeMockTransport();
+        mock.issues.set(70, {
+            id: 'I_70', number: 70, title: 'Standalone mirrored item', state: 'open',
+            htmlUrl: `https://github.com/${OWNER}/${REPO}/issues/70`,
+            url: `https://api.github.com/repos/${OWNER}/${REPO}/issues/70`,
+            body: '', labels: [], updatedAt: NOW,
+        });
+        const item = await seed({
+            id: 'mirror-1', title: 'Standalone mirrored item', type: 'work-item', status: 'readyToExecute',
+            tracker: {
+                kind: 'github-backed', provider: 'github',
+                github: { issueId: 'I_70', issueNumber: 70, issueUrl: `https://github.com/${OWNER}/${REPO}/issues/70`, lastPulledAt: NOW },
+            },
+            githubMirror: { issueId: 'I_70', issueNumber: 70, issueUrl: `https://github.com/${OWNER}/${REPO}/issues/70`, updatedAt: NOW, lastPulledAt: NOW },
+        });
+        const tool = makeTool({
+            deps: {
+                processStore: GITHUB_PROCESS_STORE(),
+                githubTransport: mock.transport,
+                getSyncEnabled: () => true,
+            },
+        });
+
+        const result: any = await tool.handler({ workItemId: item.id, status: 'done' });
+
+        expect(result.updated).toBe(true);
+        expect(result.status).toBe('done');
+        expect(mock.calls.updateIssue).toHaveLength(1);
+        expect(mock.calls.updateIssue[0].issueNumber).toBe(70);
+        expect(mock.issues.get(70)?.state).toBe('closed');
+        const stored = await store.getWorkItem(item.id, REPO_ID);
+        expect(stored?.status).toBe('done');
+    });
 });

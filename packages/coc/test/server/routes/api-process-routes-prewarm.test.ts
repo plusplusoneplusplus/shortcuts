@@ -138,7 +138,7 @@ describe('POST /api/processes/:id/prewarm', () => {
         expect(res.status).toBe(404);
     });
 
-    it('warms the provider client with the process working directory', async () => {
+    it('warms the provider client with the process warm key and working directory', async () => {
         await store.addProcess({
             id: 'proc-cop',
             type: 'chat',
@@ -154,7 +154,7 @@ describe('POST /api/processes/:id/prewarm', () => {
         expect(res.status).toBe(200);
         expect(res.json()).toEqual({ warming: true, provider: 'copilot' });
         expect(mockPrewarm).toHaveBeenCalledTimes(1);
-        expect(mockPrewarm).toHaveBeenCalledWith({ workingDirectory: '/tmp/project' });
+        expect(mockPrewarm).toHaveBeenCalledWith({ warmKey: 'proc-cop', workingDirectory: '/tmp/project' });
     });
 
     it('routes to the codex service when the conversation provider is codex', async () => {
@@ -172,7 +172,7 @@ describe('POST /api/processes/:id/prewarm', () => {
 
         expect(res.status).toBe(200);
         expect(res.json()).toEqual({ warming: true, provider: 'codex' });
-        expect(mockPrewarm).toHaveBeenCalledWith({ workingDirectory: '/tmp/cx' });
+        expect(mockPrewarm).toHaveBeenCalledWith({ warmKey: 'proc-codex', workingDirectory: '/tmp/cx' });
     });
 
     it('defaults to copilot when the process has no provider metadata', async () => {

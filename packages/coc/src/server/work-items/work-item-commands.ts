@@ -37,6 +37,7 @@ import {
     getEffectiveType,
 } from './types';
 import { resolveGitHubWorkItemSyncRepo, type GitHubWorkItemSyncRepo } from './work-item-sync-github-repo';
+import { githubIssueContentRevision } from './work-item-sync-github-issue';
 import {
     GhCliGitHubWorkItemIssueTransport,
     createGitHubIssueForLocalChild,
@@ -70,7 +71,10 @@ import {
     type WorkItemSyncProviderContext,
 } from './work-item-sync-provider';
 import { executeWorkItem, type EnqueueFunction } from './work-item-executor';
-import { clearWorkItemResponseCacheForWorkspace } from './work-item-response-cache';
+import {
+    clearWorkItemResponseCacheForWorkspaces,
+    resolveWorkItemResponseCacheWorkspaceIds,
+} from './work-item-response-cache';
 
 // ============================================================================
 // Context & input types
@@ -123,6 +127,8 @@ export interface CreateWorkItemCommandInput {
     tags?: unknown;
     autoExecute?: unknown;
     successCriteria?: unknown;
+    /** Internal route-scope hint for origin-scoped cache invalidation and broadcasts. */
+    storageRepoId?: string;
     /** Initial status override (default `created`); the AI tool passes `planning` with an initial plan. */
     status?: WorkItemStatus;
     plan?: {
@@ -387,9 +393,42 @@ function githubOperationFailedError(action: string, error: unknown, code: string
     return githubProviderError(`GitHub ${action} failed: ${detail}`, code);
 }
 
+/**
+ * True when the remote GitHub issue changed since the local mirror last synced.
+ *
+ * Prefers a real content-revision check: a hash of the remote's CoC-owned
+ * content (title, metadata-stripped body, state, labels) is recorded at every
+ * pull/push as `lastSyncedRemoteRevision`. Comparing the current remote revision
+ * against that base detects a genuine edit to CoC-owned content while ignoring a
+ * benign `updated_at` bump (a reaction, comment, cross-reference, lock, or
+ * unrelated label) that the old timestamp-string-equality check flagged as a
+ * false conflict. Legacy mirrors without a recorded revision fall back to a
+ * parsed-instant `updatedAt` comparison so a timestamp reformat alone is not a
+ * conflict either.
+ */
 function githubMirrorIsStale(local: WorkItem, remote: GitHubWorkItemIssue): boolean {
-    const localUpdatedAt = local.githubMirror?.updatedAt;
-    return Boolean(localUpdatedAt && remote.updatedAt && localUpdatedAt !== remote.updatedAt);
+    const baseRevision = local.githubMirror?.lastSyncedRemoteRevision;
+    if (baseRevision !== undefined) {
+        return githubIssueContentRevision(remote) !== baseRevision;
+    }
+    return githubUpdatedAtChanged(local.githubMirror?.updatedAt, remote.updatedAt);
+}
+
+/**
+ * Compare two GitHub `updated_at` timestamps as instants rather than raw
+ * strings, so an ISO reformat (millisecond precision, timezone offset form)
+ * does not register as a change. Falls back to string inequality when either
+ * value is non-parseable, and treats a missing value on either side as "no
+ * detectable change" (matching the prior short-circuit behavior).
+ */
+function githubUpdatedAtChanged(local: string | undefined, remote: string | undefined): boolean {
+    if (!local || !remote) return false;
+    const localTime = Date.parse(local);
+    const remoteTime = Date.parse(remote);
+    if (Number.isNaN(localTime) || Number.isNaN(remoteTime)) {
+        return local !== remote;
+    }
+    return localTime !== remoteTime;
 }
 
 function azureBoardsMirrorIsStale(local: WorkItem, remote: AzureBoardsWorkItem): boolean {
@@ -443,6 +482,19 @@ async function isSameWorkItemOrigin(
     if (!resolve) return false;
     const [a, b] = await Promise.all([resolve(repoIdA), resolve(repoIdB)]);
     return a === b;
+}
+
+async function invalidateAndBroadcastWorkItemMutation(
+    ctx: WorkItemCommandContext,
+    repoId: string,
+    event: Omit<WorkItemBroadcastEvent, 'workspaceId'>,
+    storageRepoId?: string,
+): Promise<void> {
+    const scopeIds = await resolveWorkItemResponseCacheWorkspaceIds(ctx.workItemStore, repoId, [storageRepoId]);
+    clearWorkItemResponseCacheForWorkspaces(scopeIds);
+    for (const scopeId of scopeIds) {
+        ctx.broadcast?.({ ...event, workspaceId: scopeId });
+    }
 }
 
 async function findTreeRoot(ctx: WorkItemCommandContext, item: WorkItem, repoId: string): Promise<WorkItem> {
@@ -1060,8 +1112,12 @@ export async function createWorkItemCommand(
         }, repoId);
     }
 
-    clearWorkItemResponseCacheForWorkspace(repoId);
-    ctx.broadcast?.({ type: 'work-item-added', workspaceId: repoId, item });
+    await invalidateAndBroadcastWorkItemMutation(
+        ctx,
+        repoId,
+        { type: 'work-item-added', item },
+        input.storageRepoId,
+    );
     return item;
 }
 
@@ -1268,8 +1324,12 @@ export async function updateWorkItemCommand(
             });
             const afterExec = await ctx.workItemStore.getWorkItem(workItemId, repoId);
             if (afterExec) {
-                clearWorkItemResponseCacheForWorkspace(repoId);
-                ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: afterExec });
+                await invalidateAndBroadcastWorkItemMutation(
+                    ctx,
+                    repoId,
+                    { type: 'work-item-updated', item: afterExec },
+                    input.storageRepoId,
+                );
                 return afterExec;
             }
         } catch {
@@ -1277,7 +1337,11 @@ export async function updateWorkItemCommand(
         }
     }
 
-    clearWorkItemResponseCacheForWorkspace(repoId);
-    ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+    await invalidateAndBroadcastWorkItemMutation(
+        ctx,
+        repoId,
+        { type: 'work-item-updated', item: updated },
+        input.storageRepoId,
+    );
     return updated;
 }

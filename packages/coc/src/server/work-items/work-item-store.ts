@@ -38,7 +38,7 @@ import type {
     WorkItemSyncProvider,
     WorkItemSyncRemoteIdentity,
 } from './types';
-import { getOwnWorkItemTrackerKind, toIndexEntry, WORK_ITEM_STATUSES } from './types';
+import { deriveWorkItemOriginProvider, getOwnWorkItemTrackerKind, toIndexEntry, WORK_ITEM_STATUSES } from './types';
 
 // ============================================================================
 // Store Implementation
@@ -413,7 +413,43 @@ export class FileWorkItemStore implements WorkItemStore {
             }
         }
 
-        return this.migrateLegacySyncLinks(repoId, entries);
+        const withSyncLinksMigrated = await this.migrateLegacySyncLinks(repoId, entries);
+        return this.migrateOriginIds(repoId, withSyncLinksMigrated);
+    }
+
+    /**
+     * Backfill the stable `originId`/`originProvider` scope identity on items that
+     * pre-date the field. An item physically stored under `<dataDir>/repos/<repoId>/`
+     * lives in that canonical origin scope by construction, so the directory key is
+     * the authoritative origin id. Runs once per repo: after the first pass (or for
+     * fresh repos where `addWorkItem` stamps the field) the `every` check short-circuits.
+     */
+    private async migrateOriginIds(
+        repoId: string,
+        entries: WorkItemIndexEntry[],
+    ): Promise<WorkItemIndexEntry[]> {
+        if (entries.every(entry => entry.originId)) return entries;
+
+        const originProvider = deriveWorkItemOriginProvider(repoId);
+        let changed = false;
+        for (const entry of entries) {
+            if (entry.originId) continue;
+            entry.originId = repoId;
+            entry.originProvider = originProvider;
+            changed = true;
+
+            const item = await this.readItem(repoId, entry.id);
+            if (item && !item.originId) {
+                item.originId = repoId;
+                item.originProvider = originProvider;
+                await this.writeItem(repoId, item);
+            }
+        }
+
+        if (changed) {
+            await this.writeIndex(repoId, entries);
+        }
+        return entries;
     }
 
     private async writeIndex(repoId: string, entries: WorkItemIndexEntry[]): Promise<void> {
@@ -499,6 +535,10 @@ export class FileWorkItemStore implements WorkItemStore {
     async addWorkItem(item: WorkItem): Promise<void> {
         return this.enqueueWrite(async () => {
             const { storageRepoId } = await this.resolveStorageScope(item.repoId);
+            // Stamp the stable canonical origin scope (independent of which caller
+            // URL family stamped repoId) plus its derived provider.
+            item.originId = storageRepoId;
+            item.originProvider = deriveWorkItemOriginProvider(storageRepoId);
             const index = await this.readIndex(storageRepoId);
             if (index.some(e => e.id === item.id)) {
                 throw new Error(`Work item already exists: ${item.id}`);
@@ -551,7 +591,7 @@ export class FileWorkItemStore implements WorkItemStore {
 
     async updateWorkItem(
         id: string,
-        updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>>,
+        updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'originId' | 'originProvider' | 'createdAt'>>,
         repoId?: string,
     ): Promise<WorkItem | undefined> {
         let updated: WorkItem | undefined;

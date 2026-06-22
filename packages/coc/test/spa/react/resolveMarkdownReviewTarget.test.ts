@@ -136,3 +136,67 @@ describe('resolveMarkdownReviewTarget', () => {
         expect(target?.wsId).toBe('child');
     });
 });
+
+describe('resolveMarkdownReviewTarget — tilde-prefixed CoC note hrefs', () => {
+    // The screenshot link points at a CoC note under the workspace clone storage.
+    // Assistant markdown links can carry the literal `~/.coc/repos/<wsId>/...`
+    // href, which must expand to an absolute note path under the workspace so the
+    // editable NoteEditor loads it (instead of misreading `~/...` as task-relative).
+    const HOME_WS: WorkspaceLike[] = [
+        { id: 'ws-hcv3mg', rootPath: '/Users/yihengtao/.coc/repos/ws-hcv3mg' },
+    ];
+    const NOTE_ABS = '/Users/yihengtao/.coc/repos/ws-hcv3mg/notes/Plans/SourceCanvas/chat-note-links.md';
+    const NOTE_TILDE = '~/.coc/repos/ws-hcv3mg/notes/Plans/SourceCanvas/chat-note-links.md';
+
+    it('expands the screenshot `~/.coc/repos/<wsId>/notes/...` href through the hinted workspace home (auto mode, no tasks misread)', () => {
+        const target = resolveMarkdownReviewTarget(
+            { filePath: NOTE_TILDE, wsId: 'ws-hcv3mg' },
+            HOME_WS,
+        );
+        expect(target).toEqual({
+            wsId: 'ws-hcv3mg',
+            filePath: NOTE_ABS,
+            displayPath: NOTE_ABS,
+            fetchMode: 'auto',
+            taskRootPath: undefined,
+        });
+    });
+
+    it('expands a tilde note href with no wsId hint via a home-rooted workspace, then prefix-matches', () => {
+        const target = resolveMarkdownReviewTarget(
+            { filePath: '~/.coc/repos/ws-hcv3mg/notes/x.md' },
+            HOME_WS,
+        );
+        expect(target).toEqual({
+            wsId: 'ws-hcv3mg',
+            filePath: '/Users/yihengtao/.coc/repos/ws-hcv3mg/notes/x.md',
+            displayPath: '/Users/yihengtao/.coc/repos/ws-hcv3mg/notes/x.md',
+            fetchMode: 'auto',
+        });
+    });
+
+    it('derives home from the HINTED workspace in multi-repo (remote-clone home differs from local)', () => {
+        const multi: WorkspaceLike[] = [
+            { id: 'ws-local', rootPath: '/Users/local/.coc/repos/ws-local' },
+            { id: 'ws-remote', rootPath: '/home/remote/.coc/repos/ws-remote' },
+        ];
+        const target = resolveMarkdownReviewTarget(
+            { filePath: '~/.coc/repos/ws-remote/notes/r.md', wsId: 'ws-remote' },
+            multi,
+        );
+        expect(target).toEqual({
+            wsId: 'ws-remote',
+            filePath: '/home/remote/.coc/repos/ws-remote/notes/r.md',
+            displayPath: '/home/remote/.coc/repos/ws-remote/notes/r.md',
+            fetchMode: 'auto',
+            taskRootPath: undefined,
+        });
+    });
+
+    it('leaves a tilde href unexpanded (returns null) when no workspace is home-rooted', () => {
+        const nonHome: WorkspaceLike[] = [{ id: 'ws-opt', rootPath: '/opt/repos/ws-opt' }];
+        expect(
+            resolveMarkdownReviewTarget({ filePath: '~/.coc/repos/ws-opt/notes/x.md' }, nonHome),
+        ).toBeNull();
+    });
+});

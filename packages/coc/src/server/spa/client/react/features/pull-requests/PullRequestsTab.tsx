@@ -5,8 +5,8 @@
  * The queue is grouped into two sections (Needs review / Ready after
  * checks) and filtered via pills (All / Mine / Team / Blocked / Ready,
  * plus optional For You suggestions).
- * Real PR data drives the list plus queue row file count, review minutes,
- * and deterministic risk badges.
+ * Real PR data drives the list plus queue row file count and
+ * deterministic risk badges.
  *
  * Desktop: resizable split-panel (queue left, detail right).
  * Mobile: single-pane toggle (queue ↔ detail).

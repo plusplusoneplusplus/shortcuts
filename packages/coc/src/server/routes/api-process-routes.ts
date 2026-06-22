@@ -559,13 +559,14 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
-    // POST /api/processes/:id/prewarm — Pre-warm the provider client for the next turn
+    // POST /api/processes/:id/prewarm — Pre-warm this process's provider client
     //
     // Fired when the user starts typing a follow-up (see FollowUpInputArea). Warms
-    // the provider client process WITHOUT creating a session, so the next send
-    // reuses a live process. Best-effort and side-effect-light: it never creates a
-    // session, never mutates the process record, and never returns an error for a
-    // warm-start failure — warming is a latency optimization, not a hard dependency.
+    // this process's provider client WITHOUT creating a session, so this
+    // process's next send reuses a live client. Best-effort and side-effect-light:
+    // it never creates a session, never mutates the process record, and never
+    // returns an error for a warm-start failure — warming is a latency optimization,
+    // not a hard dependency.
     routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/processes\/([^/]+)\/prewarm$/,
@@ -592,7 +593,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             try {
-                await service.prewarm({ workingDirectory: proc.workingDirectory });
+                await service.prewarm({ warmKey: proc.id, workingDirectory: proc.workingDirectory });
             } catch {
                 // Best-effort: a warm-start failure must never surface to the user
                 // or block the follow-up they are about to send.

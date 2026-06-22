@@ -417,7 +417,7 @@ describe('FollowUpExecutor', () => {
     it('opts the follow-up turn into warm-client keep-alive (keepWarm: true)', async () => {
         // Follow-ups are interactive continuations and the primary beneficiary of
         // warm reuse, so the follow-up send path must request keepWarm so the SDK
-        // service retains the provider client for the next turn (AC-01/AC-02).
+        // service retains the provider client for this process's next turn (AC-01/AC-02).
         const proc = makeProcess({ id: 'proc-warm', sdkSessionId: 'sdk-warm' });
         await store.addProcess(proc);
 
@@ -426,6 +426,8 @@ describe('FollowUpExecutor', () => {
 
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         expect(callArg.keepWarm).toBe(true);
+        expect(callArg.warmKey).toBe('proc-warm');
+        expect(callArg.sessionId).toBe('sdk-warm');
     });
 
     it('prepends a selected-skills directive without inlining skill bodies', async () => {

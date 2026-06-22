@@ -190,7 +190,7 @@ Claude image attachments are converted at the provider boundary. When `SendMessa
 
 `ClaudeSDKService` widens the agent's filesystem permission scope via the SDK's `additionalDirectories` option (`resolveAdditionalDirectories`). It always grants access to `~/.coc` (CoC data/skills dir) and the system temp directory (`os.tmpdir()`) so out-of-repo skill files and temp artifacts remain readable beyond the per-request `workingDirectory`/`cwd`. Any caller-supplied `SendMessageOptions.additionalDirectories` are merged in; all entries are resolved to absolute paths and de-duplicated (case-insensitively on Windows).
 
-`ClaudeSDKService` wires CoC LLM tools and any caller-provided `mcpServers` into `query({ options: { mcpServers } })`; CoC tools ride a stdio bridge entry (`coc_llm_tools`, `alwaysLoad: true`), are pre-approved via `options.allowedTools` (`mcp__coc_llm_tools__<tool>`) so Claude Code never prompts for them, and bridged `tool_use` names are de-namespaced (see *CoC LLM Tools over MCP*).
+`ClaudeSDKService` wires CoC LLM tools and any caller-provided `mcpServers` into `query({ options: { mcpServers } })`; CoC tools ride a stdio bridge entry (`coc_llm_tools`, `alwaysLoad: true`), are pre-approved via `options.allowedTools` (`mcp__coc_llm_tools__<tool>`) so Claude Code never prompts for them, and bridged `tool_use` names are de-namespaced (see *CoC LLM Tools over MCP*). When the CoC `ask_user` tool is present, `resolveClaudeDisallowedTools` adds the native built-in `AskUserQuestion` to `options.disallowedTools`: CoC's `ask_user` replaces it but has a different name (so the SDK's `overridesBuiltInTool` flag, which only overrides a same-named built-in, cannot suppress it), and CoC wires none of the host callbacks (`onUserDialog`/`onElicitation`/`canUseTool`) the native tool needs — so an `AskUserQuestion` call would auto-fail before the user could answer. Blocking it steers the model to the serviceable `ask_user`.
 
 Claude tool-call capture treats assistant `tool_use` blocks as start events and user `tool_result` / `tool_use_result` payloads as terminal events. Stored tool calls keep the original input parameters in `args` and preserve the actual tool output in `result` or `error`; the adapter does not synthesize completion results from tool input JSON. Built-in Claude sub-agent starts (`Agent`/`Task`) are normalized to CoC's `task` tool shape, with `subagent_type` copied to `agent_type` and terminal agent metadata (`agentId`, `agentType`, status, output file, prompt/description) merged back into `args` when Claude reports it. Claude background-agent waits (`TaskOutput`) are normalized to `read_agent`, including `agent_id`, `wait`, and timeout metadata. Assistant messages emitted from inside a Claude sub-agent preserve `parent_tool_use_id` as `parentToolCallId`, so nested child tools render under the parent task in process timelines.
 
@@ -322,6 +322,16 @@ resetSDKLogger();              // call in tests to restore no-op logger
 ```
 
 Without a call to `initSDKLogger`, all internal SDK log statements are silently discarded.
+
+## Warm-client registry (session prewarming)
+
+`WarmClientRegistry` (`warm-client-registry.ts`) keeps a provider client process alive between turns, keyed by `makeWarmKey(provider, warmKey)`, for a short idle TTL (`COC_WARM_CLIENT_TTL_MS`; `<= 0` disables warming). CoC passes the conversation process id as `warmKey`; `workingDirectory` remains client construction/per-turn execution context and is not part of the registry key. Per-key status: `cold` (absent) → `warming` (factory in flight) → `warm` (parked, idle TTL ticking) → `active` (≥1 turn in flight). Copilot and Codex route warm-scoped `sendMessage`/`prewarm` through it; Claude cannot stay warm and never enters it. If a caller sets `keepWarm: true` without `warmKey`, Copilot/Codex log a warning and run the turn cold rather than falling back to cwd-scoped warming.
+
+Status surfaces two ways, both off the same canonical `currentStatus(key)` calc so they never disagree:
+- **Push:** `onStateChange` → `WarmStatusBroadcaster` → `ISDKService.onWarmStatusChange(listener)` (the CoC `WarmStatusBridge` subscribes here and fans transitions onto process SSE streams).
+- **Read:** `WarmClientRegistry.getStatus(key)` → `ISDKService.getWarmStatus(options)` — the synchronous snapshot side. Copilot/Codex compute their `makeWarmKey(...)` and return `getStatus`; Claude omits the method. CoC's warm-only SSE stream calls this (via the bridge) to send an initial `warm_status` frame on connect.
+
+`prewarm({ warmKey, workingDirectory })` warms without creating a session (idempotent, no-op while active or when warming is disabled, best-effort); a real send with the same `warmKey` arriving mid-warm attaches to the same in-flight warming. A fresh SDK session is still created/resumed/disconnected per turn via the existing `sdkSessionId` flow — no provider session objects are cached. `cleanup()`/`dispose()` evict every warm client so no child process outlives the service.
 
 ## Cleanup
 

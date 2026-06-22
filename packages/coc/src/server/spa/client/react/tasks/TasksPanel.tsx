@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { TaskProvider, useTaskPanel } from '../contexts/TaskContext';
 import { useTaskTree, filterFolderTree, isDocumentMatchingFilter, type TaskStatusValue, type TaskFolder, STATUS_PILLS } from './hooks/useTaskTree';
-import { getSpaCocClient } from '../api/cocClient';
+import { useCocClient } from '../repos/cloneRouting';
 import { useFolderActions } from './hooks/useFolderActions';
 import { useFileActions } from './hooks/useFileActions';
 import { useArchiveUndo } from './hooks/useArchiveUndo';
@@ -69,14 +69,17 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog, initialNavState, o
     const [statusFilter, setStatusFilter] = useState<TaskStatusValue[]>([]);
     const [tasksFolder, setTasksFolder] = useState('.vscode/tasks');
     const [folderPaths, setFolderPaths] = useState<string[]>([]);
+    // Route the tasks-settings fetch through the clone's own server so a remote
+    // workspace resolves on its owning host rather than 404ing the local one.
+    const client = useCocClient(wsId);
     useEffect(() => {
-        getSpaCocClient().tasks.getSettings(wsId)
+        client.tasks.getSettings(wsId)
             .then((data: any) => {
                 if (data?.folderPath) setTasksFolder(data.folderPath);
                 setFolderPaths(data?.folderPaths ?? []);
             })
             .catch(() => {});
-    }, [wsId]);
+    }, [wsId, client]);
     const primaryFolderPath = tasksFolder;
 
     const { dispatch: queueDispatch } = useQueue();

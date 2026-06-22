@@ -13,7 +13,16 @@
  * path we attempted — so the canvas can still open with a clear
  * "couldn't load <path>" message when nothing resolves.
  */
-import { isAbsolutePath, resolveRelativePath } from '../../../utils/path-resolution';
+import {
+    deriveHomeDirFromWorkspaces,
+    expandTildePath,
+    isAbsolutePath,
+    resolveRelativePath,
+} from '../../../utils/path-resolution';
+import {
+    toForwardSlashes,
+    trimTrailingPathSeparators,
+} from '@plusplusoneplusplus/forge/utils/path-utils';
 import type { SourceCanvasFileRef } from './types';
 
 export interface SourceCanvasWorkspace {
@@ -36,11 +45,11 @@ export interface SourceCanvasResolveError {
 }
 
 function normalize(p: string): string {
-    return p.replace(/\\/g, '/');
+    return toForwardSlashes(p);
 }
 
 function trimTrailingSlashes(p: string): string {
-    return normalize(p).replace(/\/+$/, '');
+    return normalize(trimTrailingPathSeparators(p));
 }
 
 /** Directory portion of a (possibly Windows) path, normalized to `/`. */
@@ -60,10 +69,26 @@ function findWorkspaceById(
 function isSameOrWithinRoot(filePath: string, rootPath: string): boolean {
     const normalizedFile = trimTrailingSlashes(filePath).toLowerCase();
     const normalizedRoot = trimTrailingSlashes(rootPath).toLowerCase();
+    const rootPrefix = normalizedRoot.endsWith('/') ? normalizedRoot : `${normalizedRoot}/`;
     return !!normalizedRoot && (
         normalizedFile === normalizedRoot ||
-        normalizedFile.startsWith(`${normalizedRoot}/`)
+        normalizedFile.startsWith(rootPrefix)
     );
+}
+
+export function getSourceCanvasDisplayPath(
+    fullPath: string,
+    workspaceRootPath?: string | null,
+): string {
+    const rootPath = typeof workspaceRootPath === 'string' ? workspaceRootPath.trim() : '';
+    if (!rootPath || !isSameOrWithinRoot(fullPath, rootPath)) {
+        return fullPath;
+    }
+
+    const normalizedFile = trimTrailingSlashes(fullPath);
+    const normalizedRoot = trimTrailingSlashes(rootPath);
+    const relativePath = normalizedFile.slice(normalizedRoot.length).replace(/^\/+/, '');
+    return relativePath || fullPath;
 }
 
 function findBestWorkspaceForPath(
@@ -93,8 +118,15 @@ export function resolveSourceCanvasTarget(
     fileRef: SourceCanvasFileRef,
     workspaces: ReadonlyArray<SourceCanvasWorkspace>,
 ): SourceCanvasTarget | SourceCanvasResolveError {
-    // 1. Resolve relative refs against the directory of the source file.
+    // 0. Expand `~`-prefixed CoC note hrefs (e.g. `~/.coc/repos/<wsId>/...`) to
+    // an absolute path through the hinted workspace's home, so they resolve
+    // instead of being treated as workspace-relative.
     let path = fileRef.fullPath;
+    if (path.startsWith('~')) {
+        path = expandTildePath(path, deriveHomeDirFromWorkspaces(fileRef.wsId, workspaces));
+    }
+
+    // 1. Resolve relative refs against the directory of the source file.
     if (!isAbsolutePath(path)) {
         path = normalize(path);
     }

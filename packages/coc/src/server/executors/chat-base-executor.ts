@@ -800,7 +800,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
                 ...(contextTier ? { contextTier } : {}),
                 infiniteSessions: { enabled: true } as const,
-                ...(this.keepClientWarm() ? { keepWarm: true as const } : {}),
+                ...(this.keepClientWarm() ? { keepWarm: true as const, warmKey: processId } : {}),
                 workingDirectory,
                 timeoutMs,
                 attachments,

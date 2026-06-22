@@ -92,6 +92,7 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
             title: { type: 'string' },
             description: { type: 'string' },
             priority: { type: 'string' },
+            status: { type: 'string' },
             tags: { type: 'array', items: { type: 'string' } },
             plan: { type: 'string' },
             summary: { type: 'string' },

@@ -119,7 +119,7 @@ describe('ImportFromGitHubDialog', () => {
     });
 
     it('surfaces Azure Boards import setup errors from the server', async () => {
-        importFromAzureBoards.mockRejectedValue(new Error(
+        importFromAzureBoardsForOrigin.mockRejectedValue(new Error(
             'Azure Boards import requires either an Azure DevOps repo remote or configured ADO organization URL and workspace Azure Boards project.',
         ));
         renderDialog();
@@ -135,7 +135,7 @@ describe('ImportFromGitHubDialog', () => {
         expect(await screen.findByTestId('import-azure-boards-error')).toHaveTextContent(
             'Azure Boards import requires either an Azure DevOps repo remote or configured ADO organization URL and workspace Azure Boards project.',
         );
-        expect(importFromAzureBoards).toHaveBeenCalledWith('workspace-1', { workItemId: 12345 });
+        expect(importFromAzureBoardsForOrigin).toHaveBeenCalledWith('gh_org_repo', { workItemId: 12345 }, { workspaceId: 'workspace-1' });
     });
 
     it('hides provider selection and imports with the only allowed GitHub provider', async () => {

@@ -124,21 +124,6 @@ export async function buildWorkItemGroupedRouteResponse(
     return { groups };
 }
 
-function invalidateAndBroadcastOriginScope(
-    scope: WorkItemRouteScope,
-    getWsServer: WorkItemRouteContext['getWsServer'],
-    item: WorkItem,
-    type: 'work-item-added' | 'work-item-updated' = 'work-item-updated',
-): void {
-    if (scope.storageRepoId === scope.commandRepoId) return;
-    clearWorkItemResponseCacheForWorkspace(scope.storageRepoId);
-    getWsServer?.()?.broadcastProcessEvent({
-        type,
-        workspaceId: scope.storageRepoId,
-        item,
-    });
-}
-
 function invalidateAndBroadcastRemoval(
     scope: WorkItemRouteScope,
     getWsServer: WorkItemRouteContext['getWsServer'],
@@ -326,9 +311,9 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                     tags: body.tags,
                     autoExecute: body.autoExecute,
                     successCriteria: body.successCriteria,
+                    storageRepoId: scope.storageRepoId,
                     plan: body.plan,
                 });
-                invalidateAndBroadcastOriginScope(scope, getWsServer, item, 'work-item-added');
                 sendJSON(res, 201, item);
             } catch (err) {
                 handleAPIError(res, err);
@@ -406,7 +391,6 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
 
             try {
                 const updated = await updateWorkItemCommand(commandCtx, scope.commandRepoId, workItemId, input);
-                invalidateAndBroadcastOriginScope(scope, getWsServer, updated);
                 sendJSON(res, 200, updated);
             } catch (err) {
                 handleAPIError(res, err);
