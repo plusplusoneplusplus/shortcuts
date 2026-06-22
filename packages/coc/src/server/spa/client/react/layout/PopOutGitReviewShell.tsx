@@ -16,7 +16,7 @@ import { QueueProvider } from '../contexts/QueueContext';
 import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ToastContainer, useToast } from '../ui';
-import { getSpaCocClient } from '../api/cocClient';
+import { registerCloneBaseUrls, getCocClientForWorkspace } from '../repos/cloneRegistry';
 import { CommitChatPanel } from '../features/git/commits/CommitChatPanel';
 import { CommitChatPlacementFrame } from '../features/git/commits/CommitChatPlacementFrame';
 import { ReviewChatPlacementFrame } from '../features/git/reviewChat/ReviewChatPlacementFrame';
@@ -66,6 +66,8 @@ export interface PopOutGitReviewParams {
     prId?: string;
     repoId?: string;
     originId?: string;
+    /** Remote clone baseUrl for the workspace, when the workspace lives on a remote CoC server. */
+    cloneBaseUrl?: string;
 }
 
 export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutGitReviewParams | null {
@@ -77,14 +79,16 @@ export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutG
     const workspaceId = searchParams.get('workspace');
     if (!workspaceId) return null;
 
+    const cloneBaseUrl = searchParams.get('cloneBaseUrl') || undefined;
+
     if (parts[2] === 'branch-range') {
-        return { workspaceId, reviewType: 'branch-range' };
+        return { workspaceId, reviewType: 'branch-range', cloneBaseUrl };
     }
 
     if (parts[2] === 'pr' && parts[3]) {
         const repoId = searchParams.get('repo') ?? workspaceId;
         const originId = searchParams.get('origin')?.trim() || undefined;
-        return { workspaceId, reviewType: 'pr', prId: decodeURIComponent(parts[3]), repoId, originId };
+        return { workspaceId, reviewType: 'pr', prId: decodeURIComponent(parts[3]), repoId, originId, cloneBaseUrl };
     }
 
     // 'pr' without a prId is invalid
@@ -93,7 +97,7 @@ export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutG
     }
 
     if (parts[2]) {
-        return { workspaceId, reviewType: 'commit', commitHash: decodeURIComponent(parts[2]) };
+        return { workspaceId, reviewType: 'commit', commitHash: decodeURIComponent(parts[2]), cloneBaseUrl };
     }
 
     return null;
@@ -164,7 +168,7 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
 
     useEffect(() => {
         setLoading(true);
-        getSpaCocClient().git.getCommit(workspaceId, commitHash)
+        getCocClientForWorkspace(workspaceId).git.getCommit(workspaceId, commitHash)
             .then((data: GitCommitItem) => {
                 setCommit(data);
             })
@@ -173,7 +177,7 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
     }, [workspaceId, commitHash]);
 
     // Fetch the diff to extract file list (shares cache with CommitDetail)
-    const diffUrl = getSpaCocClient().git.commitDiffPath(workspaceId, commitHash);
+    const diffUrl = getCocClientForWorkspace(workspaceId).git.commitDiffPath(workspaceId, commitHash);
     const { diff } = useCachedDiff(diffUrl, workspaceId, commitHash);
     const fileList = useMemo(() => diff ? parseDiffFileList(diff) : [], [diff]);
     const filePaths = useMemo(() => fileList.map(f => f.path), [fileList]);
@@ -458,10 +462,10 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
         setLoading(true);
         setError(null);
 
-        const client = getSpaCocClient();
+        const client = getCocClientForWorkspace(workspaceId);
         Promise.all([
             client.git.getBranchRange(workspaceId),
-            client.git.listBranchRangeFiles(workspaceId).catch(() => ({ files: [] })),
+            client.git.listBranchRangeFiles(workspaceId),
         ])
             .then(([rangeData, filesData]) => {
                 if (isBranchRangeInfo(rangeData)) setRange(rangeData);
@@ -683,7 +687,7 @@ function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLoaded }:
     useEffect(() => {
         setLoading(true);
         setError(null);
-        const client = getSpaCocClient();
+        const client = getCocClientForWorkspace(workspaceId);
 
         Promise.all([
             client.pullRequests.getForOrigin(progressOriginId, prId, { workspaceId, repoId }) as Promise<{ title?: string; headSha?: string }>,
@@ -1018,6 +1022,12 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
 
 export function PopOutGitReviewShell() {
     const params = parsePopOutGitReviewRoute(window.location.hash, window.location.search);
+
+    // Seed the clone registry so workspace-scoped calls route to the remote server.
+    // Must run synchronously before any child renders, since the registry is module-level.
+    if (params?.cloneBaseUrl) {
+        registerCloneBaseUrls([{ workspaceId: params.workspaceId, baseUrl: params.cloneBaseUrl }]);
+    }
 
     if (!params) {
         return (

@@ -18,6 +18,7 @@ import type { DetectedPullRequest } from '../pullRequestDetection';
 import { CommitStrip } from '../CommitStrip';
 import { buildGitReviewPopOutUrl } from '../../../../layout/Router';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../../contexts/GitReviewPopOutContext';
+import { lookupCloneBaseUrl } from '../../../../repos/cloneRegistry';
 import { normalizeToolName } from './toolNormalization';
 
 interface ToolLike {
@@ -521,7 +522,7 @@ function CommitHoverPopover({ commits, workspaceId, anchorRef, popoverRef, onMou
         e.stopPropagation();
         if (!workspaceId) return;
         const hash = commit.fullHash || commit.shortHash;
-        const url = buildGitReviewPopOutUrl(workspaceId, hash);
+        const url = buildGitReviewPopOutUrl(workspaceId, hash, lookupCloneBaseUrl(workspaceId));
         const win = window.open(url, `coc-git-review-${hash}`, 'width=1200,height=800');
         if (win) {
             markPoppedOut(gitReviewPopOutKey(workspaceId, hash));

@@ -9,6 +9,7 @@ import React from 'react';
 import type { DetectedCommit } from './commitDetection';
 import { buildGitReviewPopOutUrl } from '../../../layout/Router';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../contexts/GitReviewPopOutContext';
+import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 
 export interface CommitStripProps {
     commits: DetectedCommit[];
@@ -32,7 +33,7 @@ export function CommitStrip({ commits, workspaceId }: CommitStripProps) {
         e.stopPropagation();
         if (!workspaceId) return;
         const hash = commit.fullHash || commit.shortHash;
-        const url = buildGitReviewPopOutUrl(workspaceId, hash);
+        const url = buildGitReviewPopOutUrl(workspaceId, hash, lookupCloneBaseUrl(workspaceId));
         const win = window.open(url, `coc-git-review-${hash}`, 'width=1200,height=800');
         if (win) {
             markPoppedOut(gitReviewPopOutKey(workspaceId, hash));

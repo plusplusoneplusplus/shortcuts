@@ -17,7 +17,7 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useCocClient } from '../../repos/cloneRouting';
-import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { Spinner } from '../../ui';
 import { CommitList, isTouchOnly } from './commits/CommitList';
 import type { GitCommitItem } from './commits/CommitList';
@@ -714,7 +714,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     const handleOpenAsPopup = useCallback((commit: GitCommitItem) => {
         closeContextMenu();
-        const url = buildGitReviewPopOutUrl(workspaceId, commit.hash);
+        const url = buildGitReviewPopOutUrl(workspaceId, commit.hash, lookupCloneBaseUrl(workspaceId));
         const win = window.open(url, `coc-git-review-${commit.hash}`, 'width=1200,height=800');
         if (win) {
             markPoppedOut(gitReviewPopOutKey(workspaceId, commit.hash));

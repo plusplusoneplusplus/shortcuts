@@ -25,6 +25,7 @@ import { useQueue } from '../../../contexts/QueueContext';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { buildGitReviewPopOutUrl } from '../../../layout/Router';
 import { getSpaCocClient } from '../../../api/cocClient';
+import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 import { useClassification } from '../diff/useClassification';
 import { useModalJobAiSelection } from '../../../shared/ModalJobAiControls';
 import { ClassifyDiffAiControls } from '../diff/ClassifyDiffAiControls';
@@ -174,7 +175,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
 
     const handlePopOut = useCallback(() => {
         if (!hash) return;
-        const url = buildGitReviewPopOutUrl(workspaceId, hash);
+        const url = buildGitReviewPopOutUrl(workspaceId, hash, lookupCloneBaseUrl(workspaceId));
         const win = window.open(url, `coc-git-review-${hash}`, 'width=1200,height=800');
         if (win) {
             markPoppedOut(gitReviewPopOutKey(workspaceId, hash));

@@ -161,8 +161,11 @@ describe('PopOutGitReviewShell: content components', () => {
 });
 
 describe('PopOutGitReviewShell: typed client loading', () => {
-    it('loads git review data through the shared SPA CoC client', () => {
-        expect(SOURCE).toContain('getSpaCocClient');
+    it('routes git calls through getCocClientForWorkspace, not getSpaCocClient directly', () => {
+        // All git data loading goes through getCocClientForWorkspace so remote workspaces
+        // route to the correct remote CoC server instead of the local one.
+        expect(SOURCE).toContain('getCocClientForWorkspace');
+        expect(SOURCE).not.toContain('getSpaCocClient()');
         expect(SOURCE).toContain('.git.getCommit');
         expect(SOURCE).toContain('.git.getBranchRange');
         expect(SOURCE).toContain('.git.listBranchRangeFiles');
@@ -177,6 +180,61 @@ describe('PopOutGitReviewShell: typed client loading', () => {
         expect(SOURCE).toContain('getDiffForOrigin(progressOriginId, prId');
         expect(SOURCE).toContain('originId: progressOriginId');
         expect(SOURCE).not.toContain('getDiff(repoId, prId)');
+    });
+});
+
+describe('PopOutGitReviewShell: remote clone registry bootstrap', () => {
+    it('imports registerCloneBaseUrls for registry seeding', () => {
+        expect(SOURCE).toContain('registerCloneBaseUrls');
+    });
+
+    it('seeds registry from cloneBaseUrl param when present', () => {
+        // The shell must call registerCloneBaseUrls with the workspace/baseUrl pair
+        // so all workspace-scoped calls inside the popout route to the remote server.
+        expect(SOURCE).toContain("cloneBaseUrl");
+        expect(SOURCE).toContain("registerCloneBaseUrls([{ workspaceId");
+    });
+
+    it('parses cloneBaseUrl from URL search params for commit route', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/abc123',
+            '?workspace=ws1&cloneBaseUrl=http%3A%2F%2F127.0.0.1%3A4000'
+        );
+        expect(result).not.toBeNull();
+        expect(result!.cloneBaseUrl).toBe('http://127.0.0.1:4000');
+    });
+
+    it('parses cloneBaseUrl for branch-range route', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/branch-range',
+            '?workspace=ws2&cloneBaseUrl=http%3A%2F%2F127.0.0.1%3A4001'
+        );
+        expect(result).not.toBeNull();
+        expect(result!.cloneBaseUrl).toBe('http://127.0.0.1:4001');
+    });
+
+    it('parses cloneBaseUrl for PR route', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/pr/42',
+            '?workspace=ws3&repo=r1&cloneBaseUrl=http%3A%2F%2F127.0.0.1%3A4002'
+        );
+        expect(result).not.toBeNull();
+        expect(result!.cloneBaseUrl).toBe('http://127.0.0.1:4002');
+    });
+
+    it('omits cloneBaseUrl for local workspaces (no param in URL)', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/abc123',
+            '?workspace=ws1'
+        );
+        expect(result).not.toBeNull();
+        expect(result!.cloneBaseUrl).toBeUndefined();
+    });
+
+    it('surfaces listBranchRangeFiles errors instead of swallowing them', () => {
+        // Branch-range calls must NOT use .catch(() => ({ files: [] })) — that would
+        // silently hide remote routing failures and show an empty list with no message.
+        expect(SOURCE).not.toContain('.catch(() => ({ files: [] }))');
     });
 });
 
