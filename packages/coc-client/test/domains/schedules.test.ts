@@ -49,6 +49,27 @@ describe('SchedulesClient', () => {
     expect(adapter.calls[8].options).toMatchObject({ method: 'DELETE' });
   });
 
+  it('posts instruction-refine requests with signal/timeout passthrough', async () => {
+    const adapter = createMockAdapter({ refined: 'Cleaner instructions.', raw: 'Cleaner instructions.' });
+    const client = new SchedulesClient(adapter);
+    const controller = new AbortController();
+
+    const result = await client.refine(
+      'repo/a',
+      { instructions: 'rough notes', hint: 'be specific', model: 'opus' },
+      { signal: controller.signal, timeoutMs: 5000 },
+    );
+
+    expect(result).toEqual({ refined: 'Cleaner instructions.', raw: 'Cleaner instructions.' });
+    expect(adapter.calls[0].path).toBe('/workspaces/repo%2Fa/schedules/refine');
+    expect(adapter.calls[0].options).toMatchObject({
+      method: 'POST',
+      body: { instructions: 'rough notes', hint: 'be specific', model: 'opus' },
+      signal: controller.signal,
+      timeoutMs: 5000,
+    });
+  });
+
   it('unwraps list and history response arrays with empty-array defaults', async () => {
     const adapter = createMockAdapter({});
     const client = new SchedulesClient(adapter);

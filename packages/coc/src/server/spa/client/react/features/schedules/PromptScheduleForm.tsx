@@ -12,6 +12,7 @@ import { getSpaCocClient } from '../../api/cocClient';
 import { useCocClient } from '../../repos/cloneRouting';
 import { getActiveProvider } from '../../utils/config';
 import { ScheduleTriggerPanel } from './ScheduleTriggerPanel';
+import { ScheduleInstructionsRefinePanel } from './ScheduleInstructionsRefinePanel';
 import {
     PROMPT_SCHEDULE_PRESETS,
     WEEKDAY_CHIPS,
@@ -83,6 +84,19 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
 
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [refineOpen, setRefineOpen] = useState(false);
+
+    // Ask AI to rewrite the rough instructions into a clearer prompt. Routed to
+    // the selected clone's server and scoped to this workspace; respects the
+    // model selected in the form.
+    const handleRefineInstructions = (hint: string, signal: AbortSignal): Promise<string> =>
+        cloneClient.schedules
+            .refine(
+                workspaceId,
+                { instructions, hint: hint || undefined, model: model.trim() || undefined },
+                { signal },
+            )
+            .then(result => result.refined);
 
     // Load available models
     useEffect(() => {
@@ -210,8 +224,21 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
             </label>
 
             {/* Instructions */}
-            <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">Instructions</span>
+            <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">Instructions</span>
+                    <button
+                        type="button"
+                        className="text-[10px] text-[#0078d4] hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+                        onClick={() => setRefineOpen(o => !o)}
+                        disabled={!instructions.trim()}
+                        aria-expanded={refineOpen}
+                        title={instructions.trim() ? 'Ask AI to refine these instructions' : 'Write some instructions first'}
+                        data-testid="prompt-refine-btn"
+                    >
+                        Refine with AI ✨
+                    </button>
+                </div>
                 <textarea
                     className="text-xs px-2.5 py-2 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc] resize-y min-h-[96px]"
                     placeholder="Review open PRs and summarize any issues..."
@@ -244,7 +271,17 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
                         </select>
                     </label>
                 </div>
-            </label>
+
+                {/* AI refine flow — only available when there is text to refine */}
+                {refineOpen && instructions.trim() && (
+                    <ScheduleInstructionsRefinePanel
+                        currentInstructions={instructions}
+                        refine={handleRefineInstructions}
+                        onApply={refined => { setInstructions(refined); setRefineOpen(false); }}
+                        onCancel={() => setRefineOpen(false)}
+                    />
+                )}
+            </div>
 
             {/* Schedule */}
             <div className="flex flex-col gap-2">

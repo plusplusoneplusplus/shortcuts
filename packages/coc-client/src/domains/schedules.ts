@@ -3,6 +3,8 @@ import type {
   DeleteScheduleResponse,
   ListSchedulesResponse,
   MoveScheduleRequest,
+  RefineScheduleInstructionsRequest,
+  RefineScheduleInstructionsResponse,
   RunScheduleResponse,
   Schedule,
   ScheduleHistoryResponse,
@@ -10,7 +12,7 @@ import type {
   ScheduleStatus,
   UpdateScheduleRequest,
 } from '../contracts';
-import type { RequestAdapter } from '../types';
+import type { CocRequestOptions, RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
 
 function schedulesPath(workspaceId: string, suffix = ''): string {
@@ -65,6 +67,27 @@ export class SchedulesClient {
     return this.transport.request<ScheduleMutationResponse>(schedulePath(workspaceId, scheduleId, '/move'), {
       method: 'POST',
       body: { destination },
+    });
+  }
+
+  /**
+   * Ask AI to refine a prompt routine's free-text instructions into a clearer,
+   * well-structured prompt. Scoped per workspace; abortable via `options.signal`.
+   */
+  refine(
+    workspaceId: string,
+    request: RefineScheduleInstructionsRequest,
+    options: Pick<CocRequestOptions, 'signal' | 'timeoutMs'> = {},
+  ): Promise<RefineScheduleInstructionsResponse> {
+    return this.transport.request<RefineScheduleInstructionsResponse>(schedulesPath(workspaceId, '/refine'), {
+      method: 'POST',
+      body: {
+        instructions: request.instructions,
+        hint: request.hint,
+        model: request.model,
+      },
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
     });
   }
 

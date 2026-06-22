@@ -8,6 +8,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import type { ISDKService } from '@plusplusoneplusplus/forge';
+import { denyAllPermissions } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { getErrorMessage } from '../shared/fs-utils';
@@ -16,6 +18,28 @@ import { ScheduleManager, describeCron, nextCronTime, parseCron } from './schedu
 import type { ScheduleEntry, ScheduleOnFailure, ScheduleStatus } from './schedule-manager';
 import type { TargetType, ChatMode } from '../tasks/task-types';
 import { normalizeChatMode } from '../tasks/task-types';
+
+// ============================================================================
+// AI instruction refinement
+// ============================================================================
+
+/** Pure text generation, no tool use — give it a generous 2 min budget. */
+const INSTRUCTION_REFINE_TIMEOUT_MS = 120_000;
+
+const INSTRUCTION_REFINE_SYSTEM_PROMPT = `You refine the instructions for a scheduled AI prompt routine. The user wrote rough notes; rewrite them into a single, clear, well-structured prompt the AI can follow each time the schedule runs.
+
+Rules:
+- Preserve the original intent and scope. Do NOT invent new tasks, tools, or requirements.
+- Make the instructions specific, actionable, and unambiguous.
+- Keep it concise. Use short sentences or bullet points where they help.
+- Output ONLY the refined instructions. Do NOT wrap them in markdown code fences. Do NOT add any commentary before or after.`;
+
+/** Strip a wrapping markdown code fence from an AI response, else return trimmed text. */
+function extractRefinedInstructions(response: string): string {
+    const fenced = response.match(/```[a-zA-Z]*\s*\n([\s\S]*?)```/);
+    if (fenced) return fenced[1].trim();
+    return response.trim();
+}
 
 // ============================================================================
 // Validation
@@ -96,6 +120,7 @@ export function registerScheduleRoutes(
     routes: Route[],
     manager: ScheduleManager,
     getWorkspacePath?: (repoId: string) => Promise<string | undefined>,
+    aiService?: ISDKService,
 ): void {
 
     /** Lazily register workspace path with the manager on first request for a repo. */
@@ -153,6 +178,77 @@ export function registerScheduleRoutes(
                 sendJSON(res, 201, { schedule: serializeSchedule(schedule, manager) });
             } catch (err) {
                 return sendError(res, 400, getErrorMessage(err, 'Failed to create schedule'));
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/workspaces/:id/schedules/refine — AI-assisted instruction refinement
+    //
+    // Rewrites a prompt routine's free-text instructions into a clearer,
+    // well-structured prompt. Scoped per workspace and routed to the workspace's
+    // working directory so it is multi-repo safe.
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/schedules\/refine$/,
+        handler: async (req, res, match) => {
+            const repoId = decodeURIComponent(match![1]);
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            const instructions = typeof body.instructions === 'string' ? body.instructions : '';
+            if (!instructions.trim()) {
+                return sendError(res, 400, 'Missing required field: instructions');
+            }
+            const hint = typeof body.hint === 'string' ? body.hint.trim() : '';
+            const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : undefined;
+
+            if (!aiService) {
+                return sendError(res, 503, 'AI service not configured');
+            }
+
+            let available: { available: boolean };
+            try {
+                available = await aiService.isAvailable();
+            } catch {
+                available = { available: false };
+            }
+            if (!available.available) {
+                return sendError(res, 503, 'AI service unavailable');
+            }
+
+            await ensureWorkspaceLoaded(repoId);
+            const workingDirectory = getWorkspacePath ? await getWorkspacePath(repoId) : undefined;
+
+            const userPrompt = `Current instructions:\n\n${instructions.trim()}\n\n${hint ? `Additional guidance from the user:\n\n${hint}\n\n` : ''}Return the improved instructions.`;
+
+            try {
+                const result = await aiService.sendMessage({
+                    prompt: INSTRUCTION_REFINE_SYSTEM_PROMPT + '\n\n' + userPrompt,
+                    model,
+                    workingDirectory,
+                    timeoutMs: INSTRUCTION_REFINE_TIMEOUT_MS,
+                    onPermissionRequest: denyAllPermissions,
+                });
+
+                if (!result.success) {
+                    return sendError(res, 500, 'Instruction refinement failed: ' + (result.error || 'Unknown error'));
+                }
+
+                const raw = result.response || '';
+                const refined = extractRefinedInstructions(raw);
+                if (!refined) {
+                    return sendError(res, 500, 'Instruction refinement returned an empty result');
+                }
+
+                sendJSON(res, 200, { refined, raw });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                if (message.toLowerCase().includes('timeout')) {
+                    return sendError(res, 504, 'Instruction refinement timed out');
+                }
+                return sendError(res, 500, 'Instruction refinement failed: ' + message);
             }
         },
     });

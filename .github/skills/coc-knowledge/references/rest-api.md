@@ -217,6 +217,7 @@ All Dreams routes are workspace-scoped and gated by `dreams.enabled` (default `f
 | DELETE | `/api/schedules/:id` | Delete schedule |
 | POST | `/api/schedules/:id/run` | Trigger immediate run |
 | GET | `/api/schedules/:id/runs` | Run history |
+| POST | `/api/schedules/refine` | AI-refine prompt-routine instructions (`{ instructions, hint?, model? }` → `{ refined, raw }`) |
 
 Prompt schedules expose Ask and Autopilot modes. Stored or incoming schedule entries with `mode='plan'` are read as Ask at runtime; no schedule data migration is required.
 

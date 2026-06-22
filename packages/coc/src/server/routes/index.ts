@@ -503,7 +503,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerScheduleRoutes(routes, scheduleManager, async (repoId) => {
         const workspaces = await store.getWorkspaces();
         return workspaces.find(w => w.id === repoId)?.rootPath;
-    });
+    }, resolvedAiService);
 
     // Loop routes
     if (opts.loopStore && opts.loopExecutor) {
