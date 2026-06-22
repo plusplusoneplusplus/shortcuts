@@ -88,3 +88,19 @@ export interface UpdateScheduleRequest {
 export interface MoveScheduleRequest {
   destination: ScheduleSource;
 }
+
+export interface RefineScheduleInstructionsRequest {
+  /** The current free-text instructions to refine. */
+  instructions: string;
+  /** Optional guidance describing how the AI should improve the instructions. */
+  hint?: string;
+  /** Optional model override; defaults to the active provider's model. */
+  model?: string;
+}
+
+export interface RefineScheduleInstructionsResponse {
+  /** The refined instructions. */
+  refined: string;
+  /** The raw AI response before fence stripping. */
+  raw?: string;
+}

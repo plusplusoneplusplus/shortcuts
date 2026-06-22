@@ -13,6 +13,7 @@ const { mockSchedulesClient, mockModelsClient, mockAgentProvidersClient } = vi.h
         create: vi.fn(),
         update: vi.fn(),
         disable: vi.fn(),
+        refine: vi.fn(),
     },
     mockModelsClient: {
         list: vi.fn(),
@@ -20,6 +21,16 @@ const { mockSchedulesClient, mockModelsClient, mockAgentProvidersClient } = vi.h
     mockAgentProvidersClient: {
         listModels: vi.fn(),
     },
+}));
+
+// Keep the AI refine panel light — stub the diff viewer/generator it renders.
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
+    UnifiedDiffViewer: ({ diff, 'data-testid': testId }: any) => <div data-testid={testId}>{diff}</div>,
+    HunkNavButtons: () => null,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/unifiedDiffUtils', () => ({
+    generateUnifiedDiff: (oldText: string, newText: string) => `@@\n-${oldText}\n+${newText}`,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
@@ -57,6 +68,7 @@ beforeEach(() => {
     mockSchedulesClient.create.mockResolvedValue({ id: 'new-sched-1' });
     mockSchedulesClient.update.mockResolvedValue({});
     mockSchedulesClient.disable.mockResolvedValue({});
+    mockSchedulesClient.refine.mockResolvedValue({ refined: 'Review all open PRs and report blockers.' });
     mockModelsClient.list.mockResolvedValue([]);
     mockAgentProvidersClient.listModels.mockResolvedValue({ models: [] });
 });
@@ -343,6 +355,67 @@ describe('PromptScheduleForm — edit mode', () => {
         expect(screen.getByTestId('prompt-day-fri').className).toContain('border-[#0078d4]');
         expect((screen.getByTestId('prompt-hour-select') as HTMLSelectElement).value).toBe('14');
         expect((screen.getByTestId('prompt-minute-select') as HTMLSelectElement).value).toBe('30');
+    });
+});
+
+describe('PromptScheduleForm — AI refine instructions', () => {
+    it('disables the refine button when instructions are empty', async () => {
+        await renderPromptForm();
+
+        const btn = screen.getByTestId('prompt-refine-btn');
+        expect(btn.hasAttribute('disabled')).toBe(true);
+    });
+
+    it('enables the refine button once instructions are present', async () => {
+        const user = userEvent.setup();
+        await renderPromptForm();
+
+        await user.type(screen.getByTestId('prompt-instructions-input'), 'check the prs');
+        expect(screen.getByTestId('prompt-refine-btn').hasAttribute('disabled')).toBe(false);
+    });
+
+    it('opens the refine panel and applies the refined text to the textarea', async () => {
+        const user = userEvent.setup();
+        await renderPromptForm();
+
+        await user.type(screen.getByTestId('prompt-instructions-input'), 'check the prs');
+        await user.click(screen.getByTestId('prompt-refine-btn'));
+
+        expect(screen.getByTestId('schedule-refine-panel')).toBeTruthy();
+
+        // Run the refine → preview → apply flow.
+        await user.click(screen.getByTestId('schedule-refine-submit'));
+        await waitFor(() => expect(screen.getByTestId('schedule-refine-apply')).toBeTruthy());
+
+        expect(mockSchedulesClient.refine).toHaveBeenCalledWith(
+            'ws-test',
+            expect.objectContaining({ instructions: 'check the prs' }),
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
+
+        await user.click(screen.getByTestId('schedule-refine-apply'));
+
+        await waitFor(() => {
+            expect((screen.getByTestId('prompt-instructions-input') as HTMLTextAreaElement).value)
+                .toBe('Review all open PRs and report blockers.');
+        });
+        // Panel closes after apply.
+        expect(screen.queryByTestId('schedule-refine-panel')).toBeNull();
+    });
+
+    it('closes the refine panel on cancel without changing instructions', async () => {
+        const user = userEvent.setup();
+        await renderPromptForm();
+
+        await user.type(screen.getByTestId('prompt-instructions-input'), 'check the prs');
+        await user.click(screen.getByTestId('prompt-refine-btn'));
+        const panel = screen.getByTestId('schedule-refine-panel');
+        expect(panel).toBeTruthy();
+
+        await user.click(within(panel).getByRole('button', { name: /cancel/i }));
+
+        expect(screen.queryByTestId('schedule-refine-panel')).toBeNull();
+        expect((screen.getByTestId('prompt-instructions-input') as HTMLTextAreaElement).value).toBe('check the prs');
     });
 });
 
