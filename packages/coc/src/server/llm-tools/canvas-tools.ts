@@ -129,12 +129,11 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
     // ------------------------------------------------------------------
     const write = defineTool<WriteCanvasArgs>('write_canvas', {
         description:
-            'Create or update a markdown/code canvas — a live document shown beside the chat for content '
-            + 'the user will iterate on (plans, specs, docs, a code file). Markdown renders Mermaid blocks as '
-            + 'diagrams. Omit canvasId to create (needs title + content; set type "code" + language for code). '
-            + 'To update, pass canvasId + expectedRevision (from your last result) and either edits '
-            + '(exact-match, one-per-match, preferred) or content (full rewrite). On a revision conflict the '
-            + 'user edited it — read_canvas and retry. Keep chat replies short; reference the canvas, don\'t repeat it.',
+            'Create or update a markdown/code canvas — a live document beside the chat the user iterates on. '
+            + 'Markdown renders Mermaid blocks as diagrams. Omit canvasId to create (needs title + content; '
+            + 'set type "code" + language for code). To update, pass canvasId + expectedRevision and either '
+            + 'edits (exact-match, one per match) or content (full rewrite). On a revision conflict the user '
+            + 'edited it — read_canvas and retry. Keep chat replies short; reference the canvas, don\'t repeat it.',
         parameters: {
             type: 'object',
             properties: {
@@ -270,7 +269,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
     // ------------------------------------------------------------------
     const extension = defineTool<ExtensionCanvasArgs>('extension_canvas', {
         description:
-            'Build or run a custom interactive "extension" canvas (kanban, checklist, dashboard) backed by '
+            'Build or run a custom interactive "extension" canvas backed by '
             + 'JSON shared state. BUILD: omit canvasId to create (give title) or pass canvasId to update; '
             + 'provide description, capabilities[] (declared actions), capabilitiesJs (assigns '
             + '`capabilities = { name(state, params) { return nextState } }` — pure, no imports/network, 1s budget), '
