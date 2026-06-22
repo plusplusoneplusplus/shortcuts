@@ -12,9 +12,12 @@
  * Returns raw text + a server language hint; rendering (markdown vs
  * syntax-highlighted source, line jump/highlight) is layered on top in AC-04/05.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../../contexts/AppContext';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../../api/cocClient';
+import { useReposOptional } from '../../../contexts/ReposContext';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
+import { isRemoteWorkspace } from '../../../repos/remoteWorkspaceAggregation';
+import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { resolveSourceCanvasTarget, isSourceCanvasResolveError } from './resolve';
 import type { SourceCanvasFileRef } from './types';
 
@@ -57,8 +60,21 @@ export function useSourceCanvasContent(
     fileRef: SourceCanvasFileRef | null,
 ): SourceCanvasContentState {
     const { state } = useApp();
-    const workspaces = state.workspaces;
+    const repos = useReposOptional();
     const [content, setContent] = useState<SourceCanvasContentState>(LOADING);
+
+    // Remote-server workspaces are aggregated into the repos list, not into the
+    // global `state.workspaces` (routing goes through the clone registry). A chat
+    // link clicked in a remote conversation carries that remote workspace id, so
+    // fold the remote workspaces in for resolution — otherwise the workspace (and
+    // its remote `rootPath`) is invisible and a relative path can't be anchored.
+    const reposList = repos?.repos;
+    const workspaces = useMemo(() => {
+        const remote = (reposList ?? [])
+            .map((r) => r.workspace)
+            .filter(isRemoteWorkspace);
+        return remote.length > 0 ? [...state.workspaces, ...remote] : state.workspaces;
+    }, [state.workspaces, reposList]);
 
     // Line/range changes (scroll target only) must NOT trigger a refetch, so
     // depend on the resolution-relevant fields rather than the ref identity.
@@ -86,7 +102,9 @@ export function useSourceCanvasContent(
 
         let cancelled = false;
         setContent({ ...LOADING, resolvedPath: resolved.path });
-        getSpaCocClient()
+        // Route through the clone registry so a remote workspace's preview is
+        // fetched from its own server; local ids fall through to the default client.
+        getCocClientForWorkspace(resolved.wsId)
             .tasks.previewWorkspaceFile(resolved.wsId, resolved.path, { lines: 0 })
             .then((res) => {
                 if (cancelled) {

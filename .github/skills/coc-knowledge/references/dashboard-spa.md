@@ -245,7 +245,12 @@ bare path, workspace hint, optional `sourceFilePath`, and optional line/range
 metadata. The source-canvas resolver chooses the explicit workspace hint when
 present, otherwise the longest matching workspace root, and resolves relative
 paths against `sourceFilePath` when available or the selected workspace root
-before calling the workspace file preview API. `ChatDetail` owns the listener,
+before calling the workspace file preview API. `useSourceCanvasContent` folds the
+remote-server workspaces (which live in the repos list, not `state.workspaces`)
+into the resolver's workspace set, so a link clicked in a remote conversation
+resolves against that workspace's remote `rootPath`, and it routes the preview
+fetch through `getCocClientForWorkspace(wsId)` so a remote ref is read from its
+own server instead of the local one. `ChatDetail` owns the listener,
 closes sibling right-side panels, and mounts `SourceCanvasPanel` as the right
 column on desktop or a bottom sheet on mobile. Flag-off, user-message, and
 non-chat file references continue to route to the floating
