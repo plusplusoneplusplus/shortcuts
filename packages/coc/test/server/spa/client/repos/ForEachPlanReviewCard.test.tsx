@@ -26,7 +26,7 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
             continue: mocks.continueRun,
         },
         processes: {
-            update: mocks.processUpdate,
+            patchMetadata: mocks.processUpdate,
         },
     }),
     getSpaCocClientErrorMessage: mocks.getErrorMessage,
@@ -285,8 +285,8 @@ describe('ForEachPlanReviewCard', () => {
         expect(mocks.approve).toHaveBeenCalledWith('ws-1', 'for-each-run-1');
         expect(mocks.start).not.toHaveBeenCalled();
         expect(mocks.continueRun).not.toHaveBeenCalled();
-        expect(mocks.processUpdate).toHaveBeenCalledWith('queue_gen-1', expect.objectContaining({
-            metadata: expect.objectContaining({
+        expect(mocks.processUpdate).toHaveBeenCalledWith('queue_gen-1', {
+            set: expect.objectContaining({
                 forEach: expect.objectContaining({
                     status: 'approved',
                     runId: 'for-each-run-1',
@@ -294,7 +294,7 @@ describe('ForEachPlanReviewCard', () => {
                     latestPlanTurnIndex: 1,
                 }),
             }),
-        }), { workspace: 'ws-1' });
+        }, { workspace: 'ws-1' });
         expect(onApprovedRun).toHaveBeenCalledWith('for-each-run-1');
     });
 

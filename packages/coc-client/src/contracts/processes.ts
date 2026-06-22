@@ -97,6 +97,11 @@ export interface ProcessDetailResponse {
   total: number;
 }
 
+export interface ProcessMetadataPatchRequest {
+  set?: JsonObject;
+  unset?: string[];
+}
+
 export interface CreateProcessRequest extends Partial<AIProcess> {
   id: string;
   promptPreview: string;

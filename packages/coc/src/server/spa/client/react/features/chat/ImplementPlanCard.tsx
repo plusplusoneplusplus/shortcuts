@@ -256,12 +256,11 @@ export function ImplementPlanCard({
                 const prevImpls = Array.isArray(sourceMetadata?.implementations)
                     ? (sourceMetadata!.implementations as ImplementationRecord[])
                     : [];
-                const merged = {
-                    ...(sourceMetadata ?? {}),
-                    implementations: [...prevImpls, record],
-                };
+                const implementations = [...prevImpls, record];
                 try {
-                    await sourceClient.processes.update(sourceProcessId, { metadata: merged } as any);
+                    await sourceClient.processes.patchMetadata(sourceProcessId, {
+                        set: { implementations },
+                    });
                     onRecordPersisted?.(record);
                 } catch (persistErr) {
                     console.warn('Failed to persist implementation record:', persistErr);

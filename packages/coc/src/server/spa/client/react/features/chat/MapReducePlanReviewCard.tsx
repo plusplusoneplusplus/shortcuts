@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
-    AIProcess,
     MapReduceChildMode,
     MapReduceItem,
     MapReducePlanArtifact,
@@ -374,11 +373,8 @@ export function MapReducePlanReviewCard({
             };
             delete nextMapReduce.lastPlanError;
             delete nextMapReduce.lastPlanErrorTurnIndex;
-            await client.processes.update(processId, {
-                metadata: {
-                    ...currentMetadata,
-                    mapReduce: nextMapReduce,
-                } as AIProcess['metadata'],
+            await client.processes.patchMetadata(processId, {
+                set: { mapReduce: nextMapReduce },
             }, { workspace: workspaceId });
             onApprovedRun?.(approved.runId);
         } catch (err) {

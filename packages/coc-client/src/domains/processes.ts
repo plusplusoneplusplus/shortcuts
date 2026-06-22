@@ -7,6 +7,7 @@ import type {
   CreatePendingProcessMessageResponse,
   ProcessListQuery,
   ProcessListResponse,
+  ProcessMetadataPatchRequest,
   PendingProcessMessage,
   PinnedTurnsResponse,
   ProcessForkResponse,
@@ -91,6 +92,14 @@ export class ProcessesClient {
       method: 'PATCH',
       query,
       body: updates,
+    });
+  }
+
+  patchMetadata(processId: string, patch: ProcessMetadataPatchRequest, query?: Pick<ProcessListQuery, 'workspace'>): Promise<{ process: AIProcess }> {
+    return this.transport.request<{ process: AIProcess }>(`/processes/${encodePathSegment(processId)}`, {
+      method: 'PATCH',
+      query,
+      body: { metadataPatch: patch },
     });
   }
 

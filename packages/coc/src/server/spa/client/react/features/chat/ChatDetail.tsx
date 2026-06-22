@@ -515,8 +515,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (planPatchedRef.current) return;
         if (!detectedPlanFile || planPath || task?.metadata?.planFilePath || !processId) return;
         planPatchedRef.current = true;
-        const merged = { ...(task?.metadata ?? {}), planFilePath: detectedPlanFile };
-        client.processes.update(processId, { metadata: merged })
+        client.processes.patchMetadata(processId, { set: { planFilePath: detectedPlanFile } })
             .then((data: any) => {
                 if (data?.process) setTask((prev: any) => prev ? { ...prev, metadata: data.process.metadata } : prev);
             })
@@ -529,8 +528,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (goalPatchedRef.current) return;
         if (!detectedGoalFile || task?.metadata?.goalFilePath || !processId) return;
         goalPatchedRef.current = true;
-        const merged = { ...(task?.metadata ?? {}), goalFilePath: detectedGoalFile };
-        client.processes.update(processId, { metadata: merged })
+        client.processes.patchMetadata(processId, { set: { goalFilePath: detectedGoalFile } })
             .then((data: any) => {
                 if (data?.process) setTask((prev: any) => prev ? { ...prev, metadata: data.process.metadata } : prev);
             })
