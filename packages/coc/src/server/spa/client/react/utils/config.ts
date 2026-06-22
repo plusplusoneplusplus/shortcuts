@@ -264,10 +264,9 @@ export function getPrewarmDebounceMs(): number {
 
 /**
  * Warm-client idle TTL (ms), resolved from env on the server
- * (COC_WARM_CLIENT_TTL_MS) and surfaced via runtime config. Drives the
- * client-side decay timer for the optimistic "session warm" indicator. Falls
- * back to the 300000ms (5 minute) default when the value is missing or invalid.
- * A surfaced value of `0` means warming is disabled and is returned as-is.
+ * (COC_WARM_CLIENT_TTL_MS) and surfaced via runtime config. Falls back to the
+ * 300000ms (5 minute) default when the value is missing or invalid. A surfaced
+ * value of `0` means warming is disabled and is returned as-is.
  */
 export function getWarmClientTtlMs(): number {
     const raw = (getConfig() as unknown as Record<string, unknown>).warmClientTtlMs;

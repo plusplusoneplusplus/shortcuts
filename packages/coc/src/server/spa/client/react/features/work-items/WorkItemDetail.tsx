@@ -340,7 +340,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
     const [showParentPicker, setShowParentPicker] = useState(false);
     /** Plan content draft, lifted from WorkItemPlanSection into the unified batch. */
     const [planDraft, setPlanDraft] = useState<string | null>(null);
-    const [descViewMode, setDescViewMode] = useState<DescriptionViewMode>('source');
+    const [descViewMode, setDescViewMode] = useState<DescriptionViewMode>('preview');
     const [planViewMode, setPlanViewMode] = useState<PlanViewMode>('preview');
 
     const [showAiComposer, setShowAiComposer] = useState(false);

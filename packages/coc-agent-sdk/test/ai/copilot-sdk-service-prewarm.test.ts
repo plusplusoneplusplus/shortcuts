@@ -31,12 +31,16 @@ vi.mock('../../src/sdk-client-factory', () => ({
 }));
 
 const WD = '/test/project';
-const KEY = makeWarmKey(COPILOT_PROVIDER, WD);
+const PROCESS_A = 'process-a';
+const PROCESS_B = 'process-b';
+const KEY = makeWarmKey(COPILOT_PROVIDER, PROCESS_A);
+const KEY_B = makeWarmKey(COPILOT_PROVIDER, PROCESS_B);
 
 function warmSend(service: CopilotSDKService, overrides?: Record<string, unknown>) {
     return service.sendMessage({
         prompt: 'hello',
         workingDirectory: WD,
+        warmKey: PROCESS_A,
         timeoutMs: 10000, // non-streaming path
         loadDefaultMcpConfig: false,
         keepWarm: true,
@@ -73,7 +77,7 @@ describe('CopilotSDKService.prewarm — warms without a session (AC-04)', () => 
     it('warms the client once and parks it, creating no session', async () => {
         const { mockClient } = wireMock();
 
-        await service.prewarm({ workingDirectory: WD });
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
 
         // The client process is created and started, but NO session is created.
         expect(createSdkClientMock).toHaveBeenCalledTimes(1);
@@ -87,9 +91,9 @@ describe('CopilotSDKService.prewarm — warms without a session (AC-04)', () => 
     it('is idempotent — repeated prewarms do not duplicate the client', async () => {
         wireMock();
 
-        await service.prewarm({ workingDirectory: WD });
-        await service.prewarm({ workingDirectory: WD });
-        await service.prewarm({ workingDirectory: WD });
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
 
         expect(createSdkClientMock).toHaveBeenCalledTimes(1);
         expect((service as any).warmRegistry.size()).toBe(1);
@@ -98,7 +102,7 @@ describe('CopilotSDKService.prewarm — warms without a session (AC-04)', () => 
     it('reuses the prewarmed client on the next send (no second cold-start)', async () => {
         const { mockClient } = wireMock();
 
-        await service.prewarm({ workingDirectory: WD });
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
         const result = await warmSend(service);
 
         expect(result.success).toBe(true);
@@ -116,13 +120,22 @@ describe('CopilotSDKService.prewarm — warms without a session (AC-04)', () => 
         // Fire both without awaiting between them — whichever reaches the
         // registry first, the other attaches to the same warm client.
         const [, sendResult] = await Promise.all([
-            service.prewarm({ workingDirectory: WD }),
+            service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD }),
             warmSend(service),
         ]);
 
         expect(sendResult.success).toBe(true);
         expect(createSdkClientMock).toHaveBeenCalledTimes(1);
         expect(mockClient.createSession).toHaveBeenCalledTimes(1);
+    });
+
+    it('prewarming one process does not warm another process in the same cwd', async () => {
+        wireMock();
+
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
+
+        expect((service as any).warmRegistry.isWarm(KEY)).toBe(true);
+        expect((service as any).warmRegistry.isWarm(KEY_B)).toBe(false);
     });
 
     it('no-ops while a turn is active on the same key', async () => {
@@ -133,7 +146,7 @@ describe('CopilotSDKService.prewarm — warms without a session (AC-04)', () => 
         const sendP = warmSend(service);
         expect((service as any).warmRegistry.isActive(KEY)).toBe(true);
 
-        await service.prewarm({ workingDirectory: WD });
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
 
         // Prewarm must not spawn a second client while a turn holds the key.
         expect(createSdkClientMock).toHaveBeenCalledTimes(1);
@@ -146,7 +159,7 @@ describe('CopilotSDKService.prewarm — warms without a session (AC-04)', () => 
         createSdkClientMock.mockImplementation((opts: any) => new mod.MockCopilotClient(opts));
         (service as any).availabilityCache = { available: false, error: 'SDK missing' };
 
-        await service.prewarm({ workingDirectory: WD });
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
 
         expect(createSdkClientMock).not.toHaveBeenCalled();
         expect((service as any).warmRegistry.size()).toBe(0);
@@ -184,7 +197,7 @@ describe('CopilotSDKService.onWarmStatusChange — bridges registry transitions 
         const seen: Array<[string, string]> = [];
         service.onWarmStatusChange((key, status) => seen.push([key, status]));
 
-        await service.prewarm({ workingDirectory: WD });
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
 
         expect(seen).toEqual([[KEY, 'warming'], [KEY, 'warm']]);
     });
@@ -205,11 +218,60 @@ describe('CopilotSDKService.onWarmStatusChange — bridges registry transitions 
         const seen: Array<[string, string]> = [];
         const unsub = service.onWarmStatusChange((key, status) => seen.push([key, status]));
 
-        await service.prewarm({ workingDirectory: WD }); // warming, warm
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD }); // warming, warm
         unsub();
         await (service as any).warmRegistry.evict(KEY); // cold — not delivered
 
         expect(seen).toEqual([[KEY, 'warming'], [KEY, 'warm']]);
+    });
+});
+
+// ============================================================================
+// getWarmStatus — synchronous snapshot read (AC-02)
+// ============================================================================
+
+describe('CopilotSDKService.getWarmStatus — current warm snapshot (AC-02)', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        service.dispose();
+        resetCopilotSDKService();
+        resetSDKLogger();
+    });
+
+    function wireMock() {
+        const mod = createMockSDKModule(() => createMockSession());
+        createSdkClientMock.mockImplementation((opts: any) => new mod.MockCopilotClient(opts));
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+        return mod;
+    }
+
+    it('returns cold for a never-warmed conversation', () => {
+        wireMock();
+        expect(service.getWarmStatus({ warmKey: PROCESS_A, workingDirectory: WD })).toBe('cold');
+    });
+
+    it('returns warm after a prewarm — same key as prewarm()', async () => {
+        wireMock();
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
+        expect(service.getWarmStatus({ warmKey: PROCESS_A, workingDirectory: WD })).toBe('warm');
+        // A different process key in the same cwd is still cold.
+        expect(service.getWarmStatus({ warmKey: PROCESS_B, workingDirectory: WD })).toBe('cold');
+    });
+
+    it('returns active while a turn holds the key', async () => {
+        wireMock();
+        const sendP = warmSend(service);
+        expect(service.getWarmStatus({ warmKey: PROCESS_A, workingDirectory: WD })).toBe('active');
+        await sendP;
+        // Clean completion parks the client → warm.
+        expect(service.getWarmStatus({ warmKey: PROCESS_A, workingDirectory: WD })).toBe('warm');
     });
 });
 
@@ -239,9 +301,11 @@ describe('CopilotSDKService.prewarm — TTL=0 disables warming (AC-04/AC-06)', (
         createSdkClientMock.mockImplementation((opts: any) => new mod.MockCopilotClient(opts));
         (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
 
-        await service.prewarm({ workingDirectory: WD });
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
 
         expect(createSdkClientMock).not.toHaveBeenCalled();
         expect((service as any).warmRegistry.size()).toBe(0);
+        // The snapshot read also reports cold when warming is disabled.
+        expect(service.getWarmStatus({ warmKey: PROCESS_A, workingDirectory: WD })).toBe('cold');
     });
 });

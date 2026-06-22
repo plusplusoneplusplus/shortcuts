@@ -335,6 +335,43 @@ describe('RemoteSubBar', () => {
         expect(screen.getByTestId('context-menu')).toBeTruthy();
     });
 
+    // Regression: right-clicking a row must NOT dismiss the clone dropdown.
+    it('keeps the clone popover open when right-clicking a row', () => {
+        renderBar();
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const items = screen.getAllByTestId('clone-popover-item');
+        // Faithful right-click sequence: mousedown (button 2) then contextmenu.
+        fireEvent.mouseDown(items[0], { button: 2 });
+        fireEvent.contextMenu(items[0]);
+        // The dropdown stays open and the menu appears on top of it.
+        expect(screen.queryByTestId('clone-popover')).toBeTruthy();
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+    });
+
+    // Regression: a mousedown inside the portal context menu must not collapse
+    // the popover underneath it.
+    it('keeps the popover open when interacting inside the context menu', () => {
+        renderBar();
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        fireEvent.contextMenu(screen.getAllByTestId('clone-popover-item')[0]);
+        const menu = screen.getByTestId('context-menu');
+        fireEvent.mouseDown(menu);
+        expect(screen.queryByTestId('clone-popover')).toBeTruthy();
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+    });
+
+    it('closes the clone popover once a context-menu item is chosen', () => {
+        renderBar();
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        fireEvent.contextMenu(screen.getAllByTestId('clone-popover-item')[0]);
+        const infoBtn = Array.from(screen.getByTestId('context-menu').querySelectorAll('button'))
+            .find(btn => btn.textContent?.includes('Repo info'))!;
+        fireEvent.click(infoBtn);
+        expect(screen.queryByTestId('clone-popover')).toBeNull();
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+        expect(screen.getByTestId('clone-info-content')).toBeTruthy();
+    });
+
     it('context menu contains Repo info, Copy path, and Remove from CoC', () => {
         renderBar();
         fireEvent.click(screen.getByTestId('clone-switch'));

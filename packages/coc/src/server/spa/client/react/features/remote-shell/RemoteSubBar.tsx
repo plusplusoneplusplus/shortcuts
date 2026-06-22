@@ -120,6 +120,10 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
     useEffect(() => {
         if (!cloneOpen && !ovOpen) return;
         const onDown = (e: MouseEvent) => {
+            // The clone context menu is a portal at document.body — outside cloneRef.
+            // Interacting with it must not collapse the popover underneath it.
+            const target = e.target as Element | null;
+            if (target?.closest?.('[data-testid="context-menu"]')) return;
             if (cloneOpen && cloneRef.current && !cloneRef.current.contains(e.target as Node)) setCloneOpen(false);
             if (ovOpen && ovRef.current && !ovRef.current.contains(e.target as Node)) setOvOpen(false);
         };
@@ -167,17 +171,19 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
 
     const buildMenuItems = useCallback((repo: RepoData): ContextMenuItem[] => {
         const isRemote = isRemoteRepo(repo);
+        // Choosing any item also dismisses the still-open clone popover.
+        const close = () => { setCtxMenu(null); setCloneOpen(false); };
         return [
             {
                 label: 'Repo info',
                 icon: 'ℹ',
-                onClick: () => { setCtxMenu(null); setInfoRepo(repo); },
+                onClick: () => { close(); setInfoRepo(repo); },
             },
             {
                 label: 'Copy path',
                 icon: '📋',
                 onClick: () => {
-                    setCtxMenu(null);
+                    close();
                     navigator.clipboard.writeText(repo.workspace.rootPath ?? '').catch(() => {});
                 },
             },
@@ -186,7 +192,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                 label: 'Remove from CoC',
                 icon: '🗑',
                 disabled: isRemote,
-                onClick: () => { setCtxMenu(null); setRemoveRepo(repo); },
+                onClick: () => { close(); setRemoveRepo(repo); },
             },
         ];
     }, []);
@@ -345,7 +351,9 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                                     title={isOffline ? `${c.workspace.name} · offline (server unreachable)` : undefined}
                                     onContextMenu={(e) => {
                                         e.preventDefault();
-                                        setCloneOpen(false);
+                                        // Keep the popover open — the context menu opens on top of
+                                        // it. The popover's outside-click handler ignores the menu
+                                        // portal, so the dropdown stays put until an item is chosen.
                                         setCtxMenu({ repo: c, x: e.clientX, y: e.clientY });
                                     }}
                                     onClick={() => {

@@ -167,6 +167,11 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
     const associationsRef = useRef<PrAssociation[]>([]);
     // Per-key checks fetch status — dedups expand requests (skip when loading/ready).
     const checksStatusRef = useRef<Map<string, 'loading' | 'ready' | 'error'>>(new Map());
+    // Holds the latest fetchChecksForAssociation so the detail fetch can eager-load
+    // checks on detail-ready without a declaration-order/closure cycle.
+    const fetchChecksRef = useRef<
+        (association: PrAssociation, repoId: string, generation: number, opts?: FetchOptions) => void
+    >(() => {});
 
     const chatOriginId = useMemo(
         () => (workspaceId ? resolveCanonicalOriginId({ workspaceId, remoteUrl: remoteUrl ?? null }) : ''),
@@ -214,6 +219,13 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
                             };
                         }),
                     );
+                    // Eager-load the CI checks once the detail is ready so the inline
+                    // summary chips appear without expanding the Checks toggle — and so
+                    // the smart-poll predicate can see pending checks on a never-expanded
+                    // row. Deduped via checksStatusRef (skipped once loading/ready/error).
+                    if (pr && checksStatusRef.current.get(association.key) === undefined) {
+                        fetchChecksRef.current(association, repoId, generation);
+                    }
                 })
                 .catch((err: unknown) => {
                     if (generationRef.current !== generation) return;
@@ -278,6 +290,7 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
         },
         [],
     );
+    fetchChecksRef.current = fetchChecksForAssociation;
 
     useEffect(() => {
         // A dep change rebuilds the association set — abandon any in-flight refresh.

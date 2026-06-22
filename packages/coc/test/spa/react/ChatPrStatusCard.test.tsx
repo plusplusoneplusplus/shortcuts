@@ -16,7 +16,7 @@
  *   - mapPrDetailToCardPr pure-mapper edge cases.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, fireEvent, waitFor, act, within } from '@testing-library/react';
 import React from 'react';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 import { PR_STATUS_POLL_INTERVAL_MS } from '../../../src/server/spa/client/react/features/chat/conversation/prStatusFreshness';
@@ -79,6 +79,8 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
         mocks.pullRequests.getForOrigin.mockReset();
         mocks.pullRequests.getChecksForOrigin.mockReset();
         mocks.pullRequests.createChatBindingForOrigin.mockResolvedValue({ prId: '42', taskId: 't1' });
+        // Eager checks fetch fires on detail-ready, so every test needs a default.
+        mocks.pullRequests.getChecksForOrigin.mockResolvedValue({ checks: [] });
         // Default: every workspace resolves to the shared local client.
         mocks.getCocClientForWorkspace.mockReset();
         mocks.getCocClientForWorkspace.mockReturnValue({ pullRequests: mocks.pullRequests });
@@ -127,7 +129,7 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
         );
     });
 
-    it('AC-03: expanding a row lazily fetches checks and renders summary counts + rows', async () => {
+    it('AC-03: eagerly fetches checks on load (inline summary), expanding shows the list deduped', async () => {
         mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
         mocks.pullRequests.getForOrigin.mockResolvedValue({
             number: 42,
@@ -152,21 +154,27 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
 
         fireEvent.click(await findByTestId('pr-status-card-toggle'));
         await findByText('Add PR status card');
-        // Checks are not fetched until the row is expanded (lazy).
-        expect(mocks.pullRequests.getChecksForOrigin).not.toHaveBeenCalled();
 
-        fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${GH_ORIGIN}:42`));
-
-        // Fetched against the PR's canonical origin, then summary counts render.
+        // Checks are fetched eagerly once the detail is ready — no toggle needed.
         await waitFor(() =>
             expect(mocks.pullRequests.getChecksForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '42', { workspaceId: 'ws1' }),
         );
-        const passing = await waitFor(() => getByTestId(`pr-checks-compact-${GH_ORIGIN}:42-count-passing`));
-        expect(passing.getAttribute('data-count')).toBe('1');
-        expect(getByTestId(`pr-checks-compact-${GH_ORIGIN}:42-count-failing`).getAttribute('data-count')).toBe('1');
-        expect(getByTestId(`pr-checks-compact-${GH_ORIGIN}:42-count-pending`).getAttribute('data-count')).toBe('1');
 
-        // Collapsing then re-expanding does not refetch (already loaded → deduped).
+        // The inline summary chips render on the Checks line without expanding.
+        const inlinePassing = await waitFor(() =>
+            getByTestId(`pr-status-card-checks-inline-${GH_ORIGIN}:42-count-passing`),
+        );
+        expect(inlinePassing.getAttribute('data-count')).toBe('1');
+        expect(getByTestId(`pr-status-card-checks-inline-${GH_ORIGIN}:42-count-failing`).getAttribute('data-count')).toBe('1');
+        expect(getByTestId(`pr-status-card-checks-inline-${GH_ORIGIN}:42-count-pending`).getAttribute('data-count')).toBe('1');
+
+        // Expanding reveals the full per-check list and does NOT refetch (deduped).
+        fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${GH_ORIGIN}:42`));
+        const panel = getByTestId(`pr-status-card-checks-${GH_ORIGIN}:42`);
+        expect(within(panel).getAllByTestId(`pr-checks-compact-${GH_ORIGIN}:42-row`)).toHaveLength(3);
+        expect(mocks.pullRequests.getChecksForOrigin).toHaveBeenCalledTimes(1);
+
+        // Collapsing then re-expanding still does not refetch.
         fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${GH_ORIGIN}:42`));
         fireEvent.click(getByTestId(`pr-status-card-checks-toggle-${GH_ORIGIN}:42`));
         expect(mocks.pullRequests.getChecksForOrigin).toHaveBeenCalledTimes(1);
@@ -304,6 +312,43 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
         }
     });
 
+    it('AC-05: eager-loaded pending checks keep a never-expanded PR polling', async () => {
+        vi.useFakeTimers();
+        try {
+            mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+            mocks.pullRequests.getForOrigin.mockResolvedValue({
+                number: 42,
+                title: 'Pending checks PR',
+                status: 'open',
+                sourceBranch: 'feature/card',
+                targetBranch: 'main',
+                createdAt: '2024-01-01T00:00:00Z',
+                url: GH_URL,
+                // No auto-merge — only the eager-loaded pending check keeps it active.
+            });
+            mocks.pullRequests.getChecksForOrigin.mockResolvedValue({
+                checks: [{ id: 'c1', name: 'e2e', status: 'pending', source: 'check' }],
+            });
+
+            render(
+                <ChatPrStatusCard turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+            );
+
+            // Flush the initial bindings + detail + eager-checks fetches.
+            await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+            expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(1);
+            // Checks were loaded eagerly even though the row was never expanded.
+            expect(mocks.pullRequests.getChecksForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '42', { workspaceId: 'ws1' });
+
+            // The pending check keeps the smart poll active → a forced re-fetch.
+            await act(async () => { await vi.advanceTimersByTimeAsync(PR_STATUS_POLL_INTERVAL_MS); });
+            expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(2);
+            expect(mocks.pullRequests.getForOrigin).toHaveBeenLastCalledWith(GH_ORIGIN, '42', { workspaceId: 'ws1', force: true });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('empty: no detection and no bindings keeps the card hidden', async () => {
         mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
         const { container } = render(
@@ -330,7 +375,7 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
                 createdAt: '2024-01-01T00:00:00Z',
                 url: GH_URL,
             }),
-            getChecksForOrigin: vi.fn(),
+            getChecksForOrigin: vi.fn().mockResolvedValue({ checks: [] }),
         };
         mocks.getCocClientForWorkspace.mockImplementation((wsId: string) =>
             wsId === REMOTE_WS ? { pullRequests: remotePullRequests } : { pullRequests: mocks.pullRequests },

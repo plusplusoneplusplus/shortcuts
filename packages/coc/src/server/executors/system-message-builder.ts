@@ -22,9 +22,9 @@ import {
     loadInstructions,
     toForwardSlashes,
 } from '@plusplusoneplusplus/forge';
-import type { MemoryV2Addon } from './memory-v2-addon';
 import type { ChatMode } from '../tasks/task-types';
 import { resolveInstructionMode } from '../tasks/task-types';
+import type { MemoryV2Addon } from './memory-v2-addon';
 
 // ============================================================================
 // Internal step types
@@ -68,10 +68,6 @@ export function buildGlobalSystemPromptBlock(prompt: string | undefined): string
     if (!trimmed) return undefined;
     return [
         `<${GLOBAL_SYSTEM_PROMPT_TAG}>`,
-        'Administrator-configured global instructions that apply to every agent session. '
-            + 'They supplement, but do not override, CoC runtime constraints such as read-only '
-            + 'mode, tool and permission policy, or other system instructions.',
-        '',
         trimmed,
         `</${GLOBAL_SYSTEM_PROMPT_TAG}>`,
     ].join('\n');

@@ -16,7 +16,10 @@ import { makeWarmKey } from '../../src/warm-client-registry';
 import { CODEX_PROVIDER } from '../../src/sdk-service-registry';
 
 const WD = '/test/project';
-const KEY = makeWarmKey(CODEX_PROVIDER, WD);
+const PROCESS_A = 'process-a';
+const PROCESS_B = 'process-b';
+const KEY = makeWarmKey(CODEX_PROVIDER, PROCESS_A);
+const KEY_B = makeWarmKey(CODEX_PROVIDER, PROCESS_B);
 
 /** A thread mock that streams a single successful agent message. */
 function makeThread(threadId = 'thread-1') {
@@ -76,7 +79,7 @@ describe('CodexSDKService.prewarm — warms without a session (AC-04)', () => {
         const { ctor, clients } = makeRecordingCtor();
         svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
 
-        await svc.prewarm({ workingDirectory: WD });
+        await svc.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
 
         // The base client is constructed but NO thread is started (no session).
         expect(ctor).toHaveBeenCalledTimes(1);
@@ -90,9 +93,9 @@ describe('CodexSDKService.prewarm — warms without a session (AC-04)', () => {
         const { ctor } = makeRecordingCtor();
         svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
 
-        await svc.prewarm({ workingDirectory: WD });
-        await svc.prewarm({ workingDirectory: WD });
-        await svc.prewarm({ workingDirectory: WD });
+        await svc.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
+        await svc.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
+        await svc.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
 
         expect(ctor).toHaveBeenCalledTimes(1);
         expect(registry(svc).size()).toBe(1);
@@ -103,8 +106,8 @@ describe('CodexSDKService.prewarm — warms without a session (AC-04)', () => {
         const defaultSdk = { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() };
         svc = makeService({ ctor, sdk: defaultSdk });
 
-        await svc.prewarm({ workingDirectory: WD });
-        const result = await svc.sendMessage({ prompt: 'hello', workingDirectory: WD, keepWarm: true });
+        await svc.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
+        const result = await svc.sendMessage({ prompt: 'hello', workingDirectory: WD, keepWarm: true, warmKey: PROCESS_A });
 
         expect(result.success).toBe(true);
         // Still one base client across prewarm + send, with one thread started by the send.
@@ -120,19 +123,29 @@ describe('CodexSDKService.prewarm — warms without a session (AC-04)', () => {
         svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
 
         const [, sendResult] = await Promise.all([
-            svc.prewarm({ workingDirectory: WD }),
-            svc.sendMessage({ prompt: 'hello', workingDirectory: WD, keepWarm: true }),
+            svc.prewarm({ warmKey: PROCESS_A, workingDirectory: WD }),
+            svc.sendMessage({ prompt: 'hello', workingDirectory: WD, keepWarm: true, warmKey: PROCESS_A }),
         ]);
 
         expect(sendResult.success).toBe(true);
         expect(ctor).toHaveBeenCalledTimes(1);
     });
 
+    it('prewarming one process does not warm another process in the same cwd', async () => {
+        const { ctor } = makeRecordingCtor();
+        svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
+
+        await svc.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
+
+        expect(registry(svc).isWarm(KEY)).toBe(true);
+        expect(registry(svc).isWarm(KEY_B)).toBe(false);
+    });
+
     it('no-ops when the Codex SDK is unavailable (no client constructed)', async () => {
         const { ctor } = makeRecordingCtor();
         svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() }, available: false });
 
-        await svc.prewarm({ workingDirectory: WD });
+        await svc.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
 
         expect(ctor).not.toHaveBeenCalled();
         expect(registry(svc).size()).toBe(0);
@@ -155,7 +168,7 @@ describe('CodexSDKService.onWarmStatusChange — bridges registry transitions (A
         const seen: Array<[string, string]> = [];
         svc.onWarmStatusChange((key, status) => seen.push([key, status]));
 
-        await svc.prewarm({ workingDirectory: WD });
+        await svc.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
 
         expect(seen).toEqual([[KEY, 'warming'], [KEY, 'warm']]);
     });
@@ -166,11 +179,49 @@ describe('CodexSDKService.onWarmStatusChange — bridges registry transitions (A
         const seen: Array<[string, string]> = [];
         const unsub = svc.onWarmStatusChange((key, status) => seen.push([key, status]));
 
-        await svc.prewarm({ workingDirectory: WD }); // warming, warm
+        await svc.prewarm({ warmKey: PROCESS_A, workingDirectory: WD }); // warming, warm
         unsub();
         await registryFull(svc).evict(KEY); // cold — not delivered
 
         expect(seen).toEqual([[KEY, 'warming'], [KEY, 'warm']]);
+    });
+});
+
+describe('CodexSDKService.getWarmStatus — current warm snapshot (AC-02)', () => {
+    let svc: CodexSDKService | undefined;
+
+    afterEach(() => {
+        svc?.dispose();
+        svc = undefined;
+        cocToolBridgeServer.closeAll();
+        resetSDKLogger();
+    });
+
+    it('returns cold for a never-warmed conversation', () => {
+        const { ctor } = makeRecordingCtor();
+        svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
+        expect(svc.getWarmStatus({ warmKey: PROCESS_A, workingDirectory: WD })).toBe('cold');
+    });
+
+    it('returns warm after a prewarm — same key as prewarm()', async () => {
+        const { ctor } = makeRecordingCtor();
+        svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
+
+        await svc.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
+
+        expect(svc.getWarmStatus({ warmKey: PROCESS_A, workingDirectory: WD })).toBe('warm');
+        // A different process key in the same cwd is still cold.
+        expect(svc.getWarmStatus({ warmKey: PROCESS_B, workingDirectory: WD })).toBe('cold');
+    });
+
+    it('returns warm after a warm-eligible send parks the client', async () => {
+        const { ctor } = makeRecordingCtor();
+        svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
+
+        const result = await svc.sendMessage({ prompt: 'hello', workingDirectory: WD, keepWarm: true, warmKey: PROCESS_A });
+
+        expect(result.success).toBe(true);
+        expect(svc.getWarmStatus({ warmKey: PROCESS_A, workingDirectory: WD })).toBe('warm');
     });
 });
 
@@ -190,9 +241,11 @@ describe('CodexSDKService.prewarm — TTL=0 disables warming (AC-04/AC-06)', () 
         const { ctor } = makeRecordingCtor();
         svc = makeService({ ctor, sdk: { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() } });
 
-        await svc.prewarm({ workingDirectory: WD });
+        await svc.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
 
         expect(ctor).not.toHaveBeenCalled();
         expect(registry(svc).size()).toBe(0);
+        // The snapshot read also reports cold when warming is disabled.
+        expect(svc.getWarmStatus({ warmKey: PROCESS_A, workingDirectory: WD })).toBe('cold');
     });
 });

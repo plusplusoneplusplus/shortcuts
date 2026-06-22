@@ -106,8 +106,16 @@ PR status card at the top of `ConversationArea` (via a sticky `prStatusCard`
 slot that `ChatDetail` passes) for chats that created pull requests. The
 `usePrChatStatusItems` hook unions PRs detected in the loaded turns
 (`pullRequestDetection.ts`, no new regex) with persisted bindings looked up by
-`task_id` (`listChatBindingsForOrigin(originId, { taskId })`), resolves each PR's
-canonical origin through `resolveCanonicalOriginId`, upserts a binding
+`task_id`. Detection requires PR-creation evidence per shell tool call: a
+`gh pr create` / `az repos pr create` command, a result carrying the
+`submit_commits_as_pr.py` wrapper's structured success line (a line-start
+`JSON: {... "pr_url": "...", "status": "done"}` — recognized even when surfaced
+by a later `grep`/`tail` of the wrapper's persisted stdout, since the original
+command output is often truncated under a large git dump), a known wrapper
+command whose untruncated result echoes a creating command, or output with no
+command metadata; read-only PR commands are ignored. The hook looks up bindings
+by `task_id` (`listChatBindingsForOrigin(originId, { taskId })`), resolves each
+PR's canonical origin through `resolveCanonicalOriginId`, upserts a binding
 (`createChatBindingForOrigin`) for any freshly-detected PR so it survives reload
 with the creating turn collapsed, and fetches PR detail per row
 (`getForOrigin`) into per-row loading/ready/error state with retry. The union
@@ -121,18 +129,37 @@ mapped server-side from GitHub REST `pulls.get` / ADO `autoCompleteSetBy`) onto
 the card PR, and the pure `describeAutoMerge` reduces it to an armed/queued/blocked
 badge with a provider-aware label (`autoMergeLabel` → "Auto-merge" for GitHub,
 "Auto-complete" for Azure DevOps, with the provider derived from the PR URL via
-`prProviderFromUrl`); not-enabled renders nothing. Each ready row also has a
-"Checks" disclosure (AC-03): expanding it lazily calls
-`usePrChatStatusItems.expandChecks(key)` → `getChecksForOrigin` (deduped — skips
-when already loading/ready), maps the response with the existing
-`buildCheckRowsFromChecks`, and renders the shared
-`features/pull-requests/PrChecksSummary.tsx` `PrChecksCompact` (a summary-count
-line + per-check list with detail links). That module is the single home for the
-check-status → label/summary logic: `PrChecksAndReadiness`'s `PrChecksTable` also
-imports `checkStatusLabel` from it (no copy-pasted check-status logic). Freshness
+`prProviderFromUrl`); not-enabled renders nothing. Each ready row eager-loads its
+CI checks: `usePrChatStatusItems` automatically calls `getChecksForOrigin` once a
+row's detail resolves to `ready` (deduped via `checksStatusRef` — skips when
+already loading/ready/error), maps the response with `buildCheckRowsFromChecks`,
+and renders the shared `features/pull-requests/PrChecksSummary.tsx`
+`PrChecksSummaryChips` (the non-zero summary chips) inline on the row's "Checks"
+line — visible without expanding the toggle. The "Checks" toggle still discloses
+the full `PrChecksCompact` per-check list (chips + list with detail links);
+`expandChecks(key)` only re-fetches on the error/Retry path. That module is the
+single home for the check-status → label/summary logic: `PrChecksAndReadiness`'s
+`PrChecksTable` also imports `checkStatusLabel` from it (no copy-pasted check-status
+logic). The collapsed top-level header shows two pure status indicators from
+`conversation/prMergeStatusSummary.ts`. (1) An always-on PR lifecycle indicator
+(`summarizeLifecycleStatus` → `PrLifecycleStatusIndicator`,
+`data-testid="pr-status-card-pr-status"`): a single-PR card shows that PR's
+`prStatusBadge` (Open / Draft / Merged / Closed — so "is it merged?" is answerable
+without expanding), a multi-PR card shows per-status counts ordered open → draft →
+merged → closed; it returns null only when no row is `ready`. (2) An additional
+auto-merge indicator shown next to it only when auto-merge is active
+(`summarizeMergeStatus` → `MergeStatusHeaderIndicator`,
+`data-testid="pr-status-card-merge-status"`): single-PR mirrors that PR's
+auto-merge state (blocked/queued/armed, provider-aware via `describeAutoMerge`),
+multi-PR shows per-state counts ordered blocked → queued → armed, reusing the
+exported `AUTO_MERGE_TONE_CLASS`/`AUTO_MERGE_TONE_EMOJI` maps; it returns null when
+no ready row has active auto-merge (lifecycle merged/closed belongs to the
+lifecycle indicator, not here). Freshness
 (AC-05) lives in the pure `conversation/prStatusFreshness.ts`: `shouldPollPrStatusItems`
 returns true only while some PR is non-terminal AND has checks pending/running OR
-auto-merge armed/queued (false once all merged/closed), and `formatUpdatedAgo`
+auto-merge armed/queued (false once all merged/closed; because checks are
+eager-loaded, a never-expanded row with pending checks still keeps the poll
+active), and `formatUpdatedAgo`
 renders the "updated Xs ago" label. `usePrChatStatusItems` exposes `refresh`
 (force-refreshes every row's detail + any loaded checks with `{ force: true }`,
 running silently so rows don't flash a skeleton), `refreshing`, `lastUpdatedAt`,
@@ -147,8 +174,9 @@ same component on the dashboard SPA and mobile (AC-06): its header wraps
 `shrink-0`) so the controls drop to a second line rather than overflowing the
 `overflow-x-hidden` `ConversationArea` at the 375px viewport, and the title,
 branch pair, check rows, and auto-merge/summary chips stay legible via
-`truncate` + wrapping meta lines; the Checks and collapse disclosures expand on
-tap.
+`truncate` + wrapping meta lines, and the header PR-status + auto-merge indicators
+(`min-w-0`, truncating reason text) participate in the header wrap; the Checks
+and collapse disclosures expand on tap.
 
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
 the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,
@@ -222,6 +250,10 @@ closes sibling right-side panels, and mounts `SourceCanvasPanel` as the right
 column on desktop or a bottom sheet on mobile. Flag-off, user-message, and
 non-chat file references continue to route to the floating
 `MarkdownReviewDialog`.
+The source canvas header shows project-relative paths for files inside the
+current workspace root while retaining the full absolute path in the hover
+tooltip; files outside the workspace root continue to display their absolute
+path.
 
 ## Key Contexts
 
@@ -585,6 +617,10 @@ Stacked layout with:
    - **Follow-up (`FollowUpInputArea`)**: provider chip → divider → `ModePillSelector` → divider → model picker → `EffortPillSelector` (rendered only when the parent supplies `onEffortChange`) → spacer → ctool buttons → `ComposerMetaStrip` → divider → `QueueFollowUpButton`. Provider isn't switchable on a follow-up (locked to the session), so the provider chip is read-only. At widths below `lg` (≤1023px), the row stays `flex-nowrap`, the segmented mode selector collapses to a tap-to-cycle button, slash/mention/attach collapse into a single overflow menu, `ComposerMetaStrip` is hidden, and visible reachable controls use approximately 32px tap targets; `lg:` classes restore the compact desktop sizes and wrapping behavior.
    - **Focused composer shortcuts**: model/slash menus keep first priority. With the text input focused and no slash/model menu open, `Shift+Up/Down` cycles the visible effort control in both composers (`EffortTierSelector` skips unconfigured tiers; legacy `EffortPillSelector` cycles Auto plus selectable supported efforts). In `NewChatArea` only, provider cycling uses `Ctrl+Up/Down` on Windows/Linux and `Cmd+Up/Down` on macOS, skips disabled/unavailable providers, and persists through the repo-scoped `lastChatProvider` preference. These shortcuts are intentionally not exposed in toolbar labels, tooltips, or ARIA copy.
 3. `ComposerMetaStrip`: cwd chip + context-window fuel gauge + provider badge for non-Copilot sessions. The context-window gauge renders a segmented system/tool/conversation breakdown when `useChatSSE` receives all three persisted snapshot values (`sessionSystemTokens`, `sessionToolTokens`, `sessionConversationTokens`) or the same fields from live `token-usage`; otherwise it falls back to the single-colour usage bar. In the follow-up toolbar it sits between the tools zone and the send divider so its info reads as status next to send.
+
+**Conversation-warm dot (`WarmIndicatorDot`).** The tiny dot next to the send button reflects this conversation process's backend warm-client state, with the two halves of the UX deliberately split (`features/chat/hooks/`):
+- **Display** is stream-only: `useWarmClientStatus({ workspaceId, processId })` opens the warm-only SSE stream (`/processes/:id/stream?warm=1` via `cloneApiBase`), maps `warm_status` frames to `cold | warming | warm | active`, and resets to `cold` on process/workspace change, error, or unmount. The stream's initial snapshot makes an already-warm conversation show the dot immediately. The dot is **never** set from a POST response — the stream is the single source of truth (no client-side TTL/decay).
+- **Side effect** is `useTypingPrewarmClient({ input, workspaceId, processId, enabled, debounceMs })`: the first non-empty composer input schedules one debounced `client.processes.prewarm(processId, { workspace })` (routed through `getCocClientForWorkspace`), fires at most once per typing window, re-arms on empty input or a `(workspace, process)` change, and swallows errors. The server prewarms under the process id warm key, so other conversations in the same cwd stay cold. `FollowUpInputArea` gates it with `enabled: !inputDisabled && !sending && !isActiveGeneration` and `debounceMs: getPrewarmDebounceMs()`. Claude and other non-warming providers only ever emit `cold`, so their dot stays an invisible spacer.
 
 Focus indicator propagates mode-colored ring from contenteditable to parent card.
 

@@ -422,6 +422,68 @@ describe('createCreateUpdateWorkItemTool', () => {
         });
     });
 
+    it('status-only update transitions the item without touching plan history', async () => {
+        mockUpdateWorkItem.mockImplementation(async (_id, patch) => ({ ...EXISTING_ITEM, ...patch }));
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({ workItemId: EXISTING_ITEM.id, status: 'done' });
+
+        expect(mockUpdateWorkItem).toHaveBeenCalledOnce();
+        expect(mockUpdateWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, { status: 'done' }, repoId);
+        expect(mockSavePlanVersion).not.toHaveBeenCalled();
+        expect(mockAddChange).not.toHaveBeenCalled();
+        expect(result).toMatchObject({ updated: true, id: EXISTING_ITEM.id, status: 'done' });
+    });
+
+    it('status update combines with other field patches in a single update', async () => {
+        mockUpdateWorkItem.mockImplementation(async (_id, patch) => ({ ...EXISTING_ITEM, ...patch }));
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        await tool.handler({ workItemId: EXISTING_ITEM.id, status: 'done', priority: 'low' });
+
+        expect(mockUpdateWorkItem).toHaveBeenCalledWith(EXISTING_ITEM.id, { status: 'done', priority: 'low' }, repoId);
+        expect(mockSavePlanVersion).not.toHaveBeenCalled();
+        expect(mockAddChange).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown status value without writing the item', async () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({ workItemId: EXISTING_ITEM.id, status: 'closed' as any });
+
+        expect(result).toMatchObject({ updated: false, id: EXISTING_ITEM.id });
+        expect((result as any).error).toContain('Unsupported work item status');
+        expect(mockUpdateWorkItem).not.toHaveBeenCalled();
+        expect(mockSavePlanVersion).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid status transition without writing the item', async () => {
+        // EXISTING_ITEM is in 'readyToExecute'; 'aiDone' is not a valid transition from it.
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({ workItemId: EXISTING_ITEM.id, status: 'aiDone' });
+
+        expect(result).toMatchObject({ updated: false, id: EXISTING_ITEM.id });
+        expect((result as any).error).toContain('Invalid status transition');
+        expect(mockUpdateWorkItem).not.toHaveBeenCalled();
+    });
+
+    it('update-plan mode honors an explicit status instead of forcing planning', async () => {
+        mockUpdateWorkItem.mockImplementation(async (_id, patch) => ({ ...EXISTING_ITEM, ...patch }));
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+
+        const result = await tool.handler({
+            workItemId: EXISTING_ITEM.id,
+            status: 'done',
+            plan: '## Objective\n\nFinal plan.',
+        });
+
+        const patch = mockUpdateWorkItem.mock.calls[0][1];
+        expect(patch.status).toBe('done');
+        expect(mockSavePlanVersion).toHaveBeenCalledOnce();
+        expect(result).toMatchObject({ updated: true, id: EXISTING_ITEM.id, status: 'done' });
+    });
+
     it('update mode rejects type mismatch without changing the item', async () => {
         mockGetWorkItem.mockResolvedValue({ ...EXISTING_ITEM, type: 'bug' });
         const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
@@ -482,6 +544,15 @@ describe('createCreateUpdateWorkItemTool', () => {
         expect(params.properties.parentId).toBeDefined();
         expect(params.properties.parentTarget.type).toBe('string');
         expect(params.properties.parentWorkItemNumber).toBeDefined();
+    });
+
+    it('parameters expose a status field enumerating the known statuses', () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+        const params = tool.parameters as Record<string, any>;
+        expect(params.properties.status.type).toBe('string');
+        expect(params.properties.status.enum).toEqual([
+            'created', 'drafting', 'planning', 'readyToExecute', 'executing', 'aiDone', 'aiFailed', 'done', 'failed',
+        ]);
     });
 
     it('tool description mentions hierarchy linking, moving, and unlinking', () => {

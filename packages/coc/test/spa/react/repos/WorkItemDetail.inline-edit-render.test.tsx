@@ -161,6 +161,17 @@ function renderDetail() {
     );
 }
 
+/**
+ * The description editor now defaults to Preview, so the raw <textarea> only
+ * exists after switching to Source. Toggling the view mode does not dirty the
+ * draft, so this is safe to call before asserting the clean/dirty state.
+ */
+function getDescriptionTextbox(): HTMLTextAreaElement {
+    const editor = screen.getByTestId('wi-description-editor');
+    fireEvent.click(within(editor).getByTestId('wi-description-mode-source'));
+    return within(editor).getByRole('textbox') as HTMLTextAreaElement;
+}
+
 describe('WorkItemDetail inline editing (render)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -210,7 +221,7 @@ describe('WorkItemDetail inline editing (render)', () => {
         renderDetail();
         const title = await screen.findByTestId('wi-title-input');
         fireEvent.change(title, { target: { value: 'Edited title' } });
-        const descEditor = within(screen.getByTestId('wi-description-editor')).getByRole('textbox');
+        const descEditor = getDescriptionTextbox();
         fireEvent.change(descEditor, { target: { value: 'Edited desc' } });
         fireEvent.change(screen.getByTestId('wi-priority-select'), { target: { value: 'high' } });
         fireEvent.change(screen.getByTestId('wi-tags-input'), { target: { value: 'a, b, a' } });
@@ -254,7 +265,7 @@ describe('WorkItemDetail inline editing (render)', () => {
         renderDetail();
         const title = await screen.findByTestId('wi-title-input');
         fireEvent.change(title, { target: { value: 'Edited title' } });
-        const descEditor = within(screen.getByTestId('wi-description-editor')).getByRole('textbox');
+        const descEditor = getDescriptionTextbox();
         fireEvent.change(descEditor, { target: { value: 'Edited description' } });
 
         fireEvent.keyDown(window, { key: 's', ctrlKey: true });
@@ -280,7 +291,7 @@ describe('WorkItemDetail inline editing (render)', () => {
         renderDetail();
         const title = await screen.findByTestId('wi-title-input');
         fireEvent.change(title, { target: { value: 'Edited title' } });
-        const descEditor = within(screen.getByTestId('wi-description-editor')).getByRole('textbox');
+        const descEditor = getDescriptionTextbox();
         fireEvent.change(descEditor, { target: { value: 'Edited description' } });
         fireEvent.change(screen.getByTestId('wi-tags-input'), { target: { value: 'alpha, local' } });
 
@@ -335,7 +346,12 @@ describe('WorkItemDetail inline editing (render)', () => {
         expect(within(editor).getByTestId('wi-description-mode-source')).toBeTruthy();
         expect(within(editor).getByTestId('wi-description-mode-preview')).toBeTruthy();
 
+        // Defaults to Preview: rendered markdown, no editable textarea yet.
+        expect(within(editor).queryByRole('textbox')).toBeNull();
+        expect(within(editor).getByTestId('wi-description-preview')).toBeTruthy();
+
         // Source mode renders an editable textarea wired into the dirty batch.
+        fireEvent.click(within(editor).getByTestId('wi-description-mode-source'));
         const descEditor = within(editor).getByRole('textbox');
         fireEvent.change(descEditor, { target: { value: 'Edited via source' } });
         expect(screen.getByTestId('wi-dirty-indicator')).toBeTruthy();
@@ -399,7 +415,7 @@ describe('WorkItemDetail inline editing (render)', () => {
         await waitFor(() => {
             expect((screen.getByTestId('wi-title-input') as HTMLInputElement).value).toBe('Feature title');
         });
-        expect((within(screen.getByTestId('wi-description-editor')).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Feature description');
+        expect(getDescriptionTextbox().value).toBe('Feature description');
         expect((screen.getByTestId('wi-priority-select') as HTMLSelectElement).value).toBe('low');
         expect((screen.getByTestId('work-item-status-select') as HTMLSelectElement).value).toBe('planning');
         expect(screen.getByTestId('work-item-parent-info').textContent).toContain('epic-1');

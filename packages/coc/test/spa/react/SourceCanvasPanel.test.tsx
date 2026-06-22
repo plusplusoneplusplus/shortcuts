@@ -54,6 +54,25 @@ describe('SourceCanvasPanel', () => {
         );
         expect(getByTestId('source-canvas-filename').textContent).toBe('foo.ts');
         expect(getByTestId('source-canvas-path').textContent).toBe('/home/u/proj/src/foo.ts');
+        expect(getByTestId('source-canvas-path').getAttribute('title')).toBe(
+            '/home/u/proj/src/foo.ts',
+        );
+    });
+
+    it('renders a project-relative header path with the absolute path as tooltip', () => {
+        const { getByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                workspaceRootPath="/home/u/proj"
+                onClose={() => {}}
+            />,
+        );
+        expect(getByTestId('source-canvas-filename').textContent).toBe('foo.ts');
+        expect(getByTestId('source-canvas-path').textContent).toBe('src/foo.ts');
+        expect(getByTestId('source-canvas-path').getAttribute('title')).toBe(
+            '/home/u/proj/src/foo.ts',
+        );
     });
 
     it('prefers displayPath when provided', () => {
@@ -66,6 +85,7 @@ describe('SourceCanvasPanel', () => {
         );
         expect(getByTestId('source-canvas-filename').textContent).toBe('foo.ts');
         expect(getByTestId('source-canvas-path').textContent).toBe('src/foo.ts');
+        expect(getByTestId('source-canvas-path').getAttribute('title')).toBe('/abs/proj/src/foo.ts');
     });
 
     it('close button invokes onClose', () => {

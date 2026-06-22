@@ -28,6 +28,14 @@ import {
     type WorkItemCommandContext,
 } from '../../../src/server/work-items/work-item-commands';
 import type { WorkItem } from '../../../src/server/work-items/types';
+import {
+    clearWorkItemResponseCache,
+    getWorkItemResponseCacheEntry,
+    makeWorkItemGroupedResponseCacheKey,
+    makeWorkItemListResponseCacheKey,
+    makeWorkItemTreeResponseCacheKey,
+    refreshWorkItemResponseCacheEntry,
+} from '../../../src/server/work-items/work-item-response-cache';
 
 // Canonical origin scopes (where items physically live).
 const ORIGIN = 'gh_owner_repo';
@@ -77,6 +85,7 @@ async function restampStoredRepoId(storageRepoId: string, id: string, repoId: st
 }
 
 beforeEach(async () => {
+    clearWorkItemResponseCache();
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wi-cross-origin-'));
     store = new FileWorkItemStore({ dataDir: tmpDir, scopeResolver });
     ctx = {
@@ -87,8 +96,29 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+    clearWorkItemResponseCache();
     await fs.rm(tmpDir, { recursive: true, force: true });
 });
+
+async function primeOriginResponseCaches(): Promise<string[]> {
+    const listKey = makeWorkItemListResponseCacheKey({ repoId: ORIGIN });
+    const groupedKey = makeWorkItemGroupedResponseCacheKey({ repoId: ORIGIN });
+    const treeKey = makeWorkItemTreeResponseCacheKey(ORIGIN, {
+        tracker: 'github-backed',
+        includeArchived: false,
+        includeDone: false,
+    });
+    await refreshWorkItemResponseCacheEntry(listKey, ORIGIN, 'list', async () => ({ stale: 'list' }));
+    await refreshWorkItemResponseCacheEntry(groupedKey, ORIGIN, 'grouped', async () => ({ stale: 'grouped' }));
+    await refreshWorkItemResponseCacheEntry(treeKey, ORIGIN, 'tree', async () => ({ stale: 'tree' }));
+    return [listKey, groupedKey, treeKey];
+}
+
+function expectCachesCleared(keys: readonly string[]): void {
+    for (const key of keys) {
+        expect(getWorkItemResponseCacheEntry(key)).toBeUndefined();
+    }
+}
 
 describe('AC-01 — same-origin parent linking (create-with-parent)', () => {
     it('links a ws-* child to a gh_* parent of the same upstream repo', async () => {
@@ -151,5 +181,37 @@ describe('FileWorkItemStore.resolveOriginId', () => {
         const identityStore = new FileWorkItemStore({ dataDir: tmpDir });
         expect(await identityStore.resolveOriginId(WS)).toBe(WS);
         expect(await identityStore.resolveOriginId('anything')).toBe('anything');
+    });
+});
+
+describe('AC-04 — response cache invalidation uses resolved origin scope', () => {
+    it('create under ws-* clears origin-scoped list/grouped/tree caches and broadcasts both scopes', async () => {
+        await store.addWorkItem(makeItem({ id: 'pbi-17', type: 'pbi', repoId: ORIGIN }));
+        const cacheKeys = await primeOriginResponseCaches();
+        const broadcasts: Array<{ type: string; workspaceId: string }> = [];
+        ctx.broadcast = event => broadcasts.push({ type: event.type, workspaceId: event.workspaceId });
+
+        await createWorkItemCommand(ctx, WS, { title: 'Task', parentId: 'pbi-17' });
+
+        expectCachesCleared(cacheKeys);
+        expect(broadcasts).toEqual([
+            { type: 'work-item-added', workspaceId: WS },
+            { type: 'work-item-added', workspaceId: ORIGIN },
+        ]);
+    });
+
+    it('update under ws-* clears origin-scoped list/grouped/tree caches and broadcasts both scopes', async () => {
+        const item = await createWorkItemCommand(ctx, WS, { title: 'Orphan' });
+        const cacheKeys = await primeOriginResponseCaches();
+        const broadcasts: Array<{ type: string; workspaceId: string }> = [];
+        ctx.broadcast = event => broadcasts.push({ type: event.type, workspaceId: event.workspaceId });
+
+        await updateWorkItemCommand(ctx, WS, item.id, { title: 'Renamed orphan' });
+
+        expectCachesCleared(cacheKeys);
+        expect(broadcasts).toEqual([
+            { type: 'work-item-updated', workspaceId: WS },
+            { type: 'work-item-updated', workspaceId: ORIGIN },
+        ]);
     });
 });

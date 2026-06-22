@@ -154,6 +154,47 @@ describe('Work Item Hierarchy Routes', () => {
             expect(res.body.roots[0].children).toEqual([]);
         });
 
+        it('returns a newly created workspace child on a non-forced origin tree fetch after cache warmup', async () => {
+            workspaces = [{
+                id: REPO_ID,
+                name: 'Hierarchy Test Repo',
+                rootPath: '/tmp/hierarchy-test-repo',
+                remoteUrl: 'https://github.com/plusplusoneplusplus/shortcuts.git',
+            }];
+
+            const parentRes = await request('POST', `/api/origins/${ORIGIN_ID}/work-items?workspaceId=${REPO_ID}`, {
+                title: 'Chat and Skills',
+                type: 'pbi',
+            });
+            expect(parentRes.status).toBe(201);
+            const parentId = parentRes.body.id;
+
+            const warmTree = await request(
+                'GET',
+                `/api/origins/${ORIGIN_ID}/work-items/tree?workspaceId=${REPO_ID}`,
+            );
+            expect(warmTree.status).toBe(200);
+            expect(warmTree.body.roots).toHaveLength(1);
+            expect(warmTree.body.roots[0].children).toEqual([]);
+
+            const childRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Show relative path in source code view canvas',
+                type: 'work-item',
+                parentId,
+            });
+            expect(childRes.status).toBe(201);
+
+            const freshTree = await request(
+                'GET',
+                `/api/origins/${ORIGIN_ID}/work-items/tree?workspaceId=${REPO_ID}`,
+            );
+            expect(freshTree.status).toBe(200);
+            expect(freshTree.body.roots).toHaveLength(1);
+            expect(freshTree.body.roots[0].item.id).toBe(parentId);
+            expect(freshTree.body.roots[0].children).toHaveLength(1);
+            expect(freshTree.body.roots[0].children[0].item.title).toBe('Show relative path in source code view canvas');
+        });
+
         it('preserves epic-rooted tracker metadata on tree nodes', async () => {
             const itemRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
                 title: 'Imported GitHub epic',

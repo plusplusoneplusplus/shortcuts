@@ -424,6 +424,19 @@ describe('ConversationTurnBubble — attached session context blocks', () => {
         ].join('\n');
     }
 
+    function makeWorkItemPointerContextContent(message = 'Refine this work item.'): string {
+        return [
+            '<attached_pointer_context version="1">',
+            '<source workspace_id="ws-1" kind="work-item" label="Allow user to ask AI to refine the instruction" work_item_id="a61d4ab8-a911-4a9f-a1b2-c3d4e5f60718" work_item_number="25" status="created" type="pbi">',
+            '<title>Refine instruction work item</title>',
+            '<instruction>Before answering, use the pointer metadata above to retrieve this work item from the active workspace if details are needed. This pointer block contains only stable references and safe display metadata.</instruction>',
+            '</source>',
+            '</attached_pointer_context>',
+            '',
+            message,
+        ].join('\n');
+    }
+
     beforeEach(() => {
         vi.restoreAllMocks();
     });
@@ -557,6 +570,27 @@ describe('ConversationTurnBubble — attached session context blocks', () => {
         expect(screen.getByTestId('attached-pointer-context-meta').textContent).toContain('open');
         expect(screen.getByTestId('user-plain-text')?.textContent).toBe('Review this pointer.');
         expect(screen.getByTestId('user-plain-text')?.textContent).not.toContain('attached_pointer_context');
+    });
+
+    // Regression: in a narrow panel the summary heading used to wrap word-by-word and the
+    // meta (a long work-item UUID) overflowed the card. The heading must stay on one line and
+    // the meta must be allowed to shrink/truncate. See AttachedPointerContextBlockCard.
+    it('keeps the pointer context summary responsive in narrow layouts', () => {
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'user', content: makeWorkItemPointerContextContent() })}
+            />
+        );
+
+        const heading = screen.getByText('Attached Work Item context');
+        expect(heading.className).toContain('whitespace-nowrap');
+        expect(heading.className).toContain('shrink-0');
+
+        const meta = screen.getByTestId('attached-pointer-context-meta');
+        expect(meta.textContent).toContain('a61d4ab8-a911-4a9f-a1b2-c3d4e5f60718');
+        expect(meta.className).toContain('truncate');
+        expect(meta.className).toContain('min-w-0');
+        expect(meta.className.split(/\s+/)).not.toContain('shrink-0');
     });
 
     it('renders coexisting session and Ralph cards while raw mode still exposes exact persisted content', () => {

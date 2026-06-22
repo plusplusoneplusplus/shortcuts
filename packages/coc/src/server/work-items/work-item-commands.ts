@@ -71,7 +71,10 @@ import {
     type WorkItemSyncProviderContext,
 } from './work-item-sync-provider';
 import { executeWorkItem, type EnqueueFunction } from './work-item-executor';
-import { clearWorkItemResponseCacheForWorkspace } from './work-item-response-cache';
+import {
+    clearWorkItemResponseCacheForWorkspaces,
+    resolveWorkItemResponseCacheWorkspaceIds,
+} from './work-item-response-cache';
 
 // ============================================================================
 // Context & input types
@@ -124,6 +127,8 @@ export interface CreateWorkItemCommandInput {
     tags?: unknown;
     autoExecute?: unknown;
     successCriteria?: unknown;
+    /** Internal route-scope hint for origin-scoped cache invalidation and broadcasts. */
+    storageRepoId?: string;
     /** Initial status override (default `created`); the AI tool passes `planning` with an initial plan. */
     status?: WorkItemStatus;
     plan?: {
@@ -477,6 +482,19 @@ async function isSameWorkItemOrigin(
     if (!resolve) return false;
     const [a, b] = await Promise.all([resolve(repoIdA), resolve(repoIdB)]);
     return a === b;
+}
+
+async function invalidateAndBroadcastWorkItemMutation(
+    ctx: WorkItemCommandContext,
+    repoId: string,
+    event: Omit<WorkItemBroadcastEvent, 'workspaceId'>,
+    storageRepoId?: string,
+): Promise<void> {
+    const scopeIds = await resolveWorkItemResponseCacheWorkspaceIds(ctx.workItemStore, repoId, [storageRepoId]);
+    clearWorkItemResponseCacheForWorkspaces(scopeIds);
+    for (const scopeId of scopeIds) {
+        ctx.broadcast?.({ ...event, workspaceId: scopeId });
+    }
 }
 
 async function findTreeRoot(ctx: WorkItemCommandContext, item: WorkItem, repoId: string): Promise<WorkItem> {
@@ -1094,8 +1112,12 @@ export async function createWorkItemCommand(
         }, repoId);
     }
 
-    clearWorkItemResponseCacheForWorkspace(repoId);
-    ctx.broadcast?.({ type: 'work-item-added', workspaceId: repoId, item });
+    await invalidateAndBroadcastWorkItemMutation(
+        ctx,
+        repoId,
+        { type: 'work-item-added', item },
+        input.storageRepoId,
+    );
     return item;
 }
 
@@ -1302,8 +1324,12 @@ export async function updateWorkItemCommand(
             });
             const afterExec = await ctx.workItemStore.getWorkItem(workItemId, repoId);
             if (afterExec) {
-                clearWorkItemResponseCacheForWorkspace(repoId);
-                ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: afterExec });
+                await invalidateAndBroadcastWorkItemMutation(
+                    ctx,
+                    repoId,
+                    { type: 'work-item-updated', item: afterExec },
+                    input.storageRepoId,
+                );
                 return afterExec;
             }
         } catch {
@@ -1311,7 +1337,11 @@ export async function updateWorkItemCommand(
         }
     }
 
-    clearWorkItemResponseCacheForWorkspace(repoId);
-    ctx.broadcast?.({ type: 'work-item-updated', workspaceId: repoId, item: updated });
+    await invalidateAndBroadcastWorkItemMutation(
+        ctx,
+        repoId,
+        { type: 'work-item-updated', item: updated },
+        input.storageRepoId,
+    );
     return updated;
 }

@@ -17,7 +17,7 @@ import {
 import { parseGitHubWorkItemIssue } from './work-item-sync-github-issue';
 import type { WorkItem, WorkItemIndexEntry, WorkItemStore } from './types';
 import { WORK_ITEM_SYNC_MAX_ITEMS } from './work-item-sync-provider';
-import { clearWorkItemResponseCacheForWorkspace } from './work-item-response-cache';
+import { clearWorkItemResponseCacheForResolvedWorkspace } from './work-item-response-cache';
 
 export const DEFAULT_WORK_ITEM_GITHUB_PULL_INTERVAL_MINUTES = 5;
 
@@ -245,7 +245,7 @@ export class WorkItemGitHubPullPoller {
         }
 
         if (result.created > 0 || result.updated > 0 || result.deleted > 0) {
-            clearWorkItemResponseCacheForWorkspace(workspaceId);
+            await clearWorkItemResponseCacheForResolvedWorkspace(this.options.workItemStore, workspaceId);
         }
         return result;
     }

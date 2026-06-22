@@ -333,7 +333,8 @@ for (const { label, expectedAgentMode, expectsSystemMessage, makeExecutor, makeT
 
         it('opts into warm-client keep-alive (keepWarm: true)', async () => {
             // Interactive chat-process turns (ask, autopilot) request keepWarm so
-            // the SDK service retains the provider client for the next turn.
+            // the SDK service retains the provider client for this process's next
+            // turn.
             const executor = makeExecutor(store);
             const task = makeTask();
 
@@ -341,6 +342,7 @@ for (const { label, expectedAgentMode, expectsSystemMessage, makeExecutor, makeT
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             expect(call.keepWarm).toBe(true);
+            expect(call.warmKey).toBe(`queue_${task.id}`);
         });
 
         it(`${expectsSystemMessage ? 'includes' : 'omits'} system message`, async () => {
@@ -843,6 +845,7 @@ describe('ClassificationExecutor ask-mode behavior', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.keepWarm).toBeUndefined();
+        expect(call.warmKey).toBeUndefined();
     });
 
     it('loads ask repo instructions instead of autopilot repo instructions', async () => {
