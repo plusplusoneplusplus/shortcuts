@@ -69,6 +69,40 @@ describe('CanvasStore', () => {
             expect(md.type).toBe('markdown');
             expect(md.language).toBeUndefined();
         });
+
+        it('persists a trimmed purpose and survives a reload', () => {
+            const canvas = store.createCanvas({
+                workspaceId: WS,
+                title: 'Plan',
+                content: '# Plan',
+                purpose: '  plan  ',
+            });
+            expect(canvas.purpose).toBe('plan');
+
+            const reloaded = store.getCanvas(WS, canvas.id);
+            expect(reloaded?.purpose).toBe('plan');
+
+            // Descriptor on disk carries the purpose (survives server restart).
+            const descriptorPath = path.join(dataDir, 'repos', WS, 'canvases', canvas.id, 'canvas.json');
+            const descriptor = JSON.parse(fs.readFileSync(descriptorPath, 'utf-8'));
+            expect(descriptor.purpose).toBe('plan');
+        });
+
+        it('omits purpose when missing or blank', () => {
+            const none = store.createCanvas({ workspaceId: WS, title: 'A', content: 'a' });
+            expect(none.purpose).toBeUndefined();
+
+            const blank = store.createCanvas({ workspaceId: WS, title: 'B', content: 'b', purpose: '   ' });
+            expect(blank.purpose).toBeUndefined();
+        });
+
+        it('preserves purpose across an update', () => {
+            const canvas = store.createCanvas({ workspaceId: WS, title: 'Plan', content: 'v1', purpose: 'plan' });
+            const updated = store.updateCanvas(WS, canvas.id, { content: 'v2', editor: 'ai', expectedRevision: 1 });
+            expect(updated.ok).toBe(true);
+            if (updated.ok) expect(updated.canvas.purpose).toBe('plan');
+            expect(store.getCanvas(WS, canvas.id)?.purpose).toBe('plan');
+        });
     });
 
     describe('getCanvas', () => {

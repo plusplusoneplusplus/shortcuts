@@ -14,15 +14,18 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 const mockEnqueue = vi.fn();
 const mockProcessUpdate = vi.fn();
 const mockReadTrustedBlob = vi.fn();
+const mockCanvasGet = vi.fn();
 const mockRemoteEnqueue = vi.fn();
 const mockRemoteUpdate = vi.fn();
 const mockRemoteReadTrustedBlob = vi.fn();
+const mockRemoteCanvasGet = vi.fn();
 
 // Stable remote client so observing fns survive useCocClient's memo per baseUrl.
 const remoteClient = {
     queue: { enqueue: mockRemoteEnqueue },
     processes: { patchMetadata: mockRemoteUpdate },
     explorer: { readTrustedBlob: mockRemoteReadTrustedBlob },
+    canvases: { get: mockRemoteCanvasGet },
 };
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -30,6 +33,7 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
         queue: { enqueue: mockEnqueue },
         processes: { patchMetadata: mockProcessUpdate },
         explorer: { readTrustedBlob: mockReadTrustedBlob },
+        canvases: { get: mockCanvasGet },
     }),
     // Routed remote client (remote target → baseUrl → getCocClientFor).
     getCocClientFor: (_baseUrl: string) => remoteClient,
@@ -57,9 +61,11 @@ describe('ImplementPlanCard', () => {
         mockEnqueue.mockReset();
         mockProcessUpdate.mockReset();
         mockReadTrustedBlob.mockReset();
+        mockCanvasGet.mockReset();
         mockRemoteEnqueue.mockReset();
         mockRemoteUpdate.mockReset();
         mockRemoteReadTrustedBlob.mockReset();
+        mockRemoteCanvasGet.mockReset();
         onImplemented.mockReset();
         onViewRun.mockReset();
         onRecordPersisted.mockReset();
@@ -562,6 +568,102 @@ describe('ImplementPlanCard', () => {
 
         // Navigation handoff uses the remote task id.
         await waitFor(() => expect(onImplemented).toHaveBeenCalledWith('queue_task-remote'));
+    });
+
+    // ── Canvas-backed plans (purpose: 'plan') ───────────────────────────
+
+    it('reads the canvas content and embeds it inline for a local run', async () => {
+        mockCanvasGet.mockResolvedValue({ id: 'plan-abc123', title: 'My plan', content: '# Plan\nDo canvas work.' });
+        mockEnqueue.mockResolvedValue({ task: { id: 'task-canvas' } });
+
+        render(
+            <ImplementPlanCard
+                planFilePath="My plan"
+                planCanvasId="plan-abc123"
+                workspaceId="ws-local"
+                workingDirectory="/repo"
+                onImplemented={onImplemented}
+            />,
+        );
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-plan-card-btn'));
+        });
+
+        // Canvas content is read from the source server by id.
+        await waitFor(() => expect(mockCanvasGet).toHaveBeenCalledWith('ws-local', 'plan-abc123'));
+        // No file read — the plan has no on-disk path.
+        expect(mockReadTrustedBlob).not.toHaveBeenCalled();
+        await waitFor(() => expect(mockEnqueue).toHaveBeenCalledTimes(1));
+
+        const payload = mockEnqueue.mock.calls[0][0];
+        // Inlined content, no local file context.
+        expect(payload.payload.context).toBeUndefined();
+        expect(payload.payload.prompt).toContain('Do canvas work.');
+        expect(payload.payload.prompt).toContain('BEGIN PLAN');
+        expect(payload.payload.prompt).toContain('My plan');
+
+        await waitFor(() => expect(onImplemented).toHaveBeenCalledWith('queue_task-canvas'));
+    });
+
+    it('reads the canvas on the source server and routes a remote canvas-backed run', async () => {
+        mockCanvasGet.mockResolvedValue({ id: 'plan-abc123', title: 'My plan', content: '# Plan\nRemote canvas work.' });
+        mockRemoteEnqueue.mockResolvedValue({ task: { id: 'task-remote-canvas' } });
+
+        render(
+            <ImplementPlanCard
+                planFilePath="My plan"
+                planCanvasId="plan-abc123"
+                workspaceId="ws-local"
+                workingDirectory="/repo"
+                onImplemented={onImplemented}
+                availableTargets={[localTarget, remoteTarget]}
+            />,
+        );
+
+        await act(async () => {
+            fireEvent.change(screen.getByTestId('implement-plan-card-target-select'), {
+                target: { value: 'ws-remote' },
+            });
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-plan-card-btn'));
+        });
+
+        // Content read on the SOURCE client; enqueue routed to the REMOTE client.
+        await waitFor(() => expect(mockCanvasGet).toHaveBeenCalledWith('ws-local', 'plan-abc123'));
+        expect(mockRemoteCanvasGet).not.toHaveBeenCalled();
+        await waitFor(() => expect(mockRemoteEnqueue).toHaveBeenCalledTimes(1));
+        expect(mockEnqueue).not.toHaveBeenCalled();
+
+        const payload = mockRemoteEnqueue.mock.calls[0][0];
+        expect(payload.payload.workspaceId).toBe('ws-remote');
+        expect(payload.payload.context).toBeUndefined();
+        expect(payload.payload.prompt).toContain('Remote canvas work.');
+    });
+
+    it('surfaces an error and does not enqueue when the canvas read fails', async () => {
+        mockCanvasGet.mockRejectedValue(new Error('canvas gone'));
+
+        render(
+            <ImplementPlanCard
+                planFilePath="My plan"
+                planCanvasId="plan-abc123"
+                workspaceId="ws-local"
+                onImplemented={onImplemented}
+            />,
+        );
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-plan-card-btn'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('implement-plan-card-error').textContent)
+                .toContain('Could not read the plan canvas');
+        });
+        expect(mockEnqueue).not.toHaveBeenCalled();
+        expect(onImplemented).not.toHaveBeenCalled();
     });
 
     it('surfaces an error and does not enqueue when the source plan read fails', async () => {

@@ -49,6 +49,7 @@ export interface WriteCanvasArgs {
     edits?: CanvasEdit[];
     type?: CanvasType;
     language?: string;
+    purpose?: string;
     expectedRevision?: number;
 }
 
@@ -154,6 +155,10 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                 },
                 type: { type: 'string', enum: ['markdown', 'code'], description: 'Create only. Default "markdown".' },
                 language: { type: 'string', description: 'Create only, for type "code" (e.g. "typescript").' },
+                purpose: {
+                    type: 'string',
+                    description: 'Optional semantic role for this canvas, e.g. "plan", "goal", "notes". Helps the system understand the intended use of the canvas.',
+                },
                 expectedRevision: { type: 'number', description: 'Update only: the revision you last saw.' },
             },
             required: [],
@@ -212,6 +217,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                     content: a.content,
                     type: a.type,
                     language: a.language,
+                    purpose: a.purpose,
                     processId: deps.processId,
                     editor: 'ai',
                 });

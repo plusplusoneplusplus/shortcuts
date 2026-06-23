@@ -89,6 +89,14 @@ describe('canvas LLM tools', () => {
             expect(result.success).toBe(false);
             expect(result.error).toContain('type');
         });
+
+        it('persists a declared purpose on the canvas descriptor', async () => {
+            const { write } = buildTools();
+            const result = await write.handler({ title: 'Plan', content: '# Plan', purpose: 'plan' }) as any;
+
+            expect(result.success).toBe(true);
+            expect(store.getCanvas(WS, result.canvasId)?.purpose).toBe('plan');
+        });
     });
 
     describe('write_canvas — update', () => {

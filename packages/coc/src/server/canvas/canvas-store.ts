@@ -44,6 +44,12 @@ export interface CanvasDescriptor {
     type: CanvasType;
     /** Language hint for code canvases (e.g. "typescript", "python"). */
     language?: string;
+    /**
+     * Optional semantic role declared by the author (e.g. "plan", "goal",
+     * "notes"). Set at creation; lets the system route the canvas into a
+     * matching workflow (e.g. a "plan" canvas surfaces the Implement card).
+     */
+    purpose?: string;
     /** Monotonic revision counter, incremented on every content/title change. */
     revision: number;
     createdAt: string;
@@ -77,6 +83,8 @@ export interface CreateCanvasInput {
     content: string;
     type?: CanvasType;
     language?: string;
+    /** Optional semantic role for the canvas (e.g. "plan", "goal", "notes"). */
+    purpose?: string;
     processId?: string;
     editor?: CanvasEditor;
 }
@@ -237,6 +245,9 @@ export class CanvasStore {
             title: input.title,
             type,
             ...(language ? { language } : {}),
+            ...(input.purpose && typeof input.purpose === 'string' && input.purpose.trim()
+                ? { purpose: input.purpose.trim() }
+                : {}),
             revision: 1,
             createdAt: now,
             updatedAt: now,
