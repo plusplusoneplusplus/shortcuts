@@ -212,6 +212,44 @@ describe('POST /api/processes/:id/message', () => {
             expect(mockBridge.executeFollowUp).not.toHaveBeenCalled();
         });
 
+        it('should accept cancelled follow-up with saved sdkSessionId and bind the resume session', async () => {
+            (mockBridge.isSessionAlive as any).mockResolvedValue(false);
+
+            const proc: AIProcess = {
+                id: 'proc-cancelled-resume',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'cancelled',
+                startTime: new Date(),
+                endTime: new Date(),
+                sdkSessionId: 'sess-stopped-turn',
+                conversationTurns: [
+                    { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: 'partial answer', timestamp: new Date(), turnIndex: 1, timeline: [], interrupted: true },
+                ],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-cancelled-resume/message`, {
+                content: 'continue',
+            });
+
+            expect(res.status).toBe(202);
+            expect(mockBridge.isSessionAlive).not.toHaveBeenCalled();
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn).toHaveBeenCalledOnce();
+            const call = enqueueFn.mock.calls[0][0];
+            expect(call.payload.processId).toBe('proc-cancelled-resume');
+            expect(call.payload.resumeSessionId).toBe('sess-stopped-turn');
+
+            const updated = await store.getProcess('proc-cancelled-resume');
+            expect(updated?.status).toBe('running');
+            expect(updated?.conversationTurns).toHaveLength(3);
+            expect(updated?.conversationTurns?.[1].content).toBe('partial answer');
+            expect(updated?.conversationTurns?.[2].content).toBe('continue');
+        });
+
         it('should call bridge.enqueue (fresh task) when a completed parent task exists', async () => {
             const bridgeWithFind = createMockBridge();
             (bridgeWithFind as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-task-1', type: 'chat', status: 'completed' });
@@ -726,6 +764,35 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
+        });
+
+        it('should reject cancelled follow-up when no sdkSessionId was saved', async () => {
+            const proc: AIProcess = {
+                id: 'proc-cancelled-no-session',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'cancelled',
+                startTime: new Date(),
+                endTime: new Date(),
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-cancelled-no-session/message`, {
+                content: 'continue',
+            });
+
+            expect(res.status).toBe(409);
+            const body = JSON.parse(res.body);
+            expect(body.error).toBe('Cannot continue this stopped chat because no SDK session was saved. Start a new chat manually.');
+            expect(body.code).toBe('SESSION_NOT_RESUMABLE');
+            expect(mockBridge.enqueue).not.toHaveBeenCalled();
+            expect(mockBridge.executeFollowUp).not.toHaveBeenCalled();
+
+            const updated = await store.getProcess('proc-cancelled-no-session');
+            expect(updated?.status).toBe('cancelled');
+            expect(updated?.conversationTurns).toHaveLength(0);
         });
 
         it('should return 410 when sdkSessionId references expired/destroyed session', async () => {

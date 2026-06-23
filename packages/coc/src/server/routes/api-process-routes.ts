@@ -672,6 +672,15 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, missingFields(['content']));
             }
 
+            const isCancelledResume = proc.status === 'cancelled';
+            const resumeSessionId = isCancelledResume ? proc.sdkSessionId : undefined;
+            if (isCancelledResume && !resumeSessionId) {
+                return handleAPIError(res, new APIError(
+                    409,
+                    'Cannot continue this stopped chat because no SDK session was saved. Start a new chat manually.',
+                    'SESSION_NOT_RESUMABLE',
+                ));
+            }
 
             // Process both new-style attachments and legacy images
             const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-'));
@@ -690,7 +699,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 : undefined;
 
             // Check session liveness before forwarding the prompt
-            if (bridge && !(await bridge.isSessionAlive(id))) {
+            if (!isCancelledResume && bridge && !(await bridge.isSessionAlive(id))) {
                 return handleAPIError(res, new APIError(410, 'The AI session has ended. Please start a new task.', 'SESSION_EXPIRED'));
             }
 
@@ -804,7 +813,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         // buffer as pending message — server drains on task completion
                         await bufferAsPendingMessage();
                     } else {
-                        // Terminal status (failed/cancelled) or restart fallback → enqueue
+                        // Terminal status (failed or resumable cancelled) or restart fallback → enqueue
                         const enqueueWsId = (proc.metadata?.workspaceId as string) ?? undefined;
                         await bridge.enqueue({
                             ...(isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
@@ -815,6 +824,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                                 kind: 'chat',
                                 prompt: messageContentWithContext ?? messageContent,
                                 processId: id,
+                                ...(resumeSessionId ? { resumeSessionId } : {}),
                                 attachments,
                                 imageTempDir,
                                 images: validatedImages,

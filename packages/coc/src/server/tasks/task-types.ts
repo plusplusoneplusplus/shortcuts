@@ -464,6 +464,8 @@ export interface ChatPayload {
     tools?: string[];
     /** For follow-ups: the process ID of the existing conversation. */
     processId?: string;
+    /** Internal strict-resume target captured when continuing a stopped chat. */
+    resumeSessionId?: string;
     attachments?: Attachment[];
     imageTempDir?: string;
     workspaceId?: string;
