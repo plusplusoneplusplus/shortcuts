@@ -378,6 +378,41 @@ describe('FollowUpExecutor', () => {
         );
     });
 
+    it('uses strict SDK resume and fails without replacing the stopped session id', async () => {
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            opts.onSessionCreated?.('fresh-session');
+            return { success: true, response: 'fresh answer', sessionId: 'fresh-session' };
+        });
+        const proc = makeProcess({ id: 'proc-strict-resume', sdkSessionId: 'stopped-session' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await expect(executor.executeFollowUp(
+            'proc-strict-resume',
+            'continue',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            'stopped-session',
+        )).rejects.toThrow('Provider did not resume the stopped SDK session');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.sessionId).toBe('stopped-session');
+        expect(callArg.strictSessionResume).toBe(true);
+
+        const updated = store.processes.get('proc-strict-resume');
+        expect(updated?.sdkSessionId).toBe('stopped-session');
+        expect(updated?.status).toBe('failed');
+        const lastTurn = updated?.conversationTurns?.[updated.conversationTurns.length - 1];
+        expect(lastTurn?.role).toBe('assistant');
+        expect(lastTurn?.content).toContain('Provider did not resume');
+    });
+
     it('passes the composed system message while resuming Claude follow-up sessions', async () => {
         mockBuildModeSystemMessage.mockReturnValueOnce({
             mode: 'append',

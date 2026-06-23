@@ -189,6 +189,16 @@ export class RequestRunner {
                     aiLog.debug({ sessionId: session.sessionId }, 'Session resumed');
                 } catch (resumeError) {
                     const resumeMsg = resumeError instanceof Error ? resumeError.message : String(resumeError);
+                    if (options.strictSessionResume) {
+                        aiLog.error({ oldSessionId: options.sessionId, error: resumeMsg }, 'Session resume failed — strict resume forbids createSession fallback');
+                        result = {
+                            success: false,
+                            error: `Session resume failed: ${resumeMsg}`,
+                            sessionId: options.sessionId,
+                            effectiveModel: options.model,
+                        };
+                        return result;
+                    }
                     aiLog.error({ oldSessionId: options.sessionId, error: resumeMsg }, 'Session resume failed — falling back to createSession (conversation history lost)');
                     session = await client.createSession(sessionOptions);
                     aiLog.debug({ oldSessionId: options.sessionId, newSessionId: session.sessionId }, 'Fallback session created');

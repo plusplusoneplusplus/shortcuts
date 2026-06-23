@@ -847,7 +847,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         });
                     }
                 } else {
-                    bridge.executeFollowUp(id, messageContentWithContext ?? messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames, modelOverride, undefined, effortOverride).catch(() => {
+                    bridge.executeFollowUp(id, messageContentWithContext ?? messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames, modelOverride, undefined, effortOverride, resumeSessionId).catch(() => {
                     }).finally(() => {
                         if (imageTempDir) { cleanupTempDir(imageTempDir); }
                     });

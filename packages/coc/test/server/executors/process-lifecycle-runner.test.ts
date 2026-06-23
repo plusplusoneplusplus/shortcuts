@@ -430,6 +430,48 @@ describe('ProcessLifecycleRunner — pending messages drain', () => {
         expect(drainFn).toHaveBeenCalledWith(processId, followUpTask.id);
     });
 
+    it('passes strict resume session id from follow-up payload', async () => {
+        const processId = 'existing-process';
+        store.processes.set(processId, {
+            id: processId,
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'running',
+            startTime: new Date(),
+            sdkSessionId: 'sess-stopped-turn',
+            conversationTurns: [],
+        } as any);
+
+        const executeFollowUpFn = vi.fn().mockResolvedValue(undefined);
+        const followUpTask = makeTask({
+            id: 'followup-strict-resume',
+            payload: {
+                kind: 'chat',
+                prompt: 'continue',
+                processId,
+                resumeSessionId: 'sess-stopped-turn',
+                workspaceId: 'ws-abc',
+            } as any,
+        });
+
+        await runner.run(followUpTask, makeOpts({ executeFollowUpFn }));
+
+        expect(executeFollowUpFn).toHaveBeenCalledWith(
+            processId,
+            'continue',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            'sess-stopped-turn',
+        );
+    });
+
     it('does not call onDrainPendingMessages when task fails', async () => {
         const drainFn = vi.fn().mockResolvedValue(undefined);
         const task = makeTask();

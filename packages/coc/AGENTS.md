@@ -111,6 +111,10 @@ all have their own `references/*.md`.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
+- **Stopped-chat follow-ups** (`cancelled` process with saved `sdkSessionId`)
+  must carry `payload.resumeSessionId`; the follow-up executor sends
+  `strictSessionResume: true` and must not persist or accept a replacement SDK
+  session.
 - **Process metadata field updates** from dashboard/server callers should use
   `client.processes.patchMetadata(...)` or API `metadataPatch` unless a full
   metadata replacement is intentional; full `metadata` on

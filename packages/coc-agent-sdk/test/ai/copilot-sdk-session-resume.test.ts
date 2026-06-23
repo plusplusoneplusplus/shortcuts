@@ -166,6 +166,30 @@ describe('CopilotSDKService - Session Resume', () => {
         expect(receivedIds).toEqual(['fallback-fresh-sess']);
     });
 
+    it('should not fall back to createSession when strictSessionResume is true', async () => {
+        const sdkModule = createMockSDKModule();
+        sdkModule.mockClient.resumeSession.mockRejectedValue(new Error('Session expired'));
+        wireService(sdkModule);
+
+        const receivedIds: string[] = [];
+        const result = await service.sendMessage({
+            prompt: 'test',
+            sessionId: 'expired-sess',
+            strictSessionResume: true,
+            workingDirectory: '/test',
+            timeoutMs: 10000,
+            loadDefaultMcpConfig: false,
+            onSessionCreated: (id) => receivedIds.push(id),
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('Session expired');
+        expect(result.sessionId).toBe('expired-sess');
+        expect(sdkModule.mockClient.resumeSession).toHaveBeenCalledTimes(1);
+        expect(sdkModule.mockClient.createSession).not.toHaveBeenCalled();
+        expect(receivedIds).toEqual([]);
+    });
+
     // ========================================================================
     // No SessionId — Regression
     // ========================================================================

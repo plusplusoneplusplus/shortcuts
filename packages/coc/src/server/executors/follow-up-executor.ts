@@ -216,6 +216,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
          * continues with the resolved model.
          */
         reasoningEffort?: ReasoningEffort,
+        /**
+         * Strict stopped-chat continuation target. When provided, this exact
+         * SDK session must be resumed and provider fallback to a new session is
+         * treated as a failed follow-up.
+         */
+        strictResumeSessionId?: string,
     ): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
@@ -310,7 +316,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(wsId, workingDirectory);
 
-        const canResumeSession = !!process.sdkSessionId;
+        const sessionIdForSend = strictResumeSessionId ?? process.sdkSessionId;
+        const canResumeSession = !!sessionIdForSend;
 
         const historyContext = canResumeSession
             ? undefined
@@ -322,6 +329,15 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         let chatCtx: ChatTurnContext | undefined;
 
         try {
+            if (strictResumeSessionId) {
+                if (!process.sdkSessionId) {
+                    throw new Error('Cannot continue this stopped chat because no SDK session was saved.');
+                }
+                if (process.sdkSessionId !== strictResumeSessionId) {
+                    throw new Error('Cannot continue this stopped chat because the saved SDK session changed before execution.');
+                }
+            }
+
             // User turn is already persisted by the POST /message route handler
             // (atomically with the status: 'running' update) so the executor
             // only needs to handle the AI call and assistant turn.
@@ -474,9 +490,11 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 workingDirectory,
             });
 
+            let strictResumeMismatch = false;
             const sendOptions = {
                 prompt: followUpMessage,
-                sessionId: process.sdkSessionId,
+                sessionId: sessionIdForSend,
+                ...(strictResumeSessionId ? { strictSessionResume: true as const } : {}),
                 ...(reasoningSelection.modelId ? { model: reasoningSelection.modelId } : {}),
                 mode: agentMode,
                 workingDirectory,
@@ -496,6 +514,11 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 skillDirectories,
                 disabledSkills,
                 onSessionCreated: (sessionId: string) => {
+                    if (strictResumeSessionId && sessionId !== strictResumeSessionId) {
+                        strictResumeMismatch = true;
+                        logger.warn(LogCategory.AI, `[FollowUp] Provider returned a different SDK session while strict-resuming process ${processId}; preserving the stopped session id.`);
+                        return;
+                    }
                     this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch((err: unknown) => {
                         logger.warn(LogCategory.AI, `[FollowUp] Failed to persist sdkSessionId for ${processId} — future resume may fail: ${err instanceof Error ? err.message : String(err)}`);
                     });
@@ -532,6 +555,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
             if (!result.success) {
                 throw new Error(result.error || 'Follow-up execution failed');
+            }
+            if (strictResumeSessionId && (strictResumeMismatch || (result.sessionId !== undefined && result.sessionId !== strictResumeSessionId))) {
+                throw new Error('Provider did not resume the stopped SDK session.');
             }
 
             const pendingSuggestions = this.sessions.get(processId)?.pendingSuggestions;
@@ -705,6 +731,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 }
             );
             this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
+            if (strictResumeSessionId) {
+                throw error instanceof Error ? error : new Error(errorMsg);
+            }
         } finally {
             chatCtx?.dispose();
             const buffer = this.sessions.get(processId)?.outputBuffer ?? '';

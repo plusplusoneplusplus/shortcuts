@@ -145,6 +145,10 @@ sdkServiceRegistry.register(SDK_PROVIDER_CODEX, svc);
 
 **CoC LLM tools:** when `options.tools` is present, a per-request `Codex` client is built with `config.mcp_servers.coc_llm_tools` pointing at the stdio bridge (see *CoC LLM Tools over MCP*). Captured tool calls from this first-party MCP server store the actual tool input directly in `args` (for example `args.questions` for `ask_user`) so process timelines match the Copilot and Claude display contract; external MCP tool calls retain `{ server, arguments }` metadata. Codex sub-agent spawn calls store `task` args with `agent_type: "codex"`, `agent_id`/`agent_ids`, prompt/model metadata, and agent state; Codex wait calls store `read_agent` args with `agent_id`, `wait: true`, and the latest agent state so existing dashboard grouping and nesting logic applies.
 
+## Strict session resume
+
+`SendMessageOptions.sessionId` normally preserves the legacy Copilot behavior: the adapter first asks the provider to resume the stored SDK session and, if that resume fails, starts a fresh session and reports the replacement ID through `onSessionCreated`. Callers that must not lose provider-native continuity set `strictSessionResume: true`; in that mode resume failure returns `success: false`, `onSessionCreated` is not fired for a fallback session, and no fresh session is created. CoC uses strict resume for stopped-chat continuations queued from `/api/processes/:id/message`, passing the cancelled turn's saved `sdkSessionId` through `ChatPayload.resumeSessionId` to the follow-up executor.
+
 ## ClaudeSDKService Architecture
 
 `ClaudeSDKService` implements `ISDKService` backed by the **optional** `@anthropic-ai/claude-agent-sdk` peer dependency. It lazy-loads the SDK's `query` export, streams Claude messages into the common invocation result shape, and reports `{ available: false }` with install guidance when the package cannot be imported.
