@@ -246,11 +246,22 @@ function isMarkdownPath(path: string): boolean {
 }
 
 /**
- * Open the docked source canvas. `kind` discriminates the body mode the host
- * renders: `'note'` → the editable markdown NoteEditor, otherwise → the
- * read-only syntax-highlighted source viewer.
+ * A directory reference — a path ending with `/` (ignoring any `?query`/`#hash`
+ * suffix). The trailing slash is the only click-time signal that a chat link
+ * points at a folder rather than a file, so folder links route to the read-only
+ * folder explorer instead of the file viewer.
  */
-function dispatchOpenSourceCanvas(ref: FileReference, kind?: 'note'): void {
+function isDirectoryPath(path: string): boolean {
+    const clean = toForwardSlashes(path).split(/[?#]/)[0];
+    return clean.length > 1 && clean.endsWith('/');
+}
+
+/**
+ * Open the docked source canvas. `kind` discriminates the body mode the host
+ * renders: `'note'` → the editable markdown NoteEditor, `'dir'` → the read-only
+ * folder explorer, otherwise → the read-only syntax-highlighted source viewer.
+ */
+function dispatchOpenSourceCanvas(ref: FileReference, kind?: 'note' | 'dir'): void {
     window.dispatchEvent(new CustomEvent('coc-open-source-canvas', {
         detail: {
             filePath: ref.filePath,
@@ -282,6 +293,8 @@ function dispatchOpenMarkdownReview(ref: FileReference): void {
  * When the source-canvas feature flag is ON, chat-message links route to the
  * docked canvas via `coc-open-source-canvas` (carrying any `:line`/`:start-end`
  * info separately from the bare path):
+ *  - **directory** (a trailing-slash path) opens the read-only folder explorer
+ *    from a `.chat-message.assistant` only, tagged `kind: 'dir'`;
  *  - **markdown** (`.md`/`.markdown`/`.mdx`) opens the editable NoteEditor from
  *    ANY `.chat-message` (user or assistant), tagged `kind: 'note'`;
  *  - **code** opens the read-only source viewer from a `.chat-message.assistant`
@@ -294,6 +307,10 @@ function openFileReference(sourceEl: HTMLElement, ref: FileReference): void {
     hideTooltip();
 
     if (SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS) {
+        if (isDirectoryPath(ref.filePath) && sourceEl.closest('.chat-message.assistant')) {
+            dispatchOpenSourceCanvas(ref, 'dir');
+            return;
+        }
         if (isMarkdownPath(ref.filePath) && sourceEl.closest('.chat-message')) {
             dispatchOpenSourceCanvas(ref, 'note');
             return;

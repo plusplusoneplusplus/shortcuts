@@ -7,6 +7,8 @@ export { SourceCanvasDock } from './SourceCanvasDock';
 export type { SourceCanvasDockProps } from './SourceCanvasDock';
 export { SourceCanvasBody } from './SourceCanvasBody';
 export type { SourceCanvasBodyProps } from './SourceCanvasBody';
+export { SourceCanvasFolderBody } from './SourceCanvasFolderBody';
+export type { SourceCanvasFolderBodyProps } from './SourceCanvasFolderBody';
 export { SourceCanvasNoteEditor } from './SourceCanvasNoteEditor';
 export type { SourceCanvasNoteEditorProps } from './SourceCanvasNoteEditor';
 export { SourceCanvasNotePopOutButton } from './SourceCanvasNotePopOutButton';

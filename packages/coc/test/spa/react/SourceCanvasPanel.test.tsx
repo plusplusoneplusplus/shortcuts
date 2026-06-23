@@ -254,4 +254,62 @@ describe('SourceCanvasPanel', () => {
         expect(getByTestId('source-canvas-source')).toBeTruthy();
         expect(queryByTestId('source-canvas-note-editor-stub')).toBeNull();
     });
+
+    // --- AC-01/AC-02: folder explorer body (kind: 'dir') ---
+
+    const dirRef = { fullPath: '/home/u/proj/src', kind: 'dir' as const };
+    const dirSuccess = {
+        status: 'success' as const,
+        entries: [
+            { name: 'sub', type: 'dir' as const, path: 'src/sub' },
+            { name: 'a.ts', type: 'file' as const, path: 'src/a.ts' },
+        ],
+        resolvedPath: '/home/u/proj/src',
+        relativePath: 'src',
+        wsId: 'ws1',
+        truncated: false,
+        error: '',
+    };
+
+    it('renders the folder explorer (not the code viewer or note editor) for a dir ref', () => {
+        const { getByTestId, queryByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={dirRef}
+                wsId="ws1"
+                directory={dirSuccess}
+                onNavigate={() => {}}
+                onClose={() => {}}
+            />,
+        );
+        expect(getByTestId('source-canvas-dir-listing')).toBeTruthy();
+        expect(getByTestId('source-canvas-filename').textContent).toBe('src');
+        expect(queryByTestId('source-canvas-source')).toBeNull();
+        expect(queryByTestId('source-canvas-note-editor-stub')).toBeNull();
+        // Pop-out is note-only; it must not appear in folder mode.
+        expect(queryByTestId('source-canvas-popout-btn')).toBeNull();
+    });
+
+    it('shows the folder loading state when no directory is provided', () => {
+        const { getByTestId } = render(
+            <SourceCanvasPanel fileRef={dirRef} wsId="ws1" onNavigate={() => {}} onClose={() => {}} />,
+        );
+        expect(getByTestId('source-canvas-dir-loading')).toBeTruthy();
+    });
+
+    it('navigates in-place when a folder entry is clicked (AC-02)', () => {
+        const onNavigate = vi.fn();
+        const { getAllByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={dirRef}
+                wsId="ws1"
+                directory={dirSuccess}
+                onNavigate={onNavigate}
+                onClose={() => {}}
+            />,
+        );
+        fireEvent.click(getAllByTestId('source-canvas-dir-entry')[0]);
+        expect(onNavigate).toHaveBeenCalledWith(
+            expect.objectContaining({ fullPath: 'src/sub', kind: 'dir', wsId: 'ws1' }),
+        );
+    });
 });

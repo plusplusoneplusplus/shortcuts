@@ -13,7 +13,7 @@
 /* @vitest-environment jsdom */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({ explorer: { reveal: vi.fn(() => Promise.resolve()) } }),
@@ -39,6 +39,16 @@ import { SourceCanvasDock } from '../../../src/server/spa/client/react/features/
 const resize = { width: 560, handleMouseDown: vi.fn(), handleTouchStart: vi.fn() };
 const noteRef = { fullPath: '/home/u/proj/notes/x.md', kind: 'note' as const };
 const codeRef = { fullPath: '/home/u/proj/src/foo.ts', kind: 'code' as const };
+const dirRef = { fullPath: '/home/u/proj/src', kind: 'dir' as const };
+const dirSuccess = {
+    status: 'success' as const,
+    entries: [{ name: 'sub', type: 'dir' as const, path: 'src/sub' }],
+    resolvedPath: '/home/u/proj/src',
+    relativePath: 'src',
+    wsId: 'ws1',
+    truncated: false,
+    error: '',
+};
 
 describe('SourceCanvasDock', () => {
     it('hosts the editable note editor inside a BottomSheet at the mobile breakpoint (AC-05)', () => {
@@ -102,5 +112,47 @@ describe('SourceCanvasDock', () => {
         // Read-only source viewer inside the sheet; no editable note editor.
         expect(sheet.contains(screen.getByTestId('source-canvas-source'))).toBe(true);
         expect(screen.queryByTestId('source-canvas-note-editor-stub')).toBeNull();
+    });
+
+    it('hosts the read-only folder explorer in the desktop column and forwards navigation (AC-01/AC-02)', () => {
+        const onNavigate = vi.fn();
+        render(
+            <SourceCanvasDock
+                fileRef={dirRef}
+                wsId="ws1"
+                directory={dirSuccess}
+                onNavigate={onNavigate}
+                isMobile={false}
+                onClose={() => {}}
+                resize={resize}
+            />,
+        );
+        const column = screen.getByTestId('source-canvas-column');
+        const listing = screen.getByTestId('source-canvas-dir-listing');
+        expect(column.contains(listing)).toBe(true);
+        // No code viewer / note editor when listing a folder.
+        expect(screen.queryByTestId('source-canvas-source')).toBeNull();
+        expect(screen.queryByTestId('source-canvas-note-editor-stub')).toBeNull();
+        // Clicking a subfolder routes back through onNavigate (in-place navigation).
+        fireEvent.click(screen.getByTestId('source-canvas-dir-entry'));
+        expect(onNavigate).toHaveBeenCalledWith(
+            expect.objectContaining({ fullPath: 'src/sub', kind: 'dir' }),
+        );
+    });
+
+    it('hosts the folder explorer inside the BottomSheet for a dir ref on mobile', () => {
+        render(
+            <SourceCanvasDock
+                fileRef={dirRef}
+                wsId="ws1"
+                directory={dirSuccess}
+                onNavigate={() => {}}
+                isMobile
+                onClose={() => {}}
+                resize={resize}
+            />,
+        );
+        const sheet = screen.getByTestId('bottomsheet-panel');
+        expect(sheet.contains(screen.getByTestId('source-canvas-dir-listing'))).toBe(true);
     });
 });

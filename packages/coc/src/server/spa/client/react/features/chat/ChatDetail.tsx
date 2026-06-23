@@ -33,7 +33,7 @@ import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
 import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/useChatSSE';
 import { CanvasPanel } from '../canvas/CanvasPanel';
-import { SourceCanvasDock, useSourceCanvasState, useSourceCanvasContent } from './source-canvas';
+import { SourceCanvasDock, useSourceCanvasState, useSourceCanvasContent, useSourceCanvasDirectory } from './source-canvas';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
@@ -350,13 +350,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             const detail = (event as CustomEvent).detail || {};
             const filePath = typeof detail.filePath === 'string' ? detail.filePath : '';
             if (!filePath) return;
+            const kind = detail.kind === 'note' || detail.kind === 'dir' ? detail.kind : 'code';
             openSourceCanvas({
                 fullPath: filePath,
                 wsId: typeof detail.wsId === 'string' ? detail.wsId : undefined,
                 line: typeof detail.line === 'number' ? detail.line : undefined,
                 endLine: typeof detail.endLine === 'number' ? detail.endLine : undefined,
                 sourceFilePath: typeof detail.sourceFilePath === 'string' ? detail.sourceFilePath : undefined,
-                kind: detail.kind === 'note' ? 'note' : 'code',
+                kind,
             });
         };
         window.addEventListener('coc-open-source-canvas', handler as EventListener);
@@ -1148,10 +1149,16 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // canvas above (only one of these columns is ever non-null at a time).
     const sourceCanvasFileRef = sourceCanvas.fileRef;
     const sourceCanvasWsId = sourceCanvasFileRef?.wsId ?? workspaceId ?? null;
-    // Notes (`kind: 'note'`) load/save through the embedded NoteEditor, so skip
-    // the read-only preview fetch for them — it would be unused.
+    // Notes (`kind: 'note'`) load/save through the embedded NoteEditor and
+    // folders (`kind: 'dir'`) list through `useSourceCanvasDirectory`, so skip
+    // the read-only file fetch for both — it would be unused.
     const sourceCanvasContent = useSourceCanvasContent(
-        sourceCanvasFileRef?.kind === 'note' ? null : sourceCanvasFileRef,
+        sourceCanvasFileRef?.kind === 'note' || sourceCanvasFileRef?.kind === 'dir'
+            ? null
+            : sourceCanvasFileRef,
+    );
+    const sourceCanvasDirectory = useSourceCanvasDirectory(
+        sourceCanvasFileRef?.kind === 'dir' ? sourceCanvasFileRef : null,
     );
     const sourceCanvasColumn = (sourceCanvas.isOpen && sourceCanvasFileRef) ? (
         <SourceCanvasDock
@@ -1159,6 +1166,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             wsId={sourceCanvasWsId}
             workspaceRootPath={workspaceRootPath}
             content={sourceCanvasContent}
+            directory={sourceCanvasDirectory}
+            onNavigate={sourceCanvas.open}
             isMobile={isMobile}
             onClose={sourceCanvas.close}
             resize={sourceCanvasResize}

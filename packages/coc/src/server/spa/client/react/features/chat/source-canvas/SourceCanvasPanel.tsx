@@ -15,11 +15,13 @@ import { useCallback, useState } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { Spinner } from '../../../ui/Spinner';
 import { SourceCanvasBody } from './SourceCanvasBody';
+import { SourceCanvasFolderBody } from './SourceCanvasFolderBody';
 import { SourceCanvasNoteEditor } from './SourceCanvasNoteEditor';
 import { SourceCanvasNotePopOutButton } from './SourceCanvasNotePopOutButton';
 import { getSourceCanvasDisplayPath } from './resolve';
 import type { SourceCanvasFileRef } from './types';
 import type { SourceCanvasContentState } from './useSourceCanvasContent';
+import type { SourceCanvasDirectoryState } from './useSourceCanvasDirectory';
 
 function basename(p: string): string {
     const normalized = p.replace(/\\/g, '/');
@@ -59,6 +61,13 @@ export interface SourceCanvasPanelProps {
     workspaceRootPath?: string | null;
     /** Loaded content + load/error state (AC-06). Loading when omitted. */
     content?: SourceCanvasContentState;
+    /** Folder listing + load/error state for `kind: 'dir'` refs. Loading when omitted. */
+    directory?: SourceCanvasDirectoryState;
+    /**
+     * Open another ref in the same panel (AC-02 folder navigation): a clicked
+     * subfolder re-opens as `kind: 'dir'`, a file as the read-only code viewer.
+     */
+    onNavigate?: (ref: SourceCanvasFileRef) => void;
     /** Close the canvas (X button). */
     onClose: () => void;
 }
@@ -68,6 +77,8 @@ export function SourceCanvasPanel({
     wsId,
     workspaceRootPath,
     content,
+    directory,
+    onNavigate,
     onClose,
 }: SourceCanvasPanelProps) {
     const { fullPath, displayPath } = fileRef;
@@ -160,6 +171,16 @@ export function SourceCanvasPanel({
                     data-testid="source-canvas-body"
                 >
                     <SourceCanvasNoteEditor fileRef={fileRef} />
+                </div>
+            ) : fileRef.kind === 'dir' ? (
+                /* Read-only folder explorer (AC-01/AC-02): the directory listing
+                   is loaded by the host; entries navigate in-place via onNavigate. */
+                <div className="flex-1 min-h-0 overflow-auto" data-testid="source-canvas-body">
+                    <SourceCanvasFolderBody
+                        dir={directory ?? { status: 'loading', entries: [], resolvedPath: '', relativePath: '', wsId: '', truncated: false, error: '' }}
+                        folderName={fileName}
+                        onNavigate={onNavigate ?? (() => {})}
+                    />
                 </div>
             ) : (
                 <div className="flex-1 min-h-0 overflow-auto" data-testid="source-canvas-body">

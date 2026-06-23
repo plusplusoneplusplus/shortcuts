@@ -15,6 +15,7 @@ import { BottomSheet } from '../../../ui/BottomSheet';
 import { SourceCanvasPanel } from './SourceCanvasPanel';
 import type { SourceCanvasFileRef } from './types';
 import type { SourceCanvasContentState } from './useSourceCanvasContent';
+import type { SourceCanvasDirectoryState } from './useSourceCanvasDirectory';
 import type { UseResizablePanelReturn } from '../../../hooks/ui/useResizablePanel';
 
 function sheetTitle(fileRef: SourceCanvasFileRef): string {
@@ -31,6 +32,10 @@ export interface SourceCanvasDockProps {
     workspaceRootPath?: string | null;
     /** Loaded content for the read-only viewer (unused for notes). */
     content?: SourceCanvasContentState;
+    /** Folder listing for the read-only explorer (`kind: 'dir'` refs only). */
+    directory?: SourceCanvasDirectoryState;
+    /** Open another ref in the same panel (AC-02 folder navigation). */
+    onNavigate?: (ref: SourceCanvasFileRef) => void;
     /** Mobile breakpoint → render inside a BottomSheet instead of a column. */
     isMobile: boolean;
     /** Close the canvas. */
@@ -44,6 +49,8 @@ export function SourceCanvasDock({
     wsId,
     workspaceRootPath,
     content,
+    directory,
+    onNavigate,
     isMobile,
     onClose,
     resize,
@@ -61,6 +68,8 @@ export function SourceCanvasDock({
                     wsId={wsId}
                     workspaceRootPath={workspaceRootPath}
                     content={content}
+                    directory={directory}
+                    onNavigate={onNavigate}
                     onClose={onClose}
                 />
             </BottomSheet>
@@ -87,6 +96,8 @@ export function SourceCanvasDock({
                     wsId={wsId}
                     workspaceRootPath={workspaceRootPath}
                     content={content}
+                    directory={directory}
+                    onNavigate={onNavigate}
                     onClose={onClose}
                 />
             </div>
