@@ -12,6 +12,7 @@ import { ConcurrencyLimiter, CancellationError } from '../runtime/concurrency-li
 import { TaskQueueManager } from './task-queue-manager';
 import {
     QueuedTask,
+    PauseMarker,
     TaskExecutor,
     TaskExecutionResult,
     QueueExecutorOptions,
@@ -315,9 +316,13 @@ export class QueueExecutor extends EventEmitter {
             }
 
             // Handle pause marker — consume it and pause the queue
-            if ((item as any).kind === 'pause-marker') {
+            if ((item as PauseMarker).kind === 'pause-marker') {
+                const marker = item as PauseMarker;
                 this.queueManager.dequeue();   // consume the marker
-                this.queueManager.pause();     // pause the queue (same as clicking ⏸)
+                const pauseUntil = marker.durationHours !== undefined
+                    ? Date.now() + marker.durationHours * 60 * 60 * 1000
+                    : undefined;
+                this.queueManager.pause(pauseUntil); // same as clicking ⏸, optionally timed
                 this.emit('pause-marker-reached', item);
                 continue;
             }

@@ -54,6 +54,7 @@ describe('sqlite-schema', () => {
             'idx_turns_process_id',
             'idx_turns_streaming',
             'idx_queue_tasks_repo_id',
+            'idx_queue_tasks_repo_position',
             'idx_queue_tasks_status',
             'idx_schedule_runs_schedule_id',
             'idx_schedule_runs_repo_id',
@@ -102,7 +103,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(22);
+        expect(SCHEMA_VERSION).toBe(23);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -124,6 +125,16 @@ describe('sqlite-schema', () => {
         expect(colNames).toContain('queue_paused_until');
         expect(colNames).toContain('autopilot_paused');
         expect(colNames).toContain('autopilot_paused_until');
+    });
+
+    it('creates queue item metadata columns', () => {
+        initializeDatabase(db);
+
+        const cols = db.prepare("PRAGMA table_info(queue_tasks)").all() as Array<{ name: string }>;
+        const colNames = cols.map(c => c.name);
+        expect(colNames).toContain('kind');
+        expect(colNames).toContain('queue_position');
+        expect(colNames).toContain('duration_hours');
     });
 
     it('is idempotent — calling initializeDatabase twice does not throw', () => {

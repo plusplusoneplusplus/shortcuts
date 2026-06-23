@@ -1160,7 +1160,25 @@ describe('QueueExecutor', () => {
             await delay(80);
 
             expect(queueManager.isPaused()).toBe(true);
+            expect(queueManager.getStats().pausedUntil).toBeUndefined();
             // The marker was consumed (no longer in queue)
+            expect(queueManager.getQueueItems().some(i => (i as any).kind === 'pause-marker')).toBe(false);
+        });
+
+        it('executor starts a timed pause when it encounters a timed pause marker', async () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+            const before = Date.now();
+
+            queueManager.insertPauseMarker(0, 1);
+
+            executor.start();
+
+            await waitFor(() => queueManager.isPaused(), 2000);
+
+            const stats = queueManager.getStats();
+            expect(stats.pausedUntil).toBeDefined();
+            expect(stats.pausedUntil!).toBeGreaterThanOrEqual(before + 60 * 60 * 1000);
+            expect(stats.pausedUntil!).toBeLessThanOrEqual(Date.now() + 60 * 60 * 1000);
             expect(queueManager.getQueueItems().some(i => (i as any).kind === 'pause-marker')).toBe(false);
         });
 

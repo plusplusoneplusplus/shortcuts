@@ -43,6 +43,7 @@ export interface QueuePauseMarker {
   kind: 'pause-marker';
   id: string;
   createdAt: number;
+  durationHours?: 1 | 2 | 3 | 4 | 8;
   [key: string]: unknown;
 }
 

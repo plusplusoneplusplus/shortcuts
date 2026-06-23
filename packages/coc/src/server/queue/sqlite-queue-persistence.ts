@@ -17,7 +17,7 @@
  */
 
 import type Database from 'better-sqlite3';
-import { SqliteQueueStore, type TaskQueueManager, type QueueChangeEvent, type QueuedTask } from '@plusplusoneplusplus/forge';
+import { SqliteQueueStore, type TaskQueueManager, type QueueChangeEvent, type QueuedTask, type QueueItem, type PauseMarker } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueRouter } from './multi-repo-queue-router';
 
 /**
@@ -35,6 +35,10 @@ export type RestartPolicy = 'fail' | 'requeue' | 'requeue-if-retriable';
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 function isTerminalStatus(status: string): boolean {
     return TERMINAL_STATUSES.has(status);
+}
+
+function isPauseMarker(item: QueueItem | undefined): item is PauseMarker {
+    return (item as PauseMarker | undefined)?.kind === 'pause-marker';
 }
 
 export interface SqliteQueuePersistenceOptions {
@@ -136,25 +140,52 @@ export class SqliteQueuePersistence {
             }
         }
 
-        // 3. Restore queued/running tasks
-        const tasks = this.store.getQueueTasks(undefined, ['queued', 'running']);
-        const oldTaskIds: string[] = [];
+        // 3. Restore queued items and running tasks
+        const queuedItems = this.store.getQueueItems(undefined, ['queued']);
+        const runningTasks = this.store.getQueueTasks(undefined, ['running']);
+        const oldRunningTaskIds: string[] = [];
 
         let totalRestored = 0;
-        const repoTaskGroups = new Map<string, QueuedTask[]>();
-        for (const task of tasks) {
-            const repoId = task.repoId ?? '';
-            if (!repoTaskGroups.has(repoId)) {
-                repoTaskGroups.set(repoId, []);
+        const repoItemGroups = new Map<string, QueueItem[]>();
+        for (const item of queuedItems) {
+            const repoId = item.repoId ?? '';
+            if (!repoItemGroups.has(repoId)) {
+                repoItemGroups.set(repoId, []);
             }
-            repoTaskGroups.get(repoId)!.push(task);
+            repoItemGroups.get(repoId)!.push(item);
         }
 
-        for (const [repoId, repoTasks] of repoTaskGroups) {
+        for (const [repoId, repoItems] of repoItemGroups) {
             const rootPath = this.repoIdToPath.get(repoId);
             if (!rootPath) {
                 process.stderr.write(
-                    `[SqliteQueuePersistence] Warning: ${repoTasks.length} task(s) with repoId='${repoId}' skipped — no root path mapping found in queue_repo_paths\n`
+                    `[SqliteQueuePersistence] Warning: ${repoItems.length} queued item(s) with repoId='${repoId}' skipped — no root path mapping found in queue_repo_paths\n`
+                );
+                continue;
+            }
+
+            this.bridge.getOrCreateBridge(rootPath);
+            const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
+            if (!queueManager) continue;
+
+            queueManager.restoreQueueItems(repoItems);
+            totalRestored += repoItems.length;
+        }
+
+        const repoRunningTaskGroups = new Map<string, QueuedTask[]>();
+        for (const task of runningTasks) {
+            const repoId = task.repoId ?? '';
+            if (!repoRunningTaskGroups.has(repoId)) {
+                repoRunningTaskGroups.set(repoId, []);
+            }
+            repoRunningTaskGroups.get(repoId)!.push(task);
+        }
+
+        for (const [repoId, repoTasks] of repoRunningTaskGroups) {
+            const rootPath = this.repoIdToPath.get(repoId);
+            if (!rootPath) {
+                process.stderr.write(
+                    `[SqliteQueuePersistence] Warning: ${repoTasks.length} running task(s) with repoId='${repoId}' skipped — no root path mapping found in queue_repo_paths\n`
                 );
                 continue;
             }
@@ -164,34 +195,20 @@ export class SqliteQueuePersistence {
             if (!queueManager) continue;
 
             for (const task of repoTasks) {
-                oldTaskIds.push(task.id);
-
-                if (task.status === 'running') {
-                    totalRestored += this.restoreRunningTask(task, queueManager, repoId);
-                } else {
-                    // status === 'queued'
-                    queueManager.enqueue({
-                        type: task.type,
-                        priority: task.priority,
-                        payload: task.payload,
-                        config: task.config,
-                        displayName: task.displayName,
-                        repoId: task.repoId,
-                    });
-                    totalRestored++;
-                }
+                oldRunningTaskIds.push(task.id);
+                totalRestored += this.restoreRunningTask(task, queueManager, repoId);
             }
         }
 
-        // Clean up old task rows — enqueue() creates new IDs, and the change
-        // handler already persisted them. Remove stale rows to avoid duplicates.
-        for (const oldId of oldTaskIds) {
+        // Clean up old running task rows — requeue restore creates replacement
+        // rows, and failed restore removes rows in restoreRunningTask().
+        for (const oldId of oldRunningTaskIds) {
             this.store.removeQueueTask(oldId);
         }
 
         if (totalRestored > 0) {
             process.stderr.write(
-                `[SqliteQueuePersistence] Restored ${totalRestored} task(s) across ${repoTaskGroups.size} repo(s)\n`
+                `[SqliteQueuePersistence] Restored ${totalRestored} queue item(s) across ${repoItemGroups.size + repoRunningTaskGroups.size} repo group(s)\n`
             );
         }
 
@@ -252,11 +269,21 @@ export class SqliteQueuePersistence {
             case 'unfrozen':
             case 'admitted':
             case 'unadmitted':
-            case 'pause-marker-added':
-            case 'pause-marker-removed':
                 if (task) {
                     this.store.upsertQueueTask(task);
                 }
+                this.persistQueuedItems(repoId, rootPath);
+                break;
+
+            case 'pause-marker-added':
+                this.persistQueuedItems(repoId, rootPath);
+                break;
+
+            case 'pause-marker-removed':
+                if (event.taskId) {
+                    this.store.removeQueueTask(event.taskId);
+                }
+                this.persistQueuedItems(repoId, rootPath);
                 break;
 
             case 'removed':
@@ -267,6 +294,7 @@ export class SqliteQueuePersistence {
                 } else if (event.taskId) {
                     this.store.removeQueueTask(event.taskId);
                 }
+                this.persistQueuedItems(repoId, rootPath);
                 break;
 
             case 'cleared':
@@ -292,13 +320,7 @@ export class SqliteQueuePersistence {
             }
 
             case 'reordered': {
-                const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
-                if (queueManager) {
-                    for (const queuedTask of queueManager.getQueued()) {
-                        const enriched = queuedTask.repoId ? queuedTask : { ...queuedTask, repoId };
-                        this.store.upsertQueueTask(enriched);
-                    }
-                }
+                this.persistQueuedItems(repoId, rootPath);
                 break;
             }
 
@@ -325,6 +347,20 @@ export class SqliteQueuePersistence {
             queuePausedUntil: stats.pausedUntil,
             autopilotPaused: stats.isAutopilotPaused,
             autopilotPausedUntil: stats.autopilotPausedUntil,
+        });
+    }
+
+    private persistQueuedItems(repoId: string, rootPath: string): void {
+        const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
+        if (!queueManager) return;
+
+        queueManager.getQueueItems().forEach((item, index) => {
+            if (isPauseMarker(item)) {
+                this.store.upsertQueueItem({ ...item, repoId }, repoId, index);
+                return;
+            }
+            const queuedTask = item.repoId ? item : { ...item, repoId };
+            this.store.upsertQueueTask(queuedTask, index);
         });
     }
 

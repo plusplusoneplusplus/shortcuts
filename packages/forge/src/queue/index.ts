@@ -60,6 +60,7 @@ export {
     QueueStatus,
 
     // Pause marker
+    PauseDurationHours,
     PauseMarker,
     QueueItem,
 
