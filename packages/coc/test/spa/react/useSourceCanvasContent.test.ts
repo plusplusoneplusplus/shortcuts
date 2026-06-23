@@ -10,11 +10,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
-type TestWorkspace = { id: string; rootPath?: string; baseUrl?: string };
+type TestWorkspace = {
+    id: string;
+    rootPath?: string;
+    baseUrl?: string;
+    remote?: Record<string, unknown>;
+};
 
-const { previewMock, getClientMock, workspacesRef, reposRef } = vi.hoisted(() => ({
+const { previewMock, remotePreviewMock, getSpaCocClientMock, getCocClientForMock, workspacesRef, reposRef } = vi.hoisted(() => ({
     previewMock: vi.fn(),
-    getClientMock: vi.fn(),
+    remotePreviewMock: vi.fn(),
+    getSpaCocClientMock: vi.fn(),
+    getCocClientForMock: vi.fn(),
     workspacesRef: { current: [] as TestWorkspace[] },
     reposRef: {
         current: null as null | { repos: Array<{ workspace: TestWorkspace }> },
@@ -29,26 +36,38 @@ vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useReposOptional: () => reposRef.current,
 }));
 
-// Clone registry routes a workspace id to its (local-default or remote) client.
-vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
-    getCocClientForWorkspace: getClientMock,
-}));
-
-// Remote workspaces are tagged with a `baseUrl`; mirror that here.
-vi.mock('../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation', () => ({
-    isRemoteWorkspace: (ws: TestWorkspace) => typeof ws?.baseUrl === 'string',
-}));
-
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: getSpaCocClientMock,
+    getCocClientFor: getCocClientForMock,
+    toSpaCocRequestOptions: (options?: RequestInit) => options ?? {},
+    translateSpaCocClientError: (error: unknown) => { throw error; },
     getSpaCocClientErrorMessage: (_err: unknown, fallback: string) => fallback,
 }));
 
 import { useSourceCanvasContent } from '../../../src/server/spa/client/react/features/chat/source-canvas/useSourceCanvasContent';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../src/server/spa/client/react/repos/cloneRegistry';
+
+const REMOTE_BASE_URL = 'http://127.0.0.1:4000';
+
+function remoteMarker(baseUrl: string): Record<string, unknown> {
+    return {
+        baseUrl,
+        serverId: 'remote-server',
+        serverLabel: 'Remote Server',
+        offline: false,
+        connection: 'online',
+        queue: 'idle',
+    };
+}
 
 beforeEach(() => {
     previewMock.mockReset();
-    getClientMock.mockReset();
-    getClientMock.mockReturnValue({ tasks: { previewWorkspaceFile: previewMock } });
+    remotePreviewMock.mockReset();
+    getSpaCocClientMock.mockReset();
+    getCocClientForMock.mockReset();
+    getSpaCocClientMock.mockReturnValue({ tasks: { previewWorkspaceFile: previewMock } });
+    getCocClientForMock.mockReturnValue({ tasks: { previewWorkspaceFile: remotePreviewMock } });
+    resetCloneRegistryForTests();
     workspacesRef.current = [{ id: 'ws1', rootPath: '/home/u/proj' }];
     reposRef.current = null;
 });
@@ -64,8 +83,9 @@ describe('useSourceCanvasContent', () => {
         expect(result.current.content).toBe('hello world\n');
         expect(result.current.language).toBe('typescript');
         expect(result.current.resolvedPath).toBe('/home/u/proj/src/a.ts');
-        // Local workspace ids route through the clone registry's default client.
-        expect(getClientMock).toHaveBeenCalledWith('ws1');
+        // Local workspace ids route through the clone registry's default SPA client.
+        expect(getSpaCocClientMock).toHaveBeenCalled();
+        expect(getCocClientForMock).not.toHaveBeenCalled();
         expect(previewMock).toHaveBeenCalledWith('ws1', '/home/u/proj/src/a.ts', { lines: 0 });
     });
 
@@ -140,6 +160,7 @@ describe('useSourceCanvasContent', () => {
     // workspaces in, anchor the relative path against the remote rootPath, and
     // fetch via the clone-routed client (not the local default).
     it('resolves a remote-workspace chat link and fetches via the clone-routed client', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: REMOTE_BASE_URL }]);
         reposRef.current = {
             repos: [
                 { workspace: { id: 'ws1', rootPath: '/home/u/proj' } },
@@ -147,12 +168,13 @@ describe('useSourceCanvasContent', () => {
                     workspace: {
                         id: 'remote-ws',
                         rootPath: '/home/remote/repo',
-                        baseUrl: 'http://127.0.0.1:4000',
+                        baseUrl: REMOTE_BASE_URL,
+                        remote: remoteMarker(REMOTE_BASE_URL),
                     },
                 },
             ],
         };
-        previewMock.mockResolvedValue({ content: 'remote!', language: 'typescript' });
+        remotePreviewMock.mockResolvedValue({ content: 'remote!', language: 'typescript' });
         const { result } = renderHook(() =>
             useSourceCanvasContent({
                 fullPath: 'packages/coc/RalphWorkflowPane.tsx',
@@ -164,8 +186,8 @@ describe('useSourceCanvasContent', () => {
         expect(result.current.resolvedPath).toBe(
             '/home/remote/repo/packages/coc/RalphWorkflowPane.tsx',
         );
-        expect(getClientMock).toHaveBeenCalledWith('remote-ws');
-        expect(previewMock).toHaveBeenCalledWith(
+        expect(getCocClientForMock).toHaveBeenCalledWith(REMOTE_BASE_URL);
+        expect(remotePreviewMock).toHaveBeenCalledWith(
             'remote-ws',
             '/home/remote/repo/packages/coc/RalphWorkflowPane.tsx',
             { lines: 0 },
