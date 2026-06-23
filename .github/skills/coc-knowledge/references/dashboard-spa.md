@@ -2,6 +2,13 @@
 
 React-based single-page application served by `coc serve`. Located at `packages/coc/src/server/spa/client/`.
 
+Chat detail composer gating is driven by persisted process state. A cancelled
+chat can be continued only when the process has a saved `sdkSessionId`; if no
+SDK session was saved, or if `metadata.stoppedChatResume.resumable === false`
+after a strict stopped-chat resume failure, `ChatDetail` keeps
+`FollowUpInputArea` disabled and shows a non-retryable inline error with no retry
+button or fresh-session fallback.
+
 ## Entry Point & Shell
 
 - `entry.tsx` — Mounts `App` (main shell) or `PopOut` (floating chat window)

@@ -27,7 +27,7 @@ import { processMessageAttachments } from '../core/attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
-import { normalizeChatMode } from '../tasks/task-types';
+import { getStoppedChatResumeUnavailableMessage, normalizeChatMode } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
@@ -670,6 +670,15 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
 
             if (!body.content || typeof body.content !== 'string') {
                 return handleAPIError(res, missingFields(['content']));
+            }
+
+            const stoppedChatResumeUnavailable = getStoppedChatResumeUnavailableMessage(proc);
+            if (stoppedChatResumeUnavailable) {
+                return handleAPIError(res, new APIError(
+                    409,
+                    stoppedChatResumeUnavailable,
+                    'SESSION_NOT_RESUMABLE',
+                ));
             }
 
             const isCancelledResume = proc.status === 'cancelled';

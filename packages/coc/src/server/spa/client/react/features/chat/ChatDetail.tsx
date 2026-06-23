@@ -76,7 +76,7 @@ import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './Impleme
 import { buildImplementTargets } from './implementTargets';
 import { ForEachPlanReviewCard, type ForEachGenerationMetadata } from './ForEachPlanReviewCard';
 import { MapReducePlanReviewCard, type MapReduceGenerationMetadata } from './MapReducePlanReviewCard';
-import { getRalphContext } from '../../../../../tasks/task-types';
+import { getRalphContext, getStoppedChatResumeUnavailableMessage } from '../../../../../tasks/task-types';
 import { useLoops } from './hooks/useLoops';
 import { LoopManagementPanel } from './LoopManagementPanel';
 import { RenameDialog } from '../../ui/RenameDialog';
@@ -389,12 +389,19 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const savedSdkSessionId = [processDetails?.sdkSessionId, task?.sdkSessionId]
         .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
         ?.trim() ?? null;
+    const stoppedChatResumeUnavailableError =
+        getStoppedChatResumeUnavailableMessage(processDetails)
+        ?? getStoppedChatResumeUnavailableMessage(task);
     const cancelledWithoutResumeSession = effectiveStatus === 'cancelled' && processDetails !== null && !savedSdkSessionId;
-    const inputDisabled = loading || isPending || isCancelling || sessionExpired || cancelledWithoutResumeSession;
-    const noSessionForFollowUp = isTerminal && effectiveStatus !== 'cancelled' && processDetails !== null && !resumeSessionId;
-    const cancelledResumeUnavailableError = cancelledWithoutResumeSession
+    const nonRetryableFollowUpError = stoppedChatResumeUnavailableError ?? (cancelledWithoutResumeSession
         ? 'This stopped chat cannot be continued because no SDK session was saved. Start a new chat manually.'
-        : null;
+        : null);
+    const inputDisabled = loading || isPending || isCancelling || sessionExpired || !!nonRetryableFollowUpError;
+    const noSessionForFollowUp = isTerminal
+        && effectiveStatus !== 'cancelled'
+        && processDetails !== null
+        && !resumeSessionId
+        && !nonRetryableFollowUpError;
 
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
 
@@ -2071,8 +2078,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             isActiveGeneration={isActiveGeneration}
                             isCancelling={isCancelling}
                             error={error}
-                            nonRetryableError={cancelledResumeUnavailableError}
-                            disabledPlaceholder={cancelledResumeUnavailableError ? 'Cannot continue this stopped chat.' : undefined}
+                            nonRetryableError={nonRetryableFollowUpError}
+                            disabledPlaceholder={nonRetryableFollowUpError ? 'Cannot continue this stopped chat.' : undefined}
                             resumeFeedback={resumeFeedback}
                             onDismissResumeFeedback={() => setResumeFeedback(null)}
                             suggestions={suggestions}
@@ -2211,8 +2218,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     isActiveGeneration={isActiveGeneration}
                     isCancelling={isCancelling}
                     error={error}
-                    nonRetryableError={cancelledResumeUnavailableError}
-                    disabledPlaceholder={cancelledResumeUnavailableError ? 'Cannot continue this stopped chat.' : undefined}
+                    nonRetryableError={nonRetryableFollowUpError}
+                    disabledPlaceholder={nonRetryableFollowUpError ? 'Cannot continue this stopped chat.' : undefined}
                     resumeFeedback={resumeFeedback}
                     onDismissResumeFeedback={() => setResumeFeedback(null)}
                     suggestions={suggestions}

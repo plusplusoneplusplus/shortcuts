@@ -682,8 +682,8 @@ export function FollowUpInputArea({
                     {nonRetryableError}
                 </div>
             )}
-            {error && <div className="chat-error-bubble bubble-error text-xs text-[#f14c4c]">{error}</div>}
-            {error && (
+            {!nonRetryableError && error && <div className="chat-error-bubble bubble-error text-xs text-[#f14c4c]">{error}</div>}
+            {!nonRetryableError && error && (
                 <Button
                     variant="danger"
                     size="sm"

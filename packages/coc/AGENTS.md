@@ -114,7 +114,10 @@ all have their own `references/*.md`.
 - **Stopped-chat follow-ups** (`cancelled` process with saved `sdkSessionId`)
   must carry `payload.resumeSessionId`; the follow-up executor sends
   `strictSessionResume: true` and must not persist or accept a replacement SDK
-  session.
+  session. If strict resume fails, persist
+  `metadata.stoppedChatResume = { resumable: false, reason:
+  'strict-resume-failed', ... }`; the REST API and SPA must treat that process
+  as non-resumable and must not offer retry or fresh-session fallback.
 - **Process metadata field updates** from dashboard/server callers should use
   `client.processes.patchMetadata(...)` or API `metadataPatch` unless a full
   metadata replacement is intentional; full `metadata` on

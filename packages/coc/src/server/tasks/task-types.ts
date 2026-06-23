@@ -455,6 +455,40 @@ export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 /** Supported reasoning-effort override values (for runtime validation). */
 export const VALID_REASONING_EFFORTS: ReadonlySet<ReasoningEffort> = new Set(['low', 'medium', 'high', 'xhigh']);
 
+export const STOPPED_CHAT_STRICT_RESUME_FAILED_REASON = 'strict-resume-failed' as const;
+export const STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE =
+    'This stopped chat cannot be continued because the saved SDK session could not be resumed. Start a new chat manually.';
+
+export interface StoppedChatResumeState {
+    resumable: boolean;
+    reason?: typeof STOPPED_CHAT_STRICT_RESUME_FAILED_REASON;
+    message?: string;
+    failedAt?: string;
+    sdkSessionId?: string;
+}
+
+export function getStoppedChatResumeState(
+    source: { metadata?: unknown } | null | undefined,
+): StoppedChatResumeState | null {
+    if (!source) return null;
+    const metadata = source.metadata as { stoppedChatResume?: unknown } | undefined;
+    const state = metadata?.stoppedChatResume;
+    if (!state || typeof state !== 'object' || Array.isArray(state)) return null;
+    return state as StoppedChatResumeState;
+}
+
+export function getStoppedChatResumeUnavailableMessage(
+    source: { metadata?: unknown } | null | undefined,
+): string | null {
+    const state = getStoppedChatResumeState(source);
+    if (state?.resumable !== false || state.reason !== STOPPED_CHAT_STRICT_RESUME_FAILED_REASON) {
+        return null;
+    }
+    return typeof state.message === 'string' && state.message.trim().length > 0
+        ? state.message.trim()
+        : STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE;
+}
+
 export interface ChatPayload {
     readonly kind: 'chat';
     mode: ChatMode;

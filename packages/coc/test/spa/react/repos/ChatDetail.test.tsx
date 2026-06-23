@@ -19,6 +19,10 @@ import { QueueProvider, useQueue } from '../../../../src/server/spa/client/react
 import { ToastProvider } from '../../../../src/server/spa/client/react/contexts/ToastContext';
 import { NotificationProvider } from '../../../../src/server/spa/client/react/contexts/NotificationContext';
 import { TaskProvider } from '../../../../src/server/spa/client/react/contexts/TaskContext';
+import {
+    STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+    STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+} from '../../../../src/server/tasks/task-types';
 
 // ── Module mocks (hoisted before imports) ──────────────────────────────────
 
@@ -818,6 +822,41 @@ describe('ChatDetail', () => {
             expect(screen.getByTestId('activity-chat-input').getAttribute('data-placeholder')).toBe('Cannot continue this stopped chat.');
             expect(screen.queryByTestId('retry-btn')).toBeNull();
             expect(screen.queryByText('Follow-up chat is not available for this process type.')).toBeNull();
+        });
+
+        it('shows only the non-retryable inline error after stopped-chat strict resume failure', async () => {
+            const task = makeTask({ status: 'failed', processId: 'proc-1' });
+            const proc = makeProcess({
+                status: 'failed',
+                sdkSessionId: 'stopped-session',
+                error: 'Provider did not resume the stopped SDK session.',
+                metadata: {
+                    mode: 'autopilot',
+                    stoppedChatResume: {
+                        resumable: false,
+                        reason: STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+                        message: STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+                        failedAt: '2026-06-23T18:53:00.000Z',
+                        sdkSessionId: 'stopped-session',
+                    },
+                },
+            });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+
+            await waitFor(() => {
+                const sendBtn = screen.getByTestId('activity-chat-send-btn');
+                expect(sendBtn.hasAttribute('disabled')).toBe(true);
+                expect(screen.getByTestId('follow-up-inline-error').textContent)
+                    .toContain('saved SDK session could not be resumed');
+            });
+
+            expect(screen.getByTestId('activity-chat-input').getAttribute('data-placeholder')).toBe('Cannot continue this stopped chat.');
+            expect(screen.queryByTestId('retry-btn')).toBeNull();
+            expect(screen.queryByText('This task failed before a chat session was created.')).toBeNull();
+            expect(screen.queryByText('Follow-up chat is not available for this process type.')).toBeNull();
+            fireEvent.click(screen.getByTestId('activity-chat-send-btn'));
+            expect(mockState.sendFollowUp).not.toHaveBeenCalled();
         });
 
         it('shows error message when error is set', async () => {

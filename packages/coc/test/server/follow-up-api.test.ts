@@ -18,6 +18,10 @@ import { createRequestHandler, registerApiRoutes, generateDashboardHtml } from '
 import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-bridge';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { createMockBridge } from '../helpers/mock-sdk-service';
+import {
+    STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+    STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+} from '../../src/server/tasks/task-types';
 
 // ============================================================================
 // Helpers
@@ -793,6 +797,50 @@ describe('POST /api/processes/:id/message', () => {
             const updated = await store.getProcess('proc-cancelled-no-session');
             expect(updated?.status).toBe('cancelled');
             expect(updated?.conversationTurns).toHaveLength(0);
+        });
+
+        it('should reject follow-up after stopped-chat strict resume failure', async () => {
+            const proc: AIProcess = {
+                id: 'proc-strict-resume-failed',
+                type: 'chat',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'failed',
+                startTime: new Date(),
+                endTime: new Date(),
+                sdkSessionId: 'stopped-session',
+                metadata: {
+                    type: 'chat',
+                    stoppedChatResume: {
+                        resumable: false,
+                        reason: STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+                        message: STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+                        failedAt: new Date().toISOString(),
+                        sdkSessionId: 'stopped-session',
+                    },
+                },
+                conversationTurns: [
+                    { role: 'user', content: 'continue', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: 'Error: Provider did not resume the stopped SDK session.', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                ],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-strict-resume-failed/message`, {
+                content: 'try again',
+            });
+
+            expect(res.status).toBe(409);
+            const body = JSON.parse(res.body);
+            expect(body.error).toBe(STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE);
+            expect(body.code).toBe('SESSION_NOT_RESUMABLE');
+            expect(mockBridge.isSessionAlive).not.toHaveBeenCalled();
+            expect(mockBridge.enqueue).not.toHaveBeenCalled();
+            expect(mockBridge.executeFollowUp).not.toHaveBeenCalled();
+
+            const updated = await store.getProcess('proc-strict-resume-failed');
+            expect(updated?.status).toBe('failed');
+            expect(updated?.conversationTurns).toHaveLength(2);
         });
 
         it('should return 410 when sdkSessionId references expired/destroyed session', async () => {

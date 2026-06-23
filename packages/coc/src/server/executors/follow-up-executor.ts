@@ -14,6 +14,7 @@ import * as path from 'path';
 import type {
     AgentMode,
     Attachment,
+    AIProcess,
     AutoFolderContext,
     ConversationTurn,
     DeliveryMode,
@@ -27,7 +28,15 @@ import type {
 import type { ReasoningEffort } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getCopilotContextTierForModel } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
-import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
+import {
+    getForEachContext,
+    getMapReduceContext,
+    isForEachGenerationContext,
+    isMapReduceGenerationContext,
+    normalizeChatModeOrDefault,
+    STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+    STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+} from '../tasks/task-types';
 import {
     approveAllPermissions,
     getLogger,
@@ -699,6 +708,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
             const duration = Date.now() - startTime;
+            const failedAt = new Date();
             logger.error(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
 
             const session = this.sessions.get(processId);
@@ -723,11 +733,26 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 }),
                 {
                     filterStreaming: true,
-                    additionalUpdates: {
+                    additionalUpdates: (current: AIProcess) => ({
                         status: 'failed',
-                        endTime: new Date(),
+                        endTime: failedAt,
                         error: errorMsg,
-                    },
+                        ...(strictResumeSessionId
+                            ? {
+                                metadata: {
+                                    ...(current.metadata ?? {}),
+                                    type: current.metadata?.type ?? 'chat',
+                                    stoppedChatResume: {
+                                        resumable: false,
+                                        reason: STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+                                        message: STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+                                        failedAt: failedAt.toISOString(),
+                                        sdkSessionId: strictResumeSessionId,
+                                    },
+                                },
+                            }
+                            : {}),
+                    }),
                 }
             );
             this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
