@@ -11,8 +11,13 @@ import { render, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { ComposerPrChip } from '../../../src/server/spa/client/react/features/chat/conversation/ComposerPrChip';
 import type { PrStatusCardItem } from '../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
+import type { PrCheckRow, CheckStatus } from '../../../src/server/spa/client/react/features/pull-requests/pr-derived-data';
 
 const KEY = 'gh_owner_repo:42';
+
+function check(id: string, status: CheckStatus): PrCheckRow {
+    return { id, name: id, status, duration: '', interpretation: '' };
+}
 
 function readyItem(overrides: Partial<PrStatusCardItem> = {}): PrStatusCardItem {
     return {
@@ -52,6 +57,43 @@ describe('ComposerPrChip', () => {
 
         const view = getByTestId(`composer-pr-chip-view-${KEY}`) as HTMLAnchorElement;
         expect(view.getAttribute('href')).toBe('#repos/ws1/pull-requests/42/overview');
+    });
+
+    it('ready: shows the check count as passing/total once checks are loaded', () => {
+        const checks: PrCheckRow[] = [
+            check('a', 'success'),
+            check('b', 'success'),
+            check('c', 'pending'),
+        ];
+        const { getByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks })} onDismiss={() => {}} />,
+        );
+        const badge = getByTestId('composer-pr-chip-checks');
+        expect(badge.getAttribute('data-passing')).toBe('2');
+        expect(badge.getAttribute('data-total')).toBe('3');
+        expect(badge.textContent).toContain('2/3');
+        // Any pending → not the all-green glyph.
+        expect(badge.textContent).toContain('●');
+    });
+
+    it('ready: uses the failing glyph when any check is failing', () => {
+        const checks: PrCheckRow[] = [check('a', 'success'), check('b', 'failure')];
+        const { getByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks })} onDismiss={() => {}} />,
+        );
+        const badge = getByTestId('composer-pr-chip-checks');
+        expect(badge.textContent).toContain('1/2');
+        expect(badge.textContent).toContain('✕');
+    });
+
+    it('ready: omits the check count until checks are ready, and when there are none', () => {
+        const item = readyItem();
+        // checksState undefined (eager fetch not yet resolved) → no badge.
+        const { queryByTestId, rerender } = render(<ComposerPrChip item={item} onDismiss={() => {}} />);
+        expect(queryByTestId('composer-pr-chip-checks')).toBeNull();
+        // ready but zero checks reported → still no badge.
+        rerender(<ComposerPrChip item={readyItem({ checksState: 'ready', checks: [] })} onDismiss={() => {}} />);
+        expect(queryByTestId('composer-pr-chip-checks')).toBeNull();
     });
 
     it('ready: omits the diff when the detail carries no diffStats', () => {

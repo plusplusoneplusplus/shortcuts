@@ -101,6 +101,36 @@ describe('ChatComposerPrChips / usePrChatStatusItems', () => {
         expect(getByTestId('composer-pr-chip-diff').textContent).toContain('+142');
     });
 
+    it('eager-loaded checks surface as a passing/total count on the chip', async () => {
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 42,
+            title: 'PR with checks',
+            status: 'open',
+            sourceBranch: 'feat/x',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: GH_URL,
+        });
+        mocks.pullRequests.getChecksForOrigin.mockResolvedValue({
+            checks: [
+                { id: 'c1', name: 'build', status: 'success', source: 'check' },
+                { id: 'c2', name: 'unit', status: 'success', source: 'check' },
+                { id: 'c3', name: 'e2e', status: 'pending', source: 'check' },
+            ],
+        });
+
+        const { findByText, findByTestId } = render(
+            <ChatComposerPrChips turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+        );
+
+        await findByText('PR with checks');
+        const badge = await findByTestId('composer-pr-chip-checks');
+        expect(badge.getAttribute('data-passing')).toBe('2');
+        expect(badge.getAttribute('data-total')).toBe('3');
+        expect(badge.textContent).toContain('2/3');
+    });
+
     it('dismissing a chip with ✕ hides it for the session', async () => {
         mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
         mocks.pullRequests.getForOrigin.mockResolvedValue({

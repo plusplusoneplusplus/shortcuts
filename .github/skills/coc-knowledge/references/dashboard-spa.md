@@ -125,9 +125,12 @@ and origin logic live in the pure `conversation/prChatAssociation.ts` module.
 Each chip (`ComposerPrChip`, presentational) shows a git glyph, a pin marker, the
 `#number` (deep-linking into `PullRequestDetail` via `buildPrDetailHash`), the
 title, the lifecycle status badge (`prStatusBadge` — Open / Draft / Merged /
-Closed), the `+adds / −dels` diff (from `mapPrDetailToCardPr`'s `diffStats`,
-parsed by `parseDiffStats`; omitted when the detail carries no counts), a filled
-**View** deep-link, and a ✕ dismiss. A loading row renders a skeleton; an error
+Closed), a CI-checks count badge (`✓ passing/total` like `10/30`, via
+`summarizeCheckRows` on the eager-loaded `item.checks`; tinted red/amber/blue/green
+by worst-active status, omitted until the checks fetch resolves with ≥1 check),
+the `+adds / −dels` diff (from `mapPrDetailToCardPr`'s `diffStats`, parsed by
+`parseDiffStats`; omitted when the detail carries no counts), a filled **View**
+deep-link, and a ✕ dismiss. A loading row renders a skeleton; an error
 row shows the message plus Retry and View. `ChatComposerPrChips` orders chips
 newest-first, hides any the user ✕-dismisses for the session (a fresh detection
 or binding re-surfaces it on reload), and renders nothing when no PR is

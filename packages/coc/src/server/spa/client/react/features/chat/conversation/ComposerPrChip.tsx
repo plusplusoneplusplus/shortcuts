@@ -21,6 +21,7 @@ import React from 'react';
 import { cn } from '../../../ui/cn';
 import { prStatusBadge } from '../../pull-requests/pr-utils';
 import { buildPrDetailHash } from '../../pull-requests/pr-open-utils';
+import { summarizeCheckRows } from '../../pull-requests/PrChecksSummary';
 import type { PrStatusCardItem } from './PrStatusCard';
 
 export interface ComposerPrChipProps {
@@ -89,6 +90,51 @@ function StatusBadge({ status }: { status: string }) {
         >
             <span aria-hidden="true">{badge.emoji}</span>
             {badge.label}
+        </span>
+    );
+}
+
+/**
+ * Compact CI-checks count (e.g. `✓ 10/30` = passing / total), tinted by the
+ * worst-active status: red when any check is failing, amber on warnings, blue
+ * while any are pending/running, green once all reported checks pass. Renders
+ * nothing until the eager checks fetch resolves with at least one check, so a
+ * chat whose PR reports no CI stays quiet. Reuses {@link summarizeCheckRows} —
+ * no copy-pasted check-status tallying.
+ */
+function ChecksBadge({ item }: { item: PrStatusCardItem }) {
+    if (item.checksState !== 'ready') return null;
+    const rows = item.checks ?? [];
+    if (rows.length === 0) return null;
+    const s = summarizeCheckRows(rows);
+
+    const tone =
+        s.failing > 0
+            ? 'bg-[#ffebe9] text-[#cf222e] dark:bg-[#f85149]/20 dark:text-[#f85149]'
+            : s.warning > 0
+                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200'
+                : s.pending > 0
+                    ? 'bg-[#ddf4ff] text-[#0969da] dark:bg-[#388bfd]/25 dark:text-[#58a6ff]'
+                    : 'bg-[#dafbe1] text-[#1a7f37] dark:bg-[#238636]/25 dark:text-[#3fb950]';
+    const glyph = s.failing > 0 ? '✕' : s.warning > 0 ? '⚠' : s.pending > 0 ? '●' : '✓';
+
+    const detail = [
+        s.failing > 0 ? `${s.failing} failing` : '',
+        s.warning > 0 ? `${s.warning} warning` : '',
+        s.pending > 0 ? `${s.pending} pending` : '',
+    ].filter(Boolean).join(' · ');
+    const title = `${s.passing}/${s.total} checks passing${detail ? ` — ${detail}` : ''}`;
+
+    return (
+        <span
+            className={cn('shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-mono text-[10px] font-medium', tone)}
+            data-testid="composer-pr-chip-checks"
+            data-passing={s.passing}
+            data-total={s.total}
+            title={title}
+        >
+            <span aria-hidden="true">{glyph}</span>
+            {s.passing}/{s.total}
         </span>
     );
 }
@@ -173,6 +219,7 @@ export function ComposerPrChip({ item, onDismiss, onRetry }: ComposerPrChipProps
                 {pr?.title}
             </span>
             {pr && <StatusBadge status={pr.status} />}
+            <ChecksBadge item={item} />
             {diff && (
                 <span className="shrink-0 font-mono text-[11px]" data-testid="composer-pr-chip-diff">
                     <span className="font-semibold text-[#1a7f37] dark:text-[#3fb950]">+{diff.additions}</span>{' '}
