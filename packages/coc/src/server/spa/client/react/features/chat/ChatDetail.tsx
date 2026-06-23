@@ -23,7 +23,7 @@ import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
-import { scanTurnsForCreatedFiles } from '../../utils/conversationScan';
+import { scanTurnsForCreatedFiles, scanTurnsForPlanCanvas } from '../../utils/conversationScan';
 import { toQueueProcessId, isQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import { getDraft, setDraft, pruneExpired } from './hooks/useDraftStore';
@@ -469,7 +469,22 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         () => createdFiles.find(f => f.filePath.endsWith('.plan.md'))?.filePath ?? '',
         [createdFiles],
     );
-    const effectivePlanPath = planPath || detectedPlanFile;
+    // Detect a canvas written with purpose 'plan' as an alternative plan source
+    // when no .plan.md file was created (file-based plans take precedence).
+    const detectedPlanCanvas = useMemo(
+        () => scanTurnsForPlanCanvas(turns),
+        [turns],
+    );
+    // The canvas title is only a display label; the canvasId drives content reads.
+    const effectivePlanPath = planPath || detectedPlanFile || detectedPlanCanvas?.title || '';
+    const persistedPlanCanvasId = typeof task?.metadata?.planCanvasId === 'string'
+        ? task.metadata.planCanvasId
+        : undefined;
+    // A real file-based plan takes precedence; only treat as canvas-backed when
+    // no .plan.md file was detected/persisted for this task.
+    const effectivePlanCanvasId = detectedPlanFile || (planPath && !persistedPlanCanvasId)
+        ? undefined
+        : (detectedPlanCanvas?.canvasId ?? persistedPlanCanvasId);
 
     // Detect goal.md or *.goal.md created mid-conversation for direct Ralph launch
     const detectedGoalFile = useMemo(
@@ -522,6 +537,22 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             })
             .catch(() => { /* best-effort persist */ });
     }, [detectedPlanFile, planPath, task?.metadata?.planFilePath, processId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Persist a detected plan canvas to process metadata (best-effort, once per
+    // load). Only when no file-based plan exists — file plans take precedence.
+    const planCanvasPatchedRef = useRef(false);
+    useEffect(() => {
+        if (planCanvasPatchedRef.current) return;
+        if (!detectedPlanCanvas || detectedPlanFile || planPath || task?.metadata?.planCanvasId || !processId) return;
+        planCanvasPatchedRef.current = true;
+        client.processes.patchMetadata(processId, {
+            set: { planCanvasId: detectedPlanCanvas.canvasId, planFilePath: detectedPlanCanvas.title },
+        })
+            .then((data: any) => {
+                if (data?.process) setTask((prev: any) => prev ? { ...prev, metadata: data.process.metadata } : prev);
+            })
+            .catch(() => { /* best-effort persist */ });
+    }, [detectedPlanCanvas, detectedPlanFile, planPath, task?.metadata?.planCanvasId, processId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Persist detected goal file path to process metadata (fire at most once per load)
     const goalPatchedRef = useRef(false);
@@ -1997,6 +2028,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     {effectiveView === 'thread' && !showSubAgentDetail && isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
                         <ImplementPlanCard
                             planFilePath={effectivePlanPath}
+                            planCanvasId={effectivePlanCanvasId}
                             workspaceId={workspaceId}
                             workingDirectory={workingDirectory}
                             existingRuns={resolvedRuns}

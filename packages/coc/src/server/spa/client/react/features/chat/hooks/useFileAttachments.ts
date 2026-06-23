@@ -16,6 +16,8 @@ export interface UseFileAttachmentsResult {
     removeAttachment: (id: string) => void;
     /** Clear all attachments */
     clearAttachments: () => void;
+    /** Bulk-replace attachments (e.g. restoring a persisted draft) without re-reading files */
+    restoreAttachments: (attachments: ChatAttachment[]) => void;
     /** Current validation error (file too large, too many, etc.) */
     error: string | null;
     /** Clear the current error */
@@ -147,6 +149,13 @@ export function useFileAttachments(maxAttachments: number = MAX_ATTACHMENTS): Us
         setError(null);
     }, []);
 
+    const restoreAttachments = useCallback((restored: ChatAttachment[]) => {
+        const capped = restored.slice(0, maxAttachments);
+        setAttachments(capped);
+        countRef.current = capped.length;
+        setError(null);
+    }, [maxAttachments]);
+
     // Backward-compatible: extract image data URLs
     const images = attachments
         .filter(a => a.category === 'image')
@@ -168,6 +177,7 @@ export function useFileAttachments(maxAttachments: number = MAX_ATTACHMENTS): Us
         addFromFileInput,
         removeAttachment,
         clearAttachments,
+        restoreAttachments,
         error,
         clearError,
         toPayload,

@@ -23,10 +23,9 @@ describe('buildAskUserAddon', () => {
         expect(result.tools[0].name).toBe('ask_user');
     });
 
-    it('returns a non-empty suffix when enabled', () => {
+    it('returns an empty suffix when enabled', () => {
         const result = buildAskUserAddon(true, makeDeps());
-        expect(result.suffix.length).toBeGreaterThan(0);
-        expect(result.suffix).toContain('ask_user');
+        expect(result.suffix).toBe('');
     });
 
     it('answerQuestion returns false when disabled', () => {

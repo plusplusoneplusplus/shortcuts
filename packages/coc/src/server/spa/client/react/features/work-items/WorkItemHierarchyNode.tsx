@@ -62,7 +62,7 @@ const STATUS_CHIP_CLASS: Record<string, string> = {
     failed:           'bg-[#ffebe9] text-[#cf222e] border-[color-mix(in_srgb,#cf222e_25%,#d0d7de)] dark:bg-red-900/20 dark:text-red-400 dark:border-red-700/40',
 };
 
-const STATUS_LABEL: Record<string, string> = {
+export const STATUS_LABEL: Record<string, string> = {
     created: 'Created',
     drafting: 'Drafting',
     planning: 'Planning',

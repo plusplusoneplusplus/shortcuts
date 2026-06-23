@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     scanTurnsForCreatedFiles,
+    scanTurnsForPlanCanvas,
     PINNED_EXTENSIONS,
 } from '../src/server/spa/client/react/utils/conversationScan';
 import type { ClientConversationTurn } from '../src/server/spa/client/react/types/dashboard';
@@ -858,5 +859,121 @@ describe('scanTurnsForCreatedFiles', () => {
             ];
             expect(scanTurnsForCreatedFiles(turns)).toHaveLength(0);
         });
+    });
+});
+
+// ============================================================================
+// scanTurnsForPlanCanvas
+// ============================================================================
+
+/** Build an assistant turn with one write_canvas tool-complete entry. */
+function makeCanvasTurn(
+    args: Record<string, unknown>,
+    result: unknown,
+): ClientConversationTurn {
+    return {
+        role: 'assistant',
+        content: '',
+        timeline: [{
+            type: 'tool-complete' as const,
+            timestamp: '',
+            toolCall: {
+                id: 'tc-canvas',
+                toolName: 'write_canvas',
+                args,
+                result: typeof result === 'string' ? result : JSON.stringify(result),
+                status: 'completed' as const,
+            },
+        }],
+    };
+}
+
+describe('scanTurnsForPlanCanvas', () => {
+    it('returns null for empty turns', () => {
+        expect(scanTurnsForPlanCanvas([])).toBeNull();
+    });
+
+    it('returns null when no write_canvas has purpose "plan"', () => {
+        const turns = [
+            makeCanvasTurn({ title: 'Notes', content: '...', purpose: 'notes' }, { success: true, canvasId: 'notes-abc123' }),
+            makeCanvasTurn({ title: 'Plain', content: '...' }, { success: true, canvasId: 'plain-abc123' }),
+        ];
+        expect(scanTurnsForPlanCanvas(turns)).toBeNull();
+    });
+
+    it('detects a plan-purpose canvas and returns its id and title', () => {
+        const turns = [
+            makeCanvasTurn(
+                { title: 'Auth migration plan', content: '# Plan', purpose: 'plan' },
+                { success: true, canvasId: 'auth-migration-plan-abc123', created: true },
+            ),
+        ];
+        expect(scanTurnsForPlanCanvas(turns)).toEqual({
+            canvasId: 'auth-migration-plan-abc123',
+            title: 'Auth migration plan',
+        });
+    });
+
+    it('falls back to the canvasId as title when title is absent', () => {
+        const turns = [
+            makeCanvasTurn({ content: '# Plan', purpose: 'plan' }, { success: true, canvasId: 'plan-abc123' }),
+        ];
+        expect(scanTurnsForPlanCanvas(turns)).toEqual({ canvasId: 'plan-abc123', title: 'plan-abc123' });
+    });
+
+    it('returns the first plan canvas when several exist', () => {
+        const turns = [
+            makeCanvasTurn({ title: 'First', content: 'a', purpose: 'plan' }, { success: true, canvasId: 'first-aaa111' }),
+            makeCanvasTurn({ title: 'Second', content: 'b', purpose: 'plan' }, { success: true, canvasId: 'second-bbb222' }),
+        ];
+        expect(scanTurnsForPlanCanvas(turns)?.canvasId).toBe('first-aaa111');
+    });
+
+    it('ignores a plan canvas whose result carries no canvasId', () => {
+        const turns = [
+            makeCanvasTurn({ title: 'Plan', content: 'a', purpose: 'plan' }, { success: false, error: 'boom' }),
+        ];
+        expect(scanTurnsForPlanCanvas(turns)).toBeNull();
+    });
+
+    it('resolves purpose from tool-start args when tool-complete args are empty (live SSE)', () => {
+        const turns: ClientConversationTurn[] = [{
+            role: 'assistant',
+            content: '',
+            timeline: [
+                {
+                    type: 'tool-start' as const,
+                    timestamp: '',
+                    toolCall: {
+                        id: 'tc-live',
+                        toolName: 'write_canvas',
+                        args: { title: 'Live plan', content: '# Plan', purpose: 'plan' },
+                        status: 'running' as const,
+                    },
+                },
+                {
+                    type: 'tool-complete' as const,
+                    timestamp: '',
+                    toolCall: {
+                        id: 'tc-live',
+                        toolName: 'unknown',
+                        args: {},
+                        result: JSON.stringify({ success: true, canvasId: 'live-plan-ccc333' }),
+                        status: 'completed' as const,
+                    },
+                },
+            ],
+        }];
+        expect(scanTurnsForPlanCanvas(turns)).toEqual({ canvasId: 'live-plan-ccc333', title: 'Live plan' });
+    });
+
+    it('parses canvasId from a non-JSON result string via regex fallback', () => {
+        const turns = [
+            makeCanvasTurn(
+                { title: 'Plan', content: 'a', purpose: 'plan' },
+                'Created canvas "canvasId":"plan-ddd444" ok',
+            ),
+        ];
+        expect(scanTurnsForPlanCanvas(turns)?.canvasId).toBe('plan-ddd444');
     });
 });

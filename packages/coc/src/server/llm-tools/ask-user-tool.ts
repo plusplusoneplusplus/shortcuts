@@ -161,6 +161,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
         description:
             'Ask the user one or more questions and wait for their answers. Use when you need ' +
             'clarification, confirmation, or choices before proceeding. ' +
+            'Do NOT use it for a simple yes/no that can be inferred from context. ' +
             'If a response has deferred=true and reason="needs-context", the user needs more context; explain and re-ask the question if still needed instead of treating it as skipped. ' +
             'Only use in interactive Ask or Ralph contexts, never in autopilot.',
         parameters: {

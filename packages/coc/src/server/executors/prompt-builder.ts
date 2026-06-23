@@ -445,25 +445,23 @@ export function buildConversationHistoryContext(turns?: ConversationTurn[]): str
 // ============================================================================
 
 /**
- * Builds the tools array and prompt suffix for follow-up suggestions.
- * Returns empty tools and empty suffix when suggestions are disabled.
+ * Builds the tools array for follow-up suggestions. The suffix is always empty
+ * (guidance lives in the `suggest_follow_ups` tool description); returns empty
+ * tools when disabled.
  *
  * @param enabled  Whether to attach the suggestion tool.
- * @param count    Number of suggestions to request.
+ * @param _count   Unused; retained to keep the positional signature stable.
  */
 export function buildFollowUpSuggestionsAddon(
     enabled: boolean,
-    count: number,
+    _count: number,
 ): { tools: Tool<any>[]; suffix: string } {
     if (!enabled) {
         return { tools: [], suffix: '' };
     }
     return {
         tools: [createSuggestFollowUpsTool()],
-        suffix: tagGuidanceSuffix(
-            'follow_up_suggestions',
-            `When suggesting follow-ups, provide exactly ${count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`,
-        ),
+        suffix: '',
     };
 }
 
@@ -540,13 +538,8 @@ export function buildAskUserAddon(
     }
 
     const { tool, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending } = createAskUserTool(deps);
-    const suffix = tagGuidanceSuffix(
-        'ask_user_tool',
-        'You have access to the `ask_user` tool. It takes `{ questions: [...] }`; put related clarification, ' +
-        'confirmation, or choice questions in one call instead of calling the tool repeatedly. The user will see one interactive widget. ' +
-        'Every question has Skip and Need more context options, so the user is never stuck. If the tool result includes `deferred: true` with `reason: "needs-context"`, provide the missing context and ask a revised version of that question again when the answer is still needed; if it is no longer needed, explain why. Do not treat it as permission to ignore the question. ' +
-        'Do NOT use ask_user for simple yes/no that can be inferred from context.',
-    );
+    // No prose suffix — the ask_user tool description carries its own guidance.
+    const suffix = '';
 
     return { tools: [tool], suffix, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending };
 }
@@ -584,14 +577,8 @@ export function buildCreateWorkItemAddon(
     const { tool: getWorkItemTool } = createGetWorkItemTool(dataDir, repoId, scopedDeps);
     const { tool: workItemTool } = createCreateUpdateWorkItemTool(dataDir, repoId, broadcastFn, scopedDeps);
 
-    const suffix = tagGuidanceSuffix(
-        'work_item_tools',
-        'You have access to the `get_work_item` and `create_update_work_item` tools. ' +
-        'Use `get_work_item` to read an existing work item by UUID, WI-N, or work-item number when the user ' +
-        'references an existing item or attached context supplies a work-item pointer — before drafting changes, ' +
-        'unless the full detail is already in the prompt. It is read-only. ' +
-        'Use `create_update_work_item` only after presenting a draft and receiving user confirmation.',
-    );
+    // No prose suffix — both work-item tool descriptions carry their own guidance.
+    const suffix = '';
 
     return { tools: [getWorkItemTool, workItemTool], suffix };
 }
@@ -728,14 +715,8 @@ export function buildCanvasToolsAddon(
         processStore: store,
     });
 
-    const suffix = tagGuidanceSuffix(
-        'canvas_tools',
-        'Canvas tools (`write_canvas`, `read_canvas`, `extension_canvas`) maintain a live artifact in '
-        + 'a side panel beside this chat. Use one when the user wants a document, plan, spec, or code file '
-        + 'they will iterate on — not for short answers — and keep replies brief, referencing the canvas '
-        + 'rather than repeating it. For interactive artifacts (boards, checklists, dashboards) use '
-        + '`extension_canvas`.',
-    );
+    // No prose suffix — the canvas tool descriptions carry their own guidance.
+    const suffix = '';
 
     return { tools: [write, read, extension], suffix };
 }

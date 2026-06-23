@@ -8,6 +8,8 @@ import { useQueue } from '../contexts/QueueContext';
 import { useApp } from '../contexts/AppContext';
 import { Dialog, FloatingDialog, Button } from '../ui';
 import { getCocClientForWorkspace, requestForWorkspace } from '../repos/cloneRegistry';
+import { useReposOptional } from '../contexts/ReposContext';
+import { isRemoteWorkspace } from '../repos/remoteWorkspaceAggregation';
 import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useFileAttachments } from '../features/chat/hooks/useFileAttachments';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
@@ -66,6 +68,9 @@ export function flattenFolders(node: any, depth = 0): FolderOption[] {
 export function EnqueueDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
+    // Optional: EnqueueDialog also renders in the pop-out chat window, which boots
+    // a minimal provider stack without ReposProvider. Degrade to locals-only there.
+    const reposCtx = useReposOptional();
     const { updateOnboarding } = useOnboardingPreferences();
     const { isMobile } = useBreakpoint();
     const { floatChat } = useFloatingChats();
@@ -97,6 +102,22 @@ export function EnqueueDialog() {
             }),
         [hooks],
     );
+
+    // Workspace dropdown source: local workspaces (AppContext) plus remote-server
+    // workspaces surfaced by ReposContext. Remote rows only exist when
+    // features.remoteShell is on; otherwise `repos` holds locals only and this is
+    // a superset equal to appState.workspaces, so the classic flow is unchanged.
+    // Locals come from appState.workspaces (preserving the exact existing order and
+    // any virtual entries); only the remote rows are appended, deduped by id.
+    const allWorkspaces = useMemo<any[]>(() => {
+        const locals = appState.workspaces as any[];
+        const remote = (reposCtx?.repos ?? [])
+            .map(r => r.workspace)
+            .filter((ws): ws is any => isRemoteWorkspace(ws));
+        if (remote.length === 0) return locals;
+        const seen = new Set(locals.map(w => w.id));
+        return [...locals, ...remote.filter(ws => !seen.has(ws.id))];
+    }, [appState.workspaces, reposCtx?.repos]);
 
     const addHook = () => setHooks(prev => [...prev, {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -323,7 +344,10 @@ export function EnqueueDialog() {
         setSubmitting(true);
         queueDispatch({ type: 'SET_TASK_SUBMITTING', value: true });
         try {
-            const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
+            // Search the merged list so a remote workspace resolves to its rootPath
+            // on the REMOTE machine — the correct working directory for the remote
+            // server's API (routing is handled by getCocClientForWorkspace).
+            const ws = allWorkspaces.find((w: any) => w.id === workspaceId);
             const workingDirectory = ws?.rootPath || '';
             const contextTaskName = queueState.dialogContextTaskName;
             const resolvedAi = aiSelection.resolved;
@@ -484,7 +508,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); queueDispatch({ type: 'SET_TASK_SUBMITTING', value: false }); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, updateOnboarding, queueDispatch, clearAttachments, attachedContext, persistSkill, slashCommands, isAskMode, isResolveMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, queueState.dialogResolveContext, hooks, aiSelection.resolved, selectedTemplateId, sessionContextAttachmentsEnabled, canRetrieveConversations]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, allWorkspaces, appState.onboardingProgress, updateOnboarding, queueDispatch, clearAttachments, attachedContext, persistSkill, slashCommands, isAskMode, isResolveMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, queueState.dialogResolveContext, hooks, aiSelection.resolved, selectedTemplateId, sessionContextAttachmentsEnabled, canRetrieveConversations]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);
@@ -867,7 +891,7 @@ export function EnqueueDialog() {
                 />
             </div>
             <div className="flex flex-row gap-2">
-                {appState.workspaces.length > 0 && (
+                {allWorkspaces.length > 0 && (
                     <div className="flex-1 min-w-0">
                         <label className="block text-xs font-medium text-[#848484] mb-1">Workspace</label>
                         <select
@@ -877,9 +901,20 @@ export function EnqueueDialog() {
                             data-testid="workspace-select"
                         >
                             <option value="">None</option>
-                            {appState.workspaces.map((ws: any, i: number) => (
-                                <option key={`${ws.id}::${i}`} value={ws.id}>{ws.name || ws.path || ws.id}</option>
-                            ))}
+                            {allWorkspaces.map((ws: any, i: number) => {
+                                // Remote workspaces are labeled with their server (e.g.
+                                // "shortcuts [my-laptop]") and disabled while offline, so
+                                // they're visible but unselectable until the server is back.
+                                const base = ws.name || ws.path || ws.id;
+                                const remote = isRemoteWorkspace(ws) ? ws.remote : null;
+                                const offline = remote?.offline === true;
+                                const label = remote
+                                    ? `${base} [${remote.serverLabel}]${offline ? ' (offline)' : ''}`
+                                    : base;
+                                return (
+                                    <option key={`${ws.id}::${i}`} value={ws.id} disabled={offline}>{label}</option>
+                                );
+                            })}
                         </select>
                     </div>
                 )}

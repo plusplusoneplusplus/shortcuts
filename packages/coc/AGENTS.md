@@ -128,7 +128,12 @@ all have their own `references/*.md`.
   `CloneRef`. Targets come from `buildImplementTargets` (current repo + local +
   **online** remote clones only); the selector is gated on `isRemoteShellEnabled()`
   with no new flag. Implementation records (target identity + status) always
-  persist on the **source** task via the source client.
+  persist on the **source** task via the source client. The card also surfaces
+  for **canvas-backed plans**: `scanTurnsForPlanCanvas` (in `conversationScan.ts`)
+  detects a `write_canvas` call with `purpose: 'plan'`, and `ChatDetail` passes
+  the canvas id as `planCanvasId`. A canvas-backed plan has no on-disk path, so
+  the card always reads the canvas content (`sourceClient.canvases.get`) and
+  inlines it in the prompt for both local and remote targets.
 - **Copilot long-context tier** is automatic at the provider boundary: chat
   and follow-up executors derive `contextTier` only via
   `getCopilotContextTierForModel` (tiered billing metadata —

@@ -325,6 +325,15 @@ validation. Work Item chat bindings use origin-scoped client methods and pass
 the selected `workspaceId` only for fresh-chat archive/reset actions.
 The hierarchy toolbar exposes a Refresh control that calls the same tree fetch
 path and is disabled while the tree request is in flight.
+Both the hierarchy node and flat `WorkItemSection` right-click context menus share
+a 📋 Copy submenu (Copy ID / Copy title / Copy info) built by
+`buildCopyContextMenuItem` (`workItemCopyMenu.ts`); the clipboard text comes from
+the pure `workItemInfo.ts` formatters, which reuse `getWorkItemChatIdentifier`,
+`TYPE_LABELS`, and `STATUS_LABEL` (no new prefix/label maps). Each action copies
+via `copyToClipboard` and reports through the optional `ToastContext` (success /
+error toast). Note: `ContextMenu` renders an item flagged `separator: true` as a
+divider only and drops its content, so menus add dedicated separator entries to
+group the Copy item rather than flagging it.
 
 `workItems.workflow.enabled` is the disabled-by-default durable workflow gate for
 turning local Work Items and Goals into the command-center planning/execution
@@ -647,6 +656,17 @@ as JPEG only when that reduces the payload before the wire `AttachmentPayload`/
 legacy `images` data URLs reach the server; smaller images, unsupported images,
 and failed canvas conversions retain the original attachment bytes.
 
+`InitialChatComposer` persists pending attachments to a per-tab `sessionStorage`
+sidecar (`attachmentDraftStore`, key `coc.attachmentDraft.<draftKey>`) keyed by the
+same `draftKey` as the `useDraftStore` text draft, so pasted images and files
+survive in-SPA navigation (workspace switch, opening another chat, leaving and
+returning) instead of being lost on unmount. Only the wire `AttachmentPayload`
+subset is stored (no client id/category; both are regenerated/re-derived on load
+via `useFileAttachments.restoreAttachments`); saves over ~2 MB serialized are
+skipped to avoid quota errors. The sidecar is cleared on successful send and
+Ralph direct-goal launch, and reset when switching to a draft key with no saved
+attachments. Follow-up composers and `EnqueueDialog` do not use this path.
+
 When `features.sessionContextAttachments` is enabled, same-workspace chat/process
 rows, Ralph session group rows, Work Item list/hierarchy rows, Git commit rows,
 branch range headers/overview headers, and Pull Request rows are copy-drag
@@ -912,6 +932,12 @@ the input:
   `recordSkillUsage`), `RepoSettingsTab` (mcp-config, skills, instructions, repo
   prefs, processes, description PATCH), `RepoDetail` (work-items badge preview),
   `WorkItemsTab` (commit file list), and `BranchPickerModal` (branch list/switch).
+  `EnqueueDialog`'s Workspace dropdown merges local `appState.workspaces` with the
+  remote workspaces from `ReposContext.repos` (via `useReposOptional`, filtered by
+  `isRemoteWorkspace`); remote rows are labeled `name [serverLabel]` and rendered
+  `disabled` with an `(offline)` suffix when `remote.offline`. Selecting a remote
+  workspace routes the enqueue to its server through the same
+  `getCocClientForWorkspace` seam — no enqueue-path logic is remote-specific.
 - `RalphStartPanel` reads goal files from the source clone through
   `cloneApiBase(workspaceId)` (`/fs/blob?path=...`) and routes the start POST via
   the selected Ralph execution target. Same-workspace/server grilling starts use

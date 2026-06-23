@@ -76,6 +76,13 @@ export interface ImplementTarget {
 
 export interface ImplementPlanCardProps {
     planFilePath: string;
+    /**
+     * When the plan lives in a canvas instead of a `.plan.md` file, this is the
+     * canvas id. The content is read from the canvas and embedded inline in the
+     * prompt (the plan has no on-disk path); `planFilePath` is treated as a
+     * display label only.
+     */
+    planCanvasId?: string;
     workspaceId?: string;
     workingDirectory?: string;
     onImplemented: (newProcessId: string) => void;
@@ -136,6 +143,18 @@ function buildRemotePrompt(planFilePath: string, planContent: string): string {
     ].join('\n');
 }
 
+/** Build the prompt for a canvas-backed plan by inlining the canvas content. */
+function buildCanvasPrompt(planLabel: string, planContent: string): string {
+    return [
+        'Implement the following plan in this repository.',
+        `The plan was authored in a canvas ("${planLabel}"), so its full content is inlined below.`,
+        '',
+        '----- BEGIN PLAN -----',
+        planContent,
+        '----- END PLAN -----',
+    ].join('\n');
+}
+
 /** Resolve a target to a CocClient routing ref: remote → object marker, local → id. */
 function toCloneRef(target: ImplementTarget | undefined, fallbackId: string | undefined): CloneRef | undefined {
     if (target?.isRemote && target.baseUrl) {
@@ -148,6 +167,7 @@ function toCloneRef(target: ImplementTarget | undefined, fallbackId: string | un
 
 export function ImplementPlanCard({
     planFilePath,
+    planCanvasId,
     workspaceId,
     workingDirectory,
     onImplemented,
@@ -203,6 +223,17 @@ export function ImplementPlanCard({
         }
     }
 
+    async function readSourceCanvasContent(canvasId: string): Promise<string> {
+        try {
+            const canvas = await sourceClient.canvases.get(workspaceId ?? '', canvasId);
+            return canvas.content;
+        } catch (err) {
+            throw new Error(
+                `Could not read the plan canvas on the source server: ${getSpaCocClientErrorMessage(err, 'read failed')}`,
+            );
+        }
+    }
+
     async function handleClick() {
         if (submitting || submitted) return;
         setSubmitting(true);
@@ -212,11 +243,18 @@ export function ImplementPlanCard({
             const targetWorkspaceId = selectedTarget?.workspaceId ?? workspaceId;
             const targetWorkingDirectory = selectedTarget?.workingDirectory ?? workingDirectory;
 
-            // Local runs reference the plan file path (existing convention); remote
-            // runs embed the plan content read from the initiating server (AC-04).
+            // Canvas-backed plans have no on-disk path, so always read the canvas
+            // content from the source server and embed it inline (local or remote).
+            // File-based plans keep the existing convention: local runs reference
+            // the path, remote runs embed the file content read from the source
+            // server (AC-04).
             let prompt: string;
             let context: { files: string[] } | undefined;
-            if (isRemote) {
+            if (planCanvasId) {
+                const planContent = await readSourceCanvasContent(planCanvasId);
+                prompt = buildCanvasPrompt(planFilePath, planContent);
+                context = undefined;
+            } else if (isRemote) {
                 const planContent = await readSourcePlanContent();
                 prompt = buildRemotePrompt(planFilePath, planContent);
                 context = undefined;

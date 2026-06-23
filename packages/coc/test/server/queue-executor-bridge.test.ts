@@ -7452,7 +7452,7 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(callOpts.tools).toHaveLength(1);
     });
 
-    it('should append follow-up suggestion instruction to follow-up systemMessage', async () => {
+    it('does not staple follow-up suggestion guidance onto the follow-up prompt or systemMessage', async () => {
         const process = createCompletedProcessWithSession('queue_suggest-fu-noinstr', 'sess-fu-noinstr');
         store.processes.set(process.id, process);
 
@@ -7461,11 +7461,16 @@ describe('suggest_follow_ups tool wiring', () => {
 
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
-        // After the refactor: tool-guidance prose lives in systemMessage,
-        // not stapled to every follow-up user prompt.
+        // After the refactor: guidance lives in the suggest_follow_ups tool
+        // description, not in injected prose — so neither the user prompt nor
+        // the systemMessage carries it.
         const systemContent = callOpts.systemMessage?.content ?? '';
-        expect(systemContent).toContain('When suggesting follow-ups');
+        expect(systemContent).not.toContain('When suggesting follow-ups');
         expect(callOpts.prompt).not.toContain('When suggesting follow-ups');
+        // The tool itself is still registered and carries its own guidance.
+        const fuTool = (callOpts.tools ?? []).find((t: any) => t.name === 'suggest_follow_ups');
+        expect(fuTool).toBeDefined();
+        expect(fuTool.description).toContain('follow-up');
     });
 
     it('should include suggest_follow_ups tool on first turn with no prior assistant turns', async () => {
@@ -7735,7 +7740,7 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(callOpts.prompt).not.toContain('When suggesting follow-ups');
     });
 
-    it('should append count instruction to system message when suggestions are enabled', async () => {
+    it('does not inject count instruction prose when suggestions are enabled', async () => {
         const executor = new CLITaskExecutor(store, { followUpSuggestions: { enabled: true, count: 2 } });
 
         const task: QueuedTask = {
@@ -7753,10 +7758,13 @@ describe('suggest_follow_ups tool wiring', () => {
 
         const callOpts = mockSendMessage.mock.calls[0][0];
         const systemContent = callOpts.systemMessage?.content ?? '';
-        expect(systemContent).toContain('provide exactly 2 suggestions');
-        // After the refactor: tool guidance lives in systemMessage, not stapled
-        // to the user prompt.
+        // After the refactor: the suggest_follow_ups tool description carries
+        // the count guidance itself, so no count prose is injected into either
+        // the systemMessage or the user prompt.
+        expect(systemContent).not.toContain('provide exactly 2 suggestions');
         expect(callOpts.prompt).not.toContain('provide exactly 2 suggestions');
+        const fuTool = (callOpts.tools ?? []).find((t: any) => t.name === 'suggest_follow_ups');
+        expect(fuTool).toBeDefined();
     });
 
     it('should exclude suggestion tool from sendMessage on follow-up when disabled', async () => {

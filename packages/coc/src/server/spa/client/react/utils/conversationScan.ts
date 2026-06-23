@@ -366,3 +366,85 @@ export function scanTurnsForCreatedFiles(
 
     return results;
 }
+
+/** Detected plan-purpose canvas: the canvas id plus a display title. */
+export interface PlanCanvasRecord {
+    canvasId: string;
+    title: string;
+}
+
+/** Extract a canvasId from a write_canvas tool-complete result string. */
+function parseCanvasIdFromResult(result: string | undefined): string {
+    if (!result) return '';
+    try {
+        const parsed = JSON.parse(result);
+        if (parsed && typeof parsed === 'object' && typeof parsed.canvasId === 'string') {
+            return parsed.canvasId;
+        }
+    } catch {
+        // Not JSON — fall back to a targeted match below.
+    }
+    const match = /"canvasId"\s*:\s*"([^"]+)"/.exec(result);
+    return match?.[1] ?? '';
+}
+
+/**
+ * Scan all turns for a `write_canvas` tool call that declared `purpose: 'plan'`,
+ * returning the first match's canvas id and title (first match wins, mirroring
+ * `scanTurnsForCreatedFiles`). Returns null when no plan canvas was written.
+ *
+ * The canvasId comes from the tool-complete result (the create call returns
+ * `{ canvasId }`); args (carrying `purpose` + `title`) are resolved from the
+ * tool-complete entry first, then the tool-start entry for live SSE shapes.
+ */
+export function scanTurnsForPlanCanvas(
+    turns: ClientConversationTurn[]
+): PlanCanvasRecord | null {
+    for (const turn of turns) {
+        const toolStartArgs = buildToolStartArgsMap(turn.timeline);
+
+        const toolStartNames = new Map<string, string>();
+        for (const item of turn.timeline ?? []) {
+            if (item.type === 'tool-start' && item.toolCall) {
+                const name = resolveToolName(item.toolCall);
+                if (item.toolCall.id && name) {
+                    toolStartNames.set(item.toolCall.id, name);
+                }
+            }
+        }
+
+        const toolCalls: ClientToolCall[] = [];
+        for (const item of turn.timeline ?? []) {
+            if (item.type === 'tool-complete' && item.toolCall) {
+                toolCalls.push(item.toolCall);
+            }
+        }
+        if (toolCalls.length === 0 && turn.toolCalls?.length) {
+            toolCalls.push(...turn.toolCalls);
+        }
+
+        for (const tc of toolCalls) {
+            const rawName = resolveToolName(tc) !== 'unknown'
+                ? resolveToolName(tc)
+                : (tc.id && toolStartNames.get(tc.id)) || resolveToolName(tc);
+            if (normalizeToolName(rawName) !== 'write_canvas') continue;
+
+            // Resolve args: tc.args > tool-start args (by toolCallId).
+            let rawArgs = typeof tc.args === 'object' ? tc.args ?? {} : {};
+            if (rawArgs.purpose === undefined && tc.id && toolStartArgs.has(tc.id)) {
+                rawArgs = toolStartArgs.get(tc.id)!;
+            }
+            if (rawArgs.purpose !== 'plan') continue;
+
+            const canvasId = parseCanvasIdFromResult(tc.result);
+            if (!canvasId) continue;
+
+            const title = typeof rawArgs.title === 'string' && rawArgs.title.trim()
+                ? rawArgs.title.trim()
+                : canvasId;
+            return { canvasId, title };
+        }
+    }
+
+    return null;
+}
