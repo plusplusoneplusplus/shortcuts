@@ -4,9 +4,10 @@
  * Integration tests for ChatComposerPrChips + usePrChatStatusItems — the runtime
  * wiring behind the in-composer PR chip (design 01·B). The chip stack reuses the
  * same detect + persist + fetch hook as the legacy top-of-thread card, so these
- * cover the composer-specific presentation: a detected PR renders one chip with a
- * deep-link, the ✕ dismisses it for the session, the +adds/−dels diff surfaces
- * from the detail's diffStats, and an empty association set renders nothing.
+ * cover the composer-specific presentation: a detected PR renders one chip with
+ * provider links, the ✕ dismisses it for the session, the +adds/−dels diff
+ * surfaces from the detail's diffStats, and an empty association set renders
+ * nothing.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
@@ -38,8 +39,11 @@ import { ChatComposerPrChips } from '../../../src/server/spa/client/react/featur
 const GH_URL = 'https://github.com/owner/repo/pull/42';
 const GH_REMOTE = 'https://github.com/owner/repo';
 const GH_ORIGIN = 'gh_owner_repo';
+const ADO_URL = 'https://dev.azure.com/contoso/MyProject/_git/repo/pullrequest/380';
+const ADO_REMOTE = 'https://dev.azure.com/contoso/MyProject';
+const ADO_ORIGIN = 'ado_contoso_myproject';
 
-function turnWithPrCreate(url: string, id = 'tc1'): ClientConversationTurn {
+function turnWithPrCreate(url: string, id = 'tc1', command = 'gh pr create --fill'): ClientConversationTurn {
     return {
         role: 'assistant',
         content: '',
@@ -50,7 +54,7 @@ function turnWithPrCreate(url: string, id = 'tc1'): ClientConversationTurn {
                 toolCall: {
                     id,
                     toolName: 'bash',
-                    args: { command: 'gh pr create --fill' },
+                    args: { command },
                     result: `Creating pull request...\n${url}\n`,
                     status: 'completed',
                 },
@@ -75,7 +79,7 @@ describe('ChatComposerPrChips / usePrChatStatusItems', () => {
         vi.restoreAllMocks();
     });
 
-    it('renders one composer chip for a detected PR, with title, diff, and deep-link', async () => {
+    it('renders one composer chip for a detected GitHub PR, with title, diff, and provider links', async () => {
         mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
         mocks.pullRequests.getForOrigin.mockResolvedValue({
             number: 42,
@@ -97,8 +101,43 @@ describe('ChatComposerPrChips / usePrChatStatusItems', () => {
         expect(getByTestId('composer-pr-chip').getAttribute('data-state')).toBe('ready');
 
         const view = getByTestId(`composer-pr-chip-view-${GH_ORIGIN}:42`) as HTMLAnchorElement;
-        expect(view.getAttribute('href')).toBe('#repos/ws1/pull-requests/42/overview');
+        expect(view.getAttribute('href')).toBe(GH_URL);
+        expect(view.getAttribute('target')).toBe('_blank');
+        expect(view.getAttribute('rel')).toBe('noopener noreferrer');
+        const num = getByTestId(`composer-pr-chip-num-${GH_ORIGIN}:42`) as HTMLAnchorElement;
+        expect(num.getAttribute('href')).toBe(GH_URL);
+        expect(num.getAttribute('target')).toBe('_blank');
         expect(getByTestId('composer-pr-chip-diff').textContent).toContain('+142');
+    });
+
+    it('renders detected Azure DevOps PR links directly to Azure DevOps', async () => {
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 380,
+            title: 'Route git review popout calls',
+            status: 'merged',
+            sourceBranch: 'fix/spa',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: ADO_URL,
+        });
+
+        const { findByText, getByTestId } = render(
+            <ChatComposerPrChips
+                turns={[turnWithPrCreate(ADO_URL, 'tc-ado', 'az repos pr create')]}
+                workspaceId="ws-ado"
+                remoteUrl={ADO_REMOTE}
+                taskId="t-ado"
+            />,
+        );
+
+        await findByText('Route git review popout calls');
+        expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledWith(ADO_ORIGIN, '380', { workspaceId: 'ws-ado' });
+        expect((getByTestId(`composer-pr-chip-num-${ADO_ORIGIN}:380`) as HTMLAnchorElement).getAttribute('href')).toBe(ADO_URL);
+        const view = getByTestId(`composer-pr-chip-view-${ADO_ORIGIN}:380`) as HTMLAnchorElement;
+        expect(view.getAttribute('href')).toBe(ADO_URL);
+        expect(view.getAttribute('target')).toBe('_blank');
+        expect(view.getAttribute('rel')).toBe('noopener noreferrer');
     });
 
     it('eager-loaded checks surface as a passing/total count on the chip', async () => {

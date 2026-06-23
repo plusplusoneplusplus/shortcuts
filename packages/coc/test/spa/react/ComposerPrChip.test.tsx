@@ -3,8 +3,8 @@
  *
  * Unit tests for ComposerPrChip — the presentational in-composer PR chip
  * (design 01·B). Covers the three per-item states (ready / loading / error),
- * the View deep-link, the +adds/−dels diff display, and the ✕ dismiss + Retry
- * callbacks.
+ * the provider View link, the +adds/−dels diff display, and the ✕ dismiss +
+ * Retry callbacks.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
@@ -14,6 +14,7 @@ import type { PrStatusCardItem } from '../../../src/server/spa/client/react/feat
 import type { PrCheckRow, CheckStatus } from '../../../src/server/spa/client/react/features/pull-requests/pr-derived-data';
 
 const KEY = 'gh_owner_repo:42';
+const GH_URL = 'https://github.com/owner/repo/pull/42';
 
 function check(id: string, status: CheckStatus): PrCheckRow {
     return { id, name: id, status, duration: '', interpretation: '' };
@@ -31,6 +32,7 @@ function readyItem(overrides: Partial<PrStatusCardItem> = {}): PrStatusCardItem 
             status: 'open',
             sourceBranch: 'feat/dark-settings',
             targetBranch: 'main',
+            url: GH_URL,
             diffStats: { additions: 142, deletions: 38, changedFiles: 3 },
         },
         ...overrides,
@@ -38,7 +40,7 @@ function readyItem(overrides: Partial<PrStatusCardItem> = {}): PrStatusCardItem 
 }
 
 describe('ComposerPrChip', () => {
-    it('ready: renders number, title, status, diff, and a View deep-link', () => {
+    it('ready: renders number, title, status, diff, and provider links', () => {
         const { getByTestId, getByText } = render(
             <ComposerPrChip item={readyItem()} onDismiss={() => {}} />,
         );
@@ -56,7 +58,35 @@ describe('ComposerPrChip', () => {
         expect(getByTestId('composer-pr-chip-diff').textContent).toContain('−38');
 
         const view = getByTestId(`composer-pr-chip-view-${KEY}`) as HTMLAnchorElement;
-        expect(view.getAttribute('href')).toBe('#repos/ws1/pull-requests/42/overview');
+        expect(view.getAttribute('href')).toBe(GH_URL);
+        expect(view.getAttribute('target')).toBe('_blank');
+        expect(view.getAttribute('rel')).toBe('noopener noreferrer');
+
+        const number = getByTestId(`composer-pr-chip-num-${KEY}`) as HTMLAnchorElement;
+        expect(number.getAttribute('href')).toBe(GH_URL);
+        expect(number.getAttribute('target')).toBe('_blank');
+        expect(number.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it('ready: falls back to the detected provider URL when detail omits one', () => {
+        const item = readyItem({
+            url: GH_URL,
+            pr: { ...readyItem().pr!, url: undefined },
+        });
+        const { getByTestId } = render(<ComposerPrChip item={item} onDismiss={() => {}} />);
+
+        expect((getByTestId(`composer-pr-chip-num-${KEY}`) as HTMLAnchorElement).getAttribute('href')).toBe(GH_URL);
+        expect((getByTestId(`composer-pr-chip-view-${KEY}`) as HTMLAnchorElement).getAttribute('href')).toBe(GH_URL);
+    });
+
+    it('ready: falls back to the dashboard detail route when no provider URL exists', () => {
+        const item = readyItem({ pr: { ...readyItem().pr!, url: undefined }, url: undefined });
+        const { getByTestId } = render(<ComposerPrChip item={item} onDismiss={() => {}} />);
+
+        const number = getByTestId(`composer-pr-chip-num-${KEY}`) as HTMLAnchorElement;
+        expect(number.getAttribute('href')).toBe('#repos/ws1/pull-requests/42/overview');
+        expect(number.getAttribute('target')).toBeNull();
+        expect(number.getAttribute('rel')).toBeNull();
     });
 
     it('ready: shows the check count as passing/total once checks are loaded', () => {
@@ -124,11 +154,11 @@ describe('ComposerPrChip', () => {
         expect(getByTestId(`composer-pr-chip-dismiss-${KEY}`)).toBeTruthy();
     });
 
-    it('error: shows the error, a Retry, and still a View + dismiss', () => {
+    it('error: shows the error, a Retry, and still a provider View + dismiss', () => {
         const onRetry = vi.fn();
         const { getByTestId } = render(
             <ComposerPrChip
-                item={{ key: KEY, repoId: 'ws1', number: 42, state: 'error', error: 'network down' }}
+                item={{ key: KEY, repoId: 'ws1', number: 42, state: 'error', error: 'network down', url: GH_URL }}
                 onDismiss={() => {}}
                 onRetry={onRetry}
             />,
@@ -140,7 +170,9 @@ describe('ComposerPrChip', () => {
         fireEvent.click(getByTestId(`composer-pr-chip-retry-${KEY}`));
         expect(onRetry).toHaveBeenCalledWith(KEY);
 
-        expect(getByTestId(`composer-pr-chip-view-${KEY}`)).toBeTruthy();
+        const view = getByTestId(`composer-pr-chip-view-${KEY}`) as HTMLAnchorElement;
+        expect(view.getAttribute('href')).toBe(GH_URL);
+        expect(view.getAttribute('target')).toBe('_blank');
         expect(getByTestId(`composer-pr-chip-dismiss-${KEY}`)).toBeTruthy();
     });
 

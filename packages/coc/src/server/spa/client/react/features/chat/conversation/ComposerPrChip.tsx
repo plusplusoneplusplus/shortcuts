@@ -12,10 +12,10 @@
  *   - ready:   detail loaded → glyph · #num · title · status · diff · View · ✕
  *   - error:   fetch failed → inline error + Retry + View + ✕
  *
- * Read-only beyond the "View pull request" deep-link, a per-item Retry, and the
- * ✕ dismiss (which the connected wrapper hides for the session). Reuses
- * {@link prStatusBadge} for the status pill and {@link buildPrDetailHash} for the
- * deep-link — no duplicated lifecycle or routing logic.
+ * Read-only beyond the provider "View pull request" link, a per-item Retry, and
+ * the ✕ dismiss (which the connected wrapper hides for the session). Reuses
+ * {@link prStatusBadge} for the status pill and falls back to
+ * {@link buildPrDetailHash} only when the provider URL is unavailable.
  */
 import React from 'react';
 import { cn } from '../../../ui/cn';
@@ -139,10 +139,28 @@ function ChecksBadge({ item }: { item: PrStatusCardItem }) {
     );
 }
 
-function ViewLink({ href, itemKey }: { href: string; itemKey: string }) {
+interface PrLinkTarget {
+    href: string;
+    external: boolean;
+}
+
+function getPrLinkTarget(item: PrStatusCardItem, number: number | string): PrLinkTarget {
+    const providerUrl = item.pr?.url || item.url;
+    if (providerUrl) {
+        return { href: providerUrl, external: true };
+    }
+    return { href: buildPrDetailHash(item.repoId, number), external: false };
+}
+
+function externalLinkAttrs(external: boolean): Pick<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'target' | 'rel'> {
+    return external ? { target: '_blank', rel: 'noopener noreferrer' } : {};
+}
+
+function ViewLink({ target, itemKey }: { target: PrLinkTarget; itemKey: string }) {
     return (
         <a
-            href={href}
+            href={target.href}
+            {...externalLinkAttrs(target.external)}
             className="shrink-0 inline-flex items-center gap-1 h-[22px] px-2 rounded-md bg-[#0969da] text-white text-[11px] font-medium no-underline hover:bg-[#0a5cc2] dark:bg-[#1f6feb] dark:hover:bg-[#388bfd]"
             data-testid={`composer-pr-chip-view-${itemKey}`}
             title="View pull request"
@@ -158,7 +176,7 @@ function ViewLink({ href, itemKey }: { href: string; itemKey: string }) {
 
 export function ComposerPrChip({ item, onDismiss, onRetry }: ComposerPrChipProps) {
     const number = item.pr?.number ?? item.number;
-    const detailHash = buildPrDetailHash(item.repoId, number);
+    const linkTarget = getPrLinkTarget(item, number);
 
     if (item.state === 'loading') {
         return (
@@ -190,7 +208,7 @@ export function ComposerPrChip({ item, onDismiss, onRetry }: ComposerPrChipProps
                         Retry
                     </button>
                 )}
-                <ViewLink href={detailHash} itemKey={item.key} />
+                <ViewLink target={linkTarget} itemKey={item.key} />
                 <DismissButton itemKey={item.key} onDismiss={onDismiss} />
             </div>
         );
@@ -204,7 +222,8 @@ export function ComposerPrChip({ item, onDismiss, onRetry }: ComposerPrChipProps
             <GitGlyph />
             <PinGlyph />
             <a
-                href={detailHash}
+                href={linkTarget.href}
+                {...externalLinkAttrs(linkTarget.external)}
                 className="shrink-0 font-mono text-[11px] font-medium text-[#57606a] dark:text-[#8b949e] no-underline hover:text-[#0969da] dark:hover:text-[#58a6ff] hover:underline"
                 data-testid={`composer-pr-chip-num-${item.key}`}
                 title="Open full PR"
@@ -226,7 +245,7 @@ export function ComposerPrChip({ item, onDismiss, onRetry }: ComposerPrChipProps
                     <span className="font-semibold text-[#cf222e] dark:text-[#f85149]">−{diff.deletions}</span>
                 </span>
             )}
-            <ViewLink href={detailHash} itemKey={item.key} />
+            <ViewLink target={linkTarget} itemKey={item.key} />
             <DismissButton itemKey={item.key} onDismiss={onDismiss} />
         </div>
     );
