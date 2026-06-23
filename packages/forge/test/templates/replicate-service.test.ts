@@ -40,9 +40,9 @@ const CANNED_RESPONSE = [
 
 describe('replicateCommit', () => {
     beforeEach(() => {
-        vi.mocked(GitLogService.prototype.getCommit).mockReturnValue(FAKE_COMMIT);
-        vi.mocked(GitLogService.prototype.getCommitDiff).mockReturnValue(FAKE_DIFF);
-        vi.mocked(GitLogService.prototype.getCommitFiles).mockReturnValue(FAKE_FILES);
+        vi.mocked(GitLogService.prototype.getCommit).mockResolvedValue(FAKE_COMMIT);
+        vi.mocked(GitLogService.prototype.getCommitDiff).mockResolvedValue(FAKE_DIFF);
+        vi.mocked(GitLogService.prototype.getCommitFiles).mockResolvedValue(FAKE_FILES);
         vi.mocked(GitLogService.prototype.dispose).mockReturnValue(undefined);
     });
 
@@ -73,7 +73,7 @@ describe('replicateCommit', () => {
     });
 
     it('throws on unknown commit hash', async () => {
-        vi.mocked(GitLogService.prototype.getCommit).mockReturnValue(undefined);
+        vi.mocked(GitLogService.prototype.getCommit).mockResolvedValue(undefined);
         const fakeHash = '0000000000000000000000000000000000000000';
 
         const template: CommitTemplate = {

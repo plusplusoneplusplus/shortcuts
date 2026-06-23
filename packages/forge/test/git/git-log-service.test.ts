@@ -28,37 +28,37 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('getCommits', () => {
-        it('should return commits from the repo', () => {
-            const result = service.getCommits(REPO_ROOT, { maxCount: 5, skip: 0 });
+        it('should return commits from the repo', async () => {
+            const result = await service.getCommits(REPO_ROOT, { maxCount: 5, skip: 0 });
             expect(result.commits.length).toBeGreaterThan(0);
             expect(result.commits.length).toBeLessThanOrEqual(5);
         });
 
-        it('should respect maxCount', () => {
-            const result = service.getCommits(REPO_ROOT, { maxCount: 2, skip: 0 });
+        it('should respect maxCount', async () => {
+            const result = await service.getCommits(REPO_ROOT, { maxCount: 2, skip: 0 });
             expect(result.commits.length).toBeLessThanOrEqual(2);
         });
 
-        it('should respect skip', () => {
-            const first = service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
-            const second = service.getCommits(REPO_ROOT, { maxCount: 1, skip: 1 });
+        it('should respect skip', async () => {
+            const first = await service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
+            const second = await service.getCommits(REPO_ROOT, { maxCount: 1, skip: 1 });
             if (first.commits.length > 0 && second.commits.length > 0) {
                 expect(first.commits[0].hash).not.toBe(second.commits[0].hash);
             }
         });
 
-        it('should set hasMore correctly', () => {
+        it('should set hasMore correctly', async () => {
             if (TOTAL_COMMITS <= 1) {
-                const result = service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
+                const result = await service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
                 expect(result.hasMore).toBe(false);
             } else {
-                const result = service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
+                const result = await service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
                 expect(result.hasMore).toBe(true);
             }
         });
 
-        it('should populate commit fields', () => {
-            const result = service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
+        it('should populate commit fields', async () => {
+            const result = await service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
             const commit = result.commits[0];
             expect(commit.hash).toBeTruthy();
             expect(commit.shortHash).toBeTruthy();
@@ -69,33 +69,33 @@ describe('GitLogService', () => {
             expect(commit.repositoryName).toBeTruthy();
         });
 
-        it('should populate isAheadOfRemote as boolean', () => {
-            const result = service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
+        it('should populate isAheadOfRemote as boolean', async () => {
+            const result = await service.getCommits(REPO_ROOT, { maxCount: 1, skip: 0 });
             const commit = result.commits[0];
             expect(typeof commit.isAheadOfRemote).toBe('boolean');
         });
 
-        it('should return empty for invalid repoRoot', () => {
-            const result = service.getCommits('/nonexistent-repo-path', { maxCount: 5, skip: 0 });
+        it('should return empty for invalid repoRoot', async () => {
+            const result = await service.getCommits('/nonexistent-repo-path', { maxCount: 5, skip: 0 });
             expect(result.commits).toEqual([]);
             expect(result.hasMore).toBe(false);
         });
 
-        it('should filter commits by search string (case-insensitive)', () => {
+        it('should filter commits by search string (case-insensitive)', async () => {
             // Use a search term that is unlikely to match any commit but should still return an array
-            const resultNoMatch = service.getCommits(REPO_ROOT, { maxCount: 50, skip: 0, search: 'zzz_no_match_xyz_12345' });
+            const resultNoMatch = await service.getCommits(REPO_ROOT, { maxCount: 50, skip: 0, search: 'zzz_no_match_xyz_12345' });
             expect(resultNoMatch.commits).toEqual([]);
             expect(resultNoMatch.hasMore).toBe(false);
         });
 
-        it('should return commits matching search string', () => {
+        it('should return commits matching search string', async () => {
             // Fetch all commits and use the subject of the first as search term
-            const all = service.getCommits(REPO_ROOT, { maxCount: 5, skip: 0 });
+            const all = await service.getCommits(REPO_ROOT, { maxCount: 5, skip: 0 });
             if (all.commits.length === 0) return;
             const subject = all.commits[0].subject;
             const word = subject.split(' ').find(w => w.length >= 4);
             if (!word) return; // can't construct a meaningful search term
-            const result = service.getCommits(REPO_ROOT, { maxCount: 50, skip: 0, search: word });
+            const result = await service.getCommits(REPO_ROOT, { maxCount: 50, skip: 0, search: word });
             expect(result.commits.length).toBeGreaterThan(0);
             // --grep searches the full commit message (subject + body), so results may include
             // commits where the word only appears in the body. Verify the first commit from all
@@ -104,9 +104,9 @@ describe('GitLogService', () => {
             expect(result.commits.some(c => c.hash === firstHash)).toBe(true);
         });
 
-        it('should not alter results when search is empty string', () => {
-            const withEmpty = service.getCommits(REPO_ROOT, { maxCount: 5, skip: 0, search: '' });
-            const withUndefined = service.getCommits(REPO_ROOT, { maxCount: 5, skip: 0 });
+        it('should not alter results when search is empty string', async () => {
+            const withEmpty = await service.getCommits(REPO_ROOT, { maxCount: 5, skip: 0, search: '' });
+            const withUndefined = await service.getCommits(REPO_ROOT, { maxCount: 5, skip: 0 });
             expect(withEmpty.commits.map(c => c.hash)).toEqual(withUndefined.commits.map(c => c.hash));
         });
     });
@@ -116,26 +116,26 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('getCommit', () => {
-        it('should return a commit by full hash', () => {
-            const commit = service.getCommit(REPO_ROOT, HEAD_HASH);
+        it('should return a commit by full hash', async () => {
+            const commit = await service.getCommit(REPO_ROOT, HEAD_HASH);
             expect(commit).toBeDefined();
             expect(commit!.hash).toBe(HEAD_HASH);
         });
 
-        it('should return a commit by short hash', () => {
+        it('should return a commit by short hash', async () => {
             const shortHash = HEAD_HASH.substring(0, 7);
-            const commit = service.getCommit(REPO_ROOT, shortHash);
+            const commit = await service.getCommit(REPO_ROOT, shortHash);
             expect(commit).toBeDefined();
             expect(commit!.hash).toBe(HEAD_HASH);
         });
 
-        it('should return undefined for non-existent hash', () => {
-            const commit = service.getCommit(REPO_ROOT, 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef');
+        it('should return undefined for non-existent hash', async () => {
+            const commit = await service.getCommit(REPO_ROOT, 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef');
             expect(commit).toBeUndefined();
         });
 
-        it('should return undefined for invalid repoRoot', () => {
-            const commit = service.getCommit('/nonexistent-repo-path', HEAD_HASH);
+        it('should return undefined for invalid repoRoot', async () => {
+            const commit = await service.getCommit('/nonexistent-repo-path', HEAD_HASH);
             expect(commit).toBeUndefined();
         });
     });
@@ -145,8 +145,8 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('getCommitFiles', () => {
-        it('should return files for a commit', () => {
-            const files = service.getCommitFiles(REPO_ROOT, HEAD_HASH);
+        it('should return files for a commit', async () => {
+            const files = await service.getCommitFiles(REPO_ROOT, HEAD_HASH);
             expect(Array.isArray(files)).toBe(true);
             // HEAD commit should have at least some files changed
             if (files.length > 0) {
@@ -158,8 +158,8 @@ describe('GitLogService', () => {
             }
         });
 
-        it('should populate additions and deletions from numstat', () => {
-            const files = service.getCommitFiles(REPO_ROOT, HEAD_HASH);
+        it('should populate additions and deletions from numstat', async () => {
+            const files = await service.getCommitFiles(REPO_ROOT, HEAD_HASH);
             if (files.length > 0) {
                 const file = files[0];
                 // additions and deletions should be numbers (or undefined for binary)
@@ -174,8 +174,8 @@ describe('GitLogService', () => {
             }
         });
 
-        it('should have at least one file with non-zero additions or deletions', () => {
-            const files = service.getCommitFiles(REPO_ROOT, HEAD_HASH);
+        it('should have at least one file with non-zero additions or deletions', async () => {
+            const files = await service.getCommitFiles(REPO_ROOT, HEAD_HASH);
             if (files.length > 0) {
                 const hasStats = files.some(f =>
                     (f.additions !== undefined && f.additions > 0) ||
@@ -185,8 +185,8 @@ describe('GitLogService', () => {
             }
         });
 
-        it('should return empty array for invalid repoRoot', () => {
-            const files = service.getCommitFiles('/nonexistent-repo-path', HEAD_HASH);
+        it('should return empty array for invalid repoRoot', async () => {
+            const files = await service.getCommitFiles('/nonexistent-repo-path', HEAD_HASH);
             expect(files).toEqual([]);
         });
     });
@@ -196,14 +196,14 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('getCommitDiff', () => {
-        it('should return a non-empty diff for HEAD', () => {
-            const diff = service.getCommitDiff(REPO_ROOT, HEAD_HASH);
+        it('should return a non-empty diff for HEAD', async () => {
+            const diff = await service.getCommitDiff(REPO_ROOT, HEAD_HASH);
             // HEAD commit in a real repo should have some diff
             expect(typeof diff).toBe('string');
         });
 
-        it('should return empty string for invalid repoRoot', () => {
-            const diff = service.getCommitDiff('/nonexistent-repo-path', HEAD_HASH);
+        it('should return empty string for invalid repoRoot', async () => {
+            const diff = await service.getCommitDiff('/nonexistent-repo-path', HEAD_HASH);
             expect(diff).toBe('');
         });
     });
@@ -213,15 +213,15 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('getPendingChangesDiff', () => {
-        it('should return a string without throwing', () => {
-            const diff = service.getPendingChangesDiff(REPO_ROOT);
+        it('should return a string without throwing', async () => {
+            const diff = await service.getPendingChangesDiff(REPO_ROOT);
             expect(typeof diff).toBe('string');
         });
     });
 
     describe('getStagedChangesDiff', () => {
-        it('should return a string without throwing', () => {
-            const diff = service.getStagedChangesDiff(REPO_ROOT);
+        it('should return a string without throwing', async () => {
+            const diff = await service.getStagedChangesDiff(REPO_ROOT);
             expect(typeof diff).toBe('string');
         });
     });
@@ -231,20 +231,20 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('hasPendingChanges', () => {
-        it('should return a boolean', () => {
-            const result = service.hasPendingChanges(REPO_ROOT);
+        it('should return a boolean', async () => {
+            const result = await service.hasPendingChanges(REPO_ROOT);
             expect(typeof result).toBe('boolean');
         });
 
-        it('should return false for invalid repoRoot', () => {
-            const result = service.hasPendingChanges('/nonexistent-repo-path');
+        it('should return false for invalid repoRoot', async () => {
+            const result = await service.hasPendingChanges('/nonexistent-repo-path');
             expect(result).toBe(false);
         });
     });
 
     describe('hasStagedChanges', () => {
-        it('should return a boolean', () => {
-            const result = service.hasStagedChanges(REPO_ROOT);
+        it('should return a boolean', async () => {
+            const result = await service.hasStagedChanges(REPO_ROOT);
             expect(typeof result).toBe('boolean');
         });
     });
@@ -254,19 +254,19 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('hasMoreCommits', () => {
-        it('should return true when currentCount < total', () => {
-            const result = service.hasMoreCommits(REPO_ROOT, 0);
+        it('should return true when currentCount < total', async () => {
+            const result = await service.hasMoreCommits(REPO_ROOT, 0);
             expect(result).toBe(true);
         });
 
-        it('should return false when currentCount >= total', () => {
+        it('should return false when currentCount >= total', async () => {
             // Use a very large number
-            const result = service.hasMoreCommits(REPO_ROOT, 999999999);
+            const result = await service.hasMoreCommits(REPO_ROOT, 999999999);
             expect(result).toBe(false);
         });
 
-        it('should return false for invalid repoRoot', () => {
-            const result = service.hasMoreCommits('/nonexistent-repo-path', 0);
+        it('should return false for invalid repoRoot', async () => {
+            const result = await service.hasMoreCommits('/nonexistent-repo-path', 0);
             expect(result).toBe(false);
         });
     });
@@ -276,21 +276,21 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('getFileContentAtCommit', () => {
-        it('should return content for a known file', () => {
-            const content = service.getFileContentAtCommit(REPO_ROOT, HEAD_HASH, 'package.json');
+        it('should return content for a known file', async () => {
+            const content = await service.getFileContentAtCommit(REPO_ROOT, HEAD_HASH, 'package.json');
             expect(content).toBeDefined();
             expect(content!.length).toBeGreaterThan(0);
             // package.json should contain the project name
             expect(content).toContain('"name"');
         });
 
-        it('should return undefined for non-existent file', () => {
-            const content = service.getFileContentAtCommit(REPO_ROOT, HEAD_HASH, 'this-file-does-not-exist.xyz');
+        it('should return undefined for non-existent file', async () => {
+            const content = await service.getFileContentAtCommit(REPO_ROOT, HEAD_HASH, 'this-file-does-not-exist.xyz');
             expect(content).toBeUndefined();
         });
 
-        it('should handle backslash paths (Windows-style)', () => {
-            const content = service.getFileContentAtCommit(REPO_ROOT, HEAD_HASH, 'package.json');
+        it('should handle backslash paths (Windows-style)', async () => {
+            const content = await service.getFileContentAtCommit(REPO_ROOT, HEAD_HASH, 'package.json');
             expect(content).toBeDefined();
         });
     });
@@ -300,13 +300,13 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('fileExistsAtCommit', () => {
-        it('should return true for existing file', () => {
-            const exists = service.fileExistsAtCommit(REPO_ROOT, HEAD_HASH, 'package.json');
+        it('should return true for existing file', async () => {
+            const exists = await service.fileExistsAtCommit(REPO_ROOT, HEAD_HASH, 'package.json');
             expect(exists).toBe(true);
         });
 
-        it('should return false for non-existent file', () => {
-            const exists = service.fileExistsAtCommit(REPO_ROOT, HEAD_HASH, 'nonexistent-file-xyz.txt');
+        it('should return false for non-existent file', async () => {
+            const exists = await service.fileExistsAtCommit(REPO_ROOT, HEAD_HASH, 'nonexistent-file-xyz.txt');
             expect(exists).toBe(false);
         });
     });
@@ -316,23 +316,23 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('validateRef', () => {
-        it('should resolve HEAD', () => {
-            const hash = service.validateRef(REPO_ROOT, 'HEAD');
+        it('should resolve HEAD', async () => {
+            const hash = await service.validateRef(REPO_ROOT, 'HEAD');
             expect(hash).toBe(HEAD_HASH);
         });
 
-        it('should resolve a full commit hash', () => {
-            const hash = service.validateRef(REPO_ROOT, HEAD_HASH);
+        it('should resolve a full commit hash', async () => {
+            const hash = await service.validateRef(REPO_ROOT, HEAD_HASH);
             expect(hash).toBe(HEAD_HASH);
         });
 
-        it('should return undefined for garbage ref', () => {
-            const hash = service.validateRef(REPO_ROOT, 'not-a-valid-ref-at-all-xyz');
+        it('should return undefined for garbage ref', async () => {
+            const hash = await service.validateRef(REPO_ROOT, 'not-a-valid-ref-at-all-xyz');
             expect(hash).toBeUndefined();
         });
 
-        it('should return undefined for invalid repoRoot', () => {
-            const hash = service.validateRef('/nonexistent-repo-path', 'HEAD');
+        it('should return undefined for invalid repoRoot', async () => {
+            const hash = await service.validateRef('/nonexistent-repo-path', 'HEAD');
             expect(hash).toBeUndefined();
         });
     });
@@ -342,32 +342,32 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('getBranches', () => {
-        it('should return an array of branch names when local branches are available', () => {
-            const branches = service.getBranches(REPO_ROOT);
+        it('should return an array of branch names when local branches are available', async () => {
+            const branches = await service.getBranches(REPO_ROOT);
             expect(Array.isArray(branches)).toBe(true);
             expect(branches.every(branch => branch.length > 0 && !branch.includes('HEAD'))).toBe(true);
         });
 
-        it('should return at most 10 branches', () => {
-            const branches = service.getBranches(REPO_ROOT);
+        it('should return at most 10 branches', async () => {
+            const branches = await service.getBranches(REPO_ROOT);
             expect(branches.length).toBeLessThanOrEqual(10);
         });
 
-        it('should use cache on second call', () => {
-            const first = service.getBranches(REPO_ROOT);
-            const second = service.getBranches(REPO_ROOT);
+        it('should use cache on second call', async () => {
+            const first = await service.getBranches(REPO_ROOT);
+            const second = await service.getBranches(REPO_ROOT);
             expect(second).toEqual(first);
         });
 
-        it('should bypass cache with forceRefresh', () => {
-            const first = service.getBranches(REPO_ROOT);
-            const refreshed = service.getBranches(REPO_ROOT, true);
+        it('should bypass cache with forceRefresh', async () => {
+            const first = await service.getBranches(REPO_ROOT);
+            const refreshed = await service.getBranches(REPO_ROOT, true);
             // Should return the same data (just fresher)
             expect(Array.isArray(refreshed)).toBe(true);
         });
 
-        it('should return empty array for invalid repoRoot', () => {
-            const branches = service.getBranches('/nonexistent-repo-path');
+        it('should return empty array for invalid repoRoot', async () => {
+            const branches = await service.getBranches('/nonexistent-repo-path');
             expect(branches).toEqual([]);
         });
     });
@@ -378,7 +378,7 @@ describe('GitLogService', () => {
 
     describe('getBranchesAsync', () => {
         it('should resolve to same result as getBranches', async () => {
-            const sync = service.getBranches(REPO_ROOT, true);
+            const sync = await service.getBranches(REPO_ROOT, true);
             const async_ = await service.getBranchesAsync(REPO_ROOT);
             expect(async_).toEqual(sync);
         });
@@ -389,18 +389,18 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('invalidateBranchCache', () => {
-        it('should clear cache for specific repoRoot', () => {
-            service.getBranches(REPO_ROOT); // populate cache
+        it('should clear cache for specific repoRoot', async () => {
+            await service.getBranches(REPO_ROOT); // populate cache
             service.invalidateBranchCache(REPO_ROOT);
             // After invalidation, next call should re-fetch (no error)
-            const branches = service.getBranches(REPO_ROOT);
+            const branches = await service.getBranches(REPO_ROOT);
             expect(Array.isArray(branches)).toBe(true);
         });
 
-        it('should clear all cache when no repoRoot provided', () => {
-            service.getBranches(REPO_ROOT); // populate cache
+        it('should clear all cache when no repoRoot provided', async () => {
+            await service.getBranches(REPO_ROOT); // populate cache
             service.invalidateBranchCache();
-            const branches = service.getBranches(REPO_ROOT);
+            const branches = await service.getBranches(REPO_ROOT);
             expect(Array.isArray(branches)).toBe(true);
         });
     });
@@ -410,11 +410,11 @@ describe('GitLogService', () => {
     // -----------------------------------------------------------------------
 
     describe('dispose', () => {
-        it('should clear branch cache', () => {
-            service.getBranches(REPO_ROOT); // populate cache
+        it('should clear branch cache', async () => {
+            await service.getBranches(REPO_ROOT); // populate cache
             service.dispose();
             // After dispose, service should still work (rebuilds cache)
-            const branches = service.getBranches(REPO_ROOT);
+            const branches = await service.getBranches(REPO_ROOT);
             expect(Array.isArray(branches)).toBe(true);
         });
     });

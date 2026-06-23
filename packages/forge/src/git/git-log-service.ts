@@ -2,14 +2,15 @@
  * Pure Node.js GitLogService — no VS Code dependencies.
  *
  * Provides git commit history, branch management, diff retrieval,
- * and file content queries using `child_process.execSync`.
+ * and file content queries using the async `execAsync` helper so that
+ * git I/O never blocks the Node event loop.
  *
  * Extracted from `src/shortcuts/git/git-log-service.ts`.
  */
 
-import { execSync } from 'child_process';
 import * as path from 'path';
 import { getLogger, LogCategory } from '../logger';
+import { execAsync } from '../utils/exec-utils';
 import { toForwardSlashes } from '../utils/path-utils';
 import { GitCommit, GitCommitFile, GitChangeStatus, CommitLoadOptions, CommitLoadResult } from './types';
 
@@ -24,7 +25,8 @@ interface BranchCacheEntry {
 /**
  * Service for retrieving git commit history, diffs, and branch information.
  *
- * All methods are synchronous (using `execSync`) except `getBranchesAsync`.
+ * All public methods are asynchronous (using `execAsync`) so the single-threaded
+ * Node event loop is never blocked by synchronous git I/O.
  */
 export class GitLogService {
     private branchCache: Map<string, BranchCacheEntry> = new Map();
@@ -34,7 +36,7 @@ export class GitLogService {
     /**
      * Get commits from a repository.
      */
-    getCommits(repoRoot: string, options: CommitLoadOptions): CommitLoadResult {
+    async getCommits(repoRoot: string, options: CommitLoadOptions): Promise<CommitLoadResult> {
         try {
             const { maxCount, skip, search } = options;
 
@@ -49,9 +51,8 @@ export class GitLogService {
                 : '';
             const command = `git log --pretty=format:"${format}" -n ${requestCount} --skip ${skip}${searchFlags}`;
 
-            const output = execSync(command, {
+            const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 maxBuffer: 50 * 1024 * 1024,
                 timeout: 30000,
             });
@@ -67,7 +68,7 @@ export class GitLogService {
             const commitLines = hasMore ? lines.slice(0, maxCount) : lines;
 
             // Get the set of commits that are ahead of remote
-            const aheadCommits = this.getAheadOfRemoteCommits(repoRoot);
+            const aheadCommits = await this.getAheadOfRemoteCommits(repoRoot);
 
             const commits = commitLines.map(line => {
                 const commit = this.parseCommitLine(line, repoRoot, repoName);
@@ -85,14 +86,13 @@ export class GitLogService {
     /**
      * Get a single commit by hash.
      */
-    getCommit(repoRoot: string, hash: string): GitCommit | undefined {
+    async getCommit(repoRoot: string, hash: string): Promise<GitCommit | undefined> {
         try {
             const format = '%H|%h|%s|%an|%ae|%aI|%ar|%P|%D';
             const command = `git log --pretty=format:"${format}" -n 1 ${hash}`;
 
-            const output = execSync(command, {
+            const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 timeout: 5000,
             });
 
@@ -111,15 +111,14 @@ export class GitLogService {
     /**
      * Get files changed in a specific commit.
      */
-    getCommitFiles(repoRoot: string, commitHash: string): GitCommitFile[] {
+    async getCommitFiles(repoRoot: string, commitHash: string): Promise<GitCommitFile[]> {
         try {
-            const parentHash = this.getParentHash(repoRoot, commitHash);
+            const parentHash = await this.getParentHash(repoRoot, commitHash);
 
             const command = `git diff-tree --no-commit-id --name-status -r -M -C ${commitHash}`;
 
-            const output = execSync(command, {
+            const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 timeout: 10000,
             });
 
@@ -138,7 +137,7 @@ export class GitLogService {
             }
 
             // Fetch per-file line stats via --numstat and merge into results
-            const numstatMap = this.getNumstatMap(repoRoot, commitHash);
+            const numstatMap = await this.getNumstatMap(repoRoot, commitHash);
             for (const file of files) {
                 const stats = numstatMap.get(file.path);
                 if (stats) {
@@ -157,14 +156,13 @@ export class GitLogService {
     /**
      * Get the diff for a specific commit.
      */
-    getCommitDiff(repoRoot: string, commitHash: string): string {
+    async getCommitDiff(repoRoot: string, commitHash: string): Promise<string> {
         try {
-            const parentHash = this.getParentHash(repoRoot, commitHash);
+            const parentHash = await this.getParentHash(repoRoot, commitHash);
 
             const command = `git diff ${parentHash} ${commitHash}`;
-            const output = execSync(command, {
+            const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 maxBuffer: 50 * 1024 * 1024,
                 timeout: 30000,
             });
@@ -179,18 +177,16 @@ export class GitLogService {
     /**
      * Get the diff for pending changes (staged + unstaged).
      */
-    getPendingChangesDiff(repoRoot: string): string {
+    async getPendingChangesDiff(repoRoot: string): Promise<string> {
         try {
-            const unstaged = execSync('git diff', {
+            const { stdout: unstaged } = await execAsync('git diff', {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 maxBuffer: 50 * 1024 * 1024,
                 timeout: 30000,
             });
 
-            const staged = execSync('git diff --cached', {
+            const { stdout: staged } = await execAsync('git diff --cached', {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 maxBuffer: 50 * 1024 * 1024,
                 timeout: 30000,
             });
@@ -216,12 +212,11 @@ export class GitLogService {
     /**
      * Get the diff for staged changes only.
      */
-    getStagedChangesDiff(repoRoot: string): string {
+    async getStagedChangesDiff(repoRoot: string): Promise<string> {
         try {
             const command = 'git diff --cached';
-            const output = execSync(command, {
+            const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 maxBuffer: 50 * 1024 * 1024,
                 timeout: 30000,
             });
@@ -236,12 +231,11 @@ export class GitLogService {
     /**
      * Check if there are any pending changes.
      */
-    hasPendingChanges(repoRoot: string): boolean {
+    async hasPendingChanges(repoRoot: string): Promise<boolean> {
         try {
             const command = 'git status --porcelain';
-            const output = execSync(command, {
+            const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 timeout: 5000,
             });
 
@@ -255,12 +249,11 @@ export class GitLogService {
     /**
      * Check if there are any staged changes.
      */
-    hasStagedChanges(repoRoot: string): boolean {
+    async hasStagedChanges(repoRoot: string): Promise<boolean> {
         try {
             const command = 'git diff --cached --quiet';
-            execSync(command, {
+            await execAsync(command, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 timeout: 5000,
             });
             return false;
@@ -272,12 +265,11 @@ export class GitLogService {
     /**
      * Check if there are more commits available.
      */
-    hasMoreCommits(repoRoot: string, currentCount: number): boolean {
+    async hasMoreCommits(repoRoot: string, currentCount: number): Promise<boolean> {
         try {
             const command = 'git rev-list --count HEAD';
-            const output = execSync(command, {
+            const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 timeout: 5000,
             });
 
@@ -292,14 +284,13 @@ export class GitLogService {
     /**
      * Get file content at a specific commit.
      */
-    getFileContentAtCommit(repoRoot: string, commitHash: string, filePath: string): string | undefined {
+    async getFileContentAtCommit(repoRoot: string, commitHash: string, filePath: string): Promise<string | undefined> {
         try {
             const normalizedPath = toForwardSlashes(filePath);
 
             const command = `git show "${commitHash}:${normalizedPath}"`;
-            const output = execSync(command, {
+            const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 maxBuffer: 50 * 1024 * 1024,
                 timeout: 30000,
             });
@@ -318,14 +309,12 @@ export class GitLogService {
     /**
      * Check if a file exists at a specific commit.
      */
-    fileExistsAtCommit(repoRoot: string, commitHash: string, filePath: string): boolean {
+    async fileExistsAtCommit(repoRoot: string, commitHash: string, filePath: string): Promise<boolean> {
         try {
             const normalizedPath = toForwardSlashes(filePath);
-            execSync(`git cat-file -e "${commitHash}:${normalizedPath}"`, {
+            await execAsync(`git cat-file -e "${commitHash}:${normalizedPath}"`, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 timeout: 5000,
-                stdio: ['pipe', 'pipe', 'pipe'],
             });
             return true;
         } catch {
@@ -336,23 +325,19 @@ export class GitLogService {
     /**
      * Validate a git ref and return the resolved commit hash.
      */
-    validateRef(repoRoot: string, ref: string): string | undefined {
+    async validateRef(repoRoot: string, ref: string): Promise<string | undefined> {
         try {
             const command = `git rev-parse --verify "${ref}"`;
-            const output = execSync(command, {
+            const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 timeout: 5000,
-                stdio: ['pipe', 'pipe', 'pipe'],
             });
             const hash = output.trim();
 
             const typeCommand = `git cat-file -t "${hash}"`;
-            const typeOutput = execSync(typeCommand, {
+            const { stdout: typeOutput } = await execAsync(typeCommand, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 timeout: 5000,
-                stdio: ['pipe', 'pipe', 'pipe'],
             });
 
             if (typeOutput.trim() === 'commit') {
@@ -372,7 +357,7 @@ export class GitLogService {
     /**
      * Get branch names (cached, local branches only).
      */
-    getBranches(repoRoot: string, forceRefresh = false): string[] {
+    async getBranches(repoRoot: string, forceRefresh = false): Promise<string[]> {
         if (!forceRefresh) {
             const cached = this.branchCache.get(repoRoot);
             if (cached && Date.now() - cached.timestamp < GitLogService.BRANCH_CACHE_TTL) {
@@ -381,9 +366,8 @@ export class GitLogService {
         }
 
         try {
-            const output = execSync('git branch --format="%(refname:short)"', {
+            const { stdout: output } = await execAsync('git branch --format="%(refname:short)"', {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 timeout: 5000,
             });
             const branches = output.trim().split('\n')
@@ -403,6 +387,9 @@ export class GitLogService {
 
     /**
      * Get branch names asynchronously (for non-blocking UI).
+     *
+     * Retained for backwards compatibility; now that {@link getBranches} is
+     * itself non-blocking this simply checks the cache and delegates to it.
      */
     async getBranchesAsync(repoRoot: string): Promise<string[]> {
         const cached = this.branchCache.get(repoRoot);
@@ -410,11 +397,7 @@ export class GitLogService {
             return cached.branches;
         }
 
-        return new Promise((resolve) => {
-            setImmediate(() => {
-                resolve(this.getBranches(repoRoot, true));
-            });
-        });
+        return this.getBranches(repoRoot, true);
     }
 
     /**
@@ -439,24 +422,23 @@ export class GitLogService {
     // Private helpers
     // -----------------------------------------------------------------------
 
-    private getAheadOfRemoteCommits(repoRoot: string): Set<string> {
+    private async getAheadOfRemoteCommits(repoRoot: string): Promise<Set<string>> {
         try {
             const upstreamCommand = 'git rev-parse --abbrev-ref @{upstream}';
             let upstream: string;
             try {
-                upstream = execSync(upstreamCommand, {
+                const { stdout } = await execAsync(upstreamCommand, {
                     cwd: repoRoot,
-                    encoding: 'utf-8',
                     timeout: 5000,
-                }).trim();
+                });
+                upstream = stdout.trim();
             } catch {
                 return new Set();
             }
 
             const aheadCommand = `git log ${upstream}..HEAD --pretty=format:"%H"`;
-            const output = execSync(aheadCommand, {
+            const { stdout: output } = await execAsync(aheadCommand, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 timeout: 5000,
             });
 
@@ -470,12 +452,11 @@ export class GitLogService {
         }
     }
 
-    private getParentHash(repoRoot: string, commitHash: string): string {
+    private async getParentHash(repoRoot: string, commitHash: string): Promise<string> {
         try {
             const command = `git rev-parse ${commitHash}~1`;
-            const output = execSync(command, {
+            const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 timeout: 5000,
             });
             return output.trim();
@@ -487,13 +468,12 @@ export class GitLogService {
     /**
      * Get per-file additions/deletions from --numstat for a commit.
      */
-    private getNumstatMap(repoRoot: string, commitHash: string): Map<string, { additions: number; deletions: number }> {
+    private async getNumstatMap(repoRoot: string, commitHash: string): Promise<Map<string, { additions: number; deletions: number }>> {
         const map = new Map<string, { additions: number; deletions: number }>();
         try {
             const command = `git diff-tree --no-commit-id --numstat -r -M -C ${commitHash}`;
-            const output = execSync(command, {
+            const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                encoding: 'utf-8',
                 timeout: 10000,
             });
 
