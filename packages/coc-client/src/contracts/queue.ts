@@ -117,6 +117,7 @@ export interface QueueModelsResponse {
 export interface QueuePauseMarkerResponse {
   markerId: string;
   afterIndex: number;
+  durationHours?: 1 | 2 | 3 | 4 | 8;
 }
 
 export interface QueueMoveResponse {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { QueueClient } from '../../src';
+import { QueueClient, type QueuePauseMarkerResponse } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('QueueClient', () => {
@@ -69,5 +69,17 @@ describe('QueueClient', () => {
     expect(adapter.calls).toHaveLength(1);
     expect(adapter.calls[0].path).toBe('/queue/task%2F1/retry');
     expect(adapter.calls[0].options).toMatchObject({ method: 'POST' });
+  });
+
+  it('returns timed pause marker response duration', async () => {
+    const response = {
+      markerId: 'marker-1',
+      afterIndex: 0,
+      durationHours: 2,
+    } satisfies QueuePauseMarkerResponse;
+    const adapter = createMockAdapter(response);
+    const client = new QueueClient(adapter);
+
+    await expect(client.insertPauseMarker({ afterIndex: 0, durationHours: 2 })).resolves.toEqual(response);
   });
 });

@@ -2385,6 +2385,37 @@ describe('pause markers', () => {
         expect((item as any).kind).toBe('pause-marker');
     });
 
+    it('expired reached timed marker resumes and exposes the following task', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+        try {
+            const followingTaskId = manager.enqueue(createTestTask({ displayName: 'after-marker' }));
+            const markerId = manager.insertPauseMarker(-1, 1);
+            const marker = manager.dequeue() as PauseMarker;
+            const resumed = vi.fn();
+            manager.on('resumed', resumed);
+
+            expect(marker).toMatchObject({ kind: 'pause-marker', id: markerId, durationHours: 1 });
+            const durationHours = marker.durationHours;
+            if (durationHours === undefined) {
+                throw new Error('Expected timed pause marker to include durationHours');
+            }
+
+            manager.pause(Date.now() + durationHours * 60 * 60 * 1000);
+            expect(manager.getStats().isPaused).toBe(true);
+
+            vi.advanceTimersByTime(60 * 60 * 1000 + 1);
+
+            const next = manager.peek() as QueuedTask | undefined;
+            expect(manager.getStats().isPaused).toBe(false);
+            expect(next?.id).toBe(followingTaskId);
+            expect((manager.dequeue() as QueuedTask | undefined)?.id).toBe(followingTaskId);
+            expect(resumed).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('dequeue skips frozen tasks before a marker, then returns marker', () => {
         const id1 = manager.enqueue(createTestTask({ displayName: 'T1' }));
         manager.enqueue(createTestTask({ displayName: 'T2' }));
