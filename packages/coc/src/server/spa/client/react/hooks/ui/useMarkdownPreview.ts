@@ -67,7 +67,7 @@ export function useMarkdownPreview({
     // Mermaid diagram rendering — pass a null ref in source mode to suppress
     // mermaid without conditionally calling the hook (Rules of Hooks).
     const mermaidRef = isSourceMode ? { current: null } : containerRef;
-    useMermaid(mermaidRef);
+    useMermaid(mermaidRef, html);
 
     // Code block copy/collapse/expand handlers
     useCodeBlockActions(containerRef, [html]);

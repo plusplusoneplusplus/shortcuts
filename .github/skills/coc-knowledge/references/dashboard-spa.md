@@ -187,7 +187,9 @@ callback) to mount the panel as a desktop-only (`lg:`) resizable right column
 beside the conversation, with width persisted under
 `coc.canvasPanel.width.<workspaceId>` via `useResizablePanel`. The panel shows
 the canvas title, revision, and a Preview (shared `useMarkdownPreview`
-pipeline) / Edit (plain textarea) toggle. User edits autosave with a debounce
+pipeline, with rendered HTML passed through to `useMermaid` as its re-render key
+and `.canvas-mermaid-preview` fit-to-pane SVG sizing) / Edit (plain textarea)
+toggle. User edits autosave with a debounce
 through `client.canvases.save(...)` carrying `expectedRevision`; an HTTP 409
 shows a conflict banner with a "Load latest" action, and a live AI update
 arriving over unsaved local edits shows a pending-update banner instead of
@@ -242,7 +244,10 @@ file-path delegation normalizes bare `.file-path-link` spans, shared renderer
 renderer into one file-reference path; when `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS`
 is enabled, assistant-response clicks dispatch `coc-open-source-canvas` with the
 bare path, workspace hint, optional `sourceFilePath`, and optional line/range
-metadata. The source-canvas resolver chooses the explicit workspace hint when
+metadata. Local `file://` hrefs are converted to filesystem paths and
+GitHub-style `#L<line>` / `#L<start>-L<end>` hashes are carried as line metadata,
+so the resolver never treats a file URI as workspace-relative text. The
+source-canvas resolver chooses the explicit workspace hint when
 present, otherwise the longest matching workspace root, and resolves relative
 paths against `sourceFilePath` when available or the selected workspace root
 before calling the workspace file preview API. `useSourceCanvasContent` folds the

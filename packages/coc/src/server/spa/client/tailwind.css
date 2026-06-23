@@ -1703,6 +1703,19 @@
     max-width: none;
 }
 
+.canvas-mermaid-preview .task-mermaid-svg-wrapper {
+    min-width: 100%;
+}
+
+.canvas-mermaid-preview .task-mermaid-svg-wrapper .mermaid {
+    width: 100%;
+}
+
+.canvas-mermaid-preview .task-mermaid-svg-wrapper .mermaid svg {
+    width: 100%;
+    height: auto;
+}
+
 .task-mermaid-source-view {
     padding: 12px 14px;
     overflow: auto;

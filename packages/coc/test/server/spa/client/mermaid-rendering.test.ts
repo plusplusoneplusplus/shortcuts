@@ -260,6 +260,12 @@ describe('Mermaid CSS in SPA stylesheet', () => {
         expect(css).toContain('.task-mermaid-svg-wrapper');
     });
 
+    it('defines canvas preview fit-to-pane Mermaid overrides', () => {
+        expect(css).toContain('.canvas-mermaid-preview .task-mermaid-svg-wrapper');
+        expect(css).toContain('.canvas-mermaid-preview .task-mermaid-svg-wrapper .mermaid svg');
+        expect(css).toMatch(/\.canvas-mermaid-preview \.task-mermaid-svg-wrapper \.mermaid svg\s*\{[\s\S]*width:\s*100%;[\s\S]*height:\s*auto;/);
+    });
+
     it('defines .task-mermaid-source-view styles', () => {
         expect(css).toContain('.task-mermaid-source-view');
     });
