@@ -126,7 +126,12 @@ all have their own `references/*.md`.
   client (`explorer.readTrustedBlob`), inlines it in the prompt, drops
   `context.files`, and enqueues on the target repo's routed `useCocClient`
   `CloneRef`. Targets come from `buildImplementTargets` (current repo + local +
-  **online** remote clones only); the selector is gated on `isRemoteShellEnabled()`
+  **online** remote clones only), scoped to the current repo's **canonical git
+  origin** so only same-origin clones appear; the current origin is taken from
+  the caller's `remoteUrl`, falling back to the current repo's own list entry
+  (`gitInfo.remoteUrl ?? workspace.remoteUrl`, the same source candidates use) so
+  the filter still engages for a remote-clone current workspace whose appState
+  entry lacks a remote URL. The selector is gated on `isRemoteShellEnabled()`
   with no new flag. Implementation records (target identity + status) always
   persist on the **source** task via the source client. The card also surfaces
   for **canvas-backed plans**: `scanTurnsForPlanCanvas` (in `conversationScan.ts`)
