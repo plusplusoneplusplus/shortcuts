@@ -17,7 +17,7 @@ import * as path from 'path';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import type { ProcessStore, ProcessFilter, AIProcessStatus, AIProcessType, TurnSource } from '@plusplusoneplusplus/forge';
-import { GitOpsStore, SqliteProcessStore, initializeDatabase, execGit } from '@plusplusoneplusplus/forge';
+import { GitOpsStore, SqliteProcessStore, initializeDatabase, execGitAsync } from '@plusplusoneplusplus/forge';
 import Database from 'better-sqlite3';
 import type { Attachment, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
@@ -322,27 +322,32 @@ export function registerApiRoutes(
 // Utility helpers (exported for use by other modules)
 // ============================================================================
 
-/** Run a git command synchronously in the given directory. */
-export function execGitSync(args: string, cwd: string): string {
+/** Run a git command asynchronously in the given directory (shell form, non-blocking). */
+export function execGitShellAsync(args: string, cwd: string): Promise<string> {
     const cmd = process.platform === 'win32'
         ? `git ${args.replace(/\^/g, '^^')}`
         : `git ${args}`;
-    return childProcess.execSync(cmd, { cwd, encoding: 'utf-8', timeout: 5000, maxBuffer: GIT_MAX_BUFFER }).trim();
+    return new Promise((resolve, reject) => {
+        childProcess.exec(cmd, { cwd, encoding: 'utf-8', timeout: 5000, maxBuffer: GIT_MAX_BUFFER }, (err, stdout) => {
+            if (err) { reject(err); return; }
+            resolve((stdout as string).trim());
+        });
+    });
 }
 
-/** Run a git command synchronously using an args array (WSL-aware via forge execGit). */
-export function execGitArgsSync(args: string[], cwd: string): string {
-    return execGit(args, cwd, { timeout: 5000, maxBuffer: GIT_MAX_BUFFER }).trim();
+/** Run a git command asynchronously using an args array (WSL-aware via forge execGitAsync, non-blocking). */
+export async function execGitArgsAsync(args: string[], cwd: string): Promise<string> {
+    return (await execGitAsync(args, cwd, { timeout: 5000, maxBuffer: GIT_MAX_BUFFER })).trim();
 }
 
 /** Read a file's content from a specific commit, falling back to the first parent for deleted files. */
-export function readGitFileAtCommit(hash: string, filePath: string, cwd: string): { content: string; resolvedRef: string } {
+export async function readGitFileAtCommit(hash: string, filePath: string, cwd: string): Promise<{ content: string; resolvedRef: string }> {
     const refsToTry = [`${hash}:${filePath}`, `${hash}^:${filePath}`];
     let lastError: unknown;
 
     for (const resolvedRef of refsToTry) {
         try {
-            const content = execGit(['show', resolvedRef], cwd, { timeout: 5000, maxBuffer: GIT_MAX_BUFFER });
+            const content = await execGitAsync(['show', resolvedRef], cwd, { timeout: 5000, maxBuffer: GIT_MAX_BUFFER });
             return { content, resolvedRef };
         } catch (error) {
             lastError = error;
@@ -358,17 +363,19 @@ export function readGitFileAtCommit(hash: string, filePath: string, cwd: string)
 export { detectRemoteUrl, normalizeRemoteUrl } from '@plusplusoneplusplus/forge';
 
 /** Discover pipeline packages in a directory. Each subdirectory with a pipeline.yaml is a package. */
-export function discoverPipelines(pipelinesDir: string): Array<{ name: string; path: string }> {
+export async function discoverPipelines(pipelinesDir: string): Promise<Array<{ name: string; path: string }>> {
     try {
-        if (!fs.existsSync(pipelinesDir) || !fs.statSync(pipelinesDir).isDirectory()) {
+        const dirStat = await fs.promises.stat(pipelinesDir).catch(() => undefined);
+        if (!dirStat || !dirStat.isDirectory()) {
             return [];
         }
-        const entries = fs.readdirSync(pipelinesDir, { withFileTypes: true });
+        const entries = await fs.promises.readdir(pipelinesDir, { withFileTypes: true });
         const pipelines: Array<{ name: string; path: string }> = [];
         for (const entry of entries) {
             if (entry.isDirectory()) {
                 const yamlPath = path.join(pipelinesDir, entry.name, 'pipeline.yaml');
-                if (fs.existsSync(yamlPath)) {
+                const yamlExists = await fs.promises.access(yamlPath).then(() => true).catch(() => false);
+                if (yamlExists) {
                     pipelines.push({ name: entry.name, path: path.join(pipelinesDir, entry.name) });
                 }
             }

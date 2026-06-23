@@ -46,8 +46,8 @@ export interface EnrichedWorkflow {
 /**
  * Discover workflows and enrich each with description and validation info.
  */
-export function discoverAndEnrichWorkflows(pipelinesDir: string): EnrichedWorkflow[] {
-    const basic = discoverPipelines(pipelinesDir);
+export async function discoverAndEnrichWorkflows(pipelinesDir: string): Promise<EnrichedWorkflow[]> {
+    const basic = await discoverPipelines(pipelinesDir);
     return basic.map(p => {
         const yamlPath = path.join(p.path, 'pipeline.yaml');
         let description: string | undefined;

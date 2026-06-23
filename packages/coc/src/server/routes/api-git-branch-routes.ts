@@ -8,7 +8,7 @@
 
 import { BranchService, detectRemoteUrl, normalizeRemoteUrl } from '@plusplusoneplusplus/forge';
 import type { GitOpJob, GitOpMetadata, ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
-import { sendJSON, parseBody, execGitArgsSync } from '../core/api-handler';
+import { sendJSON, parseBody, execGitArgsAsync } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
 import { gitCache } from '../git/git-cache';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
@@ -320,7 +320,7 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             const allowedModes = ['hard', 'soft', 'mixed'];
             const mode = typeof body.mode === 'string' && allowedModes.includes(body.mode) ? body.mode : 'hard';
             try {
-                execGitArgsSync(['reset', `--${mode}`, body.hash], ws.rootPath);
+                await execGitArgsAsync(['reset', `--${mode}`, body.hash], ws.rootPath);
             } catch (err: any) {
                 throw badRequest('Failed to reset: ' + (err.message || 'unknown error'));
             }

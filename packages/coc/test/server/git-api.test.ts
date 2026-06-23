@@ -8,7 +8,7 @@
  * - GET /api/workspaces/:id/git/commits/:hash/files/:filePath/diff
  * - GET /api/workspaces/:id/git/commits/:hash/files/:filePath/content
  *
- * Uses mocked execGitSync via vi.mock to avoid actual git calls.
+ * Uses mocked forge execGitAsync via vi.mock to avoid actual git calls.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
@@ -26,7 +26,7 @@ import { gitCache } from '../../src/server/git/git-cache';
 import { gitInfoCache } from '../../src/server/git/git-info-cache';
 
 // ============================================================================
-// Mock execGitSync and child_process
+// Mock forge git exec and child_process
 // ============================================================================
 
 const mockExecSync = vi.fn();
@@ -66,6 +66,8 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         }); }),
         detectRemoteUrl: vi.fn(async () => undefined),
         execGit: (...args: any[]) => mockForgeExecGit(...args),
+        // execGitArgsAsync / readGitFileAtCommit now delegate to forge execGitAsync.
+        execGitAsync: async (...args: any[]) => mockForgeExecGit(...args),
     };
 });
 

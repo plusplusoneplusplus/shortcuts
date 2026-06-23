@@ -82,6 +82,8 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     return {
         ...actual,
         execGit: (...args: any[]) => mockForgeExecGit(...args),
+        // execGitArgsAsync / readGitFileAtCommit now delegate to forge execGitAsync.
+        execGitAsync: async (...args: any[]) => mockForgeExecGit(...args),
         BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: mockGetBranchStatus,
             getRepoState: vi.fn().mockReturnValue({}),
