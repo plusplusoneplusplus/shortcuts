@@ -385,9 +385,16 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const isPending = effectiveStatus === 'queued';
     const isTerminal = effectiveStatus === 'completed' || effectiveStatus === 'failed' || effectiveStatus === 'cancelled';
     const planChatBusy = sending || isActiveGeneration || (pendingQueue?.length ?? 0) > 0;
-    const inputDisabled = loading || isPending || effectiveStatus === 'cancelled' || isCancelling || sessionExpired;
-    const resumeSessionId = getSessionIdFromProcess(processDetails || task);
-    const noSessionForFollowUp = isTerminal && processDetails !== null && !resumeSessionId;
+    const resumeSessionId = getSessionIdFromProcess(processDetails) || getSessionIdFromProcess(task);
+    const savedSdkSessionId = [processDetails?.sdkSessionId, task?.sdkSessionId]
+        .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        ?.trim() ?? null;
+    const cancelledWithoutResumeSession = effectiveStatus === 'cancelled' && processDetails !== null && !savedSdkSessionId;
+    const inputDisabled = loading || isPending || isCancelling || sessionExpired || cancelledWithoutResumeSession;
+    const noSessionForFollowUp = isTerminal && effectiveStatus !== 'cancelled' && processDetails !== null && !resumeSessionId;
+    const cancelledResumeUnavailableError = cancelledWithoutResumeSession
+        ? 'This stopped chat cannot be continued because no SDK session was saved. Start a new chat manually.'
+        : null;
 
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
 
@@ -2064,6 +2071,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             isActiveGeneration={isActiveGeneration}
                             isCancelling={isCancelling}
                             error={error}
+                            nonRetryableError={cancelledResumeUnavailableError}
+                            disabledPlaceholder={cancelledResumeUnavailableError ? 'Cannot continue this stopped chat.' : undefined}
                             resumeFeedback={resumeFeedback}
                             onDismissResumeFeedback={() => setResumeFeedback(null)}
                             suggestions={suggestions}
@@ -2202,6 +2211,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     isActiveGeneration={isActiveGeneration}
                     isCancelling={isCancelling}
                     error={error}
+                    nonRetryableError={cancelledResumeUnavailableError}
+                    disabledPlaceholder={cancelledResumeUnavailableError ? 'Cannot continue this stopped chat.' : undefined}
                     resumeFeedback={resumeFeedback}
                     onDismissResumeFeedback={() => setResumeFeedback(null)}
                     suggestions={suggestions}

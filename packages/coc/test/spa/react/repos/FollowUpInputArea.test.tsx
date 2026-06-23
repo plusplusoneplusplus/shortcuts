@@ -558,6 +558,16 @@ describe('FollowUpInputArea — resume feedback dismiss', () => {
         expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
     });
 
+    it('renders non-retryable inline errors without the retry button', () => {
+        render(<FollowUpInputArea {...makeProps({
+            inputDisabled: true,
+            nonRetryableError: 'This stopped chat cannot be continued because no SDK session was saved. Start a new chat manually.',
+            disabledPlaceholder: 'Cannot continue this stopped chat.',
+        })} />);
+        expect(screen.getByTestId('follow-up-inline-error').textContent).toContain('no SDK session was saved');
+        expect(screen.queryByTestId('retry-btn')).toBeNull();
+    });
+
     it('dismiss button appears for error-type feedback too', () => {
         const onDismissResumeFeedback = vi.fn();
         render(<FollowUpInputArea {...makeProps({

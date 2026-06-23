@@ -230,6 +230,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
             }), []);
             return R.createElement('div', {
                 'data-testid': props['data-testid'] ?? 'activity-chat-input',
+                'data-placeholder': props.placeholder,
                 contentEditable: !props.disabled,
                 onKeyDown: props.onKeyDown,
                 onInput: (e: any) => props.onChange?.(e.currentTarget?.textContent ?? ''),
@@ -274,7 +275,7 @@ vi.mock('../../../../src/server/spa/client/react/queue/PendingTaskInfoPanel', ()
 
 // ConversationMetadataPopover — getSessionIdFromProcess + stub component
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
-    getSessionIdFromProcess: (proc: any) => proc?.metadata?.sessionId ?? null,
+    getSessionIdFromProcess: (proc: any) => proc?.sdkSessionId ?? proc?.sessionId ?? proc?.metadata?.sessionId ?? null,
     ConversationMetadataPopover: (props: any) => React.createElement('div', { 'data-testid': 'metadata-popover' }),
 }));
 
@@ -776,14 +777,15 @@ describe('ChatDetail', () => {
             expect(mockState.sendFollowUp).toHaveBeenCalled();
         });
 
-        it('input disabled for cancelled task', async () => {
-            const task = makeTask({ status: 'cancelled' });
-            const proc = makeProcess({ status: 'cancelled' });
+        it('input enabled for cancelled task with a saved sdkSessionId', async () => {
+            const task = makeTask({ status: 'cancelled', processId: 'proc-1' });
+            const proc = makeProcess({ status: 'cancelled', sdkSessionId: 'sdk-stopped-1', metadata: { mode: 'autopilot' } });
             setupStandardFetch(task, proc);
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 const sendBtn = screen.getByTestId('activity-chat-send-btn');
-                expect(sendBtn.hasAttribute('disabled')).toBe(true);
+                expect(sendBtn.hasAttribute('disabled')).toBe(false);
+                expect(screen.getByTestId('activity-chat-input').getAttribute('data-placeholder')).not.toBe('Session expired.');
             });
         });
 
@@ -798,16 +800,24 @@ describe('ChatDetail', () => {
             });
         });
 
-        it('shows "Session expired." placeholder for cancelled task input', async () => {
-            const task = makeTask({ status: 'cancelled' });
-            const proc = makeProcess({ status: 'cancelled' });
+        it('shows a non-retryable inline error for cancelled task without sdkSessionId', async () => {
+            const task = makeTask({ status: 'cancelled', processId: 'proc-1' });
+            const proc = makeProcess({
+                status: 'cancelled',
+                sessionId: 'legacy-session-id',
+                metadata: { mode: 'autopilot', sessionId: 'legacy-metadata-session-id' },
+            });
             setupStandardFetch(task, proc);
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
-                // The input placeholder text is set in FollowUpInputArea
                 const sendBtn = screen.getByTestId('activity-chat-send-btn');
                 expect(sendBtn.hasAttribute('disabled')).toBe(true);
+                expect(screen.getByTestId('follow-up-inline-error').textContent)
+                    .toContain('no SDK session was saved');
             });
+            expect(screen.getByTestId('activity-chat-input').getAttribute('data-placeholder')).toBe('Cannot continue this stopped chat.');
+            expect(screen.queryByTestId('retry-btn')).toBeNull();
+            expect(screen.queryByText('Follow-up chat is not available for this process type.')).toBeNull();
         });
 
         it('shows error message when error is set', async () => {
@@ -1226,6 +1236,7 @@ describe('ChatDetail', () => {
             setupStandardFetch(task, proc);
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
+                expect((globalThis as any).__useSendMessage_opts?.inputDisabled).toBe(true);
                 const stopBtn = screen.getByTestId('activity-chat-stop-btn');
                 expect(stopBtn.textContent).toBe('Stopping...');
                 expect(stopBtn.hasAttribute('disabled')).toBe(true);
