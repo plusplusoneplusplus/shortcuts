@@ -63,26 +63,30 @@ group without data migration.
 local to the mounted view. Ralph session groups, For Each run groups, Map
 Reduce run groups, and plan-file/history groups render collapsed by default on
 mount or workspace switch; unread dots/count badges and Mark all read controls
-remain the visibility affordances for unread children. Workspace-scoped group
-pins from `client.processes.listGroupPins(workspaceId)` render non-running
-Ralph session groups, For Each run groups, and Map Reduce run groups as parent
-rows in the existing Pinned section, interleaved with individually pinned chats
-by pin time; pinned parent rows are removed from their normal recency bucket
-without mutating child process pin/archive state. Running For Each and Map
-Reduce parent rows stay in the Running section even when pinned, while retaining
-the pinned affordance. Parent rows expose the same hover pin affordance and
-context-menu Pin to top/Unpin actions as individual chat rows, but those actions
-call the workspace group-pin API instead of changing child process `pinnedAt`.
-The chat-list multi-select range model follows rendered grouped rows:
-collapsed Ralph sessions, For Each runs, and Map Reduce runs count as one row
-and expand to their real child process IDs when selected; expanded groups range
-over visible child rows, and desktop Shift-click on a parent row uses that
-parent as a range endpoint without opening the detail pane. For Each run groups
-are backed by workspace-scoped `client.forEach.list(workspaceId)` summaries and
-nest linked generation/child chats by `payload.context.forEach`, persisted
-`forEach` metadata, or `generationProcessId`. Map Reduce run groups are backed
-by workspace-scoped `client.mapReduce.list(workspaceId)` summaries and nest
-linked generation/map/reduce chats by `payload.context.mapReduce`, persisted
+remain the visibility affordances for unread children. Queue pause insert zones
+open the shared pause-duration menu (`Until resumed`, 1/2/3/4/8 hours) and send
+the selected `durationHours` only for timed pause markers; queued timed markers
+render a static `Queue pauses here · Nh` label until the executor reaches and
+consumes them. Workspace-scoped group pins from
+`client.processes.listGroupPins(workspaceId)` render non-running Ralph session
+groups, For Each run groups, and Map Reduce run groups as parent rows in the
+existing Pinned section, interleaved with individually pinned chats by pin time;
+pinned parent rows are removed from their normal recency bucket without mutating
+child process pin/archive state. Running For Each and Map Reduce parent rows
+stay in the Running section even when pinned, while retaining the pinned
+affordance. Parent rows expose the same hover pin affordance and context-menu
+Pin to top/Unpin actions as individual chat rows, but those actions call the
+workspace group-pin API instead of changing child process `pinnedAt`. The
+chat-list multi-select range model follows rendered grouped rows: collapsed
+Ralph sessions, For Each runs, and Map Reduce runs count as one row and expand
+to their real child process IDs when selected; expanded groups range over visible
+child rows, and desktop Shift-click on a parent row uses that parent as a range
+endpoint without opening the detail pane. For Each run groups are backed by
+workspace-scoped `client.forEach.list(workspaceId)` summaries and nest linked
+generation/child chats by `payload.context.forEach`, persisted `forEach`
+metadata, or `generationProcessId`. Map Reduce run groups are backed by
+workspace-scoped `client.mapReduce.list(workspaceId)` summaries and nest linked
+generation/map/reduce chats by `payload.context.mapReduce`, persisted
 `mapReduce` metadata, or `generationProcessId` so child chats do not duplicate
 as standalone rows.
 

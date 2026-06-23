@@ -802,6 +802,92 @@ describe('ChatListPane', () => {
             expect(screen.getByTestId('pause-marker-row')).toBeTruthy();
         });
 
+        it('shows a static duration label for timed pause markers', () => {
+            renderPane({
+                queued: [
+                    { id: 'pm-indefinite', kind: 'pause-marker' },
+                    { id: 'pm-timed', kind: 'pause-marker', durationHours: 2 },
+                ],
+            });
+
+            expect(screen.getByText('Queue pauses here')).toBeTruthy();
+            expect(screen.getByText('Queue pauses here · 2h')).toBeTruthy();
+        });
+
+        it('opens a duration menu from the insert zone and inserts a timed pause marker', async () => {
+            const fetchQueue = vi.fn().mockResolvedValue(undefined);
+            const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+            fetchMock.mockResolvedValue(new Response(JSON.stringify({ markerId: 'pm-new', afterIndex: 0, durationHours: 2 }), {
+                status: 201,
+                headers: { 'content-type': 'application/json' },
+            }));
+            renderPane({
+                workspaceId: 'ws-1',
+                queued: [makeQueuedTask({ id: 'q-1' })],
+                fetchQueue,
+            });
+
+            const insertZone = screen.getByTestId('pause-insert-zone-0');
+            fireEvent.mouseEnter(insertZone);
+            fireEvent.click(insertZone);
+
+            expect(screen.getByTestId('pause-duration-menu-insert-0')).toBeTruthy();
+            expect(screen.getByTestId('pause-duration-insert-0-indefinite')).toBeTruthy();
+            for (const hours of [1, 2, 3, 4, 8]) {
+                expect(screen.getByTestId(`pause-duration-insert-0-${hours}h`)).toBeTruthy();
+            }
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pause-duration-insert-0-2h'));
+            });
+
+            await waitFor(() => {
+                const pauseMarkerCall = fetchMock.mock.calls.find(
+                    (call: any[]) => typeof call[0] === 'string' && call[0].includes('/queue/pause-marker'),
+                );
+                expect(pauseMarkerCall).toBeTruthy();
+                expect(JSON.parse(pauseMarkerCall![1].body)).toEqual({
+                    afterIndex: 0,
+                    repoId: 'ws-1',
+                    durationHours: 2,
+                });
+                expect(fetchQueue).toHaveBeenCalled();
+            });
+        });
+
+        it('inserts an indefinite pause marker when Until resumed is selected', async () => {
+            const fetchQueue = vi.fn().mockResolvedValue(undefined);
+            const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+            fetchMock.mockResolvedValue(new Response(JSON.stringify({ markerId: 'pm-new', afterIndex: -1 }), {
+                status: 201,
+                headers: { 'content-type': 'application/json' },
+            }));
+            renderPane({
+                workspaceId: 'ws-1',
+                queued: [makeQueuedTask({ id: 'q-1' })],
+                fetchQueue,
+            });
+
+            const insertZone = screen.getByTestId('pause-insert-zone--1');
+            fireEvent.mouseEnter(insertZone);
+            fireEvent.click(insertZone);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pause-duration-insert--1-indefinite'));
+            });
+
+            await waitFor(() => {
+                const pauseMarkerCall = fetchMock.mock.calls.find(
+                    (call: any[]) => typeof call[0] === 'string' && call[0].includes('/queue/pause-marker'),
+                );
+                expect(pauseMarkerCall).toBeTruthy();
+                const body = JSON.parse(pauseMarkerCall![1].body);
+                expect(body).toEqual({ afterIndex: -1, repoId: 'ws-1' });
+                expect(body).not.toHaveProperty('durationHours');
+                expect(fetchQueue).toHaveBeenCalled();
+            });
+        });
+
         it('collapsing section hides task cards', () => {
             renderPane({ queued: [makeQueuedTask()] });
             expect(document.querySelector('[data-task-id="q-1"]')).toBeTruthy();
