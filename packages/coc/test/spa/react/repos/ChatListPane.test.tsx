@@ -284,6 +284,77 @@ describe('ChatListPane', () => {
             expect(screen.getByTestId('queue-refreshing-indicator')).toBeTruthy();
             expect(screen.getByText('Refreshing…')).toBeTruthy();
         });
+
+        // ── Activity empty-state "+ New" button ─────────────────────────
+        describe('Activity empty-state "+ New" button', () => {
+            // AC-01: repo-scoped Activity tab empty state shows a desktop-visible
+            // "+ New" action when there are no entries and no server search.
+            it('renders "+ New" on the repo-scoped Activity tab empty state', () => {
+                renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn() });
+                const btn = screen.getByTestId('activity-empty-new-chat-btn');
+                expect(btn).toBeTruthy();
+                expect(btn.textContent).toContain('+ New');
+                // Desktop-visible: not hidden when not mobile.
+                expect(btn.className).not.toContain('hidden');
+            });
+
+            // AC-02: clicking "+ New" runs the same new-chat flow (onNewChat).
+            it('invokes onNewChat when "+ New" is clicked', () => {
+                const onNewChat = vi.fn();
+                renderPane({ workspaceId: 'ws-1', onNewChat });
+                fireEvent.click(screen.getByTestId('activity-empty-new-chat-btn'));
+                expect(onNewChat).toHaveBeenCalledTimes(1);
+            });
+
+            // AC-03: not rendered on the Tasks (queue) tab — scope unchanged.
+            it('does not render "+ New" on the Tasks tab empty state', () => {
+                renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn(), activeTab: 'tasks' });
+                expect(screen.queryByTestId('activity-empty-new-chat-btn')).toBeNull();
+            });
+
+            // AC-03: not rendered on the Chats tab empty state ("No chats yet").
+            it('does not render "+ New" on the Chats tab empty state', () => {
+                renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn(), activeTab: 'chats' });
+                expect(screen.queryByTestId('activity-empty-new-chat-btn')).toBeNull();
+                expect(screen.getByText('No chats yet')).toBeTruthy();
+            });
+
+            // AC-03: paused empty state still shows Resume and no "+ New".
+            it('keeps the paused empty state (Resume only, no "+ New")', () => {
+                renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn(), isPaused: true });
+                expect(screen.getByTestId('repo-pause-resume-btn-empty')).toBeTruthy();
+                expect(screen.getByText('Queue is paused')).toBeTruthy();
+                expect(screen.queryByTestId('activity-empty-new-chat-btn')).toBeNull();
+            });
+
+            // AC-01/Constraints: requires a repo scope (workspaceId).
+            it('does not render "+ New" without a workspaceId', () => {
+                renderPane({ onNewChat: vi.fn() });
+                expect(screen.queryByTestId('activity-empty-new-chat-btn')).toBeNull();
+            });
+
+            // AC-03: when no onNewChat handler is wired (e.g. global Processes
+            // view), the inline action is absent.
+            it('does not render "+ New" when onNewChat is not provided', () => {
+                renderPane({ workspaceId: 'ws-1' });
+                expect(screen.queryByTestId('activity-empty-new-chat-btn')).toBeNull();
+            });
+
+            // AC-03: on mobile the inline button is hidden and the FAB remains.
+            it('hides the inline "+ New" on mobile but keeps the FAB', () => {
+                renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn(), isMobile: true });
+                expect(screen.getByTestId('activity-empty-new-chat-btn').className).toContain('hidden');
+                expect(screen.getByTestId('mobile-new-chat-fab-empty')).toBeTruthy();
+            });
+
+            // AC-03: server search active suppresses the empty state entirely,
+            // so the "+ New" action is not shown (search-results path is used).
+            it('does not render "+ New" while a server search is active', () => {
+                renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn(), searchResults: [] });
+                expect(screen.queryByTestId('queue-empty-state')).toBeNull();
+                expect(screen.queryByTestId('activity-empty-new-chat-btn')).toBeNull();
+            });
+        });
     });
 
     // ── Banners ────────────────────────────────────────────────────────

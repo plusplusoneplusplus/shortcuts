@@ -2754,7 +2754,26 @@ export function ChatListPane({
                         </Button>
                     </>
                 ) : (
-                    <div className="mb-2">{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
+                    <>
+                        <div className="mb-2">{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
+                        {/* Activity-tab empty state exposes a desktop-visible "+ New"
+                            action so users can start a chat without switching tabs or
+                            relying on the mobile-only FAB. Scoped to the Activity tab
+                            (`!activeTab`) and repo-scoped (`workspaceId`); reuses the
+                            same `onNewChat` flow as the Activity/Chat list new-chat
+                            action. Hidden on mobile, where the FAB below handles it. */}
+                        {!activeTab && onNewChat && workspaceId && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={onNewChat}
+                                className={cn(isMobile && 'hidden')}
+                                data-testid="activity-empty-new-chat-btn"
+                            >
+                                + New
+                            </Button>
+                        )}
+                    </>
                 )}
             </div>
             {isMobile && onNewChat && (
