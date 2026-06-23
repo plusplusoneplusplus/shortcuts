@@ -607,21 +607,16 @@ describe('buildFollowUpSuggestionsAddon', () => {
         expect(result.suffix).toBe('');
     });
 
-    it('returns tool and suffix when enabled', () => {
+    it('wires the tool but emits no suffix when enabled (guidance lives in the tool description)', () => {
         const result = buildFollowUpSuggestionsAddon(true, 3);
         expect(result.tools).toHaveLength(1);
-        expect(result.suffix).toContain('3 suggestions');
+        expect(result.suffix).toBe('');
     });
 
-    it('uses the count parameter in the suffix', () => {
+    it('ignores the count parameter and still emits no suffix', () => {
         const result = buildFollowUpSuggestionsAddon(true, 5);
-        expect(result.suffix).toContain('5 suggestions');
-    });
-
-    it('wraps the guidance in a <follow_up_suggestions> tag with the separator prefix', () => {
-        const result = buildFollowUpSuggestionsAddon(true, 3);
-        expect(result.suffix.startsWith('\n\n<follow_up_suggestions>\n')).toBe(true);
-        expect(result.suffix.endsWith('\n</follow_up_suggestions>')).toBe(true);
+        expect(result.tools).toHaveLength(1);
+        expect(result.suffix).toBe('');
     });
 });
 
@@ -685,16 +680,9 @@ describe('buildCreateWorkItemAddon', () => {
         expect(result.tools.map(t => t.name)).not.toContain('create_bug');
     });
 
-    it('includes prompt guidance describing both tools', () => {
+    it('emits no suffix — guidance lives in the get_work_item / create_update_work_item descriptions', () => {
         const result = buildCreateWorkItemAddon('/data', 'repo-1');
-        expect(result.suffix).toContain('get_work_item');
-        expect(result.suffix).toContain('create_update_work_item');
-    });
-
-    it('wraps the guidance in a <work_item_tools> tag with the separator prefix', () => {
-        const result = buildCreateWorkItemAddon('/data', 'repo-1');
-        expect(result.suffix.startsWith('\n\n<work_item_tools>\n')).toBe(true);
-        expect(result.suffix.endsWith('\n</work_item_tools>')).toBe(true);
+        expect(result.suffix).toBe('');
     });
 
     it('passes dataDir, repoId, broadcastFn, and a scoped workItemStore to factories', () => {

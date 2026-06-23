@@ -55,7 +55,7 @@ preferences are rewritten.
 - Applies `applyLlmToolPreferences()` filtering from `prompt-builder.ts`
 - Filters by the effective disabled tools list
 
-Each addon's prompt `suffix` is wrapped in a named XML-style tag via `tagGuidanceSuffix()` from `prompt-tags.ts` (e.g. `<follow_up_suggestions>`, `<ask_user_tool>`, `<work_item_tools>`, `<web_search_tool>`, `<canvas_tools>`, `<memory_tool>`), so the aggregated `toolGuidance` is self-delimiting. `tagGuidanceSuffix` includes the leading blank-line separator `applyLlmToolPreferences` relies on; the standalone `tagBlock()` helper wraps non-suffix blocks (e.g. the `<citing_rule>` source-location directive). When a tool is disabled its whole tagged block is dropped with it.
+Some addons emit a prompt `suffix` wrapped in a named XML-style tag via `tagGuidanceSuffix()` from `prompt-tags.ts` (currently `<web_search_tool>` and the Memory V2 `<memory_tool>` block), so the aggregated `toolGuidance` is self-delimiting. Most addons emit an empty suffix — the follow-up, `ask_user`, work-item, and canvas guidance lives entirely in each tool's own `description` (and JSON schema) rather than being duplicated as injected prose, which keeps the assembled system prompt smaller with no loss of instruction. `tagGuidanceSuffix` includes the leading blank-line separator `applyLlmToolPreferences` relies on; the standalone `tagBlock()` helper wraps non-suffix blocks (e.g. the `<citing_rule>` source-location directive). When a tool is disabled its whole tagged block (if any) is dropped with it.
 
 ## Provider Parity (Copilot / Codex / Claude)
 

@@ -58,13 +58,13 @@ describe('buildChatToolBundle', () => {
         expect(result.toolGuidance).toContain('tavily_web_search');
         // search_conversations / get_conversation tools are still wired (asserted
         // above); their prompt suffix was intentionally trimmed, so no guidance text.
-        expect(result.toolGuidance).toContain('3 suggestions');
         expect(result.askUser).toBeDefined();
-        // Each enabled addon's guidance is wrapped in its named XML-style tag.
-        expect(result.toolGuidance).toContain('<follow_up_suggestions>');
-        expect(result.toolGuidance).toContain('</follow_up_suggestions>');
-        expect(result.toolGuidance).toContain('<ask_user_tool>');
-        expect(result.toolGuidance).toContain('<work_item_tools>');
+        // Only web-search injects a prose suffix; follow-up / ask_user / work-item
+        // / canvas guidance lives in each tool's description, not toolGuidance.
+        expect(result.toolGuidance).not.toContain('<follow_up_suggestions>');
+        expect(result.toolGuidance).not.toContain('</follow_up_suggestions>');
+        expect(result.toolGuidance).not.toContain('<ask_user_tool>');
+        expect(result.toolGuidance).not.toContain('<work_item_tools>');
         expect(result.toolGuidance).toContain('<web_search_tool>');
     });
 
