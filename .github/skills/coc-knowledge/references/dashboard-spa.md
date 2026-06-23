@@ -913,6 +913,12 @@ the input:
   `recordSkillUsage`), `RepoSettingsTab` (mcp-config, skills, instructions, repo
   prefs, processes, description PATCH), `RepoDetail` (work-items badge preview),
   `WorkItemsTab` (commit file list), and `BranchPickerModal` (branch list/switch).
+  `EnqueueDialog`'s Workspace dropdown merges local `appState.workspaces` with the
+  remote workspaces from `ReposContext.repos` (via `useReposOptional`, filtered by
+  `isRemoteWorkspace`); remote rows are labeled `name [serverLabel]` and rendered
+  `disabled` with an `(offline)` suffix when `remote.offline`. Selecting a remote
+  workspace routes the enqueue to its server through the same
+  `getCocClientForWorkspace` seam — no enqueue-path logic is remote-specific.
 - `RalphStartPanel` reads goal files from the source clone through
   `cloneApiBase(workspaceId)` (`/fs/blob?path=...`) and routes the start POST via
   the selected Ralph execution target. Same-workspace/server grilling starts use
