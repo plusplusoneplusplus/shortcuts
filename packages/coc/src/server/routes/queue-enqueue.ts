@@ -17,6 +17,7 @@ import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import {
     isWireAttachmentArray,
     processMessageAttachments,
+    validateAttachments,
 } from '../core/attachment-utils';
 import { processToTaskDetail } from '../shared/process-history-mapper';
 import type { Route } from '../types';
@@ -690,9 +691,15 @@ export function decodeChatPayloadAttachments(payload: Record<string, unknown>): 
     if (payload.kind !== 'chat') return;
     if (!isWireAttachmentArray(payload.attachments)) return;
 
+    const { payloads } = validateAttachments(payload.attachments);
+    if (payloads.length === 0) {
+        delete payload.attachments;
+        return;
+    }
+
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-'));
     const result = processMessageAttachments(
-        { attachments: payload.attachments } as Record<string, unknown>,
+        { attachments: payloads } as Record<string, unknown>,
         tempDir,
     );
 

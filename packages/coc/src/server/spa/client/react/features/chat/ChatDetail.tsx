@@ -43,7 +43,7 @@ import { useModels } from '../../hooks/useModels';
 import type { ModelInfo } from '../../hooks/useModels';
 import { ChatHeader } from './ChatHeader';
 import { ConversationArea } from './ConversationArea';
-import { ChatPrStatusCard } from './conversation/ChatPrStatusCard';
+import { ChatComposerPrChips } from './conversation/ChatComposerPrChips';
 import { FollowUpInputArea } from './FollowUpInputArea';
 import { buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
@@ -1961,14 +1961,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         processError={processDetails?.error ?? null}
                         provider={sessionProvider}
                         postConversationContent={planReviewCards}
-                        prStatusCard={
-                            <ChatPrStatusCard
-                                turns={turns}
-                                workspaceId={workspaceId}
-                                remoteUrl={workspaceRemoteUrl}
-                                taskId={bareTaskId}
-                            />
-                        }
                     />
                     {variant !== 'floating' && !isMobile && (
                         <ConversationMiniMap
@@ -2097,6 +2089,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             attachedContext={attachedContext.items}
                             onRemoveAttachedContext={attachedContext.remove}
                             onAttachSessionContext={attachedContext.addSessionContext}
+                            compactModeSelector={compactModeSelector}
+                            prComposerChips={
+                                <ChatComposerPrChips
+                                    turns={turns}
+                                    workspaceId={workspaceId}
+                                    remoteUrl={workspaceRemoteUrl}
+                                    taskId={bareTaskId}
+                                />
+                            }
                             workspaceId={workspaceId}
                             currentProcessId={processId ?? taskId}
                             sessionContextAttachmentsEnabled={sessionContextAttachmentsEnabled}
@@ -2107,7 +2108,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             sessionModel={sessionModel}
                             hideModeSelector={hideModeSelector}
                             allowedModes={effectiveAllowedModes}
-                            compactModeSelector={compactModeSelector}
                             workingDirectory={workingDirectory}
                             sessionTokenLimit={sessionTokenLimit}
                             sessionCurrentTokens={sessionCurrentTokens}
@@ -2227,6 +2227,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     attachedContext={attachedContext.items}
                     onRemoveAttachedContext={attachedContext.remove}
                     onAttachSessionContext={attachedContext.addSessionContext}
+                    compactModeSelector={compactModeSelector}
+                    prComposerChips={
+                        <ChatComposerPrChips
+                            turns={turns}
+                            workspaceId={workspaceId}
+                            remoteUrl={workspaceRemoteUrl}
+                            taskId={bareTaskId}
+                        />
+                    }
                     workspaceId={workspaceId}
                     currentProcessId={processId ?? taskId}
                     sessionContextAttachmentsEnabled={sessionContextAttachmentsEnabled}
@@ -2237,7 +2246,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     sessionModel={sessionModel}
                     hideModeSelector={hideModeSelector}
                     allowedModes={effectiveAllowedModes}
-                    compactModeSelector={compactModeSelector}
                     workingDirectory={workingDirectory}
                     sessionTokenLimit={sessionTokenLimit}
                     sessionCurrentTokens={sessionCurrentTokens}

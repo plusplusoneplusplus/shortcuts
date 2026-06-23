@@ -17,10 +17,8 @@
  * screenshots / files on a brand-new chat were silently dropped.
  */
 
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import { describe, it, expect, afterEach } from 'vitest';
+import fs from 'fs';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { decodeChatPayloadAttachments } from '../../src/server/routes/queue-enqueue';
 
 // 1×1 transparent PNG data URL — small but valid image payload.
@@ -42,6 +40,7 @@ describe('decodeChatPayloadAttachments', () => {
             try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort */ }
         }
         tempDirsToCleanup.length = 0;
+        vi.restoreAllMocks();
     });
 
     it('decodes a wire-format image attachment into SDK form + sets images/imageTempDir/meta', () => {
@@ -195,12 +194,8 @@ describe('decodeChatPayloadAttachments', () => {
         expect(payload.prompt).toBe('plain text only');
     });
 
-    it('drops the temp dir and unsets attachments when none of the wire entries are valid', () => {
-        const tmpRoot = os.tmpdir();
-        const beforeEntries = new Set(
-            fs.readdirSync(tmpRoot).filter((n) => n.startsWith('coc-attach-')),
-        );
-
+    it('unsets attachments without allocating a temp dir when none of the wire entries are valid', () => {
+        const mkdtempSpy = vi.spyOn(fs, 'mkdtempSync');
         const payload: Record<string, unknown> = {
             kind: 'chat',
             prompt: 'hi',
@@ -218,14 +213,6 @@ describe('decodeChatPayloadAttachments', () => {
 
         expect(payload.attachments).toBeUndefined();
         expect(payload.imageTempDir).toBeUndefined();
-
-        // The freshly-created temp dir should have been cleaned up.
-        const afterEntries = fs.readdirSync(tmpRoot).filter((n) => n.startsWith('coc-attach-'));
-        const leaked = afterEntries.filter((n) => !beforeEntries.has(n));
-        // Best-effort: clean up any leftovers so later runs aren't polluted.
-        for (const name of leaked) {
-            try { fs.rmSync(path.join(tmpRoot, name), { recursive: true, force: true }); } catch { /* nop */ }
-        }
-        expect(leaked).toHaveLength(0);
+        expect(mkdtempSpy).not.toHaveBeenCalled();
     });
 });

@@ -29,7 +29,7 @@ import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { resolveCanonicalOriginId } from '../../../repos/originScope';
 import { buildCheckRowsFromChecks } from '../../pull-requests/pr-derived-data';
-import type { PullRequestCheck } from '../../pull-requests/pr-utils';
+import type { PullRequestCheck, PullRequestDiffStats } from '../../pull-requests/pr-utils';
 import {
     detectedPrsNeedingBinding,
     gatherDetectedPrsFromTurns,
@@ -98,6 +98,20 @@ export function parseAutoMerge(value: unknown): PrAutoMergeInfo | undefined {
 }
 
 /**
+ * Maps the canonical `PullRequestDiffStats` payload to the card's subset (used by
+ * the in-composer chip's `+adds / −dels` display). Returns undefined when the
+ * payload carries none of the three counts, so the chip simply omits the diff.
+ */
+export function parseDiffStats(value: unknown): PullRequestDiffStats | undefined {
+    if (!isRecord(value)) return undefined;
+    const additions = typeof value.additions === 'number' ? value.additions : undefined;
+    const deletions = typeof value.deletions === 'number' ? value.deletions : undefined;
+    const changedFiles = typeof value.changedFiles === 'number' ? value.changedFiles : undefined;
+    if (additions === undefined && deletions === undefined && changedFiles === undefined) return undefined;
+    return { additions: additions ?? 0, deletions: deletions ?? 0, changedFiles: changedFiles ?? 0 };
+}
+
+/**
  * Maps a fetched PR-detail payload (the canonical `PullRequest` shape) to the
  * card's {@link PrStatusCardPr} subset. Returns undefined when the payload is not
  * a recognizable PR detail (missing title/status), so callers surface an error.
@@ -117,6 +131,7 @@ export function mapPrDetailToCardPr(detail: unknown): PrStatusCardPr | undefined
         closedAt: optionalString(detail.closedAt),
         url: optionalString(detail.url),
         autoMerge: parseAutoMerge(detail.autoMerge),
+        diffStats: parseDiffStats(detail.diffStats),
     };
 }
 

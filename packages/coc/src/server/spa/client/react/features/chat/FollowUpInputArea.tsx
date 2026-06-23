@@ -82,6 +82,12 @@ export interface FollowUpInputAreaProps {
     attachedContext?: AttachedContextItem[];
     onRemoveAttachedContext?: (id: string) => void;
     onAttachSessionContext?: (payload: SessionContextAttachmentDragPayload) => void;
+    /**
+     * PR context chips docked inside the composer card, above the textarea
+     * (design 01·B). Rendered only in the stacked layout. Pass a connected
+     * `<ChatComposerPrChips />`; it self-hides when no PR is associated.
+     */
+    prComposerChips?: React.ReactNode;
     workspaceId?: string;
     currentProcessId?: string | null;
     sessionContextAttachmentsEnabled?: boolean;
@@ -220,6 +226,7 @@ export function FollowUpInputArea({
     attachedContext,
     onRemoveAttachedContext,
     onAttachSessionContext,
+    prComposerChips,
     workspaceId,
     currentProcessId,
     sessionContextAttachmentsEnabled: sessionContextAttachmentsEnabledProp,
@@ -887,6 +894,7 @@ export function FollowUpInputArea({
                                 Drop to copy context
                             </div>
                         )}
+                        {prComposerChips}
                         <RichTextInput
                             ref={richTextRef}
                             disabled={inputDisabled}

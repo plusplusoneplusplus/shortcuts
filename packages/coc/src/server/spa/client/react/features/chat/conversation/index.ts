@@ -16,7 +16,11 @@ export type {
 } from './PrStatusCard';
 export { ChatPrStatusCard } from './ChatPrStatusCard';
 export type { ChatPrStatusCardProps } from './ChatPrStatusCard';
-export { usePrChatStatusItems, mapPrDetailToCardPr, parseAutoMerge } from './usePrChatStatusItems';
+export { ComposerPrChip } from './ComposerPrChip';
+export type { ComposerPrChipProps } from './ComposerPrChip';
+export { ChatComposerPrChips } from './ChatComposerPrChips';
+export type { ChatComposerPrChipsProps } from './ChatComposerPrChips';
+export { usePrChatStatusItems, mapPrDetailToCardPr, parseAutoMerge, parseDiffStats } from './usePrChatStatusItems';
 export type { UsePrChatStatusItemsOptions, UsePrChatStatusItemsResult } from './usePrChatStatusItems';
 export {
     PR_STATUS_POLL_INTERVAL_MS, isPrItemActive, shouldPollPrStatusItems, formatUpdatedAgo,

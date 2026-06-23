@@ -124,12 +124,6 @@ export interface ConversationAreaProps {
     provider?: ChatProvider;
     /** Additional cards that should remain reachable via the main conversation scroll area. */
     postConversationContent?: ReactNode;
-    /**
-     * Pinned, sticky region rendered at the very top of the conversation scroll
-     * area (above the turns) — used for the PR status card (AC-02). Renders
-     * nothing when empty, so the region stays hidden for chats without PRs.
-     */
-    prStatusCard?: ReactNode;
 }
 
 export function ConversationArea({
@@ -177,7 +171,6 @@ export function ConversationArea({
     processError,
     provider,
     postConversationContent,
-    prStatusCard,
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -220,7 +213,6 @@ export function ConversationArea({
                 data-testid="activity-chat-conversation"
                 className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3 min-w-0', variant === 'floating' ? 'p-2' : 'p-4')}
             >
-                {prStatusCard}
                 {isPending ? (
                     <PendingTaskInfoPanel task={fullTask || task} onCancel={onCancel} onMoveToTop={onMoveToTop} />
                 ) : loading ? (
