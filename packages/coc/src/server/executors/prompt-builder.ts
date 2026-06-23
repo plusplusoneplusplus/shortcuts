@@ -540,13 +540,8 @@ export function buildAskUserAddon(
     }
 
     const { tool, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending } = createAskUserTool(deps);
-    const suffix = tagGuidanceSuffix(
-        'ask_user_tool',
-        'You have access to the `ask_user` tool. It takes `{ questions: [...] }`; put related clarification, ' +
-        'confirmation, or choice questions in one call instead of calling the tool repeatedly. The user will see one interactive widget. ' +
-        'Every question has Skip and Need more context options, so the user is never stuck. If the tool result includes `deferred: true` with `reason: "needs-context"`, provide the missing context and ask a revised version of that question again when the answer is still needed; if it is no longer needed, explain why. Do not treat it as permission to ignore the question. ' +
-        'Do NOT use ask_user for simple yes/no that can be inferred from context.',
-    );
+    // No prose suffix — the ask_user tool description carries its own guidance.
+    const suffix = '';
 
     return { tools: [tool], suffix, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending };
 }

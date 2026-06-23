@@ -63,7 +63,8 @@ describe('buildChatToolBundle', () => {
         // Each enabled addon's guidance is wrapped in its named XML-style tag.
         expect(result.toolGuidance).toContain('<follow_up_suggestions>');
         expect(result.toolGuidance).toContain('</follow_up_suggestions>');
-        expect(result.toolGuidance).toContain('<ask_user_tool>');
+        // ask_user no longer contributes a prose suffix; its guidance lives in the tool description.
+        expect(result.toolGuidance).not.toContain('<ask_user_tool>');
         expect(result.toolGuidance).toContain('<work_item_tools>');
         expect(result.toolGuidance).toContain('<web_search_tool>');
     });
