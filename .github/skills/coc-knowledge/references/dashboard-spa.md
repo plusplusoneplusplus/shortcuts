@@ -320,6 +320,15 @@ validation. Work Item chat bindings use origin-scoped client methods and pass
 the selected `workspaceId` only for fresh-chat archive/reset actions.
 The hierarchy toolbar exposes a Refresh control that calls the same tree fetch
 path and is disabled while the tree request is in flight.
+Both the hierarchy node and flat `WorkItemSection` right-click context menus share
+a 📋 Copy submenu (Copy ID / Copy title / Copy info) built by
+`buildCopyContextMenuItem` (`workItemCopyMenu.ts`); the clipboard text comes from
+the pure `workItemInfo.ts` formatters, which reuse `getWorkItemChatIdentifier`,
+`TYPE_LABELS`, and `STATUS_LABEL` (no new prefix/label maps). Each action copies
+via `copyToClipboard` and reports through the optional `ToastContext` (success /
+error toast). Note: `ContextMenu` renders an item flagged `separator: true` as a
+divider only and drops its content, so menus add dedicated separator entries to
+group the Copy item rather than flagging it.
 
 `workItems.workflow.enabled` is the disabled-by-default durable workflow gate for
 turning local Work Items and Goals into the command-center planning/execution

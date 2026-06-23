@@ -4,11 +4,13 @@
  * Includes create actions, search, and context menu per node.
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useContext, useRef, useMemo } from 'react';
 import { Button, cn } from '../../ui';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useCocClient } from '../../repos/cloneRouting';
 import { useWorkItems } from '../../contexts/WorkItemContext';
+import { ToastContext } from '../../contexts/ToastContext';
+import { buildCopyContextMenuItem } from './workItemCopyMenu';
 import { WorkItemHierarchyNode } from './WorkItemHierarchyNode';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
@@ -215,6 +217,7 @@ export function WorkItemHierarchyTree({
 }: WorkItemHierarchyTreeProps) {
     // Route persistent tree state to the origin while clone-dependent calls keep the workspace.
     const client = useCocClient(workspaceId);
+    const toast = useContext(ToastContext);
     const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
     const [treeData, setTreeData] = useState<WorkItemTreeNode[]>([]);
     const [total, setTotal] = useState(0);
@@ -467,6 +470,14 @@ export function WorkItemHierarchyTree({
             }
         }
 
+        // Copy (its own group between the create/parent actions and pin/archive/delete).
+        // ContextMenu drops the content of an item flagged `separator: true`, so use a
+        // dedicated separator entry rather than flagging the Copy item itself.
+        if (items.length > 0) {
+            items.push({ label: '', separator: true, onClick: () => {} });
+        }
+        items.push(buildCopyContextMenuItem(node.item, toast?.addToast));
+
         // Pin/archive/delete
         items.push({
             label: node.item.pinnedAt ? 'Unpin' : 'Pin',
@@ -500,7 +511,7 @@ export function WorkItemHierarchyTree({
         });
 
         return items;
-    }, [workspaceId, workItemOriginId, onCreateItem, fetchTree, handleDelete, client]);
+    }, [workspaceId, workItemOriginId, onCreateItem, fetchTree, handleDelete, client, toast]);
 
     /** Recursively render a tree node and its children. */
     const renderNode = useCallback((node: WorkItemTreeNode, depth: number): React.ReactNode => {

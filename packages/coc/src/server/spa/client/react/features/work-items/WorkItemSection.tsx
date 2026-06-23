@@ -11,9 +11,11 @@
  * Archived items are hidden by default with a toggle to show them.
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useContext, useRef, useMemo } from 'react';
 import { Card, cn } from '../../ui';
 import { useWorkItems, type WorkItemSummary } from '../../contexts/WorkItemContext';
+import { ToastContext } from '../../contexts/ToastContext';
+import { buildCopyContextMenuItem } from './workItemCopyMenu';
 import { useWorkItemSearch } from './hooks/useWorkItemSearch';
 import { formatRelativeTime } from '../../utils/format';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
@@ -97,6 +99,7 @@ export function WorkItemSection({ workspaceId, originId, onSelectWorkItem, selec
     const { state, dispatch } = useWorkItems();
     // Route work-item list/mutations to the workspace's clone (AC-07).
     const client = useCocClient(workspaceId);
+    const toast = useContext(ToastContext);
     const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
     const originOptions = useMemo(() => ({ workspaceId }), [workspaceId]);
     const items = state.workItemsByRepo[workItemOriginId] || [];
@@ -231,6 +234,8 @@ export function WorkItemSection({ workspaceId, originId, onSelectWorkItem, selec
         if (!contextMenu) return [];
         const item = contextMenu.item;
         return [
+            buildCopyContextMenuItem(item, toast?.addToast),
+            { label: '', separator: true, onClick: () => {} },
             {
                 label: item.pinnedAt ? 'Unpin' : 'Pin',
                 icon: '📌',
@@ -248,7 +253,7 @@ export function WorkItemSection({ workspaceId, originId, onSelectWorkItem, selec
                 onClick: () => handleDelete(item),
             },
         ];
-    }, [contextMenu, handlePin, handleArchive, handleDelete]);
+    }, [contextMenu, handlePin, handleArchive, handleDelete, toast]);
 
     const shouldHideEmptySection = items.length === 0 && !isLoading && !searchInput;
 
