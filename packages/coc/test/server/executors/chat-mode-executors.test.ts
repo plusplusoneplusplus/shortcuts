@@ -582,7 +582,7 @@ describe('ChatExecutor ask_user enabled', () => {
         expect(toolNames).toContain('ask_user');
     });
 
-    it('routes ask_user tool guidance into systemMessage (not user prompt)', async () => {
+    it('does not staple ask_user tool guidance onto the user prompt', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             askUser: { enabled: true },
         } as any));
@@ -591,11 +591,15 @@ describe('ChatExecutor ask_user enabled', () => {
         await executor.execute(task, 'Hello');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        // Tool-guidance prose lives in systemMessage (once per session)
-        // — not stapled to every user turn.
+        // Guidance lives in the ask_user tool description, not in injected
+        // prose — so neither the user prompt nor the systemMessage carries it.
         expect(call.prompt).not.toContain('ask_user');
         const systemContent = call.systemMessage?.content ?? '';
-        expect(systemContent).toContain('ask_user');
+        expect(systemContent).not.toContain('ask_user');
+        // The tool itself is still registered and carries its own guidance.
+        const askTool = (call.tools ?? []).find((t: any) => t.name === 'ask_user');
+        expect(askTool).toBeDefined();
+        expect(askTool.description).toContain('clarification');
     });
 });
 
