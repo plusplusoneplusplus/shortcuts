@@ -21,6 +21,11 @@ export type {
     SourceCanvasContentState,
     SourceCanvasContentStatus,
 } from './useSourceCanvasContent';
+export { useSourceCanvasDirectory } from './useSourceCanvasDirectory';
+export type {
+    SourceCanvasDirectoryState,
+    SourceCanvasDirectoryStatus,
+} from './useSourceCanvasDirectory';
 export {
     getSourceCanvasDisplayPath,
     resolveSourceCanvasTarget,
