@@ -18,18 +18,26 @@ import { ToastContainer, useToast } from '../ui';
 import { ChatDetail } from '../features/chat/ChatDetail';
 import { usePopOutChannel, type PopOutMessage } from '../features/chat/hooks/usePopOutChannel';
 import { getHostname } from '../utils/config';
+import { registerCloneBaseUrls } from '../repos/cloneRegistry';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────
 
 export interface PopOutRouteParams {
     taskId: string;
+    workspaceId?: string;
+    cloneBaseUrl?: string;
 }
 
-export function parsePopOutActivityRoute(hash: string): PopOutRouteParams | null {
+export function parsePopOutActivityRoute(hash: string, search = ''): PopOutRouteParams | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
     if (parts[0] !== 'popout' || parts[1] !== 'activity' || !parts[2]) return null;
-    return { taskId: decodeURIComponent(parts[2]) };
+    const searchParams = new URLSearchParams(search);
+    return {
+        taskId: decodeURIComponent(parts[2]),
+        workspaceId: searchParams.get('workspace') || undefined,
+        cloneBaseUrl: searchParams.get('cloneBaseUrl') || undefined,
+    };
 }
 
 // ── Inner component (uses toast + channel) ─────────────────────────────────────
@@ -84,9 +92,13 @@ function PopOutContent({ taskId, workspaceId }: { taskId: string; workspaceId: s
 // ── Shell entry point ──────────────────────────────────────────────────────────
 
 export function PopOutChatShell() {
-    const parsed = parsePopOutActivityRoute(window.location.hash);
-    const searchParams = new URLSearchParams(window.location.search);
-    const workspaceId = searchParams.get('workspace');
+    const parsed = parsePopOutActivityRoute(window.location.hash, window.location.search);
+
+    // Seed the clone registry before children render so remote chat detail actions
+    // use the selected clone's CoC server inside the standalone pop-out window.
+    if (parsed?.workspaceId && parsed.cloneBaseUrl) {
+        registerCloneBaseUrls([{ workspaceId: parsed.workspaceId, baseUrl: parsed.cloneBaseUrl }]);
+    }
 
     if (!parsed) {
         return (
@@ -100,7 +112,7 @@ export function PopOutChatShell() {
         <AppProvider>
             <QueueProvider>
                 <ThemeProvider>
-                    <PopOutContent taskId={parsed.taskId} workspaceId={workspaceId} />
+                    <PopOutContent taskId={parsed.taskId} workspaceId={parsed.workspaceId ?? null} />
                 </ThemeProvider>
             </QueueProvider>
         </AppProvider>

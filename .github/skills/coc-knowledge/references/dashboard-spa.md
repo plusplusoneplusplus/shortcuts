@@ -97,6 +97,16 @@ generation/map/reduce chats by `payload.context.mapReduce`, persisted
 `mapReduce` metadata, or `generationProcessId` so child chats do not duplicate
 as standalone rows.
 
+Chat row pin/archive state comes from process summaries (`pinnedAt` and
+`archived`) and is synchronized through `ChatPreferencesProvider` /
+`ChatPrefsSync`. Mutating actions call `pinArchiveApi` with the provider's
+`workspaceId`, and that helper resolves `getCocClientForWorkspace(workspaceId)`
+so remote clone conversations mutate the selected remote CoC server while local
+conversations keep using the default SPA client. Chat pop-out URLs include
+`cloneBaseUrl` for remote workspaces and `PopOutChatShell` seeds the clone
+registry before rendering `ChatDetail`, preserving clone-aware detail and
+turn-level actions in standalone windows.
+
 `features/chat/RalphGrillSetupPanel.tsx` renders the disabled-by-default
 multi-agent Ralph grilling setup card when `features.ralphMultiAgentGrill` is
 enabled. New Chat Ralph grilling (`NewChatArea`) and promoted ask-mode chats

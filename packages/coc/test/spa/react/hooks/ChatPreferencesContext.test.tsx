@@ -98,7 +98,7 @@ describe('ChatPreferencesContext', () => {
 
         // Optimistic update: state must contain 'task-x' synchronously
         expect(result.current.pinnedChatIds.has('task-x')).toBe(true);
-        expect(pinProcessMock).toHaveBeenCalledWith('task-x');
+        expect(pinProcessMock).toHaveBeenCalledWith('task-x', 'ws1');
     });
 
     it('archiveChat updates state optimistically and calls archiveProcess', () => {
@@ -107,7 +107,7 @@ describe('ChatPreferencesContext', () => {
         act(() => { result.current.archiveChat('task-y'); });
 
         expect(result.current.archivedChatIds.has('task-y')).toBe(true);
-        expect(archiveProcessMock).toHaveBeenCalledWith('task-y');
+        expect(archiveProcessMock).toHaveBeenCalledWith('task-y', 'ws1');
     });
 
     it('multiple consumers inside the same provider share identical state', () => {
