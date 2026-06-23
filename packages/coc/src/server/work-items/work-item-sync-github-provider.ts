@@ -382,7 +382,7 @@ function authUnavailableStatus(repo: AvailableGitHubWorkItemSyncRepo): WorkItemS
     };
 }
 
-function resolveRepo(context: Pick<WorkItemSyncProviderContext, 'workspace' | 'preferences'>): GitHubWorkItemSyncRepo {
+function resolveRepo(context: Pick<WorkItemSyncProviderContext, 'workspace' | 'preferences'>): Promise<GitHubWorkItemSyncRepo> {
     return resolveGitHubWorkItemSyncRepo({
         workspace: context.workspace,
         preferences: context.preferences,
@@ -992,7 +992,7 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
     return {
         provider: 'github',
         async getStatus(context) {
-            const repo = resolveRepo(context);
+            const repo = await resolveRepo(context);
             if (!repo.available) return unavailableRepoStatus(repo);
             try {
                 await transport.getRepository(repo);
