@@ -314,8 +314,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             workspaceId,
             label: workspaceName,
             workingDirectory: workspaceRootPath || undefined,
+            remoteUrl: workspaceRemoteUrl,
         });
-    }, [reposCtx, reposCtx?.repos, workspaceId, workspaceName, workspaceRootPath]);
+    }, [reposCtx, reposCtx?.repos, workspaceId, workspaceName, workspaceRootPath, workspaceRemoteUrl]);
 
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);

@@ -2,14 +2,18 @@
  * buildImplementTargets — derive the ImplementPlanCard target list from the
  * dashboard repo list (AC-02).
  *
- * Pure (no React, no I/O) so it is unit-testable and reusable. The list includes
- * the current repo and every LOCAL repo known to the dashboard, plus ONLINE,
- * reachable remote clones; offline / unreachable remote clones are excluded so
- * they can never be selected as a run target. The current repo is always present
- * and placed first, so it remains the default selection and the one-click local
- * behavior is unchanged (AC-01).
+ * Pure (no React, no I/O) so it is unit-testable and reusable. The list is
+ * scoped to the current repo's git origin: when the current repo has a known
+ * remote URL, only repos sharing that canonical origin (sibling local clones +
+ * ONLINE remote clones of the same repo) are runnable targets, so unrelated
+ * repos never appear in the dropdown. When the current origin is unknown (no
+ * remote URL), no origin filter is applied and every local repo plus every
+ * online remote clone is included. Offline / unreachable remote clones are
+ * always excluded. The current repo is always present and placed first, so it
+ * remains the default selection and the one-click local behavior is unchanged.
  */
 
+import { resolveCanonicalOriginId, resolveRepoOriginScope } from '../../repos/originScope';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { ImplementTarget } from './ImplementPlanCard';
@@ -19,6 +23,8 @@ export interface CurrentRepoRef {
     workspaceId?: string;
     label?: string;
     workingDirectory?: string;
+    /** Git remote URL of the current repo; drives the same-origin scoping. */
+    remoteUrl?: string | null;
 }
 
 /** True when an aggregated remote clone is currently online and reachable (AC-02). */
@@ -37,11 +43,26 @@ export function buildImplementTargets(
     const targets: ImplementTarget[] = [];
     const seen = new Set<string>();
 
+    // Same-origin scoping: only active when the current repo has a known remote
+    // URL. Computed once from the current ref so every candidate is compared
+    // against a stable canonical origin id. When null, no origin filter applies.
+    const currentOriginId =
+        current.workspaceId && typeof current.remoteUrl === 'string' && current.remoteUrl.trim()
+            ? resolveCanonicalOriginId({ workspaceId: current.workspaceId, remoteUrl: current.remoteUrl })
+            : null;
+
     for (const repo of repos ?? []) {
         const ws = repo?.workspace;
         if (!ws || typeof ws.id !== 'string') continue;
         if (ws.virtual) continue; // hide virtual workspaces (e.g. global)
         if (seen.has(ws.id)) continue;
+
+        // Drop repos that do not share the current repo's canonical origin. The
+        // current repo itself is never filtered out (it stays the default), even
+        // if its list entry happens to lack remote metadata.
+        if (currentOriginId && ws.id !== current.workspaceId) {
+            if (resolveRepoOriginScope(repo).originId !== currentOriginId) continue;
+        }
 
         if (isRemoteWorkspace(ws)) {
             // Only online, reachable remote clones are runnable targets (AC-02).
