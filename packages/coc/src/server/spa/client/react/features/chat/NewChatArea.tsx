@@ -39,6 +39,7 @@ import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
 import { resolveEffortTier, resolveEffectiveTier } from '../../utils/resolveEffortTier';
 import { getDraft, setDraft, clearDraft, newChatDraftKey } from './hooks/useDraftStore';
+import { saveAttachmentDraft, loadAttachmentDraft, clearAttachmentDraft } from './hooks/attachmentDraftStore';
 import { useAgentProviders } from '../../hooks/useAgentProviders';
 import { AgentSelectorChip } from './AgentSelectorChip';
 import type { ChatProvider } from './AgentSelectorChip';
@@ -241,7 +242,7 @@ export function InitialChatComposer({
     // AC-07: skills + per-repo chat preferences load from the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
 
-    const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
     const attachedContext = useAttachedContext();
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
@@ -382,6 +383,42 @@ export function InitialChatComposer({
             setSelectedMode('ask');
         }
     }, [draftStorageKey, visibleModes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Persist composer attachments to a per-tab sidecar (sessionStorage) keyed by
+    // the same draft key as the text draft, so pasted images and other files
+    // survive in-SPA navigation (workspace switch, opening another chat, leaving
+    // and returning). This mirrors the text-draft restore/save effects above;
+    // ephemeral React state alone would lose them on unmount.
+    const prevAttachmentDraftKeyRef = useRef<string | null>(null);
+    const skipNextAttachmentSaveRef = useRef(false);
+    useEffect(() => {
+        const restored = loadAttachmentDraft(draftStorageKey);
+        if (restored && restored.length > 0) {
+            restoreAttachments(restored);
+        } else if (
+            prevAttachmentDraftKeyRef.current !== null
+            && prevAttachmentDraftKeyRef.current !== draftStorageKey
+        ) {
+            // Switched to a key with no saved attachments — drop the prior key's
+            // attachments so each draft scope shows only its own (matches the
+            // text-draft reset above). Skipped on first mount, where state is
+            // already empty, to avoid spurious clears.
+            clearAttachments();
+        }
+        prevAttachmentDraftKeyRef.current = draftStorageKey;
+        // The save effect below runs immediately after this one in the same
+        // commit with the pre-restore attachments; skip that echo so it does not
+        // clobber the freshly restored (or intentionally retained) sidecar.
+        skipNextAttachmentSaveRef.current = true;
+    }, [draftStorageKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (skipNextAttachmentSaveRef.current) {
+            skipNextAttachmentSaveRef.current = false;
+            return;
+        }
+        saveAttachmentDraft(draftStorageKey, attachments);
+    }, [attachments, draftStorageKey]);
 
     // Restore last-picked effort tier from localStorage on mount / workspace switch.
     useEffect(() => {
@@ -761,6 +798,7 @@ export function InitialChatComposer({
             setCursorPos(0);
             richTextRef.current?.setValue('');
             clearAttachments();
+            clearAttachmentDraft(draftStorageKey);
             attachedContext.clear();
             promptHistory.reset();
             clearDraft(draftStorageKey);
@@ -787,6 +825,7 @@ export function InitialChatComposer({
         setCursorPos(0);
         richTextRef.current?.setValue('');
         clearAttachments();
+        clearAttachmentDraft(draftStorageKey);
         attachedContext.clear();
         promptHistory.reset();
         clearDraft(draftStorageKey);

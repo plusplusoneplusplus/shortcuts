@@ -18,6 +18,7 @@ const mockHandleModelSelect = vi.fn();
 const mockSetModelOverride = vi.fn((model: string | null) => { mockModelOverride = model; });
 const mockParseAndExtract = vi.fn();
 const mockClearAttachments = vi.fn();
+const mockRestoreAttachments = vi.fn();
 let mockDefaultProvider: 'copilot' | 'codex' | 'claude' = 'copilot';
 let mockConfiguredDefaultProvider: 'copilot' | 'codex' | 'claude' | 'auto' = 'copilot';
 let mockAutoProviderRoutingEnabled = false;
@@ -106,6 +107,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useFileA
         addFromFileInput: vi.fn(),
         removeAttachment: vi.fn(),
         clearAttachments: mockClearAttachments,
+        restoreAttachments: mockRestoreAttachments,
         error: null,
         toPayload: () => mockAttachmentPayload,
     }),
@@ -373,6 +375,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
             { id: 'claude', label: 'Claude', enabled: false, available: false },
         ];
         mockEnqueueTask.mockResolvedValue({ task: { id: 'default-task' } });
+        sessionStorage.clear();
     });
 
     it('dispatches SELECT_QUEUE_TASK with queue_-prefixed ID when server returns bare task ID', async () => {
@@ -835,6 +838,32 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
             { role: 'ux', provider: 'claude', model: 'claude-sonnet', reasoningEffort: 'high', effortTier: 'medium' },
             expect.objectContaining({ role: 'provenance' }),
         ]));
+    });
+
+    it('restores persisted attachments from the sessionStorage sidecar on mount', async () => {
+        sessionStorage.setItem('coc.attachmentDraft.new-chat:ws-1', JSON.stringify([
+            { name: 'pasted.png', mimeType: 'image/png', size: 1234, dataUrl: 'data:image/png;base64,AAA' },
+        ]));
+
+        renderNewChatArea('ws-1');
+
+        await waitFor(() => expect(mockRestoreAttachments).toHaveBeenCalled());
+        const restored = mockRestoreAttachments.mock.calls[0][0];
+        expect(restored).toHaveLength(1);
+        expect(restored[0]).toMatchObject({ name: 'pasted.png', mimeType: 'image/png', category: 'image' });
+    });
+
+    it('clears the attachment sidecar after a successful send', async () => {
+        sessionStorage.setItem('coc.attachmentDraft.new-chat:ws-1', JSON.stringify([
+            { name: 'pasted.png', mimeType: 'image/png', size: 1234, dataUrl: 'data:image/png;base64,AAA' },
+        ]));
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'queue_send' } });
+
+        renderNewChatArea('ws-1');
+        typeInInput('Hello');
+        await clickSend();
+
+        await waitFor(() => expect(sessionStorage.getItem('coc.attachmentDraft.new-chat:ws-1')).toBeNull());
     });
 });
 

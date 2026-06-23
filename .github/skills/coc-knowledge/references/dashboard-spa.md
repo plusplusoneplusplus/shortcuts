@@ -637,6 +637,17 @@ as JPEG only when that reduces the payload before the wire `AttachmentPayload`/
 legacy `images` data URLs reach the server; smaller images, unsupported images,
 and failed canvas conversions retain the original attachment bytes.
 
+`InitialChatComposer` persists pending attachments to a per-tab `sessionStorage`
+sidecar (`attachmentDraftStore`, key `coc.attachmentDraft.<draftKey>`) keyed by the
+same `draftKey` as the `useDraftStore` text draft, so pasted images and files
+survive in-SPA navigation (workspace switch, opening another chat, leaving and
+returning) instead of being lost on unmount. Only the wire `AttachmentPayload`
+subset is stored (no client id/category; both are regenerated/re-derived on load
+via `useFileAttachments.restoreAttachments`); saves over ~2 MB serialized are
+skipped to avoid quota errors. The sidecar is cleared on successful send and
+Ralph direct-goal launch, and reset when switching to a draft key with no saved
+attachments. Follow-up composers and `EnqueueDialog` do not use this path.
+
 When `features.sessionContextAttachments` is enabled, same-workspace chat/process
 rows, Ralph session group rows, Work Item list/hierarchy rows, Git commit rows,
 branch range headers/overview headers, and Pull Request rows are copy-drag

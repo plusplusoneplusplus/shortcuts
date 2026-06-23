@@ -196,6 +196,72 @@ describe('useFileAttachments', () => {
         expect(result.current.images).toEqual([]);
     });
 
+    it('restoreAttachments bulk-replaces state without re-reading files', () => {
+        const { result } = renderHook(() => useFileAttachments());
+
+        const restored = [
+            { id: 'r1', name: 'one.png', mimeType: 'image/png', size: 10, dataUrl: 'data:image/png;base64,AA', category: 'image' as const },
+            { id: 'r2', name: 'two.md', mimeType: 'text/markdown', size: 20, dataUrl: 'data:text/markdown;base64,BB', category: 'text' as const },
+        ];
+
+        act(() => { result.current.restoreAttachments(restored); });
+
+        expect(result.current.attachments).toHaveLength(2);
+        expect(result.current.attachments.map(a => a.name)).toEqual(['one.png', 'two.md']);
+        // Restored image data URLs flow into the backward-compatible images getter.
+        expect(result.current.images).toEqual(['data:image/png;base64,AA']);
+    });
+
+    it('restoreAttachments overwrites any existing attachments and clears errors', () => {
+        const { result } = renderHook(() => useFileAttachments(2));
+
+        // Fill to capacity to raise an error, then restore a different set.
+        act(() => { result.current.addFromFileInput([createImageFile('a.png'), createImageFile('b.png')]); });
+        act(() => { result.current.addFromPaste(createMockPasteEvent([createFileItem(createImageFile('c.png'))])); });
+        expect(result.current.error).toBeTruthy();
+
+        act(() => {
+            result.current.restoreAttachments([
+                { id: 'r1', name: 'restored.png', mimeType: 'image/png', size: 10, dataUrl: 'data:image/png;base64,RR', category: 'image' },
+            ]);
+        });
+
+        expect(result.current.attachments).toHaveLength(1);
+        expect(result.current.attachments[0].name).toBe('restored.png');
+        expect(result.current.error).toBeNull();
+    });
+
+    it('restoreAttachments caps the restored set to maxAttachments', () => {
+        const { result } = renderHook(() => useFileAttachments(2));
+
+        act(() => {
+            result.current.restoreAttachments([
+                { id: 'r1', name: 'one.png', mimeType: 'image/png', size: 1, dataUrl: 'data:image/png;base64,AA', category: 'image' },
+                { id: 'r2', name: 'two.png', mimeType: 'image/png', size: 1, dataUrl: 'data:image/png;base64,BB', category: 'image' },
+                { id: 'r3', name: 'three.png', mimeType: 'image/png', size: 1, dataUrl: 'data:image/png;base64,CC', category: 'image' },
+            ]);
+        });
+
+        expect(result.current.attachments).toHaveLength(2);
+        expect(result.current.attachments.map(a => a.name)).toEqual(['one.png', 'two.png']);
+    });
+
+    it('after restoreAttachments, a subsequent add respects the capacity counter', () => {
+        const { result } = renderHook(() => useFileAttachments(2));
+
+        act(() => {
+            result.current.restoreAttachments([
+                { id: 'r1', name: 'one.png', mimeType: 'image/png', size: 1, dataUrl: 'data:image/png;base64,AA', category: 'image' },
+                { id: 'r2', name: 'two.png', mimeType: 'image/png', size: 1, dataUrl: 'data:image/png;base64,BB', category: 'image' },
+            ]);
+        });
+        // Already at capacity (2) — a further paste is rejected with an error.
+        act(() => { result.current.addFromPaste(createMockPasteEvent([createFileItem(createImageFile('extra.png'))])); });
+
+        expect(result.current.attachments).toHaveLength(2);
+        expect(result.current.error).toBeTruthy();
+    });
+
     it('clearError clears the error', () => {
         const { result } = renderHook(() => useFileAttachments(1));
 
