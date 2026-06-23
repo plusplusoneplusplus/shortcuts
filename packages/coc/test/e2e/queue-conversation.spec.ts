@@ -326,7 +326,7 @@ test.describe('Queue Task Conversation – Streaming', () => {
                 finalResponse: 'First second third',
                 sessionId: 'sess-prog',
             });
-            mockAI.mockSendMessage.mockImplementation(implementation);
+            mockAI.mockSendMessage.mockImplementationOnce(implementation);
 
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
@@ -1011,7 +1011,7 @@ test.describe('Queue Task Conversation – Streaming Intermediate State', () => 
         try {
             const chunks = ['Hello', ', world', '!'];
             const { implementation, gate } = mockAI.createGatedStreamingResponse(chunks);
-            mockAI.mockSendMessage.mockImplementation(implementation);
+            mockAI.mockSendMessage.mockImplementationOnce(implementation);
 
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
@@ -1067,7 +1067,7 @@ test.describe('Queue Task Conversation – Streaming Intermediate State', () => 
         try {
             const chunks = ['Part one', ' part two'];
             const { implementation, gate } = mockAI.createGatedStreamingResponse(chunks);
-            mockAI.mockSendMessage.mockImplementation(implementation);
+            mockAI.mockSendMessage.mockImplementationOnce(implementation);
 
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
