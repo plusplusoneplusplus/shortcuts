@@ -31,6 +31,10 @@ export interface ComposerPrChipProps {
     onDismiss: (key: string) => void;
     /** Retry a failed detail fetch. */
     onRetry?: (key: string) => void;
+    /** Force-refresh PR status + checks now, bypassing the cache. Omit to hide the button. */
+    onRefresh?: () => void;
+    /** A force-refresh is in flight — spins the icon and disables the button. */
+    refreshing?: boolean;
 }
 
 const ROW_CLASS =
@@ -62,6 +66,37 @@ function PinGlyph() {
                 <path d="M8 8.7v4.8" />
             </svg>
         </span>
+    );
+}
+
+function RefreshButton({ itemKey, onRefresh, refreshing }: { itemKey: string; onRefresh: () => void; refreshing?: boolean }) {
+    return (
+        <button
+            type="button"
+            onClick={() => onRefresh()}
+            disabled={refreshing}
+            className="shrink-0 inline-flex h-[22px] w-[22px] items-center justify-center rounded-md border-none bg-transparent text-[#57606a] hover:bg-black/[0.05] hover:text-[#0969da] dark:text-[#8b949e] dark:hover:bg-white/[0.08] dark:hover:text-[#58a6ff] cursor-pointer leading-none disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
+            aria-label="Refresh pull request status"
+            title={refreshing ? 'Refreshing…' : 'Refresh status'}
+            data-testid={`composer-pr-chip-refresh-${itemKey}`}
+            data-refreshing={refreshing ? 'true' : 'false'}
+        >
+            <svg
+                width="12"
+                height="12"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className={cn(refreshing && 'animate-spin')}
+            >
+                <path d="M13.6 8a5.6 5.6 0 1 1-1.64-3.96" />
+                <path d="M13.5 2.4V5H10.9" />
+            </svg>
+        </button>
     );
 }
 
@@ -174,7 +209,7 @@ function ViewLink({ target, itemKey }: { target: PrLinkTarget; itemKey: string }
     );
 }
 
-export function ComposerPrChip({ item, onDismiss, onRetry }: ComposerPrChipProps) {
+export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing }: ComposerPrChipProps) {
     const number = item.pr?.number ?? item.number;
     const linkTarget = getPrLinkTarget(item, number);
 
@@ -245,6 +280,7 @@ export function ComposerPrChip({ item, onDismiss, onRetry }: ComposerPrChipProps
                     <span className="font-semibold text-[#cf222e] dark:text-[#f85149]">−{diff.deletions}</span>
                 </span>
             )}
+            {onRefresh && <RefreshButton itemKey={item.key} onRefresh={onRefresh} refreshing={refreshing} />}
             <ViewLink target={linkTarget} itemKey={item.key} />
             <DismissButton itemKey={item.key} onDismiss={onDismiss} />
         </div>

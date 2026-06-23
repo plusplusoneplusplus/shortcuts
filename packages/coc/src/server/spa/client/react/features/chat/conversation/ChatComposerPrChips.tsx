@@ -38,7 +38,7 @@ function sortNewestFirst(items: PrStatusCardItem[]): PrStatusCardItem[] {
 }
 
 export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
-    const { items, retry } = usePrChatStatusItems(options);
+    const { items, retry, refresh, refreshing } = usePrChatStatusItems(options);
     const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
 
     const dismiss = useCallback((key: string) => {
@@ -55,7 +55,14 @@ export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
     return (
         <div className="overflow-hidden rounded-t-lg" data-testid="composer-pr-chips">
             {visible.map(item => (
-                <ComposerPrChip key={item.key} item={item} onDismiss={dismiss} onRetry={retry} />
+                <ComposerPrChip
+                    key={item.key}
+                    item={item}
+                    onDismiss={dismiss}
+                    onRetry={retry}
+                    onRefresh={refresh}
+                    refreshing={refreshing}
+                />
             ))}
         </div>
     );
