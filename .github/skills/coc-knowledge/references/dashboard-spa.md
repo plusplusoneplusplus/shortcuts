@@ -101,9 +101,11 @@ transient
 sections and provenance chips; it does not create separate agent threads or
 separate answer submissions.
 
-`features/chat/conversation/ChatPrStatusCard.tsx` renders a pinned, read-only
-PR status card at the top of `ConversationArea` (via a sticky `prStatusCard`
-slot that `ChatDetail` passes) for chats that created pull requests. The
+`features/chat/conversation/ChatComposerPrChips.tsx` docks a stack of compact,
+read-only PR chips **inside the composer** (above the textarea, via the
+`prComposerChips` slot that `FollowUpInputArea` renders as the first child of the
+input card) for chats that created pull requests — there is no top-of-thread PR
+card. The
 `usePrChatStatusItems` hook unions PRs detected in the loaded turns
 (`pullRequestDetection.ts`, no new regex) with persisted bindings looked up by
 `task_id`. Detection requires PR-creation evidence per shell tool call: a
@@ -119,64 +121,44 @@ PR's canonical origin through `resolveCanonicalOriginId`, upserts a binding
 (`createChatBindingForOrigin`) for any freshly-detected PR so it survives reload
 with the creating turn collapsed, and fetches PR detail per row
 (`getForOrigin`) into per-row loading/ready/error state with retry. The union
-and origin logic live in the pure `conversation/prChatAssociation.ts` module;
-the card itself (`PrStatusCard`) is presentational, newest-first, collapsed to
-a clickable count row by default, and deep-links into `PullRequestDetail` after
-expansion. Each ready row also shows a unified
-auto-merge indicator (AC-04): `mapPrDetailToCardPr` carries the canonical
-`autoMerge` (`{ enabled, state, enabledBy?, mergeMethod?, blockedReason? }`,
-mapped server-side from GitHub REST `pulls.get` / ADO `autoCompleteSetBy`) onto
-the card PR, and the pure `describeAutoMerge` reduces it to an armed/queued/blocked
-badge with a provider-aware label (`autoMergeLabel` → "Auto-merge" for GitHub,
-"Auto-complete" for Azure DevOps, with the provider derived from the PR URL via
-`prProviderFromUrl`); not-enabled renders nothing. Each ready row eager-loads its
-CI checks: `usePrChatStatusItems` automatically calls `getChecksForOrigin` once a
-row's detail resolves to `ready` (deduped via `checksStatusRef` — skips when
-already loading/ready/error), maps the response with `buildCheckRowsFromChecks`,
-and renders the shared `features/pull-requests/PrChecksSummary.tsx`
-`PrChecksSummaryChips` (the non-zero summary chips) inline on the row's "Checks"
-line — visible without expanding the toggle. The "Checks" toggle still discloses
-the full `PrChecksCompact` per-check list (chips + list with detail links);
-`expandChecks(key)` only re-fetches on the error/Retry path. That module is the
-single home for the check-status → label/summary logic: `PrChecksAndReadiness`'s
-`PrChecksTable` also imports `checkStatusLabel` from it (no copy-pasted check-status
-logic). The collapsed top-level header shows two pure status indicators from
-`conversation/prMergeStatusSummary.ts`. (1) An always-on PR lifecycle indicator
-(`summarizeLifecycleStatus` → `PrLifecycleStatusIndicator`,
-`data-testid="pr-status-card-pr-status"`): a single-PR card shows that PR's
-`prStatusBadge` (Open / Draft / Merged / Closed — so "is it merged?" is answerable
-without expanding), a multi-PR card shows per-status counts ordered open → draft →
-merged → closed; it returns null only when no row is `ready`. (2) An additional
-auto-merge indicator shown next to it only when auto-merge is active
-(`summarizeMergeStatus` → `MergeStatusHeaderIndicator`,
-`data-testid="pr-status-card-merge-status"`): single-PR mirrors that PR's
-auto-merge state (blocked/queued/armed, provider-aware via `describeAutoMerge`),
-multi-PR shows per-state counts ordered blocked → queued → armed, reusing the
-exported `AUTO_MERGE_TONE_CLASS`/`AUTO_MERGE_TONE_EMOJI` maps; it returns null when
-no ready row has active auto-merge (lifecycle merged/closed belongs to the
-lifecycle indicator, not here). Freshness
-(AC-05) lives in the pure `conversation/prStatusFreshness.ts`: `shouldPollPrStatusItems`
-returns true only while some PR is non-terminal AND has checks pending/running OR
-auto-merge armed/queued (false once all merged/closed; because checks are
-eager-loaded, a never-expanded row with pending checks still keeps the poll
-active), and `formatUpdatedAgo`
-renders the "updated Xs ago" label. `usePrChatStatusItems` exposes `refresh`
-(force-refreshes every row's detail + any loaded checks with `{ force: true }`,
-running silently so rows don't flash a skeleton), `refreshing`, `lastUpdatedAt`,
-and `isPolling`; an internal `setInterval(PR_STATUS_POLL_INTERVAL_MS = 45s)` is
-armed only while `isPolling` is true and torn down once everything settles. The
-card header surfaces a manual Refresh control + the freshness label. Force-refresh
-threads through `getForOrigin`/`getChecksForOrigin` `{ force }` to the
-`?force=true` query, which the server checks route honours by evicting
-`prChecksCache` (the detail route already evicts sub-caches). The card is the
-same component on the dashboard SPA and mobile (AC-06): its header wraps
-(`flex-wrap`, the toggle is `min-w-0`, the freshness+Refresh cluster is
-`shrink-0`) so the controls drop to a second line rather than overflowing the
-`overflow-x-hidden` `ConversationArea` at the 375px viewport, and the title,
-branch pair, check rows, and auto-merge/summary chips stay legible via
-`truncate` + wrapping meta lines, and the header PR-status + auto-merge indicators
-(`min-w-0`, truncating reason text) participate in the header wrap; the Checks
-and collapse disclosures expand on tap.
+and origin logic live in the pure `conversation/prChatAssociation.ts` module.
+Each chip (`ComposerPrChip`, presentational) shows a git glyph, a pin marker, the
+`#number` (deep-linking into `PullRequestDetail` via `buildPrDetailHash`), the
+title, the lifecycle status badge (`prStatusBadge` — Open / Draft / Merged /
+Closed), the `+adds / −dels` diff (from `mapPrDetailToCardPr`'s `diffStats`,
+parsed by `parseDiffStats`; omitted when the detail carries no counts), a filled
+**View** deep-link, and a ✕ dismiss. A loading row renders a skeleton; an error
+row shows the message plus Retry and View. `ChatComposerPrChips` orders chips
+newest-first, hides any the user ✕-dismisses for the session (a fresh detection
+or binding re-surfaces it on reload), and renders nothing when no PR is
+associated, so the composer keeps no PR chrome otherwise. The stack's first row
+sits flush with the composer card via `rounded-t-lg overflow-hidden`, and each
+chip's bottom border doubles as the divider above the textarea.
+
+`mapPrDetailToCardPr` carries the canonical `autoMerge`
+(`{ enabled, state, enabledBy?, mergeMethod?, blockedReason? }`, mapped
+server-side from GitHub REST `pulls.get` / ADO `autoCompleteSetBy`) and
+`diffStats` onto the card PR. The legacy presentational card components
+(`PrStatusCard` / `ChatPrStatusCard`) and their pure helpers — `describeAutoMerge`
+/ `autoMergeLabel` / `prProviderFromUrl`, `summarizeLifecycleStatus` /
+`summarizeMergeStatus` in `prMergeStatusSummary.ts`, the
+`features/pull-requests/PrChecksSummary.tsx` chips, and freshness in
+`prStatusFreshness.ts` — remain exported and unit-tested but are no longer
+mounted. `usePrChatStatusItems` still eager-loads each ready row's CI checks
+(`getChecksForOrigin` once detail resolves to `ready`, deduped via
+`checksStatusRef`, mapped by `buildCheckRowsFromChecks`) and exposes
+`expandChecks`, `refresh` (force-refreshes every row's detail + any loaded checks
+with `{ force: true }`, running silently so rows don't flash a skeleton),
+`refreshing`, `lastUpdatedAt`, and `isPolling`. Freshness lives in the pure
+`conversation/prStatusFreshness.ts`: `shouldPollPrStatusItems` returns true only
+while some PR is non-terminal AND has checks pending/running OR auto-merge
+armed/queued (false once all merged/closed; because checks are eager-loaded, a
+never-expanded row with pending checks still keeps the poll active); an internal
+`setInterval(PR_STATUS_POLL_INTERVAL_MS = 45s)` is armed only while `isPolling`
+is true and torn down once everything settles. Force-refresh threads through
+`getForOrigin`/`getChecksForOrigin` `{ force }` to the `?force=true` query, which
+the server checks route honours by evicting `prChecksCache` (the detail route
+already evicts sub-caches).
 
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
 the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,
