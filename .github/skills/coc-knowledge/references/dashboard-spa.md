@@ -818,11 +818,15 @@ model built on `features/remote-shell/`:
   between them, then the clone tabs, then compact Ask/Queue targeting the active
   clone. The popover lists local and folded remote clones together; each remote
   clone row is badged (`clone-remote-badge`) with its `remote.serverLabel` so it's
-  visually distinct, and the PRIMARY marker is anchored on the first **local**
-  clone (a remote clone never displaces it; a remote-only group marks its first
-  remote clone primary). `isRemoteRepo(repo)` (`repos/repoGrouping.ts`) is the
-  pure guard that distinguishes folded remote rows. Each clone row's **status
-  dot** comes from `cloneStatusColor(computeCloneStatusMap(...)[id])`: local
+  visually distinct. The closed clone-switch button also sums
+  `ReposContext.unseenCounts` across the current remote group's clones and renders
+  the compact red unread badge when the total is non-zero; open popover rows render
+  their own per-clone unread badge, capped at `99+`, only when that clone has unread
+  conversations. The PRIMARY marker is anchored on the first **local** clone (a
+  remote clone never displaces it; a remote-only group marks its first remote clone
+  primary). `isRemoteRepo(repo)` (`repos/repoGrouping.ts`) is the pure guard that
+  distinguishes folded remote rows. Each clone row's **status dot** comes from
+  `cloneStatusColor(computeCloneStatusMap(...)[id])`: local
   clones stay queue-derived; remote clones blend connection-first via
   `blendRemoteCloneStatus` — `offline`/`failed` → offline (dim grey `#8c959f`),
   `connecting`/`idle` (not yet online) → connecting (blue `#3b82f6`, distinct from
