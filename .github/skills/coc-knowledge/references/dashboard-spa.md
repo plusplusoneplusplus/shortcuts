@@ -99,13 +99,16 @@ as standalone rows.
 
 Chat row pin/archive state comes from process summaries (`pinnedAt` and
 `archived`) and is synchronized through `ChatPreferencesProvider` /
-`ChatPrefsSync`. Mutating actions call `pinArchiveApi` with the provider's
+`ChatPrefsSync`. Mutating row actions call `pinArchiveApi` with the provider's
 `workspaceId`, and that helper resolves `getCocClientForWorkspace(workspaceId)`
 so remote clone conversations mutate the selected remote CoC server while local
-conversations keep using the default SPA client. Chat pop-out URLs include
-`cloneBaseUrl` for remote workspaces and `PopOutChatShell` seeds the clone
-registry before rendering `ChatDetail`, preserving clone-aware detail and
-turn-level actions in standalone windows.
+conversations keep using the default SPA client. `ChatDetail` also uses its
+workspace-routed `useCocClient(workspaceId)` for process reads, refreshes, and
+per-turn delete/pin/archive actions; loaded conversation turns render persisted
+`pinnedAt`, `archived`, and `deletedAt` from the process detail response as the
+source of truth. Chat pop-out URLs include `cloneBaseUrl` for remote workspaces
+and `PopOutChatShell` seeds the clone registry before rendering `ChatDetail`, so
+standalone windows keep the same clone-aware row and turn actions.
 
 `features/chat/RalphGrillSetupPanel.tsx` renders the disabled-by-default
 multi-agent Ralph grilling setup card when `features.ralphMultiAgentGrill` is

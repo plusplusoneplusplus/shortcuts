@@ -251,8 +251,30 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
 
 // ConversationTurnBubble — stub that renders turn content
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
-    ConversationTurnBubble: (props: any) =>
-        React.createElement('div', { 'data-testid': `turn-${props.turn?.role}`, 'data-turn-index': props.turn?.turnIndex }, props.turn?.content ?? ''),
+    ConversationTurnBubble: (props: any) => {
+        const turnIndex = props.turn?.turnIndex;
+        const children: React.ReactNode[] = [props.turn?.content ?? ''];
+        if (props.onPinTurn && turnIndex != null) {
+            children.push(React.createElement('button', {
+                key: 'pin',
+                'data-testid': `pin-turn-${turnIndex}`,
+                onClick: () => props.onPinTurn(turnIndex, !props.turn?.pinnedAt),
+            }, props.turn?.pinnedAt ? 'Unpin' : 'Pin'));
+        }
+        if (props.onArchiveTurn && turnIndex != null) {
+            children.push(React.createElement('button', {
+                key: 'archive',
+                'data-testid': `archive-turn-${turnIndex}`,
+                onClick: () => props.onArchiveTurn(turnIndex, !props.turn?.archived),
+            }, props.turn?.archived ? 'Unarchive' : 'Archive'));
+        }
+        return React.createElement('div', {
+            'data-testid': `turn-${props.turn?.role}`,
+            'data-turn-index': turnIndex,
+            'data-pinned': props.turn?.pinnedAt ? 'true' : 'false',
+            'data-archived': props.turn?.archived ? 'true' : 'false',
+        }, ...children);
+    },
 }));
 
 // QueuedBubble — stub
@@ -293,6 +315,7 @@ vi.mock('../../../../src/server/spa/client/react/ui', async (importOriginal) => 
 
 // Now import the component under test (after mocks)
 import { ChatDetail } from '../../../../src/server/spa/client/react/features/chat/ChatDetail';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 // ── Provider wrapper ───────────────────────────────────────────────────────
 
@@ -405,6 +428,7 @@ function setupStandardFetch(task?: any, process?: any) {
 beforeEach(() => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
+    resetCloneRegistryForTests();
     // Reset mock state
     mockState.sendFollowUp.mockReset().mockResolvedValue(undefined);
     mockState.closeFollowUpStream.mockReset();
@@ -435,6 +459,7 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.restoreAllMocks();
+    resetCloneRegistryForTests();
     delete (globalThis as any).__useSendMessage_opts;
 });
 
@@ -656,6 +681,122 @@ describe('ChatDetail', () => {
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 expect(mockState.pruneExpired).toHaveBeenCalled();
+            });
+        });
+
+        it('hydrates pinned and archived turn state from process detail data', async () => {
+            const proc = makeProcess({
+                conversationTurns: [
+                    { role: 'user', content: 'Pinned from store', turnIndex: 0, pinnedAt: '2026-06-23T19:00:00.000Z', timeline: [] },
+                    { role: 'assistant', content: 'Archived from store', turnIndex: 1, archived: true, timeline: [] },
+                ],
+            });
+            setupStandardFetch(undefined, proc);
+
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+
+            await waitFor(() => {
+                expect(screen.getByText('📌 Pinned Messages (1)')).toBeTruthy();
+            });
+            expect(screen.getByText(/Show archived messages \(1\)/)).toBeTruthy();
+            expect(screen.queryByText('Archived from store')).toBeNull();
+
+            fireEvent.click(screen.getByText(/Show archived messages \(1\)/));
+            await waitFor(() => {
+                expect(screen.getByText('Archived from store')).toBeTruthy();
+            });
+        });
+    });
+
+    describe('turn action routing', () => {
+        it('routes pin and archive turn actions through the latest remote clone client', async () => {
+            const remoteA = 'http://remote-a.example';
+            const remoteB = 'http://remote-b.example';
+            registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: remoteA }]);
+            const task = makeTask();
+            const proc = makeProcess({
+                conversationTurns: [
+                    { role: 'user', content: 'Hello', turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: 'Hi there', turnIndex: 1, timeline: [] },
+                ],
+            });
+            setupFetch({
+                '/turns/0/pin': { body: { id: 'proc-1', turnIndex: 0, pinnedAt: '2026-06-23T19:01:00.000Z', archived: false } },
+                '/turns/1/archive': { body: { id: 'proc-1', turnIndex: 1, archived: true } },
+                '/skills/all': { body: { merged: [] } },
+                '/queue/': { body: { task } },
+                '/processes/': { body: { process: proc, conversation: proc.conversation } },
+                '/models': { body: [] },
+            });
+
+            const { rerender } = render(<Wrap><ChatDetail taskId="task-1" workspaceId="remote-ws" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText('Hello')).toBeTruthy();
+            });
+
+            registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: remoteB }]);
+            rerender(<Wrap><ChatDetail taskId="task-1" workspaceId="remote-ws" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('pin-turn-0')).toBeTruthy();
+            });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pin-turn-0'));
+            });
+            await waitFor(() => {
+                expect(fetchMock.mock.calls.some(([url]: [string]) =>
+                    url.startsWith(remoteB) && url.includes('/api/processes/proc-1/turns/0/pin'),
+                )).toBe(true);
+            });
+            expect(fetchMock.mock.calls.some(([url]: [string]) =>
+                url.startsWith(remoteA) && url.includes('/api/processes/proc-1/turns/0/pin'),
+            )).toBe(false);
+            const pinCall = fetchMock.mock.calls.find(([url]: [string]) =>
+                url.startsWith(remoteB) && url.includes('/api/processes/proc-1/turns/0/pin'),
+            );
+            expect(JSON.parse(String((pinCall?.[1] as RequestInit | undefined)?.body))).toEqual({ pinned: true });
+            await waitFor(() => {
+                expect(screen.getAllByTestId('turn-user').some(el => el.getAttribute('data-pinned') === 'true')).toBe(true);
+            });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('archive-turn-1'));
+            });
+            await waitFor(() => {
+                expect(fetchMock.mock.calls.some(([url]: [string]) =>
+                    url.startsWith(remoteB) && url.includes('/api/processes/proc-1/turns/1/archive'),
+                )).toBe(true);
+            });
+            const archiveCall = fetchMock.mock.calls.find(([url]: [string]) =>
+                url.startsWith(remoteB) && url.includes('/api/processes/proc-1/turns/1/archive'),
+            );
+            expect(JSON.parse(String((archiveCall?.[1] as RequestInit | undefined)?.body))).toEqual({ archived: true });
+        });
+
+        it('keeps local turn actions on the default SPA client', async () => {
+            const task = makeTask();
+            const proc = makeProcess();
+            setupFetch({
+                '/turns/0/pin': { body: { id: 'proc-1', turnIndex: 0, pinnedAt: '2026-06-23T19:02:00.000Z', archived: false } },
+                '/skills/all': { body: { merged: [] } },
+                '/queue/': { body: { task } },
+                '/processes/': { body: { process: proc, conversation: proc.conversation } },
+                '/models': { body: [] },
+            });
+
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="local-ws" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText('Hello')).toBeTruthy();
+            });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pin-turn-0'));
+            });
+
+            await waitFor(() => {
+                expect(fetchMock.mock.calls.some(([url]: [string]) =>
+                    url === '/api/processes/proc-1/turns/0/pin',
+                )).toBe(true);
             });
         });
     });

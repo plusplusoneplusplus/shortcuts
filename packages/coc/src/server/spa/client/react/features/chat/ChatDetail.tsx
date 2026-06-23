@@ -904,7 +904,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 status: 'queued' as const,
             })));
         } catch { /* keep current turns */ }
-    }, [setTurnsAndRef]);
+    }, [client, setTurnsAndRef]);
 
     // When a task transitions out of `queued` (via WebSocket or polling), force
     // a one-shot conversation refresh. Without this hook, a fast `queued →
@@ -1180,7 +1180,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 }
             })
             .catch(() => { /* ignore */ });
-    }, [workspaceId]);
+    }, [client, workspaceId]);
 
     // Fetch full task data for pending tasks (metadata + payload)
     useEffect(() => {
@@ -1188,7 +1188,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         client.queue.getTask(bareTaskId)
             .then((data: any) => setFullTask(data?.task || null))
             .catch(() => setFullTask(null));
-    }, [taskId, isPending, queueState.refreshVersion]);
+    }, [client, taskId, isPending, queueState.refreshVersion, bareTaskId]);
 
     // Prune stale drafts once on mount
     useEffect(() => { pruneExpired(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1428,7 +1428,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             // Save draft on navigate-away; clear if input is empty
             setDraft(currentTaskId, followUpInputRef.current, selectedModeRef.current);
         };
-    }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [client, taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sync mode selector with the loaded task's mode
     useEffect(() => {
@@ -1514,7 +1514,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 setTurnsAndRef(refreshedTurns);
             } catch { /* keep current state */ }
         })();
-    }, [taskId, queueState.refreshVersion, setTurnsAndRef]);
+    }, [client, taskId, queueState.refreshVersion, setTurnsAndRef]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Scroll to bottom on new turns
     useEffect(() => {
@@ -1579,58 +1579,78 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         try {
             await client.processes.cancel(processId);
         } catch { /* best-effort: SSE will reflect the actual state */ }
-    }, [processId]);
+    }, [client, processId]);
 
     // ── Per-turn actions: delete, pin, archive ──
     const [undoDelete, setUndoDelete] = useState<{ turnIndex: number; timer: ReturnType<typeof setTimeout> } | null>(null);
 
     const handleDeleteTurn = useCallback((turnIndex: number) => {
         if (!processId) return;
-        setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: new Date().toISOString() } : t));
+        setTurnsAndRef(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: new Date().toISOString() } : t));
         client.processes.deleteTurn(processId, turnIndex).catch(() => {
-            setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
+            setTurnsAndRef(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
         });
         if (undoDelete) clearTimeout(undoDelete.timer);
         const timer = setTimeout(() => setUndoDelete(null), 5000);
         setUndoDelete({ turnIndex, timer });
-    }, [processId, undoDelete]);
+    }, [client, processId, setTurnsAndRef, undoDelete]);
 
     const handleUndoDelete = useCallback(() => {
         if (!undoDelete || !processId) return;
         clearTimeout(undoDelete.timer);
         const { turnIndex } = undoDelete;
         setUndoDelete(null);
-        setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
+        setTurnsAndRef(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
         client.processes.restoreTurn(processId, turnIndex).catch(() => {});
-    }, [undoDelete, processId]);
+    }, [client, processId, setTurnsAndRef, undoDelete]);
 
     const handlePinTurn = useCallback((turnIndex: number, pinned: boolean) => {
         if (!processId) return;
-        setTurns(prev => prev.map(t =>
+        const previousTurn = turnsRef.current.find(t => t.turnIndex === turnIndex);
+        const optimisticPinnedAt = new Date().toISOString();
+        setTurnsAndRef(prev => prev.map(t =>
             t.turnIndex === turnIndex
-                ? { ...t, pinnedAt: pinned ? new Date().toISOString() : undefined, archived: pinned ? false : t.archived }
+                ? { ...t, pinnedAt: pinned ? optimisticPinnedAt : undefined, archived: pinned ? false : t.archived }
                 : t
         ));
-        client.processes.pinTurn(processId, turnIndex, pinned).catch(() => {
-            setTurns(prev => prev.map(t =>
+        client.processes.pinTurn(processId, turnIndex, pinned).then((result: any) => {
+            setTurnsAndRef(prev => prev.map(t =>
                 t.turnIndex === turnIndex
-                    ? { ...t, pinnedAt: pinned ? undefined : new Date().toISOString() }
+                    ? {
+                        ...t,
+                        pinnedAt: result?.pinnedAt === null
+                            ? undefined
+                            : (typeof result?.pinnedAt === 'string' ? result.pinnedAt : (pinned ? optimisticPinnedAt : undefined)),
+                        archived: typeof result?.archived === 'boolean' ? result.archived : t.archived,
+                    }
+                    : t
+            ));
+        }).catch(() => {
+            setTurnsAndRef(prev => prev.map(t =>
+                t.turnIndex === turnIndex
+                    ? { ...t, pinnedAt: previousTurn?.pinnedAt, archived: previousTurn?.archived }
                     : t
             ));
         });
-    }, [processId]);
+    }, [client, processId, setTurnsAndRef]);
 
     const handleArchiveTurn = useCallback((turnIndex: number, archived: boolean) => {
         if (!processId) return;
-        setTurns(prev => prev.map(t =>
+        const previousTurn = turnsRef.current.find(t => t.turnIndex === turnIndex);
+        setTurnsAndRef(prev => prev.map(t =>
             t.turnIndex === turnIndex ? { ...t, archived } : t
         ));
-        client.processes.archiveTurn(processId, turnIndex, archived).catch(() => {
-            setTurns(prev => prev.map(t =>
-                t.turnIndex === turnIndex ? { ...t, archived: !archived } : t
+        client.processes.archiveTurn(processId, turnIndex, archived).then((result: any) => {
+            if (typeof result?.archived !== 'boolean') return;
+            setTurnsAndRef(prev => prev.map(t =>
+                t.turnIndex === turnIndex ? { ...t, archived: result.archived } : t
+            ));
+        }).catch(() => {
+            setTurnsAndRef(prev => prev.map(t =>
+                t.turnIndex === turnIndex ? { ...t, archived: previousTurn?.archived } : t
             ));
         });
-    }, [processId]);
+    }, [client, processId, setTurnsAndRef]);
 
     const handleCancelPendingMessage = useCallback((messageId: string) => {
         if (!processId) return;
@@ -1644,7 +1664,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 setPendingQueue(prev => (prev.some(m => m.id === messageId) ? prev : [...prev, removed!]));
             }
         });
-    }, [processId]);
+    }, [client, processId]);
 
     const launchInteractiveResume = async () => {
         if (!processId || !resumeSessionId) return;
