@@ -435,9 +435,14 @@ the current repo or in an already-registered, **online** remote clone:
   current)` (`features/chat/implementTargets.ts`): current repo + local repos +
   **online** remote clones (`remote.offline === false && remote.connection ===
   'online'`); offline/connecting remotes and virtual workspaces are excluded so
-  they can never be selected. The current repo is guaranteed present and ordered
-  first, so it stays the default and the existing one-click local behavior is
-  unchanged. `ChatDetail` builds the list from `useReposOptional()` and gates it
+  they can never be selected. The list is **scoped to the current repo's git
+  origin**: when `current.remoteUrl` is set, only repos sharing its canonical
+  origin id (`resolveCanonicalOriginId` / `resolveRepoOriginScope` from
+  `repos/originScope.ts`) survive — sibling local clones and remote clones of the
+  same repo stay; unrelated repos are dropped. When the current origin is unknown
+  (no remote URL) no origin filter applies. The current repo is guaranteed
+  present and ordered first (never filtered out), so it stays the default and the
+  existing one-click local behavior is unchanged. `ChatDetail` builds the list from `useReposOptional()` and gates it
   on `isRemoteShellEnabled()` — no new feature flag. The selector renders only
   when more than one target exists; outside a `ReposProvider` (e.g. the pop-out
   chat window) the card degrades to local-only.
