@@ -185,27 +185,29 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
             <p className="text-xs text-[#848484]">
                 Edit the goal spec below, then click <strong>Confirm &amp; Start</strong> to begin the Ralph execution loop.
             </p>
-            <div>
-                <RalphExecutionRepoSelector
-                    groups={repoSelection.groups}
-                    loading={repoSelection.loading}
-                    loadError={repoSelection.loadError}
-                    warnings={repoSelection.warnings}
-                    selectedKey={repoSelection.selectedKey}
-                    onSelectedKeyChange={repoSelection.setSelectedKey}
-                    disabled={starting || loadingFile}
-                    testIdPrefix="ralph-start"
-                />
-            </div>
-            <div>
-                <div className="block text-xs text-[#848484] mb-1">
-                    Agent:
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
+                <div className="flex-1 min-w-0">
+                    <RalphExecutionRepoSelector
+                        groups={repoSelection.groups}
+                        loading={repoSelection.loading}
+                        loadError={repoSelection.loadError}
+                        warnings={repoSelection.warnings}
+                        selectedKey={repoSelection.selectedKey}
+                        onSelectedKeyChange={repoSelection.setSelectedKey}
+                        disabled={starting || loadingFile}
+                        testIdPrefix="ralph-start"
+                    />
                 </div>
-                <ModalJobAiControls
-                    selection={aiSelection}
-                    disabled={starting || loadingFile}
-                    testIdPrefix="ralph-start"
-                />
+                <div className="flex-1 min-w-0">
+                    <div className="block text-xs text-[#848484] mb-1">
+                        Agent:
+                    </div>
+                    <ModalJobAiControls
+                        selection={aiSelection}
+                        disabled={starting || loadingFile}
+                        testIdPrefix="ralph-start"
+                    />
+                </div>
             </div>
             <textarea
                 data-testid="ralph-goal-spec-input"
