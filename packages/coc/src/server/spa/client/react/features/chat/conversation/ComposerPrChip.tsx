@@ -22,6 +22,7 @@ import { cn } from '../../../ui/cn';
 import { prStatusBadge } from '../../pull-requests/pr-utils';
 import { buildPrDetailHash } from '../../pull-requests/pr-open-utils';
 import { summarizeCheckRows } from '../../pull-requests/PrChecksSummary';
+import { ComposerPrChecksPopover } from './ComposerPrChecksPopover';
 import type { PrStatusCardItem } from './PrStatusCard';
 
 export interface ComposerPrChipProps {
@@ -136,8 +137,16 @@ function StatusBadge({ status }: { status: string }) {
  * nothing until the eager checks fetch resolves with at least one check, so a
  * chat whose PR reports no CI stays quiet. Reuses {@link summarizeCheckRows} —
  * no copy-pasted check-status tallying.
+ *
+ * When at least one check is FAILING, the badge becomes a button that toggles a
+ * {@link ComposerPrChecksPopover} listing just the failed checks, each linking
+ * to its provider details page. With nothing failing it stays a plain,
+ * non-interactive pill (there is nothing to drill into).
  */
 function ChecksBadge({ item }: { item: PrStatusCardItem }) {
+    const [open, setOpen] = React.useState(false);
+    const anchorRef = React.useRef<HTMLButtonElement | null>(null);
+
     if (item.checksState !== 'ready') return null;
     const rows = item.checks ?? [];
     if (rows.length === 0) return null;
@@ -160,17 +169,62 @@ function ChecksBadge({ item }: { item: PrStatusCardItem }) {
     ].filter(Boolean).join(' · ');
     const title = `${s.passing}/${s.total} checks passing${detail ? ` — ${detail}` : ''}`;
 
-    return (
-        <span
-            className={cn('shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-mono text-[10px] font-medium', tone)}
-            data-testid="composer-pr-chip-checks"
-            data-passing={s.passing}
-            data-total={s.total}
-            title={title}
-        >
+    const baseClass = cn(
+        'shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-mono text-[10px] font-medium',
+        tone,
+    );
+    const content = (
+        <>
             <span aria-hidden="true">{glyph}</span>
             {s.passing}/{s.total}
-        </span>
+        </>
+    );
+
+    // Nothing failing → a plain, non-interactive pill (unchanged behaviour).
+    if (s.failing === 0) {
+        return (
+            <span
+                className={baseClass}
+                data-testid="composer-pr-chip-checks"
+                data-passing={s.passing}
+                data-total={s.total}
+                data-failing={s.failing}
+                title={title}
+            >
+                {content}
+            </span>
+        );
+    }
+
+    // Something failing → clickable badge that opens the failed-checks popover.
+    const failed = rows.filter(row => row.status === 'failure');
+    return (
+        <>
+            <button
+                ref={anchorRef}
+                type="button"
+                className={cn(baseClass, 'cursor-pointer border-none hover:brightness-95 dark:hover:brightness-110')}
+                data-testid="composer-pr-chip-checks"
+                data-passing={s.passing}
+                data-total={s.total}
+                data-failing={s.failing}
+                title={`${title} — click to view failed checks`}
+                aria-haspopup="dialog"
+                aria-expanded={open}
+                onClick={() => setOpen(prev => !prev)}
+            >
+                {content}
+            </button>
+            {open && (
+                <ComposerPrChecksPopover
+                    anchorRef={anchorRef}
+                    failed={failed}
+                    prNumber={item.pr?.number ?? item.number}
+                    itemKey={item.key}
+                    onClose={() => setOpen(false)}
+                />
+            )}
+        </>
     );
 }
 
