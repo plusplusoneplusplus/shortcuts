@@ -141,6 +141,35 @@ describe('ComposerPrChip', () => {
         expect(onDismiss).toHaveBeenCalledWith(KEY);
     });
 
+    it('ready: the refresh button force-refreshes when clicked', () => {
+        const onRefresh = vi.fn();
+        const { getByTestId } = render(
+            <ComposerPrChip item={readyItem()} onDismiss={() => {}} onRefresh={onRefresh} />,
+        );
+        const btn = getByTestId(`composer-pr-chip-refresh-${KEY}`) as HTMLButtonElement;
+        expect(btn.disabled).toBe(false);
+        expect(btn.getAttribute('data-refreshing')).toBe('false');
+        fireEvent.click(btn);
+        expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('ready: the refresh button is disabled and marked refreshing while a refresh is in flight', () => {
+        const onRefresh = vi.fn();
+        const { getByTestId } = render(
+            <ComposerPrChip item={readyItem()} onDismiss={() => {}} onRefresh={onRefresh} refreshing />,
+        );
+        const btn = getByTestId(`composer-pr-chip-refresh-${KEY}`) as HTMLButtonElement;
+        expect(btn.disabled).toBe(true);
+        expect(btn.getAttribute('data-refreshing')).toBe('true');
+        fireEvent.click(btn);
+        expect(onRefresh).not.toHaveBeenCalled();
+    });
+
+    it('ready: omits the refresh button when no onRefresh handler is provided', () => {
+        const { queryByTestId } = render(<ComposerPrChip item={readyItem()} onDismiss={() => {}} />);
+        expect(queryByTestId(`composer-pr-chip-refresh-${KEY}`)).toBeNull();
+    });
+
     it('loading: shows a skeleton with the number and no title', () => {
         const { getByTestId, queryByTestId } = render(
             <ComposerPrChip item={{ key: KEY, repoId: 'ws1', number: 42, state: 'loading' }} onDismiss={() => {}} />,

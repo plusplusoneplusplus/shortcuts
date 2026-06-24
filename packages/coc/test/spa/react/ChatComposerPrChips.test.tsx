@@ -110,6 +110,36 @@ describe('ChatComposerPrChips / usePrChatStatusItems', () => {
         expect(getByTestId('composer-pr-chip-diff').textContent).toContain('+142');
     });
 
+    it('clicking the refresh button force-refreshes the PR detail (bypasses the cache)', async () => {
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 42,
+            title: 'Refreshable PR',
+            status: 'open',
+            sourceBranch: 'feat/x',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: GH_URL,
+        });
+
+        const { findByText, getByTestId } = render(
+            <ChatComposerPrChips turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+        );
+
+        await findByText('Refreshable PR');
+        // Initial detail load did not force a cache bypass.
+        expect(mocks.pullRequests.getForOrigin).toHaveBeenLastCalledWith(GH_ORIGIN, '42', { workspaceId: 'ws1' });
+
+        fireEvent.click(getByTestId(`composer-pr-chip-refresh-${GH_ORIGIN}:42`));
+
+        await waitFor(() =>
+            expect(mocks.pullRequests.getForOrigin).toHaveBeenLastCalledWith(GH_ORIGIN, '42', {
+                workspaceId: 'ws1',
+                force: true,
+            }),
+        );
+    });
+
     it('renders detected Azure DevOps PR links directly to Azure DevOps', async () => {
         mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
         mocks.pullRequests.getForOrigin.mockResolvedValue({

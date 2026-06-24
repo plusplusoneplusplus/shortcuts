@@ -6,11 +6,17 @@
  * scoped to the current repo's git origin: when the current repo has a known
  * remote URL, only repos sharing that canonical origin (sibling local clones +
  * ONLINE remote clones of the same repo) are runnable targets, so unrelated
- * repos never appear in the dropdown. When the current origin is unknown (no
- * remote URL), no origin filter is applied and every local repo plus every
- * online remote clone is included. Offline / unreachable remote clones are
- * always excluded. The current repo is always present and placed first, so it
- * remains the default selection and the one-click local behavior is unchanged.
+ * repos never appear in the dropdown. The current origin is taken from the
+ * caller-supplied `remoteUrl`, falling back to the current repo's own entry in
+ * the dashboard list (the same `gitInfo.remoteUrl` source the candidates are
+ * compared against) — this keeps the comparison symmetric so the filter still
+ * engages when the caller cannot supply a remote URL (e.g. a remote-clone
+ * current workspace whose appState entry lacks one). When no origin can be
+ * resolved from either source, no origin filter is applied and every local repo
+ * plus every online remote clone is included. Offline / unreachable remote
+ * clones are always excluded. The current repo is always present and placed
+ * first, so it remains the default selection and the one-click local behavior
+ * is unchanged.
  */
 
 import { resolveCanonicalOriginId, resolveRepoOriginScope } from '../../repos/originScope';
@@ -43,12 +49,24 @@ export function buildImplementTargets(
     const targets: ImplementTarget[] = [];
     const seen = new Set<string>();
 
-    // Same-origin scoping: only active when the current repo has a known remote
-    // URL. Computed once from the current ref so every candidate is compared
-    // against a stable canonical origin id. When null, no origin filter applies.
+    // Same-origin scoping: only active when the current repo's git origin can be
+    // resolved. Prefer the caller-supplied remoteUrl; otherwise fall back to the
+    // current repo's own entry in the dashboard list, which carries the same
+    // gitInfo.remoteUrl the candidates resolve their origin from. This makes the
+    // comparison symmetric so the filter engages even when the caller could not
+    // supply a remoteUrl (e.g. a remote-clone current workspace). Computed once
+    // so every candidate is compared against a stable canonical origin id. When
+    // no origin can be resolved, no filter applies.
+    const currentRepoEntry = current.workspaceId
+        ? (repos ?? []).find(repo => String(repo?.workspace?.id ?? '') === current.workspaceId)
+        : undefined;
+    const currentRemoteUrl =
+        typeof current.remoteUrl === 'string' && current.remoteUrl.trim()
+            ? current.remoteUrl
+            : currentRepoEntry?.gitInfo?.remoteUrl ?? currentRepoEntry?.workspace?.remoteUrl ?? null;
     const currentOriginId =
-        current.workspaceId && typeof current.remoteUrl === 'string' && current.remoteUrl.trim()
-            ? resolveCanonicalOriginId({ workspaceId: current.workspaceId, remoteUrl: current.remoteUrl })
+        current.workspaceId && typeof currentRemoteUrl === 'string' && currentRemoteUrl.trim()
+            ? resolveCanonicalOriginId({ workspaceId: current.workspaceId, remoteUrl: currentRemoteUrl })
             : null;
 
     for (const repo of repos ?? []) {

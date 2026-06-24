@@ -210,5 +210,53 @@ describe('buildImplementTargets', () => {
             const targets = buildImplementTargets(repos, { workspaceId: 'ws-current', remoteUrl: ORIGIN });
             expect(targets.map(t => t.workspaceId)).toEqual(['ws-current']);
         });
+
+        it('resolves the current origin from its list entry when the caller omits remoteUrl', () => {
+            const repos = [
+                // Current repo's origin lives on its own list entry, not the ref.
+                localRepo('ws-current', 'shortcuts', '/cur', ORIGIN),
+                localRepo('ws-other', 'breadthseek', '/other', 'https://github.com/acme/breadthseek.git'),
+            ];
+            // No remoteUrl passed on the ref — the filter must still engage via the
+            // current repo's list entry, dropping the unrelated repo.
+            const targets = buildImplementTargets(repos, { workspaceId: 'ws-current' });
+            expect(targets.map(t => t.workspaceId)).toEqual(['ws-current']);
+        });
+
+        it('resolves the current origin from gitInfo when the caller omits remoteUrl (remote-clone case)', () => {
+            // A remote-clone current workspace whose origin is only known via the
+            // git-info batch (gitInfo.remoteUrl), as built by buildRemoteRepoData.
+            const current = {
+                workspace: {
+                    id: 'ws-current',
+                    name: 'shortcuts',
+                    rootPath: '/cur',
+                    baseUrl: 'http://127.0.0.1:5000',
+                    remote: {
+                        baseUrl: 'http://127.0.0.1:5000',
+                        serverId: 'srv-1',
+                        serverLabel: 'ubuntu-arm',
+                        offline: false,
+                        connection: 'online',
+                        queue: 'idle',
+                    },
+                },
+                gitInfo: { isGitRepo: true, branch: 'main', dirty: false, remoteUrl: ORIGIN },
+            } as unknown as RepoData;
+            const repos = [
+                current,
+                remoteRepo('ws-sib', 'shortcuts', {
+                    offline: false,
+                    connection: 'online',
+                    serverLabel: 'ubuntu-arm',
+                    remoteUrl: ORIGIN,
+                }),
+                localRepo('ws-other', 'breadthseek', '/other', 'https://github.com/acme/breadthseek.git'),
+            ];
+            // No remoteUrl on the ref (appState lacked it) — gitInfo.remoteUrl on the
+            // current entry must drive the filter, keeping only the same-origin pair.
+            const targets = buildImplementTargets(repos, { workspaceId: 'ws-current' });
+            expect(targets.map(t => t.workspaceId).sort()).toEqual(['ws-current', 'ws-sib']);
+        });
     });
 });
