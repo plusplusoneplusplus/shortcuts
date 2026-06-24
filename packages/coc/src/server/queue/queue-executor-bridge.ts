@@ -2,7 +2,7 @@ import type { ChatPayload, ChatMode } from '../tasks/task-types';
 import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode } from '../tasks/task-types';
 import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
-import type { Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
+import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { BaseExecutor } from '../executors/base-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
@@ -14,6 +14,7 @@ import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
 import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
+import { ASK_USER_RESUME_FAILED_MESSAGE, buildAskUserResumeMessage, buildPendingAskUserAnswerRecord } from '../llm-tools/ask-user-resume';
 import type { DreamRunExecutor } from '../dreams/dream-runner';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
@@ -73,6 +74,14 @@ export interface QueueExecutorBridge {
     skipAskUserQuestion?(processId: string, questionId: string): Promise<boolean>;
     /** Resolve a pending ask-user question batch. Returns true only if every answer resolves. */
     answerAskUserQuestions?(processId: string, batchId: string, answers: AskUserAnswerInput[]): Promise<boolean>;
+    /**
+     * Resume a process whose durable `pendingAskUserAnswer` was persisted after
+     * a restart tore down the live ask_user resolver. Rebuilds the synthesized
+     * answer message and resumes the SDK session. Invoked by the lifecycle
+     * runner for `context.askUserResume` follow-up tasks and by the startup
+     * re-enqueue routine.
+     */
+    resumePendingAskUser?(processId: string): Promise<void>;
     /** Update the execution-time Auto provider resolver for existing bridges. */
     setResolveDefaultProvider?(resolveDefaultProvider: ResolveDefaultProviderForExecution): void;
     /** Late-bind the Dreams runner after route composition creates it. */
@@ -372,6 +381,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             return await this.executors.runner.run(task, {
                 cancelledTasks: this.cancelledTasks,
                 executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl, ts, re, strictResumeSessionId) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl, ts, re, strictResumeSessionId),
+                resumePendingAskUserFn: (pid) => this.resumePendingAskUser(pid),
                 executeByTypeFn: (t, p) => this.executors.dispatch(t, p),
                 getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t),
                 resolveDefaultProvider: this.resolveDefaultProvider,
@@ -449,15 +459,131 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     async answerAskUserQuestions(processId: string, batchId: string, answers: AskUserAnswerInput[]): Promise<boolean> {
         const handles = this.executors.getAskUserHandles(processId);
-        if (!handles) return false;
         const proc = await this.store.getProcess(processId);
         const pendingBatchId = proc?.pendingAskUser?.[0]?.batchId;
-        if (pendingBatchId !== batchId) return false;
-        const resolved = handles.answerQuestions(answers);
-        if (resolved) {
-            await this.store.updateProcess(processId, { pendingAskUser: undefined });
+
+        // Live fast path (AC-07): the in-memory resolver is still present (no
+        // restart). Resolve the awaiting Promise directly; a batchId mismatch or
+        // an already-answered batch still returns false (→ 404). No resume task.
+        if (handles) {
+            if (pendingBatchId !== batchId) return false;
+            const resolved = handles.answerQuestions(answers);
+            if (resolved) {
+                await this.store.updateProcess(processId, { pendingAskUser: undefined });
+            }
+            return resolved;
         }
-        return resolved;
+
+        // Post-restart path (AC-01/AC-02): the live handles are gone (executor
+        // torn down by a restart) but the persisted batch matches. Persist the
+        // answer durably, clear the pending question (so the UI stops showing it
+        // and it can't be double-submitted), and enqueue a resume task.
+        if (!proc || pendingBatchId !== batchId) return false;
+        return this.persistAndEnqueueAskUserResume(proc, batchId, answers);
+    }
+
+    /**
+     * Convert a post-restart ask_user submission into a durable
+     * `pendingAskUserAnswer` record, clear the live `pendingAskUser`, and
+     * enqueue an ask_user-resume follow-up task. Returns false (→ 404) when the
+     * submission does not validly answer the persisted batch.
+     */
+    private async persistAndEnqueueAskUserResume(
+        proc: AIProcess,
+        batchId: string,
+        answers: AskUserAnswerInput[],
+    ): Promise<boolean> {
+        const record = buildPendingAskUserAnswerRecord(
+            proc.pendingAskUser ?? [],
+            batchId,
+            answers,
+            new Date().toISOString(),
+        );
+        if (!record) return false;
+        if (!this.queueManager) return false;
+
+        // Persist the durable answer and clear the live question atomically so a
+        // further restart resumes from the durable record and the question can't
+        // be re-submitted.
+        await this.store.updateProcess(proc.id, {
+            pendingAskUserAnswer: record,
+            pendingAskUser: undefined,
+        });
+
+        this.enqueueAskUserResumeTask(proc);
+        return true;
+    }
+
+    /** Enqueue (or re-enqueue) an ask_user-resume follow-up task for a process. */
+    private enqueueAskUserResumeTask(proc: AIProcess): void {
+        if (!this.queueManager) return;
+        const workspaceId = proc.metadata?.workspaceId;
+        this.queueManager.enqueue({
+            processId: proc.id,
+            type: 'chat',
+            priority: 'normal',
+            payload: {
+                kind: 'chat' as const,
+                processId: proc.id,
+                // Prompt is rebuilt from the durable pendingAskUserAnswer at
+                // execution time, so submit-enqueue and startup-re-enqueue behave
+                // identically. The placeholder is never sent to the model.
+                prompt: '',
+                mode: 'ask' as const,
+                context: { askUserResume: true },
+                ...(proc.workingDirectory ? { workingDirectory: proc.workingDirectory } : {}),
+                ...(workspaceId ? { workspaceId } : {}),
+            },
+            config: {},
+            displayName: 'Resuming after restart…',
+        });
+    }
+
+    /**
+     * Resume a process whose durable `pendingAskUserAnswer` was persisted after
+     * a restart. Rebuilds the synthesized answer message, appends it as a user
+     * turn, and runs the follow-up against the persisted `sdkSessionId`. The
+     * durable answer is consumed regardless of outcome so a further restart
+     * can't re-enqueue an endless resume loop (AC-04/AC-05).
+     */
+    async resumePendingAskUser(processId: string): Promise<void> {
+        const proc = await this.store.getProcess(processId);
+        const pending = proc?.pendingAskUserAnswer;
+        if (!proc || !pending) {
+            // Idempotent: the durable answer was already consumed by a prior
+            // resume (e.g. a duplicate re-enqueue). Nothing to do.
+            return;
+        }
+
+        const synthesized = buildAskUserResumeMessage(pending);
+
+        // Append the synthesized answer as a user turn so the conversation shows
+        // continuity, and flip the process back to running.
+        await this.store.appendConversationTurn(
+            processId,
+            (turnIndex) => ({
+                role: 'user' as const,
+                content: synthesized,
+                timestamp: new Date(),
+                turnIndex,
+                timeline: [],
+            }),
+            { additionalUpdates: { status: 'running' } },
+        );
+
+        try {
+            // executeFollowUp resumes via the persisted sdkSessionId and, on a
+            // non-strict failure, marks the process failed without throwing.
+            await this.executeFollowUp(processId, synthesized, undefined, 'ask');
+        } finally {
+            const after = await this.store.getProcess(processId);
+            // Consume the durable answer in all cases. On failure, replace the
+            // raw provider error with a clear "couldn't resume" message (AC-05).
+            await this.store.updateProcess(processId, {
+                pendingAskUserAnswer: undefined,
+                ...(after?.status === 'failed' ? { error: ASK_USER_RESUME_FAILED_MESSAGE } : {}),
+            });
+        }
     }
 
     async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string): Promise<void> {
