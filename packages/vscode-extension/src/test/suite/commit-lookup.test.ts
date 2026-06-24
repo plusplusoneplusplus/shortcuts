@@ -246,7 +246,7 @@ suite('Commit Lookup Tests', () => {
                 const service = new GitLogService();
 
                 // Using a non-existent path should return undefined
-                const result = service.validateRef('/nonexistent/path', 'invalid-ref-12345');
+                const result = await service.validateRef('/nonexistent/path', 'invalid-ref-12345');
                 assert.strictEqual(result, undefined);
 
                 service.dispose();
@@ -256,7 +256,7 @@ suite('Commit Lookup Tests', () => {
                 const { GitLogService } = await import('../../shortcuts/git/git-log-service');
                 const service = new GitLogService();
 
-                const result = service.validateRef('/nonexistent/path', '');
+                const result = await service.validateRef('/nonexistent/path', '');
                 assert.strictEqual(result, undefined);
 
                 service.dispose();
@@ -268,7 +268,7 @@ suite('Commit Lookup Tests', () => {
                 const { GitLogService } = await import('../../shortcuts/git/git-log-service');
                 const service = new GitLogService();
 
-                const result = service.getBranches('/nonexistent/path');
+                const result = await service.getBranches('/nonexistent/path');
                 assert.ok(Array.isArray(result));
                 assert.strictEqual(result.length, 0);
 
@@ -279,7 +279,7 @@ suite('Commit Lookup Tests', () => {
                 const { GitLogService } = await import('../../shortcuts/git/git-log-service');
                 const service = new GitLogService();
 
-                const result = service.getBranches('/some/path');
+                const result = await service.getBranches('/some/path');
                 assert.ok(Array.isArray(result));
 
                 service.dispose();
@@ -290,11 +290,11 @@ suite('Commit Lookup Tests', () => {
                 const service = new GitLogService();
 
                 // Should not throw with forceRefresh = true
-                const result = service.getBranches('/some/path', true);
+                const result = await service.getBranches('/some/path', true);
                 assert.ok(Array.isArray(result));
 
                 // Should not throw with forceRefresh = false
-                const result2 = service.getBranches('/some/path', false);
+                const result2 = await service.getBranches('/some/path', false);
                 assert.ok(Array.isArray(result2));
 
                 service.dispose();
@@ -307,10 +307,10 @@ suite('Commit Lookup Tests', () => {
                 const service = new GitLogService();
 
                 // First call - will cache the result (empty array for invalid path)
-                const result1 = service.getBranches('/nonexistent/path');
+                const result1 = await service.getBranches('/nonexistent/path');
 
                 // Second call - should return cached result
-                const result2 = service.getBranches('/nonexistent/path');
+                const result2 = await service.getBranches('/nonexistent/path');
 
                 assert.deepStrictEqual(result1, result2);
 
@@ -322,10 +322,10 @@ suite('Commit Lookup Tests', () => {
                 const service = new GitLogService();
 
                 // First call - caches result
-                service.getBranches('/nonexistent/path');
+                await service.getBranches('/nonexistent/path');
 
                 // Force refresh should not throw and should return array
-                const result = service.getBranches('/nonexistent/path', true);
+                const result = await service.getBranches('/nonexistent/path', true);
                 assert.ok(Array.isArray(result));
 
                 service.dispose();
@@ -336,8 +336,8 @@ suite('Commit Lookup Tests', () => {
                 const service = new GitLogService();
 
                 // Different paths should have separate cache entries
-                const result1 = service.getBranches('/path/one');
-                const result2 = service.getBranches('/path/two');
+                const result1 = await service.getBranches('/path/one');
+                const result2 = await service.getBranches('/path/two');
 
                 // Both should be arrays (empty for invalid paths)
                 assert.ok(Array.isArray(result1));
@@ -394,7 +394,7 @@ suite('Commit Lookup Tests', () => {
                 const service = new GitLogService();
 
                 // First call populates cache
-                service.getBranches('/nonexistent/path');
+                await service.getBranches('/nonexistent/path');
 
                 // Async call should return cached value
                 const result = await service.getBranchesAsync('/nonexistent/path');
@@ -428,14 +428,14 @@ suite('Commit Lookup Tests', () => {
                 const service = new GitLogService();
 
                 // Populate cache
-                service.getBranches('/path/one');
-                service.getBranches('/path/two');
+                await service.getBranches('/path/one');
+                await service.getBranches('/path/two');
 
                 // Invalidate one path
                 service.invalidateBranchCache('/path/one');
 
                 // Should not throw when accessing again
-                const result = service.getBranches('/path/one');
+                const result = await service.getBranches('/path/one');
                 assert.ok(Array.isArray(result));
 
                 service.dispose();
@@ -446,17 +446,17 @@ suite('Commit Lookup Tests', () => {
                 const service = new GitLogService();
 
                 // Populate cache for multiple paths
-                service.getBranches('/path/one');
-                service.getBranches('/path/two');
-                service.getBranches('/path/three');
+                await service.getBranches('/path/one');
+                await service.getBranches('/path/two');
+                await service.getBranches('/path/three');
 
                 // Invalidate all
                 service.invalidateBranchCache();
 
                 // All should work after invalidation
-                assert.ok(Array.isArray(service.getBranches('/path/one')));
-                assert.ok(Array.isArray(service.getBranches('/path/two')));
-                assert.ok(Array.isArray(service.getBranches('/path/three')));
+                assert.ok(Array.isArray(await service.getBranches('/path/one')));
+                assert.ok(Array.isArray(await service.getBranches('/path/two')));
+                assert.ok(Array.isArray(await service.getBranches('/path/three')));
 
                 service.dispose();
             });
@@ -468,14 +468,14 @@ suite('Commit Lookup Tests', () => {
                 const service = new GitLogService();
 
                 // Populate cache
-                service.getBranches('/some/path');
+                await service.getBranches('/some/path');
 
                 // Dispose should not throw
                 service.dispose();
 
                 // Creating new service should work
                 const service2 = new GitLogService();
-                const result = service2.getBranches('/some/path');
+                const result = await service2.getBranches('/some/path');
                 assert.ok(Array.isArray(result));
                 service2.dispose();
             });

@@ -397,6 +397,8 @@ describe('CLITaskExecutor executor dispatch', () => {
                 undefined,
                 // 10th arg = per-turn reasoningEffort override
                 undefined,
+                // 11th arg = strict resume session id (none for this task)
+                undefined,
             );
         });
 
@@ -455,6 +457,8 @@ describe('CLITaskExecutor executor dispatch', () => {
                 undefined,
                 // 10th arg = per-turn reasoningEffort override
                 'xhigh',
+                // 11th arg = strict resume session id (none for this task)
+                undefined,
             );
         });
     });

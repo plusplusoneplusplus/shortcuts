@@ -57,6 +57,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     return {
         ...actual,
         execGit: (...args: any[]) => mockForgeExecGit(...args),
+        execGitAsync: (...args: any[]) => Promise.resolve(mockForgeExecGit(...args)),
         BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
