@@ -26,6 +26,7 @@ import { handleAPIError, notFound, badRequest } from '../errors';
 import {
     queryWorkspaceId,
     resolveWorkItemRouteScope,
+    scopedRoutePattern,
     type WorkItemRouteScope,
     type WorkItemRouteScopeKind,
 } from './work-item-route-scope';
@@ -62,12 +63,12 @@ import {
 const VALID_SOURCES: Set<string> = new Set(['manual', 'chat', 'schedule']);
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
 const VALID_TRACKER_KINDS: Set<string> = new Set(WORK_ITEM_TRACKER_KINDS);
-const WORK_ITEM_COLLECTION_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items$/;
-const WORK_ITEM_GROUPED_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/grouped$/;
-const WORK_ITEM_DETAIL_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)$/;
-const WORK_ITEM_REQUEST_CHANGES_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/request-changes$/;
-const WORK_ITEM_PIN_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/pin$/;
-const WORK_ITEM_ARCHIVE_PATTERN = /^\/api\/(workspaces|origins)\/([^/]+)\/work-items\/([^/]+)\/archive$/;
+const WORK_ITEM_COLLECTION_PATTERN = scopedRoutePattern('/work-items');
+const WORK_ITEM_GROUPED_PATTERN = scopedRoutePattern('/work-items/grouped');
+const WORK_ITEM_DETAIL_PATTERN = scopedRoutePattern('/work-items/([^/]+)');
+const WORK_ITEM_REQUEST_CHANGES_PATTERN = scopedRoutePattern('/work-items/([^/]+)/request-changes');
+const WORK_ITEM_PIN_PATTERN = scopedRoutePattern('/work-items/([^/]+)/pin');
+const WORK_ITEM_ARCHIVE_PATTERN = scopedRoutePattern('/work-items/([^/]+)/archive');
 
 export interface WorkItemRouteContext {
     routes: Route[];

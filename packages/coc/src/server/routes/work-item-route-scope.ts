@@ -1,14 +1,31 @@
 import * as http from 'http';
 import * as url from 'url';
 import {
-    detectRemoteUrl,
-    resolveCanonicalOriginId,
     type ProcessStore,
     type WorkspaceInfo,
 } from '@plusplusoneplusplus/forge';
+import {
+    resolveWorkspaceOriginId,
+    sameOriginWorkspaceIds,
+} from '../repos/origin-scope';
 import { badRequest } from '../errors';
 
 export type WorkItemRouteScopeKind = 'workspaces' | 'origins';
+
+/**
+ * Build a route pattern for an origin-scoped persistent API. Both the
+ * `/api/workspaces/<id>/...` and `/api/origins/<id>/...` families are matched so
+ * new handlers do not hand-roll the `(workspaces|origins)` scope segment.
+ *
+ * Capture group 1 is the scope kind (`workspaces`/`origins`), group 2 is the
+ * scope id; any capture groups inside `tail` follow. `tail` is appended raw and
+ * the pattern is anchored at both ends.
+ *
+ * @example scopedRoutePattern('/work-items/([^/]+)') // → /api/(workspaces|origins)/<id>/work-items/<id>
+ */
+export function scopedRoutePattern(tail = ''): RegExp {
+    return new RegExp(`^/api/(workspaces|origins)/([^/]+)${tail}$`);
+}
 
 export interface WorkItemRouteScope {
     kind: WorkItemRouteScopeKind;
@@ -24,18 +41,16 @@ export function queryWorkspaceId(req: http.IncomingMessage): string | undefined 
     return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
 }
 
+/**
+ * Resolve a workspace record to its canonical origin id. Thin facade over the
+ * shared origin-scope resolver so route handlers and the binding store keep one
+ * import surface.
+ */
 export async function workspaceOriginId(
     workspace: WorkspaceInfo,
     processStore?: Pick<ProcessStore, 'updateWorkspace'>,
 ): Promise<string> {
-    let remoteUrl = workspace.remoteUrl;
-    if (!remoteUrl && workspace.rootPath) {
-        remoteUrl = await detectRemoteUrl(workspace.rootPath);
-        if (remoteUrl) {
-            await processStore?.updateWorkspace?.(workspace.id, { remoteUrl });
-        }
-    }
-    return resolveCanonicalOriginId({ remoteUrl, workspaceId: workspace.id });
+    return resolveWorkspaceOriginId(workspace, processStore);
 }
 
 export async function resolveWorkspaceWorkItemOriginId(
@@ -44,20 +59,14 @@ export async function resolveWorkspaceWorkItemOriginId(
 ): Promise<string> {
     const workspaces = await processStore.getWorkspaces();
     const workspace = workspaces.find(entry => entry.id === workspaceId);
-    return workspace ? workspaceOriginId(workspace, processStore) : workspaceId;
+    return workspace ? resolveWorkspaceOriginId(workspace, processStore) : workspaceId;
 }
 
 export async function legacyWorkspaceIdsForWorkItemOrigin(
     processStore: Pick<ProcessStore, 'getWorkspaces' | 'updateWorkspace'>,
     originId: string,
 ): Promise<string[]> {
-    const legacyScopeIds: string[] = [];
-    for (const workspace of await processStore.getWorkspaces()) {
-        if (await workspaceOriginId(workspace, processStore) === originId) {
-            legacyScopeIds.push(workspace.id);
-        }
-    }
-    return legacyScopeIds;
+    return sameOriginWorkspaceIds(processStore, originId);
 }
 
 export async function resolveWorkItemRouteScope(

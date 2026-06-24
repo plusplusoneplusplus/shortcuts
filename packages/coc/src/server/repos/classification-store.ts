@@ -551,16 +551,20 @@ function validateCriticalMetadata(raw: unknown, classificationIndex: number): Cr
 // ============================================================================
 
 /**
- * Remove classification files older than `maxAgeDays` for a single workspace.
- * Returns the number of files removed. Best-effort: errors are swallowed.
+ * Remove classification files older than `maxAgeDays` for a single storage
+ * scope. Pass `scope` to prune the canonical origin directory rather than the
+ * raw `workspaceId` directory. Returns the number of files removed.
+ * Best-effort: errors are swallowed.
  */
 export function pruneStaleClassifications(
     dataDir: string,
     workspaceId: string,
     maxAgeDays = 30,
+    scope?: PullRequestStorageScopeInput,
 ): number {
     if (maxAgeDays <= 0) return 0;
-    const dir = getRepoDataPath(dataDir, workspaceId, 'classifications');
+    const storageId = resolvePullRequestStorageId(workspaceId, scope);
+    const dir = getRepoDataPath(dataDir, storageId, 'classifications');
     let removed = 0;
     let entries: string[] = [];
     try {

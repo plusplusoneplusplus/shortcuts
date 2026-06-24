@@ -1,11 +1,14 @@
 import {
     type ProcessStore,
-    type WorkspaceInfo,
 } from '@plusplusoneplusplus/forge';
 import {
-    detectRemoteUrl,
     resolveCanonicalOriginId,
 } from '@plusplusoneplusplus/forge/git';
+import {
+    isCanonicalOriginId,
+    mapWorkspaceOriginIds,
+    resolveWorkspaceRemoteUrl,
+} from './origin-scope';
 
 export interface PullRequestLegacyStorageScope {
     workspaceId: string;
@@ -36,10 +39,6 @@ export interface ResolvePullRequestOriginStorageScopeOptions {
     processStore?: PullRequestScopeProcessStore;
 }
 
-function isCanonicalOriginId(value: string): boolean {
-    return /^(gh|ado|git|local)_/.test(value);
-}
-
 function trimNonEmpty(value: string | null | undefined): string | undefined {
     const trimmed = value?.trim();
     return trimmed || undefined;
@@ -58,36 +57,6 @@ function dedupeLegacyScopes(scopes: readonly PullRequestLegacyStorageScope[]): P
         out.push({ workspaceId, repoId });
     }
     return out;
-}
-
-async function resolveRemoteUrl(
-    workspaceId: string,
-    remoteUrl: string | null | undefined,
-    rootPath: string | null | undefined,
-    processStore?: Pick<ProcessStore, 'updateWorkspace'>,
-): Promise<string | undefined> {
-    const provided = trimNonEmpty(remoteUrl);
-    if (provided) return provided;
-    const root = trimNonEmpty(rootPath);
-    if (!root) return undefined;
-    const detected = await detectRemoteUrl(root);
-    if (detected && typeof processStore?.updateWorkspace === 'function') {
-        await processStore.updateWorkspace(workspaceId, { remoteUrl: detected });
-    }
-    return detected;
-}
-
-async function resolveWorkspaceOriginId(
-    workspace: WorkspaceInfo,
-    processStore: PullRequestScopeProcessStore,
-): Promise<string> {
-    const remoteUrl = await resolveRemoteUrl(
-        workspace.id,
-        workspace.remoteUrl,
-        workspace.rootPath,
-        processStore,
-    );
-    return resolveCanonicalOriginId({ remoteUrl, workspaceId: workspace.id });
 }
 
 export function resolvePullRequestStorageId(
@@ -133,10 +102,8 @@ export async function resolvePullRequestStorageScope(
         throw new Error('workspaceId and repoId are required to resolve pull-request storage scope');
     }
 
-    const remoteUrl = await resolveRemoteUrl(
-        workspaceId,
-        options.remoteUrl,
-        options.rootPath,
+    const remoteUrl = await resolveWorkspaceRemoteUrl(
+        { id: workspaceId, remoteUrl: options.remoteUrl, rootPath: options.rootPath },
         options.processStore,
     );
     const storageOriginId = resolveCanonicalOriginId({ remoteUrl, workspaceId });
@@ -151,12 +118,11 @@ export async function resolvePullRequestStorageScope(
         typeof processStore.updateWorkspace === 'function' &&
         !isCanonicalOriginId(repoId)
     ) {
-        const workspaces = await processStore.getWorkspaces();
-        for (const workspace of workspaces) {
-            const originId = await resolveWorkspaceOriginId(workspace, processStore);
+        const originIds = await mapWorkspaceOriginIds(processStore);
+        for (const [scopeWorkspaceId, originId] of originIds) {
             if (originId !== storageOriginId) continue;
-            legacyScopes.push({ workspaceId: workspace.id, repoId: workspace.id });
-            legacyScopes.push({ workspaceId: workspace.id, repoId });
+            legacyScopes.push({ workspaceId: scopeWorkspaceId, repoId: scopeWorkspaceId });
+            legacyScopes.push({ workspaceId: scopeWorkspaceId, repoId });
         }
     }
 
@@ -181,11 +147,10 @@ export async function resolvePullRequestOriginStorageScope(
         typeof processStore.getWorkspaces === 'function' &&
         typeof processStore.updateWorkspace === 'function'
     ) {
-        const workspaces = await processStore.getWorkspaces();
-        for (const workspace of workspaces) {
-            const originId = await resolveWorkspaceOriginId(workspace, processStore);
+        const originIds = await mapWorkspaceOriginIds(processStore);
+        for (const [scopeWorkspaceId, originId] of originIds) {
             if (originId !== storageOriginId) continue;
-            legacyScopes.push({ workspaceId: workspace.id, repoId: workspace.id });
+            legacyScopes.push({ workspaceId: scopeWorkspaceId, repoId: scopeWorkspaceId });
         }
     }
 
