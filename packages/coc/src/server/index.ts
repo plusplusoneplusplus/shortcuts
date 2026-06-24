@@ -27,6 +27,7 @@ import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
 import { sweepOrphanedRunningProcesses, collectResumableFollowUpProcessIds } from './processes/finalize-orphaned-turn';
+import { reenqueuePendingAskUserResumes } from './processes/resume-pending-ask-user-answers';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './workspaces/global-workspace';
 import { ensureMyWorkWorkspace } from './workspaces/my-work-workspace';
 import { ensureMyLifeWorkspace } from './workspaces/my-life-workspace';
@@ -374,6 +375,28 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         }
     } catch {
         // Non-fatal — startup must not be blocked by sweep failures.
+    }
+
+    // AC-04: re-enqueue an ask_user resume for any process that still carries a
+    // durable pendingAskUserAnswer but has no in-flight resume task. Covers a
+    // restart that landed between the answer submit and the resume running.
+    // Idempotent — resume tasks restored by the queue persistence layer are
+    // detected as in-flight and skipped. Uses the router (bridge) to enqueue so
+    // workspace-only processes route to the correct per-repo queue, and the
+    // aggregate facade to read in-flight tasks across all repos.
+    try {
+        const reenqueued = await reenqueuePendingAskUserResumes(store, {
+            getQueued: () => queueFacade.getQueued(),
+            getRunning: () => queueFacade.getRunning(),
+            enqueue: (input) => bridge.enqueue(input),
+        });
+        if (reenqueued > 0) {
+            process.stderr.write(
+                `[ExecutionServer] Startup recovery: re-enqueued ${reenqueued} pending ask_user resume(s)\n`,
+            );
+        }
+    } catch {
+        // Non-fatal — startup must not be blocked by resume re-enqueue failures.
     }
 
     const { scheduleManager, dispose: scheduleInfraDispose } = createScheduleInfrastructure(dataDir, queueFacade, store);
