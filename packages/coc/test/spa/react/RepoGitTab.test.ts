@@ -729,16 +729,16 @@ describe('RepoGitTab', () => {
 
         it('renders the cross-clone cherry-pick modal with source commit context', () => {
             expect(source).toContain('<CrossCloneCherryPickModal');
-            expect(source).toContain('commit={crossCloneCherryPickCommit}');
+            expect(source).toContain('commits={crossCloneCherryPickCommits}');
             expect(source).toContain('sourceWorkspaceId={workspaceId}');
             expect(source).toContain('sourceWorkspace={sourceWorkspace}');
         });
     });
 
     describe('cross-clone cherry-pick UI', () => {
-        it('tracks the commit selected for cross-clone cherry-pick', () => {
-            expect(source).toContain('crossCloneCherryPickCommit');
-            expect(source).toContain('setCrossCloneCherryPickCommit');
+        it('tracks the commits selected for cross-clone cherry-pick', () => {
+            expect(source).toContain('crossCloneCherryPickCommits');
+            expect(source).toContain('setCrossCloneCherryPickCommits');
         });
 
         it('gates the context menu entry behind the runtime feature flag', () => {
@@ -746,10 +746,16 @@ describe('RepoGitTab', () => {
             expect(menuBlock).toBeTruthy();
         });
 
-        it('opens the modal from the commit context menu', () => {
+        it('opens the modal from the single-commit context menu', () => {
             expect(source).toContain('const handleOpenCrossCloneCherryPick = useCallback');
-            expect(source).toContain('setCrossCloneCherryPickCommit(commit)');
+            expect(source).toContain('setCrossCloneCherryPickCommits([commit])');
             expect(source).toContain('onClick: () => handleOpenCrossCloneCherryPick(commit)');
+        });
+
+        it('opens the modal for a multi-commit selection ordered oldest-first', () => {
+            expect(source).toContain('const handleOpenCrossCloneCherryPickMulti = useCallback');
+            expect(source).toContain('orderOldestFirst(selectedCommits)');
+            expect(source).toContain('onClick: () => handleOpenCrossCloneCherryPickMulti(selectedCommits)');
         });
 
         it('refreshes after a successful patch-transfer apply', () => {
@@ -1441,6 +1447,15 @@ describe('RepoGitTab', () => {
             expect(multiBlock).toBeTruthy();
             expect(multiBlock![0]).toContain("label: 'Ask AI'");
             expect(multiBlock![0]).toContain("label: 'Queue Task'");
+        });
+
+        it('multi-commit context menu offers cross-clone cherry-pick behind the feature flag', () => {
+            const re = new RegExp("if \\(contextMenu\\.type === 'multi-commit'[\\s\\S]*?(?=if \\(contextMenu\\.type === 'branch-range'\\))");
+            const multiBlock = source.match(re);
+            expect(multiBlock).toBeTruthy();
+            expect(multiBlock![0]).toContain('isGitCrossCloneCherryPickEnabled()');
+            expect(multiBlock![0]).toContain('Cherry-pick to another clone...');
+            expect(multiBlock![0]).toContain('handleOpenCrossCloneCherryPickMulti(selectedCommits)');
         });
 
         it('multi-commit context menu builds initialPrompt with commit list', () => {

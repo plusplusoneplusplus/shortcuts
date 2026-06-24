@@ -359,6 +359,10 @@ export class GitClient {
     return this.transport.request<GitPatchExportResponse>(workspaceGitPath(workspaceId, '/patch/export'), jsonRequest('POST', { hash }));
   }
 
+  exportCommitPatches(workspaceId: string, hashes: string[]): Promise<GitPatchExportResponse> {
+    return this.transport.request<GitPatchExportResponse>(workspaceGitPath(workspaceId, '/patch/export'), jsonRequest('POST', { hashes }));
+  }
+
   applyCommitPatch(workspaceId: string, request: GitPatchApplyRequest): Promise<GitPatchApplyResponse> {
     return this.transport.request<GitPatchApplyResponse>(workspaceGitPath(workspaceId, '/patch/apply'), jsonRequest('POST', { ...request }));
   }

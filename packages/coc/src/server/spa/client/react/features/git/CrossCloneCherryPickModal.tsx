@@ -18,7 +18,8 @@ interface CrossCloneCherryPickModalProps {
     sourceWorkspaceId: string;
     sourceWorkspace?: WorkspaceInfo;
     sourceBranch?: string;
-    commit: GitCommitItem | null;
+    /** Commits to transfer, ordered oldest-first. */
+    commits: GitCommitItem[];
     onClose: () => void;
     onApplied?: (result: GitPatchApplyResponse) => void;
 }
@@ -28,7 +29,7 @@ export function CrossCloneCherryPickModal({
     sourceWorkspaceId,
     sourceWorkspace,
     sourceBranch,
-    commit,
+    commits,
     onClose,
     onApplied,
 }: CrossCloneCherryPickModalProps) {
@@ -151,19 +152,21 @@ export function CrossCloneCherryPickModal({
     }, [selectedTargetKey]);
 
     const handleApply = useCallback(async () => {
-        if (!commit || !selectedTarget || selectedTarget.disabledReason) return;
+        if (commits.length === 0 || !selectedTarget || selectedTarget.disabledReason) return;
+        const hashes = commits.map(commit => commit.hash);
         setApplying(true);
         setApplyError(null);
         setResult(null);
         setResultServerLabel(null);
         try {
             if (selectedTarget.server.local) {
-                const exported = await getSpaCocClient().git.exportCommitPatch(sourceWorkspaceId, commit.hash);
+                const exported = await getSpaCocClient().git.exportCommitPatches(sourceWorkspaceId, hashes);
                 const response = await getSpaCocClient().git.applyCommitPatch(selectedTarget.workspace.id, {
                     patch: exported.patch,
                     stashAndContinue,
                     sourceWorkspace: exported.sourceWorkspace,
                     sourceCommit: exported.sourceCommit,
+                    sourceCommits: exported.sourceCommits ?? [exported.sourceCommit],
                     normalizedSourceRemoteUrl: exported.normalizedSourceRemoteUrl,
                 });
                 setResultServerLabel(selectedTarget.server.label);
@@ -174,7 +177,7 @@ export function CrossCloneCherryPickModal({
                     source: {
                         serverId: LOCAL_COC_SERVER_ID,
                         workspaceId: sourceWorkspaceId,
-                        commitHash: commit.hash,
+                        commitHashes: hashes,
                     },
                     target: {
                         serverId: selectedTarget.server.id,
@@ -187,13 +190,13 @@ export function CrossCloneCherryPickModal({
                 onApplied?.(response.result);
             }
         } catch (error) {
-            setApplyError(getApplyErrorMessage(error));
+            setApplyError(getApplyErrorMessage(error, commits.length));
         } finally {
             setApplying(false);
         }
-    }, [commit, onApplied, selectedTarget, sourceWorkspaceId, stashAndContinue]);
+    }, [commits, onApplied, selectedTarget, sourceWorkspaceId, stashAndContinue]);
 
-    if (!commit) return null;
+    if (commits.length === 0) return null;
 
     const sourceName = resolvedSourceWorkspace?.name || sourceWorkspaceId;
     const sourceBranchLabel = sourceGitInfo?.branch ?? sourceBranch ?? 'unknown';
@@ -240,7 +243,20 @@ export function CrossCloneCherryPickModal({
                         <div><span className="font-medium">Workspace:</span> {sourceName}</div>
                         <div><span className="font-medium">Server:</span> {LOCAL_COC_SERVER_LABEL}</div>
                         <div><span className="font-medium">Branch:</span> {sourceBranchLabel}</div>
-                        <div><span className="font-medium">Commit:</span> {commit.shortHash} - {commit.subject}</div>
+                        {commits.length === 1 ? (
+                            <div><span className="font-medium">Commit:</span> {commits[0].shortHash} - {commits[0].subject}</div>
+                        ) : (
+                            <div>
+                                <span className="font-medium">Commits:</span> {commits.length} (oldest→newest)
+                                <ul className="mt-1 ml-4 list-disc" data-testid="cross-clone-cherry-pick-commit-list">
+                                    {commits.map(commit => (
+                                        <li key={commit.hash} className="text-xs">
+                                            <span className="font-mono">{commit.shortHash}</span> {commit.subject}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                         <div><span className="font-medium">Remote:</span> {sourceRemoteUrl || 'No remote detected'}</div>
                     </div>
                 </section>
@@ -365,8 +381,8 @@ export function CrossCloneCherryPickModal({
 
                 {result && (
                     <div className="rounded border border-[#b7dfc4] dark:border-[#285a35] bg-[#f1fff4] dark:bg-[#122518] p-3 text-sm text-[#1a5e2b] dark:text-[#7ee787]" data-testid="cross-clone-cherry-pick-success">
-                        Applied to {resultServerLabel ? `${resultServerLabel} / ` : ''}{result.targetWorkspace.name || result.targetWorkspace.id} on {result.targetBranch || 'unknown branch'}.
-                        {result.newCommitHash || result.targetHead ? ` New commit: ${result.newCommitHash || result.targetHead}.` : ''}
+                        Applied {commits.length > 1 ? `${result.appliedCount ?? commits.length} of ${commits.length} commits ` : ''}to {resultServerLabel ? `${resultServerLabel} / ` : ''}{result.targetWorkspace.name || result.targetWorkspace.id} on {result.targetBranch || 'unknown branch'}.
+                        {result.newCommitHash || result.targetHead ? ` New HEAD: ${result.newCommitHash || result.targetHead}.` : ''}
                     </div>
                 )}
             </div>
@@ -402,11 +418,15 @@ function dirtyStateClass(gitInfo: GitInfoResponse | null): string {
         : 'text-[11px] text-[#16825d] dark:text-[#7ee787]';
 }
 
-function getApplyErrorMessage(error: unknown): string {
+function getApplyErrorMessage(error: unknown, commitCount = 1): string {
     if (error instanceof CocApiError && error.body && typeof error.body === 'object') {
         const body = error.body as Record<string, unknown>;
         if (body.conflicts === true) {
-            return 'Cherry-pick transfer has conflicts in the target workspace. Resolve locally, then continue or abort the in-progress git am operation.';
+            const appliedCount = typeof body.appliedCount === 'number' ? body.appliedCount : undefined;
+            const progress = commitCount > 1 && appliedCount !== undefined
+                ? `Applied ${appliedCount} of ${commitCount} commits; commit ${appliedCount + 1} conflicts. `
+                : '';
+            return `${progress}Cherry-pick transfer has conflicts in the target workspace. Resolve locally, then continue or abort the in-progress git am operation.`;
         }
         if (body.dirty === true) {
             return 'The target workspace has uncommitted changes. Check "Stash target workspace changes before applying" to continue explicitly.';

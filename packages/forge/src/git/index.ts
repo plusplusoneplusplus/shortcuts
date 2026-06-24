@@ -24,6 +24,8 @@ export {
     GitCherryPickResult,
     GitPatchExportPayload,
     GitPatchExportResult,
+    GitPatchMultiExportPayload,
+    GitPatchMultiExportResult,
     GitPatchApplyOptions,
     GitPatchApplyResult,
     RepoOperationType,

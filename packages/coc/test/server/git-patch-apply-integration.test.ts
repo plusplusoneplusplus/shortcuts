@@ -220,6 +220,46 @@ describe('git patch apply API integration', () => {
         expect(JSON.stringify(latest)).not.toContain(targetRoot);
     });
 
+    it('applies a multi-commit range in one git am session, oldest-first', async () => {
+        // Add a second source commit on a separate file so both patches apply cleanly.
+        await writeRepoFile(sourceRoot, 'feature.txt', 'feature work\n');
+        git(sourceRoot, ['add', 'feature.txt']);
+        git(sourceRoot, ['commit', '-m', 'Add feature file'], {
+            GIT_AUTHOR_NAME: 'Patch Author',
+            GIT_AUTHOR_EMAIL: 'patch-author@example.test',
+            GIT_AUTHOR_DATE: '2026-06-04T04:02:00+00:00',
+            GIT_COMMITTER_DATE: '2026-06-04T04:02:00+00:00',
+        });
+
+        const olderHash = git(sourceRoot, ['rev-parse', 'HEAD~1']); // Apply transferred patch
+        const newerHash = git(sourceRoot, ['rev-parse', 'HEAD']);   // Add feature file
+
+        const exportRes = await request(`${base()}/api/workspaces/${SOURCE_WS}/git/patch/export`, {
+            method: 'POST',
+            body: JSON.stringify({ hashes: [olderHash, newerHash] }),
+        });
+        expect(exportRes.status, exportRes.body).toBe(200);
+        const exportBody = exportRes.json();
+        expect(exportBody.sourceCommits.map((commit: any) => commit.hash)).toEqual([olderHash, newerHash]);
+        expect(exportBody.sourceCommit.hash).toBe(olderHash);
+
+        const applyRes = await request(`${base()}/api/workspaces/${TARGET_WS}/git/patch/apply`, {
+            method: 'POST',
+            body: JSON.stringify(exportBody),
+        });
+        expect(applyRes.status, applyRes.body).toBe(200);
+        const applyBody = applyRes.json();
+        expect(applyBody.appliedCount).toBe(2);
+
+        // Both commits land on the target, parent before child.
+        const log = git(targetRoot, ['log', '--format=%s', '-2']).split('\n');
+        expect(log).toEqual(['Add feature file', 'Apply transferred patch']);
+        expect(await fs.readFile(path.join(targetRoot, 'feature.txt'), 'utf-8')).toBe('feature work\n');
+        expect(await fs.readFile(path.join(targetRoot, 'shared.txt'), 'utf-8')).toBe('source change\n');
+        // The git-op records the full ordered range.
+        expect(applyBody.operation.metadata.sourceCommits.map((commit: any) => commit.hash)).toEqual([olderHash, newerHash]);
+    });
+
     it('blocks dirty targets by default and applies after explicit stashAndContinue', async () => {
         const { patch } = await exportSourcePatch();
         const originalHead = git(targetRoot, ['rev-parse', 'HEAD']);

@@ -114,6 +114,7 @@ describe('GitClient', () => {
     await client.reset('repo/a', 'abc123', 'hard');
     await client.cherryPick('repo/a', 'def456', { hashes: ['abc123', 'def456'], targetBranch: 'release' });
     await client.exportCommitPatch('repo/a', 'def456');
+    await client.exportCommitPatches('repo/a', ['abc123', 'def456']);
     await client.applyCommitPatch('repo/a', {
       patch: { format: 'format-patch', body: 'From abc123 Mon Sep 17 00:00:00 2001\n' },
       stashAndContinue: true,
@@ -146,6 +147,7 @@ describe('GitClient', () => {
       '/workspaces/repo%2Fa/git/reset',
       '/workspaces/repo%2Fa/git/cherry-pick',
       '/workspaces/repo%2Fa/git/patch/export',
+      '/workspaces/repo%2Fa/git/patch/export',
       '/workspaces/repo%2Fa/git/patch/apply',
       '/workspaces/repo%2Fa/git/amend',
       '/workspaces/repo%2Fa/git/reword',
@@ -169,7 +171,8 @@ describe('GitClient', () => {
       body: { hash: 'def456', hashes: ['abc123', 'def456'], targetBranch: 'release' },
     });
     expect(adapter.calls[10].options).toMatchObject({ method: 'POST', body: { hash: 'def456' } });
-    expect(adapter.calls[11].options).toMatchObject({
+    expect(adapter.calls[11].options).toMatchObject({ method: 'POST', body: { hashes: ['abc123', 'def456'] } });
+    expect(adapter.calls[12].options).toMatchObject({
       method: 'POST',
       body: {
         patch: { format: 'format-patch', body: 'From abc123 Mon Sep 17 00:00:00 2001\n' },
@@ -179,8 +182,8 @@ describe('GitClient', () => {
         normalizedSourceRemoteUrl: 'https://example.com/org/repo.git',
       },
     });
-    expect(adapter.calls[21].options).toMatchObject({ method: 'DELETE', body: { filePath: 'src/a.ts' } });
-    expect(adapter.calls[22].options).toMatchObject({ method: 'POST', body: { filePaths: ['src/a.ts', 'src/b.ts'] } });
+    expect(adapter.calls[22].options).toMatchObject({ method: 'DELETE', body: { filePath: 'src/a.ts' } });
+    expect(adapter.calls[23].options).toMatchObject({ method: 'POST', body: { filePaths: ['src/a.ts', 'src/b.ts'] } });
   });
 
   it('calls diff-comment and commit-chat routes with encoded identifiers', async () => {

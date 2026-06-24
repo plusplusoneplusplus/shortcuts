@@ -131,6 +131,7 @@ describe('GitClient mock server contract', () => {
     const client = createClient(mock);
 
     await expect(client.git.exportCommitPatch('source/ws', 'abc123')).resolves.toEqual(exported);
+    await expect(client.git.exportCommitPatches('source/ws', ['abc123', 'def456'])).resolves.toEqual(exported);
     await expect(client.git.applyCommitPatch('target/ws', {
       patch: exported.patch,
       stashAndContinue: true,
@@ -140,7 +141,8 @@ describe('GitClient mock server contract', () => {
     })).resolves.toEqual(applied);
 
     expectPostRequest(mock.requests[0], '/api/workspaces/source%2Fws/git/patch/export', { hash: 'abc123' });
-    expectPostRequest(mock.requests[1], '/api/workspaces/target%2Fws/git/patch/apply', {
+    expectPostRequest(mock.requests[1], '/api/workspaces/source%2Fws/git/patch/export', { hashes: ['abc123', 'def456'] });
+    expectPostRequest(mock.requests[2], '/api/workspaces/target%2Fws/git/patch/apply', {
       patch: exported.patch,
       stashAndContinue: true,
       sourceWorkspace: exported.sourceWorkspace,

@@ -416,7 +416,7 @@ describe('remote server routes', () => {
                 },
             });
             expect(source.requests).toEqual([
-                { method: 'POST', url: '/api/workspaces/source-ws/git/patch/export', body: { hash: 'abc123def456' } },
+                { method: 'POST', url: '/api/workspaces/source-ws/git/patch/export', body: { hashes: ['abc123def456'] } },
             ]);
             expect(target.requests[0]).toMatchObject({
                 method: 'POST',
@@ -427,9 +427,57 @@ describe('remote server routes', () => {
                     sourceServer: { id: sourceServer.body.id, label: 'Source Server' },
                     sourceWorkspace: patchExport.sourceWorkspace,
                     sourceCommit: patchExport.sourceCommit,
+                    sourceCommits: [patchExport.sourceCommit],
                     normalizedSourceRemoteUrl: 'example.test/org/repo',
                 },
             });
+        });
+
+        it('transfers a range via commitHashes with a single export and single apply', async () => {
+            const fullA = patchExport.sourceCommit.hash;
+            const fullB = 'cba987654321cba987654321cba987654321cba9';
+            const rangeExport = {
+                ...patchExport,
+                sourceCommits: [
+                    patchExport.sourceCommit,
+                    { hash: fullB, subject: 'Second move', author: patchExport.sourceCommit.author },
+                ],
+            };
+            const source = await startMockCoc({ label: 'source-coc', exportWorkspaceId: 'source-ws', exportResponse: rangeExport });
+            const target = await startMockCoc({ label: 'target-coc', applyWorkspaceId: 'target-ws', applyResponse: { ...patchApply, appliedCount: 2 } });
+            extraServers.push(source.server, target.server);
+            const baseUrl = await startApi(new DevTunnelConnector());
+            const sourceServer = await request(baseUrl, 'POST', '/api/servers', { kind: 'url', label: 'Source Server', url: source.baseUrl });
+            const targetServer = await request(baseUrl, 'POST', '/api/servers', { kind: 'url', label: 'Target Server', url: target.baseUrl });
+
+            const result = await request(baseUrl, 'POST', '/api/servers/cherry-pick-transfer', {
+                source: { serverId: sourceServer.body.id, workspaceId: 'source-ws', commitHashes: [fullA, fullB] },
+                target: { serverId: targetServer.body.id, workspaceId: 'target-ws', stashAndContinue: true },
+            });
+
+            expect(result.status).toBe(200);
+            expect(result.body.source.commits.map((commit: any) => commit.hash)).toEqual([fullA, fullB]);
+            expect(result.body.result.appliedCount).toBe(2);
+            // Exactly one export and one apply round-trip regardless of range size.
+            expect(source.requests).toEqual([
+                { method: 'POST', url: '/api/workspaces/source-ws/git/patch/export', body: { hashes: [fullA, fullB] } },
+            ]);
+            expect(target.requests[0]).toMatchObject({
+                method: 'POST',
+                url: '/api/workspaces/target-ws/git/patch/apply',
+                body: { sourceCommits: rangeExport.sourceCommits },
+            });
+        });
+
+        it('rejects a commitHashes payload with an invalid hash', async () => {
+            const baseUrl = await startApi(new DevTunnelConnector());
+
+            const result = await request(baseUrl, 'POST', '/api/servers/cherry-pick-transfer', {
+                source: { workspaceId: 'source-ws', commitHashes: ['abc123def456', 'not a hash'] },
+                target: { workspaceId: 'target-ws' },
+            });
+
+            expect(result.status).toBe(400);
         });
 
         it('supports local-to-remote and remote-to-local orchestration through the initiating server', async () => {

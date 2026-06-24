@@ -204,7 +204,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
     const [rewordingCommit, setRewordingCommit] = useState<GitCommitItem | null>(null);
     const [cherryPickTarget, setCherryPickTarget] = useState<{ commits: GitCommitItem[] } | null>(null);
-    const [crossCloneCherryPickCommit, setCrossCloneCherryPickCommit] = useState<GitCommitItem | null>(null);
+    const [crossCloneCherryPickCommits, setCrossCloneCherryPickCommits] = useState<GitCommitItem[]>([]);
     const [isMobileSelecting, setIsMobileSelecting] = useState(false);
     const [mobileAnchorHash, setMobileAnchorHash] = useState<string | null>(null);
 
@@ -990,8 +990,15 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     const handleOpenCrossCloneCherryPick = useCallback((commit: GitCommitItem) => {
         closeContextMenu();
-        setCrossCloneCherryPickCommit(commit);
+        setCrossCloneCherryPickCommits([commit]);
     }, [closeContextMenu]);
+
+    const handleOpenCrossCloneCherryPickMulti = useCallback((selectedCommits: GitCommitItem[]) => {
+        closeContextMenu();
+        const orderedCommits = orderOldestFirst(selectedCommits);
+        if (orderedCommits.length === 0) return;
+        setCrossCloneCherryPickCommits(orderedCommits);
+    }, [closeContextMenu, orderOldestFirst]);
 
     const handleCrossCloneCherryPickApplied = useCallback((response: GitPatchApplyResponse) => {
         refreshAll();
@@ -1535,6 +1542,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 icon: '🍒',
                 onClick: () => handleOpenCherryPickToBranch(selectedCommits),
             });
+            if (isGitCrossCloneCherryPickEnabled()) {
+                items.push({
+                    label: 'Cherry-pick to another clone...',
+                    icon: '🍒',
+                    onClick: () => handleOpenCrossCloneCherryPickMulti(selectedCommits),
+                });
+            }
             items.push({
                 label: 'Ask AI', icon: '💡', onClick: () => {
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
@@ -1603,7 +1617,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleOpenCherryPickToBranch, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, handleOpenCrossCloneCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect, handleDropCommit]);
+    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleOpenCherryPickToBranch, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, handleOpenCrossCloneCherryPick, handleOpenCrossCloneCherryPickMulti, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect, handleDropCommit]);
 
     // Keyboard shortcuts:
     //   - R: refresh
@@ -2128,12 +2142,12 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             />
         )}
         <CrossCloneCherryPickModal
-            open={crossCloneCherryPickCommit !== null}
+            open={crossCloneCherryPickCommits.length > 0}
             sourceWorkspaceId={workspaceId}
             sourceWorkspace={sourceWorkspace}
             sourceBranch={branchName || undefined}
-            commit={crossCloneCherryPickCommit}
-            onClose={() => setCrossCloneCherryPickCommit(null)}
+            commits={crossCloneCherryPickCommits}
+            onClose={() => setCrossCloneCherryPickCommits([])}
             onApplied={handleCrossCloneCherryPickApplied}
         />
         </>

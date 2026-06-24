@@ -60,7 +60,7 @@ interface ParsedTransferEndpoint {
 }
 
 interface ParsedTransferRequest {
-    source: ParsedTransferEndpoint & { commitHash: string };
+    source: ParsedTransferEndpoint & { hashes: string[] };
     target: ParsedTransferEndpoint & { stashAndContinue: boolean };
 }
 
@@ -167,6 +167,29 @@ function parseTransferEndpoint(value: unknown, label: 'source' | 'target'): Pars
     return { serverId, workspaceId };
 }
 
+const TRANSFER_HASH_PATTERN = /^[a-fA-F0-9]{4,40}$/;
+
+function parseSourceHashes(source: Record<string, unknown>): string[] {
+    if (Array.isArray(source.commitHashes)) {
+        const hashes = source.commitHashes
+            .filter((value): value is string => typeof value === 'string')
+            .map(value => value.trim())
+            .filter(value => value.length > 0);
+        if (hashes.length === 0) {
+            transferError(400, { error: 'source.commitHashes must contain at least one git commit hash' });
+        }
+        if (!hashes.every(value => TRANSFER_HASH_PATTERN.test(value))) {
+            transferError(400, { error: 'source.commitHashes must all be git commit hashes' });
+        }
+        return hashes;
+    }
+    const commitHash = nonEmptyString(source.commitHash);
+    if (!commitHash || !TRANSFER_HASH_PATTERN.test(commitHash)) {
+        transferError(400, { error: 'source.commitHash is required and must be a git commit hash' });
+    }
+    return [commitHash];
+}
+
 function parseTransferRequest(value: unknown): ParsedTransferRequest {
     if (!isRecord(value)) {
         transferError(400, { error: 'Request body must be a JSON object' });
@@ -176,13 +199,10 @@ function parseTransferRequest(value: unknown): ParsedTransferRequest {
     if (!isRecord(value.source)) {
         transferError(400, { error: 'source must be an object' });
     }
-    const commitHash = nonEmptyString(value.source.commitHash);
-    if (!commitHash || !/^[a-fA-F0-9]{4,40}$/.test(commitHash)) {
-        transferError(400, { error: 'source.commitHash is required and must be a git commit hash' });
-    }
+    const hashes = parseSourceHashes(value.source);
     const stashAndContinue = isRecord(value.target) && value.target.stashAndContinue === true;
     return {
-        source: { ...source, commitHash },
+        source: { ...source, hashes },
         target: { ...target, stashAndContinue },
     };
 }
@@ -273,14 +293,16 @@ async function runCherryPickTransfer(
     const exported = await callEndpoint<GitPatchExportResponse>(
         sourceEndpoint,
         'export',
-        () => sourceEndpoint.client.git.exportCommitPatch(request.source.workspaceId, request.source.commitHash),
+        () => sourceEndpoint.client.git.exportCommitPatches(request.source.workspaceId, request.source.hashes),
     );
+    const sourceCommits = exported.sourceCommits ?? [exported.sourceCommit];
     const applyRequest: GitPatchApplyRequest = {
         patch: exported.patch,
         stashAndContinue: request.target.stashAndContinue,
         sourceServer: sourceEndpoint.server,
         sourceWorkspace: exported.sourceWorkspace,
         sourceCommit: exported.sourceCommit,
+        sourceCommits,
         normalizedSourceRemoteUrl: exported.normalizedSourceRemoteUrl,
     };
     const applied = await callEndpoint<GitPatchApplyResponse>(
@@ -295,6 +317,7 @@ async function runCherryPickTransfer(
             server: sourceEndpoint.server,
             workspace: exported.sourceWorkspace,
             commit: exported.sourceCommit,
+            commits: sourceCommits,
             normalizedRemoteUrl: exported.normalizedSourceRemoteUrl,
         },
         target: {
