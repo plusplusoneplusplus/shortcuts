@@ -37,6 +37,7 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
 import { ChatComposerPrChips } from '../../../src/server/spa/client/react/features/chat/conversation/ChatComposerPrChips';
 
 const GH_URL = 'https://github.com/owner/repo/pull/42';
+const GH_URL_2 = 'https://github.com/owner/repo/pull/99';
 const GH_REMOTE = 'https://github.com/owner/repo';
 const GH_ORIGIN = 'gh_owner_repo';
 const ADO_URL = 'https://dev.azure.com/contoso/MyProject/_git/repo/pullrequest/380';
@@ -61,6 +62,33 @@ function turnWithPrCreate(url: string, id = 'tc1', command = 'gh pr create --fil
             },
         ],
     };
+}
+
+/** A plain tool turn that introduces no PR — stands in for an ongoing tool call. */
+function plainToolTurn(id: string, command: string): ClientConversationTurn {
+    return {
+        role: 'assistant',
+        content: '',
+        timeline: [
+            {
+                type: 'tool-complete',
+                timestamp: '2024-01-01T00:00:05Z',
+                toolCall: {
+                    id,
+                    toolName: 'bash',
+                    args: { command },
+                    result: 'ok\n',
+                    status: 'completed',
+                },
+            },
+        ],
+    };
+}
+
+/** Flush pending microtasks so any errant effect/async fetch would have fired. */
+async function flushMicrotasks(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
 }
 
 describe('ChatComposerPrChips / usePrChatStatusItems', () => {
@@ -138,6 +166,84 @@ describe('ChatComposerPrChips / usePrChatStatusItems', () => {
                 force: true,
             }),
         );
+    });
+
+    it('does not refetch (or flash loading) when turns change but the detected PR set is unchanged', async () => {
+        // Regression: the fetch effect used to take the `detected` array as a
+        // dependency. Since `detected` is a fresh reference on every `turns`
+        // change, the effect re-ran after every tool call — reseting each chip to
+        // 'loading' and refetching detail — even though the PR set was unchanged.
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 42,
+            title: 'Stable PR',
+            status: 'open',
+            sourceBranch: 'feat/x',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: GH_URL,
+        });
+
+        const { findByText, getByTestId, rerender } = render(
+            <ChatComposerPrChips turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+        );
+
+        await findByText('Stable PR');
+        expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(1);
+        const detailCalls = mocks.pullRequests.getForOrigin.mock.calls.length;
+        const bindingCalls = mocks.pullRequests.listChatBindingsForOrigin.mock.calls.length;
+
+        // Simulate an ongoing conversation: a new tool call appends a turn (fresh
+        // `turns` array reference) that introduces no new PR.
+        rerender(
+            <ChatComposerPrChips
+                turns={[turnWithPrCreate(GH_URL), plainToolTurn('tc-2', 'git status')]}
+                workspaceId="ws1"
+                remoteUrl={GH_REMOTE}
+                taskId="t1"
+            />,
+        );
+        await flushMicrotasks();
+
+        // The pipeline must not re-run: no extra binding list, no extra detail
+        // fetch, and the chip stays 'ready' (never flashes back to 'loading').
+        expect(mocks.pullRequests.listChatBindingsForOrigin.mock.calls.length).toBe(bindingCalls);
+        expect(mocks.pullRequests.getForOrigin.mock.calls.length).toBe(detailCalls);
+        expect(getByTestId('composer-pr-chip').getAttribute('data-state')).toBe('ready');
+    });
+
+    it('does refetch when a genuinely new PR is detected in a later turn', async () => {
+        // Guards the regression fix from over-correcting: a new PR URL changes
+        // `detectedKey`, so the pipeline must still re-run and surface both chips.
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+        mocks.pullRequests.getForOrigin.mockImplementation((_origin: string, prId: string) =>
+            Promise.resolve({
+                number: prId === '42' ? 42 : 99,
+                title: prId === '42' ? 'First PR' : 'Second PR',
+                status: 'open',
+                sourceBranch: 'feat/x',
+                targetBranch: 'main',
+                createdAt: '2024-01-01T00:00:00Z',
+                url: prId === '42' ? GH_URL : GH_URL_2,
+            }),
+        );
+
+        const { findByText, rerender } = render(
+            <ChatComposerPrChips turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+        );
+        await findByText('First PR');
+
+        rerender(
+            <ChatComposerPrChips
+                turns={[turnWithPrCreate(GH_URL), turnWithPrCreate(GH_URL_2, 'tc-pr2')]}
+                workspaceId="ws1"
+                remoteUrl={GH_REMOTE}
+                taskId="t1"
+            />,
+        );
+
+        await findByText('Second PR');
+        expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '99', { workspaceId: 'ws1' });
     });
 
     it('renders detected Azure DevOps PR links directly to Azure DevOps', async () => {

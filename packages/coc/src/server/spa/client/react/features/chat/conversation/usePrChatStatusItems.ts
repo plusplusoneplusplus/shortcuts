@@ -196,6 +196,14 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
     // Only re-run the fetch pipeline when the *set* of detected PRs changes,
     // not on every streaming turn update.
     const detectedKey = useMemo(() => detected.map(pr => pr.url).sort().join('|'), [detected]);
+    // Read the latest detected PRs through a ref inside the fetch effect so
+    // `detected` (a fresh array reference on every `turns` change) is NOT an
+    // effect dependency. Otherwise the effect re-runs — flashing the loading
+    // skeleton and refetching every row — after every tool call, even when the
+    // PR set is unchanged. `detectedKey` already gates the effect on the set of
+    // PR URLs actually changing.
+    const detectedRef = useRef(detected);
+    detectedRef.current = detected;
 
     const fetchDetailForAssociation = useCallback(
         (association: PrAssociation, repoId: string, generation: number, opts: FetchOptions = {}): Promise<void> => {
@@ -319,6 +327,7 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
         const client = getCocClientForWorkspace(workspaceId);
 
         (async () => {
+            const detected = detectedRef.current;
             let bindings: PrChatBindingLike[] = [];
             try {
                 const response = await client.pullRequests.listChatBindingsForOrigin(
@@ -359,7 +368,7 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
             // Invalidate this generation on dep change / unmount.
             generationRef.current++;
         };
-    }, [workspaceId, chatOriginId, taskId, detectedKey, detected, fetchDetailForAssociation]);
+    }, [workspaceId, chatOriginId, taskId, detectedKey, fetchDetailForAssociation]);
 
     const retry = useCallback(
         (key: string) => {
