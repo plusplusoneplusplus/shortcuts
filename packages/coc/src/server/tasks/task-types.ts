@@ -289,6 +289,14 @@ export interface ChatContext {
         prId: string;
         headSha: string;
     };
+    /**
+     * Marks a follow-up task as an ask_user resume: instead of running the
+     * payload prompt, the runner rebuilds the synthesized answer message from
+     * the process's persisted `pendingAskUserAnswer` and resumes the SDK
+     * session. Set when an answer arrives after a restart tore down the live
+     * ask_user resolver, and re-set on startup re-enqueue.
+     */
+    askUserResume?: boolean;
 }
 
 // ============================================================================
