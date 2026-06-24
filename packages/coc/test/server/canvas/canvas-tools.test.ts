@@ -152,6 +152,90 @@ describe('canvas LLM tools', () => {
         });
     });
 
+    describe('write_canvas — excalidraw', () => {
+        const SKELETON_SCENE = JSON.stringify({
+            type: 'excalidraw',
+            elements: [{ id: 'box1', type: 'rectangle', x: 0, y: 0, width: 120, height: 60 }],
+            appState: { viewBackgroundColor: '#ffffff' },
+        });
+
+        it('creates an excalidraw canvas and persists a normalized complete scene', async () => {
+            const { write, read } = buildTools();
+            const created = await write.handler({ title: 'Arch', content: SKELETON_SCENE, type: 'excalidraw' }) as any;
+
+            expect(created.success).toBe(true);
+            expect(created.type).toBe('excalidraw');
+            expect(store.getCanvas(WS, created.canvasId)?.type).toBe('excalidraw');
+
+            const result = await read.handler({ canvasId: created.canvasId }) as any;
+            expect(result.success).toBe(true);
+            const scene = JSON.parse(result.content);
+            expect(Array.isArray(scene.elements)).toBe(true);
+            expect(typeof scene.appState).toBe('object');
+            // Skeleton element completed with Excalidraw bookkeeping fields.
+            const el = scene.elements[0];
+            expect(el.id).toBe('box1');
+            expect(el.isDeleted).toBe(false);
+            expect(el.groupIds).toEqual([]);
+            expect(typeof el.versionNonce).toBe('number');
+            expect(typeof el.seed).toBe('number');
+            // read_canvas flags excalidraw canvases so the model uses full rewrites.
+            expect(result.note).toMatch(/scene JSON/i);
+        });
+
+        it('rejects targeted edits on an excalidraw canvas with a clear error', async () => {
+            const { write } = buildTools();
+            const created = await write.handler({ title: 'Arch', content: SKELETON_SCENE, type: 'excalidraw' }) as any;
+
+            const result = await write.handler({
+                canvasId: created.canvasId,
+                edits: [{ oldText: 'rectangle', newText: 'ellipse' }],
+                expectedRevision: 1,
+            }) as any;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toMatch(/excalidraw/i);
+            expect(result.error).toMatch(/full scene|content|rewrite/i);
+            // Unchanged on disk.
+            expect(store.getCanvas(WS, created.canvasId)?.revision).toBe(1);
+        });
+
+        it('normalizes a full-scene content rewrite on update', async () => {
+            const { write, read } = buildTools();
+            const created = await write.handler({ title: 'Arch', content: SKELETON_SCENE, type: 'excalidraw' }) as any;
+
+            const next = JSON.stringify({
+                elements: [{ id: 'circle1', type: 'ellipse', x: 10, y: 10, width: 40, height: 40 }],
+                appState: {},
+            });
+            const updated = await write.handler({
+                canvasId: created.canvasId,
+                content: next,
+                expectedRevision: 1,
+            }) as any;
+
+            expect(updated.success).toBe(true);
+            expect(updated.revision).toBe(2);
+            const scene = JSON.parse(store.getCanvas(WS, created.canvasId)!.content);
+            expect(scene.elements[0].id).toBe('circle1');
+            expect(scene.elements[0].isDeleted).toBe(false);
+        });
+
+        it('rejects an invalid scene on create', async () => {
+            const { write } = buildTools();
+            const badJson = await write.handler({ title: 'Bad', content: '{ not json', type: 'excalidraw' }) as any;
+            expect(badJson.success).toBe(false);
+
+            const notArray = await write.handler({
+                title: 'Bad2',
+                content: JSON.stringify({ elements: 'nope', appState: {} }),
+                type: 'excalidraw',
+            }) as any;
+            expect(notArray.success).toBe(false);
+            expect(notArray.error).toMatch(/elements/i);
+        });
+    });
+
     describe('read_canvas', () => {
         it('returns content and revision', async () => {
             const { write, read } = buildTools();

@@ -24,6 +24,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { CanvasStore, MAX_EXTENSION_UI_BYTES, MAX_EXTENSION_CAPABILITIES_BYTES } from '../canvas/canvas-store';
 import type { CanvasEdit, CanvasType, CanvasCapabilityMeta, CanvasExtensionManifest } from '../canvas/canvas-store';
 import { runCanvasCapability, isValidCapabilityName } from '../canvas/canvas-capability-runner';
+import { normaliseExcalidrawScene } from '../canvas/excalidraw-scene';
 import { emitCanvasUpdated } from '../streaming/sse-handler';
 
 // ============================================================================
@@ -130,11 +131,14 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
     // ------------------------------------------------------------------
     const write = defineTool<WriteCanvasArgs>('write_canvas', {
         description:
-            'Create or update a markdown/code canvas — a live document beside the chat the user iterates on. '
+            'Create or update a canvas — a live document beside the chat the user iterates on. '
             + 'Markdown renders Mermaid blocks as diagrams. Omit canvasId to create (needs title + content; '
-            + 'set type "code" + language for code). To update, pass canvasId + expectedRevision and either '
-            + 'edits (exact-match, one per match) or content (full rewrite). On a revision conflict the user '
-            + 'edited it — read_canvas and retry. Keep chat replies short; reference the canvas, don\'t repeat it.',
+            + 'set type "code" + language for code). For an Excalidraw diagram, set type "excalidraw" and pass '
+            + 'the scene JSON ({ elements, appState }) as content — it renders inline in chat and in the panel; '
+            + 'updates must pass the full scene as content (edits are rejected for excalidraw). To update, pass '
+            + 'canvasId + expectedRevision and either edits (exact-match, one per match) or content (full rewrite). '
+            + 'On a revision conflict the user edited it — read_canvas and retry. Keep chat replies short; '
+            + 'reference the canvas, don\'t repeat it.',
         parameters: {
             type: 'object',
             properties: {
@@ -153,7 +157,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                         required: ['oldText', 'newText'],
                     },
                 },
-                type: { type: 'string', enum: ['markdown', 'code'], description: 'Create only. Default "markdown".' },
+                type: { type: 'string', enum: ['markdown', 'code', 'excalidraw'], description: 'Create only. Default "markdown". Use "excalidraw" for a diagram whose content is the scene JSON.' },
                 language: { type: 'string', description: 'Create only, for type "code" (e.g. "typescript").' },
                 purpose: {
                     type: 'string',
@@ -171,10 +175,34 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                 if (a.content === undefined && (!a.edits || a.edits.length === 0) && a.title === undefined) {
                     return { success: false, error: 'To update, provide edits, content, or title' };
                 }
+
+                // Excalidraw canvases store a JSON scene — text edits are not
+                // meaningful, so reject them and normalize full-content rewrites.
+                let content = a.content;
+                const existing = store.getCanvas(deps.workspaceId, a.canvasId);
+                if (!existing) {
+                    return { success: false, error: `Canvas not found: ${a.canvasId}` };
+                }
+                if (existing.type === 'excalidraw') {
+                    if (a.edits && a.edits.length > 0) {
+                        return {
+                            success: false,
+                            error: 'Excalidraw canvases do not support targeted edits — pass the full scene JSON as content (a full rewrite).',
+                        };
+                    }
+                    if (a.content !== undefined) {
+                        const normalised = normaliseExcalidrawScene(a.content);
+                        if (!normalised.ok) {
+                            return { success: false, error: normalised.error };
+                        }
+                        content = normalised.content;
+                    }
+                }
+
                 try {
                     const result = store.updateCanvas(deps.workspaceId, a.canvasId, {
                         edits: a.edits,
-                        content: a.content,
+                        content,
                         expectedRevision: a.expectedRevision,
                         title: a.title,
                         editor: 'ai',
@@ -207,14 +235,25 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
             if (typeof a.content !== 'string') {
                 return { success: false, error: 'content is required to create a canvas' };
             }
-            if (a.type !== undefined && a.type !== 'markdown' && a.type !== 'code') {
-                return { success: false, error: 'type must be "markdown" or "code"' };
+            if (a.type !== undefined && a.type !== 'markdown' && a.type !== 'code' && a.type !== 'excalidraw') {
+                return { success: false, error: 'type must be "markdown", "code", or "excalidraw"' };
             }
+
+            // Excalidraw canvases persist a validated, normalized scene JSON.
+            let createContent = a.content;
+            if (a.type === 'excalidraw') {
+                const normalised = normaliseExcalidrawScene(a.content);
+                if (!normalised.ok) {
+                    return { success: false, error: normalised.error };
+                }
+                createContent = normalised.content;
+            }
+
             try {
                 const canvas = store.createCanvas({
                     workspaceId: deps.workspaceId,
                     title: a.title.trim(),
-                    content: a.content,
+                    content: createContent,
                     type: a.type,
                     language: a.language,
                     purpose: a.purpose,
@@ -265,6 +304,9 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                 ...(extension ? {
                     extensionManifest: extension.manifest,
                     note: 'Extension canvas: content is its JSON shared state. Prefer extension_canvas with a capability over raw edits.',
+                } : {}),
+                ...(canvas.type === 'excalidraw' ? {
+                    note: 'Excalidraw canvas: content is the scene JSON ({ elements, appState }). To change it, write_canvas with the full scene as content — targeted edits are not supported.',
                 } : {}),
             };
         },
