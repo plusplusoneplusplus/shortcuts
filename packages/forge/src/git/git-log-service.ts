@@ -15,6 +15,18 @@ import { toForwardSlashes } from '../utils/path-utils';
 import { GitCommit, GitCommitFile, GitChangeStatus, CommitLoadOptions, CommitLoadResult } from './types';
 
 /**
+ * Timeout (ms) applied to every git command spawned by this service.
+ *
+ * Now that git I/O runs asynchronously via `execAsync`, many git processes can
+ * be spawned concurrently (e.g. across parallel test workers). Under that
+ * contention the wall-clock time of an individual command can exceed a tight
+ * per-call timeout even when the command itself is fast, which would surface as
+ * spurious ETIMEDOUT failures. A single generous timeout keeps behaviour
+ * consistent and robust under load.
+ */
+const GIT_COMMAND_TIMEOUT_MS = 30000;
+
+/**
  * Branch cache entry with timestamp.
  */
 interface BranchCacheEntry {
@@ -54,7 +66,7 @@ export class GitLogService {
             const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
                 maxBuffer: 50 * 1024 * 1024,
-                timeout: 30000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             if (!output.trim()) {
@@ -93,7 +105,7 @@ export class GitLogService {
 
             const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                timeout: 5000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             if (!output.trim()) {
@@ -119,7 +131,7 @@ export class GitLogService {
 
             const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                timeout: 10000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             if (!output.trim()) {
@@ -164,7 +176,7 @@ export class GitLogService {
             const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
                 maxBuffer: 50 * 1024 * 1024,
-                timeout: 30000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             return output;
@@ -182,13 +194,13 @@ export class GitLogService {
             const { stdout: unstaged } = await execAsync('git diff', {
                 cwd: repoRoot,
                 maxBuffer: 50 * 1024 * 1024,
-                timeout: 30000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             const { stdout: staged } = await execAsync('git diff --cached', {
                 cwd: repoRoot,
                 maxBuffer: 50 * 1024 * 1024,
-                timeout: 30000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             let combined = '';
@@ -218,7 +230,7 @@ export class GitLogService {
             const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
                 maxBuffer: 50 * 1024 * 1024,
-                timeout: 30000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             return output;
@@ -236,7 +248,7 @@ export class GitLogService {
             const command = 'git status --porcelain';
             const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                timeout: 5000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             return output.trim().length > 0;
@@ -254,7 +266,7 @@ export class GitLogService {
             const command = 'git diff --cached --quiet';
             await execAsync(command, {
                 cwd: repoRoot,
-                timeout: 5000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
             return false;
         } catch {
@@ -270,7 +282,7 @@ export class GitLogService {
             const command = 'git rev-list --count HEAD';
             const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                timeout: 5000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             const totalCount = parseInt(output.trim(), 10);
@@ -292,7 +304,7 @@ export class GitLogService {
             const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
                 maxBuffer: 50 * 1024 * 1024,
-                timeout: 30000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             return output;
@@ -314,7 +326,7 @@ export class GitLogService {
             const normalizedPath = toForwardSlashes(filePath);
             await execAsync(`git cat-file -e "${commitHash}:${normalizedPath}"`, {
                 cwd: repoRoot,
-                timeout: 5000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
             return true;
         } catch {
@@ -330,14 +342,14 @@ export class GitLogService {
             const command = `git rev-parse --verify "${ref}"`;
             const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                timeout: 5000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
             const hash = output.trim();
 
             const typeCommand = `git cat-file -t "${hash}"`;
             const { stdout: typeOutput } = await execAsync(typeCommand, {
                 cwd: repoRoot,
-                timeout: 5000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             if (typeOutput.trim() === 'commit') {
@@ -368,7 +380,7 @@ export class GitLogService {
         try {
             const { stdout: output } = await execAsync('git branch --format="%(refname:short)"', {
                 cwd: repoRoot,
-                timeout: 5000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
             const branches = output.trim().split('\n')
                 .filter(b => b && !b.includes('HEAD'))
@@ -429,7 +441,7 @@ export class GitLogService {
             try {
                 const { stdout } = await execAsync(upstreamCommand, {
                     cwd: repoRoot,
-                    timeout: 5000,
+                    timeout: GIT_COMMAND_TIMEOUT_MS,
                 });
                 upstream = stdout.trim();
             } catch {
@@ -439,7 +451,7 @@ export class GitLogService {
             const aheadCommand = `git log ${upstream}..HEAD --pretty=format:"%H"`;
             const { stdout: output } = await execAsync(aheadCommand, {
                 cwd: repoRoot,
-                timeout: 5000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             if (!output.trim()) {
@@ -457,7 +469,7 @@ export class GitLogService {
             const command = `git rev-parse ${commitHash}~1`;
             const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                timeout: 5000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
             return output.trim();
         } catch {
@@ -474,7 +486,7 @@ export class GitLogService {
             const command = `git diff-tree --no-commit-id --numstat -r -M -C ${commitHash}`;
             const { stdout: output } = await execAsync(command, {
                 cwd: repoRoot,
-                timeout: 10000,
+                timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
             if (!output.trim()) {
