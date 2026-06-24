@@ -32,6 +32,7 @@ import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '..
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn, type CreateUpdateWorkItemToolDeps } from '../llm-tools/create-update-work-item-tool';
+import { createCreateConversationTool, type EnqueueChatFn } from '../llm-tools/create-conversation-tool';
 import { createExcalidrawTools } from '../llm-tools/excalidraw-tools';
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { createGetWorkItemTool } from '../llm-tools/get-work-item-tool';
@@ -497,6 +498,40 @@ export function buildSearchConversationsAddon(
     const { tool: getTool } = createGetConversationTool({ store, workspaceId });
 
     return { tools: [searchTool, getTool], suffix: '' };
+}
+
+// ============================================================================
+// Create Conversation
+// ============================================================================
+
+/**
+ * Builds the tools array for the `create_conversation` tool, which lets an agent
+ * spawn a brand-new chat (fire-and-forget) through the same in-process queue path
+ * `POST /api/queue` uses.
+ *
+ * No-ops (returns no tools) when the in-process enqueue capability is absent —
+ * the same defensive pattern {@link buildSearchConversationsAddon} uses when the
+ * store cannot search. The tool is opt-in: even when wired here it is filtered
+ * out unless the user enables it (see `DEFAULT_DISABLED_LLM_TOOLS` /
+ * {@link applyLlmToolPreferences}).
+ *
+ * @param store        ProcessStore — used to validate the target workspace exists.
+ * @param workspaceId  The caller's current workspace; the default enqueue target.
+ * @param enqueueChat  Bound in-process enqueue capability; when omitted, no tool.
+ */
+export function buildCreateConversationAddon(
+    store: ProcessStore | undefined,
+    workspaceId: string | undefined,
+    enqueueChat: EnqueueChatFn | undefined,
+): { tools: Tool<any>[]; suffix: string } {
+    if (!store || !enqueueChat) {
+        return { tools: [], suffix: '' };
+    }
+
+    const { tool } = createCreateConversationTool({ store, workspaceId, enqueueChat });
+
+    // No prose suffix — the create_conversation tool description carries its own guidance.
+    return { tools: [tool], suffix: '' };
 }
 
 // ============================================================================
