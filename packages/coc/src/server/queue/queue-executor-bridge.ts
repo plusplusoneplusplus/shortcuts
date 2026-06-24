@@ -15,6 +15,7 @@ import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 import { ASK_USER_RESUME_FAILED_MESSAGE, buildAskUserResumeMessage, buildPendingAskUserAnswerRecord } from '../llm-tools/ask-user-resume';
+import { buildAskUserResumeTaskInput } from '../processes/resume-pending-ask-user-answers';
 import type { DreamRunExecutor } from '../dreams/dream-runner';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
@@ -517,26 +518,11 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     /** Enqueue (or re-enqueue) an ask_user-resume follow-up task for a process. */
     private enqueueAskUserResumeTask(proc: AIProcess): void {
         if (!this.queueManager) return;
-        const workspaceId = proc.metadata?.workspaceId;
-        this.queueManager.enqueue({
-            processId: proc.id,
-            type: 'chat',
-            priority: 'normal',
-            payload: {
-                kind: 'chat' as const,
-                processId: proc.id,
-                // Prompt is rebuilt from the durable pendingAskUserAnswer at
-                // execution time, so submit-enqueue and startup-re-enqueue behave
-                // identically. The placeholder is never sent to the model.
-                prompt: '',
-                mode: 'ask' as const,
-                context: { askUserResume: true },
-                ...(proc.workingDirectory ? { workingDirectory: proc.workingDirectory } : {}),
-                ...(workspaceId ? { workspaceId } : {}),
-            },
-            config: {},
-            displayName: 'Resuming after restart…',
-        });
+        // Same task shape the startup re-enqueue routine builds, so submit-enqueue
+        // and startup-re-enqueue behave identically. The placeholder prompt is
+        // rebuilt from the durable pendingAskUserAnswer at execution time and is
+        // never sent to the model.
+        this.queueManager.enqueue(buildAskUserResumeTaskInput(proc));
     }
 
     /**

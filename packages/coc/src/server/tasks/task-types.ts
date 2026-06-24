@@ -606,6 +606,15 @@ export function isChatFollowUp(payload: Record<string, unknown>): payload is Rec
     return isChatPayload(payload) && !!payload.processId;
 }
 
+/**
+ * Check whether a chat payload is an ask_user resume follow-up — the task the
+ * answer-submit / startup re-enqueue paths schedule to resume a process whose
+ * durable `pendingAskUserAnswer` was persisted after a restart.
+ */
+export function isAskUserResumePayload(payload: Record<string, unknown>): boolean {
+    return isChatFollowUp(payload) && payload.context?.askUserResume === true;
+}
+
 export function isRunWorkflowPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunWorkflowPayload {
     return payload.kind === 'run-workflow';
 }
