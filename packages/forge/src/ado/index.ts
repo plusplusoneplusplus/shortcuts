@@ -7,6 +7,15 @@ export {
     writeAdoSessionCache,
     isTokenValid,
 } from './ado-session-cache';
+export {
+    ADO_RESOURCE_ID,
+    resolveAdoAccessToken,
+    resolveAdoAccessTokenValue,
+    resetAdoTokenResolverForTests,
+    type AdoAzCliRunner,
+    type ResolveAdoAccessTokenOptions,
+    type ResolvedAdoAccessToken,
+} from './ado-token-resolver';
 export { resolveAdoIdentity, resolveAndCacheAdoIdentity, getOrResolveAdoUserId, resolveAdoUserIdFromConnectionData } from './ado-identity-resolver';
 export { AdoWorkItemsService, AdoWorkItemError, type PatchOp, type FieldPatch } from './workitems-service';
 export {

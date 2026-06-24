@@ -12,15 +12,13 @@ import {
     ProviderType,
     createGitHubPullRequestsAdapter,
     createAdoPullRequestsAdapter,
-    execAsync,
     getOrResolveAdoUserId,
+    resolveAdoAccessTokenValue,
+    ADO_RESOURCE_ID,
 } from '@plusplusoneplusplus/forge';
 import type { ProvidersFileConfig } from './providers-config';
 
-export { ProviderType };
-
-/** Azure DevOps resource ID for OAuth token requests via `az account get-access-token`. */
-export const ADO_RESOURCE_ID = '499b84ac-1321-427f-aa17-267ca6975798';
+export { ProviderType, ADO_RESOURCE_ID };
 
 /** Sentinel returned when an ADO remote is detected but no credentials are available. */
 export interface AdoNoCredentialsSentinel {
@@ -110,8 +108,8 @@ export class ProviderFactory {
     /**
      * Instantiate an IPullRequestsService for the given remote URL and config.
      *
-     * For ADO remotes, uses `az account get-access-token` bearer token (requires `az login`).
-     * Returns `{ error: 'no-ado-credentials' }` sentinel when the Azure CLI call fails.
+     * For ADO remotes, uses the shared ADO token resolver (cached + single-flighted).
+     * Returns `{ error: 'no-ado-credentials' }` sentinel when no token is available.
      *
      * For other providers: returns `null` when credentials are absent or the URL
      * is unrecognized (does not throw).
@@ -119,6 +117,7 @@ export class ProviderFactory {
     static async createPullRequestsService(
         remoteUrl: string,
         config: ProvidersFileConfig,
+        options?: { dataDir?: string },
     ): Promise<IPullRequestsService | AdoNoCredentialsSentinel | null> {
         const providerType = ProviderFactory.detectProviderType(remoteUrl);
 
@@ -142,30 +141,22 @@ export class ProviderFactory {
                 return { error: 'no-ado-credentials' };
             }
 
-            // Azure CLI bearer token
-            try {
-                const { stdout } = await execAsync(
-                    `az account get-access-token --resource ${ADO_RESOURCE_ID} --query accessToken -o tsv`,
-                );
-                const bearerToken = stdout.trim();
-                if (bearerToken) {
-                    // Best-effort: resolve the current user's ADO identity GUID
-                    // so the adapter can filter PRs to the current user.
-                    let currentUserId: string | undefined;
-                    try {
-                        currentUserId = (await getOrResolveAdoUserId(orgUrl, bearerToken)) ?? undefined;
-                    } catch { /* identity resolution is best-effort */ }
+            const bearerToken = await resolveAdoAccessTokenValue({ dataDir: options?.dataDir });
+            if (bearerToken) {
+                // Best-effort: resolve the current user's ADO identity GUID
+                // so the adapter can filter PRs to the current user.
+                let currentUserId: string | undefined;
+                try {
+                    currentUserId = (await getOrResolveAdoUserId(orgUrl, bearerToken)) ?? undefined;
+                } catch { /* identity resolution is best-effort */ }
 
-                    return createAdoPullRequestsAdapter({
-                        orgUrl,
-                        token: bearerToken,
-                        project: parsed?.project,
-                        repo: parsed?.repo,
-                        currentUserId,
-                    });
-                }
-            } catch {
-                // az not available or not logged in — fall through to sentinel
+                return createAdoPullRequestsAdapter({
+                    orgUrl,
+                    token: bearerToken,
+                    project: parsed?.project,
+                    repo: parsed?.repo,
+                    currentUserId,
+                });
             }
 
             return { error: 'no-ado-credentials' };

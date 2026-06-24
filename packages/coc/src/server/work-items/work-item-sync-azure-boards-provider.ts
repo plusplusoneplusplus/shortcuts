@@ -4,7 +4,7 @@ import type { IncomingMessage } from 'http';
 import * as https from 'https';
 import { promisify } from 'util';
 import type { WorkItemSyncProviderStatus } from '@plusplusoneplusplus/coc-client';
-import { ADO_RESOURCE_ID } from '../providers/provider-factory';
+import { ADO_RESOURCE_ID, resolveAdoAccessTokenValue } from '@plusplusoneplusplus/forge';
 import { readProvidersConfig } from '../providers/providers-config';
 import type {
     WorkItemSyncProviderAdapter,
@@ -1226,38 +1226,55 @@ export async function importAzureBoardsEpicTreeAsWorkItems(
     return { root, items, created, updated, warnings, ...pruneResult };
 }
 
+/**
+ * Resolve an Azure DevOps CLI access token.
+ *
+ * When called with default arguments, delegates to the shared token resolver
+ * (cached + single-flighted). When called with custom `run`/`platform`/`comSpec`
+ * arguments (tests), falls back to direct CLI invocation for backward compat.
+ */
 export async function resolveAzureDevOpsCliAccessToken(
-    run: ExecFileAsync = execFileAsync,
-    platform: NodeJS.Platform = process.platform,
-    comSpec: string | undefined = process.env.ComSpec,
+    run?: ExecFileAsync,
+    platform?: NodeJS.Platform,
+    comSpec?: string | undefined,
 ): Promise<string | undefined> {
-    try {
-        const accessTokenArgs = [...AZURE_DEVOPS_ACCESS_TOKEN_ARGS];
-        const command = platform === 'win32'
-            ? {
-                file: comSpec?.trim() || 'cmd.exe',
-                args: ['/d', '/s', '/c', 'az', ...accessTokenArgs],
-            }
-            : {
-                file: 'az',
-                args: accessTokenArgs,
-            };
-        const { stdout } = await run(command.file, command.args, {
-            encoding: 'utf8',
-            windowsHide: true,
-            maxBuffer: 1024 * 1024,
-        });
-        const token = stdout.trim();
-        return token.length > 0 ? token : undefined;
-    } catch {
-        return undefined;
+    // If called with non-default arguments (test injection), use direct CLI path.
+    if (run !== undefined || platform !== undefined || comSpec !== undefined) {
+        const effectiveRun = run ?? execFileAsync;
+        const effectivePlatform = platform ?? process.platform;
+        const effectiveComSpec = comSpec ?? process.env.ComSpec;
+        try {
+            const accessTokenArgs = [...AZURE_DEVOPS_ACCESS_TOKEN_ARGS];
+            const command = effectivePlatform === 'win32'
+                ? {
+                    file: effectiveComSpec?.trim() || 'cmd.exe',
+                    args: ['/d', '/s', '/c', 'az', ...accessTokenArgs],
+                }
+                : {
+                    file: 'az',
+                    args: accessTokenArgs,
+                };
+            const { stdout } = await effectiveRun(command.file, command.args, {
+                encoding: 'utf8',
+                windowsHide: true,
+                maxBuffer: 1024 * 1024,
+            });
+            const token = stdout.trim();
+            return token.length > 0 ? token : undefined;
+        } catch {
+            return undefined;
+        }
     }
+
+    // Default: use the shared cached/single-flighted resolver.
+    return resolveAdoAccessTokenValue();
 }
 
 export function createAzureBoardsWorkItemSyncProviderAdapter(
     options: CreateAzureBoardsWorkItemSyncProviderOptions,
 ): WorkItemSyncProviderAdapter {
-    const resolveAccessToken = options.resolveAccessToken ?? (() => resolveAzureDevOpsCliAccessToken());
+    const resolveAccessToken = options.resolveAccessToken
+        ?? (() => resolveAdoAccessTokenValue({ dataDir: options.dataDir }));
 
     return {
         provider: 'azure-boards',
