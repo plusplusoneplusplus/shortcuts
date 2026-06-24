@@ -480,7 +480,7 @@ export class LogicalTreeDataProvider extends FilterableTreeDataProvider<vscode.T
         }
 
         try {
-            const files = this.gitLogService.getCommitFiles(
+            const files = await this.gitLogService.getCommitFiles(
                 commitItem.repositoryRoot,
                 commitItem.commitHash
             );

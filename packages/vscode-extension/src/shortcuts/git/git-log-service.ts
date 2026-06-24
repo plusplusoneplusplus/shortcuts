@@ -70,19 +70,19 @@ export class GitLogService implements vscode.Disposable {
     /**
      * Get commits from a repository
      */
-    getCommits(repoRoot: string, options: CommitLoadOptions): CommitLoadResult {
+    getCommits(repoRoot: string, options: CommitLoadOptions): Promise<CommitLoadResult> {
         return this.coreService.getCommits(repoRoot, options);
     }
 
     /**
      * Get commits from all repositories
      */
-    getAllCommits(options: CommitLoadOptions): CommitLoadResult {
+    async getAllCommits(options: CommitLoadOptions): Promise<CommitLoadResult> {
         const allCommits: GitCommit[] = [];
         let anyHasMore = false;
 
         for (const repo of this.getRepositories()) {
-            const result = this.coreService.getCommits(repo.rootUri.fsPath, options);
+            const result = await this.coreService.getCommits(repo.rootUri.fsPath, options);
             allCommits.push(...result.commits);
             if (result.hasMore) {
                 anyHasMore = true;
@@ -104,28 +104,28 @@ export class GitLogService implements vscode.Disposable {
     /**
      * Check if there are more commits available
      */
-    hasMoreCommits(repoRoot: string, currentCount: number): boolean {
+    hasMoreCommits(repoRoot: string, currentCount: number): Promise<boolean> {
         return this.coreService.hasMoreCommits(repoRoot, currentCount);
     }
 
     /**
      * Get a single commit by hash
      */
-    getCommit(repoRoot: string, hash: string): GitCommit | undefined {
+    getCommit(repoRoot: string, hash: string): Promise<GitCommit | undefined> {
         return this.coreService.getCommit(repoRoot, hash);
     }
 
     /**
      * Validate a git ref and return the resolved commit hash
      */
-    validateRef(repoRoot: string, ref: string): string | undefined {
+    validateRef(repoRoot: string, ref: string): Promise<string | undefined> {
         return this.coreService.validateRef(repoRoot, ref);
     }
 
     /**
      * Get branch names for suggestions (cached, local branches only for speed)
      */
-    getBranches(repoRoot: string, forceRefresh = false): string[] {
+    getBranches(repoRoot: string, forceRefresh = false): Promise<string[]> {
         return this.coreService.getBranches(repoRoot, forceRefresh);
     }
 
@@ -146,56 +146,56 @@ export class GitLogService implements vscode.Disposable {
     /**
      * Get files changed in a specific commit
      */
-    getCommitFiles(repoRoot: string, commitHash: string): GitCommitFile[] {
+    getCommitFiles(repoRoot: string, commitHash: string): Promise<GitCommitFile[]> {
         return this.coreService.getCommitFiles(repoRoot, commitHash);
     }
 
     /**
      * Get the diff for a specific commit
      */
-    getCommitDiff(repoRoot: string, commitHash: string): string {
+    getCommitDiff(repoRoot: string, commitHash: string): Promise<string> {
         return this.coreService.getCommitDiff(repoRoot, commitHash);
     }
 
     /**
      * Get the diff for pending changes (staged + unstaged)
      */
-    getPendingChangesDiff(repoRoot: string): string {
+    getPendingChangesDiff(repoRoot: string): Promise<string> {
         return this.coreService.getPendingChangesDiff(repoRoot);
     }
 
     /**
      * Get the diff for staged changes only
      */
-    getStagedChangesDiff(repoRoot: string): string {
+    getStagedChangesDiff(repoRoot: string): Promise<string> {
         return this.coreService.getStagedChangesDiff(repoRoot);
     }
 
     /**
      * Check if there are any pending changes
      */
-    hasPendingChanges(repoRoot: string): boolean {
+    hasPendingChanges(repoRoot: string): Promise<boolean> {
         return this.coreService.hasPendingChanges(repoRoot);
     }
 
     /**
      * Check if there are any staged changes
      */
-    hasStagedChanges(repoRoot: string): boolean {
+    hasStagedChanges(repoRoot: string): Promise<boolean> {
         return this.coreService.hasStagedChanges(repoRoot);
     }
 
     /**
      * Get file content at a specific commit
      */
-    getFileContentAtCommit(repoRoot: string, commitHash: string, filePath: string): string | undefined {
+    getFileContentAtCommit(repoRoot: string, commitHash: string, filePath: string): Promise<string | undefined> {
         return this.coreService.getFileContentAtCommit(repoRoot, commitHash, filePath);
     }
 
     /**
      * Check if a file exists at a specific commit
      */
-    fileExistsAtCommit(repoRoot: string, commitHash: string, filePath: string): boolean {
+    fileExistsAtCommit(repoRoot: string, commitHash: string, filePath: string): Promise<boolean> {
         return this.coreService.fileExistsAtCommit(repoRoot, commitHash, filePath);
     }
 
