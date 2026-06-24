@@ -82,6 +82,16 @@ async function waitForStreamingToComplete(page: Page): Promise<void> {
  * subscription exists and any subsequently-released chunk is delivered rather
  * than dropped in the pre-subscription window.
  *
+ * Only the MAIN process stream relays chunks. A conversation view also opens a
+ * warm-only stream (`/processes/:id/stream?warm=1`, from `useWarmClientStatus`)
+ * that sends its OWN immediate heartbeat — but it subscribes on a chunk-less
+ * path and, unlike the main stream, skips the `await store.requestFlush(...)`
+ * step, so its heartbeat almost always lands first. Counting it would resolve
+ * {@link waitForSseSubscribed} before the chunk subscription is live, letting
+ * the first released chunk slip through the pre-subscription window — the exact
+ * flake this guard exists to prevent. So we ignore the `warm=1` stream and only
+ * latch on the main stream's heartbeat.
+ *
  * Must be called BEFORE navigation so the init script patches `EventSource`
  * before app scripts construct it. The flag resets on every document load.
  */
@@ -92,7 +102,8 @@ async function instrumentSseHeartbeat(page: Page): Promise<void> {
         class InstrumentedEventSource extends NativeES {
             constructor(url: string | URL, init?: EventSourceInit) {
                 super(url, init);
-                if (String(url).includes('/stream')) {
+                const href = String(url);
+                if (href.includes('/stream') && !href.includes('warm=1')) {
                     this.addEventListener('heartbeat', () => {
                         (window as Window & { __sseHeartbeat?: boolean }).__sseHeartbeat = true;
                     });
