@@ -85,9 +85,18 @@ async function createRepos(): Promise<{ root: string; dataDir: string; source: s
         GIT_COMMITTER_DATE: '2026-06-04T04:00:00+00:00',
     });
 
-    execFileSync('git', ['clone', source, target], { cwd: root, stdio: 'pipe' });
-    // Same line-ending pinning for the target repo, where `git am` checks out
-    // the transferred patches during the apply flow.
+    // Pin line-ending handling for the clone-time checkout too. Without the
+    // inline `-c` overrides the working tree is checked out under the runner's
+    // global config (Windows defaults to core.autocrlf=true), producing CRLF
+    // working files against LF blobs. Once we pin core.autocrlf=false below,
+    // git would then report those files as modified, leaving the target "dirty"
+    // and causing the apply API to return 409 instead of 200.
+    execFileSync('git', ['clone', '-c', 'core.autocrlf=false', '-c', 'core.eol=lf', source, target], {
+        cwd: root,
+        stdio: 'pipe',
+    });
+    // Same line-ending pinning persisted for the target repo, where `git am`
+    // checks out the transferred patches during the apply flow.
     git(target, ['config', 'core.autocrlf', 'false']);
     git(target, ['config', 'core.eol', 'lf']);
     git(target, ['config', 'user.name', 'Target Committer']);
