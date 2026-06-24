@@ -68,6 +68,12 @@ async function createRepos(): Promise<{ root: string; dataDir: string; source: s
 
     await fs.mkdir(source, { recursive: true });
     git(source, ['init', '-b', 'main']);
+    // Pin line-ending handling so checked-out file content is byte-identical
+    // across platforms — Windows runners default to core.autocrlf=true, which
+    // would rewrite committed `\n` to `\r\n` on checkout and break exact
+    // file-content assertions below.
+    git(source, ['config', 'core.autocrlf', 'false']);
+    git(source, ['config', 'core.eol', 'lf']);
     git(source, ['config', 'user.name', 'Source Committer']);
     git(source, ['config', 'user.email', 'source-committer@example.test']);
     await writeRepoFile(source, 'shared.txt', 'base\n');
@@ -80,6 +86,10 @@ async function createRepos(): Promise<{ root: string; dataDir: string; source: s
     });
 
     execFileSync('git', ['clone', source, target], { cwd: root, stdio: 'pipe' });
+    // Same line-ending pinning for the target repo, where `git am` checks out
+    // the transferred patches during the apply flow.
+    git(target, ['config', 'core.autocrlf', 'false']);
+    git(target, ['config', 'core.eol', 'lf']);
     git(target, ['config', 'user.name', 'Target Committer']);
     git(target, ['config', 'user.email', 'target-committer@example.test']);
 
