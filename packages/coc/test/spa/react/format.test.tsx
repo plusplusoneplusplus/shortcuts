@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { formatDuration, formatRelativeTime, escapeHtml, copyToClipboard, statusIcon, statusLabel, typeLabel, repoName } from '../../../src/server/spa/client/react/utils/format';
+import { formatDuration, formatRelativeTime, escapeHtml, copyToClipboard, copyImageToClipboard, statusIcon, statusLabel, typeLabel, repoName } from '../../../src/server/spa/client/react/utils/format';
 
 describe('formatDuration', () => {
     it('returns empty string for null', () => {
@@ -133,6 +133,50 @@ describe('copyToClipboard', () => {
         });
         await copyToClipboard('test');
         expect(writeText).toHaveBeenCalledWith('test');
+    });
+});
+
+describe('copyImageToClipboard', () => {
+    it('writes a PNG data URL directly to the clipboard', async () => {
+        const pngBlob = new Blob(['png-bytes'], { type: 'image/png' });
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ blob: async () => pngBlob }));
+        const items: any[] = [];
+        class FakeClipboardItem {
+            constructor(public data: Record<string, any>) {}
+        }
+        vi.stubGlobal('ClipboardItem', FakeClipboardItem as any);
+        const write = vi.fn(async (arr: any[]) => { items.push(...arr); });
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { write },
+            writable: true,
+            configurable: true,
+        });
+
+        await copyImageToClipboard('data:image/png;base64,AAAA');
+
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(items[0]).toBeInstanceOf(FakeClipboardItem);
+        // The PNG blob promise resolves to the original blob (no re-encode).
+        await expect(items[0].data['image/png']).resolves.toBe(pngBlob);
+        vi.unstubAllGlobals();
+    });
+
+    it('throws when ClipboardItem is unavailable', async () => {
+        vi.stubGlobal('ClipboardItem', undefined as any);
+        await expect(copyImageToClipboard('data:image/png;base64,AAAA')).rejects.toThrow();
+        vi.unstubAllGlobals();
+    });
+
+    it('throws when navigator.clipboard.write is unavailable', async () => {
+        class FakeClipboardItem { constructor(public data: Record<string, any>) {} }
+        vi.stubGlobal('ClipboardItem', FakeClipboardItem as any);
+        Object.defineProperty(navigator, 'clipboard', {
+            value: {},
+            writable: true,
+            configurable: true,
+        });
+        await expect(copyImageToClipboard('data:image/png;base64,AAAA')).rejects.toThrow();
+        vi.unstubAllGlobals();
     });
 });
 

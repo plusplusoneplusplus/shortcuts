@@ -174,4 +174,57 @@ describe('ConversationTurnBubble — context menu', () => {
         expect(notPrevented).toBe(false);
         expect(screen.getByTestId('context-menu')).toBeTruthy();
     });
+
+    it('does not show "Copy image" when the turn has no images', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn()} turnIndex={0} />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        expect(screen.queryByText('Copy image')).toBeNull();
+    });
+
+    it('shows "Copy image" and writes to the clipboard when the turn has one image', async () => {
+        class FakeClipboardItem { constructor(public data: Record<string, any>) {} }
+        vi.stubGlobal('ClipboardItem', FakeClipboardItem as any);
+        const pngBlob = new Blob(['png'], { type: 'image/png' });
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ blob: async () => pngBlob }));
+        const write = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { write },
+            writable: true,
+            configurable: true,
+        });
+
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ images: ['data:image/png;base64,AAAA'] })}
+                turnIndex={0}
+            />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        const item = screen.getByText('Copy image');
+        expect(item).toBeTruthy();
+        fireEvent.click(item);
+        // onClick is async; flush microtasks.
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(write).toHaveBeenCalledTimes(1);
+        vi.unstubAllGlobals();
+    });
+
+    it('renders a submenu with one entry per image when the turn has multiple images', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ images: ['data:image/png;base64,AAAA', 'data:image/png;base64,BBBB'] })}
+                turnIndex={0}
+            />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        const parent = screen.getByText('Copy image');
+        expect(parent).toBeTruthy();
+        // Clicking the parent item toggles its submenu open.
+        fireEvent.click(parent);
+        expect(screen.getByText('Image 1')).toBeTruthy();
+        expect(screen.getByText('Image 2')).toBeTruthy();
+    });
 });
