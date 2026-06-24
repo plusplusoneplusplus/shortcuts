@@ -939,6 +939,33 @@ describe('SqliteProcessStore — Metadata envelope', () => {
         const cleared = await store.getProcess('meta-ask-user');
         expect(cleared!.pendingAskUser).toBeUndefined();
     });
+
+    it('folds, unfolds, and clears pendingAskUserAnswer', async () => {
+        const answer = {
+            batchId: 'batch-9',
+            answers: [
+                { questionId: 'q1', question: 'Pick one', answer: 'a', skipped: false, deferred: false },
+                { questionId: 'q2', question: 'Free text', answer: null, skipped: true, deferred: false },
+                { questionId: 'q3', question: 'Need ctx', answer: null, skipped: false, deferred: true, reason: 'needs-context' as const, note: 'why?' },
+            ],
+            submittedAt: '2026-06-24T00:00:00.000Z',
+        };
+        await store.addProcess(makeProcess('meta-ask-user-answer', {
+            pendingAskUserAnswer: answer as AIProcess['pendingAskUserAnswer'],
+        }));
+
+        const stored = await store.getProcess('meta-ask-user-answer');
+        expect(stored!.pendingAskUserAnswer).toEqual(answer);
+
+        // Setting pendingAskUserAnswer alongside other metadata updates must not drop it.
+        await store.updateProcess('meta-ask-user-answer', { metadata: { type: 'chat', mode: 'ask' } });
+        const afterMeta = await store.getProcess('meta-ask-user-answer');
+        expect(afterMeta!.pendingAskUserAnswer).toEqual(answer);
+
+        await store.updateProcess('meta-ask-user-answer', { pendingAskUserAnswer: undefined });
+        const cleared = await store.getProcess('meta-ask-user-answer');
+        expect(cleared!.pendingAskUserAnswer).toBeUndefined();
+    });
 });
 
 // ============================================================================

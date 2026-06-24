@@ -479,6 +479,33 @@ describe('FileProcessStore — per-workspace layout', () => {
         expect(clearedWaiting.pendingAskUserCount).toBeUndefined();
     });
 
+    it('persists, reads back, and clears pendingAskUserAnswer across reloads', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const answer = {
+            batchId: 'batch-9',
+            answers: [
+                { questionId: 'q1', question: 'Pick one', answer: 'a', skipped: false, deferred: false },
+                { questionId: 'q2', question: 'Need ctx', answer: null, skipped: false, deferred: true, reason: 'needs-context' as const, note: 'why?' },
+            ],
+            submittedAt: '2026-06-24T00:00:00.000Z',
+        };
+        await store.addProcess(makeProcess('answered', {
+            status: 'failed',
+            metadata: { type: 'ai', workspaceId: 'ws-await' },
+            pendingAskUserAnswer: answer as AIProcess['pendingAskUserAnswer'],
+        }));
+
+        // Fresh store instance forces a read from disk (survives "restart").
+        const reloaded = new FileProcessStore({ dataDir: tmpDir });
+        const stored = await reloaded.getProcess('answered');
+        expect(stored!.pendingAskUserAnswer).toEqual(answer);
+
+        await reloaded.updateProcess('answered', { pendingAskUserAnswer: undefined });
+        const afterClear = new FileProcessStore({ dataDir: tmpDir });
+        const cleared = await afterClear.getProcess('answered');
+        expect(cleared!.pendingAskUserAnswer).toBeUndefined();
+    });
+
     it('getProcessCount across workspaces agrees with getAllProcesses().length', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         await store.addProcess(makeProcess('a1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
