@@ -11,6 +11,16 @@ export {
 } from './get-conversation-tool';
 export { createSuggestFollowUpsTool, type FollowUpSuggestion } from './suggest-follow-ups-tool';
 export {
+    createCreateConversationTool,
+    type CreateConversationArgs,
+    type CreateConversationMode,
+    type CreateConversationToolOptions,
+    type CreateConversationResult,
+    type CreateConversationSuccess,
+    type CreateConversationError,
+    type EnqueueChatFn,
+} from './create-conversation-tool';
+export {
     createGetWorkItemTool,
     type GetWorkItemArgs,
     type GetWorkItemToolDeps,
