@@ -206,7 +206,7 @@ export class WorkItemGitHubPullPoller {
         if (roots.length === 0) return result;
 
         const workspace = await this.getWorkspace(workspaceId);
-        const repo = this.resolveRepo(workspaceId, workspace);
+        const repo = await this.resolveRepo(workspaceId, workspace);
         const candidateIssues = await this.transport.listIssues(repo, { limit: WORK_ITEM_SYNC_MAX_ITEMS });
         result.candidatesConsidered = candidateIssues.length;
         // The transport caps the candidate list at WORK_ITEM_SYNC_MAX_ITEMS, so a
@@ -278,8 +278,8 @@ export class WorkItemGitHubPullPoller {
         return workspaces.find(workspace => workspace.id === workspaceId);
     }
 
-    private resolveRepo(workspaceId: string, workspace: WorkspaceInfo | undefined): AvailableGitHubWorkItemSyncRepo {
-        const repo = resolveGitHubWorkItemSyncRepo({
+    private async resolveRepo(workspaceId: string, workspace: WorkspaceInfo | undefined): Promise<AvailableGitHubWorkItemSyncRepo> {
+        const repo = await resolveGitHubWorkItemSyncRepo({
             workspace,
             preferences: readRepoPreferences(this.options.dataDir, workspaceId),
         });

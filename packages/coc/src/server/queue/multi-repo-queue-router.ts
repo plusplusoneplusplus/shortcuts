@@ -281,10 +281,10 @@ export class MultiRepoQueueRouter extends EventEmitter {
      * Execute a follow-up message on an existing AI session.
      * Searches across all per-repo bridges for the process.
      */
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'): Promise<void> {
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string): Promise<void> {
         const handled = await this.dispatchToOwnerBridge(
             (bridge) => bridge.isSessionAlive(processId),
-            (bridge) => bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource, reasoningEffort),
+            (bridge) => bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource, reasoningEffort, strictResumeSessionId),
         );
         if (handled) return;
         throw new Error(`No active session found for process ${processId}`);

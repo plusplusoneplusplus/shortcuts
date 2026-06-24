@@ -740,6 +740,143 @@ describe('source-canvas routing for chat AI-response file-path links (AC-03)', (
     });
 });
 
+describe('folder-canvas routing for chat AI-response directory links (AC-01/AC-03)', () => {
+    const PREVIEW_MODULE = '../../../src/server/spa/client/react/shared/file-path/file-path-preview';
+    const FLAGS_MODULE = '../../../src/server/spa/client/react/featureFlags';
+
+    function freshBody(): void {
+        document.body = document.createElement('body');
+    }
+
+    beforeEach(() => {
+        freshBody();
+        vi.resetModules();
+        vi.doUnmock(FLAGS_MODULE);
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ workspaces: [] }),
+        }) as any);
+    });
+
+    afterEach(() => {
+        vi.doUnmock(FLAGS_MODULE);
+        vi.resetModules();
+        vi.restoreAllMocks();
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+        freshBody();
+    });
+
+    function clickLink(selector = '.file-path-link'): ReturnType<typeof vi.spyOn> {
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+        const link = document.querySelector(selector) as HTMLElement;
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        return dispatchSpy as any;
+    }
+
+    function eventCalls(dispatchSpy: ReturnType<typeof vi.spyOn>, eventType: string): any[] {
+        return (dispatchSpy.mock.calls as any[]).filter(
+            ([e]) => (e as Event)?.type === eventType
+        );
+    }
+
+    it('trailing-slash absolute path in assistant message → opens folder canvas (kind: dir)', async () => {
+        const dirPath = '/repo/src/managers/';
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-1">
+                <span class="file-path-link" data-full-path="${dirPath}">src/managers/</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink();
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        expect(call[0].detail).toEqual(expect.objectContaining({
+            filePath: dirPath,
+            wsId: 'ws-1',
+            kind: 'dir',
+        }));
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
+    it('trailing-slash markdown anchor (relative folder) in assistant message → opens folder canvas (kind: dir)', async () => {
+        const dirPath = 'python/sglang/srt/managers/';
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-1">
+                <a href="${dirPath}"><span class="label">managers folder</span></a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.label');
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        expect(call[0].detail).toEqual(expect.objectContaining({
+            filePath: dirPath,
+            wsId: 'ws-1',
+            kind: 'dir',
+        }));
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
+    it('folder link in a chat USER message → does NOT open the folder canvas (assistant only)', async () => {
+        const dirPath = '/repo/src/managers/';
+        document.body.innerHTML = `
+            <div class="chat-message user" data-ws-id="ws-1">
+                <span class="file-path-link" data-full-path="${dirPath}">src/managers/</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink();
+
+        // No folder canvas; falls back to the floating review dialog instead.
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'coc-open-markdown-review' })
+        );
+    });
+
+    it('regression: a non-slash code path still opens the read-only file viewer (kind: code)', async () => {
+        const fullPath = '/repo/src/foo.ts';
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-1">
+                <span class="file-path-link" data-full-path="${fullPath}">foo.ts</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink();
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        // Code refs carry no `kind` (host defaults to the read-only viewer).
+        expect(call[0].detail.kind).toBeUndefined();
+        expect(call[0].detail.filePath).toBe(fullPath);
+    });
+
+    it('regression: a trailing-slash markdown note path still opens the editable note (kind: note)', async () => {
+        // `.md/` is unusual but proves directory detection runs before markdown:
+        // a real markdown note (no trailing slash) must NOT be mistaken for a folder.
+        const fullPath = '/repo/docs/plan.md';
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="ws-1">
+                <span class="file-path-link" data-full-path="${fullPath}" data-line="40">plan.md:40</span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink();
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call).toBeTruthy();
+        expect(call[0].detail.kind).toBe('note');
+    });
+});
+
 describe('editable-note canvas routing for markdown chat links (AC-01)', () => {
     const PREVIEW_MODULE = '../../../src/server/spa/client/react/shared/file-path/file-path-preview';
     const FLAGS_MODULE = '../../../src/server/spa/client/react/featureFlags';

@@ -389,7 +389,11 @@ describe('ChatDetail', () => {
     describe('no-session follow-up guard', () => {
         it('computes noSessionForFollowUp from terminal status and missing session', () => {
             expect(source).toContain('noSessionForFollowUp');
-            expect(source).toMatch(/isTerminal\s*&&\s*processDetails\s*!==\s*null\s*&&\s*!resumeSessionId/);
+            // The guard may interleave additional terminal-state conditions (e.g.
+            // `effectiveStatus !== 'cancelled'`, `!nonRetryableFollowUpError`) between
+            // these core terms, so tolerate intermediate `&& …` clauses while still
+            // asserting the three essential conditions appear in order.
+            expect(source).toMatch(/isTerminal[\s\S]*?&&\s*processDetails\s*!==\s*null[\s\S]*?&&\s*!resumeSessionId/);
         });
 
         it('hides chat input when noSessionForFollowUp is true', () => {

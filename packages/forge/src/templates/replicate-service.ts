@@ -16,7 +16,7 @@ export async function replicateCommit(
     try {
         // 1. Read commit metadata
         onProgress?.('git', 'Reading commit metadata…');
-        const commit = gitLog.getCommit(options.repoRoot, options.template.commitHash);
+        const commit = await gitLog.getCommit(options.repoRoot, options.template.commitHash);
         if (!commit) {
             throw new PipelineCoreError(
                 `Template commit not found: ${options.template.commitHash}`,
@@ -26,11 +26,11 @@ export async function replicateCommit(
 
         // 2. Read commit diff
         onProgress?.('git', 'Reading commit diff…');
-        const diff = gitLog.getCommitDiff(options.repoRoot, options.template.commitHash);
+        const diff = await gitLog.getCommitDiff(options.repoRoot, options.template.commitHash);
 
         // 3. Read changed files
         onProgress?.('git', 'Reading changed files…');
-        const files = gitLog.getCommitFiles(options.repoRoot, options.template.commitHash);
+        const files = await gitLog.getCommitFiles(options.repoRoot, options.template.commitHash);
 
         // Dispose git service (clears caches)
         gitLog.dispose();

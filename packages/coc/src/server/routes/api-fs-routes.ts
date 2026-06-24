@@ -9,8 +9,7 @@ import * as url from 'url';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execFileSync } from 'child_process';
-import { getDefaultWslDistro, getWslExecutablePath, isWithinDirectory } from '@plusplusoneplusplus/forge';
+import { getDefaultWslDistro, getWslExecutablePath, isWithinDirectory, execFileAsync } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
 import { handleAPIError, notFound } from '../errors';
@@ -21,15 +20,25 @@ export interface BrowseRoot {
     path: string;
 }
 
+/** Non-blocking existence check (async equivalent of the synchronous existence probe). */
+async function pathExists(target: string): Promise<boolean> {
+    try {
+        await fs.promises.access(target);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 /** Enumerate available Windows drive roots (e.g., C:\, D:\). */
-function listWindowsDrives(): string[] {
+async function listWindowsDrives(): Promise<string[]> {
     if (process.platform !== 'win32') {
         return [];
     }
     const drives: string[] = [];
     for (let code = 65; code <= 90; code++) {
         const drive = `${String.fromCharCode(code)}:\\`;
-        if (fs.existsSync(drive)) {
+        if (await pathExists(drive)) {
             drives.push(drive);
         }
     }
@@ -42,7 +51,7 @@ function linuxPathToWslUnc(distro: string, linuxPath: string): string {
     return segments.length > 0 ? path.win32.join(base, ...segments) : base;
 }
 
-function getDefaultWslRoots(): BrowseRoot[] {
+async function getDefaultWslRoots(): Promise<BrowseRoot[]> {
     if (process.platform !== 'win32') {
         return [];
     }
@@ -58,11 +67,11 @@ function getDefaultWslRoots(): BrowseRoot[] {
     };
 
     try {
-        const home = execFileSync(
+        const { stdout } = await execFileAsync(
             getWslExecutablePath(),
             ['-d', distro, '--', 'sh', '-c', 'printf %s "$HOME"'],
-            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-        ).trim();
+        );
+        const home = stdout.trim();
         if (!home.startsWith('/')) {
             return [fallbackRoot];
         }
@@ -75,7 +84,7 @@ function getDefaultWslRoots(): BrowseRoot[] {
     }
 }
 
-export function listBrowseRoots(): BrowseRoot[] {
+export async function listBrowseRoots(): Promise<BrowseRoot[]> {
     if (process.platform !== 'win32') {
         return [];
     }
@@ -95,10 +104,10 @@ export function listBrowseRoots(): BrowseRoot[] {
         roots.push(root);
     };
 
-    for (const root of getDefaultWslRoots()) {
+    for (const root of await getDefaultWslRoots()) {
         pushRoot(root);
     }
-    for (const drive of listWindowsDrives()) {
+    for (const drive of await listWindowsDrives()) {
         pushRoot({ label: drive, path: drive });
     }
 
@@ -106,20 +115,26 @@ export function listBrowseRoots(): BrowseRoot[] {
 }
 
 /** Browse a directory and return its entries (directories only) for repo path selection. */
-export function browseDirectory(dirPath: string, showHidden = false): {
+export async function browseDirectory(dirPath: string, showHidden = false): Promise<{
     path: string;
     parent: string | null;
     entries: Array<{ name: string; type: 'directory'; isGitRepo: boolean }>;
-} | null {
+} | null> {
     try {
-        if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) {
+        let dirStat: fs.Stats;
+        try {
+            dirStat = await fs.promises.stat(dirPath);
+        } catch {
+            return null;
+        }
+        if (!dirStat.isDirectory()) {
             return null;
         }
 
         const parentDir = path.dirname(dirPath);
         const parent = parentDir !== dirPath ? parentDir : null;
 
-        const rawEntries = fs.readdirSync(dirPath, { withFileTypes: true });
+        const rawEntries = await fs.promises.readdir(dirPath, { withFileTypes: true });
         const entries: Array<{ name: string; type: 'directory'; isGitRepo: boolean }> = [];
 
         for (const entry of rawEntries) {
@@ -128,7 +143,7 @@ export function browseDirectory(dirPath: string, showHidden = false): {
             // Symlinks report isDirectory()=false; resolve the target to check.
             if (!isDir && entry.isSymbolicLink()) {
                 try {
-                    const realStat = fs.statSync(path.join(dirPath, entry.name));
+                    const realStat = await fs.promises.stat(path.join(dirPath, entry.name));
                     isDir = realStat.isDirectory();
                 } catch {
                     // Broken symlink — skip gracefully
@@ -140,7 +155,7 @@ export function browseDirectory(dirPath: string, showHidden = false): {
             if (!showHidden && entry.name.startsWith('.')) continue;
 
             const fullPath = path.join(dirPath, entry.name);
-            const isGitRepo = fs.existsSync(path.join(fullPath, '.git'));
+            const isGitRepo = await pathExists(path.join(fullPath, '.git'));
 
             entries.push({ name: entry.name, type: 'directory', isGitRepo });
         }
@@ -247,7 +262,7 @@ export function registerApiFsRoutes(routes: Route[], options?: RegisterApiFsRout
 
             const resolved = path.resolve(rawPath.replace(/^~/, os.homedir()));
 
-            const result = browseDirectory(resolved, showHidden);
+            const result = await browseDirectory(resolved, showHidden);
             if (!result) {
                 return handleAPIError(res, notFound('Directory'));
             }
@@ -261,8 +276,8 @@ export function registerApiFsRoutes(routes: Route[], options?: RegisterApiFsRout
             } = { ...result };
 
             if (process.platform === 'win32') {
-                payload.drives = listWindowsDrives();
-                payload.browseRoots = listBrowseRoots();
+                payload.drives = await listWindowsDrives();
+                payload.browseRoots = await listBrowseRoots();
             }
 
             sendJSON(res, 200, payload);

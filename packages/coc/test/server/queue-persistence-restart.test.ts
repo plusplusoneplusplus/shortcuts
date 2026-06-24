@@ -169,10 +169,10 @@ describe('Queue Persistence Across Server Restart', () => {
     });
 
     // ========================================================================
-    // Section 10.2: Frozen state NOT preserved
+    // Section 10.2: Frozen state preserved
     // ========================================================================
 
-    it('frozen task after restart → loses frozen state (not persisted)', async () => {
+    it('frozen task after restart → preserves frozen state', async () => {
         const store1 = new SqliteProcessStore({ dbPath });
         activeStores.push(store1);
         const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store1 });
@@ -196,29 +196,28 @@ describe('Queue Persistence Across Server Restart', () => {
         activeServers.push(server2);
         const listRes = await request(`${server2.url}/api/queue`);
         const queued = JSON.parse(listRes.body).queued;
-        // Task is re-enqueued without frozen flag
-        expect(queued.some((t: any) => t.frozen === true)).toBe(false);
+        expect(queued.find((t: any) => t.id === taskId)?.frozen).toBe(true);
 
         await server2.close();
         store2.close();
     });
 
     // ========================================================================
-    // Section 10.3: Pause marker NOT preserved
+    // Section 10.3: Pause marker preserved
     // ========================================================================
 
-    it('pause marker after restart → NOT present (pause markers are not persisted)', async () => {
+    it('pause marker after restart → present with duration', async () => {
         const store1 = new SqliteProcessStore({ dbPath });
         activeStores.push(store1);
         const server1 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store1 });
         activeServers.push(server1);
         await post(`${server1.url}/api/queue/pause`, {});
         await post(`${server1.url}/api/queue`, makeGlobalTask('T1'));
-        await post(`${server1.url}/api/queue/pause-marker`, { afterIndex: 0 });
+        await post(`${server1.url}/api/queue/pause-marker`, { afterIndex: 0, durationHours: 2 });
 
         // Verify marker before restart
         const before = JSON.parse((await request(`${server1.url}/api/queue`)).body).queued;
-        expect(before.some((i: any) => i.kind === 'pause-marker')).toBe(true);
+        expect(before.find((i: any) => i.kind === 'pause-marker')?.durationHours).toBe(2);
 
         await server1.close();
         store1.close();
@@ -228,7 +227,7 @@ describe('Queue Persistence Across Server Restart', () => {
         const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store2, queue: { autoStart: false } });
         activeServers.push(server2);
         const after = JSON.parse((await request(`${server2.url}/api/queue`)).body).queued;
-        expect(after.some((i: any) => i.kind === 'pause-marker')).toBe(false);
+        expect(after.find((i: any) => i.kind === 'pause-marker')?.durationHours).toBe(2);
 
         await server2.close();
         store2.close();
@@ -271,5 +270,4 @@ describe('Queue Persistence Across Server Restart', () => {
         store2.close();
     });
 });
-
 

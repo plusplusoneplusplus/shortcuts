@@ -463,7 +463,7 @@ describe('SqliteQueuePersistence', () => {
             expect(store.getQueueTasks(rId, ['queued'])).toHaveLength(1); // still in DB
         });
 
-        it('logs a warning for tasks without a root path mapping', () => {
+        it('logs a warning for queued items without a root path mapping', () => {
             const rId = 'unmapped-repo-id';
             persistence = new SqliteQueuePersistence(bridge, db);
 
@@ -479,7 +479,7 @@ describe('SqliteQueuePersistence', () => {
                 ([msg]) => typeof msg === 'string' && msg.includes('Warning') && msg.includes(rId)
             );
             expect(warningCalls).toHaveLength(1);
-            expect(warningCalls[0][0]).toContain('2 task(s)');
+            expect(warningCalls[0][0]).toContain('2 queued item(s)');
             stderrSpy.mockRestore();
         });
 

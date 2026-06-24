@@ -308,7 +308,7 @@ describe('ChatPreferencesProvider', () => {
 
         act(() => { result.current.pinChat('newPin'); });
 
-        expect(mockPinProcess).toHaveBeenCalledWith('newPin');
+        expect(mockPinProcess).toHaveBeenCalledWith('newPin', 'ws1');
     });
 
     it('10b. archiveProcess called with correct id on archiveChat', () => {
@@ -316,7 +316,7 @@ describe('ChatPreferencesProvider', () => {
 
         act(() => { result.current.archiveChat('newArchive'); });
 
-        expect(mockArchiveProcess).toHaveBeenCalledWith('newArchive');
+        expect(mockArchiveProcess).toHaveBeenCalledWith('newArchive', 'ws1');
     });
 
     it('10c. unpinProcess called on unpinChat', () => {
@@ -324,7 +324,7 @@ describe('ChatPreferencesProvider', () => {
 
         act(() => { result.current.unpinChat('t1'); });
 
-        expect(mockUnpinProcess).toHaveBeenCalledWith('t1');
+        expect(mockUnpinProcess).toHaveBeenCalledWith('t1', 'ws1');
     });
 
     it('10d. unarchiveProcess called on unarchiveChat', () => {
@@ -332,7 +332,7 @@ describe('ChatPreferencesProvider', () => {
 
         act(() => { result.current.unarchiveChat('a1'); });
 
-        expect(mockUnarchiveProcess).toHaveBeenCalledWith('a1');
+        expect(mockUnarchiveProcess).toHaveBeenCalledWith('a1', 'ws1');
     });
 
     it('10e. archiveProcesses called on archiveChats', () => {
@@ -340,7 +340,7 @@ describe('ChatPreferencesProvider', () => {
 
         act(() => { result.current.archiveChats(['a1', 'a2']); });
 
-        expect(mockArchiveProcesses).toHaveBeenCalledWith(['a1', 'a2']);
+        expect(mockArchiveProcesses).toHaveBeenCalledWith(['a1', 'a2'], 'ws1');
     });
 
     it('11. pinChat on archived chat removes from archivedChatIds and no separate unarchive API call', () => {
@@ -355,7 +355,7 @@ describe('ChatPreferencesProvider', () => {
         // Should no longer be archived
         expect(result.current.archivedChatIds.has('archivedTask')).toBe(false);
         // Only pinProcess should be called (server auto-unarchives)
-        expect(mockPinProcess).toHaveBeenCalledWith('archivedTask');
+        expect(mockPinProcess).toHaveBeenCalledWith('archivedTask', 'ws1');
         expect(mockUnarchiveProcess).not.toHaveBeenCalled();
     });
 
@@ -386,6 +386,6 @@ describe('ChatPreferencesProvider', () => {
 
         act(() => { result.current.unarchiveChats(['a1', 'a2']); });
 
-        expect(mockUnarchiveProcesses).toHaveBeenCalledWith(['a1', 'a2']);
+        expect(mockUnarchiveProcesses).toHaveBeenCalledWith(['a1', 'a2'], 'ws1');
     });
 });

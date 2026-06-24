@@ -884,7 +884,7 @@ test.describe('Tool-failed SSE', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Cancelled Task', () => {
-    test('input and send button are disabled for a cancelled task', async ({ page, serverUrl, mockAI }) => {
+    test('input and send button stay enabled for a resumable (saved-session) cancelled task', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'cancelled-1');
         try {
             // Complete a task normally
@@ -913,6 +913,10 @@ test.describe('Cancelled Task', () => {
                     const json = await res.json();
                     if (json.process) {
                         json.process.status = 'cancelled';
+                        // Cancelled chats are resumable when a saved SDK session
+                        // exists; pin it explicitly so the composer-enabled path is
+                        // deterministic regardless of completion-flow persistence.
+                        json.process.sdkSessionId = 'sess-cancel-test';
                     }
                     await route.fulfill({ json });
                 } else {
@@ -923,14 +927,16 @@ test.describe('Cancelled Task', () => {
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
             await waitForConversation(page, 2);
 
-            // Input should be disabled because task.status === 'cancelled'.
-            // The follow-up input is a RichTextInput contenteditable div, so
-            // assert on the contenteditable attribute (Playwright's
-            // toBeDisabled() doesn't recognise aria-disabled on a non-form-
+            // A cancelled chat WITH a saved SDK session is now resumable (strict
+            // resume), so the composer stays enabled — the input is editable and
+            // the send button is enabled (`inputDisabled` is false because the chat
+            // is not a non-resumable cancelled chat). The follow-up input is a
+            // RichTextInput contenteditable div, so assert on the contenteditable
+            // attribute (Playwright's toBeEnabled() doesn't recognise a non-form-
             // control element).
             await expect(page.locator('[data-testid="activity-chat-input"]'))
-                .toHaveAttribute('contenteditable', 'false', { timeout: 5_000 });
-            await expect(page.locator('[data-testid="activity-chat-send-btn"]')).toBeDisabled();
+                .toHaveAttribute('contenteditable', 'true', { timeout: 5_000 });
+            await expect(page.locator('[data-testid="activity-chat-send-btn"]')).toBeEnabled();
         } finally {
             cleanup();
         }

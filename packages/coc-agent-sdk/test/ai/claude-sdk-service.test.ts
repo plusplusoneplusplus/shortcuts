@@ -1388,7 +1388,7 @@ describe('ClaudeSDKService.sendMessage', () => {
             prompt: 'SECRET_PROMPT_TEXT',
             model: 'opus',
             workingDirectory: '/safe/project',
-            mode: 'plan',
+            mode: 'interactive',
             systemMessage: { mode: 'append', content: 'SECRET_SYSTEM_PROMPT' },
             mcpServers: {
                 safe_server: {
@@ -1418,7 +1418,7 @@ describe('ClaudeSDKService.sendMessage', () => {
             requestedModel: 'opus',
             effectiveModel: 'opus',
             workingDirectory: '/safe/project',
-            permissionMode: 'plan',
+            permissionMode: 'acceptEdits',
             mcpConfigured: true,
             mcpServerNames: ['safe_server'],
             cause: {
@@ -1704,23 +1704,9 @@ describe('ClaudeSDKService.sendMessage', () => {
                 }),
             }),
         );
-    });
-
-    it('uses Claude plan permission mode for plan mode', async () => {
-        queryFn.mockReturnValueOnce(makeMessages([
-            { type: 'result', subtype: 'success' },
-        ]));
-
-        await svc.sendMessage({ prompt: 'make a plan', mode: 'plan' });
-
-        expect(queryFn).toHaveBeenCalledWith(
-            expect.objectContaining({
-                options: expect.objectContaining({
-                    permissionMode: 'plan',
-                }),
-            }),
-        );
-        expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
+        const allowedTools = queryFn.mock.calls[0][0].options.allowedTools ?? [];
+        expect(allowedTools).not.toContain('Bash(gh:*)');
+        expect(allowedTools).not.toContain('WebFetch');
     });
 
     it('uses acceptEdits permission mode for interactive mode', async () => {
@@ -1734,6 +1720,19 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
     });
 
+    it('auto-allows scoped gh Bash and WebFetch in interactive (ask) mode', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({ prompt: 'investigate', mode: 'interactive' });
+
+        const allowedTools = queryFn.mock.calls[0][0].options.allowedTools;
+        expect(allowedTools).toContain('Bash(gh:*)');
+        expect(allowedTools).toContain('WebFetch');
+        expect(allowedTools).not.toContain('Bash');
+    });
+
     it('uses acceptEdits permission mode when mode is undefined', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             { type: 'result', subtype: 'success' },
@@ -1743,6 +1742,19 @@ describe('ClaudeSDKService.sendMessage', () => {
 
         expect(queryFn.mock.calls[0][0].options.permissionMode).toBe('acceptEdits');
         expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
+    });
+
+    it('auto-allows scoped gh Bash and WebFetch when mode is undefined', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({ prompt: 'investigate' });
+
+        const allowedTools = queryFn.mock.calls[0][0].options.allowedTools;
+        expect(allowedTools).toContain('Bash(gh:*)');
+        expect(allowedTools).toContain('WebFetch');
+        expect(allowedTools).not.toContain('Bash');
     });
 
     it('passes Claude model IDs through but drops Copilot model IDs', async () => {

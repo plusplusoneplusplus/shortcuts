@@ -18,6 +18,10 @@ import { createRequestHandler, registerApiRoutes, generateDashboardHtml } from '
 import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-bridge';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { createMockBridge } from '../helpers/mock-sdk-service';
+import {
+    STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+    STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+} from '../../src/server/tasks/task-types';
 
 // ============================================================================
 // Helpers
@@ -210,6 +214,44 @@ describe('POST /api/processes/:id/message', () => {
             expect(call.payload.prompt).toBe('Hello from enqueue');
             // executeFollowUp should NOT be called directly
             expect(mockBridge.executeFollowUp).not.toHaveBeenCalled();
+        });
+
+        it('should accept cancelled follow-up with saved sdkSessionId and bind the resume session', async () => {
+            (mockBridge.isSessionAlive as any).mockResolvedValue(false);
+
+            const proc: AIProcess = {
+                id: 'proc-cancelled-resume',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'cancelled',
+                startTime: new Date(),
+                endTime: new Date(),
+                sdkSessionId: 'sess-stopped-turn',
+                conversationTurns: [
+                    { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: 'partial answer', timestamp: new Date(), turnIndex: 1, timeline: [], interrupted: true },
+                ],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-cancelled-resume/message`, {
+                content: 'continue',
+            });
+
+            expect(res.status).toBe(202);
+            expect(mockBridge.isSessionAlive).not.toHaveBeenCalled();
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn).toHaveBeenCalledOnce();
+            const call = enqueueFn.mock.calls[0][0];
+            expect(call.payload.processId).toBe('proc-cancelled-resume');
+            expect(call.payload.resumeSessionId).toBe('sess-stopped-turn');
+
+            const updated = await store.getProcess('proc-cancelled-resume');
+            expect(updated?.status).toBe('running');
+            expect(updated?.conversationTurns).toHaveLength(3);
+            expect(updated?.conversationTurns?.[1].content).toBe('partial answer');
+            expect(updated?.conversationTurns?.[2].content).toBe('continue');
         });
 
         it('should call bridge.enqueue (fresh task) when a completed parent task exists', async () => {
@@ -726,6 +768,79 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
+        });
+
+        it('should reject cancelled follow-up when no sdkSessionId was saved', async () => {
+            const proc: AIProcess = {
+                id: 'proc-cancelled-no-session',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'cancelled',
+                startTime: new Date(),
+                endTime: new Date(),
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-cancelled-no-session/message`, {
+                content: 'continue',
+            });
+
+            expect(res.status).toBe(409);
+            const body = JSON.parse(res.body);
+            expect(body.error).toBe('Cannot continue this stopped chat because no SDK session was saved. Start a new chat manually.');
+            expect(body.code).toBe('SESSION_NOT_RESUMABLE');
+            expect(mockBridge.enqueue).not.toHaveBeenCalled();
+            expect(mockBridge.executeFollowUp).not.toHaveBeenCalled();
+
+            const updated = await store.getProcess('proc-cancelled-no-session');
+            expect(updated?.status).toBe('cancelled');
+            expect(updated?.conversationTurns).toHaveLength(0);
+        });
+
+        it('should reject follow-up after stopped-chat strict resume failure', async () => {
+            const proc: AIProcess = {
+                id: 'proc-strict-resume-failed',
+                type: 'chat',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'failed',
+                startTime: new Date(),
+                endTime: new Date(),
+                sdkSessionId: 'stopped-session',
+                metadata: {
+                    type: 'chat',
+                    stoppedChatResume: {
+                        resumable: false,
+                        reason: STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+                        message: STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+                        failedAt: new Date().toISOString(),
+                        sdkSessionId: 'stopped-session',
+                    },
+                },
+                conversationTurns: [
+                    { role: 'user', content: 'continue', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: 'Error: Provider did not resume the stopped SDK session.', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                ],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-strict-resume-failed/message`, {
+                content: 'try again',
+            });
+
+            expect(res.status).toBe(409);
+            const body = JSON.parse(res.body);
+            expect(body.error).toBe(STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE);
+            expect(body.code).toBe('SESSION_NOT_RESUMABLE');
+            expect(mockBridge.isSessionAlive).not.toHaveBeenCalled();
+            expect(mockBridge.enqueue).not.toHaveBeenCalled();
+            expect(mockBridge.executeFollowUp).not.toHaveBeenCalled();
+
+            const updated = await store.getProcess('proc-strict-resume-failed');
+            expect(updated?.status).toBe('failed');
+            expect(updated?.conversationTurns).toHaveLength(2);
         });
 
         it('should return 410 when sdkSessionId references expired/destroyed session', async () => {

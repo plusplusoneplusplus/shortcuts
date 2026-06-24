@@ -1,139 +1,155 @@
 /**
- * Tests for execGitSync and execGitArgsSync helpers in api-handler.ts.
+ * Tests for execGitShellAsync and execGitArgsAsync helpers in api-handler.ts.
  *
- * execGitSync: string-based, uses child_process.execSync for non-WSL paths.
- * execGitArgsSync: array-based, delegates to forge execGit (WSL-aware).
+ * execGitShellAsync: string-based, uses child_process.exec (async) for non-WSL paths.
+ * execGitArgsAsync: array-based, delegates to forge execGitAsync (WSL-aware).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock forge's execGit for execGitArgsSync (which now delegates to it)
-const mockForgeExecGit = vi.fn();
+// Mock forge's execGitAsync for execGitArgsAsync (which now delegates to it)
+const mockForgeExecGitAsync = vi.fn();
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
-        execGit: (...args: any[]) => mockForgeExecGit(...args),
+        execGitAsync: (...args: any[]) => mockForgeExecGitAsync(...args),
     };
 });
 
-// Keep child_process mock for execGitSync (still uses execSync for non-WSL paths)
-const mockExecSync = vi.fn();
-const mockExecFileSync = vi.fn();
+// Mock child_process.exec (callback-style) for execGitShellAsync (non-WSL paths)
+const mockExec = vi.fn();
+const mockExecFile = vi.fn();
 vi.mock('child_process', () => ({
-    execSync: (...args: any[]) => mockExecSync(...args),
-    execFileSync: (...args: any[]) => mockExecFileSync(...args),
+    exec: (...args: any[]) => mockExec(...args),
+    execFile: (...args: any[]) => mockExecFile(...args),
 }));
 
-import { execGitSync, execGitArgsSync } from '../../src/server/core/api-handler';
+import { execGitShellAsync, execGitArgsAsync } from '../../src/server/core/api-handler';
 
-describe('execGitSync', () => {
+/** Configure the mocked exec to invoke its callback with the given stdout. */
+function execReturns(stdout: string): void {
+    mockExec.mockImplementation((_cmd: string, _opts: any, cb: (err: unknown, stdout: string) => void) => {
+        cb(null, stdout);
+    });
+}
+
+describe('execGitShellAsync', () => {
     beforeEach(() => {
-        mockExecSync.mockReset();
-        mockExecSync.mockReturnValue('');
+        mockExec.mockReset();
+        execReturns('');
     });
 
-    it('should run git with args via execSync', () => {
-        mockExecSync.mockReturnValue('output\n');
-        const result = execGitSync('status', '/repo');
+    it('should run git with args via exec and trim output', async () => {
+        execReturns('output\n');
+        const result = await execGitShellAsync('status', '/repo');
         expect(result).toBe('output');
-        expect(mockExecSync).toHaveBeenCalledWith(
+        expect(mockExec).toHaveBeenCalledWith(
             expect.stringContaining('git status'),
             expect.objectContaining({ cwd: '/repo', encoding: 'utf-8' }),
+            expect.any(Function),
         );
     });
 
-    it('should double caret (^) on Windows to prevent cmd.exe stripping', () => {
+    it('should double caret (^) on Windows to prevent cmd.exe stripping', async () => {
         const origPlatform = process.platform;
         Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
         try {
-            mockExecSync.mockReturnValue('');
-            execGitSync('log abc123^!', '/repo');
-            expect(mockExecSync).toHaveBeenCalledWith(
+            execReturns('');
+            await execGitShellAsync('log abc123^!', '/repo');
+            expect(mockExec).toHaveBeenCalledWith(
                 'git log abc123^^!',
                 expect.objectContaining({ cwd: '/repo' }),
+                expect.any(Function),
             );
         } finally {
             Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true });
         }
     });
 
-    it('should double multiple carets on Windows', () => {
+    it('should double multiple carets on Windows', async () => {
         const origPlatform = process.platform;
         Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
         try {
-            mockExecSync.mockReturnValue('');
-            execGitSync('show abc^:path HEAD^', '/repo');
-            expect(mockExecSync).toHaveBeenCalledWith(
+            execReturns('');
+            await execGitShellAsync('show abc^:path HEAD^', '/repo');
+            expect(mockExec).toHaveBeenCalledWith(
                 'git show abc^^:path HEAD^^',
                 expect.objectContaining({ cwd: '/repo' }),
+                expect.any(Function),
             );
         } finally {
             Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true });
         }
     });
 
-    it('should not double caret on non-Windows platforms', () => {
+    it('should not double caret on non-Windows platforms', async () => {
         const origPlatform = process.platform;
         Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
         try {
-            mockExecSync.mockReturnValue('');
-            execGitSync('log abc123^!', '/repo');
-            expect(mockExecSync).toHaveBeenCalledWith(
+            execReturns('');
+            await execGitShellAsync('log abc123^!', '/repo');
+            expect(mockExec).toHaveBeenCalledWith(
                 'git log abc123^!',
                 expect.objectContaining({ cwd: '/repo' }),
+                expect.any(Function),
             );
         } finally {
             Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true });
         }
     });
+
+    it('should reject when exec reports an error', async () => {
+        mockExec.mockImplementation((_cmd: string, _opts: any, cb: (err: unknown) => void) => {
+            cb(new Error('git failed'));
+        });
+        await expect(execGitShellAsync('status', '/repo')).rejects.toThrow('git failed');
+    });
 });
 
-describe('execGitArgsSync', () => {
+describe('execGitArgsAsync', () => {
     beforeEach(() => {
-        mockForgeExecGit.mockReset();
-        mockForgeExecGit.mockReturnValue('');
+        mockForgeExecGitAsync.mockReset();
+        mockForgeExecGitAsync.mockResolvedValue('');
     });
 
-    it('should delegate to forge execGit with args and cwd', () => {
-        mockForgeExecGit.mockReturnValue('output');
-        const result = execGitArgsSync(['log', '--oneline'], '/repo');
+    it('should delegate to forge execGitAsync with args and cwd', async () => {
+        mockForgeExecGitAsync.mockResolvedValue('output');
+        const result = await execGitArgsAsync(['log', '--oneline'], '/repo');
         expect(result).toBe('output');
-        expect(mockForgeExecGit).toHaveBeenCalledWith(
+        expect(mockForgeExecGitAsync).toHaveBeenCalledWith(
             ['log', '--oneline'],
             '/repo',
             expect.objectContaining({ timeout: 5000 }),
         );
     });
 
-    it('should pass caret (^) through without modification', () => {
-        mockForgeExecGit.mockReturnValue('');
-        execGitArgsSync(['log', '--format=%H', '-z', 'abc123^!'], '/repo');
-        expect(mockForgeExecGit).toHaveBeenCalledWith(
+    it('should pass caret (^) through without modification', async () => {
+        mockForgeExecGitAsync.mockResolvedValue('');
+        await execGitArgsAsync(['log', '--format=%H', '-z', 'abc123^!'], '/repo');
+        expect(mockForgeExecGitAsync).toHaveBeenCalledWith(
             ['log', '--format=%H', '-z', 'abc123^!'],
             '/repo',
             expect.anything(),
         );
     });
 
-    it('should trim output', () => {
-        mockForgeExecGit.mockReturnValue('  result  ');
-        expect(execGitArgsSync(['status'], '/repo')).toBe('result');
+    it('should trim output', async () => {
+        mockForgeExecGitAsync.mockResolvedValue('  result  ');
+        expect(await execGitArgsAsync(['status'], '/repo')).toBe('result');
     });
 
-    it('should propagate errors from forge execGit', () => {
-        mockForgeExecGit.mockImplementation(() => {
-            throw new Error('fatal: bad revision');
-        });
-        expect(() => execGitArgsSync(['log', 'bad^!'], '/repo')).toThrow('fatal: bad revision');
+    it('should propagate errors from forge execGitAsync', async () => {
+        mockForgeExecGitAsync.mockRejectedValue(new Error('fatal: bad revision'));
+        await expect(execGitArgsAsync(['log', 'bad^!'], '/repo')).rejects.toThrow('fatal: bad revision');
     });
 
-    it('is WSL-aware: routes to forge execGit which handles WSL paths', () => {
+    it('is WSL-aware: routes to forge execGitAsync which handles WSL paths', async () => {
         const wslPath = '\\\\wsl$\\Ubuntu\\home\\user\\repo';
-        mockForgeExecGit.mockReturnValue('main');
-        const result = execGitArgsSync(['branch', '--show-current'], wslPath);
+        mockForgeExecGitAsync.mockResolvedValue('main');
+        const result = await execGitArgsAsync(['branch', '--show-current'], wslPath);
         expect(result).toBe('main');
-        expect(mockForgeExecGit).toHaveBeenCalledWith(
+        expect(mockForgeExecGitAsync).toHaveBeenCalledWith(
             ['branch', '--show-current'],
             wslPath,
             expect.objectContaining({ timeout: 5000 }),

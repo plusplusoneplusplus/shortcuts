@@ -437,14 +437,14 @@ describe('RepoTreeService.listFilesRecursive — gitignore walk fallback', () =>
 });
 
 describe('RepoTreeService.toRepoInfo', () => {
-    it('maps WorkspaceInfo fields to RepoInfo', () => {
+    it('maps WorkspaceInfo fields to RepoInfo', async () => {
         const workspace = {
             id: 'ws-123',
             name: 'my-project',
             rootPath: tmpDir,
         };
 
-        const info = RepoTreeService.toRepoInfo(workspace);
+        const info = await RepoTreeService.toRepoInfo(workspace);
         expect(info.id).toBe('ws-123');
         expect(info.name).toBe('my-project');
         expect(info.localPath).toBe(tmpDir);
@@ -453,7 +453,7 @@ describe('RepoTreeService.toRepoInfo', () => {
         expect(typeof info.headSha).toBe('string');
     });
 
-    it('resolves headSha from a git repo', () => {
+    it('resolves headSha from a git repo', async () => {
         if (!isGitAvailable()) return;
 
         const gitDir = path.join(tmpDir, 'git-repo');
@@ -463,7 +463,7 @@ describe('RepoTreeService.toRepoInfo', () => {
         childProcess.execSync('git add .', { cwd: gitDir, stdio: 'pipe' });
         childProcess.execSync('git commit -m "init"', { cwd: gitDir, stdio: 'pipe' });
 
-        const info = RepoTreeService.toRepoInfo({
+        const info = await RepoTreeService.toRepoInfo({
             id: 'git-id',
             name: 'git-project',
             rootPath: gitDir,
@@ -471,7 +471,7 @@ describe('RepoTreeService.toRepoInfo', () => {
         expect(info.headSha).toMatch(/^[0-9a-f]{7,}$/);
     });
 
-    it('preserves remoteUrl from WorkspaceInfo', () => {
+    it('preserves remoteUrl from WorkspaceInfo', async () => {
         const workspace = {
             id: 'ws-remote',
             name: 'remote-project',
@@ -479,7 +479,7 @@ describe('RepoTreeService.toRepoInfo', () => {
             remoteUrl: 'https://github.com/test/repo.git',
         };
 
-        const info = RepoTreeService.toRepoInfo(workspace);
+        const info = await RepoTreeService.toRepoInfo(workspace);
         expect(info.remoteUrl).toBe('https://github.com/test/repo.git');
     });
 });

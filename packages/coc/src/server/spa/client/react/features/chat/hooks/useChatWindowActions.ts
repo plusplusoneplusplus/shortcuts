@@ -2,11 +2,20 @@ import { useCallback, useContext } from 'react';
 import { ToastContext } from '../../../contexts/ToastContext';
 import { usePopOut } from '../../../contexts/PopOutContext';
 import { useFloatingChats } from '../../../contexts/FloatingChatsContext';
+import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 
 export interface UseChatWindowActionsOptions {
     task: any;
     taskId: string;
     workspaceId?: string;
+}
+
+export function buildChatPopOutUrl(base: string, taskId: string, workspaceId?: string, cloneBaseUrl?: string): string {
+    const params = new URLSearchParams();
+    if (workspaceId) params.set('workspace', workspaceId);
+    if (cloneBaseUrl) params.set('cloneBaseUrl', cloneBaseUrl);
+    const query = params.toString();
+    return `${base}${query ? `?${query}` : ''}#popout/activity/${encodeURIComponent(taskId)}`;
 }
 
 export function useChatWindowActions({ task, taskId, workspaceId }: UseChatWindowActionsOptions): {
@@ -19,8 +28,7 @@ export function useChatWindowActions({ task, taskId, workspaceId }: UseChatWindo
 
     const handlePopOut = useCallback(() => {
         const base = window.location.origin + window.location.pathname;
-        const wsParam = workspaceId ? `?workspace=${encodeURIComponent(workspaceId)}` : '';
-        const url = `${base}${wsParam}#popout/activity/${encodeURIComponent(taskId)}`;
+        const url = buildChatPopOutUrl(base, taskId, workspaceId, lookupCloneBaseUrl(workspaceId));
         const popup = window.open(url, `coc-popout-${taskId}`, 'width=800,height=900');
         if (!popup) {
             toastCtx?.addToast('Pop-out blocked. Allow popups for this site and try again.', 'error');

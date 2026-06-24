@@ -24,7 +24,7 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 import { gitCache } from '../../src/server/git/git-cache';
 
 // ============================================================================
-// Mock child_process (still needed for execGitSync in api-handler)
+// Mock child_process (used by detectRemoteUrl via execSync)
 // ============================================================================
 
 const mockExecSync = vi.fn();
@@ -49,6 +49,9 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     return {
         ...actual,
         execGit: (...args: any[]) => mockExecGit(...args),
+        // execGitArgsAsync / readGitFileAtCommit now delegate to forge execGitAsync.
+        // Route it to the same mock; an async wrapper turns sync throws into rejections.
+        execGitAsync: async (...args: any[]) => mockExecGit(...args),
         BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: mockGetBranchStatus,
             hasUncommittedChanges: mockHasUncommittedChanges,

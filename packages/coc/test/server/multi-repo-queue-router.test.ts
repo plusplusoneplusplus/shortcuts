@@ -371,6 +371,7 @@ describe('MultiRepoQueueRouter', () => {
                 'gpt-5.5',
                 undefined,
                 'high',
+                undefined, // strictResumeSessionId
             );
 
             bridge.dispose();

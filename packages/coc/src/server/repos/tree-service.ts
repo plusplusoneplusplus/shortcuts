@@ -324,7 +324,7 @@ export class RepoTreeService {
      */
     async listRepos(): Promise<RepoInfo[]> {
         const workspaces = await this.readWorkspaces();
-        return workspaces.map(ws => RepoTreeService.toRepoInfo(ws));
+        return Promise.all(workspaces.map(ws => RepoTreeService.toRepoInfo(ws)));
     }
 
     /**
@@ -689,31 +689,27 @@ export class RepoTreeService {
      * Build a RepoInfo from a WorkspaceInfo.
      * Pure mapping + git HEAD resolution.
      */
-    static toRepoInfo(workspace: WorkspaceInfo): RepoInfo {
+    static async toRepoInfo(workspace: WorkspaceInfo): Promise<RepoInfo> {
         let headSha = '';
         try {
-            headSha = childProcess
-                .execSync('git rev-parse --short HEAD', {
-                    cwd: workspace.rootPath,
-                    encoding: 'utf-8',
-                    timeout: 5000,
-                    stdio: ['pipe', 'pipe', 'pipe'],
-                })
-                .trim();
+            const { stdout } = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], {
+                cwd: workspace.rootPath,
+                encoding: 'utf-8',
+                timeout: 5000,
+            });
+            headSha = stdout.trim();
         } catch {
             // Not a git repo or git not available
         }
 
         let remoteUrl: string | undefined;
         try {
-            const url = childProcess
-                .execSync('git remote get-url origin', {
-                    cwd: workspace.rootPath,
-                    encoding: 'utf-8',
-                    timeout: 5000,
-                    stdio: ['pipe', 'pipe', 'pipe'],
-                })
-                .trim();
+            const { stdout } = await execFileAsync('git', ['remote', 'get-url', 'origin'], {
+                cwd: workspace.rootPath,
+                encoding: 'utf-8',
+                timeout: 5000,
+            });
+            const url = stdout.trim();
             if (url) remoteUrl = url;
         } catch {
             // No origin remote or not a git repo

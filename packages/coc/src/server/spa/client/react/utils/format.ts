@@ -89,6 +89,32 @@ export async function copyHtmlToClipboard(html: string): Promise<void> {
     document.body.removeChild(div);
 }
 
+/** Copy a base64/data-URL image to the clipboard as PNG. Throws if unsupported. */
+export async function copyImageToClipboard(dataUrl: string): Promise<void> {
+    if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+        throw new Error('Clipboard image write not supported');
+    }
+    await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': dataUrlToPngBlob(dataUrl) }),
+    ]);
+}
+
+async function dataUrlToPngBlob(dataUrl: string): Promise<Blob> {
+    const blob = await (await fetch(dataUrl)).blob();
+    if (blob.type === 'image/png') return blob;
+    // Re-encode jpeg/webp/gif → png (only png is reliably writable).
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return blob;
+    ctx.drawImage(bitmap, 0, 0);
+    return await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'),
+    );
+}
+
 export function statusIcon(status: string): string {
     const map: Record<string, string> = { running: '\u{1F504}', cancelling: '\u{1F504}', completed: '\u2705', failed: '\u274C', cancelled: '\u{1F6AB}', queued: '\u23F3' };
     return map[status] || '';

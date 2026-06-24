@@ -197,6 +197,15 @@ type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeUserMessage | ClaudeResul
 type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto';
 
 /**
+ * Tools auto-approved in ask/read-only mode. Under `acceptEdits` the SDK only
+ * auto-accepts file edits, so Bash and WebFetch would otherwise be denied (no
+ * canUseTool callback, headless — no human to answer the prompt). Allow-listing
+ * scoped, read-only specifiers lets ask-mode sessions run investigative commands
+ * like `gh pr view` and fetch URLs without opening up arbitrary shell writes.
+ */
+const ASK_MODE_AUTO_APPROVED_TOOLS = ['Bash(gh:*)', 'WebFetch'] as const;
+
+/**
  * MCP server config accepted by Claude Code's `query({ options: { mcpServers } })`.
  * Mirrors the published `McpStdioServerConfig | McpHttpServerConfig | McpSSEServerConfig`
  * union (the in-process SDK-server variant is not used here — CoC tools are
@@ -676,6 +685,11 @@ export class ClaudeSDKService implements ISDKService {
             mcpCleanup = cleanup;
             const disallowedTools = resolveClaudeDisallowedTools(options);
             const systemPromptOptions = resolveClaudeSystemPromptOptions(options.systemMessage);
+            const askModeAllowed =
+                permissionOptions.permissionMode === 'acceptEdits'
+                    ? [...ASK_MODE_AUTO_APPROVED_TOOLS]
+                    : [];
+            const effectiveAllowedTools = [...allowedTools, ...askModeAllowed];
             const queryOptions: ClaudeQueryOptions = {
                 prompt: this.buildClaudePrompt(options),
                 abortController,
@@ -686,7 +700,7 @@ export class ClaudeSDKService implements ISDKService {
                     ...(effort ? { effort } : {}),
                     ...systemPromptOptions,
                     ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
-                    ...(allowedTools.length > 0 ? { allowedTools } : {}),
+                    ...(effectiveAllowedTools.length > 0 ? { allowedTools: effectiveAllowedTools } : {}),
                     ...(disallowedTools.length > 0 ? { disallowedTools } : {}),
                     ...(options.sessionId ? { resume: options.sessionId } : { sessionId }),
                     ...permissionOptions,
@@ -1346,9 +1360,6 @@ export class ClaudeSDKService implements ISDKService {
                 permissionMode: 'bypassPermissions',
                 allowDangerouslySkipPermissions: true,
             };
-        }
-        if (mode === 'plan') {
-            return { permissionMode: 'plan' };
         }
         return { permissionMode: 'acceptEdits' };
     }

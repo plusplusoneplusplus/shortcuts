@@ -12,6 +12,7 @@ const mockQueueHistory = vi.fn();
 const mockQueueGetTask = vi.fn();
 const mockQueuePause = vi.fn();
 const mockQueueResume = vi.fn();
+let mockSelectedRepoId: string | null = null;
 let mockQueueState: any = {
     selectedTaskId: null,
     running: [],
@@ -36,7 +37,7 @@ vi.mock('../../../src/server/spa/client/react/contexts/QueueContext', () => ({
 
 vi.mock('../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
-        state: { selectedRepoId: null },
+        state: { selectedRepoId: mockSelectedRepoId },
         dispatch: vi.fn(),
     }),
 }));
@@ -84,7 +85,11 @@ vi.mock('../../../src/server/spa/client/react/features/chat/ChatListPane', () =>
 
 vi.mock('../../../src/server/spa/client/react/features/chat/ChatDetailPane', () => ({
     ChatDetailPane: (props: any) => (
-        <div data-testid="activity-detail-pane" data-selected-task-id={props.selectedTaskId ?? ''}>
+        <div
+            data-testid="activity-detail-pane"
+            data-selected-task-id={props.selectedTaskId ?? ''}
+            data-workspace-id={props.workspaceId ?? ''}
+        >
             {props.onBack && <button data-testid="detail-back-btn" onClick={props.onBack}>back</button>}
             ChatDetailPane
         </div>
@@ -118,6 +123,7 @@ describe('ProcessesView', () => {
         mockQueuePause.mockResolvedValue({ stats: { isPaused: true } });
         mockQueueResume.mockResolvedValue({ stats: { isPaused: false } });
         setBreakpoint('desktop');
+        mockSelectedRepoId = null;
         mockQueueState = {
             selectedTaskId: null,
             running: [],
@@ -156,6 +162,16 @@ describe('ProcessesView', () => {
 
         const listPane = screen.getByTestId('activity-list-pane');
         expect(listPane.getAttribute('data-workspace-id')).toBe('');
+    });
+
+    it('Desktop: forwards selected workspaceId to list and detail panes', async () => {
+        mockSelectedRepoId = 'remote-ws';
+        mockQueueState.selectedTaskId = 'task-789';
+
+        await renderView();
+
+        expect(screen.getByTestId('activity-list-pane').getAttribute('data-workspace-id')).toBe('remote-ws');
+        expect(screen.getByTestId('activity-detail-pane').getAttribute('data-workspace-id')).toBe('remote-ws');
     });
 
     // Test 3: Desktop — height calculation excludes bottom nav
@@ -255,6 +271,16 @@ describe('ProcessesView', () => {
         });
         expect(screen.getByTestId('activity-detail-pane')).toBeDefined();
         expect(screen.queryByTestId('activity-mobile-list')).toBeNull();
+    });
+
+    it('Mobile: forwards selected workspaceId to detail pane', async () => {
+        setBreakpoint('mobile');
+        mockSelectedRepoId = 'remote-ws';
+        mockQueueState.selectedTaskId = 'task-A';
+
+        await renderView();
+
+        expect(screen.getByTestId('activity-detail-pane').getAttribute('data-workspace-id')).toBe('remote-ws');
     });
 
     // Test 10: WS context updates pass through directly (no client-side filtering needed)

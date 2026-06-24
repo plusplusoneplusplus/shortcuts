@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 /**
  * Read the current schema version from the database.
@@ -145,11 +145,17 @@ export function initializeDatabase(db: Database.Database): void {
                 concurrency_mode  TEXT,
                 frozen            INTEGER DEFAULT 0,
                 admitted          INTEGER DEFAULT 0,
+                kind              TEXT NOT NULL DEFAULT 'task',
+                queue_position    INTEGER,
+                duration_hours    INTEGER,
                 payload           TEXT NOT NULL DEFAULT '{}',
                 config            TEXT NOT NULL DEFAULT '{}',
                 result            TEXT
             )
         `);
+        ensureColumn(db, 'queue_tasks', 'kind', "TEXT NOT NULL DEFAULT 'task'");
+        ensureColumn(db, 'queue_tasks', 'queue_position', 'INTEGER');
+        ensureColumn(db, 'queue_tasks', 'duration_hours', 'INTEGER');
 
         // ── queue_repo_state ────────────────────────────────────────
         db.exec(`
@@ -273,6 +279,9 @@ export function initializeDatabase(db: Database.Database): void {
 
             CREATE INDEX IF NOT EXISTS idx_queue_tasks_status
                 ON queue_tasks(status);
+
+            CREATE INDEX IF NOT EXISTS idx_queue_tasks_repo_position
+                ON queue_tasks(repo_id, queue_position);
 
             CREATE INDEX IF NOT EXISTS idx_schedule_runs_schedule_id
                 ON schedule_runs(schedule_id);
@@ -461,6 +470,9 @@ export function initializeDatabase(db: Database.Database): void {
         }
         if (versionBefore < 22) {
             migrateV21toV22(db);
+        }
+        if (versionBefore < 23) {
+            migrateV22toV23(db);
         }
 
         // Stamp the schema version
@@ -752,6 +764,20 @@ function migrateV20toV21(db: Database.Database): void {
  */
 function migrateV21toV22(_db: Database.Database): void {
     // Tables already created by the idempotent DDL above.
+}
+
+/**
+ * V22 -> V23: add queue item metadata so pause markers and queue ordering can
+ * be persisted in the existing queue_tasks store.
+ */
+function migrateV22toV23(db: Database.Database): void {
+    ensureColumn(db, 'queue_tasks', 'kind', "TEXT NOT NULL DEFAULT 'task'");
+    ensureColumn(db, 'queue_tasks', 'queue_position', 'INTEGER');
+    ensureColumn(db, 'queue_tasks', 'duration_hours', 'INTEGER');
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_queue_tasks_repo_position
+            ON queue_tasks(repo_id, queue_position);
+    `);
 }
 
 /**

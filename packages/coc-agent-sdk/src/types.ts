@@ -484,10 +484,16 @@ export interface SendMessageOptions {
      * the SDK server supply full conversation history natively.
      *
      * If resume fails (session expired/invalid), falls back to
-     * `createSession()` automatically. The caller detects the new session ID
-     * via `onSessionCreated`.
+     * `createSession()` automatically unless `strictSessionResume` is true.
+     * The caller detects the new session ID via `onSessionCreated`.
      */
     sessionId?: string;
+    /**
+     * When true, a failed `sessionId` resume returns an error instead of
+     * creating a fresh session. Use this for flows where conversation continuity
+     * must be provider-native and a cold fallback would be incorrect.
+     */
+    strictSessionResume?: boolean;
     /** Optional working directory for context (set at client level) */
     workingDirectory?: string;
     /**

@@ -6,7 +6,7 @@
  */
 
 import type Database from 'better-sqlite3';
-import type { QueuedTask, QueueStatus, PauseReason } from './queue/types';
+import type { QueuedTask, QueueStatus, PauseReason, QueueItem, PauseMarker, PauseDurationHours } from './queue/types';
 
 // ============================================================================
 // Row types (snake_case, matching SQLite columns)
@@ -29,6 +29,9 @@ interface QueueTaskRow {
     concurrency_mode: string | null;
     frozen: number;
     admitted: number;
+    kind?: string | null;
+    queue_position?: number | null;
+    duration_hours?: number | null;
     payload: string;
     config: string;
     result: string | null;
@@ -57,7 +60,17 @@ interface RepoStateRow {
 // Serialization helpers
 // ============================================================================
 
-function taskToRow(task: QueuedTask): QueueTaskRow {
+const ALLOWED_PAUSE_DURATION_HOURS = new Set<PauseDurationHours>([1, 2, 3, 4, 8]);
+
+function normalizePauseDurationHours(value: number | null | undefined): PauseDurationHours | undefined {
+    if (value === null || value === undefined) return undefined;
+    if (ALLOWED_PAUSE_DURATION_HOURS.has(value as PauseDurationHours)) {
+        return value as PauseDurationHours;
+    }
+    throw new Error(`Invalid persisted pause marker durationHours: ${value}`);
+}
+
+function taskToRow(task: QueuedTask, queuePosition?: number): QueueTaskRow {
     return {
         id: task.id,
         repo_id: task.repoId ?? '',
@@ -75,9 +88,39 @@ function taskToRow(task: QueuedTask): QueueTaskRow {
         concurrency_mode: task.concurrencyMode ?? null,
         frozen: task.frozen ? 1 : 0,
         admitted: task.admitted ? 1 : 0,
+        kind: 'task',
+        queue_position: queuePosition ?? null,
+        duration_hours: null,
         payload: JSON.stringify(task.payload),
         config: JSON.stringify(task.config),
         result: task.result !== undefined ? JSON.stringify(task.result) : null,
+    };
+}
+
+function pauseMarkerToRow(marker: PauseMarker, repoId: string, queuePosition?: number): QueueTaskRow {
+    return {
+        id: marker.id,
+        repo_id: marker.repoId ?? repoId,
+        folder_path: null,
+        type: 'pause-marker',
+        priority: 'normal',
+        status: 'queued',
+        created_at: marker.createdAt,
+        started_at: null,
+        completed_at: null,
+        display_name: null,
+        process_id: null,
+        error: null,
+        retry_count: 0,
+        concurrency_mode: null,
+        frozen: 0,
+        admitted: 0,
+        kind: 'pause-marker',
+        queue_position: queuePosition ?? null,
+        duration_hours: marker.durationHours ?? null,
+        payload: '{}',
+        config: '{}',
+        result: null,
     };
 }
 
@@ -108,6 +151,20 @@ function rowToTask(row: QueueTaskRow): QueuedTask {
     return task;
 }
 
+function rowToQueueItem(row: QueueTaskRow): QueueItem {
+    if (row.kind === 'pause-marker' || row.type === 'pause-marker') {
+        const durationHours = normalizePauseDurationHours(row.duration_hours);
+        return {
+            kind: 'pause-marker',
+            id: row.id,
+            ...(row.repo_id ? { repoId: row.repo_id } : {}),
+            createdAt: row.created_at,
+            ...(durationHours !== undefined ? { durationHours } : {}),
+        };
+    }
+    return rowToTask(row);
+}
+
 function pauseReasonToJson(r?: PauseReason): string | null {
     return r !== undefined ? JSON.stringify(r) : null;
 }
@@ -134,21 +191,47 @@ export class SqliteQueueStore {
     // ── queue_tasks ──────────────────────────────────────────────────
 
     /** INSERT OR REPLACE a task row. Serializes payload/config/result to JSON. */
-    upsertQueueTask(task: QueuedTask): void {
-        const row = taskToRow(task);
+    upsertQueueTask(task: QueuedTask, queuePosition?: number): void {
+        const row = taskToRow(task, queuePosition);
         const stmt = this.db.prepare(`
             INSERT OR REPLACE INTO queue_tasks
                 (id, repo_id, folder_path, type, priority, status,
                  created_at, started_at, completed_at, display_name,
                  process_id, error, retry_count, concurrency_mode,
-                 frozen, admitted, payload, config, result)
+                 frozen, admitted, kind, queue_position, duration_hours,
+                 payload, config, result)
             VALUES
                 (@id, @repo_id, @folder_path, @type, @priority, @status,
                  @created_at, @started_at, @completed_at, @display_name,
                  @process_id, @error, @retry_count, @concurrency_mode,
-                 @frozen, @admitted, @payload, @config, @result)
+                 @frozen, @admitted, @kind, @queue_position, @duration_hours,
+                 @payload, @config, @result)
         `);
         stmt.run(row);
+    }
+
+    /** INSERT OR REPLACE any queued item row, including pause markers. */
+    upsertQueueItem(item: QueueItem, repoId: string, queuePosition?: number): void {
+        if ((item as PauseMarker).kind === 'pause-marker') {
+            const row = pauseMarkerToRow(item as PauseMarker, repoId, queuePosition);
+            const stmt = this.db.prepare(`
+                INSERT OR REPLACE INTO queue_tasks
+                    (id, repo_id, folder_path, type, priority, status,
+                     created_at, started_at, completed_at, display_name,
+                     process_id, error, retry_count, concurrency_mode,
+                     frozen, admitted, kind, queue_position, duration_hours,
+                     payload, config, result)
+                VALUES
+                    (@id, @repo_id, @folder_path, @type, @priority, @status,
+                     @created_at, @started_at, @completed_at, @display_name,
+                     @process_id, @error, @retry_count, @concurrency_mode,
+                     @frozen, @admitted, @kind, @queue_position, @duration_hours,
+                     @payload, @config, @result)
+            `);
+            stmt.run(row);
+            return;
+        }
+        this.upsertQueueTask(item as QueuedTask, queuePosition);
     }
 
     /** DELETE a single task by id. No-op if not found. */
@@ -177,13 +260,44 @@ export class SqliteQueueStore {
             statuses.forEach((s, i) => { params[`s${i}`] = s; });
         }
 
+        clauses.push("(kind IS NULL OR kind = 'task')");
+
         let sql = 'SELECT * FROM queue_tasks';
         if (clauses.length > 0) {
             sql += ' WHERE ' + clauses.join(' AND ');
         }
+        sql += ' ORDER BY CASE WHEN queue_position IS NULL THEN 1 ELSE 0 END, queue_position ASC, created_at ASC';
 
         const rows = this.db.prepare(sql).all(params) as QueueTaskRow[];
         return rows.map(rowToTask);
+    }
+
+    /**
+     * SELECT queued items with optional filters. Includes pause markers.
+     */
+    getQueueItems(repoId?: string, statuses?: QueueStatus[]): QueueItem[] {
+        const clauses: string[] = [];
+        const params: Record<string, unknown> = {};
+
+        if (repoId !== undefined) {
+            clauses.push('repo_id = @repoId');
+            params.repoId = repoId;
+        }
+
+        if (statuses !== undefined && statuses.length > 0) {
+            const placeholders = statuses.map((_, i) => `@s${i}`);
+            clauses.push(`status IN (${placeholders.join(', ')})`);
+            statuses.forEach((s, i) => { params[`s${i}`] = s; });
+        }
+
+        let sql = 'SELECT * FROM queue_tasks';
+        if (clauses.length > 0) {
+            sql += ' WHERE ' + clauses.join(' AND ');
+        }
+        sql += ' ORDER BY CASE WHEN queue_position IS NULL THEN 1 ELSE 0 END, queue_position ASC, created_at ASC';
+
+        const rows = this.db.prepare(sql).all(params) as QueueTaskRow[];
+        return rows.map(rowToQueueItem);
     }
 
     /**

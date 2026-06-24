@@ -12,6 +12,11 @@
 // ============================================================================
 
 /**
+ * Allowed duration presets for timed queue pauses.
+ */
+export type PauseDurationHours = 1 | 2 | 3 | 4 | 8;
+
+/**
  * A pause marker inserted into the queue.
  * When the executor dequeues this item, it pauses the queue
  * (same as clicking ⏸ manually) and discards the marker.
@@ -19,7 +24,11 @@
 export interface PauseMarker {
     kind: 'pause-marker';
     id: string;
+    /** Repository identifier for persisted multi-repo queue markers. */
+    repoId?: string;
     createdAt: number;
+    /** Omitted for an indefinite pause; otherwise one of the supported hour presets. */
+    durationHours?: PauseDurationHours;
 }
 
 /**
@@ -200,10 +209,12 @@ export type QueueChangeType =
 export interface QueueChangeEvent {
     /** Type of change */
     type: QueueChangeType;
-    /** ID of the affected task (if applicable) */
+    /** ID of the affected task or queue item (if applicable) */
     taskId?: string;
     /** The affected task (if applicable) */
     task?: QueuedTask;
+    /** The affected queue item, including pause markers (if applicable) */
+    item?: QueueItem;
     /** Timestamp of the event */
     timestamp: number;
 }

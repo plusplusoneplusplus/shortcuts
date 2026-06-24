@@ -43,6 +43,7 @@ export interface QueuePauseMarker {
   kind: 'pause-marker';
   id: string;
   createdAt: number;
+  durationHours?: 1 | 2 | 3 | 4 | 8;
   [key: string]: unknown;
 }
 
@@ -116,6 +117,7 @@ export interface QueueModelsResponse {
 export interface QueuePauseMarkerResponse {
   markerId: string;
   afterIndex: number;
+  durationHours?: 1 | 2 | 3 | 4 | 8;
 }
 
 export interface QueueMoveResponse {

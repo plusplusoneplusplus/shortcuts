@@ -186,7 +186,7 @@ export class GitTreeDataProvider
             return;
         }
 
-        const result = this.gitLogService.getCommits(repoRoot, {
+        const result = await this.gitLogService.getCommits(repoRoot, {
             maxCount: DEFAULT_COMMIT_DISPLAY_COUNT,
             skip: 0
         });
@@ -199,7 +199,7 @@ export class GitTreeDataProvider
      * Reload commits while preserving the current count
      * This ensures that when the git panel refreshes, the user's expanded commit list is maintained
      */
-    private reloadCommits(): void {
+    private async reloadCommits(): Promise<void> {
         // Preserve the current number of loaded commits (minimum DEFAULT_COMMIT_DISPLAY_COUNT)
         const currentCount = Math.max(this.loadedCommits.length, DEFAULT_COMMIT_DISPLAY_COUNT);
 
@@ -210,7 +210,7 @@ export class GitTreeDataProvider
             return;
         }
 
-        const result = this.gitLogService.getCommits(repoRoot, {
+        const result = await this.gitLogService.getCommits(repoRoot, {
             maxCount: currentCount,
             skip: 0
         });
@@ -265,7 +265,7 @@ export class GitTreeDataProvider
             return;
         }
 
-        const result = this.gitLogService.getCommits(repoRoot, {
+        const result = await this.gitLogService.getCommits(repoRoot, {
             maxCount: count,
             skip: this.loadedCommits.length
         });
@@ -522,8 +522,8 @@ export class GitTreeDataProvider
      * @param commit The commit to get files for
      * @returns Array of file tree items
      */
-    private getCommitFileItems(commit: GitCommit): vscode.TreeItem[] {
-        const files = this.gitLogService.getCommitFiles(
+    private async getCommitFileItems(commit: GitCommit): Promise<vscode.TreeItem[]> {
+        const files = await this.gitLogService.getCommitFiles(
             commit.repositoryRoot,
             commit.hash
         );
@@ -843,7 +843,7 @@ export class GitTreeDataProvider
         if (storedList && Array.isArray(storedList)) {
             const restoredCommits: GitCommit[] = [];
             for (const stored of storedList) {
-                const commit = this.gitLogService.getCommit(stored.repositoryRoot, stored.hash);
+                const commit = await this.gitLogService.getCommit(stored.repositoryRoot, stored.hash);
                 if (commit) {
                     restoredCommits.push(commit);
                 }
@@ -927,14 +927,14 @@ export class GitTreeDataProvider
             }
 
             // Validate and resolve the ref
-            const resolvedHash = this.gitLogService.validateRef(repoRoot, selected);
+            const resolvedHash = await this.gitLogService.validateRef(repoRoot, selected);
             if (!resolvedHash) {
                 vscode.window.showErrorMessage(`Invalid commit reference: ${selected}`);
                 return;
             }
 
             // Get full commit info
-            const commit = this.gitLogService.getCommit(repoRoot, resolvedHash);
+            const commit = await this.gitLogService.getCommit(repoRoot, resolvedHash);
             if (!commit) {
                 vscode.window.showErrorMessage(`Could not load commit: ${selected}`);
                 return;

@@ -56,6 +56,10 @@ export interface FollowUpInputAreaProps {
     isActiveGeneration: boolean;
     isCancelling: boolean;
     error: string | null;
+    /** Inline error that should not expose the retry affordance. */
+    nonRetryableError?: string | null;
+    /** Placeholder to show while disabled for a known non-expiry reason. */
+    disabledPlaceholder?: string;
     resumeFeedback: { type: 'success' | 'error'; message: string; command?: string } | null;
     /** Called when the user clicks the dismiss (✕) button on the resume feedback banner. */
     onDismissResumeFeedback?: () => void;
@@ -206,6 +210,8 @@ export function FollowUpInputArea({
     isActiveGeneration,
     isCancelling,
     error,
+    nonRetryableError = null,
+    disabledPlaceholder,
     resumeFeedback,
     onDismissResumeFeedback,
     suggestions,
@@ -617,6 +623,13 @@ export function FollowUpInputArea({
         </button>
     );
 
+    const compactPlaceholder = inputDisabled && !isActiveGeneration
+        ? (disabledPlaceholder ?? 'Session expired.')
+        : 'Send a message... (type / for commands)';
+    const stackedPlaceholder = inputDisabled && !isActiveGeneration
+        ? (disabledPlaceholder ?? 'Session expired.')
+        : 'Reply to CoC, or type / for commands...';
+
     const hiddenFileInput = (
         <input
             ref={fileInputRef}
@@ -661,8 +674,16 @@ export function FollowUpInputArea({
                     )}
                 </div>
             )}
-            {error && <div className="chat-error-bubble bubble-error text-xs text-[#f14c4c]">{error}</div>}
-            {error && (
+            {nonRetryableError && (
+                <div
+                    className="chat-error-bubble bubble-error text-xs text-[#f14c4c]"
+                    data-testid="follow-up-inline-error"
+                >
+                    {nonRetryableError}
+                </div>
+            )}
+            {!nonRetryableError && error && <div className="chat-error-bubble bubble-error text-xs text-[#f14c4c]">{error}</div>}
+            {!nonRetryableError && error && (
                 <Button
                     variant="danger"
                     size="sm"
@@ -774,7 +795,7 @@ export function FollowUpInputArea({
                             disabled={inputDisabled}
                             value={followUpInput}
                             ghostText={slashCommands.activeCommandHint ?? autocomplete.completion}
-                            placeholder={inputDisabled && !isActiveGeneration ? 'Session expired.' : 'Send a message... (type / for commands)'}
+                            placeholder={compactPlaceholder}
                             className={cn(
                                 'w-full min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60',
                                 MODE_BORDER_COLORS[selectedMode].border,
@@ -900,7 +921,7 @@ export function FollowUpInputArea({
                             disabled={inputDisabled}
                             value={followUpInput}
                             ghostText={slashCommands.activeCommandHint ?? autocomplete.completion}
-                            placeholder={inputDisabled && !isActiveGeneration ? 'Session expired.' : 'Reply to CoC, or type / for commands...'}
+                            placeholder={stackedPlaceholder}
                             // border-transparent + focus:ring-transparent neutralize the
                             // base RichTextInput's 1px gray border and default blue
                             // focus:ring-2, so the inner contenteditable adds no visible

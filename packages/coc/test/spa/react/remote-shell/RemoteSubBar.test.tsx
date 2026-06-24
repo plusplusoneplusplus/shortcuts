@@ -17,11 +17,12 @@ let mockQueueState: any = { repoQueueMap: {} };
 let mockWorkItemState: any = { unseenByRepo: {} };
 let mockQueueStats: any = { running: 0, queued: 0 };
 let mockGitInfo: any = { ahead: 0, behind: 0 };
+let mockUnseenCounts: Record<string, number> = {};
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({ useApp: () => ({ state: mockAppState, dispatch: vi.fn() }) }));
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({ useQueue: () => ({ state: mockQueueState, dispatch: mockQueueDispatch }) }));
 vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () => ({ useWorkItems: () => ({ state: mockWorkItemState, dispatch: mockWorkItemDispatch }) }));
-vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({ useRepos: () => ({ fetchRepos: mockFetchRepos, repos: [], loading: false, unseenCounts: {}, refreshUnseenCounts: vi.fn() }) }));
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({ useRepos: () => ({ fetchRepos: mockFetchRepos, repos: [], loading: false, unseenCounts: mockUnseenCounts, refreshUnseenCounts: vi.fn() }) }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useTerminalEnabled', () => ({ useTerminalEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/hooks/useNotesEnabled', () => ({ useNotesEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({ useWorkflowsEnabled: () => true }));
@@ -83,6 +84,7 @@ beforeEach(() => {
     mockWorkItemState = { unseenByRepo: {} };
     mockQueueStats = { running: 0, queued: 0 };
     mockGitInfo = { ahead: 0, behind: 0 };
+    mockUnseenCounts = {};
 });
 
 describe('RemoteSubBar', () => {
@@ -153,6 +155,57 @@ describe('RemoteSubBar', () => {
         mockQueueStats = { running: 2, queued: 0 };
         renderBar();
         expect(screen.getByTestId('subbar-running-badge').textContent).toBe('2');
+    });
+
+    // ── Unread conversation counts in the clone switcher ──────────────────────
+
+    it('shows the aggregate unread conversation count on the closed clone-switch button', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox');
+        mockUnseenCounts = { a: 2, b: 5 };
+        render(<RemoteSubBar repo={local as any} repos={[local, remote] as any} />);
+
+        const badge = screen.getByTestId('clone-switch-unseen-badge');
+        expect(badge.textContent).toBe('7');
+        expect(badge.getAttribute('aria-label')).toBe('7 unread conversations');
+    });
+
+    it('shows each clone row unread conversation count in the open dropdown', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox');
+        mockUnseenCounts = { a: 2, b: 5 };
+        render(<RemoteSubBar repo={local as any} repos={[local, remote] as any} />);
+
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const rows = screen.getAllByTestId('clone-popover-item');
+        expect(rows[0].querySelector('[data-testid="clone-row-unseen-badge"]')?.textContent).toBe('2');
+        expect(rows[0].querySelector('[data-testid="clone-row-unseen-badge"]')?.getAttribute('aria-label')).toBe('2 unread conversations');
+        expect(rows[1].querySelector('[data-testid="clone-row-unseen-badge"]')?.textContent).toBe('5');
+        expect(rows[1].querySelector('[data-testid="clone-row-unseen-badge"]')?.getAttribute('aria-label')).toBe('5 unread conversations');
+    });
+
+    it('caps clone-switch and row unread badges at 99+', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox');
+        mockUnseenCounts = { a: 120, b: 4 };
+        render(<RemoteSubBar repo={local as any} repos={[local, remote] as any} />);
+
+        expect(screen.getByTestId('clone-switch-unseen-badge').textContent).toBe('99+');
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const rows = screen.getAllByTestId('clone-popover-item');
+        expect(rows[0].querySelector('[data-testid="clone-row-unseen-badge"]')?.textContent).toBe('99+');
+        expect(rows[1].querySelector('[data-testid="clone-row-unseen-badge"]')?.textContent).toBe('4');
+    });
+
+    it('omits clone-switch and row unread badges when counts are zero', () => {
+        const local = repo('a', 'shortcuts');
+        const remote = remoteRepo('b', 'shortcuts-remote', 'devbox');
+        mockUnseenCounts = { a: 0, b: 0 };
+        render(<RemoteSubBar repo={local as any} repos={[local, remote] as any} />);
+
+        expect(screen.queryByTestId('clone-switch-unseen-badge')).toBeNull();
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        expect(screen.queryByTestId('clone-row-unseen-badge')).toBeNull();
     });
 
     // ── AC-04: remote clones in the CLONE dropdown ───────────────────────────

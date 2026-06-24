@@ -25,7 +25,9 @@ export interface SourceCanvasFileRef {
     wsId?: string;
     /**
      * Body mode for the docked panel: `'note'` renders the editable markdown
-     * NoteEditor; `'code'` (or omitted) renders the read-only source viewer.
+     * NoteEditor; `'dir'` renders the read-only folder explorer (entries loaded
+     * via the workspace-routed `explorer.tree` API); `'code'` (or omitted)
+     * renders the read-only source viewer.
      */
-    kind?: 'note' | 'code';
+    kind?: 'note' | 'code' | 'dir';
 }

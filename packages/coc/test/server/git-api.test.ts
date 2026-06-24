@@ -8,7 +8,7 @@
  * - GET /api/workspaces/:id/git/commits/:hash/files/:filePath/diff
  * - GET /api/workspaces/:id/git/commits/:hash/files/:filePath/content
  *
- * Uses mocked execGitSync via vi.mock to avoid actual git calls.
+ * Uses mocked forge execGitAsync via vi.mock to avoid actual git calls.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
@@ -26,7 +26,7 @@ import { gitCache } from '../../src/server/git/git-cache';
 import { gitInfoCache } from '../../src/server/git/git-info-cache';
 
 // ============================================================================
-// Mock execGitSync and child_process
+// Mock forge git exec and child_process
 // ============================================================================
 
 const mockExecSync = vi.fn();
@@ -45,6 +45,7 @@ const mockGetBranchStatus = vi.fn();
 const mockHasUncommittedChanges = vi.fn();
 const mockGetCurrentBranch = vi.fn();
 const mockExportCommitPatch = vi.fn();
+const mockExportCommitPatches = vi.fn();
 const mockApplyCommitPatch = vi.fn();
 const mockGetRepoState = vi.fn();
 const mockBroadcastGitChanged = vi.fn();
@@ -57,6 +58,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
             exportCommitPatch: vi.fn(async (...args: any[]) => mockExportCommitPatch(...args)),
+            exportCommitPatches: vi.fn(async (...args: any[]) => mockExportCommitPatches(...args)),
             applyCommitPatch: vi.fn(async (...args: any[]) => mockApplyCommitPatch(...args)),
             getRepoState: vi.fn((...args: any[]) => mockGetRepoState(...args)),
         }); }),
@@ -66,6 +68,8 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         }); }),
         detectRemoteUrl: vi.fn(async () => undefined),
         execGit: (...args: any[]) => mockForgeExecGit(...args),
+        // execGitArgsAsync / readGitFileAtCommit now delegate to forge execGitAsync.
+        execGitAsync: async (...args: any[]) => mockForgeExecGit(...args),
     };
 });
 
@@ -146,6 +150,7 @@ describe('Git API endpoints', () => {
         mockHasUncommittedChanges.mockReset();
         mockGetCurrentBranch.mockReset();
         mockExportCommitPatch.mockReset();
+        mockExportCommitPatches.mockReset();
         mockApplyCommitPatch.mockReset();
         mockGetRepoState.mockReset();
         mockBroadcastGitChanged.mockReset();
@@ -461,6 +466,43 @@ describe('Git API endpoints', () => {
             expect(mockExportCommitPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'abcdef1');
         });
 
+        it('exports a range via hashes[] into one mailbox with ordered sourceCommits', async () => {
+            const fullA = 'aaaaaaa1234567890aaaaaaa1234567890aaaaaaa1';
+            const fullB = 'bbbbbbb1234567890bbbbbbb1234567890bbbbbbb2';
+            mockExportCommitPatches.mockResolvedValue({
+                success: true,
+                patch: 'From aaaaaaa1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] First\n\nFrom bbbbbbb1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Second\n',
+                commits: [
+                    { commitHash: fullA, subject: 'First', authorName: 'Ada Dev', authorEmail: 'ada@example.test', authorDate: '2026-06-04T04:00:00+00:00', patch: '' },
+                    { commitHash: fullB, subject: 'Second', authorName: 'Ada Dev', authorEmail: 'ada@example.test', authorDate: '2026-06-04T04:01:00+00:00', patch: '' },
+                ],
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/export`, {
+                method: 'POST',
+                body: JSON.stringify({ hashes: ['aaaaaaa1', 'bbbbbbb2'] }),
+            });
+
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.sourceCommits.map((commit: any) => commit.hash)).toEqual([fullA, fullB]);
+            expect(data.sourceCommit.hash).toBe(fullA);
+            expect(data.patch.body).toContain('First');
+            expect(data.patch.body).toContain('Second');
+            expect(mockExportCommitPatches).toHaveBeenCalledWith(WORKSPACE_ROOT, ['aaaaaaa1', 'bbbbbbb2']);
+            expect(mockExportCommitPatch).not.toHaveBeenCalled();
+        });
+
+        it('rejects a hashes[] payload containing an invalid hash', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/export`, {
+                method: 'POST',
+                body: JSON.stringify({ hashes: ['abcdef1', 'bad;rm'] }),
+            });
+
+            expect(res.status).toBe(400);
+            expect(mockExportCommitPatches).not.toHaveBeenCalled();
+        });
+
         it('returns 404 when the commit cannot be exported', async () => {
             mockExportCommitPatch.mockResolvedValue({ success: false, error: 'fatal: bad object deadbeef' });
 
@@ -592,6 +634,34 @@ describe('Git API endpoints', () => {
                     newCommitHash: 'fedcba9876543210fedcba9876543210fedcba98',
                 },
             });
+        });
+
+        it('threads appliedCount and sourceCommits through a range apply', async () => {
+            mockApplyCommitPatch.mockResolvedValue({
+                success: true,
+                conflicts: false,
+                message: 'Patch applied successfully',
+                headHash: 'fedcba9876543210fedcba9876543210fedcba98',
+                stashed: false,
+                appliedCount: 2,
+            });
+            const sourceCommits = [
+                { hash: 'aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111', subject: 'First' },
+                { hash: 'bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222', subject: 'Second' },
+            ];
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
+                method: 'POST',
+                body: JSON.stringify({ patch, sourceCommit: sourceCommits[0], sourceCommits }),
+            });
+
+            expect(res.status).toBe(200);
+            const body = res.json();
+            expect(body.appliedCount).toBe(2);
+            expect(body.operation.metadata.sourceCommits.map((commit: any) => commit.hash)).toEqual([
+                'aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111',
+                'bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222',
+            ]);
         });
 
         it('passes explicit stashAndContinue to the service and reports stashed success', async () => {

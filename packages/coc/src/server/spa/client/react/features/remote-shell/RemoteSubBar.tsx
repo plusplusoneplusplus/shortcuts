@@ -57,6 +57,11 @@ function Chevron() {
 }
 
 const scopeLabelClass = 'hidden lg:inline-flex items-center text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#848484] dark:text-[#777] px-1 select-none flex-shrink-0';
+const unreadBadgeClass = 'min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none';
+
+function formatUnreadCount(count: number): string {
+    return count > 99 ? '99+' : String(count);
+}
 
 export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
     const ws = repo.workspace;
@@ -101,8 +106,13 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
     const providerLabel = remoteProviderLabel(group?.normalizedUrl);
     const branch = repo.gitInfo?.branch || null;
 
-    const { fetchRepos } = useRepos();
+    const { fetchRepos, unseenCounts } = useRepos();
     const { toasts, addToast, removeToast } = useToast();
+
+    const cloneUnreadTotal = useMemo(
+        () => clones.reduce((sum, c) => sum + (unseenCounts[String(c.workspace.id)] ?? 0), 0),
+        [clones, unseenCounts],
+    );
 
     const [cloneOpen, setCloneOpen] = useState(false);
     const [ovOpen, setOvOpen] = useState(false);
@@ -304,11 +314,20 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                     aria-haspopup="menu"
                     aria-expanded={cloneOpen}
                     title={ws.name}
-                    className="inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:border-[#0078d4] dark:hover:border-[#0078d4] transition-colors"
+                    className="relative inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:border-[#0078d4] dark:hover:border-[#0078d4] transition-colors"
                 >
                     <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: cloneStatusColor(cloneStatus[cloneId], remoteColor) }} aria-hidden />
                     <span className="max-w-[160px] truncate">{ws.name}</span>
                     {clones.length > 1 && <span className="text-[11px] text-[#848484] dark:text-[#777]">· {clones.length}</span>}
+                    {cloneUnreadTotal > 0 && (
+                        <span
+                            className={`absolute -top-0.5 -right-0.5 ${unreadBadgeClass}`}
+                            data-testid="clone-switch-unseen-badge"
+                            aria-label={`${cloneUnreadTotal} unread conversations`}
+                        >
+                            {formatUnreadCount(cloneUnreadTotal)}
+                        </span>
+                    )}
                     <Chevron />
                 </button>
                 {cloneOpen && (
@@ -338,6 +357,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                             const serverLabel = isRemote
                                 ? String((c.workspace as { remote?: { serverLabel?: unknown } }).remote?.serverLabel ?? 'remote')
                                 : null;
+                            const cloneUnreadCount = unseenCounts[cid] ?? 0;
                             return (
                                 <button
                                     key={cid}
@@ -372,8 +392,8 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                                 >
                                     <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5" style={{ background: cloneStatusColor(st, getRepoHashColor(c.workspace, getHostname() ?? 'local')) }} aria-hidden />
                                     <span className="flex-1 min-w-0">
-                                        <span className="flex items-center gap-1.5">
-                                            <span className={'text-[12.5px] font-semibold truncate ' + (isSel && !isOffline ? 'text-[#0969da] dark:text-[#79c0ff]' : 'text-[#1e1e1e] dark:text-[#cccccc]')}>{c.workspace.name}</span>
+                                        <span className="flex items-center gap-1.5 min-w-0">
+                                            <span className={'min-w-0 text-[12.5px] font-semibold truncate ' + (isSel && !isOffline ? 'text-[#0969da] dark:text-[#79c0ff]' : 'text-[#1e1e1e] dark:text-[#cccccc]')}>{c.workspace.name}</span>
                                             {!isRemote && clones.length > 1 && clones.some(cl => isRemoteRepo(cl)) && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#ddf4ff] dark:bg-[#3794ff]/20 text-[#0969da] dark:text-[#79c0ff]">Local</span>}
                                             {serverLabel && (
                                                 <span
@@ -395,6 +415,15 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                                                 </span>
                                             )}
                                             {!isOffline && st === 'running' && <span className="text-[9px] font-bold uppercase px-1.5 py-px rounded bg-[#16a34a]/15 text-[#16a34a]">running</span>}
+                                            {cloneUnreadCount > 0 && (
+                                                <span
+                                                    className={`${unreadBadgeClass} flex-shrink-0`}
+                                                    data-testid="clone-row-unseen-badge"
+                                                    aria-label={`${cloneUnreadCount} unread conversations`}
+                                                >
+                                                    {formatUnreadCount(cloneUnreadCount)}
+                                                </span>
+                                            )}
                                         </span>
                                         <span className="block font-mono text-[10.5px] text-[#848484] dark:text-[#777] truncate mt-0.5">{truncatePath(c.workspace.rootPath || '', 36)}</span>
                                     </span>

@@ -161,6 +161,7 @@ export interface GitPatchTransferOperationMetadata {
   sourceServer?: GitOpServerMetadata;
   sourceWorkspace?: GitOpWorkspaceMetadata;
   sourceCommit?: GitOpCommitMetadata;
+  sourceCommits?: GitOpCommitMetadata[];
   normalizedSourceRemoteUrl?: string | null;
   targetWorkspace: GitOpWorkspaceMetadata;
   targetBranch?: string | null;
@@ -179,6 +180,8 @@ export interface GitFormatPatchPayload {
 export interface GitPatchExportResponse {
   sourceWorkspace: GitOpWorkspaceMetadata;
   sourceCommit: GitOpCommitMetadata;
+  /** Present when a range was exported; ordered oldest-first. */
+  sourceCommits?: GitOpCommitMetadata[];
   normalizedSourceRemoteUrl: string | null;
   patch: GitFormatPatchPayload;
 }
@@ -189,6 +192,7 @@ export interface GitPatchApplyRequest {
   sourceServer?: GitOpServerMetadata;
   sourceWorkspace?: GitOpWorkspaceMetadata;
   sourceCommit?: GitOpCommitMetadata;
+  sourceCommits?: GitOpCommitMetadata[];
   normalizedSourceRemoteUrl?: string | null;
 }
 
@@ -199,6 +203,8 @@ export interface GitPatchApplyResponse {
   targetHead?: string;
   newCommitHash?: string;
   stashed: boolean;
+  /** Commits that landed on the target (full or partial on conflict). */
+  appliedCount?: number;
   operation: GitOpJob;
 }
 

@@ -132,7 +132,7 @@ The dashboard and client package use these server routes:
 | `POST /api/servers/:id/reconnect` | Kill and recreate the managed `devtunnel connect` or `ssh -N` process |
 | `GET /api/servers/:id/health` | Connect if needed, then probe health |
 | `GET /api/servers/:id/connection` | Return current runtime connection state |
-| `POST /api/servers/cherry-pick-transfer` | Initiating-server orchestration for patch-transfer cherry-picks between the current CoC and/or registered online remote CoC servers. The request names source/target `workspaceId` plus optional `serverId` (`local` or omitted means current CoC), and the route composes each server's existing git patch export/apply APIs without returning effective URLs or local paths. |
+| `POST /api/servers/cherry-pick-transfer` | Initiating-server orchestration for patch-transfer cherry-picks between the current CoC and/or registered online remote CoC servers. The request names source/target `workspaceId` plus optional `serverId` (`local` or omitted means current CoC) and either `source.commitHash` (single) or `source.commitHashes` (oldest-first range), and the route composes each server's existing git patch export/apply APIs in one export + one apply round-trip regardless of range size, without returning effective URLs or local paths. |
 
 Direct URL servers do not support connect, disconnect, or reconnect because they do not have a managed tunnel process.
 

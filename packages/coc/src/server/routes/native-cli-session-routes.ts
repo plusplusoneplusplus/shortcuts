@@ -27,14 +27,14 @@ export interface NativeCliSessionRouteContext {
     getEnabled: () => boolean;
     providers: ReadonlyMap<NativeCliSessionProviderId, NativeSessionProvider>;
     /** Override of workspace `owner/repo` resolution (tests avoid real git calls). */
-    resolveWorkspaceRepository?: (workspace: WorkspaceInfo) => string | undefined;
+    resolveWorkspaceRepository?: (workspace: WorkspaceInfo) => string | undefined | Promise<string | undefined>;
 }
 
-function defaultResolveWorkspaceRepository(workspace: WorkspaceInfo): string | undefined {
+async function defaultResolveWorkspaceRepository(workspace: WorkspaceInfo): Promise<string | undefined> {
     if (!workspace.rootPath) {
         return undefined;
     }
-    const remote = readGitOriginRemote(workspace.rootPath);
+    const remote = await readGitOriginRemote(workspace.rootPath);
     if (!remote) {
         return undefined;
     }
@@ -68,9 +68,9 @@ export function registerNativeCliSessionRoutes(ctx: NativeCliSessionRouteContext
     const { routes, store, getEnabled, providers } = ctx;
     const resolveRepository = ctx.resolveWorkspaceRepository ?? defaultResolveWorkspaceRepository;
 
-    const buildScope = (workspace: WorkspaceInfo): NativeSessionWorkspaceScope => ({
+    const buildScope = async (workspace: WorkspaceInfo): Promise<NativeSessionWorkspaceScope> => ({
         rootPath: workspace.rootPath,
-        repository: resolveRepository(workspace),
+        repository: await resolveRepository(workspace),
     });
 
     const resolveProvider = (res: http.ServerResponse, raw: unknown): NativeSessionProvider | null => {
@@ -111,7 +111,7 @@ export function registerNativeCliSessionRoutes(ctx: NativeCliSessionRouteContext
             const workspace = await resolveWorkspaceOrFail(store, match!, res);
             if (!workspace) { return; }
 
-            const result = provider.listSessions(buildScope(workspace), {
+            const result = provider.listSessions(await buildScope(workspace), {
                 provider: provider.provider,
                 q: queryString(query.q),
                 sessionId: queryString(query.sessionId),
@@ -167,7 +167,7 @@ export function registerNativeCliSessionRoutes(ctx: NativeCliSessionRouteContext
             if (!workspace) { return; }
 
             const sessionId = decodeURIComponent(match![2]);
-            const result = provider.getSession(buildScope(workspace), sessionId);
+            const result = provider.getSession(await buildScope(workspace), sessionId);
             if (!result.available) {
                 sendJSON(res, 200, {
                     enabled: true,

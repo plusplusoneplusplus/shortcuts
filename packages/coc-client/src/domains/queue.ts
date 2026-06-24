@@ -37,6 +37,7 @@ export interface QueueCancelOptions {
 export interface QueuePauseMarkerRequest {
   afterIndex?: number;
   repoId?: string;
+  durationHours?: 1 | 2 | 3 | 4 | 8;
 }
 
 export type QueueScope = string | Pick<QueueQuery, 'workspace' | 'repoId'>;

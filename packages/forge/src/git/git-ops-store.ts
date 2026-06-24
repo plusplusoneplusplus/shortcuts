@@ -53,6 +53,7 @@ export interface GitPatchTransferOperationMetadata {
     sourceServer?: GitOpServerMetadata;
     sourceWorkspace?: GitOpWorkspaceMetadata;
     sourceCommit?: GitOpCommitMetadata;
+    sourceCommits?: GitOpCommitMetadata[];
     normalizedSourceRemoteUrl?: string | null;
     targetWorkspace: GitOpWorkspaceMetadata;
     targetBranch?: string | null;

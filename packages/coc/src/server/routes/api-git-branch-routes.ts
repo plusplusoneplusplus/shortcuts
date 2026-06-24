@@ -7,8 +7,8 @@
  */
 
 import { BranchService, detectRemoteUrl, normalizeRemoteUrl } from '@plusplusoneplusplus/forge';
-import type { GitOpJob, GitOpMetadata, ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
-import { sendJSON, parseBody, execGitArgsSync } from '../core/api-handler';
+import type { GitOpCommitMetadata, GitOpJob, GitOpMetadata, ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import { sendJSON, parseBody, execGitArgsAsync } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
 import { gitCache } from '../git/git-cache';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
@@ -320,7 +320,7 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             const allowedModes = ['hard', 'soft', 'mixed'];
             const mode = typeof body.mode === 'string' && allowedModes.includes(body.mode) ? body.mode : 'hard';
             try {
-                execGitArgsSync(['reset', `--${mode}`, body.hash], ws.rootPath);
+                await execGitArgsAsync(['reset', `--${mode}`, body.hash], ws.rootPath);
             } catch (err: any) {
                 throw badRequest('Failed to reset: ' + (err.message || 'unknown error'));
             }
@@ -386,6 +386,32 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             if (!ws) return;
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
+
+            // Range export: `hashes` (oldest-first) → one concatenated mailbox.
+            if (Array.isArray(body.hashes)) {
+                const hashes = body.hashes
+                    .filter((value: unknown): value is string => typeof value === 'string')
+                    .map((value: string) => value.trim())
+                    .filter((value: string) => value.length > 0);
+                if (hashes.length === 0) return void handleAPIError(res, missingFields(['hashes']));
+                if (!hashes.every((value: string) => /^[a-fA-F0-9]{4,40}$/.test(value))) {
+                    return void handleAPIError(res, badRequest('Missing or invalid hash'));
+                }
+
+                const result = await branchService.exportCommitPatches(ws.rootPath, hashes);
+                if (!result.success) return void handleAPIError(res, notFound('Commit'));
+
+                const sourceCommits = result.commits.map(toGitOpCommitMetadata);
+                const normalizedSourceRemoteUrl = await resolveNormalizedSourceRemoteUrl(ws, store);
+                return {
+                    sourceWorkspace: { id: ws.id, name: ws.name },
+                    sourceCommit: sourceCommits[0],
+                    sourceCommits,
+                    normalizedSourceRemoteUrl,
+                    patch: { format: 'format-patch', body: result.patch },
+                };
+            }
+
             if (!body.hash || typeof body.hash !== 'string') return void handleAPIError(res, missingFields(['hash']));
             const hash = body.hash.trim();
             if (!/^[a-fA-F0-9]{4,40}$/.test(hash)) return void handleAPIError(res, badRequest('Missing or invalid hash'));
@@ -393,27 +419,12 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             const result = await branchService.exportCommitPatch(ws.rootPath, hash);
             if (!result.success) return void handleAPIError(res, notFound('Commit'));
 
-            const remoteUrl = await resolveWorkspaceRemoteUrl(ws, store);
-            const normalizedSourceRemoteUrl = remoteUrl ? normalizeRemoteUrl(remoteUrl) || null : null;
+            const normalizedSourceRemoteUrl = await resolveNormalizedSourceRemoteUrl(ws, store);
             return {
-                sourceWorkspace: {
-                    id: ws.id,
-                    name: ws.name,
-                },
-                sourceCommit: {
-                    hash: result.commitHash,
-                    subject: result.subject,
-                    author: {
-                        name: result.authorName,
-                        email: result.authorEmail,
-                        date: result.authorDate,
-                    },
-                },
+                sourceWorkspace: { id: ws.id, name: ws.name },
+                sourceCommit: toGitOpCommitMetadata(result),
                 normalizedSourceRemoteUrl,
-                patch: {
-                    format: 'format-patch',
-                    body: result.patch,
-                },
+                patch: { format: 'format-patch', body: result.patch },
             };
         },
     }));
@@ -483,6 +494,7 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
                     targetHead: result.headHash,
                     newCommitHash: result.headHash,
                     stashed: result.stashed === true,
+                    ...(result.appliedCount !== undefined ? { appliedCount: result.appliedCount } : {}),
                     operation,
                 };
             }
@@ -500,6 +512,7 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
                     conflicts: true,
                     stashed: result.stashed === true,
                     gitState: result.gitState,
+                    ...(result.appliedCount !== undefined ? { appliedCount: result.appliedCount } : {}),
                 });
                 return;
             }
@@ -776,6 +789,29 @@ async function resolveWorkspaceRemoteUrl(ws: WorkspaceInfo, store: ProcessStore)
     return remoteUrl;
 }
 
+async function resolveNormalizedSourceRemoteUrl(ws: WorkspaceInfo, store: ProcessStore): Promise<string | null> {
+    const remoteUrl = await resolveWorkspaceRemoteUrl(ws, store);
+    return remoteUrl ? normalizeRemoteUrl(remoteUrl) || null : null;
+}
+
+function toGitOpCommitMetadata(payload: {
+    commitHash: string;
+    subject: string;
+    authorName: string;
+    authorEmail: string;
+    authorDate: string;
+}): GitOpCommitMetadata {
+    return {
+        hash: payload.commitHash,
+        subject: payload.subject,
+        author: {
+            name: payload.authorName,
+            email: payload.authorEmail,
+            date: payload.authorDate,
+        },
+    };
+}
+
 function buildRebaseReorderPrompt(repoRoot: string, commits: string[]): string {
     const firstCommit = commits[0];
     const pickLines = commits.map(h => `pick ${h}`).join('\n');
@@ -876,6 +912,8 @@ function buildPatchTransferMetadata(
     if (sourceWorkspace) metadata.sourceWorkspace = sourceWorkspace;
     const sourceCommit = sanitizeCommitMetadata(body.sourceCommit);
     if (sourceCommit) metadata.sourceCommit = sourceCommit;
+    const sourceCommits = sanitizeCommitMetadataArray(body.sourceCommits);
+    if (sourceCommits) metadata.sourceCommits = sourceCommits;
     if (body.normalizedSourceRemoteUrl === null) {
         metadata.normalizedSourceRemoteUrl = null;
     } else {
@@ -917,6 +955,14 @@ function sanitizeCommitMetadata(value: unknown): { hash: string; subject?: strin
         ...(subject ? { subject } : {}),
         ...(author ? { author } : {}),
     };
+}
+
+function sanitizeCommitMetadataArray(value: unknown): GitOpCommitMetadata[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const commits = value
+        .map(sanitizeCommitMetadata)
+        .filter((commit): commit is GitOpCommitMetadata => Boolean(commit));
+    return commits.length > 0 ? commits : undefined;
 }
 
 function sanitizeAuthorMetadata(value: unknown): { name?: string; email?: string; date?: string } | undefined {

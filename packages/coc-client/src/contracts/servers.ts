@@ -91,7 +91,10 @@ export interface CherryPickTransferEndpoint {
 
 export interface CherryPickTransferRequest {
   source: CherryPickTransferEndpoint & {
-    commitHash: string;
+    /** Single commit (back-compat). Provide this or `commitHashes`. */
+    commitHash?: string;
+    /** Range of commits, ordered oldest-first. Provide this or `commitHash`. */
+    commitHashes?: string[];
   };
   target: CherryPickTransferEndpoint & {
     stashAndContinue?: boolean;
@@ -104,6 +107,8 @@ export interface CherryPickTransferResponse {
     server: GitOpServerMetadata;
     workspace: GitOpWorkspaceMetadata;
     commit: GitOpCommitMetadata;
+    /** Present when a range was transferred; ordered oldest-first. */
+    commits?: GitOpCommitMetadata[];
     normalizedRemoteUrl: string | null;
   };
   target: {

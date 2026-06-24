@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileAsync } from '@plusplusoneplusplus/forge';
 
 export interface WorkItemSyncGithubPreference {
     owner?: string;
@@ -38,7 +38,7 @@ export type GitHubWorkItemSyncRepo =
 export interface ResolveGitHubWorkItemSyncRepoOptions {
     workspace?: WorkItemSyncWorkspaceInfo;
     preferences?: WorkItemSyncRepoPreferences;
-    readOriginRemote?: (rootPath: string) => string | undefined;
+    readOriginRemote?: (rootPath: string) => string | undefined | Promise<string | undefined>;
 }
 
 export function parseGitHubRemoteUrl(remoteUrl: string): { owner: string; repo: string; url: string } | undefined {
@@ -80,21 +80,19 @@ export function parseGitHubRemoteUrl(remoteUrl: string): { owner: string; repo: 
     };
 }
 
-export function readGitOriginRemote(rootPath: string): string | undefined {
+export async function readGitOriginRemote(rootPath: string): Promise<string | undefined> {
     try {
-        const output = execFileSync('git', ['remote', 'get-url', 'origin'], {
+        const { stdout } = await execFileAsync('git', ['remote', 'get-url', 'origin'], {
             cwd: rootPath,
-            encoding: 'utf8',
-            stdio: ['ignore', 'pipe', 'ignore'],
         });
-        const remote = output.trim();
+        const remote = stdout.trim();
         return remote.length > 0 ? remote : undefined;
     } catch {
         return undefined;
     }
 }
 
-export function resolveGitHubWorkItemSyncRepo(options: ResolveGitHubWorkItemSyncRepoOptions): GitHubWorkItemSyncRepo {
+export async function resolveGitHubWorkItemSyncRepo(options: ResolveGitHubWorkItemSyncRepoOptions): Promise<GitHubWorkItemSyncRepo> {
     const pref = options.preferences?.workItems?.sync?.github;
     const prefOwner = pref?.owner?.trim();
     const prefRepo = pref?.repo?.trim();
@@ -125,7 +123,7 @@ export function resolveGitHubWorkItemSyncRepo(options: ResolveGitHubWorkItemSync
         return { available: false, provider: 'github', reason: 'missing-workspace' };
     }
 
-    const originRemote = (options.readOriginRemote ?? readGitOriginRemote)(rootPath);
+    const originRemote = await (options.readOriginRemote ?? readGitOriginRemote)(rootPath);
     if (!originRemote) {
         return { available: false, provider: 'github', reason: 'missing-origin' };
     }

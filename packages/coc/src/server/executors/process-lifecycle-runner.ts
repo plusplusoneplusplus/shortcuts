@@ -154,6 +154,8 @@ export interface LifecycleRunnerOptions {
         turnSource?: TurnSource,
         /** Per-turn reasoning-effort override, when provided by the caller. */
         reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh',
+        /** Require this exact SDK session ID to be resumed; no fresh-session fallback. */
+        strictResumeSessionId?: string,
     ) => Promise<void>;
     /** Dispatch execution by task type (chat/workflow/script). */
     executeByTypeFn: (task: QueuedTask, prompt: string) => Promise<unknown>;
@@ -368,6 +370,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 // find it there.
                 const followUpEffort = (followUpPayload as any).reasoningEffort
                     ?? task.config.reasoningEffort;
+                const strictResumeSessionId = typeof followUpPayload.resumeSessionId === 'string'
+                    ? followUpPayload.resumeSessionId
+                    : undefined;
                 await opts.executeFollowUpFn(
                     followUpPayload.processId!,
                     followUpPayload.prompt,
@@ -379,6 +384,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     (followUpPayload as any).model,
                     turnSource,
                     followUpEffort,
+                    strictResumeSessionId,
                 );
                 const duration = Date.now() - startTime;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);

@@ -35,8 +35,8 @@ describe('work item GitHub sync repo detection', () => {
         });
     });
 
-    it('defaults owner and repo from the workspace git origin remote', () => {
-        const result = resolveGitHubWorkItemSyncRepo({
+    it('defaults owner and repo from the workspace git origin remote', async () => {
+        const result = await resolveGitHubWorkItemSyncRepo({
             workspace: { rootPath: '/repo' },
             readOriginRemote: () => 'https://github.com/octo-org/octo-repo.git',
         });
@@ -51,8 +51,8 @@ describe('work item GitHub sync repo detection', () => {
         });
     });
 
-    it('returns a clear unavailable result when origin is missing', () => {
-        const result = resolveGitHubWorkItemSyncRepo({
+    it('returns a clear unavailable result when origin is missing', async () => {
+        const result = await resolveGitHubWorkItemSyncRepo({
             workspace: { rootPath: '/repo' },
             readOriginRemote: () => undefined,
         });
@@ -64,8 +64,8 @@ describe('work item GitHub sync repo detection', () => {
         });
     });
 
-    it('uses the workspace preference override for non-standard remotes', () => {
-        const result = resolveGitHubWorkItemSyncRepo({
+    it('uses the workspace preference override for non-standard remotes', async () => {
+        const result = await resolveGitHubWorkItemSyncRepo({
             workspace: { rootPath: '/repo' },
             preferences: {
                 workItems: {
@@ -90,8 +90,8 @@ describe('work item GitHub sync repo detection', () => {
         });
     });
 
-    it('rejects incomplete preference overrides rather than falling back silently', () => {
-        const result = resolveGitHubWorkItemSyncRepo({
+    it('rejects incomplete preference overrides rather than falling back silently', async () => {
+        const result = await resolveGitHubWorkItemSyncRepo({
             workspace: { rootPath: '/repo' },
             preferences: {
                 workItems: {

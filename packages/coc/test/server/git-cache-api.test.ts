@@ -17,7 +17,7 @@ import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
 
 // ============================================================================
-// Mock execGitSync and child_process
+// Mock forge git exec and child_process
 // ============================================================================
 
 const mockExecSync = vi.fn();
@@ -38,6 +38,8 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     return {
         ...actual,
         execGit: (...args: any[]) => mockForgeExecGit(...args),
+        // execGitArgsAsync / readGitFileAtCommit now delegate to forge execGitAsync.
+        execGitAsync: async (...args: any[]) => mockForgeExecGit(...args),
         GitRangeService: class {
             detectCommitRange = mockDetectCommitRange;
             getCurrentBranch = vi.fn().mockResolvedValue('main');

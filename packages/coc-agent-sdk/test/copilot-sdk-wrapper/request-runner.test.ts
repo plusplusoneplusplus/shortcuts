@@ -255,6 +255,32 @@ describe('RequestRunner.send() — error handling', () => {
         expect(result.success).toBe(false);
         expect(result.error).toContain('spawn failed');
     });
+
+    it('does not create a fallback session when strict session resume fails', async () => {
+        const mockClient = {
+            createSession: vi.fn(),
+            resumeSession: vi.fn().mockRejectedValue(new Error('Session expired')),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+        const onSessionCreated = vi.fn();
+
+        const result = await runner.send({
+            prompt: 'continue',
+            sessionId: 'expired-session',
+            strictSessionResume: true,
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+            onSessionCreated,
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('Session expired');
+        expect(result.sessionId).toBe('expired-session');
+        expect(mockClient.resumeSession).toHaveBeenCalledTimes(1);
+        expect(mockClient.createSession).not.toHaveBeenCalled();
+        expect(onSessionCreated).not.toHaveBeenCalled();
+    });
 });
 
 // ============================================================================

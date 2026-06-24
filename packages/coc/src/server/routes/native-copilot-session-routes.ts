@@ -25,14 +25,14 @@ export interface NativeCopilotSessionRouteContext {
     getEnabled: () => boolean;
     service: NativeCopilotSessionService;
     /** Override of workspace `owner/repo` resolution (tests avoid real git calls). */
-    resolveWorkspaceRepository?: (workspace: WorkspaceInfo) => string | undefined;
+    resolveWorkspaceRepository?: (workspace: WorkspaceInfo) => string | undefined | Promise<string | undefined>;
 }
 
-function defaultResolveWorkspaceRepository(workspace: WorkspaceInfo): string | undefined {
+async function defaultResolveWorkspaceRepository(workspace: WorkspaceInfo): Promise<string | undefined> {
     if (!workspace.rootPath) {
         return undefined;
     }
-    const remote = readGitOriginRemote(workspace.rootPath);
+    const remote = await readGitOriginRemote(workspace.rootPath);
     if (!remote) {
         return undefined;
     }
@@ -61,9 +61,9 @@ export function registerNativeCopilotSessionRoutes(ctx: NativeCopilotSessionRout
     const { routes, store, getEnabled, service } = ctx;
     const resolveRepository = ctx.resolveWorkspaceRepository ?? defaultResolveWorkspaceRepository;
 
-    const buildScope = (workspace: WorkspaceInfo): NativeSessionWorkspaceScope => ({
+    const buildScope = async (workspace: WorkspaceInfo): Promise<NativeSessionWorkspaceScope> => ({
         rootPath: workspace.rootPath,
-        repository: resolveRepository(workspace),
+        repository: await resolveRepository(workspace),
     });
 
     // GET /api/workspaces/:id/native-copilot-sessions
@@ -93,7 +93,7 @@ export function registerNativeCopilotSessionRoutes(ctx: NativeCopilotSessionRout
             // store id, so a single indexed query yields the exclusion set.
             const excludeSessionIds = store.getSdkSessionIds?.(workspace.id);
 
-            const result = service.listSessions(buildScope(workspace), {
+            const result = service.listSessions(await buildScope(workspace), {
                 q: queryString(query.q),
                 sessionId: queryString(query.sessionId),
                 branch: queryString(query.branch),
@@ -143,7 +143,7 @@ export function registerNativeCopilotSessionRoutes(ctx: NativeCopilotSessionRout
             if (!workspace) { return; }
 
             const sessionId = decodeURIComponent(match![2]);
-            const result = service.getSession(buildScope(workspace), sessionId);
+            const result = service.getSession(await buildScope(workspace), sessionId);
             if (!result.available) {
                 sendJSON(res, 200, { enabled: true, available: false, reason: result.reason });
                 return;

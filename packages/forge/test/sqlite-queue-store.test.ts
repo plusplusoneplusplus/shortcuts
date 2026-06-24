@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeDatabase } from '../src/sqlite-schema';
 import { SqliteQueueStore } from '../src/sqlite-queue-store';
-import type { QueuedTask, PauseReason } from '../src/queue/types';
+import type { QueuedTask, PauseReason, PauseMarker } from '../src/queue/types';
 
 let db: Database.Database;
 let store: SqliteQueueStore;
@@ -78,6 +78,56 @@ describe('upsertQueueTask', () => {
             payload: { key: 'value', nested: { a: 1 } },
             config: { timeout: 60_000 },
             result: { output: 'done' },
+        });
+
+        // ============================================================================
+        // upsertQueueItem
+        // ============================================================================
+
+        describe('upsertQueueItem', () => {
+            it('persists pause markers with durationHours and queue order', () => {
+                const first = makeTask('t1', { displayName: 'first' });
+                const second = makeTask('t2', { displayName: 'second' });
+                const marker: PauseMarker = {
+                    kind: 'pause-marker',
+                    id: 'pause-1',
+                    createdAt: 1234,
+                    durationHours: 2,
+                };
+
+                store.upsertQueueTask(first, 0);
+                store.upsertQueueItem(marker, 'repo-1', 1);
+                store.upsertQueueTask(second, 2);
+
+                const items = store.getQueueItems('repo-1', ['queued']);
+                expect(items.map(item => item.id)).toEqual(['t1', 'pause-1', 't2']);
+                expect(items[1]).toEqual({
+                    kind: 'pause-marker',
+                    id: 'pause-1',
+                    repoId: 'repo-1',
+                    createdAt: 1234,
+                    durationHours: 2,
+                });
+                expect(store.getQueueTasks('repo-1', ['queued']).map(task => task.id)).toEqual(['t1', 't2']);
+            });
+
+            it('round-trips indefinite pause markers without durationHours', () => {
+                const marker: PauseMarker = {
+                    kind: 'pause-marker',
+                    id: 'pause-indefinite',
+                    createdAt: 5678,
+                };
+
+                store.upsertQueueItem(marker, 'repo-1', 0);
+
+                const [item] = store.getQueueItems('repo-1', ['queued']);
+                expect(item).toEqual({
+                    kind: 'pause-marker',
+                    id: 'pause-indefinite',
+                    repoId: 'repo-1',
+                    createdAt: 5678,
+                });
+            });
         });
 
         store.upsertQueueTask(task);

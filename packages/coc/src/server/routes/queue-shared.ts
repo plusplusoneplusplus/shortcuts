@@ -165,7 +165,12 @@ export function serializeTask(task: QueuedTask): Record<string, unknown> {
 export function serializeQueueItem(item: QueuedTask | PauseMarker): Record<string, unknown> {
     if ((item as PauseMarker).kind === 'pause-marker') {
         const marker = item as PauseMarker;
-        return { kind: 'pause-marker', id: marker.id, createdAt: marker.createdAt };
+        return {
+            kind: 'pause-marker',
+            id: marker.id,
+            createdAt: marker.createdAt,
+            ...(marker.durationHours !== undefined ? { durationHours: marker.durationHours } : {}),
+        };
     }
     return serializeTask(item as QueuedTask);
 }
@@ -279,7 +284,12 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
 export function serializeQueueItemSummary(item: QueuedTask | PauseMarker): Record<string, unknown> {
     if ((item as PauseMarker).kind === 'pause-marker') {
         const marker = item as PauseMarker;
-        return { kind: 'pause-marker', id: marker.id, createdAt: marker.createdAt };
+        return {
+            kind: 'pause-marker',
+            id: marker.id,
+            createdAt: marker.createdAt,
+            ...(marker.durationHours !== undefined ? { durationHours: marker.durationHours } : {}),
+        };
     }
     return serializeTaskSummary(item as QueuedTask);
 }

@@ -2,6 +2,13 @@
 
 React-based single-page application served by `coc serve`. Located at `packages/coc/src/server/spa/client/`.
 
+Chat detail composer gating is driven by persisted process state. A cancelled
+chat can be continued only when the process has a saved `sdkSessionId`; if no
+SDK session was saved, or if `metadata.stoppedChatResume.resumable === false`
+after a strict stopped-chat resume failure, `ChatDetail` keeps
+`FollowUpInputArea` disabled and shows a non-retryable inline error with no retry
+button or fresh-session fallback.
+
 ## Entry Point & Shell
 
 - `entry.tsx` — Mounts `App` (main shell) or `PopOut` (floating chat window)
@@ -63,28 +70,45 @@ group without data migration.
 local to the mounted view. Ralph session groups, For Each run groups, Map
 Reduce run groups, and plan-file/history groups render collapsed by default on
 mount or workspace switch; unread dots/count badges and Mark all read controls
-remain the visibility affordances for unread children. Workspace-scoped group
-pins from `client.processes.listGroupPins(workspaceId)` render non-running
-Ralph session groups, For Each run groups, and Map Reduce run groups as parent
-rows in the existing Pinned section, interleaved with individually pinned chats
-by pin time; pinned parent rows are removed from their normal recency bucket
-without mutating child process pin/archive state. Running For Each and Map
-Reduce parent rows stay in the Running section even when pinned, while retaining
-the pinned affordance. Parent rows expose the same hover pin affordance and
-context-menu Pin to top/Unpin actions as individual chat rows, but those actions
-call the workspace group-pin API instead of changing child process `pinnedAt`.
-The chat-list multi-select range model follows rendered grouped rows:
-collapsed Ralph sessions, For Each runs, and Map Reduce runs count as one row
-and expand to their real child process IDs when selected; expanded groups range
-over visible child rows, and desktop Shift-click on a parent row uses that
-parent as a range endpoint without opening the detail pane. For Each run groups
-are backed by workspace-scoped `client.forEach.list(workspaceId)` summaries and
-nest linked generation/child chats by `payload.context.forEach`, persisted
-`forEach` metadata, or `generationProcessId`. Map Reduce run groups are backed
-by workspace-scoped `client.mapReduce.list(workspaceId)` summaries and nest
-linked generation/map/reduce chats by `payload.context.mapReduce`, persisted
+remain the visibility affordances for unread children. Queue pause insert zones
+open the shared pause-duration menu (`Until resumed`, 1/2/3/4/8 hours) and send
+the selected `durationHours` only for timed pause markers; queued timed markers
+render a static `Queue pauses here · Nh` label until the executor reaches and
+consumes them. Workspace-scoped group pins from
+`client.processes.listGroupPins(workspaceId)` render non-running Ralph session
+groups, For Each run groups, and Map Reduce run groups as parent rows in the
+existing Pinned section, interleaved with individually pinned chats by pin time;
+pinned parent rows are removed from their normal recency bucket without mutating
+child process pin/archive state. Running For Each and Map Reduce parent rows
+stay in the Running section even when pinned, while retaining the pinned
+affordance. Parent rows expose the same hover pin affordance and context-menu
+Pin to top/Unpin actions as individual chat rows, but those actions call the
+workspace group-pin API instead of changing child process `pinnedAt`. The
+chat-list multi-select range model follows rendered grouped rows: collapsed
+Ralph sessions, For Each runs, and Map Reduce runs count as one row and expand
+to their real child process IDs when selected; expanded groups range over visible
+child rows, and desktop Shift-click on a parent row uses that parent as a range
+endpoint without opening the detail pane. For Each run groups are backed by
+workspace-scoped `client.forEach.list(workspaceId)` summaries and nest linked
+generation/child chats by `payload.context.forEach`, persisted `forEach`
+metadata, or `generationProcessId`. Map Reduce run groups are backed by
+workspace-scoped `client.mapReduce.list(workspaceId)` summaries and nest linked
+generation/map/reduce chats by `payload.context.mapReduce`, persisted
 `mapReduce` metadata, or `generationProcessId` so child chats do not duplicate
 as standalone rows.
+
+Chat row pin/archive state comes from process summaries (`pinnedAt` and
+`archived`) and is synchronized through `ChatPreferencesProvider` /
+`ChatPrefsSync`. Mutating row actions call `pinArchiveApi` with the provider's
+`workspaceId`, and that helper resolves `getCocClientForWorkspace(workspaceId)`
+so remote clone conversations mutate the selected remote CoC server while local
+conversations keep using the default SPA client. `ChatDetail` also uses its
+workspace-routed `useCocClient(workspaceId)` for process reads, refreshes, and
+per-turn delete/pin/archive actions; loaded conversation turns render persisted
+`pinnedAt`, `archived`, and `deletedAt` from the process detail response as the
+source of truth. Chat pop-out URLs include `cloneBaseUrl` for remote workspaces
+and `PopOutChatShell` seeds the clone registry before rendering `ChatDetail`, so
+standalone windows keep the same clone-aware row and turn actions.
 
 `features/chat/RalphGrillSetupPanel.tsx` renders the disabled-by-default
 multi-agent Ralph grilling setup card when `features.ralphMultiAgentGrill` is
@@ -624,7 +648,7 @@ Stacked layout with:
 1. `RichTextInput` (contenteditable)
 2. Toolbar reads as ownership zones separated by 1 px vertical dividers (`chat-toolbar-divider-*`):
     - **Initial chat (`NewChatArea` / `InitialChatComposer`)**: the Activity composer uses `settingsLayout="responsive"`: it renders the full toolbar at desktop-width container measurements (`AgentSelectorChip` → divider → primary `ModePillSelector` (Ask/Autopilot) plus a Workflow submenu for enabled workflow modes → divider → model picker → `EffortPillSelector` or `EffortTierSelector` → spacer → ctool buttons (`/`, `@`, attach) → divider → send) and switches to compact layout only when its own measured container is narrow. `InitialChatComposer` also supports explicit `settingsLayout="compact"` for lens-sized surfaces. Compact layout replaces the visible provider/mode/workflow/model/effort controls with one AI settings chip labeled `provider · active mode/workflow · effort` (for example `Copilot · Ask · Auto` or `Copilot · Ralph · High`), omits the model from the chip label, keeps attach, `/`, and send visible, and does not render the separate top-level `@` button. The chip opens an AI settings editor that pairs the provider and effort controls on one row, mode/workflow on the next, and renders the model picker only when effort-tier mode is inactive — in effort-tier mode the selected tier supplies the model, so the standalone model control is hidden (matching the full-toolbar logic); the editor uses an anchored 360px popover when the measured composer width can fit it and falls back to fixed bottom-sheet positioning when the compact composer is too narrow. Commit, PR, and Work Item review-chat empty states reuse `InitialChatComposer` with compact layout, preserving slash commands, `/model`, prompt history, ghost-text autocomplete, file attachments, session-context attachments, and sends bound through `context.commitChat`, `context.pullRequestChat`, or `context.workItemChat`. Ralph is selected from the Workflow submenu; in the Activity tab the active Ralph send control is a split submit where the primary action is **Grill** and **Start from goal...** opens an editable direct-goal review dialog that posts the reviewed text to `/api/ralph-launch` without sending attachments. Review-chat initial composers use the same Ralph grilling send path but omit the direct-goal split action so every send remains bound to the review target. When `forEach.enabled` is true, initial chat exposes `For Each` through the Workflow submenu with the internal value `for-each`; when `mapReduce.enabled` is true, it exposes `Map Reduce` with the internal value `map-reduce`; neither workflow mode is shown in follow-up composers. Submitting For Each or Map Reduce creates a normal persisted Ask-mode generation chat, selects it in the Activity detail pane, and stores `payload.context.forEach.kind='generation'` or `payload.context.mapReduce.kind='generation'` metadata with workspace, generation ID, child mode, original request, status, latest valid structured plan, latest invalid-plan error, and eventual run linkage. The generation chat uses the normal provider/model/reasoning, slash-skill, prompt-history, session-context, and file/image attachment path; follow-ups remain locked to the matching plan-generation system context through persisted process metadata. `ChatDetail` passes `ForEachPlanReviewCard` and `MapReducePlanReviewCard` into `ConversationArea` as post-conversation content so generated-plan review cards stay inside the main `activity-chat-conversation` scroll region above the follow-up composer. `ForEachPlanReviewCard` renders the persisted latest valid item plan when available, falls back to transcript scanning for newer assistant turns, keeps the previous valid plan when a refinement emits invalid JSON or no Advanced JSON, shows that error inline, renders a structured editor plus Advanced JSON fallback, and approves through `client.forEach.create/updatePlan/approve` without calling child start/continue endpoints. `MapReducePlanReviewCard` mirrors that flow with editable `maxParallel` and `reduceInstructions`, validates the complete map/reduce JSON plan, and approves through `client.mapReduce.create/updatePlan/approve` without starting map or reduce work. `ChatListPane` renders these generation chats as normal chat-history rows with sky-blue **For Each** or indigo **Map Reduce** badges and generated-plan previews such as `3 proposed items - draft`, `1 proposed item - approved`, or `4 proposed map items, max 3 parallel - draft`.
-   - **Follow-up (`FollowUpInputArea`)**: provider chip → divider → `ModePillSelector` → divider → model picker → `EffortPillSelector` (rendered only when the parent supplies `onEffortChange`) → spacer → ctool buttons → `ComposerMetaStrip` → divider → `QueueFollowUpButton`. Provider isn't switchable on a follow-up (locked to the session), so the provider chip is read-only. At widths below `lg` (≤1023px), the row stays `flex-nowrap`, the segmented mode selector collapses to a tap-to-cycle button, slash/mention/attach collapse into a single overflow menu, `ComposerMetaStrip` is hidden, and visible reachable controls use approximately 32px tap targets; `lg:` classes restore the compact desktop sizes and wrapping behavior.
+   - **Follow-up (`FollowUpInputArea`)**: provider chip → divider → `ModePillSelector` → divider → model picker → `EffortPillSelector` (rendered only when the parent supplies `onEffortChange`) → spacer → ctool buttons → `ComposerMetaStrip` → divider → `QueueFollowUpButton`. Provider isn't switchable on a follow-up (locked to the session), so the provider chip is read-only. At widths below `lg` (≤1023px), the row stays `flex-nowrap`, the segmented mode selector collapses to a tap-to-cycle button, slash/mention/attach collapse into a single overflow menu, `ComposerMetaStrip` is hidden, and visible reachable controls use approximately 32px tap targets; `lg:` classes restore the compact desktop sizes and wrapping behavior. Stopped chats in `cancelled` status keep the composer disabled while the transient `cancelling` state is active, then re-enable only when a saved `sdkSessionId` is present; if no SDK session was saved, the composer remains disabled with a non-retryable inline error rather than showing "Session expired" or a retry/new-chat shortcut.
    - **Focused composer shortcuts**: model/slash menus keep first priority. With the text input focused and no slash/model menu open, `Shift+Up/Down` cycles the visible effort control in both composers (`EffortTierSelector` skips unconfigured tiers; legacy `EffortPillSelector` cycles Auto plus selectable supported efforts). In `NewChatArea` only, provider cycling uses `Ctrl+Up/Down` on Windows/Linux and `Cmd+Up/Down` on macOS, skips disabled/unavailable providers, and persists through the repo-scoped `lastChatProvider` preference. These shortcuts are intentionally not exposed in toolbar labels, tooltips, or ARIA copy.
 3. `ComposerMetaStrip`: cwd chip + context-window fuel gauge + provider badge for non-Copilot sessions. The context-window gauge renders a segmented system/tool/conversation breakdown when `useChatSSE` receives all three persisted snapshot values (`sessionSystemTokens`, `sessionToolTokens`, `sessionConversationTokens`) or the same fields from live `token-usage`; otherwise it falls back to the single-colour usage bar. In the follow-up toolbar it sits between the tools zone and the send divider so its info reads as status next to send.
 
@@ -814,11 +838,15 @@ model built on `features/remote-shell/`:
   between them, then the clone tabs, then compact Ask/Queue targeting the active
   clone. The popover lists local and folded remote clones together; each remote
   clone row is badged (`clone-remote-badge`) with its `remote.serverLabel` so it's
-  visually distinct, and the PRIMARY marker is anchored on the first **local**
-  clone (a remote clone never displaces it; a remote-only group marks its first
-  remote clone primary). `isRemoteRepo(repo)` (`repos/repoGrouping.ts`) is the
-  pure guard that distinguishes folded remote rows. Each clone row's **status
-  dot** comes from `cloneStatusColor(computeCloneStatusMap(...)[id])`: local
+  visually distinct. The closed clone-switch button also sums
+  `ReposContext.unseenCounts` across the current remote group's clones and renders
+  the compact red unread badge when the total is non-zero; open popover rows render
+  their own per-clone unread badge, capped at `99+`, only when that clone has unread
+  conversations. The PRIMARY marker is anchored on the first **local** clone (a
+  remote clone never displaces it; a remote-only group marks its first remote clone
+  primary). `isRemoteRepo(repo)` (`repos/repoGrouping.ts`) is the pure guard that
+  distinguishes folded remote rows. Each clone row's **status dot** comes from
+  `cloneStatusColor(computeCloneStatusMap(...)[id])`: local
   clones stay queue-derived; remote clones blend connection-first via
   `blendRemoteCloneStatus` — `offline`/`failed` → offline (dim grey `#8c959f`),
   `connecting`/`idle` (not yet online) → connecting (blue `#3b82f6`, distinct from
@@ -1062,7 +1090,7 @@ The split Local/Remote tracker views do not show the legacy per-item preview/imp
 
 ## coc-client Integration
 
-The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2, skills, preferences, seen-state, work-items, agentProviders, git. The git domain includes commit/diff/branch helpers, operation history, and patch-transfer export/apply methods used by cross-clone cherry-pick flows. The Git tab treats async git operation responses with `jobId` as pending work, polling operation history until terminal status before refreshing; failed Drop Commit jobs render the tab-level action-error banner. The same-clone commit context menu opens `BranchPickerModal` as a local-branch selector for `Cherry-pick to branch…`, sends selected commit hashes oldest-first through `client.git.cherryPick(..., { hashes, targetBranch })`, shows server dirty/conflict errors in the tab action banner, refreshes on success, and keeps the user on the original branch after the server switches back. When enabled, the Git commit context menu opens `CrossCloneCherryPickModal`, which lists current-CoC registered workspaces plus online registered remote-CoC workspaces using typed workspace/git-info clients, groups targets by normalized remote URL, recommends same-remote clones, labels each target with its CoC server, requires explicit cross-remote confirmation, and requires explicit dirty-target stash opt-in. Local targets call git patch export/apply directly; remote targets call the initiating server's `servers.cherryPickTransfer` orchestrator.
+The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2, skills, preferences, seen-state, work-items, agentProviders, git. The git domain includes commit/diff/branch helpers, operation history, and patch-transfer export/apply methods used by cross-clone cherry-pick flows. The Git tab treats async git operation responses with `jobId` as pending work, polling operation history until terminal status before refreshing; failed Drop Commit jobs render the tab-level action-error banner. The same-clone commit context menu opens `BranchPickerModal` as a local-branch selector for `Cherry-pick to branch…`, sends selected commit hashes oldest-first through `client.git.cherryPick(..., { hashes, targetBranch })`, shows server dirty/conflict errors in the tab action banner, refreshes on success, and keeps the user on the original branch after the server switches back. When enabled, both the single-commit and multi-commit Git context menus open `CrossCloneCherryPickModal` with a `commits[]` (multi-commit selections are ordered oldest-first via `orderOldestFirst`), which lists current-CoC registered workspaces plus online registered remote-CoC workspaces using typed workspace/git-info clients, groups targets by normalized remote URL, recommends same-remote clones, labels each target with its CoC server, requires explicit cross-remote confirmation, and requires explicit dirty-target stash opt-in. The modal exports the whole range as one concatenated `git am` mailbox and reports the applied count ("applied k of N", or a partial count with the conflicting commit on a mid-range conflict). Local targets call `git.exportCommitPatches` + `git.applyCommitPatch` directly; remote targets call the initiating server's `servers.cherryPickTransfer` orchestrator with `source.commitHashes`.
 
 Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client for React state management.
 

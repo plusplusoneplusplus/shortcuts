@@ -27,7 +27,7 @@ import { processMessageAttachments } from '../core/attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
-import { normalizeChatMode } from '../tasks/task-types';
+import { getStoppedChatResumeUnavailableMessage, normalizeChatMode } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
@@ -672,6 +672,24 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, missingFields(['content']));
             }
 
+            const stoppedChatResumeUnavailable = getStoppedChatResumeUnavailableMessage(proc);
+            if (stoppedChatResumeUnavailable) {
+                return handleAPIError(res, new APIError(
+                    409,
+                    stoppedChatResumeUnavailable,
+                    'SESSION_NOT_RESUMABLE',
+                ));
+            }
+
+            const isCancelledResume = proc.status === 'cancelled';
+            const resumeSessionId = isCancelledResume ? proc.sdkSessionId : undefined;
+            if (isCancelledResume && !resumeSessionId) {
+                return handleAPIError(res, new APIError(
+                    409,
+                    'Cannot continue this stopped chat because no SDK session was saved. Start a new chat manually.',
+                    'SESSION_NOT_RESUMABLE',
+                ));
+            }
 
             // Process both new-style attachments and legacy images
             const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-'));
@@ -690,7 +708,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 : undefined;
 
             // Check session liveness before forwarding the prompt
-            if (bridge && !(await bridge.isSessionAlive(id))) {
+            if (!isCancelledResume && bridge && !(await bridge.isSessionAlive(id))) {
                 return handleAPIError(res, new APIError(410, 'The AI session has ended. Please start a new task.', 'SESSION_EXPIRED'));
             }
 
@@ -804,7 +822,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         // buffer as pending message — server drains on task completion
                         await bufferAsPendingMessage();
                     } else {
-                        // Terminal status (failed/cancelled) or restart fallback → enqueue
+                        // Terminal status (failed or resumable cancelled) or restart fallback → enqueue
                         const enqueueWsId = (proc.metadata?.workspaceId as string) ?? undefined;
                         await bridge.enqueue({
                             ...(isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
@@ -815,6 +833,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                                 kind: 'chat',
                                 prompt: messageContentWithContext ?? messageContent,
                                 processId: id,
+                                ...(resumeSessionId ? { resumeSessionId } : {}),
                                 attachments,
                                 imageTempDir,
                                 images: validatedImages,
@@ -837,7 +856,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         });
                     }
                 } else {
-                    bridge.executeFollowUp(id, messageContentWithContext ?? messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames, modelOverride, undefined, effortOverride).catch(() => {
+                    bridge.executeFollowUp(id, messageContentWithContext ?? messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames, modelOverride, undefined, effortOverride, resumeSessionId).catch(() => {
                     }).finally(() => {
                         if (imageTempDir) { cleanupTempDir(imageTempDir); }
                     });

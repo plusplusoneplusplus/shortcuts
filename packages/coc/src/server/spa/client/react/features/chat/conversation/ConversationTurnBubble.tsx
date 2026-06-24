@@ -18,7 +18,7 @@ import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedP
 import { isExcalidrawEnabled } from '../../../utils/config';
 import { SHOW_EXCALIDRAW_DIAGRAMS } from '../../../featureFlags';
 import { getSpaCocClient } from '../../../api/cocClient';
-import { copyToClipboard, copyHtmlToClipboard, splitMarkdownSections } from '../../../utils/format';
+import { copyToClipboard, copyHtmlToClipboard, copyImageToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { renderMermaidContainer, type CodeBlock } from '@plusplusoneplusplus/forge/editor/parsing';
@@ -1320,6 +1320,25 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                 } catch {}
             },
         });
+        // Copy image — only when image data is already in hand (inline or already-loaded lazy).
+        const availableImages = (turn.images && turn.images.length > 0) ? turn.images : fetchedImages;
+        if (availableImages.length === 1) {
+            items.push({
+                label: 'Copy image',
+                icon: '🖼️',
+                onClick: async () => { try { await copyImageToClipboard(availableImages[0]); } catch {} },
+            });
+        } else if (availableImages.length > 1) {
+            items.push({
+                label: 'Copy image',
+                icon: '🖼️',
+                onClick: () => {},
+                children: availableImages.map((img, i) => ({
+                    label: `Image ${i + 1}`,
+                    onClick: async () => { try { await copyImageToClipboard(img); } catch {} },
+                })),
+            });
+        }
         // Per-message actions: Pin, Archive, Delete
         if (turnIndex != null) {
             items.push({ label: '', separator: true, onClick: () => {} });
@@ -1346,7 +1365,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             }
         }
         return items;
-    }, [onAttachContext, turnIndex, turn, showRaw, wsId, onPinTurn, onArchiveTurn, onDeleteTurn]);
+    }, [onAttachContext, turnIndex, turn, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onDeleteTurn]);
 
     // Detect pure-JSON assistant responses (only when stream is complete).
     const jsonDetected = useMemo(() => {

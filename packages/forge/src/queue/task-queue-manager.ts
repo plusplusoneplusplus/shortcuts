@@ -133,6 +133,8 @@ export class TaskQueueManager extends EventEmitter {
             if (isPauseMarker(item)) {
                 // Markers are always eligible — return and consume
                 this.queue.splice(i, 1);
+                this.emitChange('pause-marker-removed', undefined, item);
+                this.emit('pause-marker-removed', item.id);
                 return item;
             }
             const task = item as QueuedTask;
@@ -194,6 +196,21 @@ export class TaskQueueManager extends EventEmitter {
      */
     getQueueItems(): Array<QueueItem> {
         return [...this.queue];
+    }
+
+    /**
+     * Restore queued items from durable storage while preserving their stored
+     * ids, timestamps, and order. Intended for startup hydration before work
+     * resumes, so it does not emit queue mutation events.
+     */
+    restoreQueueItems(items: Array<QueueItem>): void {
+        for (const item of items) {
+            if (isPauseMarker(item)) {
+                this.queue.push({ ...item });
+            } else {
+                this.queue.push({ ...item, status: 'queued' });
+            }
+        }
     }
 
     /**
@@ -664,18 +681,19 @@ export class TaskQueueManager extends EventEmitter {
      *   Values >= queue.length insert at the end.
      * @returns The id of the newly created marker.
      */
-    insertPauseMarker(afterIndex: number): string {
+    insertPauseMarker(afterIndex: number, durationHours?: PauseMarker['durationHours']): string {
         const marker: PauseMarker = {
             kind: 'pause-marker',
             id: generateTaskId(),
             createdAt: Date.now(),
+            ...(durationHours !== undefined ? { durationHours } : {}),
         };
 
         // Clamp insertion index
         const insertAt = Math.max(0, Math.min(afterIndex + 1, this.queue.length));
         this.queue.splice(insertAt, 0, marker);
 
-        this.emitChange('pause-marker-added');
+        this.emitChange('pause-marker-added', undefined, marker);
         this.emit('pause-marker-added', marker);
         return marker.id;
     }
@@ -690,8 +708,8 @@ export class TaskQueueManager extends EventEmitter {
         );
         if (index === -1) return false;
 
-        this.queue.splice(index, 1);
-        this.emitChange('pause-marker-removed');
+        const [marker] = this.queue.splice(index, 1) as [PauseMarker];
+        this.emitChange('pause-marker-removed', undefined, marker);
         this.emit('pause-marker-removed', markerId);
         return true;
     }
@@ -1240,11 +1258,12 @@ export class TaskQueueManager extends EventEmitter {
     /**
      * Emit a queue change event
      */
-    private emitChange(type: QueueChangeType, task?: QueuedTask): void {
+    private emitChange(type: QueueChangeType, task?: QueuedTask, item?: QueueItem): void {
         const event: QueueChangeEvent = {
             type,
-            taskId: task?.id,
+            taskId: task?.id ?? item?.id,
             task,
+            item,
             timestamp: Date.now(),
         };
         this.emit('change', event);

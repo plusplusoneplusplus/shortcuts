@@ -68,6 +68,12 @@ async function createRepos(): Promise<{ root: string; dataDir: string; source: s
 
     await fs.mkdir(source, { recursive: true });
     git(source, ['init', '-b', 'main']);
+    // Pin line-ending handling so checked-out file content is byte-identical
+    // across platforms — Windows runners default to core.autocrlf=true, which
+    // would rewrite committed `\n` to `\r\n` on checkout and break exact
+    // file-content assertions below.
+    git(source, ['config', 'core.autocrlf', 'false']);
+    git(source, ['config', 'core.eol', 'lf']);
     git(source, ['config', 'user.name', 'Source Committer']);
     git(source, ['config', 'user.email', 'source-committer@example.test']);
     await writeRepoFile(source, 'shared.txt', 'base\n');
@@ -79,7 +85,20 @@ async function createRepos(): Promise<{ root: string; dataDir: string; source: s
         GIT_COMMITTER_DATE: '2026-06-04T04:00:00+00:00',
     });
 
-    execFileSync('git', ['clone', source, target], { cwd: root, stdio: 'pipe' });
+    // Pin line-ending handling for the clone-time checkout too. Without the
+    // inline `-c` overrides the working tree is checked out under the runner's
+    // global config (Windows defaults to core.autocrlf=true), producing CRLF
+    // working files against LF blobs. Once we pin core.autocrlf=false below,
+    // git would then report those files as modified, leaving the target "dirty"
+    // and causing the apply API to return 409 instead of 200.
+    execFileSync('git', ['clone', '-c', 'core.autocrlf=false', '-c', 'core.eol=lf', source, target], {
+        cwd: root,
+        stdio: 'pipe',
+    });
+    // Same line-ending pinning persisted for the target repo, where `git am`
+    // checks out the transferred patches during the apply flow.
+    git(target, ['config', 'core.autocrlf', 'false']);
+    git(target, ['config', 'core.eol', 'lf']);
     git(target, ['config', 'user.name', 'Target Committer']);
     git(target, ['config', 'user.email', 'target-committer@example.test']);
 
@@ -218,6 +237,46 @@ describe('git patch apply API integration', () => {
         });
         expect(JSON.stringify(latest)).not.toContain(sourceRoot);
         expect(JSON.stringify(latest)).not.toContain(targetRoot);
+    });
+
+    it('applies a multi-commit range in one git am session, oldest-first', async () => {
+        // Add a second source commit on a separate file so both patches apply cleanly.
+        await writeRepoFile(sourceRoot, 'feature.txt', 'feature work\n');
+        git(sourceRoot, ['add', 'feature.txt']);
+        git(sourceRoot, ['commit', '-m', 'Add feature file'], {
+            GIT_AUTHOR_NAME: 'Patch Author',
+            GIT_AUTHOR_EMAIL: 'patch-author@example.test',
+            GIT_AUTHOR_DATE: '2026-06-04T04:02:00+00:00',
+            GIT_COMMITTER_DATE: '2026-06-04T04:02:00+00:00',
+        });
+
+        const olderHash = git(sourceRoot, ['rev-parse', 'HEAD~1']); // Apply transferred patch
+        const newerHash = git(sourceRoot, ['rev-parse', 'HEAD']);   // Add feature file
+
+        const exportRes = await request(`${base()}/api/workspaces/${SOURCE_WS}/git/patch/export`, {
+            method: 'POST',
+            body: JSON.stringify({ hashes: [olderHash, newerHash] }),
+        });
+        expect(exportRes.status, exportRes.body).toBe(200);
+        const exportBody = exportRes.json();
+        expect(exportBody.sourceCommits.map((commit: any) => commit.hash)).toEqual([olderHash, newerHash]);
+        expect(exportBody.sourceCommit.hash).toBe(olderHash);
+
+        const applyRes = await request(`${base()}/api/workspaces/${TARGET_WS}/git/patch/apply`, {
+            method: 'POST',
+            body: JSON.stringify(exportBody),
+        });
+        expect(applyRes.status, applyRes.body).toBe(200);
+        const applyBody = applyRes.json();
+        expect(applyBody.appliedCount).toBe(2);
+
+        // Both commits land on the target, parent before child.
+        const log = git(targetRoot, ['log', '--format=%s', '-2']).split('\n');
+        expect(log).toEqual(['Add feature file', 'Apply transferred patch']);
+        expect(await fs.readFile(path.join(targetRoot, 'feature.txt'), 'utf-8')).toBe('feature work\n');
+        expect(await fs.readFile(path.join(targetRoot, 'shared.txt'), 'utf-8')).toBe('source change\n');
+        // The git-op records the full ordered range.
+        expect(applyBody.operation.metadata.sourceCommits.map((commit: any) => commit.hash)).toEqual([olderHash, newerHash]);
     });
 
     it('blocks dirty targets by default and applies after explicit stashAndContinue', async () => {

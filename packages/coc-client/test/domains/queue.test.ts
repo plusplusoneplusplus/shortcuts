@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { QueueClient } from '../../src';
+import { QueueClient, type QueuePauseMarkerResponse } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('QueueClient', () => {
@@ -16,6 +16,7 @@ describe('QueueClient', () => {
     await client.pause('repo/a', { durationHours: 1 });
     await client.pause({ repoId: 'repo/b' }, { durationHours: 2 });
     await client.pauseAutopilot({ repoId: 'repo/b' }, { durationHours: 3 });
+    await client.insertPauseMarker({ afterIndex: 0, repoId: 'repo/a', durationHours: 2 });
     await client.cancel('task/1');
     await client.moveToTop('task/1');
     await client.summarize({
@@ -35,6 +36,7 @@ describe('QueueClient', () => {
       '/queue/pause',
       '/queue/pause',
       '/queue/pause-autopilot',
+      '/queue/pause-marker',
       '/queue/task%2F1',
       '/queue/task%2F1/move-to-top',
       '/queue/summarize',
@@ -46,7 +48,8 @@ describe('QueueClient', () => {
     expect(adapter.calls[7].options?.body).toEqual({ durationHours: 2 });
     expect(adapter.calls[8].options?.query).toEqual({ repoId: 'repo/b' });
     expect(adapter.calls[8].options?.body).toEqual({ durationHours: 3 });
-    expect(adapter.calls[11].options).toMatchObject({
+    expect(adapter.calls[9].options?.body).toEqual({ afterIndex: 0, repoId: 'repo/a', durationHours: 2 });
+    expect(adapter.calls[12].options).toMatchObject({
       method: 'POST',
       body: {
         processIds: ['proc/1', 'proc/2'],
@@ -66,5 +69,17 @@ describe('QueueClient', () => {
     expect(adapter.calls).toHaveLength(1);
     expect(adapter.calls[0].path).toBe('/queue/task%2F1/retry');
     expect(adapter.calls[0].options).toMatchObject({ method: 'POST' });
+  });
+
+  it('returns timed pause marker response duration', async () => {
+    const response = {
+      markerId: 'marker-1',
+      afterIndex: 0,
+      durationHours: 2,
+    } satisfies QueuePauseMarkerResponse;
+    const adapter = createMockAdapter(response);
+    const client = new QueueClient(adapter);
+
+    await expect(client.insertPauseMarker({ afterIndex: 0, durationHours: 2 })).resolves.toEqual(response);
   });
 });

@@ -1248,6 +1248,60 @@ describe('BranchService.exportCommitPatch', () => {
     });
 });
 
+// ── exportCommitPatches ────────────────────────────────────────────
+describe('BranchService.exportCommitPatches', () => {
+    let service: BranchService;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    function mockSingleExport(fullHash: string, subject: string, patch: string): void {
+        const metadata = [fullHash, subject, 'Ada Dev', 'ada@example.test', '2026-06-04T04:00:00+00:00'].join('\0') + '\n';
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: `${fullHash}\n`, stderr: '' })   // rev-parse --verify
+            .mockResolvedValueOnce({ stdout: metadata, stderr: '' })          // show -s
+            .mockResolvedValueOnce({ stdout: patch, stderr: '' });            // format-patch
+    }
+
+    it('concatenates patches oldest-first into a single mailbox preserving order', async () => {
+        const fullA = 'aaaaaaa1234567890aaaaaaa1234567890aaaaaaa1';
+        const fullB = 'bbbbbbb1234567890bbbbbbb1234567890bbbbbbb2';
+        const patchA = 'From aaaaaaa1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] First\n';
+        const patchB = 'From bbbbbbb1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Second\n';
+        mockSingleExport(fullA, 'First', patchA);
+        mockSingleExport(fullB, 'Second', patchB);
+
+        const result = await service.exportCommitPatches('/repo', ['aaaaaaa1', 'bbbbbbb2']);
+
+        expect(result.success).toBe(true);
+        if (!result.success) throw new Error('expected success');
+        expect(result.commits.map(commit => commit.commitHash)).toEqual([fullA, fullB]);
+        expect(result.patch).toContain(patchA);
+        expect(result.patch).toContain(patchB);
+        // Mailbox keeps the parent-before-child order git am requires.
+        expect(result.patch.indexOf('First')).toBeLessThan(result.patch.indexOf('Second'));
+        // Two "From " mailbox entries → a valid multi-patch mailbox.
+        expect(result.patch.match(/^From [0-9a-f]+ /gm)?.length).toBe(2);
+    });
+
+    it('rejects an empty hash list before invoking git', async () => {
+        const result = await service.exportCommitPatches('/repo', []);
+
+        expect(result).toEqual({ success: false, error: 'No commits to export' });
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('fails the whole export when any hash in the range is invalid', async () => {
+        const result = await service.exportCommitPatches('/repo', ['main;rm -rf /']);
+
+        expect(result).toEqual({ success: false, error: 'Invalid commit hash' });
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+});
+
 // ── applyCommitPatch ──────────────────────────────────────────────
 describe('BranchService.applyCommitPatch', () => {
     let service: BranchService;
@@ -1271,9 +1325,11 @@ describe('BranchService.applyCommitPatch', () => {
 
     it('applies a format-patch payload with git am --3way and returns the new HEAD', async () => {
         mockedExecSync
-            .mockReturnValueOnce('.git\n')
-            .mockReturnValueOnce('.git\n')
-            .mockReturnValueOnce('fedcba9876543210fedcba9876543210fedcba98\n');
+            .mockReturnValueOnce('.git\n')                                          // getRepoState
+            .mockReturnValueOnce('.git\n')                                          // getResolvedGitDir
+            .mockReturnValueOnce('1111111111111111111111111111111111111111\n')      // preApplyHead
+            .mockReturnValueOnce('fedcba9876543210fedcba9876543210fedcba98\n')      // headHash
+            .mockReturnValueOnce('1\n');                                            // appliedCount
         mockedExecAsync
             .mockResolvedValueOnce({ stdout: '', stderr: '' })
             .mockResolvedValueOnce({ stdout: '', stderr: '' });
@@ -1286,13 +1342,36 @@ describe('BranchService.applyCommitPatch', () => {
             message: 'Patch applied successfully',
             headHash: 'fedcba9876543210fedcba9876543210fedcba98',
             stashed: false,
+            appliedCount: 1,
         });
         expect(mockedWriteFileSync).toHaveBeenCalledWith(patchPath, patchBody, 'utf-8');
         expect(mockedExecAsync).toHaveBeenCalledWith(
             expect.stringContaining('git am --3way'),
             expect.objectContaining({ cwd: '/repo', timeout: 600000 }),
         );
+        expect(mockedExecSync).toHaveBeenCalledWith(
+            'git rev-list --count 1111111111111111111111111111111111111111..HEAD',
+            expect.objectContaining({ cwd: '/repo' }),
+        );
         expect(mockedRmSync).toHaveBeenCalledWith(tmpDir, { recursive: true });
+    });
+
+    it('reports appliedCount for a multi-patch mailbox applied in one git am session', async () => {
+        mockedExecSync
+            .mockReturnValueOnce('.git\n')                                          // getRepoState
+            .mockReturnValueOnce('.git\n')                                          // getResolvedGitDir
+            .mockReturnValueOnce('1111111111111111111111111111111111111111\n')      // preApplyHead
+            .mockReturnValueOnce('3333333333333333333333333333333333333333\n')      // headHash
+            .mockReturnValueOnce('3\n');                                            // appliedCount
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const mailbox = `${patchBody}\nFrom 2222222222222222 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Second\n`;
+        const result = await service.applyCommitPatch('/repo', mailbox);
+
+        expect(result.success).toBe(true);
+        expect(result.appliedCount).toBe(3);
     });
 
     it('rejects an empty patch before invoking git', async () => {
@@ -1321,9 +1400,11 @@ describe('BranchService.applyCommitPatch', () => {
 
     it('stashes dirty targets only when stashAndContinue is explicit', async () => {
         mockedExecSync
-            .mockReturnValueOnce('.git\n')
-            .mockReturnValueOnce('.git\n')
-            .mockReturnValueOnce('1111111111111111111111111111111111111111\n');
+            .mockReturnValueOnce('.git\n')                                          // getRepoState
+            .mockReturnValueOnce('.git\n')                                          // getResolvedGitDir
+            .mockReturnValueOnce('0000000000000000000000000000000000000000\n')      // preApplyHead
+            .mockReturnValueOnce('1111111111111111111111111111111111111111\n')      // headHash
+            .mockReturnValueOnce('1\n');                                            // appliedCount
         mockedExecAsync
             .mockResolvedValueOnce({ stdout: ' M src/file.ts\n', stderr: '' })
             .mockResolvedValueOnce({ stdout: 'Saved working directory\n', stderr: '' })
@@ -1369,6 +1450,44 @@ describe('BranchService.applyCommitPatch', () => {
             conflictFiles: ['src/conflict.ts'],
         });
         expect(mockedRmSync).toHaveBeenCalledWith(tmpDir, { recursive: true });
+    });
+
+    it('reports the partial appliedCount when a mid-range patch conflicts', async () => {
+        let stateReadCount = 0;
+        mockedExecSync.mockImplementation((command: string) => {
+            if (command === 'git rev-parse --git-dir') {
+                stateReadCount += 1;
+                return '.git\n';
+            }
+            if (command === 'git rev-parse HEAD') {
+                return '1111111111111111111111111111111111111111\n';
+            }
+            if (command.startsWith('git rev-list --count')) {
+                return '2\n';
+            }
+            if (command === 'git diff --name-only --diff-filter=U') {
+                return 'src/conflict.ts\n';
+            }
+            throw new Error(`unexpected command: ${command}`);
+        });
+        mockedExistsSync.mockImplementation((p: string) =>
+            stateReadCount >= 3
+            && (p.endsWith(path.join('.git', 'rebase-apply')) || p.endsWith(path.join('.git', 'rebase-apply', 'applying'))));
+        mockedExecAsync
+            .mockResolvedValueOnce({ stdout: '', stderr: '' })
+            .mockRejectedValueOnce(new Error('Patch failed at 0003 Third change'));
+
+        const mailbox = `${patchBody}\nFrom 2222222222222222 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Third\n`;
+        const result = await service.applyCommitPatch('/repo', mailbox);
+
+        expect(result.success).toBe(false);
+        expect(result.conflicts).toBe(true);
+        expect(result.appliedCount).toBe(2);
+        expect(result.gitState).toEqual({
+            operation: 'cherry-pick',
+            gitOperation: 'am',
+            conflictFiles: ['src/conflict.ts'],
+        });
     });
 });
 

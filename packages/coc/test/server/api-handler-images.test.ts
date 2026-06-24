@@ -119,6 +119,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             undefined, // turnSource
             undefined, // reasoningEffort
+            undefined, // strictResumeSessionId
         );
     });
 
@@ -144,6 +145,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             undefined, // turnSource
             undefined, // reasoningEffort
+            undefined, // strictResumeSessionId
         );
     });
 
@@ -168,6 +170,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             undefined, // turnSource
             undefined, // reasoningEffort
+            undefined, // strictResumeSessionId
         );
     });
 
@@ -195,6 +198,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             undefined, // turnSource
             undefined, // reasoningEffort
+            undefined, // strictResumeSessionId
         );
     });
 
@@ -226,6 +230,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             undefined, // turnSource
             undefined, // reasoningEffort
+            undefined, // strictResumeSessionId
         );
     });
 
@@ -256,6 +261,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             undefined, // turnSource
             undefined, // reasoningEffort
+            undefined, // strictResumeSessionId
         );
     });
 

@@ -79,6 +79,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     return {
         ...actual,
         execGit: (...args: any[]) => mockForgeExecGit(...args),
+        execGitAsync: (...args: any[]) => Promise.resolve(mockForgeExecGit(...args)),
         BranchService: vi.fn().mockImplementation(function () { return ({
             getLocalBranchesPaginated: mockGetLocalBranchesPaginated,
             getRemoteBranchesPaginated: mockGetRemoteBranchesPaginated,

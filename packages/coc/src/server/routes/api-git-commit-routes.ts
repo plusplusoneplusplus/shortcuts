@@ -7,7 +7,7 @@
 
 import * as path from 'path';
 import { BranchService } from '@plusplusoneplusplus/forge';
-import { execGitArgsSync, readGitFileAtCommit } from '../core/api-handler';
+import { execGitArgsAsync, readGitFileAtCommit } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import { gitCache } from '../git/git-cache';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
@@ -58,13 +58,13 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                 let raw: string;
                 if (isHashLookup) {
                     try {
-                        raw = execGitArgsSync(['log', `--format=${format}`, '-z', `${search}^!`], ws.rootPath);
+                        raw = await execGitArgsAsync(['log', `--format=${format}`, '-z', `${search}^!`], ws.rootPath);
                     } catch {
                         raw = '';
                     }
                 } else {
                     const searchArgs = search ? [`--grep=${search}`, '--regexp-ignore-case'] : [];
-                    raw = execGitArgsSync(
+                    raw = await execGitArgsAsync(
                         ['log', `--format=${format}`, `--skip=${skip}`, `--max-count=${limit}`, '-z', ...searchArgs],
                         ws.rootPath
                     );
@@ -128,7 +128,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
 
             try {
                 const format = '%H%n%h%n%s%n%an%n%ae%n%aI%n%P%n%b';
-                const raw = execGitArgsSync(['log', '-1', `--format=${format}`, hash], ws.rootPath);
+                const raw = await execGitArgsAsync(['log', '-1', `--format=${format}`, hash], ws.rootPath);
                 const lines = raw.trim().split('\n');
                 if (lines.length < 6) {
                     return void handleAPIError(res, notFound('Commit'));
@@ -169,9 +169,9 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
 
             try {
                 // name-status with rename/copy detection
-                const nameStatusRaw = execGitArgsSync(['diff-tree', '--no-commit-id', '-r', '--name-status', '-M', '-C', hash], ws.rootPath);
+                const nameStatusRaw = await execGitArgsAsync(['diff-tree', '--no-commit-id', '-r', '--name-status', '-M', '-C', hash], ws.rootPath);
                 // numstat for additions/deletions
-                const numstatRaw = execGitArgsSync(['diff-tree', '--no-commit-id', '-r', '--numstat', '-M', '-C', hash], ws.rootPath);
+                const numstatRaw = await execGitArgsAsync(['diff-tree', '--no-commit-id', '-r', '--numstat', '-M', '-C', hash], ws.rootPath);
 
                 // Parse numstat: "additions\tdeletions\tpath" (renames: "old\tnew")
                 const numstatMap = new Map<string, { additions: number; deletions: number }>();
@@ -238,7 +238,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             }
 
             try {
-                const diff = execGitArgsSync(['show', '--format=', '--patch', hash], ws.rootPath);
+                const diff = await execGitArgsAsync(['show', '--format=', '--patch', hash], ws.rootPath);
                 const result = { diff };
                 gitCache.set(cacheKey, result);
                 return result;
@@ -269,7 +269,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             }
 
             try {
-                const diff = execGitArgsSync(['show', '--format=', '--patch', '-U99999', hash, '--', filePath], ws.rootPath);
+                const diff = await execGitArgsAsync(['show', '--format=', '--patch', '-U99999', hash, '--', filePath], ws.rootPath);
                 const result = truncateDiffIfNeeded(diff, full);
                 gitCache.set(cacheKey, result);
                 return result;
@@ -305,7 +305,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             }
 
             try {
-                const { content, resolvedRef } = readGitFileAtCommit(hash, filePath, ws.rootPath);
+                const { content, resolvedRef } = await readGitFileAtCommit(hash, filePath, ws.rootPath);
                 if (Buffer.byteLength(content, 'utf-8') > 10 * 1024 * 1024) {
                     return void handleAPIError(res, badRequest('Commit file is too large (max 10MB)'));
                 }

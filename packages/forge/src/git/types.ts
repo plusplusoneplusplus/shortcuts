@@ -287,6 +287,17 @@ export type GitPatchExportResult =
     | ({ success: true } & GitPatchExportPayload)
     | { success: false; error: string };
 
+export interface GitPatchMultiExportPayload {
+    /** Concatenated format-patch mailbox containing every commit, oldest-first. */
+    patch: string;
+    /** Per-commit metadata in the same order they appear in the mailbox. */
+    commits: GitPatchExportPayload[];
+}
+
+export type GitPatchMultiExportResult =
+    | ({ success: true } & GitPatchMultiExportPayload)
+    | { success: false; error: string };
+
 export interface GitPatchApplyOptions {
     stashAndContinue?: boolean;
     stashMessage?: string;
@@ -300,6 +311,8 @@ export interface GitPatchApplyResult {
     dirty?: boolean;
     stashed?: boolean;
     gitState?: RepoState;
+    /** Commits that landed on HEAD during this apply (full or partial on conflict). */
+    appliedCount?: number;
 }
 
 /**

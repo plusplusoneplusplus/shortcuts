@@ -563,7 +563,7 @@ async function resolveAvailableGitHubRepo(
         );
     }
     const workspaces = await ctx.processStore.getWorkspaces();
-    const repo = resolveGitHubWorkItemSyncRepo({
+    const repo = await resolveGitHubWorkItemSyncRepo({
         workspace: workspaces.find(workspace => workspace.id === repoId),
         preferences: readRepoPreferences(ctx.dataDir, repoId),
     });

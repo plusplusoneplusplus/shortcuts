@@ -69,6 +69,7 @@ Key metadata persisted:
 - `config` — model, mode, workspace, tools
 - `pendingMessages` — buffered follow-ups
 - `pendingAskUser` — pending interactive question
+- `stoppedChatResume` — stopped-chat resume state; `{ resumable: false, reason: 'strict-resume-failed' }` marks a conversation that cannot be continued after provider strict-resume failure
 
 ## Conversation Turns
 

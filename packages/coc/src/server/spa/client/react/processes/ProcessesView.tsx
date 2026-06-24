@@ -266,6 +266,7 @@ export function ProcessesView() {
             selectedTaskId={selectedTaskId}
             isMobile={isMobile}
             now={now}
+            workspaceId={workspaceId || undefined}
             awaitingInputProcessIds={awaitingInputProcessIds}
             onSelectTask={selectTask}
             cursorTaskId={cursorTaskId}
@@ -297,6 +298,7 @@ export function ProcessesView() {
                             <ChatDetailPane
                                 selectedTaskId={selectedTaskId}
                                 selectedTask={selectedTask}
+                                workspaceId={workspaceId || undefined}
                                 onBack={() => setMobileShowDetail(false)}
                             />
                         </div>
@@ -357,6 +359,7 @@ export function ProcessesView() {
                     <ChatDetailPane
                         selectedTaskId={selectedTaskId}
                         selectedTask={selectedTask}
+                        workspaceId={workspaceId || undefined}
                     />
                 </div>
             </div>

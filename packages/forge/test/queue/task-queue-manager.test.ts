@@ -11,6 +11,7 @@ import {
     QueuedTask,
     CreateTaskInput,
     QueueChangeEvent,
+    PauseMarker,
     TaskPriority,
     generateTaskId,
 } from '../../src/queue';
@@ -2302,6 +2303,29 @@ describe('pause markers', () => {
         expect(markerId.length).toBeGreaterThan(0);
     });
 
+    it('insertPauseMarker stores a preset duration when provided', () => {
+        manager.enqueue(createTestTask());
+
+        const markerId = manager.insertPauseMarker(0, 2);
+        const marker = manager.getQueueItems().find((item): item is PauseMarker => (item as any).kind === 'pause-marker');
+
+        expect(marker).toMatchObject({
+            kind: 'pause-marker',
+            id: markerId,
+            durationHours: 2,
+        });
+    });
+
+    it('insertPauseMarker omits durationHours for indefinite markers', () => {
+        manager.enqueue(createTestTask());
+
+        const markerId = manager.insertPauseMarker(0);
+        const marker = manager.getQueueItems().find((item): item is PauseMarker => (item as any).kind === 'pause-marker');
+
+        expect(marker).toMatchObject({ kind: 'pause-marker', id: markerId });
+        expect(marker!.durationHours).toBeUndefined();
+    });
+
     it('insertPauseMarker inserts marker at given index (0-based task offset)', () => {
         manager.enqueue(createTestTask({ displayName: 'T1' }));
         manager.enqueue(createTestTask({ displayName: 'T2' }));
@@ -2361,6 +2385,37 @@ describe('pause markers', () => {
         expect((item as any).kind).toBe('pause-marker');
     });
 
+    it('expired reached timed marker resumes and exposes the following task', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+        try {
+            const followingTaskId = manager.enqueue(createTestTask({ displayName: 'after-marker' }));
+            const markerId = manager.insertPauseMarker(-1, 1);
+            const marker = manager.dequeue() as PauseMarker;
+            const resumed = vi.fn();
+            manager.on('resumed', resumed);
+
+            expect(marker).toMatchObject({ kind: 'pause-marker', id: markerId, durationHours: 1 });
+            const durationHours = marker.durationHours;
+            if (durationHours === undefined) {
+                throw new Error('Expected timed pause marker to include durationHours');
+            }
+
+            manager.pause(Date.now() + durationHours * 60 * 60 * 1000);
+            expect(manager.getStats().isPaused).toBe(true);
+
+            vi.advanceTimersByTime(60 * 60 * 1000 + 1);
+
+            const next = manager.peek() as QueuedTask | undefined;
+            expect(manager.getStats().isPaused).toBe(false);
+            expect(next?.id).toBe(followingTaskId);
+            expect((manager.dequeue() as QueuedTask | undefined)?.id).toBe(followingTaskId);
+            expect(resumed).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('dequeue skips frozen tasks before a marker, then returns marker', () => {
         const id1 = manager.enqueue(createTestTask({ displayName: 'T1' }));
         manager.enqueue(createTestTask({ displayName: 'T2' }));
@@ -2387,10 +2442,14 @@ describe('pause markers', () => {
         manager.enqueue(createTestTask());
         listener.mockClear();
 
-        manager.insertPauseMarker(1);
+        const markerId = manager.insertPauseMarker(1, 4);
 
         expect(listener).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'pause-marker-added' })
+            expect.objectContaining({
+                type: 'pause-marker-added',
+                taskId: markerId,
+                item: expect.objectContaining({ kind: 'pause-marker', id: markerId, durationHours: 4 }),
+            })
         );
     });
 
@@ -2404,7 +2463,11 @@ describe('pause markers', () => {
         manager.removePauseMarker(markerId);
 
         expect(listener).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'pause-marker-removed' })
+            expect.objectContaining({
+                type: 'pause-marker-removed',
+                taskId: markerId,
+                item: expect.objectContaining({ kind: 'pause-marker', id: markerId }),
+            })
         );
     });
 

@@ -106,6 +106,28 @@ describe('executeFollowUp() — session resume behavior', () => {
         expect(callArgs.sessionId).toBe('sess-abc');
     });
 
+    it('should enable strict SDK resume when the queued follow-up carries resumeSessionId', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-strict', 'sess-stopped-turn');
+        await store.addProcess(proc);
+
+        const task = followUpTask({
+            processId: 'proc-strict',
+            content: 'continue',
+            payload: {
+                kind: 'chat',
+                processId: 'proc-strict',
+                prompt: 'continue',
+                resumeSessionId: 'sess-stopped-turn',
+            } as any,
+        });
+        await executor.execute(task);
+
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.sessionId).toBe('sess-stopped-turn');
+        expect(callArgs.strictSessionResume).toBe(true);
+    });
+
     // 2 -----------------------------------------------------------------------
     it('should NOT pass sessionId when process has no sdkSessionId', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });

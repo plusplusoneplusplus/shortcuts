@@ -46,9 +46,9 @@ export interface EnrichedWorkflow {
 /**
  * Discover workflows and enrich each with description and validation info.
  */
-export function discoverAndEnrichWorkflows(pipelinesDir: string): EnrichedWorkflow[] {
-    const basic = discoverPipelines(pipelinesDir);
-    return basic.map(p => {
+export async function discoverAndEnrichWorkflows(pipelinesDir: string): Promise<EnrichedWorkflow[]> {
+    const basic = await discoverPipelines(pipelinesDir);
+    return Promise.all(basic.map(async p => {
         const yamlPath = path.join(p.path, 'pipeline.yaml');
         let description: string | undefined;
         let isValid = false;
@@ -56,7 +56,7 @@ export function discoverAndEnrichWorkflows(pipelinesDir: string): EnrichedWorkfl
 
         // Read description from raw YAML
         try {
-            const content = fs.readFileSync(yamlPath, 'utf-8');
+            const content = await fs.promises.readFile(yamlPath, 'utf-8');
             const parsed = yaml.load(content) as any;
             if (parsed && typeof parsed === 'object' && typeof parsed.description === 'string') {
                 description = parsed.description;
@@ -78,5 +78,5 @@ export function discoverAndEnrichWorkflows(pipelinesDir: string): EnrichedWorkfl
         }
 
         return { name: p.name, path: p.path, description, isValid, validationErrors };
-    });
+    }));
 }

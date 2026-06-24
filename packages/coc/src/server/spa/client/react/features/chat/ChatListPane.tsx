@@ -63,6 +63,7 @@ export type ActivityTabMode = 'chats' | 'tasks';
 
 type QueuePauseOptions = { durationHours?: 1 | 2 | 3 | 4 | 8; until?: number | string };
 type PauseMenuScope = 'all' | 'autopilot';
+type PauseDurationHours = NonNullable<QueuePauseOptions['durationHours']>;
 type GroupPinMenuTarget = {
     type: ProcessGroupPinType;
     groupId: string;
@@ -683,22 +684,23 @@ function formatPauseResumeTime(value: number | string | undefined): string | und
 }
 
 function PauseDurationMenu({
-    scope,
+    testIdScope,
     onSelect,
 }: {
-    scope: PauseMenuScope;
-    onSelect: (scope: PauseMenuScope, options?: QueuePauseOptions) => void;
+    testIdScope: string;
+    onSelect: (options?: QueuePauseOptions) => void;
 }) {
     return (
         <div
             className="absolute right-0 top-full mt-1 z-30 min-w-44 rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#252526] shadow-lg p-1 text-xs"
-            data-testid={`pause-duration-menu-${scope}`}
+            data-testid={`pause-duration-menu-${testIdScope}`}
+            onClick={(e) => e.stopPropagation()}
         >
             <button
                 type="button"
                 className="block w-full text-left px-2 py-1.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                onClick={() => onSelect(scope)}
-                data-testid={`pause-duration-${scope}-indefinite`}
+                onClick={() => onSelect()}
+                data-testid={`pause-duration-${testIdScope}-indefinite`}
             >
                 Until resumed
             </button>
@@ -707,8 +709,8 @@ function PauseDurationMenu({
                     key={hours}
                     type="button"
                     className="block w-full text-left px-2 py-1.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                    onClick={() => onSelect(scope, { durationHours: hours })}
-                    data-testid={`pause-duration-${scope}-${hours}h`}
+                    onClick={() => onSelect({ durationHours: hours })}
+                    data-testid={`pause-duration-${testIdScope}-${hours}h`}
                 >
                     {hours} {hours === 1 ? 'hour' : 'hours'}
                 </button>
@@ -846,12 +848,14 @@ export function ChatListPane({
         groupPin?: GroupPinMenuTarget;
     } | null>(null);
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
+    const [pauseMarkerMenuIndex, setPauseMarkerMenuIndex] = useState<number | null>(null);
     const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
     const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
     const [summarizeDialogOpen, setSummarizeDialogOpen] = useState(false);
     const [summarizeDialogIds, setSummarizeDialogIds] = useState<string[]>([]);
     const [renameTarget, setRenameTarget] = useState<{ taskId: string; title: string } | null>(null);
     const [pauseMenuScope, setPauseMenuScope] = useState<PauseMenuScope | null>(null);
+    const pauseMarkerMenuRef = useRef<HTMLDivElement | null>(null);
     const queuePauseRemaining = formatPauseRemaining(pausedUntil, now);
     const autopilotPauseRemaining = formatPauseRemaining(autopilotPausedUntil, now);
     const queuePauseResumeTime = formatPauseResumeTime(pausedUntil);
@@ -880,6 +884,22 @@ export function ChatListPane({
             document.removeEventListener('touchstart', handleOutsideInteraction);
         };
     }, [pauseMenuScope]);
+
+    useEffect(() => {
+        if (pauseMarkerMenuIndex === null) return;
+        function handleOutsideInteraction(e: MouseEvent | TouchEvent) {
+            if (pauseMarkerMenuRef.current && !pauseMarkerMenuRef.current.contains(e.target as Node)) {
+                setPauseMarkerMenuIndex(null);
+                setInsertingPauseAt(null);
+            }
+        }
+        document.addEventListener('mousedown', handleOutsideInteraction);
+        document.addEventListener('touchstart', handleOutsideInteraction);
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideInteraction);
+            document.removeEventListener('touchstart', handleOutsideInteraction);
+        };
+    }, [pauseMarkerMenuIndex]);
 
     const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
     const { taskCardDensity, historyGrouping } = useDisplaySettings();
@@ -1679,11 +1699,21 @@ export function ChatListPane({
         fetchQueue();
     };
 
-    const handleInsertPauseMarker = async (afterIndex: number) => {
+    const handleInsertPauseMarker = async (afterIndex: number, options?: QueuePauseOptions) => {
         setInsertingPauseAt(null);
-        await cloneClient.queue.insertPauseMarker({ afterIndex, ...(workspaceId ? { repoId: workspaceId } : {}) });
+        setPauseMarkerMenuIndex(null);
+        await cloneClient.queue.insertPauseMarker({
+            afterIndex,
+            ...(workspaceId ? { repoId: workspaceId } : {}),
+            ...(options?.durationHours !== undefined ? { durationHours: options.durationHours } : {}),
+        });
         fetchQueue();
     };
+
+    const openPauseMarkerMenu = useCallback((afterIndex: number) => {
+        setInsertingPauseAt(afterIndex);
+        setPauseMarkerMenuIndex(current => current === afterIndex ? null : afterIndex);
+    }, []);
 
     const handleRemovePauseMarker = async (markerId: string) => {
         await cloneClient.queue.removePauseMarker(markerId);
@@ -2724,7 +2754,26 @@ export function ChatListPane({
                         </Button>
                     </>
                 ) : (
-                    <div className="mb-2">{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
+                    <>
+                        <div className="mb-2">{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
+                        {/* Activity-tab empty state exposes a desktop-visible "+ New"
+                            action so users can start a chat without switching tabs or
+                            relying on the mobile-only FAB. Scoped to the Activity tab
+                            (`!activeTab`) and repo-scoped (`workspaceId`); reuses the
+                            same `onNewChat` flow as the Activity/Chat list new-chat
+                            action. Hidden on mobile, where the FAB below handles it. */}
+                        {!activeTab && onNewChat && workspaceId && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={onNewChat}
+                                className={cn(isMobile && 'hidden')}
+                                data-testid="activity-empty-new-chat-btn"
+                            >
+                                + New
+                            </Button>
+                        )}
+                    </>
                 )}
             </div>
             {isMobile && onNewChat && (
@@ -3148,7 +3197,10 @@ export function ChatListPane({
                             )}
                         </div>
                         {pauseMenuScope && (
-                            <PauseDurationMenu scope={pauseMenuScope} onSelect={selectPauseDuration} />
+                            <PauseDurationMenu
+                                testIdScope={pauseMenuScope}
+                                onSelect={(options) => selectPauseDuration(pauseMenuScope, options)}
+                            />
                         )}
                     </div>
                 </div>
@@ -3338,10 +3390,13 @@ export function ChatListPane({
                                 {!isMobile && (
                                     <PauseInsertZone
                                         index={-1}
-                                        active={insertingPauseAt === -1}
+                                        active={insertingPauseAt === -1 || pauseMarkerMenuIndex === -1}
+                                        menuOpen={pauseMarkerMenuIndex === -1}
+                                        menuRef={pauseMarkerMenuIndex === -1 ? pauseMarkerMenuRef : undefined}
                                         onMouseEnter={() => setInsertingPauseAt(-1)}
                                         onMouseLeave={() => setInsertingPauseAt(null)}
-                                        onClick={() => handleInsertPauseMarker(-1)}
+                                        onClick={() => openPauseMarkerMenu(-1)}
+                                        onSelectDuration={(options) => handleInsertPauseMarker(-1, options)}
                                     />
                                 )}
                                 {visibleTabFilteredQueued.map((item: any, index: number) => {
@@ -3351,6 +3406,7 @@ export function ChatListPane({
                                             <PauseMarkerRow
                                                 key={item.id}
                                                 markerId={item.id}
+                                                durationHours={item.durationHours}
                                                 onRemove={() => handleRemovePauseMarker(item.id)}
                                             />
                                         );
@@ -3379,10 +3435,13 @@ export function ChatListPane({
                                             {!isMobile && (
                                                 <PauseInsertZone
                                                     index={globalIndex}
-                                                    active={insertingPauseAt === globalIndex}
+                                                    active={insertingPauseAt === globalIndex || pauseMarkerMenuIndex === globalIndex}
+                                                    menuOpen={pauseMarkerMenuIndex === globalIndex}
+                                                    menuRef={pauseMarkerMenuIndex === globalIndex ? pauseMarkerMenuRef : undefined}
                                                     onMouseEnter={() => setInsertingPauseAt(globalIndex)}
                                                     onMouseLeave={() => setInsertingPauseAt(null)}
-                                                    onClick={() => handleInsertPauseMarker(globalIndex)}
+                                                    onClick={() => openPauseMarkerMenu(globalIndex)}
+                                                    onSelectDuration={(options) => handleInsertPauseMarker(globalIndex, options)}
                                                 />
                                             )}
                                         </div>
@@ -3794,15 +3853,22 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
     );
 }
 
-function PauseMarkerRow({ markerId, onRemove }: { markerId: string; onRemove: () => void }) {
+function PauseMarkerRow({ markerId, durationHours, onRemove }: {
+    markerId: string;
+    durationHours?: PauseDurationHours;
+    onRemove: () => void;
+}) {
+    const label = durationHours === undefined ? 'Queue pauses here' : `Queue pauses here · ${durationHours}h`;
     return (
         <div
             className="flex items-center gap-1.5 px-2 py-1 rounded border border-dashed border-yellow-400/60 dark:border-yellow-500/50 bg-yellow-500/5 text-yellow-700 dark:text-yellow-400 text-xs"
             data-testid="pause-marker-row"
-            title="Queue will pause when it reaches this point"
+            title={durationHours === undefined
+                ? 'Queue will pause when it reaches this point'
+                : `Queue will pause for ${durationHours} ${durationHours === 1 ? 'hour' : 'hours'} when it reaches this point`}
         >
             <span className="shrink-0 text-[11px]">⏸</span>
-            <span className="flex-1 text-[11px]">Queue pauses here</span>
+            <span className="flex-1 text-[11px]">{label}</span>
             <button
                 className="shrink-0 text-[10px] opacity-50 hover:opacity-100 transition-opacity leading-none"
                 onClick={onRemove}
@@ -3815,19 +3881,23 @@ function PauseMarkerRow({ markerId, onRemove }: { markerId: string; onRemove: ()
     );
 }
 
-function PauseInsertZone({ index, active, onMouseEnter, onMouseLeave, onClick }: {
+function PauseInsertZone({ index, active, menuOpen, menuRef, onMouseEnter, onMouseLeave, onClick, onSelectDuration }: {
     index: number;
     active: boolean;
+    menuOpen: boolean;
+    menuRef?: React.Ref<HTMLDivElement>;
     onMouseEnter: () => void;
     onMouseLeave: () => void;
     onClick: () => void;
+    onSelectDuration: (options?: QueuePauseOptions) => void;
 }) {
     return (
         <div
             className={cn(
-                'flex items-center justify-center overflow-hidden transition-all duration-150 ease-in-out cursor-pointer group',
+                'relative flex items-center justify-center overflow-visible transition-all duration-150 ease-in-out cursor-pointer group',
                 active ? 'h-7 opacity-100' : 'h-1 opacity-0',
             )}
+            ref={menuRef}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
             onClick={onClick}
@@ -3839,6 +3909,12 @@ function PauseInsertZone({ index, active, onMouseEnter, onMouseLeave, onClick }:
                     <span>⏸</span>
                     <span>Insert pause here</span>
                 </div>
+            )}
+            {menuOpen && (
+                <PauseDurationMenu
+                    testIdScope={`insert-${index}`}
+                    onSelect={onSelectDuration}
+                />
             )}
         </div>
     );

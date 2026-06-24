@@ -129,7 +129,7 @@ export function registerTemplateRoutes(routes: Route[], store: ProcessStore): vo
             if (parsed.kind === 'commit' && typeof parsed.commitHash === 'string') {
                 try {
                     const gitLog = new GitLogService();
-                    const commit = gitLog.getCommit(ws.rootPath, parsed.commitHash);
+                    const commit = await gitLog.getCommit(ws.rootPath, parsed.commitHash);
                     if (commit) {
                         parsed._commit = {
                             shortHash: commit.shortHash,

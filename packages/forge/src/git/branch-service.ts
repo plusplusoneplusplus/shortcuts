@@ -29,7 +29,9 @@ import {
     GitCherryPickResult,
     GitPatchApplyOptions,
     GitPatchApplyResult,
+    GitPatchExportPayload,
     GitPatchExportResult,
+    GitPatchMultiExportResult,
     RepoState,
 } from './types';
 
@@ -934,6 +936,29 @@ export class BranchService {
     }
 
     /**
+     * Resolve one commit and build its format-patch payload (metadata + patch).
+     * Throws on an invalid hash, an unresolvable commit, or unreadable metadata.
+     */
+    private async exportPatchPayload(repoRoot: string, hash: string): Promise<GitPatchExportPayload> {
+        const trimmedHash = hash.trim();
+        if (!/^[a-fA-F0-9]{4,40}$/.test(trimmedHash)) {
+            throw new Error('Invalid commit hash');
+        }
+        const commitish = this.quoteShellArg(`${trimmedHash}^{commit}`);
+        const commitHash = (await this.execGit(`git rev-parse --verify ${commitish}`, { cwd: repoRoot })).trim();
+        const metadata = await this.execGit(`git show -s --format=%H%x00%s%x00%an%x00%ae%x00%aI ${commitHash}`, { cwd: repoRoot });
+        const [fullHash, subject, authorName, authorEmail, authorDate] = metadata.replace(/\n$/, '').split('\0');
+        if (!fullHash || !subject || !authorName || !authorEmail || !authorDate) {
+            throw new Error('Failed to read commit metadata');
+        }
+        const patch = await this.execGit(`git format-patch -1 --stdout --no-stat ${commitHash}`, {
+            cwd: repoRoot,
+            timeout: 600000,
+        });
+        return { commitHash: fullHash, subject, authorName, authorEmail, authorDate, patch };
+    }
+
+    /**
      * Export one commit as a format-patch payload suitable for git am.
      */
     async exportCommitPatch(repoRoot: string, hash: string): Promise<GitPatchExportResult> {
@@ -943,27 +968,8 @@ export class BranchService {
         }
 
         try {
-            const commitish = this.quoteShellArg(`${trimmedHash}^{commit}`);
-            const commitHash = (await this.execGit(`git rev-parse --verify ${commitish}`, { cwd: repoRoot })).trim();
-            const metadata = await this.execGit(`git show -s --format=%H%x00%s%x00%an%x00%ae%x00%aI ${commitHash}`, { cwd: repoRoot });
-            const [fullHash, subject, authorName, authorEmail, authorDate] = metadata.replace(/\n$/, '').split('\0');
-            if (!fullHash || !subject || !authorName || !authorEmail || !authorDate) {
-                return { success: false, error: 'Failed to read commit metadata' };
-            }
-
-            const patch = await this.execGit(`git format-patch -1 --stdout --no-stat ${commitHash}`, {
-                cwd: repoRoot,
-                timeout: 600000,
-            });
-            return {
-                success: true,
-                commitHash: fullHash,
-                subject,
-                authorName,
-                authorEmail,
-                authorDate,
-                patch,
-            };
+            const payload = await this.exportPatchPayload(repoRoot, trimmedHash);
+            return { success: true, ...payload };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             getLogger().error('Git', `Failed to export commit patch ${trimmedHash}`, error instanceof Error ? error : undefined);
@@ -972,7 +978,62 @@ export class BranchService {
     }
 
     /**
-     * Apply a format-patch payload with git am --3way.
+     * Export several commits (given oldest-first) as a single concatenated
+     * format-patch mailbox that `git am` applies in order. Two round-trips
+     * (export + apply) regardless of range size.
+     */
+    async exportCommitPatches(repoRoot: string, hashes: string[]): Promise<GitPatchMultiExportResult> {
+        const list = Array.isArray(hashes)
+            ? hashes.map(value => (typeof value === 'string' ? value.trim() : '')).filter(value => value.length > 0)
+            : [];
+        if (list.length === 0) {
+            return { success: false, error: 'No commits to export' };
+        }
+
+        try {
+            const commits: GitPatchExportPayload[] = [];
+            const bodies: string[] = [];
+            for (const hash of list) {
+                const payload = await this.exportPatchPayload(repoRoot, hash);
+                commits.push(payload);
+                bodies.push(payload.patch.endsWith('\n') ? payload.patch : `${payload.patch}\n`);
+            }
+            // Blank-line separation between mailbox entries keeps `git am` happy.
+            return { success: true, patch: bodies.join('\n'), commits };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', `Failed to export commit patches ${list.join(', ')}`, error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        }
+    }
+
+    /** Best-effort `git rev-parse HEAD`, undefined on an unborn/unreadable HEAD. */
+    private revParseHeadSafe(repoRoot: string): string | undefined {
+        try {
+            return this.execGitSync('git rev-parse HEAD', { cwd: repoRoot }).trim();
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Count commits applied since `baseHead`. With no base (unborn branch) the
+     * whole HEAD history is the applied set. Best-effort — undefined on failure.
+     */
+    private countAppliedCommits(repoRoot: string, baseHead: string | undefined): number | undefined {
+        try {
+            const range = baseHead ? `${baseHead}..HEAD` : 'HEAD';
+            const output = this.execGitSync(`git rev-list --count ${range}`, { cwd: repoRoot }).trim();
+            const parsed = Number.parseInt(output, 10);
+            return Number.isFinite(parsed) ? parsed : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Apply a format-patch payload with git am --3way. The mailbox may contain
+     * several patches; they are applied in order within a single `am` session.
      */
     async applyCommitPatch(repoRoot: string, patchBody: string, options: GitPatchApplyOptions = {}): Promise<GitPatchApplyResult> {
         if (!patchBody || !patchBody.trim()) {
@@ -991,6 +1052,7 @@ export class BranchService {
 
         let stashed = false;
         let tmpDir: string | undefined;
+        let preApplyHead: string | undefined;
         try {
             if (await this.hasUncommittedChanges(repoRoot)) {
                 if (!options.stashAndContinue) {
@@ -1012,18 +1074,21 @@ export class BranchService {
             const patchPath = path.join(tmpDir, 'commit.patch');
             fs.writeFileSync(patchPath, patchBody.endsWith('\n') ? patchBody : `${patchBody}\n`, 'utf-8');
 
+            preApplyHead = this.revParseHeadSafe(repoRoot);
             await this.execGit(`git am --3way ${this.quoteShellArg(patchPath)}`, {
                 cwd: repoRoot,
                 timeout: 600000,
                 env: { GIT_EDITOR: 'true' },
             });
             const headHash = this.execGitSync('git rev-parse HEAD', { cwd: repoRoot }).trim();
+            const appliedCount = this.countAppliedCommits(repoRoot, preApplyHead);
             return {
                 success: true,
                 conflicts: false,
                 message: 'Patch applied successfully',
                 headHash,
                 stashed,
+                ...(appliedCount !== undefined ? { appliedCount } : {}),
             };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1031,12 +1096,15 @@ export class BranchService {
             const isConflict = gitState.gitOperation === 'am'
                 || /CONFLICT|conflict|Patch failed|patch does not apply|git am --continue|Resolve all conflicts/i.test(errorMessage);
             if (isConflict) {
+                // HEAD has advanced by however many patches landed before the failing one.
+                const appliedCount = this.countAppliedCommits(repoRoot, preApplyHead);
                 return {
                     success: false,
                     conflicts: true,
                     message: errorMessage,
                     stashed,
                     gitState,
+                    ...(appliedCount !== undefined ? { appliedCount } : {}),
                 };
             }
             getLogger().error('Git', 'Failed to apply patch', error instanceof Error ? error : undefined);

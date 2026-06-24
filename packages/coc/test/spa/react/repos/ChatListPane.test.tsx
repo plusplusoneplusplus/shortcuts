@@ -284,6 +284,77 @@ describe('ChatListPane', () => {
             expect(screen.getByTestId('queue-refreshing-indicator')).toBeTruthy();
             expect(screen.getByText('Refreshing…')).toBeTruthy();
         });
+
+        // ── Activity empty-state "+ New" button ─────────────────────────
+        describe('Activity empty-state "+ New" button', () => {
+            // AC-01: repo-scoped Activity tab empty state shows a desktop-visible
+            // "+ New" action when there are no entries and no server search.
+            it('renders "+ New" on the repo-scoped Activity tab empty state', () => {
+                renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn() });
+                const btn = screen.getByTestId('activity-empty-new-chat-btn');
+                expect(btn).toBeTruthy();
+                expect(btn.textContent).toContain('+ New');
+                // Desktop-visible: not hidden when not mobile.
+                expect(btn.className).not.toContain('hidden');
+            });
+
+            // AC-02: clicking "+ New" runs the same new-chat flow (onNewChat).
+            it('invokes onNewChat when "+ New" is clicked', () => {
+                const onNewChat = vi.fn();
+                renderPane({ workspaceId: 'ws-1', onNewChat });
+                fireEvent.click(screen.getByTestId('activity-empty-new-chat-btn'));
+                expect(onNewChat).toHaveBeenCalledTimes(1);
+            });
+
+            // AC-03: not rendered on the Tasks (queue) tab — scope unchanged.
+            it('does not render "+ New" on the Tasks tab empty state', () => {
+                renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn(), activeTab: 'tasks' });
+                expect(screen.queryByTestId('activity-empty-new-chat-btn')).toBeNull();
+            });
+
+            // AC-03: not rendered on the Chats tab empty state ("No chats yet").
+            it('does not render "+ New" on the Chats tab empty state', () => {
+                renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn(), activeTab: 'chats' });
+                expect(screen.queryByTestId('activity-empty-new-chat-btn')).toBeNull();
+                expect(screen.getByText('No chats yet')).toBeTruthy();
+            });
+
+            // AC-03: paused empty state still shows Resume and no "+ New".
+            it('keeps the paused empty state (Resume only, no "+ New")', () => {
+                renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn(), isPaused: true });
+                expect(screen.getByTestId('repo-pause-resume-btn-empty')).toBeTruthy();
+                expect(screen.getByText('Queue is paused')).toBeTruthy();
+                expect(screen.queryByTestId('activity-empty-new-chat-btn')).toBeNull();
+            });
+
+            // AC-01/Constraints: requires a repo scope (workspaceId).
+            it('does not render "+ New" without a workspaceId', () => {
+                renderPane({ onNewChat: vi.fn() });
+                expect(screen.queryByTestId('activity-empty-new-chat-btn')).toBeNull();
+            });
+
+            // AC-03: when no onNewChat handler is wired (e.g. global Processes
+            // view), the inline action is absent.
+            it('does not render "+ New" when onNewChat is not provided', () => {
+                renderPane({ workspaceId: 'ws-1' });
+                expect(screen.queryByTestId('activity-empty-new-chat-btn')).toBeNull();
+            });
+
+            // AC-03: on mobile the inline button is hidden and the FAB remains.
+            it('hides the inline "+ New" on mobile but keeps the FAB', () => {
+                renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn(), isMobile: true });
+                expect(screen.getByTestId('activity-empty-new-chat-btn').className).toContain('hidden');
+                expect(screen.getByTestId('mobile-new-chat-fab-empty')).toBeTruthy();
+            });
+
+            // AC-03: server search active suppresses the empty state entirely,
+            // so the "+ New" action is not shown (search-results path is used).
+            it('does not render "+ New" while a server search is active', () => {
+                renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn(), searchResults: [] });
+                expect(screen.queryByTestId('queue-empty-state')).toBeNull();
+                expect(screen.queryByTestId('activity-empty-new-chat-btn')).toBeNull();
+            });
+        });
     });
 
     // ── Banners ────────────────────────────────────────────────────────
@@ -800,6 +871,92 @@ describe('ChatListPane', () => {
                 queued: [makeQueuedTask(), { id: 'pm-1', kind: 'pause-marker' }],
             });
             expect(screen.getByTestId('pause-marker-row')).toBeTruthy();
+        });
+
+        it('shows a static duration label for timed pause markers', () => {
+            renderPane({
+                queued: [
+                    { id: 'pm-indefinite', kind: 'pause-marker' },
+                    { id: 'pm-timed', kind: 'pause-marker', durationHours: 2 },
+                ],
+            });
+
+            expect(screen.getByText('Queue pauses here')).toBeTruthy();
+            expect(screen.getByText('Queue pauses here · 2h')).toBeTruthy();
+        });
+
+        it('opens a duration menu from the insert zone and inserts a timed pause marker', async () => {
+            const fetchQueue = vi.fn().mockResolvedValue(undefined);
+            const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+            fetchMock.mockResolvedValue(new Response(JSON.stringify({ markerId: 'pm-new', afterIndex: 0, durationHours: 2 }), {
+                status: 201,
+                headers: { 'content-type': 'application/json' },
+            }));
+            renderPane({
+                workspaceId: 'ws-1',
+                queued: [makeQueuedTask({ id: 'q-1' })],
+                fetchQueue,
+            });
+
+            const insertZone = screen.getByTestId('pause-insert-zone-0');
+            fireEvent.mouseEnter(insertZone);
+            fireEvent.click(insertZone);
+
+            expect(screen.getByTestId('pause-duration-menu-insert-0')).toBeTruthy();
+            expect(screen.getByTestId('pause-duration-insert-0-indefinite')).toBeTruthy();
+            for (const hours of [1, 2, 3, 4, 8]) {
+                expect(screen.getByTestId(`pause-duration-insert-0-${hours}h`)).toBeTruthy();
+            }
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pause-duration-insert-0-2h'));
+            });
+
+            await waitFor(() => {
+                const pauseMarkerCall = fetchMock.mock.calls.find(
+                    (call: any[]) => typeof call[0] === 'string' && call[0].includes('/queue/pause-marker'),
+                );
+                expect(pauseMarkerCall).toBeTruthy();
+                expect(JSON.parse(pauseMarkerCall![1].body)).toEqual({
+                    afterIndex: 0,
+                    repoId: 'ws-1',
+                    durationHours: 2,
+                });
+                expect(fetchQueue).toHaveBeenCalled();
+            });
+        });
+
+        it('inserts an indefinite pause marker when Until resumed is selected', async () => {
+            const fetchQueue = vi.fn().mockResolvedValue(undefined);
+            const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+            fetchMock.mockResolvedValue(new Response(JSON.stringify({ markerId: 'pm-new', afterIndex: -1 }), {
+                status: 201,
+                headers: { 'content-type': 'application/json' },
+            }));
+            renderPane({
+                workspaceId: 'ws-1',
+                queued: [makeQueuedTask({ id: 'q-1' })],
+                fetchQueue,
+            });
+
+            const insertZone = screen.getByTestId('pause-insert-zone--1');
+            fireEvent.mouseEnter(insertZone);
+            fireEvent.click(insertZone);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pause-duration-insert--1-indefinite'));
+            });
+
+            await waitFor(() => {
+                const pauseMarkerCall = fetchMock.mock.calls.find(
+                    (call: any[]) => typeof call[0] === 'string' && call[0].includes('/queue/pause-marker'),
+                );
+                expect(pauseMarkerCall).toBeTruthy();
+                const body = JSON.parse(pauseMarkerCall![1].body);
+                expect(body).toEqual({ afterIndex: -1, repoId: 'ws-1' });
+                expect(body).not.toHaveProperty('durationHours');
+                expect(fetchQueue).toHaveBeenCalled();
+            });
         });
 
         it('collapsing section hides task cards', () => {

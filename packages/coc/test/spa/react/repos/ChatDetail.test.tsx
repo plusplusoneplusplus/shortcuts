@@ -19,6 +19,10 @@ import { QueueProvider, useQueue } from '../../../../src/server/spa/client/react
 import { ToastProvider } from '../../../../src/server/spa/client/react/contexts/ToastContext';
 import { NotificationProvider } from '../../../../src/server/spa/client/react/contexts/NotificationContext';
 import { TaskProvider } from '../../../../src/server/spa/client/react/contexts/TaskContext';
+import {
+    STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+    STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+} from '../../../../src/server/tasks/task-types';
 
 // ── Module mocks (hoisted before imports) ──────────────────────────────────
 
@@ -230,6 +234,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
             }), []);
             return R.createElement('div', {
                 'data-testid': props['data-testid'] ?? 'activity-chat-input',
+                'data-placeholder': props.placeholder,
                 contentEditable: !props.disabled,
                 onKeyDown: props.onKeyDown,
                 onInput: (e: any) => props.onChange?.(e.currentTarget?.textContent ?? ''),
@@ -246,8 +251,30 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
 
 // ConversationTurnBubble — stub that renders turn content
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
-    ConversationTurnBubble: (props: any) =>
-        React.createElement('div', { 'data-testid': `turn-${props.turn?.role}`, 'data-turn-index': props.turn?.turnIndex }, props.turn?.content ?? ''),
+    ConversationTurnBubble: (props: any) => {
+        const turnIndex = props.turn?.turnIndex;
+        const children: React.ReactNode[] = [props.turn?.content ?? ''];
+        if (props.onPinTurn && turnIndex != null) {
+            children.push(React.createElement('button', {
+                key: 'pin',
+                'data-testid': `pin-turn-${turnIndex}`,
+                onClick: () => props.onPinTurn(turnIndex, !props.turn?.pinnedAt),
+            }, props.turn?.pinnedAt ? 'Unpin' : 'Pin'));
+        }
+        if (props.onArchiveTurn && turnIndex != null) {
+            children.push(React.createElement('button', {
+                key: 'archive',
+                'data-testid': `archive-turn-${turnIndex}`,
+                onClick: () => props.onArchiveTurn(turnIndex, !props.turn?.archived),
+            }, props.turn?.archived ? 'Unarchive' : 'Archive'));
+        }
+        return React.createElement('div', {
+            'data-testid': `turn-${props.turn?.role}`,
+            'data-turn-index': turnIndex,
+            'data-pinned': props.turn?.pinnedAt ? 'true' : 'false',
+            'data-archived': props.turn?.archived ? 'true' : 'false',
+        }, ...children);
+    },
 }));
 
 // QueuedBubble — stub
@@ -274,7 +301,7 @@ vi.mock('../../../../src/server/spa/client/react/queue/PendingTaskInfoPanel', ()
 
 // ConversationMetadataPopover — getSessionIdFromProcess + stub component
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
-    getSessionIdFromProcess: (proc: any) => proc?.metadata?.sessionId ?? null,
+    getSessionIdFromProcess: (proc: any) => proc?.sdkSessionId ?? proc?.sessionId ?? proc?.metadata?.sessionId ?? null,
     ConversationMetadataPopover: (props: any) => React.createElement('div', { 'data-testid': 'metadata-popover' }),
 }));
 
@@ -288,6 +315,7 @@ vi.mock('../../../../src/server/spa/client/react/ui', async (importOriginal) => 
 
 // Now import the component under test (after mocks)
 import { ChatDetail } from '../../../../src/server/spa/client/react/features/chat/ChatDetail';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 // ── Provider wrapper ───────────────────────────────────────────────────────
 
@@ -400,6 +428,7 @@ function setupStandardFetch(task?: any, process?: any) {
 beforeEach(() => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
+    resetCloneRegistryForTests();
     // Reset mock state
     mockState.sendFollowUp.mockReset().mockResolvedValue(undefined);
     mockState.closeFollowUpStream.mockReset();
@@ -430,6 +459,7 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.restoreAllMocks();
+    resetCloneRegistryForTests();
     delete (globalThis as any).__useSendMessage_opts;
 });
 
@@ -653,6 +683,122 @@ describe('ChatDetail', () => {
                 expect(mockState.pruneExpired).toHaveBeenCalled();
             });
         });
+
+        it('hydrates pinned and archived turn state from process detail data', async () => {
+            const proc = makeProcess({
+                conversationTurns: [
+                    { role: 'user', content: 'Pinned from store', turnIndex: 0, pinnedAt: '2026-06-23T19:00:00.000Z', timeline: [] },
+                    { role: 'assistant', content: 'Archived from store', turnIndex: 1, archived: true, timeline: [] },
+                ],
+            });
+            setupStandardFetch(undefined, proc);
+
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+
+            await waitFor(() => {
+                expect(screen.getByText('📌 Pinned Messages (1)')).toBeTruthy();
+            });
+            expect(screen.getByText(/Show archived messages \(1\)/)).toBeTruthy();
+            expect(screen.queryByText('Archived from store')).toBeNull();
+
+            fireEvent.click(screen.getByText(/Show archived messages \(1\)/));
+            await waitFor(() => {
+                expect(screen.getByText('Archived from store')).toBeTruthy();
+            });
+        });
+    });
+
+    describe('turn action routing', () => {
+        it('routes pin and archive turn actions through the latest remote clone client', async () => {
+            const remoteA = 'http://remote-a.example';
+            const remoteB = 'http://remote-b.example';
+            registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: remoteA }]);
+            const task = makeTask();
+            const proc = makeProcess({
+                conversationTurns: [
+                    { role: 'user', content: 'Hello', turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: 'Hi there', turnIndex: 1, timeline: [] },
+                ],
+            });
+            setupFetch({
+                '/turns/0/pin': { body: { id: 'proc-1', turnIndex: 0, pinnedAt: '2026-06-23T19:01:00.000Z', archived: false } },
+                '/turns/1/archive': { body: { id: 'proc-1', turnIndex: 1, archived: true } },
+                '/skills/all': { body: { merged: [] } },
+                '/queue/': { body: { task } },
+                '/processes/': { body: { process: proc, conversation: proc.conversation } },
+                '/models': { body: [] },
+            });
+
+            const { rerender } = render(<Wrap><ChatDetail taskId="task-1" workspaceId="remote-ws" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText('Hello')).toBeTruthy();
+            });
+
+            registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: remoteB }]);
+            rerender(<Wrap><ChatDetail taskId="task-1" workspaceId="remote-ws" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('pin-turn-0')).toBeTruthy();
+            });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pin-turn-0'));
+            });
+            await waitFor(() => {
+                expect(fetchMock.mock.calls.some(([url]: [string]) =>
+                    url.startsWith(remoteB) && url.includes('/api/processes/proc-1/turns/0/pin'),
+                )).toBe(true);
+            });
+            expect(fetchMock.mock.calls.some(([url]: [string]) =>
+                url.startsWith(remoteA) && url.includes('/api/processes/proc-1/turns/0/pin'),
+            )).toBe(false);
+            const pinCall = fetchMock.mock.calls.find(([url]: [string]) =>
+                url.startsWith(remoteB) && url.includes('/api/processes/proc-1/turns/0/pin'),
+            );
+            expect(JSON.parse(String((pinCall?.[1] as RequestInit | undefined)?.body))).toEqual({ pinned: true });
+            await waitFor(() => {
+                expect(screen.getAllByTestId('turn-user').some(el => el.getAttribute('data-pinned') === 'true')).toBe(true);
+            });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('archive-turn-1'));
+            });
+            await waitFor(() => {
+                expect(fetchMock.mock.calls.some(([url]: [string]) =>
+                    url.startsWith(remoteB) && url.includes('/api/processes/proc-1/turns/1/archive'),
+                )).toBe(true);
+            });
+            const archiveCall = fetchMock.mock.calls.find(([url]: [string]) =>
+                url.startsWith(remoteB) && url.includes('/api/processes/proc-1/turns/1/archive'),
+            );
+            expect(JSON.parse(String((archiveCall?.[1] as RequestInit | undefined)?.body))).toEqual({ archived: true });
+        });
+
+        it('keeps local turn actions on the default SPA client', async () => {
+            const task = makeTask();
+            const proc = makeProcess();
+            setupFetch({
+                '/turns/0/pin': { body: { id: 'proc-1', turnIndex: 0, pinnedAt: '2026-06-23T19:02:00.000Z', archived: false } },
+                '/skills/all': { body: { merged: [] } },
+                '/queue/': { body: { task } },
+                '/processes/': { body: { process: proc, conversation: proc.conversation } },
+                '/models': { body: [] },
+            });
+
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="local-ws" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByText('Hello')).toBeTruthy();
+            });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pin-turn-0'));
+            });
+
+            await waitFor(() => {
+                expect(fetchMock.mock.calls.some(([url]: [string]) =>
+                    url === '/api/processes/proc-1/turns/0/pin',
+                )).toBe(true);
+            });
+        });
     });
 
     // ── Pending task ───────────────────────────────────────────────────────
@@ -776,14 +922,15 @@ describe('ChatDetail', () => {
             expect(mockState.sendFollowUp).toHaveBeenCalled();
         });
 
-        it('input disabled for cancelled task', async () => {
-            const task = makeTask({ status: 'cancelled' });
-            const proc = makeProcess({ status: 'cancelled' });
+        it('input enabled for cancelled task with a saved sdkSessionId', async () => {
+            const task = makeTask({ status: 'cancelled', processId: 'proc-1' });
+            const proc = makeProcess({ status: 'cancelled', sdkSessionId: 'sdk-stopped-1', metadata: { mode: 'autopilot' } });
             setupStandardFetch(task, proc);
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
                 const sendBtn = screen.getByTestId('activity-chat-send-btn');
-                expect(sendBtn.hasAttribute('disabled')).toBe(true);
+                expect(sendBtn.hasAttribute('disabled')).toBe(false);
+                expect(screen.getByTestId('activity-chat-input').getAttribute('data-placeholder')).not.toBe('Session expired.');
             });
         });
 
@@ -798,16 +945,59 @@ describe('ChatDetail', () => {
             });
         });
 
-        it('shows "Session expired." placeholder for cancelled task input', async () => {
-            const task = makeTask({ status: 'cancelled' });
-            const proc = makeProcess({ status: 'cancelled' });
+        it('shows a non-retryable inline error for cancelled task without sdkSessionId', async () => {
+            const task = makeTask({ status: 'cancelled', processId: 'proc-1' });
+            const proc = makeProcess({
+                status: 'cancelled',
+                sessionId: 'legacy-session-id',
+                metadata: { mode: 'autopilot', sessionId: 'legacy-metadata-session-id' },
+            });
             setupStandardFetch(task, proc);
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
-                // The input placeholder text is set in FollowUpInputArea
                 const sendBtn = screen.getByTestId('activity-chat-send-btn');
                 expect(sendBtn.hasAttribute('disabled')).toBe(true);
+                expect(screen.getByTestId('follow-up-inline-error').textContent)
+                    .toContain('no SDK session was saved');
             });
+            expect(screen.getByTestId('activity-chat-input').getAttribute('data-placeholder')).toBe('Cannot continue this stopped chat.');
+            expect(screen.queryByTestId('retry-btn')).toBeNull();
+            expect(screen.queryByText('Follow-up chat is not available for this process type.')).toBeNull();
+        });
+
+        it('shows only the non-retryable inline error after stopped-chat strict resume failure', async () => {
+            const task = makeTask({ status: 'failed', processId: 'proc-1' });
+            const proc = makeProcess({
+                status: 'failed',
+                sdkSessionId: 'stopped-session',
+                error: 'Provider did not resume the stopped SDK session.',
+                metadata: {
+                    mode: 'autopilot',
+                    stoppedChatResume: {
+                        resumable: false,
+                        reason: STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+                        message: STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+                        failedAt: '2026-06-23T18:53:00.000Z',
+                        sdkSessionId: 'stopped-session',
+                    },
+                },
+            });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+
+            await waitFor(() => {
+                const sendBtn = screen.getByTestId('activity-chat-send-btn');
+                expect(sendBtn.hasAttribute('disabled')).toBe(true);
+                expect(screen.getByTestId('follow-up-inline-error').textContent)
+                    .toContain('saved SDK session could not be resumed');
+            });
+
+            expect(screen.getByTestId('activity-chat-input').getAttribute('data-placeholder')).toBe('Cannot continue this stopped chat.');
+            expect(screen.queryByTestId('retry-btn')).toBeNull();
+            expect(screen.queryByText('This task failed before a chat session was created.')).toBeNull();
+            expect(screen.queryByText('Follow-up chat is not available for this process type.')).toBeNull();
+            fireEvent.click(screen.getByTestId('activity-chat-send-btn'));
+            expect(mockState.sendFollowUp).not.toHaveBeenCalled();
         });
 
         it('shows error message when error is set', async () => {
@@ -1226,6 +1416,7 @@ describe('ChatDetail', () => {
             setupStandardFetch(task, proc);
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
             await waitFor(() => {
+                expect((globalThis as any).__useSendMessage_opts?.inputDisabled).toBe(true);
                 const stopBtn = screen.getByTestId('activity-chat-stop-btn');
                 expect(stopBtn.textContent).toBe('Stopping...');
                 expect(stopBtn.hasAttribute('disabled')).toBe(true);
