@@ -222,6 +222,13 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Forward declaration — trigger infra is created after queue infra
     let triggerInfra: TriggerInfrastructure | undefined;
 
+    // Forward declaration — the in-process enqueue capability for the opt-in
+    // `create_conversation` tool is bound at the route layer (where the queue
+    // global state + provider-default resolution live), which runs after the
+    // queue infra (and its executors) are created. The late-bound getter passed
+    // to createQueueInfrastructure reads this once routes finish registering.
+    let enqueueChatCapability: import('./llm-tools/create-conversation-tool').EnqueueChatFn | undefined;
+
     // MCP OAuth infra — enabled by default when any MCP server may be configured.
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
     const mcpOauthInfra = mcpOauthEnabled
@@ -350,6 +357,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // triggerInfra is created after queue infra (like loopInfra), so read it
         // lazily through this closure.
         () => triggerInfra ? { manager: triggerInfra.triggerManager } : undefined,
+        // Late-bound enqueue capability for the opt-in `create_conversation` tool;
+        // bound at the route layer below, read here once routes register.
+        () => enqueueChatCapability,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -604,6 +614,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         syncEngines,
         nativeCopilotSessionDbPath: options.nativeCopilotSessionDbPath,
         nativeCopilotSessionStateDir: options.nativeCopilotSessionStateDir,
+        setEnqueueChat: (fn) => { enqueueChatCapability = fn; },
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });

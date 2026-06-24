@@ -66,6 +66,7 @@ export function createQueueInfrastructure(
     ralphMultiAgentGrillEnabled?: boolean,
     getGlobalSystemPrompt?: () => string | undefined,
     getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined,
+    getEnqueueChat?: () => import('../llm-tools/create-conversation-tool').EnqueueChatFn | undefined,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: Database.Database;
@@ -99,6 +100,7 @@ export function createQueueInfrastructure(
         initialDelayMs: options.queue?.restartPickupDelayMs,
         getLoopInfra,
         getTriggerInfra,
+        getEnqueueChat,
         getMcpOauthManager,
     });
 

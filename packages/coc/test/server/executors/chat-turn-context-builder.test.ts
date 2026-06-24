@@ -327,4 +327,33 @@ describe('buildChatTurnContext', () => {
             }),
         );
     });
+
+    // -------------------------------------------------------------------------
+    // create_conversation enqueue capability passthrough (AC-02 Part 2)
+    // -------------------------------------------------------------------------
+
+    it('forwards the enqueueChat capability through to buildChatToolBundle', async () => {
+        const enqueueChat = vi.fn();
+
+        await buildChatTurnContext({
+            store: makeStore(),
+            workspaceId: 'ws-1',
+            enqueueChat,
+        });
+
+        expect(mockBuildChatToolBundle).toHaveBeenCalledWith(
+            expect.objectContaining({ enqueueChat }),
+        );
+    });
+
+    it('passes enqueueChat: undefined when the capability is absent', async () => {
+        await buildChatTurnContext({
+            store: makeStore(),
+            workspaceId: 'ws-1',
+        });
+
+        expect(mockBuildChatToolBundle).toHaveBeenCalledWith(
+            expect.objectContaining({ enqueueChat: undefined }),
+        );
+    });
 });
