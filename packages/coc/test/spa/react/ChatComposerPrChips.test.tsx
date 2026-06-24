@@ -10,7 +10,7 @@
  * nothing.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, fireEvent, waitFor } from '@testing-library/react';
+import { render, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 
@@ -165,6 +165,75 @@ describe('ChatComposerPrChips / usePrChatStatusItems', () => {
                 workspaceId: 'ws1',
                 force: true,
             }),
+        );
+    });
+
+    it('clicking one chip refresh refreshes only that PR and spins only its control', async () => {
+        // Regression: the refresh state was a single shared boolean and the
+        // handler force-refreshed every association, so clicking one chip's
+        // refresh spun every chip and re-fetched every PR. It must be per-row now —
+        // only the clicked PR is force-refreshed and only its icon spins.
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+
+        const detailFor = (n: number) => ({
+            number: n,
+            title: n === 42 ? 'First PR' : 'Second PR',
+            status: 'open' as const,
+            sourceBranch: 'feat/x',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: n === 42 ? GH_URL : GH_URL_2,
+        });
+
+        // Hold the forced #42 re-fetch open so we can observe the in-flight spinner.
+        let resolveForced42: (() => void) | undefined;
+        mocks.pullRequests.getForOrigin.mockImplementation(
+            (_origin: string, prId: string, opts?: { force?: boolean }) => {
+                const n = prId === '42' ? 42 : 99;
+                if (n === 42 && opts?.force) {
+                    return new Promise(resolve => {
+                        resolveForced42 = () => resolve(detailFor(42));
+                    });
+                }
+                return Promise.resolve(detailFor(n));
+            },
+        );
+
+        const { findByText, getByTestId } = render(
+            <ChatComposerPrChips
+                turns={[turnWithPrCreate(GH_URL), turnWithPrCreate(GH_URL_2, 'tc-pr2')]}
+                workspaceId="ws1"
+                remoteUrl={GH_REMOTE}
+                taskId="t1"
+            />,
+        );
+
+        await findByText('First PR');
+        await findByText('Second PR');
+        const forcedBefore = mocks.pullRequests.getForOrigin.mock.calls.filter(
+            ([, , opts]) => (opts as { force?: boolean } | undefined)?.force,
+        ).length;
+        expect(forcedBefore).toBe(0);
+
+        fireEvent.click(getByTestId(`composer-pr-chip-refresh-${GH_ORIGIN}:42`));
+
+        // Only the clicked chip's control shows busy while its refresh is in flight.
+        await waitFor(() =>
+            expect(getByTestId(`composer-pr-chip-refresh-${GH_ORIGIN}:42`).getAttribute('data-refreshing')).toBe('true'),
+        );
+        expect(getByTestId(`composer-pr-chip-refresh-${GH_ORIGIN}:99`).getAttribute('data-refreshing')).toBe('false');
+
+        // Only PR #42 was force-refreshed; #99 was never re-fetched with force=true.
+        expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '42', { workspaceId: 'ws1', force: true });
+        expect(mocks.pullRequests.getForOrigin).not.toHaveBeenCalledWith(GH_ORIGIN, '99', { workspaceId: 'ws1', force: true });
+
+        // Once the in-flight refresh settles, the clicked chip's spinner clears.
+        await act(async () => {
+            resolveForced42?.();
+            await Promise.resolve();
+        });
+        await waitFor(() =>
+            expect(getByTestId(`composer-pr-chip-refresh-${GH_ORIGIN}:42`).getAttribute('data-refreshing')).toBe('false'),
         );
     });
 

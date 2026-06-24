@@ -31,8 +31,8 @@ export interface ComposerPrChipProps {
     onDismiss: (key: string) => void;
     /** Retry a failed detail fetch. */
     onRetry?: (key: string) => void;
-    /** Force-refresh PR status + checks now, bypassing the cache. Omit to hide the button. */
-    onRefresh?: () => void;
+    /** Force-refresh this PR's status + checks now, bypassing the cache. Omit to hide the button. */
+    onRefresh?: (key: string) => void;
     /** A force-refresh is in flight — spins the icon and disables the button. */
     refreshing?: boolean;
 }
@@ -69,11 +69,11 @@ function PinGlyph() {
     );
 }
 
-function RefreshButton({ itemKey, onRefresh, refreshing }: { itemKey: string; onRefresh: () => void; refreshing?: boolean }) {
+function RefreshButton({ itemKey, onRefresh, refreshing }: { itemKey: string; onRefresh: (key: string) => void; refreshing?: boolean }) {
     return (
         <button
             type="button"
-            onClick={() => onRefresh()}
+            onClick={() => onRefresh(itemKey)}
             disabled={refreshing}
             className="shrink-0 inline-flex h-[22px] w-[22px] items-center justify-center rounded-md border-none bg-transparent text-[#57606a] hover:bg-black/[0.05] hover:text-[#0969da] dark:text-[#8b949e] dark:hover:bg-white/[0.08] dark:hover:text-[#58a6ff] cursor-pointer leading-none disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
             aria-label="Refresh pull request status"

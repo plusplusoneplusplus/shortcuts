@@ -13,15 +13,17 @@ import { usePrChatStatusItems, type UsePrChatStatusItemsOptions } from './usePrC
 export type ChatPrStatusCardProps = UsePrChatStatusItemsOptions;
 
 export function ChatPrStatusCard(options: ChatPrStatusCardProps) {
-    const { items, retry, expandChecks, refresh, refreshing, lastUpdatedAt } = usePrChatStatusItems(options);
+    const { items, retry, expandChecks, refresh, refreshingKeys, lastUpdatedAt } = usePrChatStatusItems(options);
     if (items.length === 0) return null;
     return (
         <PrStatusCard
             items={items}
             onRetry={retry}
             onExpandChecks={expandChecks}
-            onRefresh={refresh}
-            refreshing={refreshing}
+            // The card has one control that refreshes every row — call refresh with
+            // no key (and ignore the click event so it isn't taken as a row key).
+            onRefresh={() => refresh()}
+            refreshing={refreshingKeys.size > 0}
             lastUpdatedAt={lastUpdatedAt}
         />
     );

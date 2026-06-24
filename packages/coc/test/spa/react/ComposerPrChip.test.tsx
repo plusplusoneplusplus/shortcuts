@@ -150,7 +150,9 @@ describe('ComposerPrChip', () => {
         expect(btn.disabled).toBe(false);
         expect(btn.getAttribute('data-refreshing')).toBe('false');
         fireEvent.click(btn);
+        // Passes its own key so the hook refreshes (and spins) only this row.
         expect(onRefresh).toHaveBeenCalledTimes(1);
+        expect(onRefresh).toHaveBeenCalledWith(KEY);
     });
 
     it('ready: the refresh button is disabled and marked refreshing while a refresh is in flight', () => {

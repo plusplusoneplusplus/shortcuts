@@ -38,7 +38,7 @@ function sortNewestFirst(items: PrStatusCardItem[]): PrStatusCardItem[] {
 }
 
 export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
-    const { items, retry, refresh, refreshing } = usePrChatStatusItems(options);
+    const { items, retry, refresh, refreshingKeys } = usePrChatStatusItems(options);
     const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
 
     const dismiss = useCallback((key: string) => {
@@ -61,7 +61,7 @@ export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
                     onDismiss={dismiss}
                     onRetry={retry}
                     onRefresh={refresh}
-                    refreshing={refreshing}
+                    refreshing={refreshingKeys.has(item.key)}
                 />
             ))}
         </div>
