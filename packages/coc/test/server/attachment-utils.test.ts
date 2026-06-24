@@ -301,6 +301,54 @@ describe('saveAttachmentsToTempFiles', () => {
         expect(attachments).toHaveLength(1);
         expect(fs.existsSync(attachments[0].path)).toBe(true);
     });
+
+    it('normalizes an image temp filename to match its MIME when the name has no extension', () => {
+        const tempDir = makeTempDir();
+        const { attachments } = saveAttachmentsToTempFiles(
+            [makePayload({ name: 'screenshot', mimeType: 'image/png', dataUrl: PNG_DATA_URL })],
+            tempDir,
+        );
+
+        expect(attachments).toHaveLength(1);
+        // Regression: the on-disk file must carry a real .png extension so
+        // extension-based providers (Claude, Codex) recognize it...
+        expect(path.extname(attachments[0].path).toLowerCase()).toBe('.png');
+        // ...while the user-facing display name keeps the original filename.
+        expect(attachments[0].displayName).toBe('screenshot');
+    });
+
+    it('rewrites a wrong image extension to match the decoded MIME type', () => {
+        const tempDir = makeTempDir();
+        const { attachments } = saveAttachmentsToTempFiles(
+            [makePayload({ name: 'photo.bin', mimeType: 'image/png', dataUrl: PNG_DATA_URL })],
+            tempDir,
+        );
+
+        expect(path.extname(attachments[0].path).toLowerCase()).toBe('.png');
+        expect(attachments[0].displayName).toBe('photo.bin');
+    });
+
+    it('uses image-<n>.<ext> on disk when an image payload name is blank', () => {
+        const tempDir = makeTempDir();
+        const { attachments } = saveAttachmentsToTempFiles(
+            [makePayload({ name: '   ', mimeType: 'image/png', dataUrl: PNG_DATA_URL })],
+            tempDir,
+        );
+
+        expect(path.basename(attachments[0].path)).toBe('image-0.png');
+    });
+
+    it('preserves a correct image extension (including jpg/jpeg equivalence)', () => {
+        const tempDir = makeTempDir();
+        const jpegDataUrl = `data:image/jpeg;base64,${Buffer.from([0xff, 0xd8, 0xff, 0xe0]).toString('base64')}`;
+        const { attachments } = saveAttachmentsToTempFiles(
+            [makePayload({ name: 'photo.jpeg', mimeType: 'image/jpeg', dataUrl: jpegDataUrl })],
+            tempDir,
+        );
+
+        // 'jpeg' is already a valid JPEG extension and must not be rewritten to '.jpg'.
+        expect(path.basename(attachments[0].path)).toBe('photo.jpeg');
+    });
 });
 
 // ── buildTextAttachmentContext ────────────────────────────────────────────

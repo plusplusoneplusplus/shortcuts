@@ -211,4 +211,51 @@ describe('ClaudeSDKService image attachments', () => {
         expect(skip).toBeDefined();
         expect(skip!.fields.attachmentName).toBe('unnamed.png');
     });
+
+    it('forwards a real PNG attachment whose temp filename lost its image extension', async () => {
+        // Regression: a pasted/uploaded image can land on disk with a non-image
+        // extension (or none). Detection is content-based, so it must still be
+        // forwarded as a base64 image block rather than silently dropped.
+        const png = Buffer.from(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+            'base64',
+        );
+
+        const result = await svc.sendMessage({
+            prompt: 'Describe this image',
+            attachments: [{ type: 'file', path: writeFile('screenshot.bin', png), displayName: 'screenshot.png' }],
+        });
+
+        expect(result.success).toBe(true);
+        const prompt = queryFn.mock.calls[0][0].prompt;
+        expect(typeof prompt).not.toBe('string');
+        const messages = (await drainAsyncIterable(prompt)) as Array<{
+            message: { content: Array<{ type: string; source?: { media_type: string; data: string } }> };
+        }>;
+        const imageBlock = messages[0].message.content.find(b => b.type === 'image');
+        expect(imageBlock).toBeDefined();
+        expect(imageBlock!.source?.media_type).toBe('image/png');
+        expect(imageBlock!.source?.data).toBe(png.toString('base64'));
+    });
+
+    it('logs an unsupported-format skip for a HEIC attachment and keeps the text prompt', async () => {
+        const { logs, logger } = createCapturingLogger();
+        initSDKLogger(logger as never);
+
+        const heic = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63]);
+        await svc.sendMessage({
+            prompt: 'Look at this photo',
+            attachments: [{ type: 'file', path: writeFile('photo.heic', heic), displayName: 'photo.heic' }],
+        });
+
+        // No Claude-supported image → request still runs as a plain text prompt.
+        expect(queryFn.mock.calls[0][0].prompt).toBe('Look at this photo');
+
+        const skip = logs.find(l => l.fields.event === 'claude_image_skipped');
+        expect(skip).toBeDefined();
+        expect(skip!.fields.reason).toBe('unsupported-format');
+        expect(skip!.fields.detectedFormat).toBe('heic');
+        expect(skip!.fields.extension).toBe('heic');
+        expect(skip!.fields.attachmentName).toBe('photo.heic');
+    });
 });
