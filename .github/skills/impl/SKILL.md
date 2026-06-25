@@ -21,7 +21,7 @@ Use this skill when the user asks you to **implement** a change in the codebase 
    - Identify files/modules likely affected.
    - Confirm any ambiguous requirements before coding.
 
-3. **Establish baseline**
+3. **Establish baseline** (Must use subagent with MAI-Code-1 model or Haiku model)
    - Inspect the available scripts before running validation commands. For npm repositories, check `package.json` scripts first; do not assume `npm run build` exists at the repository root.
    - Run the repo’s existing lint/build/test commands to understand the current baseline. If the root package has no build script, use the documented root aggregate script (for example `build:packages`) or the relevant package/workspace build script for the files being changed.
    - If baseline fails, only address failures that are required for the requested change.
