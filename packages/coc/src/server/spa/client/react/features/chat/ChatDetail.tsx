@@ -1037,11 +1037,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     }, [pendingPrefix, onClearPendingPrefix, sendFollowUp, followUpInputRef]);
 
     const sendInterruptedTurnFollowUp = useCallback((message: string) => {
+        const liveMode = normalizeChatMode(metadataProcess?.metadata?.mode);
+        const baseMode = liveMode ?? selectedMode;
         void sendFollowUp(message, 'enqueue', {
             includeComposerContext: false,
-            modeOverride: selectedMode === 'ralph' ? 'ask' : selectedMode,
+            modeOverride: baseMode === 'ralph' ? 'ask' : baseMode,
         });
-    }, [sendFollowUp, selectedMode]);
+    }, [sendFollowUp, selectedMode, metadataProcess]);
 
     const { stopStreaming } = useChatSSE({
         taskId,
