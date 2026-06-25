@@ -1395,6 +1395,21 @@ export class SqliteProcessStore implements ProcessStore {
         this.onProcessChange?.({ type: 'process-updated' });
     }
 
+    async updateTurnSdkEventId(
+        processId: string,
+        turnIndex: number,
+        sdkEventId: string,
+    ): Promise<void> {
+        const result = this.db.prepare(
+            "UPDATE conversation_turns SET sdk_event_id = ? WHERE process_id = ? AND turn_index = ? AND role = 'user'"
+        ).run(sdkEventId, processId, turnIndex);
+
+        if (result.changes === 0) {
+            getLogger().warn('SqliteProcessStore', `User turn not found for sdkEventId update: processId=${processId}, turnIndex=${turnIndex}`);
+        }
+        this.onProcessChange?.({ type: 'process-updated' });
+    }
+
     // ========================================================================
     // Workspace CRUD
     // ========================================================================

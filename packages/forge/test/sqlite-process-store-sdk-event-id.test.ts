@@ -120,3 +120,60 @@ describe('SqliteProcessStore — sdkEventId persistence', () => {
         expect(forked.conversationTurns?.[0].sdkEventId).toBeUndefined();
     });
 });
+
+describe('SqliteProcessStore — updateTurnSdkEventId', () => {
+    it('persists the event id on a user turn at the given index', async () => {
+        await store.addProcess(makeProcess('p-upd-1', {
+            conversationTurns: [
+                makeTurn(0, { role: 'user' }),
+                makeTurn(1, { role: 'assistant' }),
+                makeTurn(2, { role: 'user' }),
+            ],
+        }));
+
+        await store.updateTurnSdkEventId('p-upd-1', 2, 'evt_user_2');
+
+        const read = await store.getProcess('p-upd-1');
+        expect(read?.conversationTurns?.[2].sdkEventId).toBe('evt_user_2');
+        // Other turns are untouched.
+        expect(read?.conversationTurns?.[0].sdkEventId).toBeUndefined();
+        expect(read?.conversationTurns?.[1].sdkEventId).toBeUndefined();
+    });
+
+    it('overwrites an existing event id', async () => {
+        await store.addProcess(makeProcess('p-upd-2', {
+            conversationTurns: [makeTurn(0, { role: 'user', sdkEventId: 'evt_old' })],
+        }));
+
+        await store.updateTurnSdkEventId('p-upd-2', 0, 'evt_new');
+
+        const read = await store.getProcess('p-upd-2');
+        expect(read?.conversationTurns?.[0].sdkEventId).toBe('evt_new');
+    });
+
+    it('is a no-op on an assistant turn (only user turns carry an event id)', async () => {
+        await store.addProcess(makeProcess('p-upd-3', {
+            conversationTurns: [
+                makeTurn(0, { role: 'user' }),
+                makeTurn(1, { role: 'assistant' }),
+            ],
+        }));
+
+        await store.updateTurnSdkEventId('p-upd-3', 1, 'evt_should_not_apply');
+
+        const read = await store.getProcess('p-upd-3');
+        expect(read?.conversationTurns?.[1].sdkEventId).toBeUndefined();
+    });
+
+    it('is a no-op on an out-of-range index', async () => {
+        await store.addProcess(makeProcess('p-upd-4', {
+            conversationTurns: [makeTurn(0, { role: 'user' })],
+        }));
+
+        await store.updateTurnSdkEventId('p-upd-4', 5, 'evt_oob');
+
+        const read = await store.getProcess('p-upd-4');
+        expect(read?.conversationTurns).toHaveLength(1);
+        expect(read?.conversationTurns?.[0].sdkEventId).toBeUndefined();
+    });
+});

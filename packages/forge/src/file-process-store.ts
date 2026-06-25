@@ -559,6 +559,56 @@ export class FileProcessStore implements ProcessStore {
         }
     }
 
+    /**
+     * Atomically persist the copilot-sdk `user.message` event id on a user turn.
+     * Only updates `role: 'user'` turns; a mismatched index or non-user turn is a
+     * safe no-op.
+     */
+    async updateTurnSdkEventId(
+        processId: string,
+        turnIndex: number,
+        sdkEventId: string,
+    ): Promise<void> {
+        let updatedProcess: AIProcess | undefined;
+
+        await this.enqueueWrite(async () => {
+            const workspaceId = await this.findWorkspaceIdForProcess(processId);
+            if (workspaceId === undefined) { return; }
+
+            const entry = await this.readProcessFile(workspaceId, processId);
+            if (!entry) { return; }
+
+            const existing = deserializeProcess(entry.process);
+            const turns = existing.conversationTurns ?? [];
+            if (turnIndex < 0 || turnIndex >= turns.length) { return; }
+            if (turns[turnIndex].role !== 'user') { return; }
+
+            const updatedTurns = turns.map((turn, i) =>
+                i === turnIndex ? { ...turn, sdkEventId } : turn
+            );
+
+            const merged: AIProcess = { ...existing, conversationTurns: updatedTurns };
+            const newEntry: StoredProcessEntry = {
+                workspaceId: merged.metadata?.workspaceId ?? entry.workspaceId,
+                process: serializeProcess(merged),
+            };
+            await this.writeProcessFile(workspaceId, processId, newEntry);
+
+            const index = await this.readIndex(workspaceId);
+            const idx = index.findIndex(e => e.id === processId);
+            if (idx !== -1) {
+                index[idx] = this.toIndexEntry(newEntry);
+                await this.writeIndex(workspaceId, index);
+            }
+
+            updatedProcess = merged;
+        });
+
+        if (updatedProcess) {
+            this.onProcessChange?.({ type: 'process-updated', process: updatedProcess });
+        }
+    }
+
     async removeProcess(id: string): Promise<void> {
         let removed: AIProcess | undefined;
         await this.enqueueWrite(async () => {

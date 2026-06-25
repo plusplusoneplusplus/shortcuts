@@ -657,6 +657,25 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             assistantTurn = appendResult!.turn;
             allTurns = appendResult!.allTurns;
 
+            // Persist the copilot-sdk `user.message` event id captured during
+            // streaming onto the user turn that produced this exchange (the turn
+            // immediately preceding the assistant turn). This is the durable
+            // anchor used later to rewind/truncate the conversation at this turn.
+            // Only copilot streams surface an id; for other providers it is
+            // undefined and we skip. The store guards on role:'user' so a stray
+            // index is a safe no-op.
+            if (result.userMessageEventId && assistantTurn.turnIndex > 0) {
+                try {
+                    await this.store.updateTurnSdkEventId(
+                        processId,
+                        assistantTurn.turnIndex - 1,
+                        result.userMessageEventId,
+                    );
+                } catch (err) {
+                    logger.warn(LogCategory.AI, `[FollowUp] Failed to persist sdkEventId for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+                }
+            }
+
             // Capture note edit snapshot for inline diff
             if (notePath && wsId && preEditContent !== undefined) {
                 try {

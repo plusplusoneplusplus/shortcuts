@@ -525,6 +525,23 @@ export interface ProcessStore {
     ): Promise<void>;
 
     /**
+     * Atomically persist the copilot-sdk `user.message` event id on a user turn.
+     * The id is captured during streaming and threaded back here after the SDK
+     * call resolves; it is the durable anchor used later to rewind/truncate the
+     * conversation at exactly this turn. Only updates `role: 'user'` turns — a
+     * mismatched index or non-user turn is a safe no-op.
+     *
+     * @param processId - Target process ID.
+     * @param turnIndex - Array index of the user turn to update.
+     * @param sdkEventId - copilot-sdk `user.message` event id for this turn.
+     */
+    updateTurnSdkEventId(
+        processId: string,
+        turnIndex: number,
+        sdkEventId: string,
+    ): Promise<void>;
+
+    /**
      * Full-text search across conversation turns using FTS5 MATCH with BM25 ranking.
      * Optional — only SQLite-backed stores support this.
      */
