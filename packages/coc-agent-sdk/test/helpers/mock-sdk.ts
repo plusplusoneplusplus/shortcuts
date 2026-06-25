@@ -31,7 +31,7 @@ export interface MockStreamingSession extends MockSession {
 /** Return type of createStreamingMockSession() */
 export interface StreamingMockSessionResult {
     session: MockStreamingSession;
-    dispatchEvent: (event: { type: string; data?: any }) => void;
+    dispatchEvent: (event: { type: string; id?: string; data?: any }) => void;
     handlers: Array<(event: any) => void>;
 }
 
@@ -105,7 +105,7 @@ export function createStreamingMockSession(sessionId?: string): StreamingMockSes
         send: vi.fn().mockResolvedValue(undefined),
     };
 
-    const dispatchEvent = (event: { type: string; data?: any }) => {
+    const dispatchEvent = (event: { type: string; id?: string; data?: any }) => {
         for (const handler of [...handlers]) {
             handler(event);
         }

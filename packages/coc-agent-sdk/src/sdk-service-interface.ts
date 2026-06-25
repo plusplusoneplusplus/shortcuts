@@ -68,6 +68,13 @@ export interface IInvocationResult {
     effectiveModel?: string;
     /** Aggregated token usage / provider diagnostics, when the provider reports them. */
     tokenUsage?: TokenUsage;
+    /**
+     * Copilot-SDK `user.message` event id that began this turn, captured from
+     * the live event stream. Durable anchor for history rewind/truncation
+     * (AC-01); persisted onto the user turn's `sdkEventId`. Only the copilot
+     * provider populates this; undefined elsewhere (turn is not rewindable).
+     */
+    userMessageEventId?: string;
 }
 
 /**
