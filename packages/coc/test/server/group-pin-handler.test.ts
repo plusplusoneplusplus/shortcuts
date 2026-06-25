@@ -58,8 +58,10 @@ describe('Group Pin REST API', () => {
     let dbPath: string;
     let store: SqliteProcessStore | undefined;
 
-    const wsA = 'ws-group-pins-a';
-    const wsB = 'ws-group-pins-b';
+    const legacyWsA = 'ws-group-pins-a';
+    const legacyWsB = 'ws-group-pins-b';
+    let wsA: string;
+    let wsB: string;
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-group-pins-'));
@@ -75,18 +77,28 @@ describe('Group Pin REST API', () => {
 
     async function startServer() {
         store = new SqliteProcessStore({ dbPath });
-        await store.registerWorkspace({
-            id: wsA,
-            name: 'Workspace A',
-            rootPath: '/tmp/group-pins-a',
-        });
-        await store.registerWorkspace({
-            id: wsB,
-            name: 'Workspace B',
-            rootPath: '/tmp/group-pins-b',
-        });
+        if ((await store.getWorkspaces()).length === 0) {
+            await store.registerWorkspace({
+                id: legacyWsA,
+                name: 'Workspace A',
+                rootPath: '/tmp/group-pins-a',
+            });
+            await store.registerWorkspace({
+                id: legacyWsB,
+                name: 'Workspace B',
+                rootPath: '/tmp/group-pins-b',
+            });
+        }
         server = await createExecutionServer({ port: 0, dataDir: tmpDir, store });
         baseUrl = server.url;
+        const workspaces = await store.getWorkspaces();
+        const workspaceA = workspaces.find(workspace => workspace.name === 'Workspace A');
+        const workspaceB = workspaces.find(workspace => workspace.name === 'Workspace B');
+        if (!workspaceA || !workspaceB) {
+            throw new Error('Expected group pin test workspaces to be registered');
+        }
+        wsA = workspaceA.id;
+        wsB = workspaceB.id;
     }
 
     async function restartServer() {

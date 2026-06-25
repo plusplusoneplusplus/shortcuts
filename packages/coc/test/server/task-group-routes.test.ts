@@ -36,21 +36,23 @@ describe('Task Group REST API', () => {
     let tmpDir: string;
     let store: SqliteProcessStore | undefined;
 
-    const wsA = 'ws-task-groups-a';
-    const wsB = 'ws-task-groups-b';
+    const legacyWsA = 'ws-task-groups-a';
+    const legacyWsB = 'ws-task-groups-b';
+    let wsA: string;
+    let wsB: string;
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-task-groups-'));
         store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'test.db') });
-        await store.registerWorkspace({ id: wsA, name: 'Workspace A', rootPath: '/tmp/task-groups-a' });
-        await store.registerWorkspace({ id: wsB, name: 'Workspace B', rootPath: '/tmp/task-groups-b' });
+        await store.registerWorkspace({ id: legacyWsA, name: 'Workspace A', rootPath: '/tmp/task-groups-a' });
+        await store.registerWorkspace({ id: legacyWsB, name: 'Workspace B', rootPath: '/tmp/task-groups-b' });
 
         // Seed the registry through the shared database, as feature
         // orchestrators do via TaskGroupService.
         const registry = new SqliteTaskGroupStore(store.getDatabase());
         registry.upsertGroup({
             groupId: 'run-1',
-            workspaceId: wsA,
+            workspaceId: legacyWsA,
             type: 'for-each',
             title: 'Process 2 items',
             status: 'running',
@@ -59,11 +61,11 @@ describe('Task Group REST API', () => {
             updatedAt: '2026-06-11T10:05:00.000Z',
             extra: { itemCount: 2 },
         });
-        registry.linkChild(wsA, 'run-1', { role: 'generation', processId: 'proc-gen' });
-        registry.linkChild(wsA, 'run-1', { role: 'item', taskId: 'task-a', itemKey: 'item-a', memberIndex: 1 });
+        registry.linkChild(legacyWsA, 'run-1', { role: 'generation', processId: 'proc-gen' });
+        registry.linkChild(legacyWsA, 'run-1', { role: 'item', taskId: 'task-a', itemKey: 'item-a', memberIndex: 1 });
         registry.upsertGroup({
             groupId: 'dream-1',
-            workspaceId: wsA,
+            workspaceId: legacyWsA,
             type: 'dream',
             status: 'completed',
             hidden: true,
@@ -72,7 +74,7 @@ describe('Task Group REST API', () => {
         });
         registry.upsertGroup({
             groupId: 'session-1',
-            workspaceId: wsB,
+            workspaceId: legacyWsB,
             type: 'ralph',
             status: 'running',
             createdAt: '2026-06-11T08:00:00.000Z',
@@ -81,6 +83,14 @@ describe('Task Group REST API', () => {
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir, store });
         baseUrl = server.url;
+        const workspaces = await store.getWorkspaces();
+        const workspaceA = workspaces.find(workspace => workspace.name === 'Workspace A');
+        const workspaceB = workspaces.find(workspace => workspace.name === 'Workspace B');
+        if (!workspaceA || !workspaceB) {
+            throw new Error('Expected task group test workspaces to be registered');
+        }
+        wsA = workspaceA.id;
+        wsB = workspaceB.id;
     });
 
     afterEach(async () => {

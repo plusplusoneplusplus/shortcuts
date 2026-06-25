@@ -59,7 +59,8 @@ function postJSON(url: string, data: unknown) {
 }
 
 describe('Notes write — rename/delete binding cascade', { timeout: 30_000 }, () => {
-    const wsId = 'ws-cascade';
+    const legacyWsId = 'ws-cascade';
+    let wsId: string;
     let server: ExecutionServer;
     let baseUrl: string;
     let tmpDir: string;
@@ -84,9 +85,11 @@ describe('Notes write — rename/delete binding cascade', { timeout: 30_000 }, (
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-notes-cascade-'));
         store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'test.db') });
-        await store.registerWorkspace({ id: wsId, name: 'Cascade WS', rootPath: tmpDir });
+        await store.registerWorkspace({ id: legacyWsId, name: 'Cascade WS', rootPath: tmpDir });
         server = await createExecutionServer({ port: 0, dataDir: tmpDir, store });
         baseUrl = server.url;
+        const [workspace] = await store.getWorkspaces();
+        wsId = workspace.id;
         notesRoot = path.join(tmpDir, 'repos', wsId, 'notes');
         fs.mkdirSync(notesRoot, { recursive: true });
         bindings = new NoteChatBindingStore(store.getDatabase());
