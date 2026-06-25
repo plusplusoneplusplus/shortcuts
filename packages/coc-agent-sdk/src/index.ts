@@ -105,7 +105,9 @@ export type {
     TransformOptions,
     TransformResult,
     PrewarmOptions,
+    RewindResult,
 } from './sdk-service-interface';
+export { RewindUnsupportedError, isRewindUnsupportedError } from './sdk-service-interface';
 
 export {
     SDKServiceRegistry,

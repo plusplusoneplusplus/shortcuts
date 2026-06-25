@@ -170,6 +170,9 @@ export {
     IInvocationResult,
     TransformOptions,
     TransformResult,
+    RewindResult,
+    RewindUnsupportedError,
+    isRewindUnsupportedError,
     // SDK Service Registry
     SDKServiceRegistry,
     sdkServiceRegistry,

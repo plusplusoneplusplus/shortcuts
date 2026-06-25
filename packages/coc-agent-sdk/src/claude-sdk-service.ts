@@ -31,7 +31,8 @@
 import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig, ReasoningEffort, SystemMessageConfig, TokenUsage, Attachment } from './types';
 import type { ToolEvent } from './types';
 import { denyAllPermissions } from './types';
-import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult } from './sdk-service-interface';
+import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult, RewindResult } from './sdk-service-interface';
+import { RewindUnsupportedError } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
 import type { ToolCall } from './tool-call';
 import type { ClaudeImageSource, ClaudeImageSkip } from './image-converter';
@@ -1568,6 +1569,15 @@ export class ClaudeSDKService implements ISDKService {
         }
         const result = await this.forkSessionFn(sessionId);
         return result.sessionId;
+    }
+
+    /**
+     * History rewind/truncation is not supported by the Claude Code SDK
+     * (AC-02). Throws the typed {@link RewindUnsupportedError} so the backend
+     * can surface a "rewind unsupported" rejection to the user.
+     */
+    public async rewindSession(_sessionId: string, _eventId: string): Promise<RewindResult> {
+        throw new RewindUnsupportedError(CLAUDE_PROVIDER);
     }
 
     public async abortSession(sessionId: string): Promise<boolean> {

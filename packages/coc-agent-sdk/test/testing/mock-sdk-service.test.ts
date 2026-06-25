@@ -16,7 +16,7 @@ import type { MockFnFactory } from '../../src/testing/index';
 // ---------------------------------------------------------------------------
 
 describe('createMockSDKService (default shim)', () => {
-    it('returns a service with all 13 ISDKService methods + createClient', () => {
+    it('returns a service with all 14 ISDKService methods + createClient', () => {
         const { service } = createMockSDKService();
         const s: ISDKService = service;
         expect(typeof s.isAvailable).toBe('function');
@@ -25,6 +25,7 @@ describe('createMockSDKService (default shim)', () => {
         expect(typeof s.sendMessage).toBe('function');
         expect(typeof s.transform).toBe('function');
         expect(typeof s.forkSession).toBe('function');
+        expect(typeof s.rewindSession).toBe('function');
         expect(typeof s.abortSession).toBe('function');
         expect(typeof s.softAbortSession).toBe('function');
         expect(typeof s.steerSession).toBe('function');
@@ -68,6 +69,14 @@ describe('createMockSDKService (default shim)', () => {
     it('default forkSession returns id-forked', async () => {
         const { service } = createMockSDKService();
         expect(await service.forkSession('sess-1')).toBe('sess-1-forked');
+    });
+
+    it('default rewindSession echoes the event id with zero events removed', async () => {
+        const { service } = createMockSDKService();
+        expect(await service.rewindSession('sess-1', 'evt-9')).toEqual({
+            eventsRemoved: 0,
+            upToEventId: 'evt-9',
+        });
     });
 
     it('default session methods return expected values', async () => {

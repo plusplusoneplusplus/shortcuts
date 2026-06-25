@@ -11,6 +11,8 @@ import {
     sdkServiceRegistry,
     CODEX_PROVIDER,
     SDK_PROVIDER_CODEX,
+    RewindUnsupportedError,
+    isRewindUnsupportedError,
 } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ---------------------------------------------------------------------------
@@ -170,6 +172,14 @@ describe('CodexSDKService — SDK not available', () => {
 
     it('forkSession throws when SDK is not available', async () => {
         await expect(svc.forkSession('s1')).rejects.toThrow('Codex SDK');
+    });
+
+    it('rewindSession throws the typed RewindUnsupportedError (AC-02)', async () => {
+        await expect(svc.rewindSession('s1', 'evt-1')).rejects.toBeInstanceOf(RewindUnsupportedError);
+        const err = await svc.rewindSession('s1', 'evt-1').catch((e) => e);
+        expect(isRewindUnsupportedError(err)).toBe(true);
+        expect(err.code).toBe('REWIND_UNSUPPORTED');
+        expect(err.provider).toBe(CODEX_PROVIDER);
     });
 
     it('abortSession returns false for unknown session', async () => {

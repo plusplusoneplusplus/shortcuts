@@ -1,7 +1,7 @@
 /**
  * Shared vitest-free mock of ISDKService.
  *
- * Implements all 13 interface methods plus the off-interface `createClient`.
+ * Implements all 14 interface methods plus the off-interface `createClient`.
  * The mock-function factory is injectable so consumers can bind `vi.fn` for
  * full spy assertions while the package itself imports nothing from vitest.
  */
@@ -42,6 +42,7 @@ export interface MockSDKServiceResult {
     mockSteerSession: MockFnHandle;
     mockListModels: MockFnHandle;
     mockForkSession: MockFnHandle;
+    mockRewindSession: MockFnHandle;
     mockClearAvailabilityCache: MockFnHandle;
     mockHasActiveSession: MockFnHandle;
     mockGetActiveSessionCount: MockFnHandle;
@@ -101,6 +102,9 @@ export function createMockSDKService(
     const mockSteerSession = fn(() => Promise.resolve(true));
     const mockListModels = fn(() => Promise.resolve(listModelsResult));
     const mockForkSession = fn((...args: unknown[]) => Promise.resolve(`${String(args[0])}-forked`));
+    const mockRewindSession = fn((...args: unknown[]) =>
+        Promise.resolve({ eventsRemoved: 0, upToEventId: String(args[1]) }),
+    );
     const mockClearAvailabilityCache = fn(() => undefined);
     const mockHasActiveSession = fn(() => true);
     const mockGetActiveSessionCount = fn(() => 0);
@@ -117,6 +121,7 @@ export function createMockSDKService(
         steerSession: mockSteerSession as unknown as ISDKService['steerSession'],
         listModels: mockListModels as unknown as ISDKService['listModels'],
         forkSession: mockForkSession as unknown as ISDKService['forkSession'],
+        rewindSession: mockRewindSession as unknown as ISDKService['rewindSession'],
         clearAvailabilityCache: mockClearAvailabilityCache as unknown as ISDKService['clearAvailabilityCache'],
         hasActiveSession: mockHasActiveSession as unknown as ISDKService['hasActiveSession'],
         getActiveSessionCount: mockGetActiveSessionCount as unknown as ISDKService['getActiveSessionCount'],
@@ -153,6 +158,9 @@ export function createMockSDKService(
         mockSteerSession.mockReset().mockResolvedValue(true);
         mockListModels.mockReset().mockResolvedValue(listModelsResult);
         mockForkSession.mockReset().mockImplementation((...args: unknown[]) => Promise.resolve(`${String(args[0])}-forked`));
+        mockRewindSession.mockReset().mockImplementation((...args: unknown[]) =>
+            Promise.resolve({ eventsRemoved: 0, upToEventId: String(args[1]) }),
+        );
         mockClearAvailabilityCache.mockReset();
         mockHasActiveSession.mockReset().mockImplementation(() => true);
         mockGetActiveSessionCount.mockReset().mockImplementation(() => 0);
@@ -172,6 +180,7 @@ export function createMockSDKService(
         mockSteerSession,
         mockListModels,
         mockForkSession,
+        mockRewindSession,
         mockClearAvailabilityCache,
         mockHasActiveSession,
         mockGetActiveSessionCount,

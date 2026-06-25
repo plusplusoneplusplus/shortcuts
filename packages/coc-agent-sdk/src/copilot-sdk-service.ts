@@ -32,7 +32,7 @@ export type { StreamingResult, IStreamableSession, StreamingState, StreamingSess
 import { SessionManager } from './session-manager';
 import { StreamErrorGuard, isStreamDestroyedError } from './stream-error-guard';
 import { RequestRunner } from './request-runner';
-import type { ISDKService, TransformOptions, TransformResult, PrewarmOptions } from './sdk-service-interface';
+import type { ISDKService, TransformOptions, TransformResult, PrewarmOptions, RewindResult } from './sdk-service-interface';
 import { sdkServiceRegistry, COPILOT_PROVIDER } from './sdk-service-registry';
 import { WarmClientRegistry, makeWarmKey, WarmClientFactory } from './warm-client-registry';
 import type { WarmStateChangeListener, WarmStatus } from './warm-client-registry';
@@ -179,6 +179,38 @@ export class CopilotSDKService implements ISDKService {
             await client.start();
             const result = await (client as any).rpc.sessions.fork({ sessionId: sdkSessionId });
             return result.sessionId;
+        } finally {
+            await client.stop();
+        }
+    }
+
+    /**
+     * Rewind (destructively truncate) a Copilot SDK session's persisted history
+     * to a given event id (AC-02). Resumes the session, calls
+     * `rpc.history.truncate({ eventId })` — removing that event and everything
+     * after it — then disconnects the session and stops the throwaway client.
+     *
+     * Resume runs with all permissions denied (truncation invokes no tools) and
+     * deliberately does NOT fall back to `createSession`: an unresumable session
+     * (e.g. state missing on disk) must surface as a thrown error so the backend
+     * (AC-03) can reject the rewind, never silently create a new empty session.
+     */
+    public async rewindSession(sdkSessionId: string, eventId: string): Promise<RewindResult> {
+        if (this.disposed) throw new Error('CopilotSDKService has been disposed');
+        const availability = await this.isAvailable();
+        if (!availability.available) throw new Error(availability.error ?? 'Copilot SDK is not available');
+        const client = await this.createClient();
+        try {
+            await client.start();
+            const session = await client.resumeSession(sdkSessionId, {
+                onPermissionRequest: denyAllPermissions,
+            });
+            try {
+                const result = await (session as any).rpc.history.truncate({ eventId });
+                return { eventsRemoved: result?.eventsRemoved ?? 0, upToEventId: eventId };
+            } finally {
+                await session.disconnect();
+            }
         } finally {
             await client.stop();
         }
