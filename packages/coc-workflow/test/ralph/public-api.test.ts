@@ -140,12 +140,16 @@ describe('buildRalphIterationPrompt', () => {
         const prompt = buildRalphIterationPrompt({
             originalGoal: 'Implement the feature.',
             progressPath: '/tmp/session/progress.md',
+            contextPath: '/tmp/session/context.md',
             currentIteration: 3,
             maxIterations: 20,
         });
 
         expect(prompt).toMatch(/^Load and follow the `ultra-ralph` skill/);
         expect(prompt).toContain('Progress journal: /tmp/session/progress.md');
+        expect(prompt).toContain('Context map: /tmp/session/context.md');
+        expect(prompt).toContain('read this first');
+        expect(prompt).toContain('rewrite it at the end');
         expect(prompt).toContain('Iteration 3 of 20.');
         expect(prompt.endsWith('<goal>\nImplement the feature.\n</goal>')).toBe(true);
         expect(prompt).not.toContain('<work_intent>');

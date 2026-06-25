@@ -3,8 +3,8 @@
  *
  * Tests for RalphExecutor — verifies the zero-system-prompt-injection design:
  * - system message contains NO Ralph-specific content (AC-01, AC-02)
- * - execution user prompt contains the skill pointer, progress path, iteration
- *   counter, and <goal> block (AC-01)
+ * - execution user prompt contains the skill pointer, progress/context paths,
+ *   iteration counter, and <goal> block
  * - final-check user prompt is the buildFinalCheckPrompt output (AC-02)
  */
 
@@ -155,7 +155,7 @@ describe('RalphExecutor system message — execution (AC-01)', () => {
         expect(call.prompt).toContain('</goal>');
     });
 
-    it('user prompt contains iteration counter and progress path when sessionId and workspaceId are set', async () => {
+    it('user prompt contains iteration counter and session paths when sessionId and workspaceId are set', async () => {
         const executor = new RalphExecutor(store, makeOptions(store));
         const task = makeRalphTask({
             originalGoal: 'Add auth',
@@ -170,6 +170,10 @@ describe('RalphExecutor system message — execution (AC-01)', () => {
         expect(call.prompt).toContain('Iteration 2 of 10.');
         expect(call.prompt).toContain('sess-xyz');
         expect(call.prompt).toContain('progress.md');
+        expect(call.prompt).toContain('Context map:');
+        expect(call.prompt).toContain('context.md');
+        expect(call.prompt).toContain('read this first');
+        expect(call.prompt).toContain('rewrite it at the end');
     });
 });
 
@@ -226,6 +230,22 @@ describe('RalphExecutor system message — final-check (AC-02)', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.mode).toBe('autopilot');
+    });
+
+    it('does not add a context map path to final-check prompts', async () => {
+        const executor = new RalphExecutor(store, makeOptions(store));
+        const task = makeRalphTask({
+            originalGoal: 'Validate completed work',
+            sessionId: 'sess-final-check',
+            finalCheck: { kind: 'goal-gap-check', checkIndex: 1, sourceIteration: 3, loopIndex: 1 },
+        });
+
+        await executor.execute(task, 'Run final check');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).toBe('Run final check');
+        expect(call.prompt).not.toContain('Context map:');
+        expect(call.prompt).not.toContain('context.md');
     });
 });
 

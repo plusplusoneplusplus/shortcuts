@@ -100,24 +100,17 @@ content.
 
 Each iteration's user prompt is built by `buildRalphIterationPrompt(...)` from
 `@plusplusoneplusplus/coc-workflow/ralph` (with a CoC compatibility re-export in
-`packages/coc/src/server/ralph/iteration-prompt.ts`). The prompt begins with a
-plain-language execution directive, then includes a short `<work_intent>` block
-with generic coding, testing, validation, and commit vocabulary, then a
-`<spec_contract>` block that tells the agent how to read goal.md plus optional
-`ac-NN-*.spec.md` slices, how to honor `[decision]` / `[assumption]` / `[open]`
-tags, and that a slice is done only when its Definition of Done is satisfied
-with evidence recorded in `progress.md`. The `originalGoal` is embedded last in
-a `<goal>` block.
+`packages/coc/src/server/ralph/iteration-prompt.ts`). The prompt begins with the
+`ultra-ralph` execution-section skill pointer, then surfaces durable session
+state by path only: `Progress journal: <progress.md>`, optional
+`Context map: <context.md>` with read-first/rewrite-at-end instructions, and the
+iteration counter. The `originalGoal` is embedded last in a `<goal>` block.
 
-The work-intent and spec-contract blocks are required because the host Copilot
-CLI's embedding-based skill retriever queries against the most recent user
-message: a static placeholder would surface no skills, long goals can dilute
-implementation-related retrieval signal, and without the spec contract the
-agent re-derives the autonomy rules every iteration. The prompt must not name
-repository-specific implementation skills, set `context.skills`, or begin with
-`<available_skills>`, `<additional_tool_instructions>`, or `<skill-context`,
-since the retriever skips messages with those prefixes when locating the user
-query.
+The prompt never injects `progress.md` or `context.md` content. The agent reads
+those files from the surfaced paths. The prompt must not name repository-specific
+implementation skills, set `context.skills`, or begin with `<available_skills>`,
+`<additional_tool_instructions>`, or `<skill-context`, since the retriever skips
+messages with those prefixes when locating the user query.
 
 See `docs/spec-slices.md` for the full slice template, decision-tagging
 convention, and ready-for-Ralph checklist that the bundled `grill-me` skill
