@@ -20,6 +20,7 @@ Each Ralph session owns a journal directory under the repo data directory:
 ~/.coc/repos/<workspaceId>/ralph-sessions/<sessionId>/
   session.json    # metadata, written via temp file + rename
   progress.md     # append-only Markdown journal, AI-writable
+  context.md      # agent-owned living context map, created by the agent
 ```
 
 `session.json` is a `RalphSessionRecord` from
@@ -43,6 +44,11 @@ recognizes standalone signal tokens and valid adjacent signal-token runs such as
 `RALPH_COMPLETERALPH_COMPLETE`, while rejecting arbitrary suffixes such as
 `RALPH_NEXTEND`. The writer uses an em dash in generated headings; the parser
 also accepts a plain hyphen separator.
+
+`context.md` is a sibling file owned by the Ralph agent. The store resolves its
+path with `getContextPath(...)` and reads it with `readContext(...)` for
+diagnostics and tests; a missing file reads as an empty string. The server does
+not create, derive, parse, compact, or rewrite `context.md`.
 
 ## Writer Protocol
 

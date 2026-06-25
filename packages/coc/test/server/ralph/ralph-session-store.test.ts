@@ -32,7 +32,28 @@ describe('RalphSessionStore — paths', () => {
         const dir = store.getSessionDir(WS, SID);
         expect(dir).toContain(path.join('repos', WS, 'ralph-sessions', SID));
         expect(store.getProgressPath(WS, SID)).toBe(path.join(dir, 'progress.md'));
+        expect(store.getContextPath(WS, SID)).toBe(path.join(dir, 'context.md'));
         expect(store.getSessionRecordPath(WS, SID)).toBe(path.join(dir, 'session.json'));
+    });
+});
+
+describe('RalphSessionStore — context map', () => {
+    it('locates context.md beside progress.md', () => {
+        expect(path.dirname(store.getContextPath(WS, SID)))
+            .toBe(path.dirname(store.getProgressPath(WS, SID)));
+    });
+
+    it('returns an empty string when context.md does not exist', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 1 });
+
+        await expect(store.readContext(WS, SID)).resolves.toBe('');
+    });
+
+    it('reads agent-owned context.md when present', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 1 });
+        await fs.promises.writeFile(store.getContextPath(WS, SID), '# Map\n- store owns paths only\n', 'utf-8');
+
+        await expect(store.readContext(WS, SID)).resolves.toBe('# Map\n- store owns paths only\n');
     });
 });
 

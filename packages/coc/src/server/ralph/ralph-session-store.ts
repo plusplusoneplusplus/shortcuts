@@ -4,6 +4,7 @@
  * Layout under `~/.coc/repos/<workspaceId>/ralph-sessions/<sessionId>/`:
  *
  *   progress.md   — append-only Markdown journal, AI-writable
+ *   context.md    — living agent-owned context map
  *   session.json  — small metadata document (atomic write-temp + rename)
  */
 
@@ -24,6 +25,7 @@ import type {
 
 const SESSIONS_DIR = 'ralph-sessions';
 const PROGRESS_FILE = 'progress.md';
+const CONTEXT_FILE = 'context.md';
 const RECORD_FILE = 'session.json';
 
 const PROGRESS_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -97,6 +99,10 @@ export class RalphSessionStore {
         return path.join(this.getSessionDir(workspaceId, sessionId), PROGRESS_FILE);
     }
 
+    getContextPath(workspaceId: string, sessionId: string): string {
+        return path.join(this.getSessionDir(workspaceId, sessionId), CONTEXT_FILE);
+    }
+
     getSessionRecordPath(workspaceId: string, sessionId: string): string {
         return path.join(this.getSessionDir(workspaceId, sessionId), RECORD_FILE);
     }
@@ -165,6 +171,16 @@ export class RalphSessionStore {
 
     async readProgress(workspaceId: string, sessionId: string): Promise<string> {
         const p = this.getProgressPath(workspaceId, sessionId);
+        try {
+            return await fs.promises.readFile(p, 'utf-8');
+        } catch (err: any) {
+            if (err?.code === 'ENOENT') return '';
+            throw err;
+        }
+    }
+
+    async readContext(workspaceId: string, sessionId: string): Promise<string> {
+        const p = this.getContextPath(workspaceId, sessionId);
         try {
             return await fs.promises.readFile(p, 'utf-8');
         } catch (err: any) {
