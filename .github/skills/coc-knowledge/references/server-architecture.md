@@ -228,7 +228,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 ## Server Startup
 
 1. Model metadata store warmed before listening (so executors can resolve reasoning effort)
-2. Auto-migrations: workspace registry JSON → SQLite, file-based process history → SQLite
+2. Auto-migrations: workspace registry JSON → SQLite, file-based process history → SQLite, and legacy physical `ws-*` workspace IDs → raw-hostname-scoped `ws-v2-*` IDs with repo data directories moved when conflict-free
 3. Chat/follow-up executors initialize model metadata on demand if task starts before cache warm
 4. Variant models with `capabilities.family` base preserved in process metadata but sent to SDK as base model + reasoning effort
 5. Copilot long-context tier resolved automatically at the provider boundary: chat and follow-up executors pass `contextTier: "long_context"` only when the resolved Copilot model's catalog metadata advertises `billing.tokenPrices.longContext.contextMax` (via `getCopilotContextTierForModel`); the field is omitted for Copilot models without that metadata and never sent for Codex/Claude. Static fallback models carry no long-context metadata, so a failed catalog fetch disables long context for that run

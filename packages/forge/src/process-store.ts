@@ -179,7 +179,8 @@ export interface ProcessOutputEvent {
 
 /**
  * Workspace identity for multi-workspace process tracking.
- * `id` is a stable hash of the workspace root path.
+ * Physical workspace `id` values are machine-scoped; virtual/system workspace
+ * IDs are fixed.
  */
 export interface WorkspaceInfo {
     /** Stable unique identifier — hash of rootPath */
@@ -364,6 +365,24 @@ export interface ProcessStore {
     removeWorkspace(id: string): Promise<boolean>;
     /** Partial-update a workspace. Returns updated workspace or undefined if not found. */
     updateWorkspace(id: string, updates: Partial<Omit<WorkspaceInfo, 'id'>>): Promise<WorkspaceInfo | undefined>;
+
+    /**
+     * Optional store-level re-key for physical workspace IDs. Implementations
+     * that persist workspace-scoped state should rewrite every reference to
+     * `oldId` so it points at `newId`: the workspace record itself, process
+     * history (including seen/unseen state), workspace-scoped bindings,
+     * task-group/queue/schedule rows, and any on-disk process files.
+     *
+     * Returns `true` when the rename was applied. Returns `false` — leaving the
+     * store unchanged — when `oldId` has no workspace record or a workspace
+     * `newId` already exists, so the caller can treat a `false` result as a
+     * conflict and fall back safely (never merging two workspaces).
+     *
+     * The repo-scoped data directory (`<dataDir>/repos/<id>/`) is moved by the
+     * migration orchestrator BEFORE this is called, so file-backed stores find
+     * their process files already under the new id.
+     */
+    renameWorkspaceId?(oldId: string, newId: string): Promise<boolean>;
 
     /** Return all known wikis. */
     getWikis(): Promise<WikiInfo[]>;

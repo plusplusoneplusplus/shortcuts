@@ -35,6 +35,7 @@ Commit, Pull Request, and Work Item binding routes also expose a workspace-scope
 - **Seen state:** `seen_at TEXT` column for read/unread tracking
 - **Pending messages:** `pendingMessages` persisted in process metadata
 - **Prompt autocomplete:** `getBestPromptCompletion` and `getPromptAutocompleteContext` for ghost text
+- **Workspace ID re-keying:** `renameWorkspaceId(oldId, newId)` atomically rewrites physical workspace IDs across workspace records, process rows and metadata, seen-state-bearing process history, workspace-scoped bindings, task groups, loops/container routing references, and queued/scheduled repo IDs. Origin-scoped IDs remain keyed by their existing origin values unless a row still uses the legacy physical workspace ID directly.
 - **Conversation cost read model:** Process detail reads derive `conversationCostEstimate` from turn-level token usage without persisting it. Pricing model resolution starts with `metadata.model`, falls back to `config.model`, and can be overridden by later user turns with a `model` field. `token-usage` process events can also carry the live `cumulativeTokenUsage` and derived `conversationCostEstimate` snapshot for running-chat UI updates; final process reads remain authoritative.
 - **Dream internals:** Dream analyzer and critic steps are persisted as read-only internal process records (`dream-analyzer` / `dream-critic`) with `metadata.dreamStep` carrying workspace ID, Dream run ID, purpose, read-only/no-tools policy, parent Dream process ID, and analyzer-to-critic linkage. Completed outer `dream-run` process metadata also stores analyzer/critic process IDs under `metadata.dream` so queue history and task-detail fallbacks can expose the links without loading full process results. If the outer Dream run aborts while an internal step is in flight, the internal process is finalized as `cancelled` rather than left running or treated as a usable successful step.
 
@@ -104,8 +105,9 @@ Per-message operations:
 On startup:
 1. `migrateWorkspaceRegistryIfNeeded()` — workspace/wiki registries from JSON to SQLite
 2. `migrateProcessHistoryIfNeeded()` — file-based processes to SQLite
+3. `migrateWorkspaceIdsToV2IfNeeded()` — legacy physical `ws-*` workspace IDs to machine-scoped `ws-v2-*` IDs, moving `~/.coc/repos/<oldId>/` to `<newId>/` when safe and surfacing conflicts without overwrites
 
-Both idempotent, non-destructive (rename source to `.migrated`).
+Migrations are idempotent and non-destructive.
 
 ## Instantiation
 

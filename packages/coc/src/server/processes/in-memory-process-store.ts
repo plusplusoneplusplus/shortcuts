@@ -52,6 +52,7 @@ export function createStubStore(): ProcessStore {
         registerWorkspace: async () => {},
         removeWorkspace: async () => false,
         updateWorkspace: async () => undefined,
+        renameWorkspaceId: async () => false,
         getWikis: async () => [],
         registerWiki: async () => {},
         removeWiki: async () => false,

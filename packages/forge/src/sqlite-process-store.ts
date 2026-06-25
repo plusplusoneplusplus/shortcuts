@@ -45,6 +45,27 @@ import { computeMessagePreview } from './utils/message-preview';
 
 const logger = getLogger();
 
+/**
+ * SQLite columns outside `processes`/`workspaces` that may hold a physical
+ * workspace id. Some tables are created by CoC feature stores after forge
+ * initializes the base schema, so each update is guarded by column existence.
+ */
+const WORKSPACE_ID_REFERENCE_COLUMNS = [
+    { table: 'commit_chat_bindings', column: 'workspace_id' },
+    { table: 'note_chat_bindings', column: 'workspace_id' },
+    { table: 'pull_request_chat_bindings', column: 'workspace_id' },
+    { table: 'work_item_chat_bindings', column: 'workspace_id' },
+    { table: 'task_groups', column: 'workspace_id' },
+    { table: 'task_group_members', column: 'workspace_id' },
+    { table: 'loops', column: 'workspace_id' },
+    { table: 'container_sessions', column: 'routing_override_workspace_id' },
+    { table: 'container_session_turns', column: 'routing_workspace_id' },
+    { table: 'queue_tasks', column: 'repo_id' },
+    { table: 'queue_repo_state', column: 'repo_id' },
+    { table: 'queue_repo_paths', column: 'repo_id' },
+    { table: 'schedule_runs', column: 'repo_id' },
+] as const;
+
 // ============================================================================
 // Options
 // ============================================================================
@@ -1424,6 +1445,74 @@ export class SqliteProcessStore implements ProcessStore {
 
         const row = this.db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id) as WorkspaceRow | undefined;
         return row ? rowToWorkspace(row) : undefined;
+    }
+
+    /**
+     * Re-key every reference to a physical workspace from `oldId` to `newId`
+     * inside this database, in a single transaction. Covers the workspace
+     * record, process history (and the seen/unseen state carried on those
+     * rows), process metadata, workspace-scoped bindings, task-group records,
+     * loop/container routing references, and queued/scheduled work keyed by
+     * repo id. Returns false without changing anything when `oldId` is unknown
+     * or a workspace `newId` already exists, so the startup migration can treat
+     * a false result as a conflict and never merge two workspaces.
+     */
+    async renameWorkspaceId(oldId: string, newId: string): Promise<boolean> {
+        if (!oldId || !newId || oldId === newId) {
+            return false;
+        }
+        const run = this.db.transaction((): boolean => {
+            const source = this.db.prepare('SELECT 1 FROM workspaces WHERE id = ?').get(oldId);
+            if (!source) {
+                return false;
+            }
+            const target = this.db.prepare('SELECT 1 FROM workspaces WHERE id = ?').get(newId);
+            if (target) {
+                // A workspace already owns newId — never silently merge into it.
+                return false;
+            }
+            this.rewriteProcessMetadataWorkspaceId(oldId, newId);
+            this.db.prepare('UPDATE workspaces SET id = ? WHERE id = ?').run(newId, oldId);
+            this.db.prepare('UPDATE processes SET workspace_id = ? WHERE workspace_id = ?').run(newId, oldId);
+            for (const { table, column } of WORKSPACE_ID_REFERENCE_COLUMNS) {
+                if (!this.columnExists(table, column)) { continue; }
+                this.db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${column} = ?`).run(newId, oldId);
+            }
+            return true;
+        });
+        return run();
+    }
+
+    private rewriteProcessMetadataWorkspaceId(oldId: string, newId: string): void {
+        const rows = this.db.prepare(
+            'SELECT id, metadata FROM processes WHERE workspace_id = ?',
+        ).all(oldId) as Array<{ id: string; metadata: string | null }>;
+        if (rows.length === 0) {
+            return;
+        }
+
+        const update = this.db.prepare('UPDATE processes SET metadata = ? WHERE id = ?');
+        for (const row of rows) {
+            const envelope = jsonParse<MetadataEnvelope>(row.metadata) ?? {};
+            update.run(JSON.stringify({ ...envelope, workspaceId: newId }), row.id);
+        }
+    }
+
+    /** True when a table with the given name exists in this database. */
+    private tableExists(name: string): boolean {
+        return (
+            this.db
+                .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+                .get(name) !== undefined
+        );
+    }
+
+    private columnExists(table: string, column: string): boolean {
+        if (!this.tableExists(table)) {
+            return false;
+        }
+        const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+        return columns.some(info => info.name === column);
     }
 
     // ========================================================================

@@ -50,6 +50,7 @@ import { gitInfoCache } from './git/git-info-cache';
 import { NotesGitTimerManager } from './notes/git/notes-git-timer-manager';
 import { migrateWorkspaceRegistryIfNeeded } from './storage/startup-workspace-migration';
 import { migrateProcessHistoryIfNeeded } from './storage/startup-process-migration';
+import { migrateWorkspaceIdsToV2IfNeeded } from './storage/startup-workspace-id-migration';
 import { DevTunnelConnector } from './servers/devtunnel-connector';
 import { SshConnector } from './servers/ssh-connector';
 import { RemoteServerStore } from './servers/remote-server-store';
@@ -404,6 +405,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Auto-migrate legacy file-based process histories to SQLite
     await migrateProcessHistoryIfNeeded(dataDir, store);
+
+    // Auto-migrate legacy path-only workspace IDs to the machine-scoped
+    // (ws-v2-) scheme so colliding clones on different machines stay distinct.
+    // Uses the RAW OS hostname as the machine identity.
+    await migrateWorkspaceIdsToV2IfNeeded(dataDir, store, os.hostname());
 
     // Auto-update stale globally-installed bundled skills (non-blocking on errors)
     if (resolvedConfig.skills.autoUpdate) {
