@@ -1,4 +1,8 @@
+import { hashString } from './repoGrouping';
+
 const REMOTE_CLONE_KEY_PREFIX = 'remote:';
+const LEGACY_PATH_ONLY_WORKSPACE_ID_PREFIX = 'ws-';
+const MACHINE_SCOPED_WORKSPACE_ID_PREFIX = 'ws-v2-';
 
 export interface RemoteCloneKeyParts {
     serverId: string;
@@ -93,4 +97,57 @@ export function isRepoSelected<T extends RepoSelectionLike>(
     selectionId: string | null | undefined,
 ): boolean {
     return findRepoBySelectionId(repos, selectionId) === repo;
+}
+
+export function legacyPathOnlyWorkspaceIdForRootPath(rootPath: string): string {
+    return LEGACY_PATH_ONLY_WORKSPACE_ID_PREFIX + hashString(rootPath);
+}
+
+export function isLegacyPathOnlyWorkspaceId(value: string | null | undefined): boolean {
+    return (
+        typeof value === 'string' &&
+        value.startsWith(LEGACY_PATH_ONLY_WORKSPACE_ID_PREFIX) &&
+        !value.startsWith(MACHINE_SCOPED_WORKSPACE_ID_PREFIX) &&
+        parseRemoteCloneKey(value) === null
+    );
+}
+
+export function resolveLegacyPathOnlySelectionId<T extends RepoSelectionLike>(
+    repos: readonly T[],
+    selectionId: string | null | undefined,
+): string | null {
+    if (!isLegacyPathOnlyWorkspaceId(selectionId)) return null;
+    if (findRepoBySelectionId(repos, selectionId)) return null;
+
+    const matches = repos.filter(repo => {
+        const rootPath = (repo.workspace as { rootPath?: unknown }).rootPath;
+        return typeof rootPath === 'string' && legacyPathOnlyWorkspaceIdForRootPath(rootPath) === selectionId;
+    });
+    if (matches.length === 0) return null;
+
+    const localMatches = matches.filter(repo => getRemoteCloneKey(repo.workspace) === null);
+    const candidates = localMatches.length > 0 ? localMatches : matches;
+    return candidates.length === 1 ? getRepoSelectionId(candidates[0]) : null;
+}
+
+export function rewriteRepoHashSelectionId(
+    hash: string,
+    oldSelectionId: string,
+    newSelectionId: string,
+): string | null {
+    const cleaned = hash.replace(/^#/, '');
+    const queryStart = cleaned.indexOf('?');
+    const pathPart = queryStart >= 0 ? cleaned.slice(0, queryStart) : cleaned;
+    const queryPart = queryStart >= 0 ? cleaned.slice(queryStart + 1) : null;
+    const parts = pathPart.split('/');
+    if (parts[0] !== 'repos' || !parts[1]) return null;
+
+    try {
+        if (decodeURIComponent(parts[1]) !== oldSelectionId) return null;
+    } catch {
+        return null;
+    }
+
+    parts[1] = encodeURIComponent(newSelectionId);
+    return '#' + parts.join('/') + (queryPart !== null ? '?' + queryPart : '');
 }

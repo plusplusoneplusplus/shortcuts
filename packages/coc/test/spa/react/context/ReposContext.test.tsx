@@ -55,7 +55,10 @@ import {
     loadPersistedRemoteSelection,
     persistRemoteSelection,
 } from '../../../../src/server/spa/client/react/repos/remoteSelectionPersistence';
-import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
+import {
+    buildRemoteCloneKey,
+    legacyPathOnlyWorkspaceIdForRootPath,
+} from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 afterEach(() => {
     vi.clearAllMocks();
@@ -180,10 +183,12 @@ describe('ReposContext', () => {
         // Default: no remote workspaces (classic flow). Overridden per AC-08 test.
         aggregateRemoteWorkspacesMock.mockResolvedValue(emptyAggregate());
         _resetRemoteSelectionForTests();
+        window.history.replaceState(null, '', '/');
     });
 
     afterEach(() => {
         _resetRemoteSelectionForTests();
+        window.history.replaceState(null, '', '/');
     });
 
     it('throws when useRepos is used outside ReposProvider', () => {
@@ -416,6 +421,46 @@ describe('ReposContext', () => {
             await waitFor(() => {
                 expect(loadPersistedRemoteSelection()).toEqual({ serverId: 'srv-1', workspaceId: 'remote-ws' });
             });
+        });
+    });
+
+    describe('legacy path-only repo deep links', () => {
+        it('resolves an old path-only hash to the migrated local workspace and preserves the suffix', async () => {
+            const rootPath = '/repos/shared-path';
+            const legacyId = legacyPathOnlyWorkspaceIdForRootPath(rootPath);
+            const migrated = { ...makeWorkspace('ws-v2-local', 'Migrated Local'), rootPath };
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([migrated]).workspaces);
+            location.hash = '#repos/' + encodeURIComponent(legacyId) + '/git';
+
+            render(<ProviderWithPreselectedRepo repoId={legacyId} />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('selected-repo').textContent).toBe('ws-v2-local');
+            });
+            expect(location.hash).toBe('#repos/ws-v2-local/git');
+        });
+
+        it('resolves an old path-only hash to the single matching remote clone key', async () => {
+            const rootPath = '/repos/remote-shared-path';
+            const legacyId = legacyPathOnlyWorkspaceIdForRootPath(rootPath);
+            const expectedSelectionId = buildRemoteCloneKey('srv-1', 'ws-v2-remote');
+            const tagged = tagRemoteWorkspaces(
+                { id: 'srv-1', label: 'srv-1' },
+                'http://127.0.0.1:4000',
+                [{ id: 'ws-v2-remote', name: 'Remote Migrated', rootPath }],
+                false,
+                { connection: 'online' },
+            );
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([]).workspaces);
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce({ sources: [], workspaces: tagged, gitInfo: {}, warnings: [] });
+            location.hash = '#repos/' + encodeURIComponent(legacyId) + '/chats';
+
+            render(<ProviderWithPreselectedRepo repoId={legacyId} />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('selected-repo').textContent).toBe(expectedSelectionId);
+            });
+            expect(location.hash).toBe('#repos/' + encodeURIComponent(expectedSelectionId) + '/chats');
         });
     });
 });

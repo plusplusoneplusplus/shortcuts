@@ -41,6 +41,8 @@ import {
     getRepoSelectionId,
     getWorkspaceSelectionId,
     parseRemoteCloneKey,
+    resolveLegacyPathOnlySelectionId,
+    rewriteRepoHashSelectionId,
 } from '../repos/cloneIdentity';
 import { setActiveCloneForRouting } from '../repos/cloneRegistry';
 
@@ -212,7 +214,17 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             // Check against the full workspaces list (not enriched) so virtual
             // workspaces like My Work / My Life don't get deselected on refresh.
             // Remote workspaces are included so a selected remote clone survives a refresh.
-            const selectedId = selectedRepoIdRef.current;
+            let selectedId = selectedRepoIdRef.current;
+            const legacyResolvedId = resolveLegacyPathOnlySelectionId(combined, selectedId);
+            if (legacyResolvedId && selectedId) {
+                const rewrittenHash = rewriteRepoHashSelectionId(location.hash, selectedId, legacyResolvedId);
+                selectedId = legacyResolvedId;
+                selectedRepoIdRef.current = legacyResolvedId;
+                dispatch({ type: 'SET_SELECTED_REPO', id: legacyResolvedId });
+                if (rewrittenHash && typeof window !== 'undefined') {
+                    window.history.replaceState(null, '', rewrittenHash);
+                }
+            }
             const selectionStillPresent = selectedId
                 ? parseRemoteCloneKey(selectedId)
                     ? Boolean(findRepoBySelectionId(remoteRepos, selectedId))
@@ -238,9 +250,9 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                 remoteRepos.map(r => r.workspace),
             );
             if (resolvedRemoteId) {
-                const current = selectionStillPresent ? selectedRepoIdRef.current : null;
+                const current = selectionStillPresent ? selectedId : null;
                 if (current === null || current === resolvedRemoteId) {
-                    if (selectedRepoIdRef.current !== resolvedRemoteId) {
+                    if (selectedId !== resolvedRemoteId) {
                         dispatch({ type: 'SET_SELECTED_REPO', id: resolvedRemoteId });
                     }
                 }

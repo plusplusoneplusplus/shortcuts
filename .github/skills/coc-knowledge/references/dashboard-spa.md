@@ -920,11 +920,14 @@ only) that `aggregateRemoteWorkspaces` populates on every repo refresh via
 cleared when the flag is OFF or the registry is unavailable). Remote markers
 carry `remote.cloneKey = remote:${encodeURIComponent(serverId)}:${encodeURIComponent(workspaceId)}`;
 `repos/cloneIdentity.ts` centralizes clone-key build/parse, selection ids, and
-old path-only fallback resolution. Unique remote workspace ids still resolve
-directly; when cached/legacy rows collide on workspace id, `ReposContext` records
-the selected clone key with `setActiveCloneForRouting(...)` so bare workspace-id
-service calls from the selected `RepoDetail` resolve to the chosen server instead
-of the other clone. The registry exposes `lookupCloneBaseUrl(workspaceIdOrCloneKey)`,
+old path-only fallback resolution: `#repos/ws-*` links that no longer match a
+registered workspace are matched by the legacy root-path hash to the migrated
+local workspace, or to a single unambiguous remote clone key. Unique remote
+workspace ids still resolve directly; when cached/legacy rows collide on
+workspace id, `ReposContext` records the selected clone key with
+`setActiveCloneForRouting(...)` so bare workspace-id service calls from the
+selected `RepoDetail` resolve to the chosen server instead of the other clone.
+The registry exposes `lookupCloneBaseUrl(workspaceIdOrCloneKey)`,
 `getCocClientForWorkspace(workspaceIdOrCloneKey)` (= `getCocClientFor(lookupCloneBaseUrl(id))`,
 falling back to `getSpaCocClient()` for a local/unknown id so local behavior is
 byte-for-byte unchanged), `cloneApiBase(workspaceIdOrCloneKey)` (absolute remote
