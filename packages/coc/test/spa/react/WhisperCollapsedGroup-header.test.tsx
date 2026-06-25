@@ -870,3 +870,133 @@ describe('WhisperCollapsedGroup — MemoryHoverPopover', () => {
         vi.useRealTimers();
     });
 });
+
+// ── Actionable file rows (AC-01) ───────────────────────────────────────────
+
+describe('WhisperCollapsedGroup — actionable file rows', () => {
+    function renderActionableFiles(
+        fileEdits: FileEdit[],
+        opts: {
+            onOpenFileDiff?: (ctx: unknown) => void;
+            precedingChunks?: any[];
+            toolById?: Map<string, any>;
+            commits?: any[];
+        } = {},
+    ) {
+        const { container } = render(
+            <WhisperCollapsedGroup
+                precedingChunks={opts.precedingChunks ?? []}
+                summary={{
+                    toolCallCount: 3,
+                    messageCount: 0,
+                    fileEditCount: fileEdits.length,
+                    fileEdits,
+                    ...(opts.commits ? { commitCount: opts.commits.length, commits: opts.commits } : {}),
+                } as WhisperSummary}
+                toolById={opts.toolById ?? new Map()}
+                toolsWithChildren={new Set()}
+                toolParentById={new Map()}
+                isStreaming={false}
+                groupSingleLineMessages={false}
+                workspaceId="test-ws"
+                renderToolTree={() => null}
+                onOpenFileDiff={opts.onOpenFileDiff}
+            />,
+        );
+        const span = container.querySelector('[data-testid="whisper-file-hover"]') as HTMLElement;
+        if (span) fireEvent.mouseEnter(span);
+        return document.body;
+    }
+
+    it('marks active rows as buttons with keyboard affordance when a handler is wired', () => {
+        const body = renderActionableFiles(
+            [{ path: 'src/a.ts', insertions: 4, deletions: 2, netInsertions: 4, netDeletions: 2, isCreate: false, isDeleted: false }],
+            { onOpenFileDiff: vi.fn() },
+        );
+        const row = body.querySelector('[data-testid="file-popover-row"]') as HTMLElement;
+        expect(row.getAttribute('role')).toBe('button');
+        expect(row.getAttribute('tabindex')).toBe('0');
+        expect(row.getAttribute('aria-label')).toBe('Open diff for src/a.ts');
+    });
+
+    it('leaves rows non-interactive when no handler is provided', () => {
+        const body = renderActionableFiles(
+            [{ path: 'src/a.ts', insertions: 4, deletions: 2, netInsertions: 4, netDeletions: 2, isCreate: false, isDeleted: false }],
+        );
+        const row = body.querySelector('[data-testid="file-popover-row"]') as HTMLElement;
+        expect(row.getAttribute('role')).toBeNull();
+        expect(row.getAttribute('tabindex')).toBeNull();
+    });
+
+    it('opens the diff with the clicked file and the group tool calls on click', () => {
+        const onOpenFileDiff = vi.fn();
+        const toolById = new Map<string, any>([
+            ['t1', { toolName: 'edit', args: { path: 'src/a.ts', old_str: 'old', new_str: 'new' } }],
+        ]);
+        const precedingChunks = [{ kind: 'tool', key: 'k1', toolId: 't1' }];
+        const body = renderActionableFiles(
+            [{ path: 'src/a.ts', insertions: 1, deletions: 1, netInsertions: 1, netDeletions: 1, isCreate: false, isDeleted: false }],
+            { onOpenFileDiff, toolById, precedingChunks },
+        );
+        const row = body.querySelector('[data-testid="file-popover-row"]') as HTMLElement;
+        fireEvent.click(row);
+
+        expect(onOpenFileDiff).toHaveBeenCalledTimes(1);
+        const ctx = onOpenFileDiff.mock.calls[0][0];
+        expect(ctx.file.path).toBe('src/a.ts');
+        expect(ctx.workspaceId).toBe('test-ws');
+        expect(ctx.toolCalls).toEqual([
+            { toolName: 'edit', args: { path: 'src/a.ts', old_str: 'old', new_str: 'new' } },
+        ]);
+    });
+
+    it('passes detected group commits through for the commit-diff fallback', () => {
+        const onOpenFileDiff = vi.fn();
+        const commits = [{ shortHash: 'abc1234', fullHash: 'abc1234def', subject: 'fix: x', isFixup: false }];
+        const body = renderActionableFiles(
+            [{ path: 'src/a.ts', insertions: 1, deletions: 0, netInsertions: 1, netDeletions: 0, isCreate: false, isDeleted: false }],
+            { onOpenFileDiff, commits },
+        );
+        fireEvent.click(body.querySelector('[data-testid="file-popover-row"]') as HTMLElement);
+        expect(onOpenFileDiff.mock.calls[0][0].commits).toEqual(commits);
+    });
+
+    it('activates the row on Enter and Space keys', () => {
+        const onOpenFileDiff = vi.fn();
+        const body = renderActionableFiles(
+            [{ path: 'src/a.ts', insertions: 1, deletions: 1, netInsertions: 1, netDeletions: 1, isCreate: false, isDeleted: false }],
+            { onOpenFileDiff },
+        );
+        const row = body.querySelector('[data-testid="file-popover-row"]') as HTMLElement;
+        fireEvent.keyDown(row, { key: 'Enter' });
+        fireEvent.keyDown(row, { key: ' ' });
+        expect(onOpenFileDiff).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps created files actionable', () => {
+        const onOpenFileDiff = vi.fn();
+        const body = renderActionableFiles(
+            [{ path: 'src/new.ts', insertions: 10, deletions: 0, netInsertions: 10, netDeletions: 0, isCreate: true, isDeleted: false }],
+            { onOpenFileDiff },
+        );
+        const row = body.querySelector('[data-testid="file-popover-row"]') as HTMLElement;
+        expect(row.getAttribute('role')).toBe('button');
+        fireEvent.click(row);
+        expect(onOpenFileDiff).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps deleted rows visibly removed and disabled even with a handler', () => {
+        const onOpenFileDiff = vi.fn();
+        const body = renderActionableFiles(
+            [{ path: 'src/gone.ts', insertions: 0, deletions: 5, netInsertions: 0, netDeletions: 5, isCreate: false, isDeleted: true }],
+            { onOpenFileDiff },
+        );
+        const row = body.querySelector('[data-testid="file-popover-row-deleted"]') as HTMLElement;
+        expect(row).not.toBeNull();
+        expect(row.getAttribute('role')).toBeNull();
+        expect(row.getAttribute('aria-disabled')).toBe('true');
+        expect(row.textContent).toContain('removed');
+        fireEvent.click(row);
+        expect(onOpenFileDiff).not.toHaveBeenCalled();
+    });
+});

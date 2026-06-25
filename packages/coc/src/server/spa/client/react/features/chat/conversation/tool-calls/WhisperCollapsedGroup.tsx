@@ -20,6 +20,25 @@ import { buildGitReviewPopOutUrl } from '../../../../layout/Router';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../../contexts/GitReviewPopOutContext';
 import { lookupCloneBaseUrl } from '../../../../repos/cloneRegistry';
 import { normalizeToolName } from './toolNormalization';
+import type { WhisperDiffToolCall } from './buildWhisperFileDiff';
+
+/**
+ * Context emitted when a user clicks an active changed-file row in the whisper
+ * files popover. Carries everything the diff panel needs to render that file's
+ * edits: the file summary, the group's reconstructable tool calls (primary diff
+ * source), and the group's detected commits + workspace routing (commit-diff
+ * fallback). See `buildWhisperFileDiff` for how `toolCalls` is replayed.
+ */
+export interface WhisperFileDiffContext {
+    /** The clicked file's edit summary (path, isCreate, isDeleted, stats). */
+    file: FileEdit;
+    /** Reconstructable edit/create/apply_patch calls captured in this group. */
+    toolCalls: WhisperDiffToolCall[];
+    /** Commits detected in this group, for the commit-diff fallback. */
+    commits: DetectedCommit[];
+    /** Workspace/clone routing id for any commit fallback fetch. */
+    workspaceId?: string;
+}
 
 interface ToolLike {
     toolName: string;
@@ -50,6 +69,11 @@ export interface WhisperCollapsedGroupProps {
     groupSingleLineMessages: boolean;
     workspaceId?: string;
     renderToolTree: (toolId: string, depth: number) => React.ReactNode;
+    /**
+     * Opens the transient read-only diff panel for a clicked changed file. When
+     * omitted, file popover rows stay non-interactive (hover-only) as before.
+     */
+    onOpenFileDiff?: (ctx: WhisperFileDiffContext) => void;
 }
 
 function formatDuration(startTime?: number, endTime?: number): string {
@@ -599,9 +623,11 @@ interface FileHoverPopoverProps {
     popoverRef: React.RefObject<HTMLDivElement | null>;
     onMouseEnter: () => void;
     onMouseLeave: () => void;
+    /** When provided, active (non-deleted) rows open the file's diff on click/Enter/Space. */
+    onFileClick?: (file: FileEdit) => void;
 }
 
-function FileHoverPopover({ files, anchorRef, popoverRef, onMouseEnter, onMouseLeave }: FileHoverPopoverProps) {
+function FileHoverPopover({ files, anchorRef, popoverRef, onMouseEnter, onMouseLeave, onFileClick }: FileHoverPopoverProps) {
     if (!anchorRef.current) return null;
     const rect = anchorRef.current.getBoundingClientRect();
     const rowHeight = 28;
@@ -625,15 +651,31 @@ function FileHoverPopover({ files, anchorRef, popoverRef, onMouseEnter, onMouseL
                 const ins = file.netInsertions ?? file.insertions;
                 const del = file.netDeletions ?? file.deletions;
                 const icon = file.isDeleted ? '🗑️' : file.isCreate ? '📄' : '✏️';
+                // Active (non-deleted) rows become actionable when a click handler
+                // is wired. Deleted/removed rows stay visibly removed and disabled —
+                // no reconstructed deletion diff is available for them.
+                const interactive = !file.isDeleted && !!onFileClick;
                 return (
                     <div
                         key={file.path}
                         className={cn(
                             'flex items-center gap-2 px-2.5 py-1 text-xs',
                             file.isDeleted && 'opacity-50',
+                            interactive && 'cursor-pointer hover:bg-[#e1effe] dark:hover:bg-[#1f2d42]',
                         )}
                         data-testid={file.isDeleted ? 'file-popover-row-deleted' : 'file-popover-row'}
                         title={file.isDeleted ? `${file.path} (removed)` : file.path}
+                        role={interactive ? 'button' : undefined}
+                        tabIndex={interactive ? 0 : undefined}
+                        aria-disabled={file.isDeleted ? true : undefined}
+                        aria-label={interactive ? `Open diff for ${file.path}` : undefined}
+                        onClick={interactive ? () => onFileClick!(file) : undefined}
+                        onKeyDown={interactive ? (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                onFileClick!(file);
+                            }
+                        } : undefined}
                     >
                         <span className="shrink-0">{icon}</span>
                         <span className={cn(
@@ -691,9 +733,11 @@ interface FileHoverSpanProps {
     testId?: string;
     /** When false, suppresses the inline (+N −M) totals after the text. */
     showInlineTotals?: boolean;
+    /** When provided, active file rows open the file's diff on click/Enter/Space. */
+    onFileClick?: (file: FileEdit) => void;
 }
 
-function FileHoverSpan({ text, files, testId, showInlineTotals = true }: FileHoverSpanProps) {
+function FileHoverSpan({ text, files, testId, showInlineTotals = true, onFileClick }: FileHoverSpanProps) {
     const [hovered, setHovered] = useState(false);
     const anchorRef = useRef<HTMLSpanElement | null>(null);
     const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -744,6 +788,7 @@ function FileHoverSpan({ text, files, testId, showInlineTotals = true }: FileHov
                     popoverRef={popoverRef}
                     onMouseEnter={showPopover}
                     onMouseLeave={hidePopover}
+                    onFileClick={onFileClick}
                 />
             )}
         </span>
@@ -937,8 +982,43 @@ export function WhisperCollapsedGroup({
     groupSingleLineMessages,
     workspaceId,
     renderToolTree,
+    onOpenFileDiff,
 }: WhisperCollapsedGroupProps) {
     const [expanded, setExpanded] = useState(false);
+
+    // Reconstructable tool calls captured in this group, flattened from the
+    // preceding chunks (both standalone tool chunks and tool-groups). This is
+    // the primary diff source replayed by `buildWhisperFileDiff` when a file
+    // row is clicked.
+    const groupToolCalls = useMemo<WhisperDiffToolCall[]>(() => {
+        const calls: WhisperDiffToolCall[] = [];
+        for (const c of precedingChunks) {
+            if (c.kind === 'tool' && c.toolId) {
+                const tool = toolById.get(c.toolId);
+                if (tool) calls.push({ toolName: tool.toolName, args: tool.args });
+            } else if (c.kind === 'tool-group' && Array.isArray((c as any).toolIds)) {
+                for (const id of (c as any).toolIds as string[]) {
+                    const tool = toolById.get(id);
+                    if (tool) calls.push({ toolName: tool.toolName, args: tool.args });
+                }
+            }
+        }
+        return calls;
+    }, [precedingChunks, toolById]);
+
+    const handleFileClick = useCallback(
+        (file: FileEdit) => {
+            if (!onOpenFileDiff) return;
+            onOpenFileDiff({
+                file,
+                toolCalls: groupToolCalls,
+                commits: summary.commits ?? [],
+                workspaceId,
+            });
+        },
+        [onOpenFileDiff, groupToolCalls, summary.commits, workspaceId],
+    );
+    const onFileClick = onOpenFileDiff ? handleFileClick : undefined;
 
     const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'pr' | 'file' | 'removed-file' | 'skill' | 'memory' }> = [];
     if (summary.toolCallCount > 0) {
@@ -997,11 +1077,11 @@ export function WhisperCollapsedGroup({
             );
         } else if (part.kind === 'file' && summary.fileEdits && summary.fileEdits.length > 0) {
             headerElements.push(
-                <FileHoverSpan key={`part-${idx}`} text={part.text} files={summary.fileEdits} testId="whisper-file-hover" />,
+                <FileHoverSpan key={`part-${idx}`} text={part.text} files={summary.fileEdits} testId="whisper-file-hover" onFileClick={onFileClick} />,
             );
         } else if (part.kind === 'removed-file' && summary.fileEdits && summary.fileEdits.length > 0) {
             headerElements.push(
-                <FileHoverSpan key={`part-${idx}`} text={part.text} files={summary.fileEdits} testId="whisper-removed-hover" showInlineTotals={false} />,
+                <FileHoverSpan key={`part-${idx}`} text={part.text} files={summary.fileEdits} testId="whisper-removed-hover" showInlineTotals={false} onFileClick={onFileClick} />,
             );
         } else if (part.kind === 'skill' && summary.skillNames && summary.skillNames.length > 0) {
             headerElements.push(
