@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useZoomPan } from '../../../hooks/ui/useZoomPan';
-import { buildLayout, edgePath, spineVars, PAD, type PositionedNode } from './layout';
+import { buildLayout, edgePath, spineVars, COLW, NODEW, PAD, type PositionedNode } from './layout';
 import type { AgentRunNode } from './types';
 import { AcIcons, roleIcon } from './icons';
 import { formatRunDuration } from './format';
@@ -201,6 +201,25 @@ export function AgentCanvas({ root, onOpenAgentDetail }: AgentCanvasProps) {
             style={{ cursor: state.isDragging ? 'grabbing' : 'grab' }}
         >
             <div className="world" style={{ transform: worldTransform }}>
+                {layout.groups.map((g, i) => (
+                    typeof g.turn === 'number' && (
+                        <div
+                            key={`turn-divider-${i}`}
+                            className={'turn-divider' + (g.hasLine ? '' : ' no-line')}
+                            data-testid="agent-canvas-turn-divider"
+                            data-turn={g.turn}
+                            data-has-line={g.hasLine}
+                            style={{
+                                left: COLW + PAD,
+                                top: g.y + PAD,
+                                width: Math.max(NODEW, layout.worldW - COLW - PAD * 2),
+                            }}
+                        >
+                            <span className="turn-divider-label">turn <strong>{g.turn}</strong></span>
+                            {g.hasLine && <span className="turn-divider-rule" />}
+                        </div>
+                    )
+                ))}
                 <svg className="canvas-edges" width={layout.worldW} height={layout.worldH}>
                     {layout.edges.map((e) => {
                         const a = layout.pos[e.from];

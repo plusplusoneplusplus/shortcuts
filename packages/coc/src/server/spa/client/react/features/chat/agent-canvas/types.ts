@@ -34,6 +34,13 @@ export interface AgentRunNode {
     prompt?: string;
     /** Full result/output the run produced, if available. */
     result?: string;
+    /**
+     * 1-based human turn ordinal of the user turn that spawned this run. Set only
+     * on the orchestrator's direct (depth-1) children by
+     * `buildAgentRunTreeFromTurns`; it drives the canvas's per-turn grouping and
+     * dividers. Undefined for the root, nested (L2+) runs, and synthetic nodes.
+     */
+    turn?: number;
     /** Recursively spawned child runs. */
     children: AgentRunNode[];
 }

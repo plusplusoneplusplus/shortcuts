@@ -12,6 +12,10 @@ function sub(id: string, overrides: Partial<AgentRunNode> = {}): AgentRunNode {
     return { id, name: id, role: 'Explore', status: 'done', children: [], ...overrides };
 }
 
+function subT(id: string, turn: number, overrides: Partial<AgentRunNode> = {}): AgentRunNode {
+    return sub(id, { turn, ...overrides });
+}
+
 describe('AgentCanvas', () => {
     it('renders the orchestrator root and every sub-agent node', () => {
         render(<AgentCanvas root={tree([sub('explore'), sub('review', { role: 'reviewer' })])} />);
@@ -98,5 +102,37 @@ describe('AgentCanvas', () => {
         fireEvent.click(screen.getByTestId('agent-canvas-zoom-label'));
         fireEvent.click(within(screen.getByTestId('agent-canvas-zoom-menu')).getByText('50%'));
         expect(screen.queryByTestId('agent-canvas-zoom-menu')).toBeNull();
+    });
+});
+
+describe('AgentCanvas turn dividers', () => {
+    it('shows a single turn label and no dividing line when all sub-agents share a turn (AC-02)', () => {
+        render(<AgentCanvas root={tree([subT('a', 1), subT('b', 1)])} />);
+        const dividers = screen.getAllByTestId('agent-canvas-turn-divider');
+        expect(dividers).toHaveLength(1);
+        expect(dividers[0].textContent).toContain('turn 1');
+        expect(dividers[0].querySelector('.turn-divider-rule')).toBeNull();
+    });
+
+    it('draws a dotted line + label between groups, with no line above the first (AC-02/AC-03)', () => {
+        // turns 1 and 4 spawn agents → real-ordinal labels with a gap
+        render(<AgentCanvas root={tree([subT('a', 1), subT('b', 4)])} />);
+        const dividers = screen.getAllByTestId('agent-canvas-turn-divider');
+        expect(dividers).toHaveLength(2);
+        expect(dividers[0].textContent).toContain('turn 1');
+        expect(dividers[0].querySelector('.turn-divider-rule')).toBeNull(); // first: label only
+        expect(dividers[1].textContent).toContain('turn 4');
+        expect(dividers[1].querySelector('.turn-divider-rule')).not.toBeNull(); // boundary: dotted rule
+    });
+
+    it('renders no turn dividers when there are no sub-agents (AC-02)', () => {
+        render(<AgentCanvas root={tree([])} />);
+        expect(screen.queryAllByTestId('agent-canvas-turn-divider')).toHaveLength(0);
+    });
+
+    it('renders the dividers inside the zoom/pan world layer so they pan/zoom with nodes (AC-02)', () => {
+        const { container } = render(<AgentCanvas root={tree([subT('a', 1), subT('b', 2)])} />);
+        const world = container.querySelector('.agent-canvas .world');
+        expect(world?.querySelectorAll('.turn-divider')).toHaveLength(2);
     });
 });

@@ -11,6 +11,11 @@ export const ROWH = 78;
 export const NODEW = 202;
 export const NODEH = 56;
 export const PAD = 60;
+// Extra vertical space inserted between two adjacent turn groups, giving the
+// dotted divider line room to sit clear of either group's nodes.
+export const TURN_GAP = 64;
+// How far above the first group's first node its (line-less) turn label rises.
+export const TURN_LABEL_RISE = 30;
 
 export interface PositionedNode {
     x: number;
@@ -25,6 +30,24 @@ export interface CanvasEdge {
     depth: number;
 }
 
+/** A contiguous run of top-level (depth-1) nodes sharing one spawning turn. */
+export interface TurnGroup {
+    /** The 1-based human turn ordinal, or undefined when the turn is unknown. */
+    turn: number | undefined;
+    runs: AgentRunNode[];
+}
+
+/**
+ * A turn divider placed in world coordinates (pre-PAD, like node positions).
+ * `y` is the vertical centerline of the label/rule row; `hasLine` is false for
+ * the first (topmost) group, which shows its label but no dividing rule above it.
+ */
+export interface TurnGroupMarker {
+    turn: number | undefined;
+    y: number;
+    hasLine: boolean;
+}
+
 export interface CanvasLayout {
     /** Positioned node keyed by node id. */
     pos: Record<string, PositionedNode>;
@@ -32,9 +55,37 @@ export interface CanvasLayout {
     order: string[];
     /** Parent→child connectors. */
     edges: CanvasEdge[];
+    /** Per-turn-group divider markers (label + optional dotted rule). */
+    groups: TurnGroupMarker[];
     /** Intrinsic world size for fit-to-view. */
     worldW: number;
     worldH: number;
+}
+
+/**
+ * Partition top-level runs into contiguous groups by spawning turn. Distinct
+ * turns are ordered ascending (unknown turns sort last); within each group the
+ * runs keep their incoming (startedAt) order. Grouping by turn value — rather
+ * than relying on startedAt contiguity — guarantees each turn forms exactly one
+ * contiguous block even if start times happen to interleave across turns.
+ */
+export function groupRunsByTurn(runs: AgentRunNode[]): TurnGroup[] {
+    const byTurn = new Map<number | undefined, AgentRunNode[]>();
+    const seen: (number | undefined)[] = [];
+    for (const run of runs) {
+        if (!byTurn.has(run.turn)) {
+            byTurn.set(run.turn, []);
+            seen.push(run.turn);
+        }
+        byTurn.get(run.turn)!.push(run);
+    }
+    seen.sort((a, b) => {
+        if (a === b) return 0;
+        if (a === undefined) return 1;
+        if (b === undefined) return -1;
+        return a - b;
+    });
+    return seen.map((turn) => ({ turn, runs: byTurn.get(turn)! }));
 }
 
 /**
@@ -48,7 +99,8 @@ export function buildLayout(root: AgentRunNode): CanvasLayout {
     const edges: CanvasEdge[] = [];
     let cursorY = 0;
 
-    function rec(node: AgentRunNode, depth: number, parentId: string | null): number {
+    // Lay out a subtree rooted at a non-root node (depth >= 1), post-order.
+    function rec(node: AgentRunNode, depth: number, parentId: string): number {
         const x = depth * COLW;
         const kids = node.children || [];
         let y: number;
@@ -61,12 +113,46 @@ export function buildLayout(root: AgentRunNode): CanvasLayout {
         }
         pos[node.id] = { x, y, depth, node };
         order.push(node.id);
-        if (parentId !== null) {
-            edges.push({ from: parentId, to: node.id, depth });
-        }
+        edges.push({ from: parentId, to: node.id, depth });
         return y;
     }
-    rec(root, 0, null);
+
+    // The orchestrator's direct children are partitioned into turn groups; an
+    // extra gap + dotted divider separates adjacent groups, and every group
+    // carries a `turn N` label. Deeper levels are laid out inside each subtree
+    // (no turn boundaries below depth 1).
+    const groups = groupRunsByTurn(root.children || []);
+    const markers: TurnGroupMarker[] = [];
+    const childYs: number[] = [];
+    groups.forEach((group, gi) => {
+        let dividerY: number;
+        let hasLine: boolean;
+        if (gi === 0) {
+            // First group: label only, riding just above its first node row.
+            dividerY = -TURN_LABEL_RISE;
+            hasLine = false;
+        } else {
+            // Boundary divider sits in the middle of the inserted gap.
+            dividerY = cursorY + TURN_GAP / 2;
+            hasLine = true;
+            cursorY += TURN_GAP;
+        }
+        for (const run of group.runs) {
+            childYs.push(rec(run, 1, root.id));
+        }
+        markers.push({ turn: group.turn, y: dividerY, hasLine });
+    });
+
+    // Place the orchestrator root (depth 0), centered over its children.
+    let rootY: number;
+    if (childYs.length) {
+        rootY = (childYs[0] + childYs[childYs.length - 1]) / 2;
+    } else {
+        rootY = cursorY;
+        cursorY += ROWH;
+    }
+    pos[root.id] = { x: 0, y: rootY, depth: 0, node: root };
+    order.push(root.id);
 
     let maxX = 0;
     let maxY = 0;
@@ -78,6 +164,7 @@ export function buildLayout(root: AgentRunNode): CanvasLayout {
         pos,
         order,
         edges,
+        groups: markers,
         worldW: maxX + NODEW + PAD * 2,
         worldH: maxY + NODEH + PAD * 2,
     };

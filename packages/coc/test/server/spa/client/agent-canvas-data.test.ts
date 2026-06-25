@@ -3,6 +3,7 @@ import {
     buildAgentRunTreeFromTurns,
     countRuns,
     findTurnIndexForRun,
+    turnOrdinalForRun,
 } from '../../../../src/server/spa/client/react/features/chat/agent-canvas/buildAgentRunTree';
 import type { AgentRunNode } from '../../../../src/server/spa/client/react/features/chat/agent-canvas/types';
 import type { ClientConversationTurn, ClientToolCall } from '../../../../src/server/spa/client/react/types/dashboard';
@@ -16,6 +17,10 @@ function assistantTurn(
     timeline: ClientConversationTurn['timeline'] = [],
 ): ClientConversationTurn {
     return { role: 'assistant', content: '', timeline, toolCalls };
+}
+
+function userTurn(content = 'go'): ClientConversationTurn {
+    return { role: 'user', content, timeline: [] };
 }
 
 describe('buildAgentRunTreeFromTurns', () => {
@@ -400,6 +405,76 @@ describe('buildAgentRunTreeFromTurns', () => {
         ])];
         const parent = buildAgentRunTreeFromTurns(turns).children[0];
         expect(parent.children.map((c) => c.id)).toEqual(['early', 'late']);
+    });
+
+    it('tags each top-level run with the spawning turn ordinal, leaving gaps (AC-01/AC-03)', () => {
+        // user→agent, then two agent-less turns, then user→agent: ordinals 1 and 4.
+        const turns = [
+            userTurn('u1'),
+            assistantTurn([tc({ id: 'a', args: { description: 'first' }, startTime: '2026-06-13T10:00:00.000Z' })]),
+            userTurn('u2'),
+            assistantTurn([]),
+            userTurn('u3'),
+            assistantTurn([]),
+            userTurn('u4'),
+            assistantTurn([tc({ id: 'b', args: { description: 'fourth' }, startTime: '2026-06-13T10:10:00.000Z' })]),
+        ];
+        const root = buildAgentRunTreeFromTurns(turns);
+        const byId = new Map(root.children.map((c) => [c.id, c]));
+        expect(byId.get('a')?.turn).toBe(1);
+        expect(byId.get('b')?.turn).toBe(4);
+    });
+
+    it('does not tag nested (L2+) runs with a turn', () => {
+        const turns = [
+            userTurn('go'),
+            assistantTurn([
+                tc({ id: 'l1', args: { name: 'parent' } }),
+                tc({ id: 'l2', parentToolCallId: 'l1', args: { name: 'child' } }),
+            ]),
+        ];
+        const root = buildAgentRunTreeFromTurns(turns);
+        expect(root.children[0].turn).toBe(1);
+        expect(root.children[0].children[0].turn).toBeUndefined();
+    });
+});
+
+describe('turnOrdinalForRun', () => {
+    it('counts user turns up to the spawning assistant turn (human ordinal)', () => {
+        const turns = [
+            userTurn('go'),
+            assistantTurn([tc({ id: 't1', args: { description: 'x' } })]),
+        ];
+        expect(turnOrdinalForRun(turns, 't1')).toBe(1);
+    });
+
+    it('produces real-position ordinals with gaps when turns spawn no agents', () => {
+        const turns = [
+            userTurn('u1'),
+            assistantTurn([tc({ id: 'a', args: { description: 'first' } })]),
+            userTurn('u2'),
+            assistantTurn([]),
+            userTurn('u3'),
+            assistantTurn([]),
+            userTurn('u4'),
+            assistantTurn([tc({ id: 'b', args: { description: 'fourth' } })]),
+        ];
+        expect(turnOrdinalForRun(turns, 'a')).toBe(1);
+        expect(turnOrdinalForRun(turns, 'b')).toBe(4);
+    });
+
+    it('matches a run found only in the timeline', () => {
+        const turns = [userTurn('go'), assistantTurn([], [{
+            type: 'tool-complete',
+            timestamp: '2026-06-13T10:00:00.000Z',
+            toolCall: tc({ id: 't9', args: {}, status: 'completed' }),
+        }])];
+        expect(turnOrdinalForRun(turns, 't9')).toBe(1);
+    });
+
+    it('returns null when the run is absent or turns are missing', () => {
+        expect(turnOrdinalForRun(undefined, 'x')).toBeNull();
+        expect(turnOrdinalForRun([assistantTurn([tc({ id: 't1', args: {} })])], 'missing')).toBeNull();
     });
 });
 
