@@ -36,19 +36,27 @@ iteration appends a Markdown block:
 
 ```text
 ## Iteration <N> - <SIGNAL> - <ISO_TIMESTAMP>
-<body>
+Files: <comma-separated list of files created/modified>
+Decisions: <one-line rationale for the key choices made>
+Remaining: <what still has to happen, or "none">
+Findings: <what was newly learned this iteration>
 ```
 
 `SIGNAL` is one of `RALPH_NEXT`, `RALPH_COMPLETE`, or `NONE`. Response parsing
 recognizes standalone signal tokens and valid adjacent signal-token runs such as
 `RALPH_COMPLETERALPH_COMPLETE`, while rejecting arbitrary suffixes such as
 `RALPH_NEXTEND`. The writer uses an em dash in generated headings; the parser
-also accepts a plain hyphen separator.
+also accepts a plain hyphen separator. The progress-section parser only
+recognizes iteration headings and stores the section body opaquely, so labels
+such as `Files:`, `Decisions:`, `Remaining:`, and `Findings:` do not affect
+signal extraction.
 
 `context.md` is a sibling file owned by the Ralph agent. The store resolves its
 path with `getContextPath(...)` and reads it with `readContext(...)` for
 diagnostics and tests; a missing file reads as an empty string. The server does
-not create, derive, parse, compact, or rewrite `context.md`.
+not create, derive, parse, compact, or rewrite `context.md`. Ralph iteration
+prompts surface the path so the agent reads it before `progress.md` and rewrites
+it at the end of each iteration as a concise, current codebase map.
 
 ## Writer Protocol
 

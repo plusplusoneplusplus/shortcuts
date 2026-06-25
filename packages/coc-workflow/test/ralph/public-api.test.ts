@@ -133,6 +133,31 @@ describe('Ralph progress sections', () => {
             },
         ]);
     });
+
+    it('treats Findings as body content without changing the parsed signal', () => {
+        const journal = [
+            '# Header',
+            '## Iteration 3 — RALPH_NEXT — 2026-06-03T00:00:00.000Z',
+            'Files: src/a.ts, test/a.test.ts',
+            'Decisions: kept parser labels opaque.',
+            'Remaining: run full validation.',
+            'Findings: parseProgressSections only recognizes iteration headings; body labels are not part of the signal grammar.',
+        ].join('\n');
+
+        expect(parseProgressSections(journal)).toEqual([
+            {
+                iteration: 3,
+                signal: 'RALPH_NEXT',
+                timestamp: '2026-06-03T00:00:00.000Z',
+                body: [
+                    'Files: src/a.ts, test/a.test.ts',
+                    'Decisions: kept parser labels opaque.',
+                    'Remaining: run full validation.',
+                    'Findings: parseProgressSections only recognizes iteration headings; body labels are not part of the signal grammar.',
+                ].join('\n'),
+            },
+        ]);
+    });
 });
 
 describe('buildRalphIterationPrompt', () => {

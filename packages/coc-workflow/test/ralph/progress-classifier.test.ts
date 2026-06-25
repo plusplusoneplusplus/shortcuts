@@ -59,4 +59,13 @@ describe('classifyRalphProgressStagnation', () => {
             ],
         })).toBe('warn');
     });
+
+    it('ignores Findings when classifying Remaining text', () => {
+        expect(classifyRalphProgressStagnation([
+            'Files: src/a.ts, test/a.test.ts',
+            'Decisions: automated checks passed.',
+            'Remaining: manual verification only - user should run the product demo.',
+            'Findings: implement the future parser branch if requirements change.',
+        ].join('\n'))).toBe('manualVerificationOnly');
+    });
 });
