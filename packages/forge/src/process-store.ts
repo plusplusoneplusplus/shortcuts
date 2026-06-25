@@ -542,6 +542,28 @@ export interface ProcessStore {
     ): Promise<void>;
 
     /**
+     * Hard-delete every conversation turn at or after `fromTurnIndex` (a
+     * destructive rewind/truncate). The matched rows are permanently removed —
+     * not soft-deleted — so the CoC conversation ends up consistent with the SDK
+     * history events dropped by a rewind. Remaining turns keep their original
+     * `turnIndex` values (no renumbering); conversation-derived process metadata
+     * (`lastEventAt`, `lastMessagePreview`) is recomputed from what survives.
+     *
+     * Returns the removed turns (ascending `turnIndex` order) and the remaining
+     * turns, or `undefined` when the process does not exist. Removing nothing
+     * (`fromTurnIndex` past the last turn) is a successful no-op that returns an
+     * empty `removed` array.
+     *
+     * @param processId - Target process ID.
+     * @param fromTurnIndex - First `turnIndex` to delete; this turn and all later
+     *   turns are removed.
+     */
+    truncateConversationTurns(
+        processId: string,
+        fromTurnIndex: number,
+    ): Promise<{ removed: ConversationTurn[]; allTurns: ConversationTurn[] } | undefined>;
+
+    /**
      * Full-text search across conversation turns using FTS5 MATCH with BM25 ranking.
      * Optional — only SQLite-backed stores support this.
      */

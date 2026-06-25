@@ -1410,6 +1410,52 @@ export class SqliteProcessStore implements ProcessStore {
         this.onProcessChange?.({ type: 'process-updated' });
     }
 
+    async truncateConversationTurns(
+        processId: string,
+        fromTurnIndex: number,
+    ): Promise<{ removed: ConversationTurn[]; allTurns: ConversationTurn[] } | undefined> {
+        let result: { removed: ConversationTurn[]; allTurns: ConversationTurn[] } | undefined;
+
+        const txn = this.db.transaction(() => {
+            const processRow = this.getProcessStmt.get(processId) as ProcessRow | undefined;
+            if (!processRow) return;
+
+            // Snapshot the turns being dropped (turn_index >= fromTurnIndex), in order,
+            // so the caller can repopulate the composer from the removed user message.
+            const removedRows = this.db.prepare(
+                'SELECT * FROM conversation_turns WHERE process_id = ? AND turn_index >= ? ORDER BY turn_index'
+            ).all(processId, fromTurnIndex) as TurnRow[];
+            const removed = removedRows.map(rowToTurn);
+
+            // Hard-delete them — destructive in-place truncation, mirroring the SDK
+            // history events that a rewind permanently drops.
+            this.db.prepare(
+                'DELETE FROM conversation_turns WHERE process_id = ? AND turn_index >= ?'
+            ).run(processId, fromTurnIndex);
+
+            // Recompute conversation-derived process metadata from the survivors.
+            // Remaining turns keep their original turn_index (no renumbering).
+            const allTurnRows = this.getTurnsStmt.all(processId) as TurnRow[];
+            const allTurns = allTurnRows.map(rowToTurn);
+            const lastTurn = allTurns[allTurns.length - 1];
+            const lastUserTurn = [...allTurns].reverse().find(t => t.role === 'user');
+            const lastEventAt = lastTurn ? lastTurn.timestamp.toISOString() : null;
+            const lastMessagePreview = lastUserTurn ? (computeMessagePreview(lastUserTurn.content) ?? null) : null;
+            this.db.prepare('UPDATE processes SET last_event_at = ?, last_message_preview = ? WHERE id = ?')
+                .run(lastEventAt, lastMessagePreview, processId);
+
+            result = { removed, allTurns };
+        });
+
+        txn();
+
+        if (result) {
+            const updated = await this.getProcess(processId);
+            this.onProcessChange?.({ type: 'process-updated', process: updated ?? undefined });
+        }
+        return result;
+    }
+
     // ========================================================================
     // Workspace CRUD
     // ========================================================================

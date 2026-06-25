@@ -138,4 +138,29 @@ describe('createStubStore', () => {
 
         expect(await store.getProcessIds()).toEqual([]);
     });
+
+    it('truncateConversationTurns removes the target turn and everything after it', async () => {
+        const store = createStubStore();
+        await store.addProcess(makeProcess('p1', {
+            conversationTurns: [
+                { role: 'user', content: 'q1', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'a1', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                { role: 'user', content: 'q2', timestamp: new Date(), turnIndex: 2, timeline: [] },
+                { role: 'assistant', content: 'a2', timestamp: new Date(), turnIndex: 3, timeline: [] },
+            ],
+        }));
+
+        const result = await store.truncateConversationTurns('p1', 2);
+
+        expect(result!.removed.map(t => t.turnIndex)).toEqual([2, 3]);
+        expect(result!.allTurns.map(t => t.turnIndex)).toEqual([0, 1]);
+
+        const read = await store.getProcess('p1');
+        expect(read?.conversationTurns?.map(t => t.turnIndex)).toEqual([0, 1]);
+    });
+
+    it('truncateConversationTurns returns undefined for an unknown process', async () => {
+        const store = createStubStore();
+        expect(await store.truncateConversationTurns('missing', 0)).toBeUndefined();
+    });
 });

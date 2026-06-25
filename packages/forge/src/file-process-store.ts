@@ -609,6 +609,58 @@ export class FileProcessStore implements ProcessStore {
         }
     }
 
+    async truncateConversationTurns(
+        processId: string,
+        fromTurnIndex: number,
+    ): Promise<{ removed: ConversationTurn[]; allTurns: ConversationTurn[] } | undefined> {
+        let updatedProcess: AIProcess | undefined;
+        let result: { removed: ConversationTurn[]; allTurns: ConversationTurn[] } | undefined;
+
+        await this.enqueueWrite(async () => {
+            const workspaceId = await this.findWorkspaceIdForProcess(processId);
+            if (workspaceId === undefined) { return; }
+
+            const entry = await this.readProcessFile(workspaceId, processId);
+            if (!entry) { return; }
+
+            const existing = deserializeProcess(entry.process);
+            const turns = existing.conversationTurns ?? [];
+            const removed = turns.filter(t => t.turnIndex >= fromTurnIndex);
+            const allTurns = turns.filter(t => t.turnIndex < fromTurnIndex);
+
+            // Recompute conversation-derived metadata from the survivors so the
+            // sidebar preview/activity reflect the truncated state.
+            const lastTurn = allTurns[allTurns.length - 1];
+            const lastUserTurn = [...allTurns].reverse().find(t => t.role === 'user');
+            const merged: AIProcess = {
+                ...existing,
+                conversationTurns: allTurns,
+                lastEventAt: lastTurn ? lastTurn.timestamp : undefined,
+                lastMessagePreview: lastUserTurn ? computeMessagePreview(lastUserTurn.content) : undefined,
+            };
+            const newEntry: StoredProcessEntry = {
+                workspaceId: merged.metadata?.workspaceId ?? entry.workspaceId,
+                process: serializeProcess(merged),
+            };
+            await this.writeProcessFile(workspaceId, processId, newEntry);
+
+            const index = await this.readIndex(workspaceId);
+            const idx = index.findIndex(e => e.id === processId);
+            if (idx !== -1) {
+                index[idx] = this.toIndexEntry(newEntry);
+                await this.writeIndex(workspaceId, index);
+            }
+
+            updatedProcess = merged;
+            result = { removed, allTurns };
+        });
+
+        if (updatedProcess) {
+            this.onProcessChange?.({ type: 'process-updated', process: updatedProcess });
+        }
+        return result;
+    }
+
     async removeProcess(id: string): Promise<void> {
         let removed: AIProcess | undefined;
         await this.enqueueWrite(async () => {
