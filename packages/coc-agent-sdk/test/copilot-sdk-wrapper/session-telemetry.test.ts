@@ -210,6 +210,26 @@ describe('SessionTelemetry — tool call tracking', () => {
 
         // Complete event parentToolCallId takes precedence
         expect(event.parentToolCallId).toBe('parent-complete');
+        expect(t.toolCallsMap.get('child')!.parentToolCallId).toBe('parent-complete');
+    });
+
+    it('captures parentToolCallId that arrives only on the complete event', () => {
+        const t = new SessionTelemetry();
+        t.recordToolStart({ toolCallId: 'child', toolName: 'view', arguments: { path: 'file.ts' } });
+        t.recordToolComplete({
+            toolCallId: 'child',
+            success: true,
+            result: { content: 'ok' },
+            parentToolCallId: 'task-parent',
+        });
+
+        const captured = t.getCapturedToolCalls();
+        expect(captured).toHaveLength(1);
+        expect(captured![0]).toMatchObject({
+            id: 'child',
+            parentToolCallId: 'task-parent',
+            status: 'completed',
+        });
     });
 });
 

@@ -984,19 +984,6 @@ function buildAssistantRender(turn: ClientConversationTurn, wsId?: string, optio
         }
     }
 
-    const chunksByParent = new Map<string, RenderChunk[]>();
-    for (const chunk of chunks) {
-        const parentId = chunk.kind === 'tool'
-            ? (chunk.toolId ? toolParentById.get(chunk.toolId) : undefined)
-            : (chunk.parentToolId && inferredById.has(chunk.parentToolId) ? chunk.parentToolId : undefined);
-        if (!parentId) continue;
-        if (!chunksByParent.has(parentId)) {
-            chunksByParent.set(parentId, []);
-        }
-        chunksByParent.get(parentId)!.push(chunk);
-        toolsWithChildren.add(parentId);
-    }
-
     if (!hasContent) {
         const fallbackHtml = toContentHtml(turn.content || '', wsId, options);
         if (fallbackHtml) {
@@ -1008,6 +995,19 @@ function buildAssistantRender(turn: ClientConversationTurn, wsId?: string, optio
         for (const call of inferred) {
             chunks.push({ kind: 'tool', key: `tool-${call.id}`, toolId: call.id });
         }
+    }
+
+    const chunksByParent = new Map<string, RenderChunk[]>();
+    for (const chunk of chunks) {
+        const parentId = chunk.kind === 'tool'
+            ? (chunk.toolId ? toolParentById.get(chunk.toolId) : undefined)
+            : (chunk.parentToolId && inferredById.has(chunk.parentToolId) ? chunk.parentToolId : undefined);
+        if (!parentId) continue;
+        if (!chunksByParent.has(parentId)) {
+            chunksByParent.set(parentId, []);
+        }
+        chunksByParent.get(parentId)!.push(chunk);
+        toolsWithChildren.add(parentId);
     }
 
     return {

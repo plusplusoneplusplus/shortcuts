@@ -162,6 +162,9 @@ export class SessionTelemetry {
         let resultContent  = data.result?.content;
 
         if (capturedTool) {
+            if (data.parentToolCallId) {
+                capturedTool.parentToolCallId = data.parentToolCallId;
+            }
             capturedTool.status  = data.success ? 'completed' : 'failed';
             capturedTool.endTime = new Date();
             if (data.success) {
