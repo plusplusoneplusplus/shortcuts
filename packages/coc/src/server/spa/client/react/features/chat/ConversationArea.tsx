@@ -72,6 +72,8 @@ export interface ConversationAreaProps {
     onPinTurn?: (turnIndex: number, pinned: boolean) => void;
     /** Called when user archives/unarchives a turn via context menu. */
     onArchiveTurn?: (turnIndex: number, archived: boolean) => void;
+    /** Called when user rewinds the conversation to a user turn via context menu. */
+    onRewindTurn?: (turnIndex: number) => void;
     /** Undo-delete state: turnIndex of the recently deleted turn (for undo toast). */
     undoDeleteTurnIndex?: number | null;
     /** Called when user clicks "Undo" on the delete toast. */
@@ -157,6 +159,7 @@ export function ConversationArea({
     onDeleteTurn,
     onPinTurn,
     onArchiveTurn,
+    onRewindTurn,
     undoDeleteTurnIndex,
     onUndoDelete,
     noteEdits,
@@ -259,6 +262,7 @@ export function ConversationArea({
                                                 onPinTurn={onPinTurn}
                                                 onArchiveTurn={onArchiveTurn}
                                                 onDeleteTurn={onDeleteTurn}
+                                                onRewindTurn={onRewindTurn}
                                                 onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
                                                 noteEdits={noteEdits}
                                                 processId={processId}
@@ -394,6 +398,7 @@ export function ConversationArea({
                                                     onDeleteTurn={onDeleteTurn}
                                                     onPinTurn={onPinTurn}
                                                     onArchiveTurn={onArchiveTurn}
+                                                    onRewindTurn={onRewindTurn}
                                                     onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
                                                     noteEdits={noteEdits}
                                                     processId={processId}

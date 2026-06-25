@@ -301,6 +301,12 @@ interface ConversationTurnBubbleProps {
     onPinTurn?: (turnIndex: number, pinned: boolean) => void;
     /** Called when user archives/unarchives a turn. */
     onArchiveTurn?: (turnIndex: number, archived: boolean) => void;
+    /**
+     * Called when user rewinds the conversation to this user turn (destructive
+     * truncate-and-restore). Only offered on `role: 'user'` turns; the backend
+     * is the enforcement point for provider/idle/eligibility.
+     */
+    onRewindTurn?: (turnIndex: number) => void;
     /** Note edit snapshots from process.metadata.noteEdits — used to render NoteEditCard. */
     noteEdits?: Array<{
         editId: string;
@@ -1269,7 +1275,7 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, noteEdits, processId, provider }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, provider }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
@@ -1420,9 +1426,18 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     onClick: () => onDeleteTurn(turnIndex),
                 });
             }
+            // Rewind is offered only on user turns; the backend gates provider /
+            // idle / eligibility and surfaces an error toast on rejection.
+            if (onRewindTurn && isUser) {
+                items.push({
+                    label: 'Rewind to here',
+                    icon: '⏪',
+                    onClick: () => onRewindTurn(turnIndex),
+                });
+            }
         }
         return items;
-    }, [onAttachContext, turnIndex, turn, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onDeleteTurn]);
+    }, [onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onDeleteTurn, onRewindTurn]);
 
     // Detect pure-JSON assistant responses (only when stream is complete).
     const jsonDetected = useMemo(() => {

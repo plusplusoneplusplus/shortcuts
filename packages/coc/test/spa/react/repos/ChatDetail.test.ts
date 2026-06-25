@@ -286,7 +286,7 @@ describe('ChatDetail', () => {
         });
 
         it('destructures useFileAttachments result', () => {
-            expect(source).toContain('const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments()');
+            expect(source).toContain('const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments()');
         });
 
         it('attaches onPaste handler to follow-up input', () => {

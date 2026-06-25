@@ -83,6 +83,10 @@ import { getRalphContext, getStoppedChatResumeUnavailableMessage } from '../../.
 import { useLoops } from './hooks/useLoops';
 import { LoopManagementPanel } from './LoopManagementPanel';
 import { RenameDialog } from '../../ui/RenameDialog';
+import { ToastContainer, useToast } from '../../ui/Toast';
+import { RewindConfirmDialog } from './conversation/RewindConfirmDialog';
+import { useRewindTurn } from './hooks/useRewindTurn';
+import type { ChatAttachment } from '../../types/attachments';
 import { useConversationRetrievalCapability } from './sessionContextDrop';
 import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 
@@ -224,7 +228,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const modelOverrideMountedRef = useRef(false);
     const previousSessionProviderRef = useRef<string | null>(null);
 
-    const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    const { toasts, addToast, removeToast } = useToast();
     const textPaste = useTextPaste();
     const attachedContext = useAttachedContext();
     const { isMobile } = useBreakpoint();
@@ -1727,6 +1732,27 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         });
     }, [client, processId, setTurnsAndRef]);
 
+    // "Rewind to here": restore the rewound user message into the composer.
+    const restoreComposerFromRewind = useCallback((content: string, atts: ChatAttachment[]) => {
+        setFollowUpInput(content);
+        richTextRef.current?.setValue(content, content.length);
+        restoreAttachments(atts);
+        richTextRef.current?.focus();
+    }, [restoreAttachments]);
+    const handleRewindError = useCallback((message: string) => addToast(message, 'error'), [addToast]);
+    const rewind = useRewindTurn({
+        client,
+        processId,
+        restoreComposer: restoreComposerFromRewind,
+        refreshConversation,
+        onError: handleRewindError,
+    });
+    // Idle guard (AC-04 UX state): withhold the rewind action while the
+    // conversation is sending / generating / has queued messages, which hides
+    // the menu item. Provider eligibility is NOT gated here — the backend is the
+    // definitive gate and surfaces an error toast for an ineligible rewind.
+    const rewindAction = planChatBusy ? undefined : rewind.requestRewind;
+
     const handleCancelPendingMessage = useCallback((messageId: string) => {
         if (!processId) return;
         let removed: QueuedMessage | undefined;
@@ -2057,6 +2083,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         onDeleteTurn={handleDeleteTurn}
                         onPinTurn={handlePinTurn}
                         onArchiveTurn={handleArchiveTurn}
+                        onRewindTurn={rewindAction}
                         undoDeleteTurnIndex={undoDelete?.turnIndex ?? null}
                         onUndoDelete={handleUndoDelete}
                         noteEdits={noteEdits}
@@ -2412,6 +2439,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     } catch { /* WS will sync eventually */ }
                 }}
             />
+            <RewindConfirmDialog
+                open={rewind.targetIndex !== null}
+                pending={rewind.pending}
+                onConfirm={rewind.confirm}
+                onCancel={rewind.cancel}
+            />
+            <ToastContainer toasts={toasts} removeToast={removeToast} />
         </div>
     );
 }
