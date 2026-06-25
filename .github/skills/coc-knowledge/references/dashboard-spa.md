@@ -7,7 +7,10 @@ chat can be continued only when the process has a saved `sdkSessionId`; if no
 SDK session was saved, or if `metadata.stoppedChatResume.resumable === false`
 after a strict stopped-chat resume failure, `ChatDetail` keeps
 `FollowUpInputArea` disabled and shows a non-retryable inline error with no retry
-button or fresh-session fallback.
+button or fresh-session fallback. Idle follow-up sends clear their local
+`sending` latch when the process reaches a terminal status as well as when the
+main per-process SSE emits `done`, so a missed/disconnected SSE completion frame
+does not leave the send button disabled.
 
 ## Entry Point & Shell
 

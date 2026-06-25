@@ -943,6 +943,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         inputDisabled,
         sending,
         isActiveGeneration,
+        processStatus: effectiveStatus,
         setSending,
         setError,
         setSessionExpired,

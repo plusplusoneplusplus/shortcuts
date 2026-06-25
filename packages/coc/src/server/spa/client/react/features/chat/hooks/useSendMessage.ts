@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { clearDraft } from './useDraftStore';
 import { useChatPrefs } from '../../../contexts/ChatPreferencesContext';
 import { CLIENT_PASTE_THRESHOLD } from './useTextPaste';
@@ -15,6 +15,7 @@ import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop'
 import type { RalphGrillSetup } from '../../../../../../ralph/grill-planning';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
+const TERMINAL_PROCESS_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
 export interface SendFollowUpOptions {
     /** When false, send exactly the provided content without composer draft/paste/context/attachments. */
@@ -29,6 +30,7 @@ export interface UseSendMessageOptions {
     inputDisabled: boolean;
     sending: boolean;
     isActiveGeneration: boolean;
+    processStatus?: string;
     setSending: (v: boolean) => void;
     setError: (v: string | null) => void;
     setSessionExpired: (v: boolean) => void;
@@ -91,6 +93,7 @@ export function useSendMessage({
     inputDisabled,
     sending,
     isActiveGeneration,
+    processStatus,
     setSending,
     setError,
     setSessionExpired,
@@ -127,7 +130,10 @@ export function useSendMessage({
 } {
     const { archivedChatIds, unarchiveChat } = useChatPrefs();
     const followUpEventSourceRef = useRef<EventSource | null>(null);
-    const resolveCurrentSendRef = useRef<(() => void) | null>(null);
+    const currentSendCompletionRef = useRef<{
+        resolve: () => void;
+        timeoutId: ReturnType<typeof setTimeout>;
+    } | null>(null);
 
     const buildMessageRequest = useCallback((content: string, deliveryMode: DeliveryMode, skillNames: string[], options: SendFollowUpOptions = {}): ProcessMessageRequest => ({
         content,
@@ -147,32 +153,44 @@ export function useSendMessage({
         }
     }, []);
 
-    /** Called by useChatSSE when the main SSE stream fires 'done'. */
-    const onSendComplete = useCallback(() => {
-        if (resolveCurrentSendRef.current) {
-            resolveCurrentSendRef.current();
-            resolveCurrentSendRef.current = null;
+    const resolveCurrentSendCompletion = useCallback(() => {
+        const pending = currentSendCompletionRef.current;
+        if (pending) {
+            currentSendCompletionRef.current = null;
+            clearTimeout(pending.timeoutId);
+            pending.resolve();
         }
     }, []);
 
-    /** Returns a promise that resolves when the main SSE stream fires 'done' via onSendComplete. */
+    /** Called by useChatSSE when the main SSE stream fires 'done'. */
+    const onSendComplete = useCallback(() => {
+        resolveCurrentSendCompletion();
+    }, [resolveCurrentSendCompletion]);
+
+    useEffect(() => {
+        if (processStatus && TERMINAL_PROCESS_STATUSES.has(processStatus)) {
+            resolveCurrentSendCompletion();
+        }
+    }, [processStatus, resolveCurrentSendCompletion]);
+
+    /** Returns a promise that resolves when the chat reaches terminal status. */
     const waitForSendCompletion = useCallback((pid: string): Promise<void> => {
         if (typeof EventSource === 'undefined') {
             return refreshConversation(pid);
         }
         return new Promise<void>(resolve => {
-            resolveCurrentSendRef.current = resolve;
+            let pending: NonNullable<typeof currentSendCompletionRef.current>;
             const timeout = setTimeout(() => {
-                if (resolveCurrentSendRef.current === resolve) {
-                    resolveCurrentSendRef.current = null;
+                if (currentSendCompletionRef.current === pending) {
+                    currentSendCompletionRef.current = null;
                     resolve();
                 }
             }, 90_000);
-            const origResolve = resolve;
-            resolveCurrentSendRef.current = () => {
-                clearTimeout(timeout);
-                origResolve();
+            pending = {
+                resolve,
+                timeoutId: timeout,
             };
+            currentSendCompletionRef.current = pending;
         });
     }, [refreshConversation]);
 
