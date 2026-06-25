@@ -35,6 +35,8 @@ import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/use
 import { CanvasPanel } from '../canvas/CanvasPanel';
 import { SourceCanvasDock, useSourceCanvasState, useSourceCanvasContent, useSourceCanvasDirectory } from './source-canvas';
 import { readCanvasClosed, writeCanvasClosed } from './canvasClosedPreference';
+import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER_DIFF_EVENT } from './whisper-diff';
+import type { WhisperFileDiffContext } from './conversation/tool-calls/WhisperCollapsedGroup';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
@@ -334,6 +336,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const sourceCanvas = useSourceCanvasState({
         onOpen: () => {
             scratchpad.close();
+            whisperDiff.close();
             setCanvasPanelClosed(true);
         },
     });
@@ -344,6 +347,41 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         storageKey: `coc.sourceCanvasPanel.width${workspaceId ? `.${encodeURIComponent(workspaceId)}` : ''}`,
         direction: 'right',
     });
+
+    // ── Transient read-only whisper diff panel (right panel) ────────────────
+    // Opened when a user clicks an edited file in a whisper group's changed-file
+    // popover (via the `coc-open-whisper-diff` window event). Mutually exclusive
+    // with the scratchpad, source canvas, and agent canvas — opening it closes
+    // those, and opening any of those closes it (one right panel at a time).
+    const whisperDiff = useWhisperDiffPanelState({
+        onOpen: () => {
+            scratchpad.close();
+            sourceCanvas.close();
+            setCanvasPanelClosed(true);
+        },
+    });
+    const whisperDiffState = useWhisperDiffState(whisperDiff.ctx);
+    const whisperDiffResize = useResizablePanel({
+        initialWidth: 560,
+        minWidth: 320,
+        maxWidth: 1100,
+        storageKey: `coc.whisperDiffPanel.width${workspaceId ? `.${encodeURIComponent(workspaceId)}` : ''}`,
+        direction: 'right',
+    });
+
+    // A clicked changed-file row dispatches its diff context on `window` rather
+    // than prop-drilling through the conversation tree (mirrors the
+    // `coc-open-source-canvas` bridge); open the docked panel from it.
+    const openWhisperDiff = whisperDiff.open;
+    useEffect(() => {
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent).detail as WhisperFileDiffContext | undefined;
+            if (!detail || !detail.file) return;
+            openWhisperDiff(detail);
+        };
+        window.addEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
+        return () => window.removeEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
+    }, [openWhisperDiff]);
 
     // Chat AI-response file-path links (feature flag default ON) dispatch
     // `coc-open-source-canvas` to open the docked source-file canvas. The bare
@@ -1041,6 +1079,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             setCanvasPanelClosed(false);
             writeCanvasClosed(workspaceId, canvasPid, false);
             sourceCanvas.close();
+            whisperDiff.close();
         },
     });
 
@@ -1059,6 +1098,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setActiveCanvasId(null);
         setCanvasLiveEvent(null);
         sourceCanvas.close();
+        whisperDiff.close();
     }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
@@ -1108,7 +1148,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 <button
                     type="button"
                     className="inline-flex items-center justify-center w-7 h-7 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
-                    onClick={() => { sourceCanvas.close(); setCanvasPanelClosed(false); writeCanvasClosed(workspaceId, canvasPid, false); }}
+                    onClick={() => { sourceCanvas.close(); whisperDiff.close(); setCanvasPanelClosed(false); writeCanvasClosed(workspaceId, canvasPid, false); }}
                     aria-label="Open canvas"
                     title="Open canvas"
                     data-testid="canvas-reopen"
@@ -1183,6 +1223,20 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             isMobile={isMobile}
             onClose={sourceCanvas.close}
             resize={sourceCanvasResize}
+        />
+    ) : null;
+
+    // Transient read-only whisper diff: a full-height sibling column on desktop,
+    // a full-height BottomSheet on mobile. Mutually exclusive with the agent
+    // canvas + source canvas above (only one right column is non-null at once).
+    const whisperDiffColumn = (whisperDiff.isOpen && whisperDiff.ctx) ? (
+        <WhisperDiffDock
+            file={whisperDiff.ctx.file}
+            state={whisperDiffState}
+            workspaceRootPath={workspaceRootPath}
+            isMobile={isMobile}
+            onClose={whisperDiff.close}
+            resize={whisperDiffResize}
         />
     ) : null;
 
@@ -1787,8 +1841,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
     const handleOpenScratchpad = useCallback(() => {
         sourceCanvas.close();
+        whisperDiff.close();
         scratchpad.open(scratchpadCandidates[0]);
-    }, [sourceCanvas, scratchpad, scratchpadCandidates]);
+    }, [sourceCanvas, whisperDiff, scratchpad, scratchpadCandidates]);
 
     const handleScratchpadNotFound = useCallback(() => {
         const missingPath = scratchpad.linkedNotePath;
@@ -2341,6 +2396,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             </div>{/* /left stack */}
             {canvasColumn}
             {sourceCanvasColumn}
+            {whisperDiffColumn}
             </div>{/* /canvas split row */}
             <RenameDialog
                 open={renameOpen}
