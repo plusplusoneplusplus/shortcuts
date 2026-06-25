@@ -150,12 +150,15 @@ Each chip (`ComposerPrChip`, presentational) shows a git glyph, a pin marker, th
 `#number` (opening the provider PR URL from detail/detection, falling back to
 `PullRequestDetail` via `buildPrDetailHash` only when no provider URL exists), the
 title, the lifecycle status badge (`prStatusBadge` — Open / Draft / Merged /
-Closed), a CI-checks count badge (`✓ passing/total` like `10/30`, via
-`summarizeCheckRows` on the eager-loaded `item.checks`; tinted red/amber/blue/green
-by worst-active status, omitted until the checks fetch resolves with ≥1 check),
-the `+adds / −dels` diff (from `mapPrDetailToCardPr`'s `diffStats`, parsed by
-`parseDiffStats`; omitted when the detail carries no counts), a filled **View**
-provider link, and a ✕ dismiss. A loading row renders a skeleton; an error
+Closed), a reviewer-count badge (`approved/total reviewers`, via
+`summarizeReviewerApprovals` on eager-loaded origin reviewers; names stay out of
+the chip and a lightweight popover separates approved, waiting, and
+change-requested/blocking reviewers), a CI-checks count badge (`✓ passing/total`
+like `10/30`, via `summarizeCheckRows` on the eager-loaded `item.checks`; tinted
+red/amber/blue/green by worst-active status, omitted until the checks fetch
+resolves with ≥1 check), the `+adds / −dels` diff (from
+`mapPrDetailToCardPr`'s `diffStats`, parsed by `parseDiffStats`; omitted when the
+detail carries no counts), a filled **View** provider link, and a ✕ dismiss. A loading row renders a skeleton; an error
 row shows the message plus Retry and View. `ChatComposerPrChips` orders chips
 newest-first, hides any the user ✕-dismisses for the session (a fresh detection
 or binding re-surfaces it on reload), and renders nothing when no PR is
@@ -174,7 +177,9 @@ server-side from GitHub REST `pulls.get` / ADO `autoCompleteSetBy`) and
 `prStatusFreshness.ts` — remain exported and unit-tested but are no longer
 mounted. `usePrChatStatusItems` still eager-loads each ready row's CI checks
 (`getChecksForOrigin` once detail resolves to `ready`, deduped via
-`checksStatusRef`, mapped by `buildCheckRowsFromChecks`) and exposes
+`checksStatusRef`, mapped by `buildCheckRowsFromChecks`) and reviewers
+(`getReviewersForOrigin` once detail resolves to `ready`, deduped via
+`reviewersStatusRef`) and exposes
 `expandChecks`, `refresh(key?)` (force-refreshes one row by `key`, or every row
 when called with no key — the composer chips pass their own key for a per-row
 refresh; the card's single control refreshes all — always running silently with
@@ -183,14 +188,15 @@ row keys with a manual refresh in flight, so only the refreshed rows' controls
 spin; the smart poll refreshes silently and adds nothing to it), `lastUpdatedAt`,
 and `isPolling`. Freshness lives in the pure
 `conversation/prStatusFreshness.ts`: `shouldPollPrStatusItems` returns true only
-while some PR is non-terminal AND has checks pending/running OR auto-merge
-armed/queued (false once all merged/closed; because checks are eager-loaded, a
-never-expanded row with pending checks still keeps the poll active); an internal
+while some PR is non-terminal AND has checks pending/running, auto-merge
+armed/queued, or unresolved reviewer approval (false once all merged/closed;
+because checks/reviewers are eager-loaded, a never-expanded row with pending
+checks or waiting reviewers still keeps the poll active); an internal
 `setInterval(PR_STATUS_POLL_INTERVAL_MS = 45s)` is armed only while `isPolling`
 is true and torn down once everything settles. Force-refresh threads through
-`getForOrigin`/`getChecksForOrigin` `{ force }` to the `?force=true` query, which
-the server checks route honours by evicting `prChecksCache` (the detail route
-already evicts sub-caches).
+`getForOrigin`/`getReviewersForOrigin`/`getChecksForOrigin` `{ force }` to the
+`?force=true` query, which the reviewers and checks routes honour by evicting
+their subresource caches (the detail route already evicts sub-caches).
 
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
 the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,

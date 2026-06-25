@@ -59,6 +59,10 @@ type OriginPrDetailOptions = OriginPrProviderOptions & {
   force?: boolean;
 };
 
+type OriginPrReviewersOptions = OriginPrProviderOptions & {
+  force?: boolean;
+};
+
 function serializeOriginPrStateQuery(options?: OriginPrStateOptions): CocRequestOptions['query'] {
   if (!options?.workspaceId && !options?.repoId) return undefined;
   return {
@@ -251,11 +255,11 @@ export class PullRequestsClient {
     );
   }
 
-  getReviewersForOrigin(originId: string, prId: string, options: OriginPrProviderOptions): Promise<PullRequestReviewersResponse> {
+  getReviewersForOrigin(originId: string, prId: string, options: OriginPrReviewersOptions): Promise<PullRequestReviewersResponse> {
     return this.transport.request<PullRequestReviewersResponse>(
       `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/reviewers`,
       {
-        query: serializeOriginPrStateQuery(options),
+        query: serializeOriginPrDetailQuery(options),
         signal: options.signal,
       },
     );

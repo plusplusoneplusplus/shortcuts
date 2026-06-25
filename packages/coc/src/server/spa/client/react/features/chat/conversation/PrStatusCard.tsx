@@ -22,7 +22,7 @@
  * for the deep-link.
  */
 import React, { useEffect, useState } from 'react';
-import { prStatusBadge, formatTimestamp, type PrStatus, type PullRequestDiffStats } from '../../pull-requests/pr-utils';
+import { prStatusBadge, formatTimestamp, type PrStatus, type PullRequestDiffStats, type Reviewer } from '../../pull-requests/pr-utils';
 import { buildPrDetailHash } from '../../pull-requests/pr-open-utils';
 import { PrChecksCompact, PrChecksSummaryChips, type PrChecksCompactState } from '../../pull-requests/PrChecksSummary';
 import type { PrCheckRow } from '../../pull-requests/pr-derived-data';
@@ -31,6 +31,7 @@ import { summarizeLifecycleStatus, summarizeMergeStatus, type LifecycleStatusSum
 
 /** Per-PR fetch lifecycle for a card row. */
 export type PrStatusCardItemState = 'loading' | 'ready' | 'error';
+export type PrReviewerStatusState = 'loading' | 'ready' | 'error';
 
 /**
  * Provider-agnostic auto-merge / auto-complete status (AC-04). A read-only,
@@ -93,6 +94,12 @@ export interface PrStatusCardItem {
     checks?: PrCheckRow[];
     /** Error message shown when `checksState === 'error'`. */
     checksError?: string;
+    /** Per-PR reviewer fetch lifecycle — undefined until the eager reviewer fetch starts. */
+    reviewersState?: PrReviewerStatusState;
+    /** Loaded reviewers (present when `reviewersState === 'ready'`). */
+    reviewers?: Reviewer[];
+    /** Error message kept for diagnostics when `reviewersState === 'error'`. */
+    reviewersError?: string;
 }
 
 export interface PrStatusCardProps {

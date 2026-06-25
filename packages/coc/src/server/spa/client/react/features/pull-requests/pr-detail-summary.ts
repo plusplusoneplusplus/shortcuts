@@ -1,5 +1,5 @@
 import type { FileChange } from '../git/diff';
-import { deriveQueueRisk } from './pr-utils';
+import { deriveQueueRisk, isApprovedReviewerVote } from './pr-utils';
 import type {
     CommentThread,
     PullRequest,
@@ -76,7 +76,7 @@ export function buildPrReviewSummary(params: {
     const { pr, diffStats, checks, reviewers, threads } = params;
     const failingChecks = checks.filter(isFailingPullRequestCheck);
     const unresolvedThreads = threads.filter(isUnresolvedPullRequestThread);
-    const approvedReviewers = reviewers.filter(isApprovedReviewer);
+    const approvedReviewers = reviewers.filter(reviewer => isApprovedReviewerVote(reviewer.vote));
     const passingChecks = checks.filter(check => check.status === 'success');
     const risk = riskLevelFromQueueRisk(deriveQueueRisk(diffStats, {
         hasFailingCheck: failingChecks.length > 0,
@@ -127,11 +127,6 @@ function riskLevelFromQueueRisk(risk: QueueRiskBadge): PrReviewRiskLevel {
         case 'high':    return 'High';
         case 'unknown': return 'Unknown';
     }
-}
-
-function isApprovedReviewer(reviewer: Reviewer): boolean {
-    const vote = (reviewer.vote ?? '').toLowerCase().replace(/[-_\s]/g, '');
-    return vote === 'approved' || vote === 'approvedwithsuggestions';
 }
 
 function checkFindingText(check: PullRequestCheck): string {

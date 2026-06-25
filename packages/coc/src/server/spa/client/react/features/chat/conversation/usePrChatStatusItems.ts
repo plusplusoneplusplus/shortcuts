@@ -9,10 +9,10 @@
  *      detected PRs (so a PR survives reload with its creating turn collapsed),
  *   4. upserts a binding for any freshly-detected PR not yet persisted
  *      (best-effort POST), and
- *   5. fetches PR detail per association, mapping it to a {@link PrStatusCardItem}
- *      with per-row loading / ready / error state and a retry.
+ *   5. fetches PR detail and subresources per association, mapping them to a
+ *      {@link PrStatusCardItem} with per-row loading / ready / error state and a retry.
  *
- * Every REST call (binding list/upsert, detail, checks) is routed through
+ * Every REST call (binding list/upsert, detail, reviewers, checks) is routed through
  * {@link getCocClientForWorkspace} keyed by the chat's `workspaceId`, so a chat
  * owned by a REMOTE workspace resolves the PR against the server that actually
  * owns that workspace. Resolving a remote workspace id against the local server
@@ -29,7 +29,7 @@ import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { resolveCanonicalOriginId } from '../../../repos/originScope';
 import { buildCheckRowsFromChecks } from '../../pull-requests/pr-derived-data';
-import type { PullRequestCheck, PullRequestDiffStats } from '../../pull-requests/pr-utils';
+import type { PullRequestCheck, PullRequestDiffStats, Reviewer } from '../../pull-requests/pr-utils';
 import {
     detectedPrsNeedingBinding,
     gatherDetectedPrsFromTurns,
@@ -188,11 +188,13 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
     const associationsRef = useRef<PrAssociation[]>([]);
     // Per-key checks fetch status — dedups expand requests (skip when loading/ready).
     const checksStatusRef = useRef<Map<string, 'loading' | 'ready' | 'error'>>(new Map());
+    // Per-key reviewer fetch status — dedups the eager reviewer fetch.
+    const reviewersStatusRef = useRef<Map<string, 'loading' | 'ready' | 'error'>>(new Map());
     // Holds the latest fetchChecksForAssociation so the detail fetch can eager-load
     // checks on detail-ready without a declaration-order/closure cycle.
     const fetchChecksRef = useRef<
-        (association: PrAssociation, repoId: string, generation: number, opts?: FetchOptions) => void
-    >(() => {});
+        (association: PrAssociation, repoId: string, generation: number, opts?: FetchOptions) => Promise<void>
+    >(() => Promise.resolve());
 
     const chatOriginId = useMemo(
         () => (workspaceId ? resolveCanonicalOriginId({ workspaceId, remoteUrl: remoteUrl ?? null }) : ''),
@@ -210,6 +212,62 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
     // PR URLs actually changing.
     const detectedRef = useRef(detected);
     detectedRef.current = detected;
+
+    const fetchReviewersForAssociation = useCallback(
+        (association: PrAssociation, repoId: string, generation: number, opts: FetchOptions = {}): Promise<void> => {
+            const { force, silent } = opts;
+            const previousStatus = reviewersStatusRef.current.get(association.key);
+            reviewersStatusRef.current.set(association.key, 'loading');
+            if (!silent) {
+                setItems(prev =>
+                    prev.map(item =>
+                        item.key === association.key
+                            ? { ...item, reviewersState: 'loading', reviewersError: undefined }
+                            : item,
+                    ),
+                );
+            }
+            return getCocClientForWorkspace(repoId)
+                .pullRequests.getReviewersForOrigin(association.originId, association.prId, {
+                    workspaceId: repoId,
+                    ...(force ? { force: true } : {}),
+                })
+                .then(body => {
+                    if (generationRef.current !== generation) return;
+                    const reviewers = (body.reviewers ?? []) as Reviewer[];
+                    reviewersStatusRef.current.set(association.key, 'ready');
+                    setItems(prev =>
+                        prev.map(item =>
+                            item.key === association.key
+                                ? {
+                                    ...item,
+                                    reviewersState: 'ready',
+                                    reviewers,
+                                    reviewersError: undefined,
+                                }
+                                : item,
+                        ),
+                    );
+                })
+                .catch((err: unknown) => {
+                    if (generationRef.current !== generation) return;
+                    reviewersStatusRef.current.set(association.key, silent && previousStatus === 'ready' ? 'ready' : 'error');
+                    if (silent) return;
+                    setItems(prev =>
+                        prev.map(item =>
+                            item.key === association.key
+                                ? {
+                                    ...item,
+                                    reviewersState: 'error',
+                                    reviewersError: getSpaCocClientErrorMessage(err, 'Failed to load reviewers.'),
+                                }
+                                : item,
+                        ),
+                    );
+                });
+        },
+        [],
+    );
 
     const fetchDetailForAssociation = useCallback(
         (association: PrAssociation, repoId: string, generation: number, opts: FetchOptions = {}): Promise<void> => {
@@ -253,7 +311,10 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
                     // the smart-poll predicate can see pending checks on a never-expanded
                     // row. Deduped via checksStatusRef (skipped once loading/ready/error).
                     if (pr && checksStatusRef.current.get(association.key) === undefined) {
-                        fetchChecksRef.current(association, repoId, generation);
+                        void fetchChecksRef.current(association, repoId, generation);
+                    }
+                    if (pr && reviewersStatusRef.current.get(association.key) === undefined) {
+                        void fetchReviewersForAssociation(association, repoId, generation);
                     }
                 })
                 .catch((err: unknown) => {
@@ -268,11 +329,11 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
                     );
                 });
         },
-        [],
+        [fetchReviewersForAssociation],
     );
 
     const fetchChecksForAssociation = useCallback(
-        (association: PrAssociation, repoId: string, generation: number, opts: FetchOptions = {}) => {
+        (association: PrAssociation, repoId: string, generation: number, opts: FetchOptions = {}): Promise<void> => {
             const { force, silent } = opts;
             checksStatusRef.current.set(association.key, 'loading');
             if (!silent) {
@@ -284,7 +345,7 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
                     ),
                 );
             }
-            getCocClientForWorkspace(repoId)
+            return getCocClientForWorkspace(repoId)
                 .pullRequests.getChecksForOrigin(association.originId, association.prId, {
                     workspaceId: repoId,
                     ...(force ? { force: true } : {}),
@@ -349,8 +410,9 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
 
             const associations = unionAssociations({ detected, bindings, workspaceId, chatOriginId });
             associationsRef.current = associations;
-            // New association set → drop stale per-key checks fetch status.
+            // New association set → drop stale per-key subresource fetch status.
             checksStatusRef.current.clear();
+            reviewersStatusRef.current.clear();
 
             // Persist freshly-detected PRs so they survive a reload with the
             // creating turn collapsed (AC-01 DoD #2). Best-effort.
@@ -418,16 +480,21 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
                     return next;
                 });
             }
-            const detailFetches = targets.map(association =>
+            const refreshFetches: Promise<void>[] = targets.map(association =>
                 fetchDetailForAssociation(association, workspaceId, generation, { force: true, silent: true }),
             );
             for (const association of targets) {
+                refreshFetches.push(
+                    fetchReviewersForAssociation(association, workspaceId, generation, { force: true, silent: true }),
+                );
                 if (checksStatusRef.current.get(association.key) === 'ready') {
-                    fetchChecksForAssociation(association, workspaceId, generation, { force: true, silent: true });
+                    refreshFetches.push(
+                        fetchChecksForAssociation(association, workspaceId, generation, { force: true, silent: true }),
+                    );
                 }
             }
             if (spin) {
-                void Promise.allSettled(detailFetches).then(() => {
+                void Promise.allSettled(refreshFetches).then(() => {
                     if (generationRef.current !== generation) return;
                     setRefreshingKeys(prev => {
                         if (targets.every(association => !prev.has(association.key))) return prev;
@@ -438,7 +505,7 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
                 });
             }
         },
-        [workspaceId, fetchDetailForAssociation, fetchChecksForAssociation],
+        [workspaceId, fetchDetailForAssociation, fetchReviewersForAssociation, fetchChecksForAssociation],
     );
 
     /**

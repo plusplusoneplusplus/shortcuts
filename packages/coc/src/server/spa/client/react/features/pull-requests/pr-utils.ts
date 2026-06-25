@@ -43,6 +43,16 @@ export interface Reviewer {
     isRequired?: boolean;
 }
 
+export interface ReviewerApprovalSummary {
+    total: number;
+    approved: Reviewer[];
+    waiting: Reviewer[];
+    blocked: Reviewer[];
+    approvedCount: number;
+    waitingCount: number;
+    blockedCount: number;
+}
+
 export interface PrComment {
     id: string | number;
     author?: PrIdentity;
@@ -248,6 +258,55 @@ export function prStatusBadge(status: PrStatus | string): StatusBadge {
 
 export function prStatusColor(status: PrStatus | string): string {
     return prStatusBadge(status).className;
+}
+
+export function normalizeReviewVote(vote?: string | null): string {
+    return (vote ?? '').toLowerCase().replace(/[-_\s]/g, '');
+}
+
+export function isApprovedReviewerVote(vote?: string | null): boolean {
+    const normalized = normalizeReviewVote(vote);
+    return normalized === 'approved' || normalized === 'approvedwithsuggestions';
+}
+
+export function isBlockedReviewerVote(vote?: string | null): boolean {
+    const normalized = normalizeReviewVote(vote);
+    return normalized === 'rejected' || normalized === 'waitingforauthor';
+}
+
+export function reviewerDisplayName(reviewer: Reviewer): string {
+    return reviewer.identity.displayName?.trim() || reviewer.identity.email?.trim() || 'Unknown';
+}
+
+export function summarizeReviewerApprovals(reviewers: readonly Reviewer[]): ReviewerApprovalSummary {
+    const approved: Reviewer[] = [];
+    const waiting: Reviewer[] = [];
+    const blocked: Reviewer[] = [];
+
+    for (const reviewer of reviewers) {
+        if (isApprovedReviewerVote(reviewer.vote)) {
+            approved.push(reviewer);
+        } else if (isBlockedReviewerVote(reviewer.vote)) {
+            blocked.push(reviewer);
+        } else {
+            waiting.push(reviewer);
+        }
+    }
+
+    return {
+        total: reviewers.length,
+        approved,
+        waiting,
+        blocked,
+        approvedCount: approved.length,
+        waitingCount: waiting.length,
+        blockedCount: blocked.length,
+    };
+}
+
+export function hasUnresolvedReviewerApproval(reviewers: readonly Reviewer[]): boolean {
+    const summary = summarizeReviewerApprovals(reviewers);
+    return summary.total > 0 && (summary.waitingCount > 0 || summary.blockedCount > 0);
 }
 
 export function getGroupBadgeStyle(group: AttentionGroup): GroupBadgeStyle {

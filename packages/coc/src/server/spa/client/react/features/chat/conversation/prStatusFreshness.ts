@@ -8,11 +8,12 @@
  * that drives the actual `setInterval` + force-refresh fetches).
  *
  * The smart-polling rule (from the spec): poll ONLY while at least one PR is
- * non-terminal AND its checks are pending/running OR its auto-merge is
- * armed/queued. Once every PR is terminal/settled the predicate is false, so the
- * hook stops polling.
+ * non-terminal AND its checks are pending/running, its auto-merge is armed/queued,
+ * or its reviewer approval is unresolved. Once every PR is terminal/settled the
+ * predicate is false, so the hook stops polling.
  */
 import type { PrCheckRow } from '../../pull-requests/pr-derived-data';
+import { hasUnresolvedReviewerApproval } from '../../pull-requests/pr-utils';
 import type { PrStatusCardItem } from './PrStatusCard';
 
 /**
@@ -37,15 +38,16 @@ function isAutoMergePending(item: PrStatusCardItem): boolean {
 
 /**
  * Whether a single card row is still "active": loaded (`ready`), non-terminal,
- * AND either has checks pending/running or auto-merge armed/queued. Terminal
- * (merged/closed) rows and idle open rows (no pending checks, no armed
- * auto-merge) are inactive, so they do not keep the card polling.
+ * AND has checks pending/running, auto-merge armed/queued, or unresolved reviewer
+ * approval. Terminal (merged/closed) rows and idle open rows are inactive, so they
+ * do not keep the card polling.
  */
 export function isPrItemActive(item: PrStatusCardItem): boolean {
     if (item.state !== 'ready' || !item.pr) return false;
     if (TERMINAL_PR_STATES.has(item.pr.status)) return false;
     if (isAutoMergePending(item)) return true;
     if (item.checksState === 'ready' && (item.checks ?? []).some(isCheckInProgress)) return true;
+    if (item.reviewersState === 'ready' && hasUnresolvedReviewerApproval(item.reviewers ?? [])) return true;
     return false;
 }
 

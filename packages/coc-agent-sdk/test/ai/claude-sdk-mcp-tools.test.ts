@@ -97,7 +97,7 @@ describe('ClaudeSDKService MCP tool wiring', () => {
         expect(opts.allowedTools).toContain('mcp__coc_llm_tools__ask_user');
     });
 
-    it('only sets ask-mode allowedTools when there are no CoC tools', async () => {
+    it('sets only ask-mode auto-approved tools when there are no CoC tools', async () => {
         queryFn.mockReturnValue(makeHandle([SUCCESS]));
         await svc.sendMessage({ prompt: 'hi' });
         const opts = (queryFn.mock.calls[0][0] as any).options;

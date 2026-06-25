@@ -2090,6 +2090,20 @@ describe('reviewers cache (GET /api/origins/:originId/pull-requests/:prId/review
         await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
         expect(mockSvc.getReviewers).toHaveBeenCalledTimes(2);
     });
+
+    it('force=true on the reviewers endpoint itself bypasses the cache', async () => {
+        await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
+        expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
+
+        await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
+        expect(mockSvc.getReviewers).toHaveBeenCalledTimes(1);
+
+        await fetch(originPullRequestsUrl(`/42/reviewers?force=true`, REPO_ID));
+        expect(mockSvc.getReviewers).toHaveBeenCalledTimes(2);
+
+        await fetch(originPullRequestsUrl(`/42/reviewers`, REPO_ID));
+        expect(mockSvc.getReviewers).toHaveBeenCalledTimes(2);
+    });
 });
 
 // ── checks cache tests ────────────────────────────────────────────────────────

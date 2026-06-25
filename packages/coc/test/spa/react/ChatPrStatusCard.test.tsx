@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
         listChatBindingsForOrigin: vi.fn(),
         createChatBindingForOrigin: vi.fn(),
         getForOrigin: vi.fn(),
+        getReviewersForOrigin: vi.fn(),
         getChecksForOrigin: vi.fn(),
     },
     getCocClientForWorkspace: vi.fn(),
@@ -77,8 +78,11 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
         mocks.pullRequests.listChatBindingsForOrigin.mockReset();
         mocks.pullRequests.createChatBindingForOrigin.mockReset();
         mocks.pullRequests.getForOrigin.mockReset();
+        mocks.pullRequests.getReviewersForOrigin.mockReset();
         mocks.pullRequests.getChecksForOrigin.mockReset();
         mocks.pullRequests.createChatBindingForOrigin.mockResolvedValue({ prId: '42', taskId: 't1' });
+        // Eager reviewers fetch fires on detail-ready, so every test needs a default.
+        mocks.pullRequests.getReviewersForOrigin.mockResolvedValue({ reviewers: [] });
         // Eager checks fetch fires on detail-ready, so every test needs a default.
         mocks.pullRequests.getChecksForOrigin.mockResolvedValue({ checks: [] });
         // Default: every workspace resolves to the shared local client.
@@ -375,6 +379,7 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
                 createdAt: '2024-01-01T00:00:00Z',
                 url: GH_URL,
             }),
+            getReviewersForOrigin: vi.fn().mockResolvedValue({ reviewers: [] }),
             getChecksForOrigin: vi.fn().mockResolvedValue({ checks: [] }),
         };
         mocks.getCocClientForWorkspace.mockImplementation((wsId: string) =>
@@ -391,6 +396,7 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
         // Routed to the workspace's owning (remote) server, keyed by its id.
         expect(mocks.getCocClientForWorkspace).toHaveBeenCalledWith(REMOTE_WS);
         expect(remotePullRequests.getForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '42', { workspaceId: REMOTE_WS });
+        expect(remotePullRequests.getReviewersForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '42', { workspaceId: REMOTE_WS });
         // The default local client is never used for a remote workspace.
         expect(mocks.pullRequests.getForOrigin).not.toHaveBeenCalled();
         expect(mocks.pullRequests.listChatBindingsForOrigin).not.toHaveBeenCalled();

@@ -318,6 +318,30 @@ describe('PullRequestsClient', () => {
     });
   });
 
+  it('force-refreshes reviewers through the origin reviewers endpoint', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PullRequestsClient(adapter);
+
+    await client.getReviewersForOrigin('gh_owner_repo', 'pr/1', { workspaceId: 'ws/a', repoId: 'repo/a', force: true });
+
+    expect(adapter.calls[0]).toEqual({
+      path: '/origins/gh_owner_repo/pull-requests/pr%2F1/reviewers',
+      options: {
+        query: { workspaceId: 'ws/a', repoId: 'repo/a', force: 'true' },
+        signal: undefined,
+      },
+    });
+  });
+
+  it('omits the force query param for reviewers when not requested', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PullRequestsClient(adapter);
+
+    await client.getReviewersForOrigin('gh_owner_repo', 'pr/1', { workspaceId: 'ws/a', repoId: 'repo/a' });
+
+    expect(adapter.calls[0].options?.query?.force).toBeUndefined();
+  });
+
   it('omits the force query param for checks when not requested (AC-05)', async () => {
     const adapter = createMockAdapter({});
     const client = new PullRequestsClient(adapter);
