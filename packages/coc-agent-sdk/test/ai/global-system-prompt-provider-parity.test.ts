@@ -183,7 +183,14 @@ describe('global system prompt provider parity (AC-04)', () => {
     it('Claude maps the global systemMessage to the claude_code preset systemPrompt without mutating the prompt', async () => {
         const queryOptions = await sendViaClaude(GLOBAL_SYSTEM_MESSAGE);
 
-        expect(queryOptions.prompt).toBe(USER_PROMPT);
+        // Streaming-input transport: the prompt is an async-iterable user message
+        // whose content is the unmutated user prompt.
+        expect(typeof queryOptions.prompt).not.toBe('string');
+        const streamed: unknown[] = [];
+        for await (const m of queryOptions.prompt as AsyncIterable<unknown>) streamed.push(m);
+        expect(streamed).toEqual([
+            { type: 'user', message: { role: 'user', content: USER_PROMPT }, parent_tool_use_id: null },
+        ]);
         expect(queryOptions.options.systemPrompt).toEqual({
             type: 'preset',
             preset: 'claude_code',
