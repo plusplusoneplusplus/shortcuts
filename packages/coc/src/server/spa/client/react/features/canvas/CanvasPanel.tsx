@@ -28,13 +28,14 @@
  *    mode exposes the raw state JSON with the normal autosave.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import type { Canvas, CanvasComment, CanvasVersion, CanvasVersionMeta } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
 import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/MonacoFileEditor';
 import { ExtensionCanvasView } from './ExtensionCanvasView';
+import { ExcalidrawSceneView, parseSceneContent } from '../diagrams';
 import type { CanvasUpdatedEvent } from '../chat/hooks/useChatSSE';
 
 const AUTOSAVE_DELAY_MS = 800;
@@ -125,6 +126,7 @@ const LANGUAGE_TO_FILE_EXT: Record<string, string> = {
 function downloadFilenameFor(canvas: Canvas): string {
     const slug = canvas.id.replace(/-[0-9a-f]{6}$/, '') || 'canvas';
     if (canvas.type === 'extension') return `${slug}.json`;
+    if (canvas.type === 'excalidraw') return `${slug}.excalidraw`;
     if (canvas.type !== 'code') return `${slug}.md`;
     const language = canvas.language ?? '';
     return `${slug}.${LANGUAGE_TO_FILE_EXT[language] ?? (language || 'txt')}`;
@@ -444,15 +446,25 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
     const displayedContent = viewingVersion ? viewingVersion.content : (canvas?.content ?? '');
     const isCodeCanvas = canvas?.type === 'code';
     const isExtensionCanvas = canvas?.type === 'extension';
+    const isExcalidrawCanvas = canvas?.type === 'excalidraw';
+    // Excalidraw canvases are host-rendered (view-only) straight from their
+    // scene JSON content — including history views — so they never go through
+    // the markdown pipeline.
+    const excalidrawScene = useMemo(
+        () => (isExcalidrawCanvas ? parseSceneContent(displayedContent) : null),
+        [isExcalidrawCanvas, displayedContent],
+    );
     // Extension canvases render their own iframe UI; the markdown pipeline is
     // only used for history views of their JSON state.
-    const previewMarkdown = isExtensionCanvas
+    const previewMarkdown = isExcalidrawCanvas
+        ? ''
+        : isExtensionCanvas
         ? (viewingVersion ? fenceCode(displayedContent, 'json') : '')
         : isCodeCanvas ? fenceCode(displayedContent, canvas?.language) : displayedContent;
     const { html } = useMarkdownPreview({
         content: previewMarkdown,
         containerRef: previewRef,
-        loading: loading || (isExtensionCanvas && !viewingVersion) || (!viewingVersion && mode !== 'preview'),
+        loading: loading || isExcalidrawCanvas || (isExtensionCanvas && !viewingVersion) || (!viewingVersion && mode !== 'preview'),
     });
 
     const handleExtensionCanvasSaved = useCallback((saved: Canvas) => {
@@ -491,6 +503,11 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         extension
                     </span>
                 )}
+                {isExcalidrawCanvas && (
+                    <span className="text-[9px] uppercase px-1 py-0.5 rounded border border-sky-300 dark:border-sky-700 text-sky-600 dark:text-sky-300 shrink-0" data-testid="canvas-panel-excalidraw-badge">
+                        diagram
+                    </span>
+                )}
                 {canvas && (
                     <span className="flex items-center gap-0.5 text-[10px] text-[#848484] shrink-0">
                         <button
@@ -524,7 +541,8 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         {statusLabel}
                     </span>
                 )}
-                {!viewingVersion && (
+                {/* Excalidraw canvases are view-only in v1 — no Edit affordance. */}
+                {!viewingVersion && !isExcalidrawCanvas && (
                     <div className="flex rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden shrink-0">
                         <button
                             type="button"
@@ -706,6 +724,12 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                     <div className="text-xs text-[#848484] py-6 text-center">Loading canvas…</div>
                 ) : loadError ? (
                     <div className="text-xs text-red-500 py-6 text-center" data-testid="canvas-panel-error">{loadError}</div>
+                ) : isExcalidrawCanvas && excalidrawScene ? (
+                    <ExcalidrawSceneView
+                        scene={excalidrawScene}
+                        className="h-full min-h-[200px]"
+                        data-testid="canvas-panel-excalidraw"
+                    />
                 ) : !viewingVersion && mode === 'preview' && isExtensionCanvas && canvas ? (
                     <ExtensionCanvasView
                         workspaceId={workspaceId}

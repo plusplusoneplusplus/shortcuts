@@ -11,6 +11,7 @@ import {
     unwrapDiagramResponse,
     buildViewerInitialData,
     normaliseSceneElements,
+    parseSceneContent,
 } from '../../src/server/spa/client/react/features/diagrams/diagram-scene';
 import * as ExcalidrawMod from '@excalidraw/excalidraw';
 
@@ -62,6 +63,26 @@ describe('unwrapDiagramResponse', () => {
     it('omits files when not an object', () => {
         const scene = unwrapDiagramResponse({ content: { ...SAMPLE_SCENE, files: 'oops' } });
         expect(scene.files).toBeUndefined();
+    });
+});
+
+describe('parseSceneContent', () => {
+    it('parses a canvas-store scene JSON string into a scene', () => {
+        const content = JSON.stringify(SAMPLE_SCENE);
+        const scene = parseSceneContent(content);
+        expect(scene.elements).toEqual([{ id: 'a', type: 'rectangle' }]);
+        expect(scene.appState).toEqual({ viewBackgroundColor: '#fafafa', gridSize: null });
+    });
+
+    it('returns an empty scene for empty/blank content', () => {
+        expect(parseSceneContent('')).toEqual({ elements: [], appState: {} });
+        expect(parseSceneContent('   ')).toEqual({ elements: [], appState: {} });
+        expect(parseSceneContent(null)).toEqual({ elements: [], appState: {} });
+        expect(parseSceneContent(undefined)).toEqual({ elements: [], appState: {} });
+    });
+
+    it('degrades malformed JSON to an empty scene instead of throwing', () => {
+        expect(parseSceneContent('{not valid json')).toEqual({ elements: [], appState: {} });
     });
 });
 
