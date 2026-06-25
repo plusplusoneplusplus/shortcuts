@@ -134,8 +134,9 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
             'Create or update a canvas — a live document beside the chat the user iterates on. '
             + 'Markdown renders Mermaid blocks as diagrams. Omit canvasId to create (needs title + content; '
             + 'set type "code" + language for code). For an Excalidraw diagram, set type "excalidraw" and pass '
-            + 'the scene JSON ({ elements, appState }) as content — it renders inline in chat and in the panel; '
-            + 'updates must pass the full scene as content (edits are rejected for excalidraw). To update, pass '
+            + 'the scene JSON ({ elements, appState }) as content — the result carries an `embed` reference '
+            + '(canvas://<id>); put that marker in your chat reply to render the diagram inline (it also shows in '
+            + 'the panel). Updates must pass the full scene as content (edits are rejected for excalidraw). To update, pass '
             + 'canvasId + expectedRevision and either edits (exact-match, one per match) or content (full rewrite). '
             + 'On a revision conflict the user edited it — read_canvas and retry. Keep chat replies short; '
             + 'reference the canvas, don\'t repeat it.',
@@ -222,7 +223,12 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                         return { success: false, error: result.error };
                     }
                     emitUpdate(result.canvas.id, result.canvas.title, result.canvas.revision);
-                    return { success: true, canvasId: result.canvas.id, revision: result.canvas.revision };
+                    return {
+                        success: true,
+                        canvasId: result.canvas.id,
+                        revision: result.canvas.revision,
+                        ...(result.canvas.type === 'excalidraw' ? { embed: `canvas://${result.canvas.id}` } : {}),
+                    };
                 } catch (err) {
                     return { success: false, error: err instanceof Error ? err.message : String(err) };
                 }
@@ -261,7 +267,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                     editor: 'ai',
                 });
                 emitUpdate(canvas.id, canvas.title, canvas.revision);
-                return { success: true, canvasId: canvas.id, title: canvas.title, type: canvas.type, ...(canvas.language ? { language: canvas.language } : {}), revision: canvas.revision, created: true };
+                return { success: true, canvasId: canvas.id, title: canvas.title, type: canvas.type, ...(canvas.language ? { language: canvas.language } : {}), ...(canvas.type === 'excalidraw' ? { embed: `canvas://${canvas.id}` } : {}), revision: canvas.revision, created: true };
             } catch (err) {
                 return { success: false, error: err instanceof Error ? err.message : String(err) };
             }

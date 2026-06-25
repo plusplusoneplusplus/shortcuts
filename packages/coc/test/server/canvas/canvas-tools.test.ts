@@ -221,6 +221,26 @@ describe('canvas LLM tools', () => {
             expect(scene.elements[0].isDeleted).toBe(false);
         });
 
+        it('returns a canvas:// embed marker on create and update', async () => {
+            const { write } = buildTools();
+            const created = await write.handler({ title: 'Arch', content: SKELETON_SCENE, type: 'excalidraw' }) as any;
+            expect(created.embed).toBe(`canvas://${created.canvasId}`);
+
+            const updated = await write.handler({
+                canvasId: created.canvasId,
+                content: JSON.stringify({ elements: [], appState: {} }),
+                expectedRevision: 1,
+            }) as any;
+            expect(updated.success).toBe(true);
+            expect(updated.embed).toBe(`canvas://${created.canvasId}`);
+        });
+
+        it('does not return an embed marker for non-excalidraw canvases', async () => {
+            const { write } = buildTools();
+            const md = await write.handler({ title: 'Doc', content: '# hi' }) as any;
+            expect(md.embed).toBeUndefined();
+        });
+
         it('rejects an invalid scene on create', async () => {
             const { write } = buildTools();
             const badJson = await write.handler({ title: 'Bad', content: '{ not json', type: 'excalidraw' }) as any;
