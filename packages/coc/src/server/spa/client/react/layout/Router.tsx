@@ -17,6 +17,7 @@ import { lazy, Suspense } from 'react';
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, SettingsSection } from '../types/dashboard';
 import { SETTINGS_SECTION_VALUES, REPO_SUB_TAB_VALUES, WIKI_PROJECT_TAB_VALUES, WIKI_ADMIN_TAB_VALUES } from '../types/dashboard';
 import type { NativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
+import { getWorkspaceIdFromSelectionId } from '../repos/cloneIdentity';
 
 const AdminPanel = lazy(() => import('../admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
 // Memory/Skills/Logs/Usage/Models/Servers no longer mount as standalone
@@ -827,7 +828,7 @@ export function Router() {
                 const letter = e.code.replace('Key', '').toLowerCase();
                 if (letter === 'q') {
                     e.preventDefault();
-                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId: state.selectedRepoId });
+                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId: getWorkspaceIdFromSelectionId(state.selectedRepoId) });
                     return;
                 }
                 const rawTab = REPO_TAB_SHORTCUTS[letter];

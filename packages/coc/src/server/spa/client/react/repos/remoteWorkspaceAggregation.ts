@@ -9,10 +9,11 @@
  * result with the local list. Offline / unreachable servers contribute their
  * LAST-KNOWN list from a persisted cache, each entry flagged `offline`.
  *
- * Routing seam (IMMUTABLE): a remote workspace carries `baseUrl` (= the server's
- * effectiveUrl); local workspaces have none. There are NO composite workspace
- * IDs and NO new serverId namespace — `baseUrl` is the routing key, `serverId`
- * is referenced for persistence/caching only.
+ * Routing seam: a remote workspace carries `baseUrl` (= the server's
+ * effectiveUrl); local workspaces have none. Server-generated machine-scoped
+ * workspace IDs are the primary identity. A dashboard-only `cloneKey` is also
+ * attached so cached/legacy duplicate workspace IDs can still be selected and
+ * routed without replacing one another.
  *
  * The remote fetch here is intentionally self-contained (a small CocClient bound
  * to `effectiveUrl`); it does NOT re-plumb the shared SPA client (AC-03 owns
@@ -35,6 +36,7 @@ import {
     loadRemoteWorkspaceCache,
     saveRemoteWorkspaceCacheEntry,
 } from './remoteWorkspaceCache';
+import { buildRemoteCloneKey } from './cloneIdentity';
 
 /**
  * Remote server connection state, mirrored from the registry's runtime status.
@@ -59,6 +61,8 @@ export interface RemoteWorkspaceMarker {
     serverId: string;
     /** Human-readable server label for badges/grouping. */
     serverLabel: string;
+    /** Dashboard selection/routing key for this exact remote clone. */
+    cloneKey?: string;
     /** True when this entry came from cache because the server is offline/unreachable. */
     offline: boolean;
     /**
@@ -160,6 +164,7 @@ export function tagRemoteWorkspaces(
             baseUrl,
             serverId: server.id,
             serverLabel,
+            cloneKey: buildRemoteCloneKey(server.id, workspace.id),
             offline,
             connection,
             queue: status.queueByWorkspace?.[workspace.id] ?? 'idle',
@@ -327,7 +332,15 @@ export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorks
     const gitInfo: RemoteGitInfoMap = {};
     for (const source of sources) {
         workspaces.push(...source.workspaces);
-        Object.assign(gitInfo, source.gitInfo);
+        for (const workspace of source.workspaces) {
+            if (!Object.prototype.hasOwnProperty.call(source.gitInfo, workspace.id)) {
+                continue;
+            }
+            const info = source.gitInfo[workspace.id] ?? null;
+            const cloneKey = workspace.remote.cloneKey ?? buildRemoteCloneKey(workspace.remote.serverId, workspace.id);
+            gitInfo[cloneKey] = info;
+            gitInfo[workspace.id] = info;
+        }
     }
 
     // Publish the workspaceId → baseUrl lookup (AC-07) so non-React services and
@@ -335,7 +348,12 @@ export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorks
     // covering online AND cached/offline remote rows (an offline-selected clone
     // still resolves to its last-known baseUrl rather than silently hitting the
     // local server).
-    registerCloneBaseUrls(workspaces.map(ws => ({ workspaceId: ws.id, baseUrl: ws.baseUrl })));
+    registerCloneBaseUrls(workspaces.map(ws => ({
+        workspaceId: ws.id,
+        serverId: ws.remote.serverId,
+        cloneKey: ws.remote.cloneKey,
+        baseUrl: ws.baseUrl,
+    })));
 
     return { sources, workspaces, gitInfo, warnings };
 }

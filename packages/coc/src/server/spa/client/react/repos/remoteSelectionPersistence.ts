@@ -12,7 +12,8 @@
  * CURRENT remote workspaces by `remote.serverId === serverId && id === workspaceId`.
  * Because the match is on the stable `serverId` (not `baseUrl`), a changed
  * port/baseUrl still resolves to the same clone. The resolved value is the
- * workspace's CURRENT id, which the caller restores as the active selection.
+ * workspace's CURRENT dashboard selection id, which the caller restores as the
+ * active selection.
  *
  * LOCAL clones are NOT persisted here: they keep riding the existing
  * `#repos/{id}` hash mechanism unchanged. This module is purely additive on top
@@ -21,6 +22,7 @@
  */
 
 import { isRemoteWorkspace, type RemoteWorkspaceInfo } from './remoteWorkspaceAggregation';
+import { getWorkspaceSelectionId } from './cloneIdentity';
 
 const STORAGE_KEY = 'coc-remote-clone-selection';
 
@@ -83,12 +85,13 @@ export function loadPersistedRemoteSelection(): PersistedRemoteSelection | null 
 
 /**
  * Resolve a persisted `{ serverId, workspaceId }` pair to the CURRENT matching
- * remote workspace's id, scanning the freshly-aggregated remote workspaces.
+ * remote workspace's dashboard selection id, scanning the freshly-aggregated
+ * remote workspaces.
  *
  * Match is on the stable `remote.serverId` plus the workspace `id` — so a clone
  * whose `baseUrl`/port changed (devtunnel reassignment) still resolves, and a
  * workspace id that collides ACROSS two servers disambiguates by serverId.
- * Returns the matching workspace id (its current id) or `null` when no remote
+ * Returns the matching selection id or `null` when no remote
  * workspace matches (e.g. the server was removed and nothing is cached).
  */
 export function resolvePersistedRemoteSelection(
@@ -102,7 +105,7 @@ export function resolvePersistedRemoteSelection(
             workspace.remote.serverId === selection.serverId &&
             workspace.id === selection.workspaceId
         ) {
-            return workspace.id;
+            return getWorkspaceSelectionId(workspace);
         }
     }
     return null;

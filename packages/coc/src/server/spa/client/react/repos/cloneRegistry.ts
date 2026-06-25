@@ -7,20 +7,19 @@
  * receive a bare `workspaceId` and call `getSpaCocClient()` directly; they have no
  * access to React context. This module is the seam for them.
  *
- * It holds a module-level `workspaceId → baseUrl` map covering REMOTE workspaces
- * only. AC-01's `aggregateRemoteWorkspaces` populates it every refresh (so the
+ * It holds module-level clone routing maps covering REMOTE workspaces only.
+ * AC-01's `aggregateRemoteWorkspaces` populates them every refresh (so the
  * registry tracks devtunnel port reassignment). Services resolve the right client
- * via `getCocClientForWorkspace(workspaceId)`.
+ * via `getCocClientForWorkspace(workspaceIdOrCloneKey)`.
  *
- * Crucially this is a per-workspace LOOKUP, NOT a global mutable "active baseUrl"
- * override:
+ * Crucially this is a per-clone LOOKUP, not a broad global baseUrl override:
  *   • A LOCAL workspace id is absent from the map → `lookupCloneBaseUrl` returns
  *     `undefined` → `getCocClientFor(undefined)` → the EXISTING default
  *     `getSpaCocClient()` singleton. Local clones are byte-for-byte unchanged.
- *   • A REMOTE workspace id resolves to its server's effectiveUrl → a cached
- *     CocClient pinned to that origin. A remote clone therefore NEVER falls
- *     through to the local server ("no local fallthrough" guarantee): its
- *     clone-scoped REST/WS always targets the remote `baseUrl`.
+ *   • A REMOTE clone key resolves to its server's effectiveUrl → a cached
+ *     CocClient pinned to that origin. A unique remote workspace id also resolves
+ *     directly. If legacy/cached remote rows collide on workspace id, the active
+ *     clone key disambiguates bare workspace-id calls from selected repo tabs.
  *
  * The repos-list / git-info AGGREGATION itself is never rerouted through here —
  * it keeps using the default client (AC-01 owns its own self-contained remote
@@ -31,14 +30,32 @@ import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { getCocClientFor, getSpaCocClient, toSpaCocRequestOptions, translateSpaCocClientError } from '../api/cocClient';
 import { cloneWsUrl } from '../api/wsUrl';
 import { getApiBase } from '../utils/config';
+import { buildRemoteCloneKey, parseRemoteCloneKey } from './cloneIdentity';
 
-/** workspaceId → remote baseUrl. Remote workspaces only; local ids are absent. */
-const cloneBaseUrlByWorkspace = new Map<string, string>();
+/** cloneKey → remote baseUrl. Remote workspaces only; local ids are absent. */
+const cloneBaseUrlByKey = new Map<string, string>();
+/** workspaceId → cloneKeys. Multiple keys mean a legacy/cached collision exists. */
+const cloneKeysByWorkspace = new Map<string, Set<string>>();
+let activeCloneKey: string | null = null;
 
 /** A minimal remote-workspace shape: just the routing essentials. */
 export interface CloneRegistryEntry {
     workspaceId: string;
     baseUrl: string;
+    serverId?: string;
+    cloneKey?: string;
+}
+
+export interface CloneRegistryLookup {
+    workspaceId?: string | null;
+    serverId?: string | null;
+    cloneKey?: string | null;
+}
+
+function getEntryKey(entry: CloneRegistryEntry): string | null {
+    if (entry.cloneKey && parseRemoteCloneKey(entry.cloneKey)) return entry.cloneKey;
+    if (entry.serverId) return buildRemoteCloneKey(entry.serverId, entry.workspaceId);
+    return entry.workspaceId || null;
 }
 
 /**
@@ -50,12 +67,26 @@ export interface CloneRegistryEntry {
  * of reachable/cached remote clones (and follows devtunnel port reassignment).
  */
 export function registerCloneBaseUrls(entries: Iterable<CloneRegistryEntry>): void {
-    cloneBaseUrlByWorkspace.clear();
-    for (const { workspaceId, baseUrl } of entries) {
-        if (workspaceId && baseUrl) {
-            cloneBaseUrlByWorkspace.set(workspaceId, baseUrl);
+    cloneBaseUrlByKey.clear();
+    cloneKeysByWorkspace.clear();
+    for (const entry of entries) {
+        const { workspaceId, baseUrl } = entry;
+        const key = getEntryKey(entry);
+        if (workspaceId && baseUrl && key) {
+            cloneBaseUrlByKey.set(key, baseUrl);
+            const keys = cloneKeysByWorkspace.get(workspaceId) ?? new Set<string>();
+            keys.add(key);
+            cloneKeysByWorkspace.set(workspaceId, keys);
         }
     }
+    if (activeCloneKey && !cloneBaseUrlByKey.has(activeCloneKey)) {
+        activeCloneKey = null;
+    }
+}
+
+export function setActiveCloneForRouting(selectionId: string | null | undefined): void {
+    const parsed = parseRemoteCloneKey(selectionId);
+    activeCloneKey = parsed ? buildRemoteCloneKey(parsed.serverId, parsed.workspaceId) : null;
 }
 
 /**
@@ -63,9 +94,34 @@ export function registerCloneBaseUrls(entries: Iterable<CloneRegistryEntry>): vo
  * workspace (or unknown). Local/unknown ids deliberately resolve to `undefined`
  * so downstream `getCocClientFor(undefined)` returns the default local client.
  */
-export function lookupCloneBaseUrl(workspaceId: string | null | undefined): string | undefined {
-    if (!workspaceId) return undefined;
-    return cloneBaseUrlByWorkspace.get(workspaceId);
+export function lookupCloneBaseUrl(ref: string | CloneRegistryLookup | null | undefined): string | undefined {
+    if (!ref) return undefined;
+    if (typeof ref === 'object') {
+        if (ref.cloneKey && cloneBaseUrlByKey.has(ref.cloneKey)) {
+            return cloneBaseUrlByKey.get(ref.cloneKey);
+        }
+        if (ref.serverId && ref.workspaceId) {
+            return cloneBaseUrlByKey.get(buildRemoteCloneKey(ref.serverId, ref.workspaceId));
+        }
+        return ref.workspaceId ? lookupCloneBaseUrl(ref.workspaceId) : undefined;
+    }
+
+    if (cloneBaseUrlByKey.has(ref)) {
+        return cloneBaseUrlByKey.get(ref);
+    }
+    const parsed = parseRemoteCloneKey(ref);
+    if (parsed) {
+        return cloneBaseUrlByKey.get(buildRemoteCloneKey(parsed.serverId, parsed.workspaceId));
+    }
+    const keys = cloneKeysByWorkspace.get(ref);
+    if (!keys || keys.size === 0) return undefined;
+    if (activeCloneKey && keys.has(activeCloneKey)) {
+        return cloneBaseUrlByKey.get(activeCloneKey);
+    }
+    if (keys.size === 1) {
+        return cloneBaseUrlByKey.get([...keys][0]);
+    }
+    return undefined;
 }
 
 /**
@@ -137,5 +193,7 @@ export function cloneWsUrlForWorkspace(path: string, workspaceId: string | null 
 
 /** Test-only: clear the registry between cases. */
 export function resetCloneRegistryForTests(): void {
-    cloneBaseUrlByWorkspace.clear();
+    cloneBaseUrlByKey.clear();
+    cloneKeysByWorkspace.clear();
+    activeCloneKey = null;
 }

@@ -35,6 +35,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({
 }));
 
 import { RemoteTopBar } from '../../../../src/server/spa/client/react/features/remote-shell/RemoteTopBar';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 const repo = (id: string, name: string, remoteUrl: string, color = '#123456') => ({
     workspace: { id, name, color, remoteUrl, rootPath: `/r/${id}` },
@@ -155,7 +156,7 @@ describe('RemoteTopBar', () => {
         mockRepos = [remoteRepo('edge', 'edge-svc', REMOTE_ONLY, 'edge-1')];
         render(<RemoteTopBar />);
         fireEvent.click(screen.getAllByTestId('remote-tab')[0]);
-        expect(mockSelectClone).toHaveBeenCalledWith('edge');
+        expect(mockSelectClone).toHaveBeenCalledWith(buildRemoteCloneKey('srv-1', 'edge'));
     });
 
     it('picks the LOCAL clone when selecting a remote that also has a remote checkout', () => {

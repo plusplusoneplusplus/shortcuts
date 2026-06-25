@@ -95,6 +95,7 @@ import {
     lookupCloneBaseUrl,
     resetCloneRegistryForTests,
 } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -176,6 +177,7 @@ describe('tagRemoteWorkspaces', () => {
                 baseUrl: 'http://127.0.0.1:4000',
                 serverId: 'srv-1',
                 serverLabel: 'Ubuntu ARM',
+                cloneKey: `remote:${encodeURIComponent('srv-1')}:${encodeURIComponent(t.id)}`,
                 offline: false,
                 // AC-05: an online (offline=false) tag defaults to an online
                 // connection + idle queue when no explicit status is supplied.
@@ -499,6 +501,23 @@ describe('aggregateRemoteWorkspaces — clone lookup registry (AC-07)', () => {
 
         await aggregateRemoteWorkspaces();
         expect(lookupCloneBaseUrl('w1')).toBe('http://127.0.0.1:4000');
+    });
+
+    it('keeps duplicate legacy workspace ids as distinct server-scoped clone routes', async () => {
+        serversList.mockResolvedValue([
+            onlineServer('srv-1', 'Server One', 'http://127.0.0.1:4000'),
+            onlineServer('srv-2', 'Server Two', 'http://127.0.0.1:4001'),
+        ]);
+        remoteResponses.set('http://127.0.0.1:4000', { workspaces: [ws('ws-legacy', 'same path')] });
+        remoteResponses.set('http://127.0.0.1:4001', { workspaces: [ws('ws-legacy', 'same path')] });
+
+        const result = await aggregateRemoteWorkspaces();
+
+        expect(result.workspaces).toHaveLength(2);
+        expect(result.workspaces.map(w => w.remote.serverId).sort()).toEqual(['srv-1', 'srv-2']);
+        expect(lookupCloneBaseUrl(buildRemoteCloneKey('srv-1', 'ws-legacy'))).toBe('http://127.0.0.1:4000');
+        expect(lookupCloneBaseUrl(buildRemoteCloneKey('srv-2', 'ws-legacy'))).toBe('http://127.0.0.1:4001');
+        expect(lookupCloneBaseUrl('ws-legacy')).toBeUndefined();
     });
 
     it('clears the registry when the remote-shell flag is OFF (per-clone routing reverts to local)', async () => {

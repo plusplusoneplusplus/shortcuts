@@ -36,6 +36,13 @@ import {
     persistRemoteSelection,
     resolvePersistedRemoteSelection,
 } from '../repos/remoteSelectionPersistence';
+import {
+    findRepoBySelectionId,
+    getRepoSelectionId,
+    getWorkspaceSelectionId,
+    parseRemoteCloneKey,
+} from '../repos/cloneIdentity';
+import { setActiveCloneForRouting } from '../repos/cloneRegistry';
 
 import type { RepoData } from '../repos/repoGrouping';
 import type { AggregatedRemoteWorkspaces } from '../repos/remoteWorkspaceAggregation';
@@ -60,7 +67,7 @@ const ReposContext = createContext<ReposContextValue | null>(null);
  */
 function buildRemoteRepoData(aggregate: AggregatedRemoteWorkspaces): RepoData[] {
     return aggregate.workspaces.map((ws): RepoData => {
-        const git = aggregate.gitInfo[ws.id];
+        const git = aggregate.gitInfo[getWorkspaceSelectionId(ws)] ?? aggregate.gitInfo[ws.id];
         return {
             workspace: ws,
             gitInfo: git ?? { isGitRepo: !!ws.isGitRepo, branch: null, dirty: false },
@@ -205,9 +212,12 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             // Check against the full workspaces list (not enriched) so virtual
             // workspaces like My Work / My Life don't get deselected on refresh.
             // Remote workspaces are included so a selected remote clone survives a refresh.
-            const selectionStillPresent = selectedRepoIdRef.current
-                ? workspaces.some((ws: any) => ws.id === selectedRepoIdRef.current)
-                    || remoteRepos.some(r => r.workspace.id === selectedRepoIdRef.current)
+            const selectedId = selectedRepoIdRef.current;
+            const selectionStillPresent = selectedId
+                ? parseRemoteCloneKey(selectedId)
+                    ? Boolean(findRepoBySelectionId(remoteRepos, selectedId))
+                    : workspaces.some((ws: any) => ws.id === selectedId)
+                        || Boolean(findRepoBySelectionId(remoteRepos, selectedId))
                 : true;
             if (!selectionStillPresent) {
                 dispatch({ type: 'SET_SELECTED_REPO', id: null });
@@ -370,15 +380,23 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     // only extra action for a known-local selection is dropping a stale REMOTE key.
     useEffect(() => {
         const selectedId = appState.selectedRepoId;
-        if (!selectedId) return;
-        const selected = repos.find(r => r.workspace.id === selectedId);
-        if (!selected) return;
+        if (!selectedId) {
+            setActiveCloneForRouting(null);
+            return;
+        }
+        const selected = findRepoBySelectionId(repos, selectedId);
+        if (!selected) {
+            setActiveCloneForRouting(selectedId);
+            return;
+        }
         if (isRemoteWorkspace(selected.workspace)) {
+            setActiveCloneForRouting(getRepoSelectionId(selected));
             persistRemoteSelection({
                 serverId: selected.workspace.remote.serverId,
                 workspaceId: selected.workspace.id,
             });
         } else {
+            setActiveCloneForRouting(null);
             clearPersistedRemoteSelection();
         }
     }, [appState.selectedRepoId, repos]);

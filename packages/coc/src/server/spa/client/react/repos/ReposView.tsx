@@ -18,6 +18,7 @@ import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnab
 import { ContainerSessionView, CONTAINER_DEFAULT_REPO_ID } from '../features/container-session/ContainerSessionView';
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from './MyWorkView';
 import { MyLifeView, MY_LIFE_WORKSPACE_ID } from './MyLifeView';
+import { findRepoBySelectionId, getRepoSelectionId } from './cloneIdentity';
 
 
 export function ReposView() {
@@ -54,7 +55,7 @@ export function ReposView() {
     // list yet (repo data still loading), keep showing the loading indicator
     // rather than flashing the empty "Select a repository" panel.
     // Exception: my_work is a virtual workspace that won't appear in repos list (only when enabled).
-    if (loading && state.selectedRepoId && !(myWorkEnabled && state.selectedRepoId === MY_WORK_WORKSPACE_ID) && !(myLifeEnabled && state.selectedRepoId === MY_LIFE_WORKSPACE_ID) && !repos.find(r => r.workspace.id === state.selectedRepoId)) {
+    if (loading && state.selectedRepoId && !(myWorkEnabled && state.selectedRepoId === MY_WORK_WORKSPACE_ID) && !(myLifeEnabled && state.selectedRepoId === MY_LIFE_WORKSPACE_ID) && !findRepoBySelectionId(repos, state.selectedRepoId)) {
         return (
             <div id="view-repos" className={`flex items-center justify-center ${heightClass} text-sm text-[#848484]`}>
                 Loading repositories...
@@ -71,10 +72,10 @@ export function ReposView() {
     // Container default session — smart routing chat
     const isContainerDefault = state.selectedRepoId === CONTAINER_DEFAULT_REPO_ID;
 
-    const selectedRepo = repos.find(r =>
-        r.workspace.id === state.selectedRepoId &&
-        (!state.currentAgentId || !r.workspace.agentId || r.workspace.agentId === state.currentAgentId)
-    ) || repos.find(r => r.workspace.id === state.selectedRepoId) || null;
+    const selectedRepo = findRepoBySelectionId(
+        repos.filter(r => !state.currentAgentId || !r.workspace.agentId || r.workspace.agentId === state.currentAgentId),
+        state.selectedRepoId,
+    ) || findRepoBySelectionId(repos, state.selectedRepoId);
 
     return (
         <div id="view-repos" className={`flex ${heightClass} overflow-hidden`}>
@@ -98,7 +99,7 @@ export function ReposView() {
                 hasSelection && selectedRepo ? (
                     <div className="flex-1 min-w-0 min-h-0 flex flex-col">
                         <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
-                            <RepoDetail key={`${selectedRepo.workspace.id}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                            <RepoDetail key={`${getRepoSelectionId(selectedRepo)}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
                         </main>
                     </div>
                 ) : (
@@ -115,11 +116,11 @@ export function ReposView() {
                             <>
                                 <RemoteSubBar repo={selectedRepo} repos={repos} />
                                 <div className="flex-1 min-h-0 min-w-0 flex flex-col">
-                                    <RepoDetail chromeless key={`${selectedRepo.workspace.id}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                                    <RepoDetail chromeless key={`${getRepoSelectionId(selectedRepo)}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
                                 </div>
                             </>
                         ) : (
-                            <RepoDetail key={`${selectedRepo.workspace.id}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                            <RepoDetail key={`${getRepoSelectionId(selectedRepo)}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
                         )
                     ) : (
                         <div id="repo-detail-empty" data-testid="repo-detail-empty" className="flex-1 flex items-center justify-center text-sm text-[#848484]">

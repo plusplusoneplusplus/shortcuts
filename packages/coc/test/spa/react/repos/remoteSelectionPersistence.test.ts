@@ -22,6 +22,7 @@ import {
     tagRemoteWorkspaces,
     type RemoteWorkspaceInfo,
 } from '../../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 const STORAGE_KEY = 'coc-remote-clone-selection';
 
@@ -80,7 +81,7 @@ describe('resolvePersistedRemoteSelection', () => {
     it('resolves the pair to the matching remote workspace id', () => {
         const workspaces = [remoteWs('srv-1', 'http://127.0.0.1:4000', 'ws-a')];
         const resolved = resolvePersistedRemoteSelection({ serverId: 'srv-1', workspaceId: 'ws-a' }, workspaces);
-        expect(resolved).toBe('ws-a');
+        expect(resolved).toBe(buildRemoteCloneKey('srv-1', 'ws-a'));
     });
 
     it('returns null when no persisted pair is given', () => {
@@ -104,7 +105,7 @@ describe('resolvePersistedRemoteSelection', () => {
         persistRemoteSelection({ serverId: 'srv-1', workspaceId: 'ws-a' });
         const reloadedWorkspaces = [remoteWs('srv-1', 'http://127.0.0.1:9999', 'ws-a')];
         const resolved = resolvePersistedRemoteSelection(loadPersistedRemoteSelection(), reloadedWorkspaces);
-        expect(resolved).toBe('ws-a');
+        expect(resolved).toBe(buildRemoteCloneKey('srv-1', 'ws-a'));
         // And the matched workspace carries the CURRENT (reassigned) baseUrl.
         expect(reloadedWorkspaces[0].baseUrl).toBe('http://127.0.0.1:9999');
     });
@@ -117,7 +118,7 @@ describe('resolvePersistedRemoteSelection', () => {
         ];
         // The persisted pair pins srv-2 → it must resolve to srv-2's row, routed at :4001.
         const resolved = resolvePersistedRemoteSelection({ serverId: 'srv-2', workspaceId: 'ws-shared' }, workspaces);
-        expect(resolved).toBe('ws-shared');
+        expect(resolved).toBe(buildRemoteCloneKey('srv-2', 'ws-shared'));
         const matched = workspaces.find(w => w.remote.serverId === 'srv-2')!;
         expect(matched.baseUrl).toBe('http://127.0.0.1:4001');
     });
