@@ -239,4 +239,49 @@ describe('WorkingTree', () => {
             expect(unstageAllBody).not.toContain('for (const f of files)');
         });
     });
+
+    describe('Discard All bulk action', () => {
+        it('renders a visible Discard All control (not in an overflow menu)', () => {
+            expect(source).toContain('data-testid="working-tree-discard-all"');
+            expect(source).toContain('Discard All');
+        });
+
+        it('places the control in a bulk-actions area inside the expanded content', () => {
+            expect(source).toContain('data-testid="working-tree-bulk-actions"');
+            const contentIdx = source.indexOf('working-changes-content');
+            const bulkIdx = source.indexOf('working-tree-bulk-actions');
+            const stagedIdx = source.indexOf('working-tree-staged');
+            // Bulk actions sit between the content wrapper and the first section.
+            expect(bulkIdx).toBeGreaterThan(contentIdx);
+            expect(stagedIdx).toBeGreaterThan(bulkIdx);
+        });
+
+        it('only shows the control when there are changes', () => {
+            expect(source).toContain('totalCount > 0 &&');
+        });
+
+        it('discards through the typed clone-routed git client', () => {
+            expect(source).toContain('cloneClient.git.discardAllChanges(workspaceId)');
+        });
+
+        it('tracks an in-progress state and disables the control while running', () => {
+            expect(source).toContain('discardingAll');
+            expect(source).toContain('setDiscardingAll');
+            expect(source).toContain('disabled={discardingAll || stagingAll}');
+        });
+
+        it('refreshes the working tree even on failure so partial failures are not hidden', () => {
+            const start = source.indexOf('handleDiscardAll');
+            const end = source.indexOf('const staged', start);
+            const body = source.substring(start, end);
+            // catch block still refreshes before surfacing the error
+            expect(body).toContain('catch');
+            expect(body).toContain('fetchChanges()');
+            expect(body).toContain('setActionError');
+        });
+
+        it('surfaces discard errors so it cannot look like success', () => {
+            expect(source).toContain('result.errors');
+        });
+    });
 });

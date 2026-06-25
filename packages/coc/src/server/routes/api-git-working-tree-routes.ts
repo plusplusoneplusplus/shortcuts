@@ -138,6 +138,21 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
+    // POST /api/workspaces/:id/git/changes/discard-all — Discard ALL working-tree changes
+    routes.push(createRoute({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/discard-all$/,
+        handler: async ({ res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
+            if (!ws) return;
+            const id = ws.id;
+
+            const result = await workingTreeService.discardAll(ws.rootPath);
+            getWsServer?.()?.broadcastGitChanged(id, 'discard-all');
+            return result;
+        },
+    }));
+
     // DELETE /api/workspaces/:id/git/changes/untracked — Delete an untracked file
     routes.push(createRoute({
         method: 'DELETE',

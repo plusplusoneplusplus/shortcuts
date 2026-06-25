@@ -304,6 +304,83 @@ export class WorkingTreeService {
     }
 
     /**
+     * Discard tracked modifications/deletions for multiple files
+     * (`git checkout -- <files>`), falling back to per-file checkout on batch
+     * error so a single bad path does not abort the rest.
+     */
+    private async discardPaths(repoRoot: string, filePaths: string[]): Promise<{ discarded: number; errors: string[] }> {
+        if (filePaths.length === 0) return { discarded: 0, errors: [] };
+        const errors: string[] = [];
+        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
+        try {
+            await execGitAsync(
+                ['-C', translatePathForExecution(repoRoot, executionContext), 'checkout', '--', ...filePaths.map(f => translatePathForExecution(f, executionContext))],
+                { cwd: repoRoot },
+            );
+        } catch {
+            for (const filePath of filePaths) {
+                try {
+                    await execGitAsync(
+                        ['-C', translatePathForExecution(repoRoot, executionContext), 'checkout', '--', translatePathForExecution(filePath, executionContext)],
+                        { cwd: repoRoot },
+                    );
+                } catch (e) {
+                    errors.push(`${filePath}: ${e instanceof Error ? e.message : 'Unknown error'}`);
+                }
+            }
+        }
+        return { discarded: filePaths.length - errors.length, errors };
+    }
+
+    /**
+     * Discard ALL working-tree changes, returning the repo to a clean state.
+     *
+     * Runs three phases and reports each independently so partial failures
+     * surface with enough detail to tell which step failed:
+     *   1. Unstage every staged path (so its contents can then be discarded).
+     *   2. Discard tracked modifications/deletions via `git checkout -- <paths>`.
+     *   3. Delete untracked files/directories from disk.
+     *
+     * A newly-added staged file becomes untracked once unstaged, so the
+     * working-tree state is re-read after phase 1 to classify what remains.
+     *
+     * Destructive and irreversible. Error strings are prefixed with the failing
+     * phase (`unstage`/`discard`/`delete`).
+     */
+    async discardAll(repoRoot: string): Promise<{ success: boolean; discarded: number; errors: string[] }> {
+        const initial = await this.getAllChanges(repoRoot);
+        if (initial.length === 0) return { success: true, discarded: 0, errors: [] };
+
+        const errors: string[] = [];
+
+        // Phase 1 — unstage every staged path so worktree contents can be reset.
+        const stagedPaths = [...new Set(initial.filter(c => c.stage === 'staged').map(c => c.filePath))];
+        if (stagedPaths.length > 0) {
+            const unstaged = await this.unstageFiles(repoRoot, stagedPaths);
+            for (const e of unstaged.errors) errors.push(`unstage ${e}`);
+        }
+
+        // Re-read after unstaging: staged "added" files are now untracked.
+        const remaining = stagedPaths.length > 0 ? await this.getAllChanges(repoRoot) : initial;
+        const trackedPaths = [...new Set(remaining.filter(c => c.stage === 'unstaged').map(c => c.filePath))];
+        const untrackedPaths = [...new Set(remaining.filter(c => c.stage === 'untracked').map(c => c.filePath))];
+
+        // Phase 2 — discard tracked modifications/deletions.
+        const discardResult = await this.discardPaths(repoRoot, trackedPaths);
+        for (const e of discardResult.errors) errors.push(`discard ${e}`);
+
+        // Phase 3 — delete untracked files/directories.
+        let deleted = 0;
+        for (const filePath of untrackedPaths) {
+            const result = await this.deleteUntrackedFile(repoRoot, filePath);
+            if (result.success) deleted++;
+            else errors.push(`delete ${filePath}: ${result.error ?? 'Unknown error'}`);
+        }
+
+        return { success: errors.length === 0, discarded: discardResult.discarded + deleted, errors };
+    }
+
+    /**
      * Get the diff for a single file in the working tree.
      * - staged=true  → `git diff --staged -- <file>`
      * - staged=false → `git diff -- <file>`

@@ -19,6 +19,7 @@ import type {
   GitDiffCommentResponse,
   GitDiffCommentsResponse,
   GitDiffCommentTotalsResponse,
+  GitDiscardAllResponse,
   GitFileContentResponse,
   GitPatchApplyRequest,
   GitPatchApplyResponse,
@@ -417,6 +418,11 @@ export class GitClient {
 
   deleteUntrackedFile(workspaceId: string, filePath: string): Promise<GitOperationResult> {
     return this.transport.request<GitOperationResult>(workspaceGitPath(workspaceId, '/changes/untracked'), jsonRequest('DELETE', { filePath }));
+  }
+
+  /** Discard every working-tree change (staged, unstaged, and untracked) in one call. */
+  discardAllChanges(workspaceId: string): Promise<GitDiscardAllResponse> {
+    return this.transport.request<GitDiscardAllResponse>(workspaceGitPath(workspaceId, '/changes/discard-all'), { method: 'POST' });
   }
 
   stageFiles(workspaceId: string, filePaths: string[]): Promise<GitOperationResult> {
