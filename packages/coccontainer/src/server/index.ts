@@ -47,11 +47,16 @@ function generateContainerHtml(): string {
     cachedHtml = generateDashboardHtml({
         title: 'CoCContainer',
         containerMode: true,
-        // Container doesn't run terminal/notes/wiki locally — agents provide those
-        terminalEnabled: false,
-        notesEnabled: false,
-        workflowsEnabled: false,
-        pullRequestsEnabled: true,
+        // CoC embeds runtime feature flags through the generic `features` map
+        // (window.__DASHBOARD_CONFIG__.features), which the SPA flattens onto
+        // its config. Container doesn't run terminal/notes/wiki locally — agents
+        // provide those — but the Pull Requests tab must stay enabled.
+        features: {
+            terminalEnabled: false,
+            notesEnabled: false,
+            workflowsEnabled: false,
+            pullRequestsEnabled: true,
+        },
     });
     return cachedHtml;
 }

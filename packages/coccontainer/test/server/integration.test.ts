@@ -139,12 +139,18 @@ describe('CoCContainer Server Integration', () => {
     });
 
     it('should embed pullRequestsEnabled: true in the dashboard HTML', async () => {
-        // Regression: the container previously omitted pullRequestsEnabled from
-        // generateDashboardHtml(), causing isPullRequestsEnabled() to return false
-        // and hiding the Pull Requests tab unconditionally in container mode.
+        // Regression: the container must keep the Pull Requests tab enabled in
+        // container mode. CoC now embeds feature flags through the generic
+        // `features` map (JSON in window.__DASHBOARD_CONFIG__.features) instead
+        // of flat options, so the container must route the flag through there or
+        // isPullRequestsEnabled() returns false and the tab is hidden.
         const res = await httpRequest(containerUrl + '/');
         expect(res.status).toBe(200);
-        expect(res.body).toContain('pullRequestsEnabled: true');
+        expect(res.body).toContain('"pullRequestsEnabled":true');
+        // The locally-unavailable features are disabled through the same map.
+        expect(res.body).toContain('"terminalEnabled":false');
+        expect(res.body).toContain('"notesEnabled":false');
+        expect(res.body).toContain('"workflowsEnabled":false');
     });
 
     it('should return empty agents list initially', async () => {
