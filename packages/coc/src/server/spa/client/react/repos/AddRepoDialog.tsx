@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Dialog, Button } from '../ui';
-import { hashString, normalizeRemoteUrl } from './repoGrouping';
+import { normalizeRemoteUrl } from './repoGrouping';
 import type { RepoData } from './repoGrouping';
 import { resolveAutoColor } from '../features/git/diff/colorUtils';
 import {
@@ -239,9 +239,9 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                 await updateWorkspace(editId, { name: name.trim(), color: resolvedColor });
             } else {
                 const wsName = name.trim() || getPathLeaf(trimmedPath) || 'repo';
-                const id = 'ws-' + hashString(trimmedPath);
+                // Id is server-authoritative (machine-scoped). Send only the
+                // root path and let the server compute the canonical workspace id.
                 const created = await registerWorkspace({
-                    id,
                     name: wsName,
                     rootPath: trimmedPath,
                     color: resolvedColor,

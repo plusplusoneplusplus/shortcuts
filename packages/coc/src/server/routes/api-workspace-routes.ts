@@ -8,8 +8,9 @@
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import type { MCPServerConfig, ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
-import { BranchService, loadDefaultMcpConfig, loadWorkspaceMcpConfig, detectRemoteUrl, resolvePathForHostFilesystem } from '@plusplusoneplusplus/forge';
+import { BranchService, loadDefaultMcpConfig, loadWorkspaceMcpConfig, detectRemoteUrl, resolvePathForHostFilesystem, computeWorkspaceId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest } from '../errors';
@@ -235,8 +236,8 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            if (!body.id || !body.name || !body.rootPath) {
-                return handleAPIError(res, missingFields(['id', 'name', 'rootPath']));
+            if (!body.name || !body.rootPath) {
+                return handleAPIError(res, missingFields(['name', 'rootPath']));
             }
 
             let remoteUrl: string | undefined = body.remoteUrl;
@@ -244,8 +245,20 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 remoteUrl = await detectRemoteUrl(body.rootPath);
             }
 
+            // Workspace identity is server-authoritative for the UI registration
+            // paths (Add Repo / Add Folder / Clone), which no longer author ids:
+            // when no id is supplied the server derives a machine-scoped id from
+            // this machine's raw OS hostname + root path, so two machines
+            // registering the same absolute path produce distinct ids and never
+            // collide in the remote view. An explicitly supplied id is honored
+            // as-is — virtual/system workspaces (My Work, My Life, Global) keep
+            // their fixed, machine-independent ids, and explicit callers (data
+            // import, fixtures) keep theirs.
+            const providedId = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : undefined;
+            const id = providedId ?? computeWorkspaceId(os.hostname(), body.rootPath);
+
             const workspace: WorkspaceInfo = {
-                id: body.id,
+                id,
                 name: body.name,
                 rootPath: body.rootPath,
                 color: body.color,

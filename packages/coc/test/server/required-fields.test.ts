@@ -6,7 +6,7 @@
  *
  * Routes tested (all in packages/coc-server):
  *   POST /api/processes — requires id, promptPreview, status, startTime
- *   POST /api/workspaces — requires id, name, rootPath
+ *   POST /api/workspaces — requires name, rootPath (id is server-computed)
  *   PATCH /api/workspaces/:id — 200 no-op for empty body
  *
  * Cross-platform compatible (Linux/macOS/Windows).
@@ -217,30 +217,54 @@ describe('POST /api/workspaces — required fields', () => {
         expect((body as any).code).toBe('MISSING_FIELDS');
     });
 
-    it('returns 400 MISSING_FIELDS when id is absent', async () => {
+    it('registers (201) when id is absent — the server computes a machine-scoped id', async () => {
+        // Id is no longer a required field: physical workspace ids are
+        // server-authoritative and derived from hostname + root path.
         const { status, body } = await apiRequest(baseUrl, '/api/workspaces', {
             method: 'POST',
             body: { name: 'project', rootPath: '/some/path' },
         });
-        expect(status).toBe(400);
-        expect((body as any).code).toBe('MISSING_FIELDS');
+        expect(status).toBe(201);
+        expect((body as any).id).toMatch(/^ws-v2-[0-9a-f]+$/);
     });
 
     it('returns 400 MISSING_FIELDS when name is absent', async () => {
         const { status, body } = await apiRequest(baseUrl, '/api/workspaces', {
             method: 'POST',
-            body: { id: 'ws-2', rootPath: '/some/path' },
+            body: { rootPath: '/some/path' },
         });
         expect(status).toBe(400);
         expect((body as any).code).toBe('MISSING_FIELDS');
     });
 
-    it('registers workspace successfully when all required fields present', async () => {
-        const { status } = await apiRequest(baseUrl, '/api/workspaces', {
+    it('honors an explicitly supplied virtual workspace id (e.g. my_work)', async () => {
+        const { status, body } = await apiRequest(baseUrl, '/api/workspaces', {
             method: 'POST',
-            body: { id: 'ws-ok', name: 'my-project', rootPath: '/some/path' },
+            body: { id: 'my_work', name: 'My Work', rootPath: '/some/path' },
         });
         expect(status).toBe(201);
+        expect((body as any).id).toBe('my_work');
+    });
+
+    it('honors an explicitly supplied id for explicit/fixture callers', async () => {
+        const { status, body } = await apiRequest(baseUrl, '/api/workspaces', {
+            method: 'POST',
+            body: { id: 'ws-explicit-fixture', name: 'fixture', rootPath: '/some/path' },
+        });
+        expect(status).toBe(201);
+        expect((body as any).id).toBe('ws-explicit-fixture');
+    });
+
+    it('derives the same machine-scoped id for the same path when id is omitted', async () => {
+        const reg = () => apiRequest(baseUrl, '/api/workspaces', {
+            method: 'POST',
+            body: { name: 'stable', rootPath: '/some/stable/path' },
+        });
+        const first = await reg();
+        const second = await reg();
+        expect(first.status).toBe(201);
+        expect((first.body as any).id).toBe((second.body as any).id);
+        expect((first.body as any).id).toMatch(/^ws-v2-/);
     });
 });
 
