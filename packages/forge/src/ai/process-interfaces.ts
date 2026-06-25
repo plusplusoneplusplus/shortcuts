@@ -175,6 +175,13 @@ export interface ConversationTurn {
     archived?: boolean;
     /** Source metadata for automated follow-up turns (loops/wakeups). */
     turnSource?: TurnSource;
+    /**
+     * copilot-sdk `user.message` event id that produced this turn. Durable
+     * anchor used to truncate session history at exactly this point on rewind.
+     * Only populated for `role: 'user'` turns on the copilot backend; absent
+     * otherwise (legacy turns, non-copilot providers, pre-fork historical turns).
+     */
+    sdkEventId?: string;
 }
 
 /** Metadata identifying the automated source of a conversation turn. */
@@ -218,6 +225,8 @@ export interface SerializedConversationTurn {
     archived?: boolean;
     /** Source metadata for automated follow-up turns (loops/wakeups). */
     turnSource?: TurnSource;
+    /** copilot-sdk `user.message` event id for this turn (rewind anchor; user turns on copilot only). */
+    sdkEventId?: string;
 }
 
 /**

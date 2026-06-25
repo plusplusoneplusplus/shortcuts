@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 /**
  * Read the current schema version from the database.
@@ -93,6 +93,7 @@ export function initializeDatabase(db: Database.Database): void {
                 archived          INTEGER DEFAULT 0,
                 model             TEXT,
                 mode              TEXT,
+                sdk_event_id      TEXT,
                 UNIQUE(process_id, turn_index)
             )
         `);
@@ -474,6 +475,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 23) {
             migrateV22toV23(db);
         }
+        if (versionBefore < 24) {
+            migrateV23toV24(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -778,6 +782,15 @@ function migrateV22toV23(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_queue_tasks_repo_position
             ON queue_tasks(repo_id, queue_position);
     `);
+}
+
+/**
+ * V23 -> V24: add `sdk_event_id` to `conversation_turns` — the copilot-sdk
+ * `user.message` event id captured on user turns, used as the durable anchor
+ * for in-place history rewind/truncation.
+ */
+function migrateV23toV24(db: Database.Database): void {
+    ensureColumn(db, 'conversation_turns', 'sdk_event_id', 'TEXT');
 }
 
 /**

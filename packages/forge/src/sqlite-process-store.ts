@@ -138,6 +138,7 @@ interface TurnRow {
     deleted_at: string | null;
     pinned_at: string | null;
     archived: number;
+    sdk_event_id: string | null;
 }
 
 interface PromptAutocompleteHistoryRow {
@@ -469,6 +470,7 @@ function turnToRow(turn: ConversationTurn, processId: string): Record<string, un
         paste_externalized: boolToInt(turn.pasteExternalized),
         model: turn.model ?? null,
         mode: turn.mode ?? null,
+        sdk_event_id: turn.sdkEventId ?? null,
         deleted_at: dateToIso(turn.deletedAt),
         pinned_at: dateToIso(turn.pinnedAt),
         archived: boolToInt(turn.archived),
@@ -522,6 +524,7 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         pasteExternalized: intToBool(row.paste_externalized),
         ...(row.model ? { model: row.model } : {}),
         ...(row.mode ? { mode: row.mode } : {}),
+        ...(row.sdk_event_id ? { sdkEventId: row.sdk_event_id } : {}),
         deletedAt: isoToDate(row.deleted_at),
         pinnedAt: isoToDate(row.pinned_at),
         archived: intToBool(row.archived),
@@ -651,11 +654,11 @@ export class SqliteProcessStore implements ProcessStore {
             INSERT INTO conversation_turns (
                 process_id, turn_index, role, content, timestamp, streaming,
                 interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
-                token_usage, paste_externalized, model, mode
+                token_usage, paste_externalized, model, mode, sdk_event_id
             ) VALUES (
                 @process_id, @turn_index, @role, @content, @timestamp, @streaming,
                 @interrupted, @interruption_reason, @tool_calls, @timeline, @images, @historical, @suggestions,
-                @token_usage, @paste_externalized, @model, @mode
+                @token_usage, @paste_externalized, @model, @mode, @sdk_event_id
             )
         `);
 
@@ -1273,6 +1276,7 @@ export class SqliteProcessStore implements ProcessStore {
                     paste_externalized: 0,
                     model: null,
                     mode: null,
+                    sdk_event_id: null,
                 });
             }
         });
