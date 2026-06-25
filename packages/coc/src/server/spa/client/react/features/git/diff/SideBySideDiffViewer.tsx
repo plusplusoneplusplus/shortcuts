@@ -90,6 +90,12 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
         const containerRef        = useRef<HTMLDivElement>(null);
         const currentHunkIndexRef = useRef<number>(-1);
 
+        // Column the in-progress text selection started in. Left and right cells are
+        // interleaved per row in the DOM, so a native drag down one column would otherwise
+        // also sweep the interleaved cells of the other column. While a drag is active we
+        // set the OTHER column to `user-select: none`; reset to null on mouse up.
+        const [selectSide, setSelectSide] = useState<'left' | 'right' | null>(null);
+
         const [toolbar, setToolbar] = useState<{
             visible: boolean;
             position: { x: number; y: number };
@@ -180,6 +186,9 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
 
         const handleMouseUp = useCallback((e: React.MouseEvent) => {
             if (e.button !== 0) return;
+            // Selection (if any) is finalized on mouse up — release the column lock so both
+            // columns are selectable again for the next gesture (and for select-all).
+            setSelectSide(null);
             if (!enableComments) return;
             const clear = () => {
                 pendingSelectionRef.current = null;
@@ -247,6 +256,10 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             // a mousedown with button===0 and ctrlKey===true. Skip clearing the pending
             // selection in that case so the contextmenu handler can still use it.
             if (e.button !== 0 || e.ctrlKey) return;
+            // Lock text selection to the column this drag starts in (see selectSide).
+            const side = (e.target as HTMLElement)
+                .closest('[data-split-side]')?.getAttribute('data-split-side');
+            setSelectSide(side === 'left' || side === 'right' ? side : null);
             pendingSelectionRef.current = null;
             setToolbar(t => ({ ...t, visible: false }));
         }, []);
@@ -299,6 +312,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     {/* LEFT column — removed or context */}
                     <div
                         className={`flex w-1/2 min-w-0 ${leftBg} ${leftHighlight}`}
+                        style={selectSide === 'right' ? { userSelect: 'none' } : undefined}
                         data-diff-line-index={leftLine && leftLine.originalIndex !== null ? leftLine.originalIndex : undefined}
                         data-line-type={enableComments && leftLine ? leftLine.type : undefined}
                         data-old-line={enableComments && leftLine ? (row.left.lineNumber ?? '') : undefined}
@@ -345,6 +359,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     {/* RIGHT column — added or context */}
                     <div
                         className={`flex w-1/2 min-w-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c] ${rightBg} ${rightHighlight}`}
+                        style={selectSide === 'left' ? { userSelect: 'none' } : undefined}
                         data-diff-line-index={rightLine && rightLine.originalIndex !== null ? rightLine.originalIndex : undefined}
                         data-line-type={enableComments && rightLine ? rightLine.type : undefined}
                         data-old-line={enableComments && rightLine ? (row.left.lineNumber ?? '') : undefined}
@@ -397,8 +412,8 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                 <div
                     ref={containerRef}
                     data-testid={testId}
-                    onMouseUp={enableComments ? handleMouseUp : undefined}
-                    onMouseDown={enableComments ? handleMouseDown : undefined}
+                    onMouseUp={handleMouseUp}
+                    onMouseDown={handleMouseDown}
                     onContextMenu={enableComments ? handleContextMenu : undefined}
                     className="font-mono text-xs leading-tight overflow-x-auto bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
                 >
