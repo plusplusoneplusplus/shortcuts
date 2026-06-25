@@ -85,12 +85,12 @@ describe('withToolParameterMetadata', () => {
 
     it('preserves all existing contract fields and does not mutate the input', () => {
         const input: LlmToolMeta[] = [
-            { name: 'read_excalidraw', label: 'Read Excalidraw', description: 'd', enabledByDefault: false },
+            { name: 'example_tool', label: 'Example Tool', description: 'd', enabledByDefault: false },
         ];
         const frozenSnapshot = JSON.stringify(input);
         const [result] = withToolParameterMetadata(input);
-        expect(result.name).toBe('read_excalidraw');
-        expect(result.label).toBe('Read Excalidraw');
+        expect(result.name).toBe('example_tool');
+        expect(result.label).toBe('Example Tool');
         expect(result.description).toBe('d');
         expect(result.enabledByDefault).toBe(false);
         // Input is untouched (no params field added in place).

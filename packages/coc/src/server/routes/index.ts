@@ -136,7 +136,6 @@ import { registerAgentProvidersRoutes } from '../agent-providers/agent-providers
 import { AgentProvidersQuotaCache } from '../agent-providers/quota-cache';
 import { resolveAutoAgentProvider, type AutoProviderAvailabilityMap, type AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import { registerProviderInstallRoutes } from '../providers/provider-install-routes';
-import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
 import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
 import { registerSyncRoutes } from '../sync/sync-handler';
 import type { SyncEngine } from '../sync/sync-engine';
@@ -467,10 +466,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerNotesEditsRoutes(routes, store, dataDir);
     registerNotesRootsRoutes(routes, store, dataDir);
 
-    // Diagram routes — always registered so excalidraw.enabled (classified
-    // as live) can be toggled via admin config without restart. The SPA
-    // gates the UI via runtime config.
-    registerDiagramRoutes(routes, store, dataDir);
     registerWorkflowRoutes(routes, store);
     registerWorkspaceSummaryRoutes(routes, store, dataDir);
     registerWorkflowWriteRoutes(routes, store, (workspaceId) => {
