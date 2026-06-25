@@ -28,6 +28,7 @@ import type {
   TurnArchiveResponse,
   TurnDeleteResponse,
   TurnPinResponse,
+  TurnRewindResponse,
 } from '../contracts';
 import { ProcessSseClient } from '../realtime/sse';
 import type { CocRequestOptions, NormalizedCocClientOptions, ProcessStreamOptions, QueryPrimitive, RequestAdapter } from '../types';
@@ -161,6 +162,21 @@ export class ProcessesClient {
     return this.transport.request<TurnArchiveResponse>(`/processes/${encodePathSegment(processId)}/turns/${turnIndex}/archive`, {
       method: 'PATCH',
       body: { archived },
+    });
+  }
+
+  /**
+   * Rewind a copilot conversation to an earlier user turn: destructively
+   * truncate the SDK session history and hard-delete the CoC turns at and after
+   * `turnIndex`. Returns the removed user message's text + images so the caller
+   * can repopulate the composer. Rejects (typed error) for non-copilot
+   * conversations, non-idle conversations, or turns with no captured anchor.
+   */
+  rewindTurn(processId: string, turnIndex: number, query?: Pick<ProcessListQuery, 'workspace'>): Promise<TurnRewindResponse> {
+    return this.transport.request<TurnRewindResponse>(`/processes/${encodePathSegment(processId)}/turns/${turnIndex}/rewind`, {
+      method: 'POST',
+      query,
+      body: {},
     });
   }
 

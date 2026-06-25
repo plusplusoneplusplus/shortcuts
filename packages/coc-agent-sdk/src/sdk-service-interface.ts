@@ -307,6 +307,19 @@ export interface ISDKService {
      */
     onWarmStatusChange?(listener: WarmStateChangeListener): () => void;
 
+    /**
+     * Evict (tear down) the warm client parked for a `(provider, warmKey)` key,
+     * if any. Used after a destructive history rewind (AC-03): the rewound
+     * session no longer matches the warm client's in-memory view, so the next
+     * send must resume the freshly-truncated session from a cold client rather
+     * than reuse a stale warm one.
+     *
+     * Optional and best-effort — providers that never stay warm (e.g. Claude)
+     * omit it, and callers treat a missing method as a no-op. Idempotent: evicting
+     * a key with no warm client resolves quietly.
+     */
+    evictWarm?(options: PrewarmOptions): Promise<void>;
+
     // ------------------------------------------------------------------
     // Session management
     // ------------------------------------------------------------------

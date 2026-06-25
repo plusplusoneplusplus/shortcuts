@@ -354,6 +354,19 @@ export class CopilotSDKService implements ISDKService {
         return this.warmStatus.subscribe(listener);
     }
 
+    /**
+     * Evict the warm client parked for a conversation's `(copilot, warmKey)` key
+     * (AC-03). Called after a destructive history rewind so the next send resumes
+     * the freshly-truncated session from a cold client instead of reusing a warm
+     * client whose in-memory session view is now stale. Uses the same key as
+     * {@link prewarm}. Idempotent and best-effort: evicting an absent key is a
+     * quiet no-op (the registry handles that).
+     */
+    public async evictWarm(options: PrewarmOptions): Promise<void> {
+        if (!options.warmKey) return;
+        await this.warmRegistry.evict(makeWarmKey(COPILOT_PROVIDER, options.warmKey));
+    }
+
     public async abortSession(sessionId: string): Promise<boolean> {
         return this.sessionManager.abort(sessionId);
     }

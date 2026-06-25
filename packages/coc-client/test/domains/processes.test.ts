@@ -19,6 +19,7 @@ describe('ProcessesClient', () => {
     await client.pinGroup('repo/a', 'ralph-session', 'ralph/1', true);
     await client.resumeCli('proc/1');
     await client.fork('proc/1', { workspace: 'repo/a' });
+    await client.rewindTurn('proc/1', 3, { workspace: 'repo/a' });
 
     expect(adapter.calls[0]).toMatchObject({
       path: '/processes',
@@ -39,11 +40,13 @@ describe('ProcessesClient', () => {
       '/workspaces/repo%2Fa/group-pins/ralph-session/ralph%2F1',
       '/processes/proc%2F1/resume-cli',
       '/processes/proc%2F1/fork',
+      '/processes/proc%2F1/turns/3/rewind',
     ]);
     expect(adapter.calls[5].options).toMatchObject({ method: 'PATCH', body: { pinned: true } });
     expect(adapter.calls[6].options).toMatchObject({ method: 'PATCH', body: { archived: false } });
     expect(adapter.calls[9].options).toMatchObject({ method: 'PATCH', body: { pinned: true } });
     expect(adapter.calls[11].options).toMatchObject({ method: 'POST', query: { workspace: 'repo/a' }, body: {} });
+    expect(adapter.calls[12].options).toMatchObject({ method: 'POST', query: { workspace: 'repo/a' }, body: {} });
   });
 
   it('encodes process IDs once in detail paths and stream URLs', async () => {
