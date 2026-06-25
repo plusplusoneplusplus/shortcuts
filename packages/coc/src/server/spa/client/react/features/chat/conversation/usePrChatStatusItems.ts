@@ -58,12 +58,18 @@ export interface UsePrChatStatusItemsResult {
     /** Lazily fetch a row's CI checks (AC-03) — called when its panel is expanded. */
     expandChecks: (key: string) => void;
     /**
-     * Force-refresh every row's detail (and any already-loaded checks), bypassing
-     * the server cache (AC-05). Used by the manual refresh control and smart poll.
+     * Force-refresh PR detail (and any already-loaded checks), bypassing the
+     * server cache (AC-05). Pass a row `key` to refresh just that row (the
+     * in-composer per-row control); call with no key to refresh every row (the
+     * card-level "Refresh all" control). The smart poll refreshes silently and
+     * does not go through this.
      */
-    refresh: () => void;
-    /** True while a {@link refresh} is in flight (drives the refresh control's spinner). */
-    refreshing: boolean;
+    refresh: (key?: string) => void;
+    /**
+     * Row keys with a manual refresh in flight — drives each control's spinner.
+     * A per-row refresh adds only its own key; a refresh-all adds every key.
+     */
+    refreshingKeys: ReadonlySet<string>;
     /** Epoch ms of the last successful detail fetch — feeds the "updated Xs ago" label. */
     lastUpdatedAt: number | undefined;
     /** Whether the smart poll is currently active (a PR is non-terminal + unsettled). */
@@ -173,7 +179,7 @@ interface FetchOptions {
 export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UsePrChatStatusItemsResult {
     const { turns, workspaceId, remoteUrl, taskId } = options;
     const [items, setItems] = useState<PrStatusCardItem[]>([]);
-    const [refreshing, setRefreshing] = useState(false);
+    const [refreshingKeys, setRefreshingKeys] = useState<ReadonlySet<string>>(() => new Set());
     const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>(undefined);
 
     // Bump on every (re)run / cleanup so stale async callbacks no-op.
@@ -196,6 +202,14 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
     // Only re-run the fetch pipeline when the *set* of detected PRs changes,
     // not on every streaming turn update.
     const detectedKey = useMemo(() => detected.map(pr => pr.url).sort().join('|'), [detected]);
+    // Read the latest detected PRs through a ref inside the fetch effect so
+    // `detected` (a fresh array reference on every `turns` change) is NOT an
+    // effect dependency. Otherwise the effect re-runs — flashing the loading
+    // skeleton and refetching every row — after every tool call, even when the
+    // PR set is unchanged. `detectedKey` already gates the effect on the set of
+    // PR URLs actually changing.
+    const detectedRef = useRef(detected);
+    detectedRef.current = detected;
 
     const fetchDetailForAssociation = useCallback(
         (association: PrAssociation, repoId: string, generation: number, opts: FetchOptions = {}): Promise<void> => {
@@ -309,7 +323,7 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
 
     useEffect(() => {
         // A dep change rebuilds the association set — abandon any in-flight refresh.
-        setRefreshing(false);
+        setRefreshingKeys(new Set());
         if (!workspaceId || !chatOriginId) {
             associationsRef.current = [];
             setItems([]);
@@ -319,6 +333,7 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
         const client = getCocClientForWorkspace(workspaceId);
 
         (async () => {
+            const detected = detectedRef.current;
             let bindings: PrChatBindingLike[] = [];
             try {
                 const response = await client.pullRequests.listChatBindingsForOrigin(
@@ -359,7 +374,7 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
             // Invalidate this generation on dep change / unmount.
             generationRef.current++;
         };
-    }, [workspaceId, chatOriginId, taskId, detectedKey, detected, fetchDetailForAssociation]);
+    }, [workspaceId, chatOriginId, taskId, detectedKey, fetchDetailForAssociation]);
 
     const retry = useCallback(
         (key: string) => {
@@ -386,42 +401,73 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
     );
 
     /**
-     * Manual refresh + smart-poll tick (AC-05): force-refresh every row's detail
-     * (and any already-loaded checks panel), bypassing the server cache. Runs
-     * silently so the rows don't flash a skeleton on each background poll.
+     * Force-refresh the given rows' detail (and any already-loaded checks panel),
+     * bypassing the server cache. Always runs silently so a row never flashes a
+     * skeleton. When `spin` is set, the targeted keys are tracked in
+     * {@link refreshingKeys} for the duration so only their controls show busy —
+     * the smart poll passes `spin: false` so background ticks spin nothing.
      */
-    const refresh = useCallback(() => {
-        if (!workspaceId) return;
-        const associations = associationsRef.current;
-        if (associations.length === 0) return;
-        const generation = generationRef.current;
-        setRefreshing(true);
-        const detailFetches = associations.map(association =>
-            fetchDetailForAssociation(association, workspaceId, generation, { force: true, silent: true }),
-        );
-        for (const association of associations) {
-            if (checksStatusRef.current.get(association.key) === 'ready') {
-                fetchChecksForAssociation(association, workspaceId, generation, { force: true, silent: true });
+    const runRefresh = useCallback(
+        (targets: PrAssociation[], spin: boolean) => {
+            if (!workspaceId || targets.length === 0) return;
+            const generation = generationRef.current;
+            if (spin) {
+                setRefreshingKeys(prev => {
+                    const next = new Set(prev);
+                    for (const association of targets) next.add(association.key);
+                    return next;
+                });
             }
-        }
-        void Promise.allSettled(detailFetches).then(() => {
-            if (generationRef.current === generation) setRefreshing(false);
-        });
-    }, [workspaceId, fetchDetailForAssociation, fetchChecksForAssociation]);
+            const detailFetches = targets.map(association =>
+                fetchDetailForAssociation(association, workspaceId, generation, { force: true, silent: true }),
+            );
+            for (const association of targets) {
+                if (checksStatusRef.current.get(association.key) === 'ready') {
+                    fetchChecksForAssociation(association, workspaceId, generation, { force: true, silent: true });
+                }
+            }
+            if (spin) {
+                void Promise.allSettled(detailFetches).then(() => {
+                    if (generationRef.current !== generation) return;
+                    setRefreshingKeys(prev => {
+                        if (targets.every(association => !prev.has(association.key))) return prev;
+                        const next = new Set(prev);
+                        for (const association of targets) next.delete(association.key);
+                        return next;
+                    });
+                });
+            }
+        },
+        [workspaceId, fetchDetailForAssociation, fetchChecksForAssociation],
+    );
+
+    /**
+     * Manual refresh (AC-05): refresh one row by `key`, or every row when called
+     * with no key. Spins only the refreshed rows' controls.
+     */
+    const refresh = useCallback(
+        (key?: string) => {
+            const associations = associationsRef.current;
+            const targets = key ? associations.filter(association => association.key === key) : associations;
+            runRefresh(targets, true);
+        },
+        [runRefresh],
+    );
 
     // Smart auto-poll (AC-05): poll on a fixed cadence ONLY while at least one PR
     // is non-terminal and unsettled (checks pending/running or auto-merge
     // armed/queued); the interval is torn down once everything settles.
     const isPolling = useMemo(() => shouldPollPrStatusItems(items), [items]);
-    const refreshRef = useRef(refresh);
-    refreshRef.current = refresh;
+    const runRefreshRef = useRef(runRefresh);
+    runRefreshRef.current = runRefresh;
     useEffect(() => {
         if (!isPolling) return undefined;
         const intervalId = setInterval(() => {
-            refreshRef.current();
+            // Background tick: refresh every row silently, spinning nothing.
+            runRefreshRef.current(associationsRef.current, false);
         }, PR_STATUS_POLL_INTERVAL_MS);
         return () => clearInterval(intervalId);
     }, [isPolling]);
 
-    return { items, retry, expandChecks, refresh, refreshing, lastUpdatedAt, isPolling };
+    return { items, retry, expandChecks, refresh, refreshingKeys, lastUpdatedAt, isPolling };
 }

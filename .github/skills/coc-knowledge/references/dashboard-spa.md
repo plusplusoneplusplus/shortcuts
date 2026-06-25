@@ -175,9 +175,13 @@ server-side from GitHub REST `pulls.get` / ADO `autoCompleteSetBy`) and
 mounted. `usePrChatStatusItems` still eager-loads each ready row's CI checks
 (`getChecksForOrigin` once detail resolves to `ready`, deduped via
 `checksStatusRef`, mapped by `buildCheckRowsFromChecks`) and exposes
-`expandChecks`, `refresh` (force-refreshes every row's detail + any loaded checks
-with `{ force: true }`, running silently so rows don't flash a skeleton),
-`refreshing`, `lastUpdatedAt`, and `isPolling`. Freshness lives in the pure
+`expandChecks`, `refresh(key?)` (force-refreshes one row by `key`, or every row
+when called with no key — the composer chips pass their own key for a per-row
+refresh; the card's single control refreshes all — always running silently with
+`{ force: true }` so rows don't flash a skeleton), `refreshingKeys` (the set of
+row keys with a manual refresh in flight, so only the refreshed rows' controls
+spin; the smart poll refreshes silently and adds nothing to it), `lastUpdatedAt`,
+and `isPolling`. Freshness lives in the pure
 `conversation/prStatusFreshness.ts`: `shouldPollPrStatusItems` returns true only
 while some PR is non-terminal AND has checks pending/running OR auto-merge
 armed/queued (false once all merged/closed; because checks are eager-loaded, a

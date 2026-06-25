@@ -15,9 +15,14 @@ import type { PrCheckRow, CheckStatus } from '../../../src/server/spa/client/rea
 
 const KEY = 'gh_owner_repo:42';
 const GH_URL = 'https://github.com/owner/repo/pull/42';
+const POPOVER_TESTID = `composer-pr-chip-checks-popover-${KEY}`;
 
 function check(id: string, status: CheckStatus): PrCheckRow {
     return { id, name: id, status, duration: '', interpretation: '' };
+}
+
+function checkWithUrl(id: string, status: CheckStatus, detailsUrl?: string): PrCheckRow {
+    return { id, name: id, status, duration: '', interpretation: '', detailsUrl };
 }
 
 function readyItem(overrides: Partial<PrStatusCardItem> = {}): PrStatusCardItem {
@@ -150,7 +155,9 @@ describe('ComposerPrChip', () => {
         expect(btn.disabled).toBe(false);
         expect(btn.getAttribute('data-refreshing')).toBe('false');
         fireEvent.click(btn);
+        // Passes its own key so the hook refreshes (and spins) only this row.
         expect(onRefresh).toHaveBeenCalledTimes(1);
+        expect(onRefresh).toHaveBeenCalledWith(KEY);
     });
 
     it('ready: the refresh button is disabled and marked refreshing while a refresh is in flight', () => {
@@ -213,5 +220,140 @@ describe('ComposerPrChip', () => {
             />,
         );
         expect(queryByTestId(`composer-pr-chip-retry-${KEY}`)).toBeNull();
+    });
+});
+
+describe('ComposerPrChip — failed-checks popover', () => {
+    const failingChecks: PrCheckRow[] = [
+        checkWithUrl('build', 'failure', 'https://github.com/owner/repo/actions/runs/1'),
+        checkWithUrl('lint', 'failure', 'https://github.com/owner/repo/actions/runs/2'),
+        check('unit', 'success'),
+        check('e2e', 'pending'),
+    ];
+
+    it('failing: the checks badge is a button that toggles the failed-checks popover', () => {
+        const { getByTestId, queryByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks: failingChecks })} onDismiss={() => {}} />,
+        );
+        const badge = getByTestId('composer-pr-chip-checks');
+        expect(badge.tagName).toBe('BUTTON');
+        expect(badge.getAttribute('aria-haspopup')).toBe('dialog');
+        expect(badge.getAttribute('aria-expanded')).toBe('false');
+        expect(badge.getAttribute('data-failing')).toBe('2');
+        // Closed until clicked.
+        expect(queryByTestId(POPOVER_TESTID)).toBeNull();
+
+        fireEvent.click(badge);
+        expect(badge.getAttribute('aria-expanded')).toBe('true');
+        const popover = getByTestId(POPOVER_TESTID);
+        expect(popover.getAttribute('role')).toBe('dialog');
+
+        // Clicking again closes it.
+        fireEvent.click(badge);
+        expect(badge.getAttribute('aria-expanded')).toBe('false');
+        expect(queryByTestId(POPOVER_TESTID)).toBeNull();
+    });
+
+    it('failing: the popover lists ONLY the failed checks', () => {
+        const { getByTestId, getAllByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks: failingChecks })} onDismiss={() => {}} />,
+        );
+        fireEvent.click(getByTestId('composer-pr-chip-checks'));
+
+        const rows = getAllByTestId('composer-pr-chip-checks-failed-row');
+        expect(rows).toHaveLength(2);
+        expect(rows.every(row => row.getAttribute('data-status') === 'failure')).toBe(true);
+
+        const popover = getByTestId(POPOVER_TESTID);
+        expect(popover.textContent).toContain('2 failed checks');
+        // The passing/pending checks are not listed.
+        expect(popover.textContent).not.toContain('unit');
+        expect(popover.textContent).not.toContain('e2e');
+        expect(popover.textContent).toContain('build');
+        expect(popover.textContent).toContain('lint');
+    });
+
+    it('failing: each failed check links to its provider details page in a new tab', () => {
+        const { getByTestId, getAllByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks: failingChecks })} onDismiss={() => {}} />,
+        );
+        fireEvent.click(getByTestId('composer-pr-chip-checks'));
+
+        const links = getAllByTestId('composer-pr-chip-checks-failed-link') as HTMLAnchorElement[];
+        expect(links.map(a => a.getAttribute('href'))).toEqual([
+            'https://github.com/owner/repo/actions/runs/1',
+            'https://github.com/owner/repo/actions/runs/2',
+        ]);
+        for (const a of links) {
+            expect(a.getAttribute('target')).toBe('_blank');
+            expect(a.getAttribute('rel')).toBe('noopener noreferrer');
+        }
+    });
+
+    it('failing: following a check link closes the popover', () => {
+        const { getByTestId, getAllByTestId, queryByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks: failingChecks })} onDismiss={() => {}} />,
+        );
+        fireEvent.click(getByTestId('composer-pr-chip-checks'));
+        const link = getAllByTestId('composer-pr-chip-checks-failed-link')[0];
+        fireEvent.click(link);
+        expect(queryByTestId(POPOVER_TESTID)).toBeNull();
+    });
+
+    it('failing: a failed check without a details URL renders as plain text (no link)', () => {
+        const checks: PrCheckRow[] = [checkWithUrl('build', 'failure')];
+        const { getByTestId, getAllByTestId, queryByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks })} onDismiss={() => {}} />,
+        );
+        fireEvent.click(getByTestId('composer-pr-chip-checks'));
+
+        const rows = getAllByTestId('composer-pr-chip-checks-failed-row');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].textContent).toContain('build');
+        expect(queryByTestId('composer-pr-chip-checks-failed-link')).toBeNull();
+        expect(getByTestId(POPOVER_TESTID).textContent).toContain('1 failed check');
+    });
+
+    it('failing: Escape closes the popover', () => {
+        const { getByTestId, queryByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks: failingChecks })} onDismiss={() => {}} />,
+        );
+        fireEvent.click(getByTestId('composer-pr-chip-checks'));
+        expect(queryByTestId(POPOVER_TESTID)).not.toBeNull();
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(queryByTestId(POPOVER_TESTID)).toBeNull();
+    });
+
+    it('failing: an outside click closes the popover', () => {
+        const { getByTestId, queryByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks: failingChecks })} onDismiss={() => {}} />,
+        );
+        fireEvent.click(getByTestId('composer-pr-chip-checks'));
+        expect(queryByTestId(POPOVER_TESTID)).not.toBeNull();
+        fireEvent.mouseDown(document.body);
+        expect(queryByTestId(POPOVER_TESTID)).toBeNull();
+    });
+
+    it('all passing: the checks badge stays a non-interactive span and opens no popover', () => {
+        const checks: PrCheckRow[] = [check('a', 'success'), check('b', 'success')];
+        const { getByTestId, queryByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks })} onDismiss={() => {}} />,
+        );
+        const badge = getByTestId('composer-pr-chip-checks');
+        expect(badge.tagName).toBe('SPAN');
+        expect(badge.getAttribute('data-failing')).toBe('0');
+        fireEvent.click(badge);
+        expect(queryByTestId(POPOVER_TESTID)).toBeNull();
+    });
+
+    it('pending but none failing: the checks badge is not clickable', () => {
+        const checks: PrCheckRow[] = [check('a', 'success'), check('b', 'pending')];
+        const { getByTestId, queryByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks })} onDismiss={() => {}} />,
+        );
+        const badge = getByTestId('composer-pr-chip-checks');
+        expect(badge.tagName).toBe('SPAN');
+        fireEvent.click(badge);
+        expect(queryByTestId(POPOVER_TESTID)).toBeNull();
     });
 });

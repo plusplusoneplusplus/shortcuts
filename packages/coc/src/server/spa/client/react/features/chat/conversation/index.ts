@@ -18,6 +18,8 @@ export { ChatPrStatusCard } from './ChatPrStatusCard';
 export type { ChatPrStatusCardProps } from './ChatPrStatusCard';
 export { ComposerPrChip } from './ComposerPrChip';
 export type { ComposerPrChipProps } from './ComposerPrChip';
+export { ComposerPrChecksPopover } from './ComposerPrChecksPopover';
+export type { ComposerPrChecksPopoverProps } from './ComposerPrChecksPopover';
 export { ChatComposerPrChips } from './ChatComposerPrChips';
 export type { ChatComposerPrChipsProps } from './ChatComposerPrChips';
 export { usePrChatStatusItems, mapPrDetailToCardPr, parseAutoMerge, parseDiffStats } from './usePrChatStatusItems';
