@@ -76,6 +76,10 @@ export interface PrStatusCardItem {
     key: string;
     /** Workspace/repo id used to deep-link into PullRequestDetail. */
     repoId: string;
+    /** Canonical origin id scoping the PR (used to arm CI auto-fix triggers). */
+    originId?: string;
+    /** PR id (number as a string) used by the REST + trigger endpoints. */
+    prId?: string;
     /** PR number for display + deep-link (falls back to `pr.number`). */
     number: number;
     /** Per-PR fetch state. */

@@ -19,6 +19,26 @@ import { checkStatusEmoji, checkStatusLabel } from '../../pull-requests/PrChecks
 import { checkStatusClass } from '../../pull-requests/pr-derived-data';
 import type { PrCheckRow } from '../../pull-requests/pr-derived-data';
 
+/**
+ * CI auto-fix controls surfaced in the failed-checks popover (AC-05). Present
+ * only when the triggers feature is enabled; the toggle arms/disarms a
+ * `ci-failure` monitor for this PR and "Fix now" sends one fix message.
+ */
+export interface ComposerPrChecksAutoFix {
+    /** Whether the triggers feature flag is on (controls render only when true). */
+    enabled: boolean;
+    /** Whether a monitor is currently armed for this PR. */
+    armed: boolean;
+    /** A network op is in flight — disables the controls. */
+    busy: boolean;
+    /** Non-null disables the controls and supplies a tooltip. */
+    disabledReason: string | null;
+    /** Toggle the monitor on/off (receives the desired next armed state). */
+    onToggle: (next: boolean) => void;
+    /** Send one fix message immediately (no monitor). */
+    onFixNow: () => void;
+}
+
 export interface ComposerPrChecksPopoverProps {
     /** The badge button the popover anchors to (for positioning + outside-click). */
     anchorRef: React.RefObject<HTMLElement>;
@@ -30,6 +50,8 @@ export interface ComposerPrChecksPopoverProps {
     itemKey: string;
     /** Close the popover (outside-click, Escape, or link follow). */
     onClose: () => void;
+    /** CI auto-fix controls (AC-05). Omit to render the popover without them. */
+    autoFix?: ComposerPrChecksAutoFix;
 }
 
 /** Margin (px) kept between the popover and the viewport edges. */
@@ -37,7 +59,7 @@ const VIEWPORT_MARGIN = 8;
 /** Gap (px) between the popover and its anchor badge. */
 const ANCHOR_GAP = 6;
 
-export function ComposerPrChecksPopover({ anchorRef, failed, prNumber, itemKey, onClose }: ComposerPrChecksPopoverProps) {
+export function ComposerPrChecksPopover({ anchorRef, failed, prNumber, itemKey, onClose, autoFix }: ComposerPrChecksPopoverProps) {
     const popoverRef = useRef<HTMLDivElement | null>(null);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -146,6 +168,57 @@ export function ComposerPrChecksPopover({ anchorRef, failed, prNumber, itemKey, 
                     </li>
                 ))}
             </ul>
+            {autoFix?.enabled && (
+                <div
+                    className="mt-2 flex items-center justify-between gap-2 border-t border-[#d0d7de] dark:border-[#3c3c3c] px-1 pt-2"
+                    data-testid={`composer-pr-chip-autofix-${itemKey}`}
+                >
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={autoFix.armed}
+                        disabled={Boolean(autoFix.disabledReason)}
+                        title={autoFix.disabledReason ?? (autoFix.armed ? 'CI auto-fix is on — click to turn off' : 'Automatically fix failing CI for this PR')}
+                        data-testid={`composer-pr-chip-autofix-toggle-${itemKey}`}
+                        data-armed={autoFix.armed ? 'true' : 'false'}
+                        onClick={() => autoFix.onToggle(!autoFix.armed)}
+                        className={cn(
+                            'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium cursor-pointer border-none',
+                            'disabled:cursor-default disabled:opacity-60',
+                            autoFix.armed
+                                ? 'bg-[#1a7f37] text-white dark:bg-[#238636]'
+                                : 'bg-black/[0.05] text-[#1f2328] hover:bg-black/[0.08] dark:bg-white/[0.08] dark:text-[#c9d1d9] dark:hover:bg-white/[0.12]',
+                        )}
+                    >
+                        <span
+                            aria-hidden="true"
+                            className={cn(
+                                'inline-flex h-3 w-3 items-center justify-center rounded-full border',
+                                autoFix.armed ? 'border-white bg-white' : 'border-current bg-transparent',
+                            )}
+                        >
+                            {autoFix.armed && (
+                                <span className="h-1.5 w-1.5 rounded-full bg-[#1a7f37] dark:bg-[#238636]" />
+                            )}
+                        </span>
+                        Auto-fix CI
+                    </button>
+                    <button
+                        type="button"
+                        disabled={Boolean(autoFix.disabledReason)}
+                        title={autoFix.disabledReason ?? 'Send one fix message now'}
+                        data-testid={`composer-pr-chip-autofix-fixnow-${itemKey}`}
+                        onClick={() => autoFix.onFixNow()}
+                        className={cn(
+                            'shrink-0 inline-flex items-center gap-1 h-[24px] px-2 rounded-md text-[11px] font-medium cursor-pointer border-none',
+                            'bg-[#0969da] text-white hover:bg-[#0a5cc2] dark:bg-[#1f6feb] dark:hover:bg-[#388bfd]',
+                            'disabled:cursor-default disabled:opacity-60 disabled:hover:bg-[#0969da] dark:disabled:hover:bg-[#1f6feb]',
+                        )}
+                    >
+                        Fix now
+                    </button>
+                </div>
+            )}
         </div>,
         document.body,
     );

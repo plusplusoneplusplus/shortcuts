@@ -22,9 +22,20 @@ import { cn } from '../../../ui/cn';
 import { prStatusBadge, summarizeReviewerApprovals } from '../../pull-requests/pr-utils';
 import { buildPrDetailHash } from '../../pull-requests/pr-open-utils';
 import { summarizeCheckRows } from '../../pull-requests/PrChecksSummary';
-import { ComposerPrChecksPopover } from './ComposerPrChecksPopover';
+import { ComposerPrChecksPopover, type ComposerPrChecksAutoFix } from './ComposerPrChecksPopover';
 import { ComposerPrReviewersPopover } from './ComposerPrReviewersPopover';
+import { usePrAutoFixTrigger, type UsePrAutoFixTriggerResult } from './usePrAutoFixTrigger';
 import type { PrStatusCardItem } from './PrStatusCard';
+
+/** CI auto-fix wiring passed from the connected chip stack (AC-05). */
+export interface ComposerPrChipAutoFixContext {
+    /** Whether the triggers feature flag is on. */
+    enabled: boolean;
+    /** Owning workspace id (trigger scope + clone routing). */
+    workspaceId?: string;
+    /** Conversation (process) the fix action targets. */
+    processId?: string;
+}
 
 export interface ComposerPrChipProps {
     /** The PR row to render (number, fetch state, loaded detail). */
@@ -37,6 +48,8 @@ export interface ComposerPrChipProps {
     onRefresh?: (key: string) => void;
     /** A force-refresh is in flight — spins the icon and disables the button. */
     refreshing?: boolean;
+    /** CI auto-fix context (AC-05). Omit (or `enabled: false`) to hide the controls + badge. */
+    autoFix?: ComposerPrChipAutoFixContext;
 }
 
 const ROW_CLASS =
@@ -201,7 +214,7 @@ function ReviewersBadge({ item }: { item: PrStatusCardItem }) {
  * to its provider details page. With nothing failing it stays a plain,
  * non-interactive pill (there is nothing to drill into).
  */
-function ChecksBadge({ item }: { item: PrStatusCardItem }) {
+function ChecksBadge({ item, autoFix }: { item: PrStatusCardItem; autoFix?: UsePrAutoFixTriggerResult }) {
     const [open, setOpen] = React.useState(false);
     const anchorRef = React.useRef<HTMLButtonElement | null>(null);
 
@@ -256,6 +269,23 @@ function ChecksBadge({ item }: { item: PrStatusCardItem }) {
 
     // Something failing → clickable badge that opens the failed-checks popover.
     const failed = rows.filter(row => row.status === 'failure');
+    // `autoFix` is only supplied when the feature is enabled, so the controls
+    // always render; `disabledReason` (set when the PR/conversation context is
+    // unresolved or a call is in flight) disables them with a tooltip.
+    const popoverAutoFix: ComposerPrChecksAutoFix | undefined = autoFix
+        ? {
+            enabled: true,
+            armed: autoFix.armed,
+            busy: autoFix.busy,
+            disabledReason: autoFix.disabledReason,
+            onToggle: next => {
+                void (next ? autoFix.arm() : autoFix.disarm());
+            },
+            onFixNow: () => {
+                void autoFix.fixNow(failed.map(row => ({ name: row.name, detailsUrl: row.detailsUrl })));
+            },
+        }
+        : undefined;
     return (
         <>
             <button
@@ -280,9 +310,24 @@ function ChecksBadge({ item }: { item: PrStatusCardItem }) {
                     prNumber={item.pr?.number ?? item.number}
                     itemKey={item.key}
                     onClose={() => setOpen(false)}
+                    autoFix={popoverAutoFix}
                 />
             )}
         </>
+    );
+}
+
+/** "Auto-fix on" indicator shown on the chip while a CI monitor is armed (AC-05). */
+function AutoFixOnBadge({ itemKey }: { itemKey: string }) {
+    return (
+        <span
+            className="shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-[#dafbe1] text-[#1a7f37] dark:bg-[#238636]/25 dark:text-[#3fb950]"
+            data-testid={`composer-pr-chip-autofix-badge-${itemKey}`}
+            title="CI auto-fix is on for this pull request"
+        >
+            <span aria-hidden="true">⚡</span>
+            Auto-fix on
+        </span>
     );
 }
 
@@ -321,9 +366,21 @@ function ViewLink({ target, itemKey }: { target: PrLinkTarget; itemKey: string }
     );
 }
 
-export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing }: ComposerPrChipProps) {
+export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing, autoFix }: ComposerPrChipProps) {
     const number = item.pr?.number ?? item.number;
     const linkTarget = getPrLinkTarget(item, number);
+
+    // Per-PR CI auto-fix lifecycle (AC-05). The hook is inert until the feature
+    // is enabled AND the PR/conversation context resolves, so it's safe to call
+    // in every render state.
+    const autoFixState = usePrAutoFixTrigger({
+        enabled: autoFix?.enabled ?? false,
+        workspaceId: autoFix?.workspaceId,
+        processId: autoFix?.processId,
+        originId: item.originId,
+        prId: item.prId,
+        prNumber: number,
+    });
 
     if (item.state === 'loading') {
         return (
@@ -386,7 +443,8 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
             </span>
             {pr && <StatusBadge status={pr.status} />}
             <ReviewersBadge item={item} />
-            <ChecksBadge item={item} />
+            <ChecksBadge item={item} autoFix={autoFix?.enabled ? autoFixState : undefined} />
+            {autoFix?.enabled && autoFixState.armed && <AutoFixOnBadge itemKey={item.key} />}
             {diff && (
                 <span className="shrink-0 font-mono text-[11px]" data-testid="composer-pr-chip-diff">
                     <span className="font-semibold text-[#1a7f37] dark:text-[#3fb950]">+{diff.additions}</span>{' '}
