@@ -501,4 +501,62 @@ test.describe('Mock AI: Complete Multi-Turn Conversation', () => {
             cleanup();
         }
     });
+
+    test('re-enables send button when follow-up finishes without main SSE done', async ({
+        serverUrl,
+        mockAI,
+        page,
+    }) => {
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'mock-send-done');
+        try {
+            mockAI.mockSendMessage.mockResolvedValueOnce({
+                success: true,
+                response: 'Initial answer',
+                sessionId: 'sess-send-done',
+            });
+
+            const task = await seedQueueTask(serverUrl, {
+                repoId: wsId,
+                payload: { workspaceId: wsId, prompt: 'First question' },
+            });
+
+            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed']);
+            await gotoConversation(page, serverUrl, wsId, task.id as string);
+            await waitForBubbles(page, 2);
+            await expect(page.locator('[data-testid="activity-chat-send-btn"]')).toBeEnabled();
+
+            let abortedMainStreams = 0;
+            await page.route('**/api/processes/**/stream**', async (route) => {
+                const url = new URL(route.request().url());
+                if (url.searchParams.get('warm') === '1') {
+                    await route.continue();
+                    return;
+                }
+                abortedMainStreams++;
+                await route.abort('failed');
+            });
+
+            mockAI.mockSendMessage.mockImplementationOnce(async (opts: any) => {
+                opts?.onStreamingChunk?.('Follow-up answer');
+                return {
+                    success: true,
+                    response: 'Follow-up answer',
+                    sessionId: 'sess-send-done',
+                };
+            });
+
+            await page.fill('[data-testid="activity-chat-input"]', 'Follow-up question');
+            await page.keyboard.press('Enter');
+
+            const lastAssistant = page.locator('.chat-message.assistant').last();
+            await expect(lastAssistant.locator('.chat-message-content')).toContainText(
+                'Follow-up answer',
+                { timeout: 15_000 },
+            );
+            await expect(page.locator('[data-testid="activity-chat-send-btn"]')).toBeEnabled();
+            expect(abortedMainStreams).toBeGreaterThan(0);
+        } finally {
+            cleanup();
+        }
+    });
 });
