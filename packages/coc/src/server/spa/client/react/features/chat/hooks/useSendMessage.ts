@@ -167,7 +167,7 @@ export function useSendMessage({
                     resolveCurrentSendRef.current = null;
                     resolve();
                 }
-            }, 90_000);
+            }, 20_000);
             const origResolve = resolve;
             resolveCurrentSendRef.current = () => {
                 clearTimeout(timeout);
