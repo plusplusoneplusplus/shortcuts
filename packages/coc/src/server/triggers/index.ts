@@ -27,3 +27,15 @@ export type {
     EvaluationOutcome,
     ActionExecutor,
 } from './trigger-manager';
+
+export { CiFailureEvaluator } from './ci-failure-evaluator';
+export type {
+    CiChecksFetcher,
+    CiPrChecksSnapshot,
+    CiCheckSnapshot,
+    CiCheckStatus,
+    CiPrStatus,
+} from './ci-failure-evaluator';
+
+export { buildCiFailurePrompt } from './ci-failure-prompt';
+export type { CiFailingCheck } from './ci-failure-prompt';
