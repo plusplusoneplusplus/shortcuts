@@ -39,3 +39,6 @@ export type {
 
 export { buildCiFailurePrompt } from './ci-failure-prompt';
 export type { CiFailingCheck } from './ci-failure-prompt';
+
+export { QueueActionExecutor } from './queue-action-executor';
+export type { QueueActionExecutorDeps } from './queue-action-executor';

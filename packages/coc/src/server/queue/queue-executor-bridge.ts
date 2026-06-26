@@ -497,6 +497,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         // (captured when the message was buffered) is carried through to the
         // replayed task so the follow-up executor honours it.
         const pendingEffort = (nextMsg as { reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' }).reasoningEffort;
+        // Merge any carried follow-up context (e.g. trigger turnSource) with the
+        // skills context so an automated buffered message keeps its source tag.
+        const drainedContext: Record<string, unknown> = {
+            ...(nextMsg.context ?? {}),
+            ...(nextMsg.skillNames && nextMsg.skillNames.length > 0 ? { skills: nextMsg.skillNames } : {}),
+        };
         this.queueManager.enqueue({
             processId,
             type: 'chat',
@@ -512,7 +518,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 ...(nextMsg.imageTempDir ? { imageTempDir: nextMsg.imageTempDir } : {}),
                 ...(nextMsg.images ? { images: nextMsg.images } : {}),
                 ...(nextMsg.fileAttachmentMeta ? { fileAttachmentMeta: nextMsg.fileAttachmentMeta } : {}),
-                ...(nextMsg.skillNames && nextMsg.skillNames.length > 0 ? { context: { skills: nextMsg.skillNames } } : {}),
+                ...(Object.keys(drainedContext).length > 0 ? { context: drainedContext } : {}),
             },
             config: pendingEffort ? { reasoningEffort: pendingEffort } : {},
             displayName: nextMsg.content.trim().substring(0, 57) + (nextMsg.content.trim().length > 57 ? '...' : ''),
