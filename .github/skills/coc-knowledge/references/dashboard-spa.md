@@ -583,6 +583,13 @@ the `task` startup acknowledgement. Limitation: `content`-type timeline items
 carry no parent linkage, so a sub-agent's prose isn't attributed — its Task
 result (or matching `read_agent` final output) shows as the closing content
 instead.
+`ConversationTurnBubble` builds parent/child chunk maps after falling back from
+timeline events to persisted `toolCalls`, so nested child tools still render
+inside their parent Task when a detail view (or older history record) only has
+flat tool-call snapshots. Whisper mode (`toolCompactness === 3`) applies to the
+same synthetic assistant turn: preceding descendant tool calls collapse into the
+normal `WhisperCollapsedGroup` and the sub-agent result remains visible as the
+tail content.
 Styles live in scoped `agent-canvas.css` (`.agent-canvas`,
 light/dark via `.dark`); there is no clock scrubber (the prototype's replay
 control is dropped — the real view is

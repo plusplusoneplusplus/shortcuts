@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ConversationTurnBubble } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
+import { buildSubAgentTurns } from '../../../src/server/spa/client/react/features/chat/agent-canvas/buildSubAgentTurns';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
@@ -271,6 +272,131 @@ describe('ConversationTurnBubble — compact tool grouping', () => {
         const whisper = container.querySelector('[data-testid="whisper-collapsed-group"]');
         expect(whisper).toBeTruthy();
         expect(whisper?.getAttribute('data-tool-count')).toBe('3');
+    });
+
+    it('renders Copilot SDK sub-agent detail steps in whisper mode while keeping the final result visible', () => {
+        mockToolCompactness = 3;
+        const sourceTurns: ClientConversationTurn[] = [
+            {
+                role: 'assistant',
+                content: 'orchestrator done',
+                timestamp: '2026-01-15T10:30:00Z',
+                timeline: [],
+                toolCalls: [
+                    {
+                        id: 'task-parent',
+                        toolName: 'Task',
+                        args: { prompt: 'inspect the repo', name: 'repo inspector' },
+                        result: 'sub-agent final result',
+                        status: 'completed',
+                    },
+                    {
+                        id: 'parent-view',
+                        toolName: 'view',
+                        args: { path: 'packages/coc/src/index.ts' },
+                        result: 'index contents',
+                        status: 'completed',
+                        parentToolCallId: 'task-parent',
+                    },
+                    {
+                        id: 'parent-shell',
+                        toolName: 'bash',
+                        args: { command: 'npm test' },
+                        result: 'passed',
+                        status: 'completed',
+                        parentToolCallId: 'task-parent',
+                    },
+                    {
+                        id: 'nested-task',
+                        toolName: 'Task',
+                        args: { prompt: 'nested check', name: 'nested agent' },
+                        result: 'nested done',
+                        status: 'completed',
+                        parentToolCallId: 'task-parent',
+                    },
+                    {
+                        id: 'nested-view',
+                        toolName: 'view',
+                        args: { path: 'packages/coc/package.json' },
+                        result: 'package contents',
+                        status: 'completed',
+                        parentToolCallId: 'nested-task',
+                    },
+                    {
+                        id: 'outside-view',
+                        toolName: 'view',
+                        args: { path: 'README.md' },
+                        result: 'outside',
+                        status: 'completed',
+                    },
+                ],
+            },
+        ];
+        const [, assistantTurn] = buildSubAgentTurns(sourceTurns, 'task-parent');
+
+        const { container } = render(<ConversationTurnBubble turn={assistantTurn} />);
+
+        const whisper = container.querySelector('[data-testid="whisper-collapsed-group"]');
+        expect(whisper).toBeTruthy();
+        expect(whisper?.getAttribute('data-tool-count')).toBe('4');
+        expect(container.textContent).toContain('sub-agent final result');
+        expect(container.textContent).not.toContain('outside');
+    });
+
+    it('re-roots Copilot SDK sub-agent detail so direct child tools are top-level and nested sub-agents stay nested', () => {
+        mockToolCompactness = 0;
+        const sourceTurns: ClientConversationTurn[] = [
+            {
+                role: 'assistant',
+                content: '',
+                timestamp: '2026-01-15T10:30:00Z',
+                timeline: [],
+                toolCalls: [
+                    {
+                        id: 'task-parent',
+                        toolName: 'Task',
+                        args: { prompt: 'parent prompt', name: 'parent agent' },
+                        result: 'parent result',
+                        status: 'completed',
+                    },
+                    {
+                        id: 'direct-view',
+                        toolName: 'view',
+                        args: { path: 'direct.ts' },
+                        result: 'direct result',
+                        status: 'completed',
+                        parentToolCallId: 'task-parent',
+                    },
+                    {
+                        id: 'nested-task',
+                        toolName: 'Task',
+                        args: { prompt: 'nested prompt', name: 'nested agent' },
+                        result: 'nested result',
+                        status: 'completed',
+                        parentToolCallId: 'task-parent',
+                    },
+                    {
+                        id: 'nested-child',
+                        toolName: 'view',
+                        args: { path: 'nested.ts' },
+                        result: 'nested child result',
+                        status: 'completed',
+                        parentToolCallId: 'nested-task',
+                    },
+                ],
+            },
+        ];
+        const [, assistantTurn] = buildSubAgentTurns(sourceTurns, 'task-parent');
+
+        const { container } = render(<ConversationTurnBubble turn={assistantTurn} />);
+
+        const direct = container.querySelector('[data-tool-id="direct-view"]');
+        const nestedTask = container.querySelector('[data-tool-id="nested-task"]');
+        const nestedChild = container.querySelector('[data-tool-id="nested-task"] [data-tool-id="nested-child"]');
+        expect(direct).toBeTruthy();
+        expect(nestedTask).toBeTruthy();
+        expect(nestedChild).toBeTruthy();
+        expect(direct?.closest('[data-tool-id="nested-task"]')).toBeNull();
     });
 
     it('does not render WhisperCollapsedGroup when toolCompactness === 2', () => {

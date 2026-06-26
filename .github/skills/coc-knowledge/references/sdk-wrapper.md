@@ -90,6 +90,8 @@ const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
 Each `sendMessage()` call creates its **own `CopilotClient`** child process — no shared client. Concurrent tasks with different working directories cannot interfere.
 
+Copilot streaming tool telemetry is normalized through `SessionTelemetry` into the shared `ToolCall` / `ToolEvent` contract. `parentToolCallId` is preserved from either the start or terminal SDK event; if the terminal event supplies or corrects the parent, the stored `ToolCall` is updated too. This keeps Copilot-backed sub-agent descendants reconstructable from both live timelines and persisted `toolCalls`.
+
 ### One-shot `transform` primitive
 
 `ISDKService.transform(input, options?)` is the provider-agnostic primitive for isolated, single-shot text transformations (e.g. chat-title generation, PR ranking). Contract:
