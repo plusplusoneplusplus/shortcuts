@@ -162,12 +162,14 @@ export function useSendMessage({
         }
         return new Promise<void>(resolve => {
             resolveCurrentSendRef.current = resolve;
+            // Fallback timeout: 3s for follow-up completion.
+            // If main SSE is blocked/missed, this ensures send re-enables promptly.
             const timeout = setTimeout(() => {
                 if (resolveCurrentSendRef.current === resolve) {
                     resolveCurrentSendRef.current = null;
                     resolve();
                 }
-            }, 90_000);
+            }, 3_000);
             const origResolve = resolve;
             resolveCurrentSendRef.current = () => {
                 clearTimeout(timeout);
