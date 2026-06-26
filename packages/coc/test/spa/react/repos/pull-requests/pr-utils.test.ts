@@ -12,11 +12,17 @@ import {
     formatRelativeTime,
     formatTimestamp,
     getGroupBadgeStyle,
+    hasUnresolvedReviewerApproval,
+    isApprovedReviewerVote,
+    isBlockedReviewerVote,
     pullRequestMatchesCoworkerRoster,
     prStatusBadge,
     prStatusColor,
+    reviewerDisplayName,
+    summarizeReviewerApprovals,
     type PrCoworkerRosterEntry,
     type PullRequest,
+    type Reviewer,
 } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 describe('formatTimestamp', () => {
@@ -178,6 +184,69 @@ describe('deriveQueueRisk', () => {
             { additions: 900, deletions: 50, changedFiles: 10 },
             { hasFailingCheck: true, hasUnresolvedBlockingThread: true },
         )).toBe('high');
+    });
+});
+
+describe('reviewer approval summaries', () => {
+    const reviewer = (displayName: string, vote?: string, isRequired = false): Reviewer => ({
+        identity: { displayName },
+        vote,
+        isRequired,
+    });
+
+    it('counts approved and approved-with-suggestions reviewers as approved', () => {
+        const summary = summarizeReviewerApprovals([
+            reviewer('Alice', 'approved'),
+            reviewer('Bob', 'approvedWithSuggestions'),
+        ]);
+
+        expect(summary.approvedCount).toBe(2);
+        expect(summary.waitingCount).toBe(0);
+        expect(summary.blockedCount).toBe(0);
+        expect(summary.total).toBe(2);
+        expect(hasUnresolvedReviewerApproval(summary.approved)).toBe(false);
+    });
+
+    it('counts noVote, missing, and unknown votes as waiting', () => {
+        const summary = summarizeReviewerApprovals([
+            reviewer('Alice', 'noVote', true),
+            reviewer('Bob', undefined, true),
+            reviewer('Casey', 'custom-provider-waiting'),
+        ]);
+
+        expect(summary.approvedCount).toBe(0);
+        expect(summary.waiting.map(reviewerDisplayName)).toEqual(['Alice', 'Bob', 'Casey']);
+        expect(summary.waitingCount).toBe(3);
+        expect(summary.blockedCount).toBe(0);
+        expect(hasUnresolvedReviewerApproval([
+            reviewer('Alice', 'noVote', true),
+        ])).toBe(true);
+    });
+
+    it('surfaces rejected and waiting-for-author reviewers as blocked', () => {
+        const summary = summarizeReviewerApprovals([
+            reviewer('Alice', 'rejected'),
+            reviewer('Bob', 'waitingForAuthor'),
+            reviewer('Casey', 'approved'),
+        ]);
+
+        expect(summary.approved.map(reviewerDisplayName)).toEqual(['Casey']);
+        expect(summary.blocked.map(reviewerDisplayName)).toEqual(['Alice', 'Bob']);
+        expect(summary.blockedCount).toBe(2);
+        expect(hasUnresolvedReviewerApproval([
+            reviewer('Alice', 'waiting-for-author'),
+        ])).toBe(true);
+    });
+
+    it('normalizes provider vote spellings and reviewer display names', () => {
+        expect(isApprovedReviewerVote('approved_with_suggestions')).toBe(true);
+        expect(isBlockedReviewerVote('waiting for author')).toBe(true);
+        expect(reviewerDisplayName({ identity: { email: 'reviewer@example.invalid' } })).toBe('reviewer@example.invalid');
+        expect(reviewerDisplayName({ identity: {} })).toBe('Unknown');
+    });
+
+    it('does not poll solely because there are no assigned reviewers', () => {
+        expect(hasUnresolvedReviewerApproval([])).toBe(false);
     });
 });
 

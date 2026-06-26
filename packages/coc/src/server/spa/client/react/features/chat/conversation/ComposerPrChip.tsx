@@ -19,10 +19,11 @@
  */
 import React from 'react';
 import { cn } from '../../../ui/cn';
-import { prStatusBadge } from '../../pull-requests/pr-utils';
+import { prStatusBadge, summarizeReviewerApprovals } from '../../pull-requests/pr-utils';
 import { buildPrDetailHash } from '../../pull-requests/pr-open-utils';
 import { summarizeCheckRows } from '../../pull-requests/PrChecksSummary';
 import { ComposerPrChecksPopover } from './ComposerPrChecksPopover';
+import { ComposerPrReviewersPopover } from './ComposerPrReviewersPopover';
 import type { PrStatusCardItem } from './PrStatusCard';
 
 export interface ComposerPrChipProps {
@@ -127,6 +128,63 @@ function StatusBadge({ status }: { status: string }) {
             <span aria-hidden="true">{badge.emoji}</span>
             {badge.label}
         </span>
+    );
+}
+
+function ReviewersBadge({ item }: { item: PrStatusCardItem }) {
+    const [open, setOpen] = React.useState(false);
+    const anchorRef = React.useRef<HTMLButtonElement | null>(null);
+
+    if (item.reviewersState !== 'ready') return null;
+    const reviewers = item.reviewers ?? [];
+    if (reviewers.length === 0) return null;
+
+    const summary = summarizeReviewerApprovals(reviewers);
+    const tone =
+        summary.blockedCount > 0
+            ? 'bg-[#ffebe9] text-[#cf222e] dark:bg-[#f85149]/20 dark:text-[#f85149]'
+            : summary.waitingCount > 0
+                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200'
+                : 'bg-[#dafbe1] text-[#1a7f37] dark:bg-[#238636]/25 dark:text-[#3fb950]';
+    const titleParts = [
+        `${summary.approvedCount}/${summary.total} reviewers approved`,
+        summary.waitingCount > 0 ? `${summary.waitingCount} waiting` : '',
+        summary.blockedCount > 0 ? `${summary.blockedCount} blocked` : '',
+    ].filter(Boolean);
+
+    return (
+        <>
+            <button
+                ref={anchorRef}
+                type="button"
+                className={cn(
+                    'shrink-0 inline-flex items-center gap-1 rounded-full border-none px-1.5 py-0.5 text-[10px] font-medium',
+                    'cursor-pointer hover:brightness-95 dark:hover:brightness-110',
+                    tone,
+                )}
+                data-testid="composer-pr-chip-reviewers"
+                data-approved={summary.approvedCount}
+                data-total={summary.total}
+                data-waiting={summary.waitingCount}
+                data-blocked={summary.blockedCount}
+                title={`${titleParts.join(' - ')} - click to view reviewers`}
+                aria-haspopup="dialog"
+                aria-expanded={open}
+                onClick={() => setOpen(prev => !prev)}
+            >
+                <span aria-hidden="true">{summary.blockedCount > 0 ? '!' : summary.waitingCount > 0 ? '...' : '✓'}</span>
+                {summary.approvedCount}/{summary.total} {summary.total === 1 ? 'reviewer' : 'reviewers'}
+            </button>
+            {open && (
+                <ComposerPrReviewersPopover
+                    anchorRef={anchorRef}
+                    summary={summary}
+                    prNumber={item.pr?.number ?? item.number}
+                    itemKey={item.key}
+                    onClose={() => setOpen(false)}
+                />
+            )}
+        </>
     );
 }
 
@@ -327,6 +385,7 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
                 {pr?.title}
             </span>
             {pr && <StatusBadge status={pr.status} />}
+            <ReviewersBadge item={item} />
             <ChecksBadge item={item} />
             {diff && (
                 <span className="shrink-0 font-mono text-[11px]" data-testid="composer-pr-chip-diff">

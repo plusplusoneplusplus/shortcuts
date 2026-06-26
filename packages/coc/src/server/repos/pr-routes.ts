@@ -1301,10 +1301,14 @@ export function registerPrRoutes(
 
     async function sendPullRequestReviewers(
         res: Parameters<Route['handler']>[1],
-        options: { repoId: string; prId: string; repo: RepoInfo; cacheScopeId: string },
+        options: { repoId: string; prId: string; repo: RepoInfo; cacheScopeId: string; force?: boolean },
     ): Promise<void> {
         const cacheKey = makePrSubCacheKey(options.cacheScopeId, options.prId);
-        const cached = prReviewersCache.get(cacheKey);
+        if (options.force) {
+            prReviewersCache.delete(cacheKey);
+            console.debug(`[pr-reviewers-cache] bypass key=${cacheKey}`);
+        }
+        const cached = !options.force ? prReviewersCache.get(cacheKey) : undefined;
         if (cached && cached.expiresAt > Date.now()) {
             console.debug(`[pr-reviewers-cache] hit key=${cacheKey}`);
             return sendJson(res, cached.data);
@@ -1913,11 +1917,13 @@ export function registerPrRoutes(
                 const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
                 if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
                 const { repoId, repo, storageScope } = scopeResult.value;
+                const force = url.parse(req.url ?? '', true).query.force === 'true';
                 await sendPullRequestReviewers(res, {
                     repoId,
                     prId,
                     repo,
                     cacheScopeId: storageScope.storageOriginId,
+                    force,
                 });
             } catch (err) {
                 sendProviderBackedPrRouteError(res, err);

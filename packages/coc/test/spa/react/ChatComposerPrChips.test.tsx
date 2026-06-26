@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
         listChatBindingsForOrigin: vi.fn(),
         createChatBindingForOrigin: vi.fn(),
         getForOrigin: vi.fn(),
+        getReviewersForOrigin: vi.fn(),
         getChecksForOrigin: vi.fn(),
     },
     getCocClientForWorkspace: vi.fn(),
@@ -96,8 +97,10 @@ describe('ChatComposerPrChips / usePrChatStatusItems', () => {
         mocks.pullRequests.listChatBindingsForOrigin.mockReset();
         mocks.pullRequests.createChatBindingForOrigin.mockReset();
         mocks.pullRequests.getForOrigin.mockReset();
+        mocks.pullRequests.getReviewersForOrigin.mockReset();
         mocks.pullRequests.getChecksForOrigin.mockReset();
         mocks.pullRequests.createChatBindingForOrigin.mockResolvedValue({ prId: '42', taskId: 't1' });
+        mocks.pullRequests.getReviewersForOrigin.mockResolvedValue({ reviewers: [] });
         mocks.pullRequests.getChecksForOrigin.mockResolvedValue({ checks: [] });
         mocks.getCocClientForWorkspace.mockReset();
         mocks.getCocClientForWorkspace.mockReturnValue({ pullRequests: mocks.pullRequests });
@@ -373,6 +376,68 @@ describe('ChatComposerPrChips / usePrChatStatusItems', () => {
         expect(badge.getAttribute('data-passing')).toBe('2');
         expect(badge.getAttribute('data-total')).toBe('3');
         expect(badge.textContent).toContain('2/3');
+    });
+
+    it('loads reviewer status through the origin reviewers route and force-refreshes it with the chip', async () => {
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 42,
+            title: 'PR with reviewers',
+            status: 'open',
+            sourceBranch: 'feat/x',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: GH_URL,
+        });
+        mocks.pullRequests.getReviewersForOrigin.mockResolvedValue({
+            reviewers: [
+                { identity: { displayName: 'Approved Reviewer' }, vote: 'approved' },
+                { identity: { displayName: 'Waiting Reviewer' }, vote: 'noVote', isRequired: true },
+            ],
+        });
+
+        const { findByText, findByTestId, getByTestId } = render(
+            <ChatComposerPrChips turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+        );
+
+        await findByText('PR with reviewers');
+        const badge = await findByTestId('composer-pr-chip-reviewers');
+        expect(badge.textContent).toContain('1/2 reviewers');
+        expect(badge.getAttribute('data-approved')).toBe('1');
+        expect(badge.getAttribute('data-waiting')).toBe('1');
+        expect(mocks.pullRequests.getReviewersForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '42', { workspaceId: 'ws1' });
+
+        fireEvent.click(getByTestId(`composer-pr-chip-refresh-${GH_ORIGIN}:42`));
+
+        await waitFor(() =>
+            expect(mocks.pullRequests.getReviewersForOrigin).toHaveBeenLastCalledWith(GH_ORIGIN, '42', {
+                workspaceId: 'ws1',
+                force: true,
+            }),
+        );
+    });
+
+    it('keeps the PR chip ready when reviewer fetching fails', async () => {
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 42,
+            title: 'Reviewer failure does not hide me',
+            status: 'open',
+            sourceBranch: 'feat/x',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: GH_URL,
+        });
+        mocks.pullRequests.getReviewersForOrigin.mockRejectedValueOnce(new Error('reviewers down'));
+
+        const { findByText, getByTestId, queryByTestId } = render(
+            <ChatComposerPrChips turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+        );
+
+        await findByText('Reviewer failure does not hide me');
+        await waitFor(() => expect(mocks.pullRequests.getReviewersForOrigin).toHaveBeenCalled());
+        expect(getByTestId('composer-pr-chip').getAttribute('data-state')).toBe('ready');
+        expect(queryByTestId('composer-pr-chip-reviewers')).toBeNull();
     });
 
     it('dismissing a chip with ✕ hides it for the session', async () => {

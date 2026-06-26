@@ -12,6 +12,7 @@ import React from 'react';
 import { ComposerPrChip } from '../../../src/server/spa/client/react/features/chat/conversation/ComposerPrChip';
 import type { PrStatusCardItem } from '../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
 import type { PrCheckRow, CheckStatus } from '../../../src/server/spa/client/react/features/pull-requests/pr-derived-data';
+import type { Reviewer } from '../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 const KEY = 'gh_owner_repo:42';
 const GH_URL = 'https://github.com/owner/repo/pull/42';
@@ -23,6 +24,10 @@ function check(id: string, status: CheckStatus): PrCheckRow {
 
 function checkWithUrl(id: string, status: CheckStatus, detailsUrl?: string): PrCheckRow {
     return { id, name: id, status, duration: '', interpretation: '', detailsUrl };
+}
+
+function reviewer(displayName: string, vote?: string, isRequired = false): Reviewer {
+    return { identity: { displayName }, vote, isRequired };
 }
 
 function readyItem(overrides: Partial<PrStatusCardItem> = {}): PrStatusCardItem {
@@ -109,6 +114,55 @@ describe('ComposerPrChip', () => {
         expect(badge.textContent).toContain('2/3');
         // Any pending → not the all-green glyph.
         expect(badge.textContent).toContain('●');
+    });
+
+    it('ready: shows a compact reviewer count between lifecycle status and checks', () => {
+        const checks: PrCheckRow[] = [check('build', 'success')];
+        const item = readyItem({
+            reviewersState: 'ready',
+            reviewers: [
+                reviewer('Approved Reviewer', 'approved'),
+                reviewer('Waiting Reviewer', 'noVote', true),
+            ],
+            checksState: 'ready',
+            checks,
+        });
+        const { getByTestId, queryByText } = render(<ComposerPrChip item={item} onDismiss={() => {}} />);
+
+        const status = getByTestId('composer-pr-chip-status');
+        const reviewers = getByTestId('composer-pr-chip-reviewers');
+        const checksBadge = getByTestId('composer-pr-chip-checks');
+        expect(reviewers.textContent).toContain('1/2 reviewers');
+        expect(reviewers.getAttribute('data-approved')).toBe('1');
+        expect(reviewers.getAttribute('data-total')).toBe('2');
+        expect(queryByText('Approved Reviewer')).toBeNull();
+        expect(queryByText('Waiting Reviewer')).toBeNull();
+        expect(status.compareDocumentPosition(reviewers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(reviewers.compareDocumentPosition(checksBadge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('ready: omits the reviewer count until reviewers are ready, and when there are none', () => {
+        const { queryByTestId, rerender } = render(<ComposerPrChip item={readyItem()} onDismiss={() => {}} />);
+        expect(queryByTestId('composer-pr-chip-reviewers')).toBeNull();
+
+        rerender(<ComposerPrChip item={readyItem({ reviewersState: 'ready', reviewers: [] })} onDismiss={() => {}} />);
+        expect(queryByTestId('composer-pr-chip-reviewers')).toBeNull();
+    });
+
+    it('ready: still shows reviewer data for merged PRs', () => {
+        const { getByTestId } = render(
+            <ComposerPrChip
+                item={readyItem({
+                    pr: { ...readyItem().pr!, status: 'merged' },
+                    reviewersState: 'ready',
+                    reviewers: [reviewer('Approved Reviewer', 'approved'), reviewer('Waiting Reviewer', 'noVote')],
+                })}
+                onDismiss={() => {}}
+            />,
+        );
+
+        expect(getByTestId('composer-pr-chip-status').textContent).toContain('Merged');
+        expect(getByTestId('composer-pr-chip-reviewers').textContent).toContain('1/2 reviewers');
     });
 
     it('ready: uses the failing glyph when any check is failing', () => {
@@ -355,5 +409,83 @@ describe('ComposerPrChip — failed-checks popover', () => {
         expect(badge.tagName).toBe('SPAN');
         fireEvent.click(badge);
         expect(queryByTestId(POPOVER_TESTID)).toBeNull();
+    });
+});
+
+describe('ComposerPrChip — reviewers popover', () => {
+    const reviewers: Reviewer[] = [
+        reviewer('Approved Reviewer', 'approved'),
+        reviewer('Suggestions Reviewer', 'approvedWithSuggestions'),
+        reviewer('Waiting Reviewer', 'noVote', true),
+        reviewer('Blocked Reviewer', 'rejected'),
+        reviewer('Author Wait Reviewer', 'waitingForAuthor'),
+    ];
+    const reviewersPopoverTestId = `composer-pr-chip-reviewers-popover-${KEY}`;
+
+    it('clicking the reviewer badge toggles approval details', () => {
+        const { getByTestId, queryByTestId } = render(
+            <ComposerPrChip item={readyItem({ reviewersState: 'ready', reviewers })} onDismiss={() => {}} />,
+        );
+        const badge = getByTestId('composer-pr-chip-reviewers');
+        expect(badge.tagName).toBe('BUTTON');
+        expect(badge.getAttribute('aria-haspopup')).toBe('dialog');
+        expect(badge.getAttribute('aria-expanded')).toBe('false');
+
+        fireEvent.click(badge);
+
+        expect(badge.getAttribute('aria-expanded')).toBe('true');
+        const popover = getByTestId(reviewersPopoverTestId);
+        expect(popover.getAttribute('role')).toBe('dialog');
+        expect(popover.textContent).toContain('2/5 reviewers approved');
+        expect(popover.textContent).toContain('Approved reviewers');
+        expect(popover.textContent).toContain('Waiting reviewers');
+        expect(popover.textContent).toContain('Change requested / blocked');
+
+        fireEvent.click(badge);
+        expect(badge.getAttribute('aria-expanded')).toBe('false');
+        expect(queryByTestId(reviewersPopoverTestId)).toBeNull();
+    });
+
+    it('separates approved, waiting, and blocked reviewers in the popover', () => {
+        const { getByTestId, getAllByTestId } = render(
+            <ComposerPrChip item={readyItem({ reviewersState: 'ready', reviewers })} onDismiss={() => {}} />,
+        );
+        fireEvent.click(getByTestId('composer-pr-chip-reviewers'));
+
+        const approved = getAllByTestId('composer-pr-chip-reviewer-approved-row');
+        const waiting = getAllByTestId('composer-pr-chip-reviewer-waiting-row');
+        const blocked = getAllByTestId('composer-pr-chip-reviewer-blocked-row');
+        expect(approved).toHaveLength(2);
+        expect(waiting).toHaveLength(1);
+        expect(blocked).toHaveLength(2);
+        expect(approved.map(row => row.textContent)).toEqual([
+            expect.stringContaining('Approved Reviewer'),
+            expect.stringContaining('Suggestions Reviewer'),
+        ]);
+        expect(waiting[0].textContent).toContain('Waiting Reviewer');
+        expect(waiting[0].textContent).toContain('required');
+        expect(blocked.map(row => row.textContent)).toEqual([
+            expect.stringContaining('Blocked Reviewer'),
+            expect.stringContaining('Author Wait Reviewer'),
+        ]);
+    });
+
+    it('Escape and outside clicks close the reviewer popover without dismissing the chip', () => {
+        const onDismiss = vi.fn();
+        const { getByTestId, queryByTestId } = render(
+            <ComposerPrChip item={readyItem({ reviewersState: 'ready', reviewers })} onDismiss={onDismiss} />,
+        );
+        fireEvent.click(getByTestId('composer-pr-chip-reviewers'));
+        expect(queryByTestId(reviewersPopoverTestId)).not.toBeNull();
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(queryByTestId(reviewersPopoverTestId)).toBeNull();
+        expect(onDismiss).not.toHaveBeenCalled();
+
+        fireEvent.click(getByTestId('composer-pr-chip-reviewers'));
+        expect(queryByTestId(reviewersPopoverTestId)).not.toBeNull();
+        fireEvent.mouseDown(document.body);
+        expect(queryByTestId(reviewersPopoverTestId)).toBeNull();
+        expect(onDismiss).not.toHaveBeenCalled();
     });
 });

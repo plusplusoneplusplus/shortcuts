@@ -14,6 +14,7 @@ import {
 } from '../../../src/server/spa/client/react/features/chat/conversation/prStatusFreshness';
 import type { PrStatusCardItem, PrAutoMergeInfo } from '../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
 import type { PrCheckRow, CheckStatus } from '../../../src/server/spa/client/react/features/pull-requests/pr-derived-data';
+import type { Reviewer } from '../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 function checkRow(status: CheckStatus, name = status): PrCheckRow {
     return { id: `${name}-${status}`, name, status, duration: '', interpretation: '' };
@@ -28,6 +29,10 @@ function readyItem(overrides: Partial<PrStatusCardItem> = {}): PrStatusCardItem 
         pr: { number: 1, title: 'PR', status: 'open', sourceBranch: 'a', targetBranch: 'main' },
         ...overrides,
     };
+}
+
+function reviewer(vote?: string): Reviewer {
+    return { identity: { displayName: vote ?? 'missing' }, vote };
 }
 
 function withAutoMerge(autoMerge: PrAutoMergeInfo, status = 'open'): PrStatusCardItem {
@@ -71,6 +76,33 @@ describe('isPrItemActive', () => {
     it('ignores checks that have not been loaded yet (only auto-merge keeps it active)', () => {
         // checksState undefined → unknown; do not poll on a guess.
         expect(isPrItemActive(readyItem({ checks: [checkRow('pending')] }))).toBe(false);
+    });
+
+    it('is true for a non-terminal PR with unresolved reviewer approval', () => {
+        expect(isPrItemActive(readyItem({
+            reviewersState: 'ready',
+            reviewers: [reviewer('approved'), reviewer('noVote')],
+        }))).toBe(true);
+        expect(isPrItemActive(readyItem({
+            reviewersState: 'ready',
+            reviewers: [reviewer('waitingForAuthor')],
+        }))).toBe(true);
+    });
+
+    it('is false when reviewer approval is resolved or absent', () => {
+        expect(isPrItemActive(readyItem({
+            reviewersState: 'ready',
+            reviewers: [reviewer('approved'), reviewer('approvedWithSuggestions')],
+        }))).toBe(false);
+        expect(isPrItemActive(readyItem({ reviewersState: 'ready', reviewers: [] }))).toBe(false);
+    });
+
+    it('does not poll terminal PRs solely because historical reviewers are unresolved', () => {
+        expect(isPrItemActive(readyItem({
+            pr: { number: 1, title: 'PR', status: 'merged', sourceBranch: 'a', targetBranch: 'main' },
+            reviewersState: 'ready',
+            reviewers: [reviewer('noVote')],
+        }))).toBe(false);
     });
 });
 
