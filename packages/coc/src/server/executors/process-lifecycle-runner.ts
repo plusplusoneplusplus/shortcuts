@@ -334,14 +334,15 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             task.processId = followUpPayload.processId;
             const imageTempDir = followUpPayload.imageTempDir;
             await rehydrateImagesIfNeeded(task.payload as any);
-            // Extract turnSource from payload context for loop/wakeup-triggered follow-ups
+            // Extract turnSource from payload context for loop/wakeup/trigger-triggered follow-ups
             const ctx = followUpPayload.context as Record<string, unknown> | undefined;
             let turnSource: TurnSource | undefined;
-            if (ctx?.source === 'loop' || ctx?.source === 'wakeup') {
+            if (ctx?.source === 'loop' || ctx?.source === 'wakeup' || ctx?.source === 'trigger') {
                 turnSource = {
-                    source: ctx.source as 'loop' | 'wakeup',
+                    source: ctx.source as 'loop' | 'wakeup' | 'trigger',
                     ...(typeof ctx.loopId === 'string' ? { loopId: ctx.loopId } : {}),
                     ...(typeof ctx.wakeupId === 'string' ? { wakeupId: ctx.wakeupId } : {}),
+                    ...(typeof ctx.triggerId === 'string' ? { triggerId: ctx.triggerId } : {}),
                 };
             }
             // Mark the target process as running BEFORE invoking the follow-up

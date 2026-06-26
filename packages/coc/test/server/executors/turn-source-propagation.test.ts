@@ -101,6 +101,21 @@ describe('ProcessLifecycleRunner — turnSource propagation', () => {
         expect(turnSource).toEqual({ source: 'wakeup', wakeupId: 'wakeup_xyz789' });
     });
 
+    it('extracts trigger turnSource from payload context and passes to executeFollowUpFn', async () => {
+        const opts = makeOpts();
+        const task = makeFollowUpTask({
+            source: 'trigger',
+            triggerId: 'trigger_abc123',
+        });
+
+        await runner.run(task, opts);
+
+        expect(opts.executeFollowUpFn).toHaveBeenCalledOnce();
+        const args = (opts.executeFollowUpFn as ReturnType<typeof vi.fn>).mock.calls[0];
+        const turnSource: TurnSource = args[8];
+        expect(turnSource).toEqual({ source: 'trigger', triggerId: 'trigger_abc123' });
+    });
+
     it('passes undefined turnSource for normal follow-ups (no source in context)', async () => {
         const opts = makeOpts();
         const task = makeFollowUpTask({

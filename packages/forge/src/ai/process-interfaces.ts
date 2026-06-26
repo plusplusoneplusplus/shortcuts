@@ -178,7 +178,7 @@ export interface ConversationTurn {
 }
 
 /** Metadata identifying the automated source of a conversation turn. */
-export type TurnSource = { source: 'loop' | 'wakeup'; loopId?: string; wakeupId?: string };
+export type TurnSource = { source: 'loop' | 'wakeup' | 'trigger'; loopId?: string; wakeupId?: string; triggerId?: string };
 
 /**
  * Serialized format of ConversationTurn for persistence (Date -> ISO string)
