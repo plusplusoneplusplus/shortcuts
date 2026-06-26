@@ -209,10 +209,11 @@ function ReviewersBadge({ item }: { item: PrStatusCardItem }) {
  * chat whose PR reports no CI stays quiet. Reuses {@link summarizeCheckRows} —
  * no copy-pasted check-status tallying.
  *
- * When at least one check is FAILING, the badge becomes a button that toggles a
- * {@link ComposerPrChecksPopover} listing just the failed checks, each linking
- * to its provider details page. With nothing failing it stays a plain,
- * non-interactive pill (there is nothing to drill into).
+ * The badge becomes a button that toggles a {@link ComposerPrChecksPopover}
+ * when there is something to act on: at least one FAILING check to drill into,
+ * OR CI auto-fix is available (so its monitor can be armed proactively, before
+ * any failure). With nothing failing AND no auto-fix it stays a plain,
+ * non-interactive pill.
  */
 function ChecksBadge({ item, autoFix }: { item: PrStatusCardItem; autoFix?: UsePrAutoFixTriggerResult }) {
     const [open, setOpen] = React.useState(false);
@@ -251,8 +252,13 @@ function ChecksBadge({ item, autoFix }: { item: PrStatusCardItem; autoFix?: UseP
         </>
     );
 
-    // Nothing failing → a plain, non-interactive pill (unchanged behaviour).
-    if (s.failing === 0) {
+    const failed = rows.filter(row => row.status === 'failure');
+    // The badge opens the popover when there is a failing check to drill into, or
+    // when CI auto-fix is available — arming a `ci-failure` monitor is forward-
+    // looking, so it must be reachable before any failure (e.g. while checks are
+    // still pending). Otherwise the badge stays a plain, non-interactive pill.
+    const interactive = s.failing > 0 || Boolean(autoFix);
+    if (!interactive) {
         return (
             <span
                 className={baseClass}
@@ -267,17 +273,17 @@ function ChecksBadge({ item, autoFix }: { item: PrStatusCardItem; autoFix?: UseP
         );
     }
 
-    // Something failing → clickable badge that opens the failed-checks popover.
-    const failed = rows.filter(row => row.status === 'failure');
     // `autoFix` is only supplied when the feature is enabled, so the controls
     // always render; `disabledReason` (set when the PR/conversation context is
-    // unresolved or a call is in flight) disables them with a tooltip.
+    // unresolved or a call is in flight) disables both controls, while
+    // `fixNowDisabledReason` disables only "Fix now" when nothing is failing yet.
     const popoverAutoFix: ComposerPrChecksAutoFix | undefined = autoFix
         ? {
             enabled: true,
             armed: autoFix.armed,
             busy: autoFix.busy,
             disabledReason: autoFix.disabledReason,
+            fixNowDisabledReason: failed.length === 0 ? 'No failing checks to fix' : null,
             onToggle: next => {
                 void (next ? autoFix.arm() : autoFix.disarm());
             },
@@ -296,7 +302,7 @@ function ChecksBadge({ item, autoFix }: { item: PrStatusCardItem; autoFix?: UseP
                 data-passing={s.passing}
                 data-total={s.total}
                 data-failing={s.failing}
-                title={`${title} — click to view failed checks`}
+                title={s.failing > 0 ? `${title} — click to view failed checks` : `${title} — click to manage CI auto-fix`}
                 aria-haspopup="dialog"
                 aria-expanded={open}
                 onClick={() => setOpen(prev => !prev)}

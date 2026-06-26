@@ -31,8 +31,15 @@ export interface ComposerPrChecksAutoFix {
     armed: boolean;
     /** A network op is in flight — disables the controls. */
     busy: boolean;
-    /** Non-null disables the controls and supplies a tooltip. */
+    /** Non-null disables BOTH controls and supplies a tooltip (unresolved context / busy). */
     disabledReason: string | null;
+    /**
+     * Non-null disables ONLY "Fix now" (e.g. nothing is failing right now) with
+     * this tooltip; the arm/disarm toggle stays usable. The toggle is
+     * forward-looking — a monitor can be armed before any failure — so it must
+     * remain available even when there is nothing to fix yet.
+     */
+    fixNowDisabledReason: string | null;
     /** Toggle the monitor on/off (receives the desired next armed state). */
     onToggle: (next: boolean) => void;
     /** Send one fix message immediately (no monitor). */
@@ -115,7 +122,9 @@ export function ComposerPrChecksPopover({ anchorRef, failed, prNumber, itemKey, 
         <div
             ref={popoverRef}
             role="dialog"
-            aria-label={`Failed checks for pull request #${prNumber}`}
+            aria-label={failed.length > 0
+                ? `Failed checks for pull request #${prNumber}`
+                : `CI auto-fix for pull request #${prNumber}`}
             data-testid={`composer-pr-chip-checks-popover-${itemKey}`}
             className="fixed z-[10003] w-[340px] max-w-[calc(100vw-16px)] rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-2 shadow-lg"
             style={{
@@ -127,47 +136,58 @@ export function ComposerPrChecksPopover({ anchorRef, failed, prNumber, itemKey, 
             // Keep an in-popover click from bubbling to the document outside-click handler.
             onMouseDown={e => e.stopPropagation()}
         >
-            <div className="mb-1 px-1 text-[11px] font-semibold text-[#cf222e] dark:text-[#f85149]">
-                {failed.length} failed {failed.length === 1 ? 'check' : 'checks'}
-            </div>
-            <ul className="m-0 flex max-h-[260px] list-none flex-col gap-0.5 overflow-y-auto p-0">
-                {failed.map(row => (
-                    <li
-                        key={row.id}
-                        className="flex items-center gap-1.5 rounded px-1 py-0.5 text-[11px] leading-snug hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                        data-testid="composer-pr-chip-checks-failed-row"
-                        data-status={row.status}
-                    >
-                        <span className={cn('shrink-0 font-semibold', checkStatusClass(row.status))} aria-hidden="true">
-                            {checkStatusEmoji(row.status)}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-[#1f2328] dark:text-[#c9d1d9]" title={row.name}>
-                            {row.detailsUrl ? (
-                                <a
-                                    href={row.detailsUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[#0969da] hover:underline dark:text-[#58a6ff]"
-                                    data-testid="composer-pr-chip-checks-failed-link"
-                                    onClick={onClose}
-                                >
-                                    {row.name}
-                                </a>
-                            ) : (
-                                row.name
-                            )}
-                        </span>
-                        <span className={cn('shrink-0 font-medium', checkStatusClass(row.status))}>
-                            {checkStatusLabel(row.status)}
-                        </span>
-                        {row.duration && (
-                            <span className="shrink-0 font-mono tabular-nums text-[#57606a] dark:text-[#8b949e]">
-                                {row.duration}
-                            </span>
-                        )}
-                    </li>
-                ))}
-            </ul>
+            {failed.length > 0 ? (
+                <>
+                    <div className="mb-1 px-1 text-[11px] font-semibold text-[#cf222e] dark:text-[#f85149]">
+                        {failed.length} failed {failed.length === 1 ? 'check' : 'checks'}
+                    </div>
+                    <ul className="m-0 flex max-h-[260px] list-none flex-col gap-0.5 overflow-y-auto p-0">
+                        {failed.map(row => (
+                            <li
+                                key={row.id}
+                                className="flex items-center gap-1.5 rounded px-1 py-0.5 text-[11px] leading-snug hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                                data-testid="composer-pr-chip-checks-failed-row"
+                                data-status={row.status}
+                            >
+                                <span className={cn('shrink-0 font-semibold', checkStatusClass(row.status))} aria-hidden="true">
+                                    {checkStatusEmoji(row.status)}
+                                </span>
+                                <span className="min-w-0 flex-1 truncate text-[#1f2328] dark:text-[#c9d1d9]" title={row.name}>
+                                    {row.detailsUrl ? (
+                                        <a
+                                            href={row.detailsUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[#0969da] hover:underline dark:text-[#58a6ff]"
+                                            data-testid="composer-pr-chip-checks-failed-link"
+                                            onClick={onClose}
+                                        >
+                                            {row.name}
+                                        </a>
+                                    ) : (
+                                        row.name
+                                    )}
+                                </span>
+                                <span className={cn('shrink-0 font-medium', checkStatusClass(row.status))}>
+                                    {checkStatusLabel(row.status)}
+                                </span>
+                                {row.duration && (
+                                    <span className="shrink-0 font-mono tabular-nums text-[#57606a] dark:text-[#8b949e]">
+                                        {row.duration}
+                                    </span>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                </>
+            ) : (
+                <div
+                    className="px-1 py-1 text-[11px] text-[#57606a] dark:text-[#8b949e]"
+                    data-testid={`composer-pr-chip-checks-none-${itemKey}`}
+                >
+                    No failing checks right now — arm auto-fix to catch the next failure.
+                </div>
+            )}
             {autoFix?.enabled && (
                 <div
                     className="mt-2 flex items-center justify-between gap-2 border-t border-[#d0d7de] dark:border-[#3c3c3c] px-1 pt-2"
@@ -205,8 +225,8 @@ export function ComposerPrChecksPopover({ anchorRef, failed, prNumber, itemKey, 
                     </button>
                     <button
                         type="button"
-                        disabled={Boolean(autoFix.disabledReason)}
-                        title={autoFix.disabledReason ?? 'Send one fix message now'}
+                        disabled={Boolean(autoFix.disabledReason || autoFix.fixNowDisabledReason)}
+                        title={autoFix.disabledReason ?? autoFix.fixNowDisabledReason ?? 'Send one fix message now'}
                         data-testid={`composer-pr-chip-autofix-fixnow-${itemKey}`}
                         onClick={() => autoFix.onFixNow()}
                         className={cn(

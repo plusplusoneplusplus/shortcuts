@@ -114,6 +114,31 @@ async function renderWithFailingPr(processId: string | null | undefined) {
     return { ...utils, badge };
 }
 
+/** Renders the chips with a single PENDING (non-failing) check and waits for the badge. */
+async function renderWithPendingPr(processId: string | null | undefined) {
+    mocks.pullRequests.getChecksForOrigin.mockResolvedValue({
+        checks: [{ id: 'c1', name: 'build', status: 'pending', detailsUrl: 'https://ci.example/c1' }],
+    });
+    const utils = render(
+        <ChatComposerPrChips
+            turns={[turnWithPrCreate(GH_URL)]}
+            workspaceId="ws1"
+            remoteUrl={GH_REMOTE}
+            taskId="t1"
+            processId={processId}
+        />,
+    );
+    await utils.findByText('Fix the thing');
+    // Eager checks fetch resolves to a single pending check → no failures.
+    const badge = await waitFor(() => {
+        const el = utils.getByTestId('composer-pr-chip-checks');
+        if (el.getAttribute('data-total') !== '1') throw new Error('checks not loaded yet');
+        if (el.getAttribute('data-failing') !== '0') throw new Error('expected no failing checks');
+        return el;
+    });
+    return { ...utils, badge };
+}
+
 describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
     beforeEach(() => {
         for (const fn of Object.values(mocks.pullRequests)) fn.mockReset();
@@ -232,6 +257,67 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
         fireEvent.click(fixNow);
         expect(mocks.triggers.create).not.toHaveBeenCalled();
         expect(mocks.processes.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('arms a monitor from the badge while checks are still pending (no failures)', async () => {
+        const { badge, getByTestId } = await renderWithPendingPr('proc-1');
+        // The badge is interactive even though nothing is failing — arming is
+        // forward-looking, so it must be reachable before any failure.
+        expect(badge.tagName).toBe('BUTTON');
+        fireEvent.click(badge);
+
+        const toggle = getByTestId(`composer-pr-chip-autofix-toggle-${ITEM_KEY}`);
+        expect((toggle as HTMLButtonElement).disabled).toBe(false);
+        expect(toggle.getAttribute('data-armed')).toBe('false');
+
+        await act(async () => {
+            fireEvent.click(toggle);
+        });
+
+        expect(mocks.triggers.create).toHaveBeenCalledTimes(1);
+        expect(mocks.triggers.create).toHaveBeenCalledWith('ws1', {
+            processId: 'proc-1',
+            event: { type: 'condition-monitor', monitor: 'ci-failure', originId: GH_ORIGIN, prId: '42' },
+        });
+        await waitFor(() => expect(getByTestId(`composer-pr-chip-autofix-badge-${ITEM_KEY}`)).toBeTruthy());
+    });
+
+    it('disables "Fix now" (but not the toggle) when there are no failing checks to fix', async () => {
+        const { badge, getByTestId } = await renderWithPendingPr('proc-1');
+        fireEvent.click(badge);
+
+        const fixNow = getByTestId(`composer-pr-chip-autofix-fixnow-${ITEM_KEY}`) as HTMLButtonElement;
+        expect(fixNow.disabled).toBe(true);
+        expect(fixNow.getAttribute('title')).toMatch(/no failing checks/i);
+
+        fireEvent.click(fixNow);
+        expect(mocks.processes.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('can disarm an armed monitor while no checks are failing (disarm-trap regression)', async () => {
+        mocks.triggers.list.mockResolvedValue([activeMonitor()]);
+        const { badge, getByTestId } = await renderWithPendingPr('proc-1');
+        // The "Auto-fix on" badge shows even though CI is currently green/pending.
+        await waitFor(() => expect(getByTestId(`composer-pr-chip-autofix-badge-${ITEM_KEY}`)).toBeTruthy());
+
+        fireEvent.click(badge);
+        const toggle = getByTestId(`composer-pr-chip-autofix-toggle-${ITEM_KEY}`);
+        expect(toggle.getAttribute('data-armed')).toBe('true');
+
+        await act(async () => {
+            fireEvent.click(toggle);
+        });
+
+        expect(mocks.triggers.delete).toHaveBeenCalledTimes(1);
+        expect(mocks.triggers.delete).toHaveBeenCalledWith('ws1', 'trg-1');
+    });
+
+    it('keeps the checks badge a plain pill (no popover) when the flag is off and nothing is failing', async () => {
+        mocks.triggersEnabled = false;
+        const { badge, queryByTestId } = await renderWithPendingPr('proc-1');
+        expect(badge.tagName).toBe('SPAN');
+        fireEvent.click(badge);
+        expect(queryByTestId(`composer-pr-chip-checks-popover-${ITEM_KEY}`)).toBeNull();
     });
 
     it('hides the auto-fix controls + badge when the triggers flag is off', async () => {
