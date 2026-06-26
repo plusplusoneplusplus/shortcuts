@@ -895,14 +895,15 @@ OFF, `aggregateRemoteWorkspaces()` returns empty and performs no remote fetch, s
 the classic flow is unchanged.
 
 **Per-clone request routing**: a remote clone's REST + WS can be routed to its
-server's `baseUrl` via opt-in primitives — there is NO global "active baseUrl";
-the default `getSpaCocClient()` singleton and the repos-list/git-info aggregation
-stay on the page origin. `getCocClientFor(baseUrl?)` (`api/cocClient.ts`) returns
-the default singleton when `baseUrl` is omitted, else a per-`baseUrl`-cached
-`CocClient` whose REST (`/api` base) and `events` WebSocket target that origin.
+server's `baseUrl` via opt-in primitives; the default `getSpaCocClient()`
+singleton and the repos-list/git-info aggregation stay on the page origin.
+`getCocClientFor(baseUrl?)` (`api/cocClient.ts`) returns the default singleton
+when `baseUrl` is omitted, else a per-`baseUrl`-cached `CocClient` whose REST
+(`/api` base) and `events` WebSocket target that origin.
 `resolveCloneBaseUrl(ref, repos)` (`repos/cloneRouting.ts`) maps a workspace
-object or id to its remote `baseUrl` (or `undefined` when local) using the AC-01
-remote markers. WS URL construction goes through `cloneWsUrl(path, baseUrl?)`
+object, workspace id, or remote clone key to its remote `baseUrl` (or
+`undefined` when local) using the AC-01 remote markers. WS URL construction goes
+through `cloneWsUrl(path, baseUrl?)`
 (`api/wsUrl.ts`): with a `baseUrl` it derives `ws(s)://{host:port}{path}`
 (http→ws, https→wss) keeping the path+query verbatim; without one it reproduces
 the legacy `window.location` behavior. The shared `/ws` process-event stream
@@ -913,19 +914,29 @@ SDK's `buildWebSocketUrl`.
 (Activity/Chats, Git, Terminal, Explorer, Schedules, Pull Requests, Work Items,
 Notes) loads and writes against a selected remote clone's own server, never the
 local one. The seam is `repos/cloneRegistry.ts` — a module-level
-`workspaceId → baseUrl` map (remote workspaces only) that `aggregateRemoteWorkspaces`
-populates on every repo refresh via `registerCloneBaseUrls` (full replace,
-covering online AND cached/offline rows; cleared when the flag is OFF or the
-registry is unavailable). It exposes `lookupCloneBaseUrl(workspaceId)`,
-`getCocClientForWorkspace(workspaceId)` (= `getCocClientFor(lookupCloneBaseUrl(id))`,
+`cloneKey → baseUrl` map plus `workspaceId → cloneKeys` index (remote workspaces
+only) that `aggregateRemoteWorkspaces` populates on every repo refresh via
+`registerCloneBaseUrls` (full replace, covering online AND cached/offline rows;
+cleared when the flag is OFF or the registry is unavailable). Remote markers
+carry `remote.cloneKey = remote:${encodeURIComponent(serverId)}:${encodeURIComponent(workspaceId)}`;
+`repos/cloneIdentity.ts` centralizes clone-key build/parse, selection ids, and
+old path-only fallback resolution: `#repos/ws-*` links that no longer match a
+registered workspace are matched by the legacy root-path hash to the migrated
+local workspace, or to a single unambiguous remote clone key. Unique remote
+workspace ids still resolve directly; when cached/legacy rows collide on
+workspace id, `ReposContext` records the selected clone key with
+`setActiveCloneForRouting(...)` so bare workspace-id service calls from the
+selected `RepoDetail` resolve to the chosen server instead of the other clone.
+The registry exposes `lookupCloneBaseUrl(workspaceIdOrCloneKey)`,
+`getCocClientForWorkspace(workspaceIdOrCloneKey)` (= `getCocClientFor(lookupCloneBaseUrl(id))`,
 falling back to `getSpaCocClient()` for a local/unknown id so local behavior is
-byte-for-byte unchanged), `cloneApiBase(workspaceId)` (absolute remote REST base
-for hand-built URLs like the `EventSource` process stream),
-`cloneWsUrlForWorkspace(path, workspaceId)`, and `requestForWorkspace(workspaceId,
-url, options?)` (clone-routed analog of `requestSpaApi` that fetches a RELATIVE
-api path against the clone — same `toSpaCocRequestOptions`/error-translation as
-`requestSpaApi`, used by the git diff-viewing layer which builds a bare path and
-then fetches it). The routing hooks
+byte-for-byte unchanged), `cloneApiBase(workspaceIdOrCloneKey)` (absolute remote
+REST base for hand-built URLs like the `EventSource` process stream),
+`cloneWsUrlForWorkspace(path, workspaceIdOrCloneKey)`, and
+`requestForWorkspace(workspaceIdOrCloneKey, url, options?)` (clone-routed analog
+of `requestSpaApi` that fetches a RELATIVE api path against the clone — same
+`toSpaCocRequestOptions`/error-translation as `requestSpaApi`, used by the git
+diff-viewing layer which builds a bare path and then fetches it). The routing hooks
 (`useResolveCloneBaseUrl()`, `useCocClient(ref?)`, `useCloneWsUrl(ref?)`) resolve a
 bare workspace id through this registry (no `ReposContext` dependency, so they are
 safe in deep per-tab components and unit tests) and a workspace **object** from its
@@ -1005,11 +1016,11 @@ the input:
   (`patchDiffComment`/`deleteDiffCommentById`) routes via
   `getCocClientForWorkspace(wsId)`.
 
-No-local-fallthrough guarantee: a remote clone's id always resolves to its
-`baseUrl`, so its clone-scoped REST/WS never hit the default local client; an
-OFFLINE-selected clone still resolves to its last-known `baseUrl` (degrades to
-empty/cached UI, never a silent local call) because cached/offline rows are
-registered too.
+No-local-fallthrough guarantee: a selected remote clone's clone key, or its bare
+workspace id when unique / active-disambiguated, resolves to its `baseUrl`, so
+its clone-scoped REST/WS never hit the default local client; an OFFLINE-selected
+clone still resolves to its last-known `baseUrl` (degrades to empty/cached UI,
+never a silent local call) because cached/offline rows are registered too.
 
 The sub-tab taxonomy and feature-flag/git/layout gating live in
 `features/repo-detail/repoSubTabs.ts` (`SUB_TABS`, `VISIBLE_SUB_TABS`,

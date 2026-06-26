@@ -8,7 +8,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, Button } from '../ui';
-import { hashString } from './repoGrouping';
 import {
     browseWorkspaceFolders,
     discoverWorkspaces,
@@ -213,8 +212,9 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             const repo = selected[i];
             try {
                 if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
+                // Id is server-authoritative (machine-scoped); the server computes
+                // the canonical workspace id from each repo path.
                 await registerWorkspace({
-                    id: 'ws-' + hashString(repo.path),
                     name: repo.name,
                     rootPath: repo.path,
                 });

@@ -197,7 +197,7 @@ export function groupReposByAgent(
     return result;
 }
 
-/** djb2-style hash → base36 string. Used for deterministic workspace IDs. */
+/** djb2-style hash → base36 string. Used for colors and legacy workspace-id links. */
 export function hashString(s: string): string {
     let hash = 0;
     for (let i = 0; i < s.length; i++) {

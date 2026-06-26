@@ -556,9 +556,12 @@ describe('Store-backed history across restart', () => {
             expect(failedEntry.error).toBe('timeout');
 
             const dreamEntry = body.history.find((t: any) => t.id === 'dream-task-1');
+            const migratedWorkspace = (await store.getWorkspaces()).find(workspace => workspace.name === 'test');
+            expect(migratedWorkspace).toBeDefined();
+            const migratedWorkspaceId = migratedWorkspace!.id;
             expect(dreamEntry).toMatchObject({
                 type: 'dream-run',
-                repoId: 'ws-1',
+                repoId: migratedWorkspaceId,
                 payload: {
                     kind: 'dream-run',
                     trigger: 'manual',
@@ -572,10 +575,10 @@ describe('Store-backed history across restart', () => {
                     },
                 },
             });
-            await expect(store.getProcess(dreamEntry.payload.processes.analyzerProcessId, 'ws-1')).resolves.toMatchObject({
+            await expect(store.getProcess(dreamEntry.payload.processes.analyzerProcessId, migratedWorkspaceId)).resolves.toMatchObject({
                 type: 'dream-analyzer',
                 metadata: {
-                    workspaceId: 'ws-1',
+                    workspaceId: migratedWorkspaceId,
                     dreamStep: {
                         kind: 'analyzer',
                         readOnly: true,
@@ -584,10 +587,10 @@ describe('Store-backed history across restart', () => {
                     },
                 },
             });
-            await expect(store.getProcess(dreamEntry.payload.processes.criticProcessId, 'ws-1')).resolves.toMatchObject({
+            await expect(store.getProcess(dreamEntry.payload.processes.criticProcessId, migratedWorkspaceId)).resolves.toMatchObject({
                 type: 'dream-critic',
                 metadata: {
-                    workspaceId: 'ws-1',
+                    workspaceId: migratedWorkspaceId,
                     dreamStep: {
                         kind: 'critic',
                         analyzerProcessId: 'queue_dream-analyzer-1',

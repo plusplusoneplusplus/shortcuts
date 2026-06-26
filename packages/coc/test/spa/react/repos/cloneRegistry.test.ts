@@ -20,7 +20,9 @@ import {
     lookupCloneBaseUrl,
     registerCloneBaseUrls,
     resetCloneRegistryForTests,
+    setActiveCloneForRouting,
 } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 import {
     getCocClientFor,
     getSpaCocClient,
@@ -72,6 +74,23 @@ describe('lookupCloneBaseUrl', () => {
         registerCloneBaseUrls([{ workspaceId: 'remote-1', baseUrl: 'http://127.0.0.1:4000' }]);
         registerCloneBaseUrls([{ workspaceId: 'remote-1', baseUrl: 'http://127.0.0.1:9999' }]);
         expect(lookupCloneBaseUrl('remote-1')).toBe('http://127.0.0.1:9999');
+    });
+
+    it('routes duplicate remote workspace ids by server-scoped clone key', () => {
+        const key1 = buildRemoteCloneKey('srv-1', 'ws-shared');
+        const key2 = buildRemoteCloneKey('srv-2', 'ws-shared');
+        registerCloneBaseUrls([
+            { workspaceId: 'ws-shared', serverId: 'srv-1', cloneKey: key1, baseUrl: 'http://127.0.0.1:4000' },
+            { workspaceId: 'ws-shared', serverId: 'srv-2', cloneKey: key2, baseUrl: 'http://127.0.0.1:4001' },
+        ]);
+
+        expect(lookupCloneBaseUrl(key1)).toBe('http://127.0.0.1:4000');
+        expect(lookupCloneBaseUrl(key2)).toBe('http://127.0.0.1:4001');
+        expect(lookupCloneBaseUrl({ workspaceId: 'ws-shared', serverId: 'srv-2' })).toBe('http://127.0.0.1:4001');
+        expect(lookupCloneBaseUrl('ws-shared')).toBeUndefined();
+
+        setActiveCloneForRouting(key2);
+        expect(lookupCloneBaseUrl('ws-shared')).toBe('http://127.0.0.1:4001');
     });
 
     it('ignores entries with a missing id or baseUrl', () => {

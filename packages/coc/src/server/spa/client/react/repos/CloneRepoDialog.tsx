@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog, Button } from '../ui';
 import { useApp } from '../contexts/AppContext';
-import { hashString } from './repoGrouping';
 import {
     browseWorkspaceFolders,
     cloneRepository,
@@ -210,8 +209,9 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
                 parentDir: trimmedParentDir,
                 dirName: trimmedFolderName || undefined,
             });
+            // Id is server-authoritative (machine-scoped); the server computes
+            // the canonical workspace id from the cloned path.
             const workspace = await registerWorkspace({
-                id: 'ws-' + hashString(clonedPath),
                 name: getPathLeaf(clonedPath) || 'repo',
                 rootPath: clonedPath,
             });

@@ -40,6 +40,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () =>
 }));
 
 import { RemoteSubBar } from '../../../../src/server/spa/client/react/features/remote-shell/RemoteSubBar';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 const SHORTCUTS = 'https://github.com/acme/shortcuts.git';
 const repo = (id: string, name: string, branch = 'main') => ({
@@ -57,11 +58,12 @@ const remoteRepo = (
     branch = 'main',
     connection: string = 'online',
     queue: string = 'idle',
+    serverId = 'srv-1',
 ) => ({
     workspace: {
         id, name, color: '#0078d4', remoteUrl, rootPath: `/remote/${id}`,
         baseUrl: 'http://127.0.0.1:4000',
-        remote: { baseUrl: 'http://127.0.0.1:4000', serverId: 'srv-1', serverLabel, offline: connection !== 'online', connection, queue },
+        remote: { baseUrl: 'http://127.0.0.1:4000', serverId, serverLabel, offline: connection !== 'online', connection, queue },
     },
     gitInfo: remoteUrl ? { isGitRepo: true, branch, dirty: false, remoteUrl } : undefined,
 });
@@ -253,6 +255,18 @@ describe('RemoteSubBar', () => {
         expect(screen.getByTestId('clone-remote-badge').textContent).toBe('edge-1');
     });
 
+    it('keeps colliding remote clone workspace ids as separate selectable rows', () => {
+        const first = remoteRepo('ws-shared', 'shared@one', 'one', SHORTCUTS, 'main', 'online', 'idle', 'srv-1');
+        const second = remoteRepo('ws-shared', 'shared@two', 'two', SHORTCUTS, 'main', 'online', 'idle', 'srv-2');
+        render(<RemoteSubBar repo={first as any} repos={[first, second] as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+
+        const rows = screen.getAllByTestId('clone-popover-item');
+        expect(rows).toHaveLength(2);
+        fireEvent.click(rows[1]);
+        expect(mockSelectClone).toHaveBeenCalledWith(buildRemoteCloneKey('srv-2', 'ws-shared'));
+    });
+
     it('does not badge any row when every clone is local', () => {
         renderBar();
         fireEvent.click(screen.getByTestId('clone-switch'));
@@ -347,7 +361,7 @@ describe('RemoteSubBar', () => {
         expect((row as HTMLButtonElement).disabled).toBe(false);
         expect(row.querySelector('[data-testid="clone-offline-badge"]')).toBeNull();
         fireEvent.click(row);
-        expect(mockSelectClone).toHaveBeenCalledWith('b');
+        expect(mockSelectClone).toHaveBeenCalledWith(buildRemoteCloneKey('srv-1', 'b'));
     });
 
     it('keeps the offline clone VISIBLE in its group (row still rendered)', () => {
@@ -369,7 +383,7 @@ describe('RemoteSubBar', () => {
         expect(row.getAttribute('data-offline')).toBe('false');
         expect((row as HTMLButtonElement).disabled).toBe(false);
         fireEvent.click(row);
-        expect(mockSelectClone).toHaveBeenCalledWith('b');
+        expect(mockSelectClone).toHaveBeenCalledWith(buildRemoteCloneKey('srv-1', 'b'));
     });
 
     it('never greys a LOCAL clone (offline treatment is remote-only)', () => {

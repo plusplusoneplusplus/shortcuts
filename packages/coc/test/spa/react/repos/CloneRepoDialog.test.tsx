@@ -95,8 +95,9 @@ describe('CloneRepoDialog', () => {
             parentDir: '/projects',
             dirName: 'repo',
         }));
+        // Id is server-authoritative now — the client sends only name + path,
+        // and navigates using the id returned by the server (mocked 'ws-cloned').
         expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledWith({
-            id: expect.stringMatching(/^ws-/),
             name: 'repo',
             rootPath: '/projects/repo',
         });

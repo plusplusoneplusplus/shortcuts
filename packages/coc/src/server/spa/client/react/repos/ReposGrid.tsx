@@ -18,6 +18,7 @@ import { AddFolderDialog } from './AddFolderDialog';
 import { CloneRepoDialog } from './CloneRepoDialog';
 import { groupReposByRemote, groupReposByAgent, applyGroupOrder, groupKey } from './repoGrouping';
 import type { RepoData, RepoGroup } from './repoGrouping';
+import { getRepoSelectionId, isRepoSelected } from './cloneIdentity';
 import { getGlobalPreferences, updateGlobalPreferences } from './repositoryService';
 import { isContainerMode, isContainerDefaultAgentEnabled } from '../utils/config';
 
@@ -121,7 +122,8 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
         });
     };
 
-    const selectRepo = (id: string, agentId?: string | null) => {
+    const selectRepo = (repo: RepoData, agentId?: string | null) => {
+        const id = getRepoSelectionId(repo);
         if (agentId) dispatch({ type: 'SET_CURRENT_AGENT', agentId });
         dispatch({ type: 'SET_SELECTED_REPO', id });
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
@@ -274,11 +276,11 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
                         <div className="flex flex-col gap-1 mt-0.5">
                             {group.repos.map(repo => (
                                 <RepoCard
-                                    key={repo.workspace.id}
+                                    key={getRepoSelectionId(repo)}
                                     repo={repo}
-                                    isSelected={repo.workspace.id === state.selectedRepoId}
+                                    isSelected={isRepoSelected(repo, repos, state.selectedRepoId)}
                                     inGroup
-                                    onClick={() => selectRepo(repo.workspace.id, repo.workspace.agentId)}
+                                    onClick={() => selectRepo(repo, repo.workspace.agentId)}
                                 />
                             ))}
                         </div>
@@ -291,7 +293,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
         // Ungrouped repos
         return group.repos.map((repo, repoIdx) => (
             <div
-                key={repo.workspace.id}
+                key={getRepoSelectionId(repo)}
                 className={cn(isDragging && repoIdx === 0 && 'opacity-50')}
                 {...(repoIdx === 0 ? dragHandleProps : {})}
             >
@@ -304,8 +306,8 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
                     >⠿</span>
                     <RepoCard
                         repo={repo}
-                        isSelected={repo.workspace.id === state.selectedRepoId}
-                        onClick={() => selectRepo(repo.workspace.id, repo.workspace.agentId)}
+                        isSelected={isRepoSelected(repo, repos, state.selectedRepoId)}
+                        onClick={() => selectRepo(repo, repo.workspace.agentId)}
                     />
                 </div>
                 {showBelow && repoIdx === group.repos.length - 1 && <div className={dropIndicatorClass} />}

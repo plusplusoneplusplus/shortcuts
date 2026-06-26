@@ -587,7 +587,8 @@ describe('AddFolderDialog', () => {
 
             expect(frontend).toBeDefined();
             expect(frontend.rootPath).toBe('/home/user/projects/frontend');
-            expect(frontend.id).toMatch(/^ws-/);
+            // Id is server-authoritative now — the client no longer sends one.
+            expect(frontend.id).toBeUndefined();
 
             expect(backend).toBeDefined();
             expect(backend.rootPath).toBe('/home/user/projects/backend');

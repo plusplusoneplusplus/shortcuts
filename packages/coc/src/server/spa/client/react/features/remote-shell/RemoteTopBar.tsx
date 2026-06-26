@@ -15,6 +15,7 @@ import { useQueue } from '../../contexts/QueueContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { groupReposByRemote, groupKey } from '../../repos/repoGrouping';
 import type { RepoGroup } from '../../repos/repoGrouping';
+import { getRepoSelectionId, isRepoSelected } from '../../repos/cloneIdentity';
 import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
@@ -55,16 +56,16 @@ export function RemoteTopBar() {
     const selectedId = state.selectedRepoId;
     const activeGroupKey = useMemo(() => {
         for (const g of groups) {
-            if (g.repos.some(r => String(r.workspace.id) === selectedId)) return groupKey(g);
+            if (g.repos.some(r => isRepoSelected(r, repos, selectedId))) return groupKey(g);
         }
         return null;
-    }, [groups, selectedId]);
+    }, [groups, repos, selectedId]);
 
     useEffect(() => {
         if (!selectedId) return;
-        const g = groups.find(grp => grp.repos.some(r => String(r.workspace.id) === selectedId));
-        if (g) lastCloneByRemote.current[groupKey(g)] = selectedId;
-    }, [groups, selectedId]);
+        const g = groups.find(grp => grp.repos.some(r => isRepoSelected(r, repos, selectedId)));
+        if (g && selectedId) lastCloneByRemote.current[groupKey(g)] = selectedId;
+    }, [groups, repos, selectedId]);
 
     useEffect(() => {
         if (!addMenuOpen) return;
@@ -83,9 +84,9 @@ export function RemoteTopBar() {
     const pickRemote = (g: RepoGroup) => {
         const key = groupKey(g);
         const remembered = lastCloneByRemote.current[key];
-        const target = remembered && g.repos.some(r => String(r.workspace.id) === remembered)
+        const target = remembered && g.repos.some(r => isRepoSelected(r, repos, remembered))
             ? remembered
-            : (g.repos[0] ? String(g.repos[0].workspace.id) : undefined);
+            : (g.repos[0] ? getRepoSelectionId(g.repos[0]) : undefined);
         if (target) selectClone(target);
     };
 

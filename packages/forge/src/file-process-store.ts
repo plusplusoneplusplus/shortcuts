@@ -691,6 +691,93 @@ export class FileProcessStore implements ProcessStore {
         return updated;
     }
 
+    /**
+     * Re-key a physical workspace from `oldId` to `newId`. The repo data
+     * directory (`repos/<oldId>/`) is moved to `repos/<newId>/` by the startup
+     * migration orchestrator BEFORE this runs, so the process files already
+     * live under the new id; this method rewrites the workspace record in
+     * `workspaces.json` and the embedded workspace id inside every (active and
+     * pruned) process file/index entry so each conversation reports its
+     * migrated workspace.
+     *
+     * Returns false without changing anything when `oldId` is unknown or a
+     * workspace `newId` already exists, so the migration never merges two
+     * workspaces.
+     */
+    async renameWorkspaceId(oldId: string, newId: string): Promise<boolean> {
+        if (!oldId || !newId || oldId === newId) {
+            return false;
+        }
+        let applied = false;
+        await this.enqueueWrite(async () => {
+            const workspaces = await this.readWorkspaces();
+            const srcIdx = workspaces.findIndex(w => w.id === oldId);
+            if (srcIdx < 0) {
+                return; // unknown workspace
+            }
+            if (workspaces.some(w => w.id === newId)) {
+                return; // target already exists — never merge
+            }
+            await this.rewriteEmbeddedWorkspaceId(newId);
+            workspaces[srcIdx] = { ...workspaces[srcIdx], id: newId };
+            await this.writeWorkspaces(workspaces);
+            applied = true;
+        });
+        return applied;
+    }
+
+    /**
+     * Force every embedded workspace id under `repos/<workspaceId>/processes/`
+     * (the active index + each process file, plus every pruned bucket) to
+     * `workspaceId`. Called after the data directory has been moved to the new
+     * id so stale ids inside the moved files are corrected.
+     */
+    private async rewriteEmbeddedWorkspaceId(workspaceId: string): Promise<void> {
+        // Active index + process files.
+        const index = await this.readIndex(workspaceId);
+        if (index.length > 0) {
+            for (const entry of index) {
+                const stored = await this.readProcessFile(workspaceId, entry.id);
+                if (!stored) { continue; }
+                stored.workspaceId = workspaceId;
+                const metadataType = stored.process.metadata?.type ?? stored.process.type ?? 'ai';
+                stored.process.metadata = { ...(stored.process.metadata ?? { type: metadataType }), type: metadataType, workspaceId };
+                await this.writeProcessFile(workspaceId, entry.id, stored);
+            }
+            await this.writeIndex(workspaceId, index.map(e => ({ ...e, workspaceId })));
+        }
+
+        // Pruned buckets (processes/pruned/YYYY-MM/).
+        let buckets: string[];
+        try {
+            const dirents = await fs.readdir(this.prunedRootFor(workspaceId), { withFileTypes: true });
+            buckets = dirents.filter(d => d.isDirectory()).map(d => d.name);
+        } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+                buckets = [];
+            } else {
+                throw err;
+            }
+        }
+        for (const bucket of buckets) {
+            const bucketIndexPath = path.join(this.prunedRootFor(workspaceId), bucket, 'index.json');
+            const entries = JSON.parse(await fs.readFile(bucketIndexPath, 'utf-8')) as ProcessIndexEntry[];
+            for (const entry of entries) {
+                const filePath = path.join(this.prunedRootFor(workspaceId), bucket, this.sanitizeId(entry.id) + '.json');
+                const stored = JSON.parse(await fs.readFile(filePath, 'utf-8')) as StoredProcessEntry;
+                stored.workspaceId = workspaceId;
+                const metadataType = stored.process.metadata?.type ?? stored.process.type ?? 'ai';
+                stored.process.metadata = { ...(stored.process.metadata ?? { type: metadataType }), type: metadataType, workspaceId };
+                await fs.writeFile(filePath, JSON.stringify(stored, null, 2), 'utf-8');
+            }
+            await fs.writeFile(
+                bucketIndexPath,
+                JSON.stringify(entries.map(e => ({ ...e, workspaceId })), null, 2),
+                'utf-8',
+            );
+        }
+    }
+
     // --- Wiki CRUD ---
 
     async registerWiki(wiki: WikiInfo): Promise<void> {

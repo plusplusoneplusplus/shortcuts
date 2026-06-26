@@ -55,6 +55,10 @@ import {
     loadPersistedRemoteSelection,
     persistRemoteSelection,
 } from '../../../../src/server/spa/client/react/repos/remoteSelectionPersistence';
+import {
+    buildRemoteCloneKey,
+    legacyPathOnlyWorkspaceIdForRootPath,
+} from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 afterEach(() => {
     vi.clearAllMocks();
@@ -179,10 +183,12 @@ describe('ReposContext', () => {
         // Default: no remote workspaces (classic flow). Overridden per AC-08 test.
         aggregateRemoteWorkspacesMock.mockResolvedValue(emptyAggregate());
         _resetRemoteSelectionForTests();
+        window.history.replaceState(null, '', '/');
     });
 
     afterEach(() => {
         _resetRemoteSelectionForTests();
+        window.history.replaceState(null, '', '/');
     });
 
     it('throws when useRepos is used outside ReposProvider', () => {
@@ -306,6 +312,8 @@ describe('ReposContext', () => {
 
     // ── AC-08: remote-clone selection persistence across reload ──────────────
     describe('remote-clone selection persistence (AC-08)', () => {
+        const remoteSelectionId = buildRemoteCloneKey('srv-1', 'remote-ws');
+
         it('restores the persisted remote clone once aggregation completes (cold reload, no hash)', async () => {
             // Simulate a prior session having selected the remote clone.
             persistRemoteSelection({ serverId: 'srv-1', workspaceId: 'remote-ws' });
@@ -324,7 +332,7 @@ describe('ReposContext', () => {
             );
 
             await waitFor(() => {
-                expect(screen.getByTestId('selected-repo').textContent).toBe('remote-ws');
+                expect(screen.getByTestId('selected-repo').textContent).toBe(remoteSelectionId);
             });
             // The remote workspace is present in the merged list.
             expect(screen.getByTestId('repo-remote-ws')).toBeTruthy();
@@ -347,7 +355,7 @@ describe('ReposContext', () => {
             // Resolved purely via the stable serverId — the changed baseUrl/port
             // does not prevent restoration.
             await waitFor(() => {
-                expect(screen.getByTestId('selected-repo').textContent).toBe('remote-ws');
+                expect(screen.getByTestId('selected-repo').textContent).toBe(remoteSelectionId);
             });
         });
 
@@ -358,12 +366,12 @@ describe('ReposContext', () => {
             repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('local-1')]).workspaces);
             aggregateRemoteWorkspacesMock.mockResolvedValueOnce(remoteAggregate('srv-1', 'http://127.0.0.1:4000', 'remote-ws'));
 
-            render(<ProviderWithPreselectedRepo repoId="remote-ws" />);
+            render(<ProviderWithPreselectedRepo repoId={remoteSelectionId} />);
 
             await waitFor(() => {
                 expect(screen.getByTestId('repo-loading').textContent).toBe('false');
             });
-            expect(screen.getByTestId('selected-repo').textContent).toBe('remote-ws');
+            expect(screen.getByTestId('selected-repo').textContent).toBe(remoteSelectionId);
         });
 
         it('does not hijack an unrelated active local selection', async () => {
@@ -405,14 +413,54 @@ describe('ReposContext', () => {
             repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('local-1')]).workspaces);
             aggregateRemoteWorkspacesMock.mockResolvedValueOnce(remoteAggregate('srv-1', 'http://127.0.0.1:4000', 'remote-ws'));
 
-            render(<ProviderWithPreselectedRepo repoId="remote-ws" />);
+            render(<ProviderWithPreselectedRepo repoId={remoteSelectionId} />);
 
             await waitFor(() => {
-                expect(screen.getByTestId('selected-repo').textContent).toBe('remote-ws');
+                expect(screen.getByTestId('selected-repo').textContent).toBe(remoteSelectionId);
             });
             await waitFor(() => {
                 expect(loadPersistedRemoteSelection()).toEqual({ serverId: 'srv-1', workspaceId: 'remote-ws' });
             });
+        });
+    });
+
+    describe('legacy path-only repo deep links', () => {
+        it('resolves an old path-only hash to the migrated local workspace and preserves the suffix', async () => {
+            const rootPath = '/repos/shared-path';
+            const legacyId = legacyPathOnlyWorkspaceIdForRootPath(rootPath);
+            const migrated = { ...makeWorkspace('ws-v2-local', 'Migrated Local'), rootPath };
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([migrated]).workspaces);
+            location.hash = '#repos/' + encodeURIComponent(legacyId) + '/git';
+
+            render(<ProviderWithPreselectedRepo repoId={legacyId} />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('selected-repo').textContent).toBe('ws-v2-local');
+            });
+            expect(location.hash).toBe('#repos/ws-v2-local/git');
+        });
+
+        it('resolves an old path-only hash to the single matching remote clone key', async () => {
+            const rootPath = '/repos/remote-shared-path';
+            const legacyId = legacyPathOnlyWorkspaceIdForRootPath(rootPath);
+            const expectedSelectionId = buildRemoteCloneKey('srv-1', 'ws-v2-remote');
+            const tagged = tagRemoteWorkspaces(
+                { id: 'srv-1', label: 'srv-1' },
+                'http://127.0.0.1:4000',
+                [{ id: 'ws-v2-remote', name: 'Remote Migrated', rootPath }],
+                false,
+                { connection: 'online' },
+            );
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([]).workspaces);
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce({ sources: [], workspaces: tagged, gitInfo: {}, warnings: [] });
+            location.hash = '#repos/' + encodeURIComponent(legacyId) + '/chats';
+
+            render(<ProviderWithPreselectedRepo repoId={legacyId} />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('selected-repo').textContent).toBe(expectedSelectionId);
+            });
+            expect(location.hash).toBe('#repos/' + encodeURIComponent(expectedSelectionId) + '/chats');
         });
     });
 });

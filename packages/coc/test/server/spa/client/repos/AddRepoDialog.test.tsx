@@ -225,7 +225,8 @@ describe('AddRepoDialog', () => {
             const body = repositoryServiceMocks.registerWorkspace.mock.calls[0][0];
             expect(body.name).toBe('My Repo');
             expect(body.rootPath).toBe('/my/repo');
-            expect(body.id).toMatch(/^ws-/);
+            // Id is server-authoritative now — the client no longer sends one.
+            expect(body.id).toBeUndefined();
         });
 
         it('calls onSuccess and onClose after successful POST', async () => {

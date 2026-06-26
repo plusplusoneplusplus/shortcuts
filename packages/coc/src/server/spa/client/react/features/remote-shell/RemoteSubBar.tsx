@@ -29,6 +29,7 @@ import { useRepoQueueStats, isHidden as isHiddenTask } from '../../queue/hooks/u
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTabs';
 import { groupReposByRemote, isRemoteRepo, truncatePath, getRepoHashColor } from '../../repos/repoGrouping';
+import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import {
     partitionShellTabs, computeCloneStatusMap, cloneStatusColor, summarizeRemote, computeVisibleTabKeys,
     remoteProviderLabel,
@@ -215,7 +216,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
             if (removingSelected) {
                 const sibling = clones.find(c => String(c.workspace.id) !== String(repo.workspace.id));
                 if (sibling) {
-                    selectClone(String(sibling.workspace.id));
+                    selectClone(getRepoSelectionId(sibling));
                 }
             }
             setRemoveRepo(null);
@@ -342,7 +343,8 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                         </div>
                         {clones.map((c, i) => {
                             const cid = String(c.workspace.id);
-                            const isSel = cid === cloneId;
+                            const selectionId = getRepoSelectionId(c);
+                            const isSel = selectionId === getRepoSelectionId(repo);
                             const st = cloneStatus[cid];
                             const isRemote = isRemoteRepo(c);
                             // Offline (AC-06): reuse the AC-05 blended status — a remote
@@ -360,7 +362,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                             const cloneUnreadCount = unseenCounts[cid] ?? 0;
                             return (
                                 <button
-                                    key={cid}
+                                    key={selectionId}
                                     data-testid="clone-popover-item"
                                     data-remote={isRemote ? 'true' : 'false'}
                                     data-clone-status={st ?? 'idle'}
@@ -380,7 +382,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                                         // Block selection/navigation for offline clones so a
                                         // dead remote server's tabs are never opened.
                                         if (isOffline) return;
-                                        selectClone(cid);
+                                        selectClone(selectionId);
                                         setCloneOpen(false);
                                     }}
                                     className={

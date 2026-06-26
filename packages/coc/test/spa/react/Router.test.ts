@@ -1942,8 +1942,8 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
         expect(ROUTER_SOURCE).toContain("type: 'OPEN_DIALOG'");
     });
 
-    it('Alt+Q handler passes workspaceId from selectedRepoId', () => {
-        expect(ROUTER_SOURCE).toContain('workspaceId: state.selectedRepoId');
+    it('Alt+Q handler strips remote clone keys to the source workspace id', () => {
+        expect(ROUTER_SOURCE).toContain('workspaceId: getWorkspaceIdFromSelectionId(state.selectedRepoId)');
     });
 
     it('uses the shared repo sub-tab suffix builder for shortcut navigation', () => {

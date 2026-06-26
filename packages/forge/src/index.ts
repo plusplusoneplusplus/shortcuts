@@ -959,3 +959,18 @@ export * from './github';
 // ============================================================================
 
 export { getRepoDataPath } from './paths';
+
+// ============================================================================
+// Workspace Identity (machine-scoped physical workspace IDs)
+// ============================================================================
+
+export {
+    computeWorkspaceId,
+    normalizeWorkspaceRootPath,
+    normalizeWorkspaceHostname,
+    isV2WorkspaceId,
+    isLegacyPhysicalWorkspaceId,
+    isPhysicalWorkspaceId,
+    WORKSPACE_ID_V2_PREFIX,
+    PHYSICAL_WORKSPACE_ID_PREFIX,
+} from './workspace-id';
