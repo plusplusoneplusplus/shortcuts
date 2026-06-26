@@ -46,6 +46,7 @@ export interface CLITaskExecutorOptions {
     resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
+    getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     dreamRunExecutor?: DreamRunExecutor;
@@ -110,6 +111,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly titleGenerationService: TitleGenerationService;
     private readonly getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     private readonly getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
+    private readonly getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined;
     private readonly onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     private resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     private dreamRunExecutor?: DreamRunExecutor;
@@ -151,6 +153,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             cancelledTasks: this.cancelledTasks,
         });
         this.getLoopInfra = options.getLoopInfra;
+        this.getTriggerInfra = options.getTriggerInfra;
     }
 
     setQueueManager(qm: TaskQueueManager): void {
@@ -371,6 +374,11 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     const infra = this.getLoopInfra?.();
                     if (!infra) return;
                     return infra.executor.onTickComplete(loopId, success);
+                },
+                onTriggerActionComplete: (triggerId, success) => {
+                    const infra = this.getTriggerInfra?.();
+                    if (!infra) return;
+                    return infra.manager.onActionComplete(triggerId, success);
                 },
             });
         } finally {

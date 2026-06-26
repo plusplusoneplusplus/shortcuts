@@ -178,6 +178,10 @@ export interface CLIConfig {
     loops?: {
         enabled?: boolean;
     };
+    /** Triggers (event → action) subsystem configuration. Disabled by default. */
+    triggers?: {
+        enabled?: boolean;
+    };
     /** Dreams review subsystem configuration. Disabled by default. */
     dreams?: {
         enabled?: boolean;
@@ -471,6 +475,10 @@ export interface ResolvedCLIConfig {
     loops: {
         enabled: boolean;
     };
+    /** Triggers (event → action) subsystem configuration. */
+    triggers: {
+        enabled: boolean;
+    };
     /** Dreams review subsystem configuration. */
     dreams: {
         enabled: boolean;
@@ -708,6 +716,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     loops: {
         enabled: true,
+    },
+    triggers: {
+        enabled: false,
     },
     dreams: {
         enabled: false,

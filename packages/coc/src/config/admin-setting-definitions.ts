@@ -595,6 +595,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-loops-enabled',
         },
     }),
+    bool({
+        key: 'triggers.enabled', default: false, runtime: 'restartRequired', runtimeFlag: 'triggersEnabled',
+        ui: {
+            group: 'infrastructure', order: 11, label: 'Triggers (CI auto-fix)', badge: 'restart',
+            hint: 'Event → action triggers, including the PR-banner CI auto-fix monitor. Disabled by default — toggling requires a server restart to (de)wire infrastructure.',
+            testId: 'toggle-triggers-enabled',
+        },
+    }),
     // `dreams.enabled` is rendered bespoke in the admin Dreams tab
     // (Knowledge nav group), not on the general Settings → Features grid, so it
     // intentionally omits a `ui` block. Runtime flag + PUT validation are unchanged.
