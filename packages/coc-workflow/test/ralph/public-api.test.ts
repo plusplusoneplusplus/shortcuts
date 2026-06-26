@@ -133,6 +133,31 @@ describe('Ralph progress sections', () => {
             },
         ]);
     });
+
+    it('treats Findings as body content without changing the parsed signal', () => {
+        const journal = [
+            '# Header',
+            '## Iteration 3 — RALPH_NEXT — 2026-06-03T00:00:00.000Z',
+            'Files: src/a.ts, test/a.test.ts',
+            'Decisions: kept parser labels opaque.',
+            'Remaining: run full validation.',
+            'Findings: parseProgressSections only recognizes iteration headings; body labels are not part of the signal grammar.',
+        ].join('\n');
+
+        expect(parseProgressSections(journal)).toEqual([
+            {
+                iteration: 3,
+                signal: 'RALPH_NEXT',
+                timestamp: '2026-06-03T00:00:00.000Z',
+                body: [
+                    'Files: src/a.ts, test/a.test.ts',
+                    'Decisions: kept parser labels opaque.',
+                    'Remaining: run full validation.',
+                    'Findings: parseProgressSections only recognizes iteration headings; body labels are not part of the signal grammar.',
+                ].join('\n'),
+            },
+        ]);
+    });
 });
 
 describe('buildRalphIterationPrompt', () => {
@@ -140,12 +165,16 @@ describe('buildRalphIterationPrompt', () => {
         const prompt = buildRalphIterationPrompt({
             originalGoal: 'Implement the feature.',
             progressPath: '/tmp/session/progress.md',
+            contextPath: '/tmp/session/context.md',
             currentIteration: 3,
             maxIterations: 20,
         });
 
         expect(prompt).toMatch(/^Load and follow the `ultra-ralph` skill/);
         expect(prompt).toContain('Progress journal: /tmp/session/progress.md');
+        expect(prompt).toContain('Context map: /tmp/session/context.md');
+        expect(prompt).toContain('read this first');
+        expect(prompt).toContain('rewrite it at the end');
         expect(prompt).toContain('Iteration 3 of 20.');
         expect(prompt.endsWith('<goal>\nImplement the feature.\n</goal>')).toBe(true);
         expect(prompt).not.toContain('<work_intent>');

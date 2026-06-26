@@ -8,11 +8,12 @@
  * - systemMessage: generic non-Ralph blocks only (repo instructions, memory,
  *   tool guidance) — no Ralph-specific content
  * - Each iteration's user message is built fresh from buildRalphIterationPrompt,
- *   carrying the ultra-ralph skill pointer, progress path, iteration counter,
- *   and goal (AC-01)
+ *   carrying the ultra-ralph skill pointer, progress/context paths, iteration
+ *   counter, and goal
  * - Each task is one iteration; the loop is driven by RALPH_NEXT / RALPH_COMPLETE signals
  *
- * Per-iteration history lives in `progress.md` under
+ * Per-iteration history lives in `progress.md`, with an agent-owned `context.md`
+ * map beside it, under
  *   `~/.coc/repos/<workspaceId>/ralph-sessions/<sessionId>/`
  * and is referenced by absolute path in the user prompt — see
  * AGENTS.md: "Prefer use file path in the prompt instead of expanding the
@@ -65,9 +66,11 @@ export class RalphExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const ralphCtx = payload.context?.ralph;
 
-        const progressPath = this.resolveProgressPath(payload.workspaceId, ralphCtx?.sessionId);
-
         const isFinalCheck = !!ralphCtx?.finalCheck;
+        const progressPath = this.resolveProgressPath(payload.workspaceId, ralphCtx?.sessionId);
+        const contextPath = isFinalCheck
+            ? undefined
+            : this.resolveContextPath(payload.workspaceId, ralphCtx?.sessionId);
 
         const processId = toQueueProcessId(task.id);
         const loopDeps = this.buildLoopToolDeps(processId);
@@ -105,6 +108,7 @@ export class RalphExecutor extends ChatBaseExecutor {
             : buildRalphIterationPrompt({
                 originalGoal: ralphCtx?.originalGoal,
                 progressPath,
+                contextPath,
                 currentIteration: ralphCtx?.currentIteration,
                 maxIterations: ralphCtx?.maxIterations,
             });
@@ -124,6 +128,13 @@ export class RalphExecutor extends ChatBaseExecutor {
         const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
         const store = new RalphSessionStore({ dataDir: effectiveDataDir });
         return store.getProgressPath(workspaceId, sessionId);
+    }
+
+    private resolveContextPath(workspaceId?: string, sessionId?: string): string | undefined {
+        if (!workspaceId || !sessionId) return undefined;
+        const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
+        const store = new RalphSessionStore({ dataDir: effectiveDataDir });
+        return store.getContextPath(workspaceId, sessionId);
     }
 }
 

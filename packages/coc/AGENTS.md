@@ -61,7 +61,8 @@ all have their own `references/*.md`.
   `src/config/namespace-registry.ts`; do not expand branch lists in `config.ts`.
 - **MCP REST surface** must never expose secrets (`env`, headers, full `args`).
 - **Ralph iteration prompts** must not hard-code implementation skill names
-  or set `context.skills`; the `<work_intent>` block must stay generic.
+  or set `context.skills`; surface `progress.md`/`context.md` by path only,
+  without injecting their contents.
 - **Ralph final-check tasks** still run with autopilot capability, but
   `RalphExecutor` must use validation-only system instructions whenever
   `context.ralph.finalCheck` is present. Do not route final checks through the

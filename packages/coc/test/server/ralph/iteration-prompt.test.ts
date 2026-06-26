@@ -40,6 +40,37 @@ describe('buildRalphIterationPrompt', () => {
         expect(prompt).toContain('Progress journal:');
     });
 
+    it('includes context map path with read-first and rewrite instructions when provided', () => {
+        const prompt = buildRalphIterationPrompt({
+            originalGoal: 'Build a feature',
+            progressPath: '/tmp/ralph-sessions/sess-1/progress.md',
+            contextPath: '/tmp/ralph-sessions/sess-1/context.md',
+            currentIteration: 3,
+            maxIterations: 10,
+        });
+
+        expect(prompt).toContain('Progress journal: /tmp/ralph-sessions/sess-1/progress.md');
+        expect(prompt).toContain('Context map: /tmp/ralph-sessions/sess-1/context.md');
+        expect(prompt).toContain('read this first');
+        expect(prompt).toContain('rewrite it at the end');
+        expect(prompt.indexOf('Context map:')).toBeLessThan(prompt.indexOf('<goal>'));
+    });
+
+    it('keeps the progress/iteration block unchanged when context path is omitted', () => {
+        const prompt = buildRalphIterationPrompt({
+            originalGoal: 'goal text',
+            progressPath: '/p/progress.md',
+            currentIteration: 2,
+            maxIterations: 5,
+        });
+
+        expect(prompt).toBe([
+            'Load and follow the `ultra-ralph` skill, `execution` section. The skill file is at ~/.coc/skills/ultra-ralph/SKILL.md.',
+            'Progress journal: /p/progress.md\nIteration 2 of 5.',
+            '<goal>\ngoal text\n</goal>',
+        ].join('\n\n'));
+    });
+
     it('includes progress path and iteration counter before the <goal> block', () => {
         const prompt = buildRalphIterationPrompt({
             originalGoal: 'goal text',
