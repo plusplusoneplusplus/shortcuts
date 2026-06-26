@@ -45,3 +45,10 @@ export type { QueueActionExecutorDeps } from './queue-action-executor';
 
 export { createCiChecksFetcher } from './ci-checks-fetcher';
 export type { CreateCiChecksFetcherOptions } from './ci-checks-fetcher';
+
+export {
+    registerTriggerRoutes,
+    validateCreateTriggerBody,
+    buildTriggerFromCreateRequest,
+} from './trigger-handler';
+export type { TriggerRouteContext } from './trigger-handler';

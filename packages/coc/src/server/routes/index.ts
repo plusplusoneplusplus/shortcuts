@@ -125,6 +125,9 @@ import { DreamInternalProcessExecutor } from '../executors/dream-internal-proces
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
+import { registerTriggerRoutes } from '../triggers/trigger-handler';
+import type { TriggerStore } from '../triggers/trigger-store';
+import type { TriggerManager, TriggerEventEmit } from '../triggers/trigger-manager';
 import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
 import { registerAgentProvidersRoutes } from '../agent-providers/agent-providers-routes';
@@ -207,6 +210,9 @@ export interface RegisterRoutesOptions {
     getLocalBaseUrl?: () => string | undefined;
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
+    triggerStore?: TriggerStore;
+    triggerManager?: TriggerManager;
+    triggerEmit?: TriggerEventEmit;
     mcpOauthManager?: McpOauthManager;
     resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     loopEmit?: LoopEventEmit;
@@ -511,6 +517,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             store: opts.loopStore,
             executor: opts.loopExecutor,
             emit: opts.loopEmit,
+        });
+    }
+
+    // Trigger routes (generic event → action framework). Gated on the
+    // triggers.enabled feature flag — the create endpoint is also rejected
+    // server-side when the flag is off.
+    if (opts.triggerStore && opts.triggerManager) {
+        registerTriggerRoutes(routes, {
+            store: opts.triggerStore,
+            manager: opts.triggerManager,
+            emit: opts.triggerEmit,
+            enabled: opts.resolvedConfig?.triggers?.enabled ?? false,
         });
     }
 
