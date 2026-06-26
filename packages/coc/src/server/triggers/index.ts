@@ -42,3 +42,6 @@ export type { CiFailingCheck } from './ci-failure-prompt';
 
 export { QueueActionExecutor } from './queue-action-executor';
 export type { QueueActionExecutorDeps } from './queue-action-executor';
+
+export { createCiChecksFetcher } from './ci-checks-fetcher';
+export type { CreateCiChecksFetcherOptions } from './ci-checks-fetcher';
