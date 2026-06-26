@@ -6,7 +6,8 @@
  * machinery for task enqueueing used by both HTTP routes and in-process tools.
  */
 
-import type { CreateTaskInput, MultiRepoQueueRouter } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
+import type { MultiRepoQueueRouter } from './multi-repo-queue-router';
 import { prepareTaskForEnqueue } from '../routes/queue-enqueue';
 import { enqueueViaBridge, type QueueGlobalState } from '../routes/queue-shared';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';

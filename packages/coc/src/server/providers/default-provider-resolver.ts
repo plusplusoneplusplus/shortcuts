@@ -8,9 +8,10 @@
  * can be tested independently and reused consistently across features.
  */
 
-import { sdkServiceRegistry, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, loadConfigFile, type StoredEffortTiersMap, type CreateTaskInput } from '@plusplusoneplusplus/forge';
+import { sdkServiceRegistry, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, type StoredEffortTiersMap, type CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { resolveAutoAgentProvider, type AutoProviderAvailabilityMap, type AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
-import type { AgentProvidersQuotaCache } from './quota-cache';
+import { loadConfigFile } from '../../config';
+import type { AgentProvidersQuotaCache } from '../agent-providers/quota-cache';
 import type { ChatProvider } from '../tasks/task-types';
 import type { ResolvedCLIConfig } from '../../config';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
