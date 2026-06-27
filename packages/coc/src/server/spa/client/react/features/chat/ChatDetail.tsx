@@ -2153,6 +2153,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                                     workspaceId={workspaceId}
                                     remoteUrl={workspaceRemoteUrl}
                                     taskId={bareTaskId}
+                                    processId={processId ?? taskId}
                                 />
                             }
                             workspaceId={workspaceId}
@@ -2293,6 +2294,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             workspaceId={workspaceId}
                             remoteUrl={workspaceRemoteUrl}
                             taskId={bareTaskId}
+                            processId={processId ?? taskId}
                         />
                     }
                     workspaceId={workspaceId}

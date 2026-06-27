@@ -1,4 +1,4 @@
-import { AdminClient, AgentProvidersClient, CanvasesClient, DbBrowserClient, DreamsClient, ExplorerClient, ForEachClient, GitClient, HealthClient, LoopsClient, MapReduceClient, MemoryClient, MemoryV2Client, NativeCliSessionsClient, NativeCopilotSessionsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TaskGroupsClient, TasksClient, TemplatesClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { AdminClient, AgentProvidersClient, CanvasesClient, DbBrowserClient, DreamsClient, ExplorerClient, ForEachClient, GitClient, HealthClient, LoopsClient, MapReduceClient, MemoryClient, MemoryV2Client, NativeCliSessionsClient, NativeCopilotSessionsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TaskGroupsClient, TasksClient, TemplatesClient, TriggersClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
@@ -39,6 +39,7 @@ export class CocClient {
   readonly workspaces: WorkspacesClient;
   readonly repos: WorkspacesClient;
   readonly loops: LoopsClient;
+  readonly triggers: TriggersClient;
   readonly mapReduce: MapReduceClient;
   readonly sync: SyncClient;
   readonly events: EventsClient;
@@ -82,6 +83,7 @@ export class CocClient {
     this.workspaces = new WorkspacesClient(this.transport);
     this.repos = this.workspaces;
     this.loops = new LoopsClient(this.transport);
+    this.triggers = new TriggersClient(this.transport);
     this.mapReduce = new MapReduceClient(this.transport);
     this.sync = new SyncClient(this.transport);
     this.events = new EventsClient(this.options);

@@ -32,8 +32,12 @@ import { ensureMyWorkWorkspace } from './workspaces/my-work-workspace';
 import { ensureMyLifeWorkspace } from './workspaces/my-life-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { createLoopInfrastructure } from './infrastructure/loop-infrastructure';
+import { createTriggerInfrastructure } from './infrastructure/trigger-infrastructure';
+import { createCiChecksFetcher } from './triggers/ci-checks-fetcher';
+import { createCiLogFetcher } from './triggers/ci-log-fetcher';
 import { createMcpOauthInfrastructure } from './mcp-oauth';
 import type { LoopInfrastructure } from './infrastructure/loop-infrastructure';
+import type { TriggerInfrastructure } from './infrastructure/trigger-infrastructure';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
@@ -90,6 +94,8 @@ interface CloseHandlerDeps {
     remoteServerSshConnector: { dispose(): void };
     loopExecutor?: { shutdownAll(): void };
     loopInfraDispose?: () => void;
+    triggerManager?: { shutdownAll(): void };
+    triggerInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
     syncEngines?: Map<string, SyncEngine>;
     workItemGitHubPullPoller?: { dispose(): void };
@@ -119,6 +125,8 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.scheduleInfraDispose();
         deps.loopExecutor?.shutdownAll();
         deps.loopInfraDispose?.();
+        deps.triggerManager?.shutdownAll();
+        deps.triggerInfraDispose?.();
         deps.mcpOauthDispose?.();
         deps.syncEngines?.forEach(e => e.stop());
         deps.workItemGitHubPullPoller?.dispose();
@@ -210,6 +218,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Forward declaration — loop infra is created after queue infra
     let loopInfra: LoopInfrastructure | undefined;
+
+    // Forward declaration — trigger infra is created after queue infra
+    let triggerInfra: TriggerInfrastructure | undefined;
 
     // MCP OAuth infra — enabled by default when any MCP server may be configured.
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
@@ -334,6 +345,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // Live read of the admin global system prompt so edits apply without a
         // restart. Threaded to user-facing chat executors via the queue bridge.
         () => runtimeConfigService.config.chat.globalSystemPrompt,
+        // Forward-reference accessor for the trigger manager so the queue bridge
+        // can clear a trigger's in-flight guard when its fix turn completes.
+        // triggerInfra is created after queue infra (like loopInfra), so read it
+        // lazily through this closure.
+        () => triggerInfra ? { manager: triggerInfra.triggerManager } : undefined,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -391,6 +407,42 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     return undefined;
                 }
             },
+        });
+    }
+
+    const triggersEnabled = resolvedConfig.triggers?.enabled ?? false;
+
+    // Trigger infrastructure — generic event → action framework (CI auto-fix
+    // monitor this iteration). Gated by triggers.enabled feature flag (default
+    // false). Mirrors the loop infra wiring; re-arms active triggers on startup.
+    if (triggersEnabled) {
+        triggerInfra = await createTriggerInfrastructure({
+            dataDir,
+            queueFacade,
+            store,
+            emit: (event) => {
+                try {
+                    wsServer?.broadcastProcessEvent({
+                        type: event.type,
+                        triggerId: event.trigger.id,
+                        processId: event.trigger.processId,
+                        status: event.trigger.status,
+                        workspaceId: event.trigger.workspaceId,
+                        timestamp: Date.now(),
+                    });
+                } catch { /* best-effort broadcast */ }
+            },
+            resolveWorkspaceId: async (processId: string) => {
+                try {
+                    const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
+                    const task = bridge.getTask(taskId);
+                    return task?.repoId;
+                } catch {
+                    return undefined;
+                }
+            },
+            ciChecksFetcher: createCiChecksFetcher({ dataDir, store }),
+            ciLogFetcher: createCiLogFetcher({ store }),
         });
     }
 
@@ -541,6 +593,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         getLocalBaseUrl: () => localBaseUrl,
         loopStore: loopInfra?.loopStore,
         loopExecutor: loopInfra?.loopExecutor,
+        triggerStore: triggerInfra?.triggerStore,
+        triggerManager: triggerInfra?.triggerManager,
+        triggerEmit: triggerInfra?.emit,
         mcpOauthManager: mcpOauthInfra?.manager,
         resolveAiServiceForProvider,
         loopEmit: loopInfra?.emit,
@@ -723,6 +778,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             remoteServerSshConnector,
             loopExecutor: loopInfra?.loopExecutor,
             loopInfraDispose: loopInfra?.dispose,
+            triggerManager: triggerInfra?.triggerManager,
+            triggerInfraDispose: triggerInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,
             syncEngines,
             workItemGitHubPullPoller,

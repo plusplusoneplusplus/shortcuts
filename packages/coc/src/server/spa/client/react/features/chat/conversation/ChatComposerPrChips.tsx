@@ -16,9 +16,16 @@
 import React, { useCallback, useState } from 'react';
 import { ComposerPrChip } from './ComposerPrChip';
 import { usePrChatStatusItems, type UsePrChatStatusItemsOptions } from './usePrChatStatusItems';
+import { isTriggersEnabled } from '../../../utils/config';
 import type { PrStatusCardItem } from './PrStatusCard';
 
-export type ChatComposerPrChipsProps = UsePrChatStatusItemsOptions;
+export interface ChatComposerPrChipsProps extends UsePrChatStatusItemsOptions {
+    /**
+     * The conversation's process id — the target of the CI auto-fix action
+     * (AC-05). Omit to leave the auto-fix controls disabled with a tooltip.
+     */
+    processId?: string | null;
+}
 
 /** Stable newest-first ordering: descending `createdAt`, input order otherwise. */
 function sortNewestFirst(items: PrStatusCardItem[]): PrStatusCardItem[] {
@@ -38,7 +45,8 @@ function sortNewestFirst(items: PrStatusCardItem[]): PrStatusCardItem[] {
 }
 
 export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
-    const { items, retry, refresh, refreshingKeys } = usePrChatStatusItems(options);
+    const { processId, ...statusOptions } = options;
+    const { items, retry, refresh, refreshingKeys } = usePrChatStatusItems(statusOptions);
     const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
 
     const dismiss = useCallback((key: string) => {
@@ -52,6 +60,12 @@ export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
     const visible = sortNewestFirst(items).filter(item => !dismissed.has(item.key));
     if (visible.length === 0) return null;
 
+    const autoFix = {
+        enabled: isTriggersEnabled(),
+        workspaceId: statusOptions.workspaceId,
+        processId: processId ?? undefined,
+    };
+
     return (
         <div className="overflow-hidden rounded-t-lg" data-testid="composer-pr-chips">
             {visible.map(item => (
@@ -62,6 +76,7 @@ export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
                     onRetry={retry}
                     onRefresh={refresh}
                     refreshing={refreshingKeys.has(item.key)}
+                    autoFix={autoFix}
                 />
             ))}
         </div>

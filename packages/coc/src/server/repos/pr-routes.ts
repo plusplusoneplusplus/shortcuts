@@ -59,7 +59,7 @@ import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
 import { computeSummary, parseFullDiff } from '@plusplusoneplusplus/forge';
-import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest, ProviderPullRequestCheck, ProviderPullRequestStatus } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
 import {
     autoClassifyTeamPullRequests,
@@ -181,7 +181,26 @@ async function resolveOriginPrRepoScope(
         };
     }
 
-    const repoId = parseOptionalScopeValue(req, body, 'repoId') ?? workspaceId;
+    const repoId = parseOptionalScopeValue(req, body, 'repoId') ?? undefined;
+    return resolveOriginPrRepoScopeForWorkspace(workspaceId, repoId, originId, svc, processStore);
+}
+
+/**
+ * Req-less variant of {@link resolveOriginPrRepoScope}. Resolves the repo +
+ * storage scope from an explicit `workspaceId` (with an optional `repoId`
+ * override) instead of parsing them off an HTTP request. Used by headless
+ * callers such as the trigger CI-failure monitor that poll checks without a
+ * request context. Remote-clone friendly: scope resolution flows through the
+ * same `resolvePrStorageScopeForRoute` path the route uses.
+ */
+async function resolveOriginPrRepoScopeForWorkspace(
+    workspaceId: string,
+    repoIdOverride: string | undefined,
+    originId: string,
+    svc: RepoTreeService,
+    processStore?: ProcessStore,
+): Promise<OriginPrRepoScopeResult> {
+    const repoId = repoIdOverride ?? workspaceId;
     const repo = await svc.resolveRepo(repoId);
     if (!repo) {
         return {
@@ -538,6 +557,68 @@ export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWork
     if (options.suggestionsEnabled) {
         readSuggestionsCache(options.dataDir, options.workspaceId, options.repoId, prStorageScope);
     }
+}
+
+/**
+ * Headless (request-less) fetch of a PR's checks + status for the trigger
+ * CI-failure monitor. Reuses the exact server-side checks path the SPA route
+ * uses — origin/workspace scope resolution via `resolveOriginPrRepoScopeForWorkspace`
+ * and the provider PR service via `resolvePullRequestsService` — so it works for
+ * remote clones (scope flows through the same storage-origin resolution) and
+ * needs no HTTP request context. Throws `PullRequestRouteError` on scope/auth
+ * failures; the caller decides how to react (the monitor keeps polling).
+ */
+export interface OriginPullRequestChecksSnapshot {
+    prStatus: ProviderPullRequestStatus;
+    prNumber: number | string;
+    /** PR head (source) branch name, when the provider reports it. */
+    headRef?: string;
+    /** PR head (source branch tip) commit SHA, when the provider reports it. */
+    headSha?: string;
+    checks: ProviderPullRequestCheck[];
+}
+
+export interface FetchOriginPullRequestChecksHeadlessOptions {
+    dataDir: string;
+    workspaceId: string;
+    originId: string;
+    prId: string;
+    /** Optional repo id override (defaults to `workspaceId`). */
+    repoId?: string;
+    store?: ProcessStore;
+    service?: RepoTreeService;
+}
+
+export async function fetchOriginPullRequestChecksHeadless(
+    options: FetchOriginPullRequestChecksHeadlessOptions,
+): Promise<OriginPullRequestChecksSnapshot> {
+    const svc = options.service ?? new RepoTreeService(options.dataDir, undefined, options.store);
+    const scope = await resolveOriginPrRepoScopeForWorkspace(
+        options.workspaceId,
+        options.repoId,
+        options.originId,
+        svc,
+        options.store,
+    );
+    if (!scope.ok) {
+        throw new PullRequestRouteError(scope.status, scope.message);
+    }
+
+    const { repoId } = scope.value;
+    const prSvc = await resolvePullRequestsService(options.dataDir, svc, repoId);
+    const pr = await prSvc.getPullRequest(repoId, options.prId);
+    const checks = typeof prSvc.getChecks === 'function'
+        ? await prSvc.getChecks(repoId, options.prId)
+        : [];
+    const headRef = typeof pr.sourceBranch === 'string' && pr.sourceBranch.trim() ? pr.sourceBranch.trim() : undefined;
+    const headSha = typeof pr.headSha === 'string' && pr.headSha.trim() ? pr.headSha.trim() : undefined;
+    return {
+        prStatus: pr.status,
+        prNumber: pr.number,
+        ...(headRef !== undefined ? { headRef } : {}),
+        ...(headSha !== undefined ? { headSha } : {}),
+        checks,
+    };
 }
 
 /** Clear all cached PR list entries. Exported for testing. */

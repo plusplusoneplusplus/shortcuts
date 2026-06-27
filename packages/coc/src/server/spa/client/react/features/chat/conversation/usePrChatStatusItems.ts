@@ -151,6 +151,8 @@ function associationToLoadingItem(association: PrAssociation, repoId: string): P
     return {
         key: association.key,
         repoId,
+        originId: association.originId,
+        prId: association.prId,
         number: association.number,
         state: 'loading',
         url: association.url,

@@ -143,7 +143,8 @@ export type ServerMessage =
     | { type: 'turn-pinned'; processId: string; turnIndex: number; pinnedAt: string | null }
     | { type: 'turn-archived'; processId: string; turnIndex: number; archived: boolean }
     | { type: 'ralph-session-complete'; workspaceId: string; sessionId?: string; processId: string; totalIterations: number; reason: 'signal' | 'cap' | string }
-    | { type: 'loop-created' | 'loop-updated' | 'loop-paused' | 'loop-resumed' | 'loop-cancelled' | 'loop-expired' | 'loop-tick'; loopId: string; processId: string; status: string; workspaceId?: string; timestamp: number };
+    | { type: 'loop-created' | 'loop-updated' | 'loop-paused' | 'loop-resumed' | 'loop-cancelled' | 'loop-expired' | 'loop-tick'; loopId: string; processId: string; status: string; workspaceId?: string; timestamp: number }
+    | { type: 'trigger-created' | 'trigger-updated' | 'trigger-fired' | 'trigger-disarmed' | 'trigger-expired' | 'trigger-paused'; triggerId: string; processId: string; status: string; workspaceId?: string; timestamp: number };
 
 /** Client → Server message types */
 export type ClientMessage =

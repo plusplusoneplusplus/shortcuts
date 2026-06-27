@@ -180,6 +180,40 @@ export interface LifecycleRunnerOptions {
      * (`context.source === 'loop'` and `typeof context.loopId === 'string'`).
      */
     onLoopTickComplete?: (loopId: string, success: boolean) => Promise<void> | void;
+    /**
+     * Called after a trigger-originated follow-up task finishes (success or
+     * failure). The bridge uses this to invoke `TriggerManager.onActionComplete()`
+     * so the trigger's in-flight suppression guard clears and the next failing
+     * transition can fire again.
+     *
+     * Only invoked when the follow-up's payload context identifies a trigger
+     * (`context.source === 'trigger'` and `typeof context.triggerId === 'string'`).
+     */
+    onTriggerActionComplete?: (triggerId: string, success: boolean) => Promise<void> | void;
+}
+
+/**
+ * Invoke `opts.onTriggerActionComplete` when the follow-up's payload context
+ * identifies a trigger-originated action. Errors are logged but never rethrown,
+ * so that bookkeeping failures cannot mask the follow-up's actual outcome.
+ */
+async function notifyTriggerActionComplete(
+    opts: LifecycleRunnerOptions,
+    ctx: Record<string, unknown> | undefined,
+    success: boolean,
+    logger: ReturnType<typeof getLogger>,
+): Promise<void> {
+    if (!opts.onTriggerActionComplete) return;
+    if (!ctx || ctx.source !== 'trigger') return;
+    if (typeof ctx.triggerId !== 'string' || ctx.triggerId.length === 0) return;
+    try {
+        await opts.onTriggerActionComplete(ctx.triggerId, success);
+    } catch (err) {
+        logger.warn(
+            LogCategory.AI,
+            `[QueueExecutor] onTriggerActionComplete(${ctx.triggerId}, success=${success}) failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+    }
 }
 
 /**
@@ -334,14 +368,15 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             task.processId = followUpPayload.processId;
             const imageTempDir = followUpPayload.imageTempDir;
             await rehydrateImagesIfNeeded(task.payload as any);
-            // Extract turnSource from payload context for loop/wakeup-triggered follow-ups
+            // Extract turnSource from payload context for loop/wakeup/trigger-triggered follow-ups
             const ctx = followUpPayload.context as Record<string, unknown> | undefined;
             let turnSource: TurnSource | undefined;
-            if (ctx?.source === 'loop' || ctx?.source === 'wakeup') {
+            if (ctx?.source === 'loop' || ctx?.source === 'wakeup' || ctx?.source === 'trigger') {
                 turnSource = {
-                    source: ctx.source as 'loop' | 'wakeup',
+                    source: ctx.source as 'loop' | 'wakeup' | 'trigger',
                     ...(typeof ctx.loopId === 'string' ? { loopId: ctx.loopId } : {}),
                     ...(typeof ctx.wakeupId === 'string' ? { wakeupId: ctx.wakeupId } : {}),
+                    ...(typeof ctx.triggerId === 'string' ? { triggerId: ctx.triggerId } : {}),
                 };
             }
             // Mark the target process as running BEFORE invoking the follow-up
@@ -357,6 +392,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 const errorMsg = err instanceof Error ? err.message : String(err);
                 logger.warn(LogCategory.AI, `[QueueExecutor] Failed to mark follow-up process ${followUpPayload.processId} as running: ${errorMsg}`);
                 await notifyLoopTickComplete(opts, ctx, false, logger);
+                await notifyTriggerActionComplete(opts, ctx, false, logger);
                 if (imageTempDir) { cleanupTempDir(imageTempDir); }
                 return { success: false, error: err instanceof Error ? err : new Error(errorMsg), durationMs: Date.now() - startTime };
             }
@@ -398,6 +434,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 }
                 // Notify loop executor that a loop-originated tick has finished successfully
                 await notifyLoopTickComplete(opts, ctx, true, logger);
+                // Notify trigger manager that a trigger-originated action has finished successfully
+                await notifyTriggerActionComplete(opts, ctx, true, logger);
                 return { success: true, durationMs: duration };
             } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
@@ -405,6 +443,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} failed in ${duration}ms: ${errorMsg}`);
                 // Notify loop executor that a loop-originated tick has failed
                 await notifyLoopTickComplete(opts, ctx, false, logger);
+                // Notify trigger manager that a trigger-originated action has failed
+                await notifyTriggerActionComplete(opts, ctx, false, logger);
                 return { success: false, error: error instanceof Error ? error : new Error(errorMsg), durationMs: duration };
             } finally {
                 if (imageTempDir) { cleanupTempDir(imageTempDir); }

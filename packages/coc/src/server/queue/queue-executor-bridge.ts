@@ -46,6 +46,7 @@ export interface CLITaskExecutorOptions {
     resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
+    getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     dreamRunExecutor?: DreamRunExecutor;
@@ -110,6 +111,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly titleGenerationService: TitleGenerationService;
     private readonly getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     private readonly getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
+    private readonly getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined;
     private readonly onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     private resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     private dreamRunExecutor?: DreamRunExecutor;
@@ -151,6 +153,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             cancelledTasks: this.cancelledTasks,
         });
         this.getLoopInfra = options.getLoopInfra;
+        this.getTriggerInfra = options.getTriggerInfra;
     }
 
     setQueueManager(qm: TaskQueueManager): void {
@@ -372,6 +375,11 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     if (!infra) return;
                     return infra.executor.onTickComplete(loopId, success);
                 },
+                onTriggerActionComplete: (triggerId, success) => {
+                    const infra = this.getTriggerInfra?.();
+                    if (!infra) return;
+                    return infra.manager.onActionComplete(triggerId, success);
+                },
             });
         } finally {
             this.cancelledTasks.delete(task.id);
@@ -497,6 +505,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         // (captured when the message was buffered) is carried through to the
         // replayed task so the follow-up executor honours it.
         const pendingEffort = (nextMsg as { reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' }).reasoningEffort;
+        // Merge any carried follow-up context (e.g. trigger turnSource) with the
+        // skills context so an automated buffered message keeps its source tag.
+        const drainedContext: Record<string, unknown> = {
+            ...(nextMsg.context ?? {}),
+            ...(nextMsg.skillNames && nextMsg.skillNames.length > 0 ? { skills: nextMsg.skillNames } : {}),
+        };
         this.queueManager.enqueue({
             processId,
             type: 'chat',
@@ -512,7 +526,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 ...(nextMsg.imageTempDir ? { imageTempDir: nextMsg.imageTempDir } : {}),
                 ...(nextMsg.images ? { images: nextMsg.images } : {}),
                 ...(nextMsg.fileAttachmentMeta ? { fileAttachmentMeta: nextMsg.fileAttachmentMeta } : {}),
-                ...(nextMsg.skillNames && nextMsg.skillNames.length > 0 ? { context: { skills: nextMsg.skillNames } } : {}),
+                ...(Object.keys(drainedContext).length > 0 ? { context: drainedContext } : {}),
             },
             config: pendingEffort ? { reasoningEffort: pendingEffort } : {},
             displayName: nextMsg.content.trim().substring(0, 57) + (nextMsg.content.trim().length > 57 ? '...' : ''),

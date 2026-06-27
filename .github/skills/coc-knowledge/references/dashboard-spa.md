@@ -166,6 +166,28 @@ associated, so the composer keeps no PR chrome otherwise. The stack's first row
 sits flush with the composer card via `rounded-t-lg overflow-hidden`, and each
 chip's bottom border doubles as the divider above the textarea.
 
+When the `triggers.enabled` flag is on, each chip also carries CI auto-fix
+controls (`usePrAutoFixTrigger`, gated on `isTriggersEnabled()` read in
+`ChatComposerPrChips`, which threads the conversation `processId` + `workspaceId`
+down as an `autoFix` context prop). The checks-badge popover
+(`ComposerPrChecksPopover`) opens when ≥1 check is failing **or** when CI
+auto-fix is available, so the monitor can be armed proactively while checks are
+still pending/green (with no failures the badge would otherwise be a plain,
+non-interactive pill). It gains an "Auto-fix CI" toggle that arms/disarms a
+`ci-failure` condition-monitor trigger bound to that PR's `originId`/`prId` and
+the conversation `processId`. The toggle stays usable regardless of current
+check state; a separate `fixNowDisabledReason` disables only the manual "Fix
+now" button when nothing is failing. "Fix now" sends one `autopilot` fix message
+(`prAutoFixPrompt.ts#buildCiFixPrompt`, a browser copy of the server
+`ci-failure-prompt.ts` template) via `processes.sendMessage`. While a monitor is
+armed the chip shows an "Auto-fix on" badge — and because the toggle is
+failure-independent, that monitor can also be disarmed after CI goes green. All arm/disarm/list/fix calls route
+through the workspace-scoped `getCocClientForWorkspace(workspaceId).triggers` /
+`.processes` (so remote-clone conversations act on their owning server — never a
+raw `fetchApi`). When the PR/conversation context is unresolved the controls
+render disabled with an explanatory tooltip; when the flag is off the toggle,
+button, and badge are hidden and no trigger network calls are made.
+
 `mapPrDetailToCardPr` carries the canonical `autoMerge`
 (`{ enabled, state, enabledBy?, mergeMethod?, blockedReason? }`, mapped
 server-side from GitHub REST `pulls.get` / ADO `autoCompleteSetBy`) and

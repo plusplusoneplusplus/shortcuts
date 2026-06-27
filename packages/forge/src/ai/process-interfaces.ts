@@ -178,7 +178,7 @@ export interface ConversationTurn {
 }
 
 /** Metadata identifying the automated source of a conversation turn. */
-export type TurnSource = { source: 'loop' | 'wakeup'; loopId?: string; wakeupId?: string };
+export type TurnSource = { source: 'loop' | 'wakeup' | 'trigger'; loopId?: string; wakeupId?: string; triggerId?: string };
 
 /**
  * Serialized format of ConversationTurn for persistence (Date -> ISO string)
@@ -351,6 +351,13 @@ export interface PendingMessage {
     fileAttachmentMeta?: PendingFileAttachmentMeta[];
     /** Selected skill names to inject as `context.skills` on the drained follow-up payload. */
     skillNames?: string[];
+    /**
+     * Opaque follow-up context to carry onto the drained follow-up payload's
+     * `context` (e.g. `{ triggerId, source: 'trigger' }`). Lets automated
+     * sources buffer a message while a turn is in flight without losing the
+     * `turnSource` tag that flows out of the drained turn.
+     */
+    context?: Record<string, unknown>;
     /** ISO 8601 timestamp of when the message was queued */
     createdAt: string;
 }

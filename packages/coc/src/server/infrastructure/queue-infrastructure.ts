@@ -65,6 +65,7 @@ export function createQueueInfrastructure(
     resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => import('@plusplusoneplusplus/forge').ISDKService,
     ralphMultiAgentGrillEnabled?: boolean,
     getGlobalSystemPrompt?: () => string | undefined,
+    getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: Database.Database;
@@ -97,6 +98,7 @@ export function createQueueInfrastructure(
         getGlobalSystemPrompt,
         initialDelayMs: options.queue?.restartPickupDelayMs,
         getLoopInfra,
+        getTriggerInfra,
         getMcpOauthManager,
     });
 
