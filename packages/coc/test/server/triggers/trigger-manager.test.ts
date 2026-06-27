@@ -318,6 +318,37 @@ describe('TriggerManager', () => {
         });
     });
 
+    describe('retry-limit notice (AC-05)', () => {
+        it('does not fire, persists state, and emits a one-time change event when the cap is reached', async () => {
+            const emit = vi.fn();
+            const capped: TriggerEvent = {
+                type: 'condition-monitor', monitor: 'ci-failure', originId: 'o', prId: '42',
+                pollIntervalMs: 60_000, lastSeenChecks: { build: 'failure' },
+                attemptSha: 'sha1', attemptCount: 2, attemptNotified: true,
+            };
+            h = makeManager(
+                fakeEvaluator({ fire: false, event: capped, retryLimitReached: true }),
+                { emit },
+            );
+            const trigger = makeTrigger();
+            h.store.insert(trigger);
+            h.manager.arm(trigger);
+
+            h.timer._fire('trigger_1');
+            await flush();
+
+            // No fix enqueued.
+            expect(h.action.calls).toHaveLength(0);
+            // Capped state persisted; trigger stays armed so a new commit can resume.
+            const persisted = h.store.getById('trigger_1')!;
+            expect(persisted.status).toBe('active');
+            expect(persisted.event.attemptNotified).toBe(true);
+            expect(h.timer.has('trigger_1')).toBe(true);
+            // Human-facing notice broadcast once.
+            expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'trigger-updated' }));
+        });
+    });
+
     describe('shutdownAll', () => {
         it('clears all timers without mutating persisted state', () => {
             h = makeManager(fakeEvaluator({ fire: false, event: makeTrigger().event }));

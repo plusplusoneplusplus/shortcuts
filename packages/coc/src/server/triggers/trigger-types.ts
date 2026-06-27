@@ -55,6 +55,24 @@ export interface ConditionMonitorEvent {
     pollIntervalMs: number;
     /** checkId → last-seen conclusion (e.g. `success`, `failure`, `pending`). */
     lastSeenChecks: Record<string, string>;
+    /**
+     * Head commit SHA the retry counter is currently keyed to (AC-05). The empty
+     * string is used as a stable sentinel when the provider snapshot omits a head
+     * SHA, so the cap still accumulates. Reset (along with `attemptCount` /
+     * `attemptNotified`) when a new commit changes the SHA.
+     */
+    attemptSha?: string;
+    /**
+     * Number of auto-fix attempts already FIRED for `attemptSha`. Gated at
+     * `MAX_CI_FIX_ATTEMPTS`; once reached, no further fixes fire until a new
+     * commit (new SHA) resets the count.
+     */
+    attemptCount?: number;
+    /**
+     * Whether the human has already been notified that the retry cap was hit for
+     * `attemptSha`, so the notice surfaces once (not on every subsequent poll).
+     */
+    attemptNotified?: boolean;
 }
 
 /**
@@ -165,3 +183,10 @@ export const MIN_POLL_INTERVAL_MS = 10_000;
 
 /** Max active triggers per server. */
 export const MAX_ACTIVE_TRIGGERS = 50;
+
+/**
+ * Max auto-fix attempts fired per PR head SHA before the CI-failure monitor
+ * stops firing and notifies the human (AC-05). The counter resets when a new
+ * commit changes the head SHA.
+ */
+export const MAX_CI_FIX_ATTEMPTS = 2;

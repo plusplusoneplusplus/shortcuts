@@ -28,7 +28,8 @@
  * + `getChecks`/`getPullRequest`), which is workspace/remote-clone friendly.
  */
 
-import type { Trigger, TriggerEvent } from './trigger-types';
+import type { ConditionMonitorEvent, Trigger } from './trigger-types';
+import { MAX_CI_FIX_ATTEMPTS } from './trigger-types';
 import type { EvaluationOutcome, EventEvaluator } from './trigger-manager';
 import { buildCiFailurePrompt } from './ci-failure-prompt';
 
@@ -123,17 +124,53 @@ export class CiFailureEvaluator implements EventEvaluator {
             }
         }
 
-        const nextEvent: TriggerEvent = { ...event, lastSeenChecks: nextLastSeen };
+        // Resolve the retry counter for the CURRENT head SHA (AC-05). A new
+        // commit (SHA change) resets the count/notice; an absent SHA falls back
+        // to a stable '' key so the cap still accumulates rather than resetting
+        // every poll.
+        const shaKey = snapshot.headSha ?? '';
+        const sameSha = event.attemptSha === shaKey;
+        const attemptCount = sameSha ? (event.attemptCount ?? 0) : 0;
+        const attemptNotified = sameSha ? (event.attemptNotified ?? false) : false;
+
+        const nextEvent: ConditionMonitorEvent = {
+            ...event,
+            lastSeenChecks: nextLastSeen,
+            attemptSha: shaKey,
+            attemptCount,
+            attemptNotified,
+        };
 
         if (newlyFailing.length === 0) {
             // No new failure transition — track the latest state and keep polling.
             return { fire: false, event: nextEvent };
         }
 
-        // Fire: name every currently-failing check (full picture) in the prompt,
-        // not only the newly-failed ones.
+        // A failing transition is pending. Enforce the per-SHA retry cap.
+        if (attemptCount >= MAX_CI_FIX_ATTEMPTS) {
+            if (attemptNotified) {
+                // Already notified for this SHA — stay armed (a new commit resets
+                // the cap) but do not fire or re-notify.
+                return { fire: false, event: nextEvent };
+            }
+            // First time hitting the cap for this SHA — withhold the fix, mark the
+            // notice as sent, and signal the manager to surface it once.
+            return {
+                fire: false,
+                event: { ...nextEvent, attemptNotified: true },
+                retryLimitReached: true,
+            };
+        }
+
+        // Under the cap — fire and record this attempt against the current SHA.
+        // Name every currently-failing check (full picture), not only the newly
+        // failed ones.
         const failingChecks = snapshot.checks.filter(c => c.status === 'failure');
         const actionPrompt = buildCiFailurePrompt(snapshot.prNumber, failingChecks, snapshot.headRef);
-        return { fire: true, event: nextEvent, actionPrompt };
+        return {
+            fire: true,
+            event: { ...nextEvent, attemptCount: attemptCount + 1 },
+            actionPrompt,
+        };
     }
 }

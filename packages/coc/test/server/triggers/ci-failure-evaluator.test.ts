@@ -17,20 +17,29 @@ import {
     CiFailureEvaluator,
     type CiPrChecksSnapshot,
 } from '../../../src/server/triggers/ci-failure-evaluator';
-import type { Trigger, TriggerEvent } from '../../../src/server/triggers/trigger-types';
+import type {
+    ConditionMonitorEvent,
+    Trigger,
+} from '../../../src/server/triggers/trigger-types';
+import { MAX_CI_FIX_ATTEMPTS } from '../../../src/server/triggers/trigger-types';
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-function makeTrigger(lastSeenChecks: Record<string, string>, overrides: Partial<Trigger> = {}): Trigger {
-    const event: TriggerEvent = {
+function makeTrigger(
+    lastSeenChecks: Record<string, string>,
+    overrides: Partial<Trigger> = {},
+    eventExtra: Partial<ConditionMonitorEvent> = {},
+): Trigger {
+    const event: ConditionMonitorEvent = {
         type: 'condition-monitor',
         monitor: 'ci-failure',
         originId: 'origin_1',
         prId: '42',
         pollIntervalMs: 60_000,
         lastSeenChecks,
+        ...eventExtra,
     };
     return {
         id: 'trigger_1',
@@ -65,6 +74,14 @@ const openWith = (checks: CiPrChecksSnapshot['checks']): CiPrChecksSnapshot => (
     prStatus: 'open',
     prNumber: '42',
     checks,
+});
+
+/** An open PR whose `build` check is failing, carrying a head SHA. */
+const failingAtSha = (headSha: string): CiPrChecksSnapshot => ({
+    prStatus: 'open',
+    prNumber: '42',
+    headSha,
+    checks: [{ id: 'build', name: 'build', status: 'failure' }],
 });
 
 // ============================================================================
@@ -230,5 +247,127 @@ describe('CiFailureEvaluator', () => {
         await evaluator.evaluate(makeTrigger({}));
 
         expect(fetcher.calls[0]).toEqual({ workspaceId: 'ws_a', originId: 'origin_1', prId: '42' });
+    });
+
+    // ========================================================================
+    // Retry limit (AC-05) — ≤MAX_CI_FIX_ATTEMPTS per head SHA, reset on new SHA.
+    // ========================================================================
+    describe('retry limit (AC-05)', () => {
+        it('records the head SHA and increments the attempt count on fire', async () => {
+            const evaluator = new CiFailureEvaluator(queuedFetcher([failingAtSha('sha1')]));
+
+            const outcome = await evaluator.evaluate(
+                makeTrigger({ build: 'success' }, {}, { attemptSha: 'sha1', attemptCount: 0 }),
+            );
+
+            expect(outcome.fire).toBe(true);
+            const ev = outcome.event as ConditionMonitorEvent;
+            expect(ev.attemptSha).toBe('sha1');
+            expect(ev.attemptCount).toBe(1);
+        });
+
+        it('withholds the fix and signals retryLimitReached once the cap is hit for the SHA', async () => {
+            const evaluator = new CiFailureEvaluator(queuedFetcher([failingAtSha('sha1')]));
+
+            const outcome = await evaluator.evaluate(
+                makeTrigger(
+                    { build: 'success' },
+                    {},
+                    { attemptSha: 'sha1', attemptCount: MAX_CI_FIX_ATTEMPTS, attemptNotified: false },
+                ),
+            );
+
+            expect(outcome.fire).toBe(false);
+            expect(outcome.retryLimitReached).toBe(true);
+            const ev = outcome.event as ConditionMonitorEvent;
+            // The count is NOT advanced past the cap, and the notice is marked sent.
+            expect(ev.attemptCount).toBe(MAX_CI_FIX_ATTEMPTS);
+            expect(ev.attemptNotified).toBe(true);
+        });
+
+        it('does not re-notify on subsequent capped polls for the same SHA', async () => {
+            const evaluator = new CiFailureEvaluator(queuedFetcher([failingAtSha('sha1')]));
+
+            const outcome = await evaluator.evaluate(
+                makeTrigger(
+                    { build: 'success' },
+                    {},
+                    { attemptSha: 'sha1', attemptCount: MAX_CI_FIX_ATTEMPTS, attemptNotified: true },
+                ),
+            );
+
+            expect(outcome.fire).toBe(false);
+            expect(outcome.retryLimitReached).toBeFalsy();
+        });
+
+        it('resets the counter and fires again when a new commit changes the head SHA', async () => {
+            const evaluator = new CiFailureEvaluator(queuedFetcher([failingAtSha('sha2')]));
+
+            const outcome = await evaluator.evaluate(
+                makeTrigger(
+                    { build: 'success' },
+                    {},
+                    { attemptSha: 'sha1', attemptCount: MAX_CI_FIX_ATTEMPTS, attemptNotified: true },
+                ),
+            );
+
+            expect(outcome.fire).toBe(true);
+            const ev = outcome.event as ConditionMonitorEvent;
+            expect(ev.attemptSha).toBe('sha2');
+            expect(ev.attemptCount).toBe(1);
+            expect(ev.attemptNotified).toBe(false);
+        });
+
+        it('still caps when the snapshot omits a head SHA (stable empty-string key)', async () => {
+            const evaluator = new CiFailureEvaluator(
+                queuedFetcher([openWith([{ id: 'build', name: 'build', status: 'failure' }])]),
+            );
+
+            const outcome = await evaluator.evaluate(
+                makeTrigger(
+                    { build: 'success' },
+                    {},
+                    { attemptSha: '', attemptCount: MAX_CI_FIX_ATTEMPTS, attemptNotified: false },
+                ),
+            );
+
+            expect(outcome.fire).toBe(false);
+            expect(outcome.retryLimitReached).toBe(true);
+        });
+
+        it('drives a detect → fire ×2 → cap sequence keyed by one SHA', async () => {
+            // Each fire re-detects the failure on the SAME head SHA (the fix made
+            // no commit). The manager persists outcome.event between ticks; here
+            // we feed the resulting attemptCount into the next tick's trigger to
+            // mimic that, with lastSeenChecks reset so the failure re-fires.
+            const evaluator = new CiFailureEvaluator(
+                queuedFetcher([failingAtSha('sha1'), failingAtSha('sha1'), failingAtSha('sha1')]),
+            );
+
+            // Tick 1: green → failure, attempt 1 fires.
+            let outcome = await evaluator.evaluate(
+                makeTrigger({ build: 'success' }, {}, { attemptSha: 'sha1', attemptCount: 0 }),
+            );
+            expect(outcome.fire).toBe(true);
+            expect((outcome.event as ConditionMonitorEvent).attemptCount).toBe(1);
+
+            // Tick 2: failure re-detected, attempt 2 fires (reaches the cap).
+            outcome = await evaluator.evaluate(
+                makeTrigger({ build: 'success' }, {}, { attemptSha: 'sha1', attemptCount: 1 }),
+            );
+            expect(outcome.fire).toBe(true);
+            expect((outcome.event as ConditionMonitorEvent).attemptCount).toBe(MAX_CI_FIX_ATTEMPTS);
+
+            // Tick 3: count is at the cap → withheld + notified once.
+            outcome = await evaluator.evaluate(
+                makeTrigger(
+                    { build: 'success' },
+                    {},
+                    { attemptSha: 'sha1', attemptCount: MAX_CI_FIX_ATTEMPTS },
+                ),
+            );
+            expect(outcome.fire).toBe(false);
+            expect(outcome.retryLimitReached).toBe(true);
+        });
     });
 });

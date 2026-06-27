@@ -54,6 +54,13 @@ export interface EvaluationOutcome {
      * failing checks). Falls back to `trigger.action.prompt` when absent.
      */
     actionPrompt?: string;
+    /**
+     * Set by an evaluator when a fire was withheld because the per-head-SHA
+     * retry cap was reached (AC-05, {@link MAX_CI_FIX_ATTEMPTS}). The manager
+     * surfaces this once as a human-facing notice (log + `trigger-updated`
+     * change event). Cleared automatically once a new commit resets the count.
+     */
+    retryLimitReached?: boolean;
 }
 
 /** Evaluates a trigger's event each tick. One per event kind. */
@@ -147,8 +154,9 @@ export class TriggerManager {
 
     /**
      * Report that an in-flight action finished (success or failure). Clears the
-     * suppression guard so the next failing transition can fire again. There is
-     * NO attempt cap — the trigger keeps polling.
+     * suppression guard so the next failing transition can fire again — subject
+     * to the per-head-SHA retry cap enforced by the CI-failure evaluator
+     * ({@link MAX_CI_FIX_ATTEMPTS}). The trigger keeps polling either way.
      */
     onActionComplete(triggerId: string, _success: boolean): void {
         const trigger = this.deps.store.getById(triggerId);
@@ -237,6 +245,17 @@ export class TriggerManager {
         // No fire: track the latest observed state and keep polling.
         current.event = outcome.event;
         this.reschedule(current);
+
+        // Surface a one-time human-facing notice when the per-head-SHA retry cap
+        // is first reached (AC-05). The trigger stays armed so a new commit can
+        // reset the cap and resume auto-fixing.
+        if (outcome.retryLimitReached) {
+            logger.warn(
+                LogCategory.AI,
+                `[TriggerManager] CI auto-fix retry limit reached for ${triggerId}; pausing auto-fixes until a new commit`,
+            );
+            this.emit({ type: 'trigger-updated', trigger: current });
+        }
     }
 
     // ========================================================================
