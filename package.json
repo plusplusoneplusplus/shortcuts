@@ -21,6 +21,7 @@
     "build": "npm run build:packages",
     "compile": "npm run build:packages",
     "validate:models": "node scripts/validate-model-registry.js",
+    "lint": "npm run lint -w packages/coc-memory -w packages/coc-workflow -w packages/forge -w packages/coc",
     "test": "npm run test:packages",
     "test:packages": "npm run test:run -w packages/coc-agent-sdk && npm run test:run -w packages/coc-workflow && npm run test:run -w packages/forge && npm run test:run -w packages/coc-client && npm run test:run -w packages/coc-memory && npm run test:run -w packages/coc && npm run test:run -w packages/deep-wiki",
     "test:all": "npm run test",
