@@ -2,19 +2,21 @@
  * DiagramViewerShell — full-page view-only Excalidraw viewer.
  *
  * Rendered when `window.location.pathname` starts with `/diagram/`.
- * URL format: `/diagram/<workspaceId>/<diagramPath>`
+ * URL format: `/diagram/<workspaceId>/<canvasId>`
  *
- * Fetches diagram data from the REST API and renders a full-viewport
- * read-only Excalidraw canvas with pan/zoom. A top bar shows the diagram
- * name and a back button.
+ * Excalidraw diagrams are canvases, so this reads the scene straight from the
+ * canvas store (`GET /api/workspaces/:wsId/canvases/:canvasId`) — the legacy
+ * `/api/diagrams` endpoint was removed in the canvas cutover. It renders a
+ * full-viewport read-only Excalidraw canvas with pan/zoom; a top bar shows the
+ * canvas title and a back button.
  */
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import { ThemeProvider } from '../../layout/ThemeProvider';
-import { getApiBase, isExcalidrawEnabled } from '../../utils/config';
+import { getApiBase, isExcalidrawEnabled, isCanvasEnabled } from '../../utils/config';
 import { SHOW_EXCALIDRAW_DIAGRAMS } from '../../featureFlags';
-import { unwrapDiagramResponse, buildViewerInitialData, type ExcalidrawScene } from './diagram-scene';
+import { parseSceneContent, buildViewerInitialData, type ExcalidrawScene } from './diagram-scene';
 
 // Minimal subset of Excalidraw's imperative API that we actually consume.
 // Avoids pulling the real (extremely heavy) type into the module signature,
@@ -27,30 +29,28 @@ interface ExcalidrawApiLike {
 
 export interface DiagramViewerParams {
     workspaceId: string;
-    diagramPath: string;
+    canvasId: string;
 }
 
 /**
- * Parse `/diagram/:wsId/:path` from `window.location.pathname`.
- * Returns null if the pathname doesn't match.
+ * Parse `/diagram/:wsId/:canvasId` from `window.location.pathname`.
+ * Returns null if the pathname doesn't match. Both segments are single path
+ * components — canvas IDs are slugs (no slashes), so filename-style nested
+ * paths no longer match (filename addressing was dropped in the cutover).
  */
 export function parseDiagramViewerRoute(pathname: string): DiagramViewerParams | null {
-    const match = pathname.match(/^\/diagram\/([^/]+)\/(.+)$/);
+    const match = pathname.match(/^\/diagram\/([^/]+)\/([^/]+)$/);
     if (!match) return null;
     return {
         workspaceId: decodeURIComponent(match[1]),
-        diagramPath: decodeURIComponent(match[2]),
+        canvasId: decodeURIComponent(match[2]),
     };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function diagramApiUrl(wsId: string, filename: string): string {
-    return `${getApiBase()}/workspaces/${encodeURIComponent(wsId)}/diagrams/${encodeURIComponent(filename)}`;
-}
-
-function displayName(p: string): string {
-    return p.replace(/\.excalidraw$/i, '');
+function canvasApiUrl(wsId: string, canvasId: string): string {
+    return `${getApiBase()}/workspaces/${encodeURIComponent(wsId)}/canvases/${encodeURIComponent(canvasId)}`;
 }
 
 // ── Viewer content ─────────────────────────────────────────────────────────────
@@ -60,10 +60,11 @@ type LoadState = 'loading' | 'loaded' | 'error';
 function DiagramViewerContent({ params }: { params: DiagramViewerParams }) {
     const [state, setState] = useState<LoadState>('loading');
     const [sceneData, setSceneData] = useState<ExcalidrawScene | null>(null);
+    const [title, setTitle] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
     const apiRef = useRef<ExcalidrawApiLike | null>(null);
 
-    const name = useMemo(() => displayName(params.diagramPath), [params.diagramPath]);
+    const name = title || params.canvasId;
 
     const initialData = useMemo(
         () => (sceneData ? buildViewerInitialData(sceneData) : null),
@@ -104,7 +105,7 @@ function DiagramViewerContent({ params }: { params: DiagramViewerParams }) {
         let cancelled = false;
         setState('loading');
 
-        fetch(diagramApiUrl(params.workspaceId, params.diagramPath))
+        fetch(canvasApiUrl(params.workspaceId, params.canvasId))
             .then(async (res) => {
                 if (cancelled) return;
                 if (res.status === 404) {
@@ -115,7 +116,9 @@ function DiagramViewerContent({ params }: { params: DiagramViewerParams }) {
                 }
                 const data = await res.json();
                 if (cancelled) return;
-                setSceneData(unwrapDiagramResponse(data));
+                const canvas = data?.canvas;
+                setSceneData(parseSceneContent(canvas?.content));
+                setTitle(typeof canvas?.title === 'string' ? canvas.title : '');
                 setState('loaded');
             })
             .catch((err) => {
@@ -125,7 +128,7 @@ function DiagramViewerContent({ params }: { params: DiagramViewerParams }) {
             });
 
         return () => { cancelled = true; };
-    }, [params.workspaceId, params.diagramPath]);
+    }, [params.workspaceId, params.canvasId]);
 
     const handleBack = useCallback(() => {
         if (window.history.length > 1) {
@@ -150,7 +153,7 @@ function DiagramViewerContent({ params }: { params: DiagramViewerParams }) {
                 <span
                     className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate"
                     data-testid="diagram-viewer-title"
-                    title={params.diagramPath}
+                    title={name}
                 >
                     📐 {name}
                 </span>
@@ -209,8 +212,10 @@ function DiagramViewerContent({ params }: { params: DiagramViewerParams }) {
 export function DiagramViewerShell() {
     const params = parseDiagramViewerRoute(window.location.pathname);
 
-    // Feature flag off → show 404
-    if (!SHOW_EXCALIDRAW_DIAGRAMS || !isExcalidrawEnabled()) {
+    // Feature flag off → show 404. Excalidraw diagrams are now canvases, so the
+    // viewer is reachable whenever either the canvas feature or the vestigial
+    // excalidraw flag is on (matches the inline-render call-site gate).
+    if (!SHOW_EXCALIDRAW_DIAGRAMS || !(isExcalidrawEnabled() || isCanvasEnabled())) {
         return (
             <ThemeProvider>
                 <div className="flex items-center justify-center h-screen text-sm text-[#848484]">

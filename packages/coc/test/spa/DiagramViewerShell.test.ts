@@ -10,19 +10,19 @@ import { parseDiagramViewerRoute } from '../../src/server/spa/client/react/featu
 // ── parseDiagramViewerRoute ────────────────────────────────────────────────────
 
 describe('parseDiagramViewerRoute', () => {
-    it('parses a valid diagram path', () => {
-        const result = parseDiagramViewerRoute('/diagram/ws-abc123/architecture.excalidraw');
+    it('parses a valid /diagram/<wsId>/<canvasId> route', () => {
+        const result = parseDiagramViewerRoute('/diagram/ws-abc123/architecture');
         expect(result).toEqual({
             workspaceId: 'ws-abc123',
-            diagramPath: 'architecture.excalidraw',
+            canvasId: 'architecture',
         });
     });
 
     it('decodes URL-encoded components', () => {
-        const result = parseDiagramViewerRoute('/diagram/ws%2Dabc/my%20diagram.excalidraw');
+        const result = parseDiagramViewerRoute('/diagram/ws%2Dabc/my%2Dcanvas');
         expect(result).toEqual({
             workspaceId: 'ws-abc',
-            diagramPath: 'my diagram.excalidraw',
+            canvasId: 'my-canvas',
         });
     });
 
@@ -30,7 +30,7 @@ describe('parseDiagramViewerRoute', () => {
         expect(parseDiagramViewerRoute('/')).toBeNull();
     });
 
-    it('returns null for missing diagram path segment', () => {
+    it('returns null for missing canvasId segment', () => {
         expect(parseDiagramViewerRoute('/diagram/ws-abc')).toBeNull();
     });
 
@@ -42,19 +42,17 @@ describe('parseDiagramViewerRoute', () => {
         expect(parseDiagramViewerRoute('/api/workspaces')).toBeNull();
     });
 
-    it('handles path with subdirectory', () => {
-        const result = parseDiagramViewerRoute('/diagram/ws-123/subdir/file.excalidraw');
-        expect(result).toEqual({
-            workspaceId: 'ws-123',
-            diagramPath: 'subdir/file.excalidraw',
-        });
+    // Filename addressing was dropped in the canvas cutover — canvas IDs are
+    // single-segment slugs, so a nested filename-style path no longer matches.
+    it('returns null for a nested filename-style path', () => {
+        expect(parseDiagramViewerRoute('/diagram/ws-123/subdir/file.excalidraw')).toBeNull();
     });
 
-    it('handles diagram name without .excalidraw extension', () => {
+    it('parses a slug canvasId', () => {
         const result = parseDiagramViewerRoute('/diagram/ws-x/my-diagram');
         expect(result).toEqual({
             workspaceId: 'ws-x',
-            diagramPath: 'my-diagram',
+            canvasId: 'my-diagram',
         });
     });
 });
@@ -205,5 +203,49 @@ describe('DiagramViewerShell component source', () => {
         expect(source).toContain('loadScene: false');
         expect(source).toContain('saveToActiveFile: false');
         expect(source).toContain('saveAsImage: false');
+    });
+});
+
+// ── Canvas-store repoint regression ──────────────────────────────────────────────
+//
+// Excalidraw diagrams became canvases in the cutover and the `/api/diagrams`
+// endpoint was removed. The standalone viewer must read the scene from the
+// canvas store, not the dead diagrams endpoint — these assertions guard against
+// a regression back to the removed endpoint or the old filename addressing.
+describe('DiagramViewerShell canvas-store repoint', () => {
+    function readSource(): string {
+        return fs.readFileSync(
+            path.join(
+                __dirname, '..', '..', 'src', 'server', 'spa', 'client', 'react',
+                'features', 'diagrams', 'DiagramViewerShell.tsx',
+            ),
+            'utf-8',
+        );
+    }
+
+    it('fetches the canvas-store endpoint, not the removed /api/diagrams route', () => {
+        const source = readSource();
+        expect(source).toContain('/canvases/');
+        expect(source).not.toContain('/diagrams/');
+    });
+
+    it('parses the scene from canvas.content via parseSceneContent', () => {
+        const source = readSource();
+        expect(source).toContain('parseSceneContent');
+        expect(source).toContain('canvas?.content');
+        // The legacy /api/diagrams response unwrapper is gone post-repoint.
+        expect(source).not.toContain('unwrapDiagramResponse');
+    });
+
+    it('keys the viewer on a canvasId, not a filename path', () => {
+        const source = readSource();
+        expect(source).toContain('canvasId: string');
+        expect(source).not.toContain('diagramPath');
+    });
+
+    it('shows the viewer whenever the canvas or excalidraw feature is enabled', () => {
+        const source = readSource();
+        expect(source).toContain('isCanvasEnabled');
+        expect(source).toContain('isExcalidrawEnabled');
     });
 });
