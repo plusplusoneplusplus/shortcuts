@@ -1995,4 +1995,27 @@ describe('RepoChatTab: hover-to-float peek (collapsed rail)', () => {
         expect(screen.queryByTestId('activity-list-collapsed')).toBeNull();
         expect(screen.queryByTestId('activity-list-peek')).toBeNull();
     });
+
+    it('collapsed rail shows a + button that starts a new chat without expanding the rail', async () => {
+        setupFetchMock();
+        await renderTab();
+
+        // The + button is present in the collapsed rail.
+        const newChatBtn = screen.getByTestId('activity-list-collapsed-new-chat');
+        expect(newChatBtn).toBeTruthy();
+        expect(newChatBtn.getAttribute('aria-label')).toBe('Start a new conversation');
+
+        // Clicking it starts a new chat (the mock list pane's onNewChat fires, which
+        // the mock surfaces as a click on 'new-chat-btn').
+        // We trigger the button on the rail directly.
+        await act(async () => {
+            fireEvent.click(newChatBtn);
+        });
+
+        // The rail must NOT expand — listCollapsed stays true.
+        expect(screen.getByTestId('activity-list-collapsed')).toBeTruthy();
+        expect(screen.queryByTestId('activity-list-panel')).toBeNull();
+        // localStorage persisted state is unchanged (still collapsed).
+        expect(localStorage.getItem('activity-list-collapsed')).toBe('true');
+    });
 });

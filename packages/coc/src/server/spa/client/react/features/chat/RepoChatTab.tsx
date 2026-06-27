@@ -823,6 +823,23 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         if (isMobile) setMobileShowDetail(true);
     }, [isMobile, mode, queueDispatch, selectedTaskId, workspaceId]);
 
+    const handleNewChat = useCallback(() => {
+        if (isMobile) {
+            mobileNewChatRef.current = true;
+            setMobileShowDetail(true);
+        }
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+        setSelectedTask(null);
+        selectedTaskRef.current = null;
+        setSelectedRalphSessionId(null);
+        setSelectedRalphFileName(null);
+        setSelectedForEachRunId(null);
+        setSelectedMapReduceRunId(null);
+        const tabSegment = getActivityTabSegment(mode);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment;
+        if (isMobile) setMobileShowDetail(true);
+    }, [isMobile, mode, queueDispatch, workspaceId]);
+
     const { focusedPane, cursorTaskId } = useChatPaneNavigation({
         listContainerRef,
         detailContainerRef,
@@ -894,22 +911,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             selectedMapReduceRunId={selectedMapReduceRunId}
             onSelectMapReduceRun={handleOpenMapReduceRun}
             cursorTaskId={cursorTaskId}
-            onNewChat={() => {
-                if (isMobile) {
-                    mobileNewChatRef.current = true;
-                    setMobileShowDetail(true);
-                }
-                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
-                setSelectedTask(null);
-                selectedTaskRef.current = null;
-                setSelectedRalphSessionId(null);
-                setSelectedRalphFileName(null);
-                setSelectedForEachRunId(null);
-                setSelectedMapReduceRunId(null);
-                const tabSegment = getActivityTabSegment(mode);
-                location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment;
-                if (isMobile) setMobileShowDetail(true);
-            }}
+            onNewChat={handleNewChat}
         />
     );
 
@@ -1017,6 +1019,18 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                     <button
                         type="button"
                         className="w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
+                        onClick={handleNewChat}
+                        aria-label="Start a new conversation"
+                        title="Start a new conversation"
+                        data-testid="activity-list-collapsed-new-chat"
+                    >
+                        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+                            <path d="M7 2v10M2 7h10" />
+                        </svg>
+                    </button>
+                    <button
+                        type="button"
+                        className="mt-1 w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
                         onClick={() => toggleListCollapsed(false)}
                         aria-label="Show chat list"
                         title="Show chat list"
