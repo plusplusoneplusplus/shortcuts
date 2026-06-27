@@ -80,5 +80,9 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         sdkServiceRegistry: {
             getOrThrow: (_name: string) => throwingStub,
         },
+        loadConfigFile: (filePath?: string) => {
+            // Return undefined to allow tests to handle missing config gracefully
+            return undefined;
+        },
     };
 });
