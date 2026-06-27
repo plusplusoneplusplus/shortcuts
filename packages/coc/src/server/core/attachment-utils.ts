@@ -152,7 +152,13 @@ export function saveAttachmentsToTempFiles(
                 // limit before writing them to disk or producing an SDK attachment.
                 if (parsed.buffer.length > MAX_ATTACHMENT_SIZE) continue;
                 const sanitizedName = sanitizeFileName(payload.name);
-                const safeName = sanitizedName.trim().length > 0 ? sanitizedName : `image-${i}.${parsed.extension}`;
+                const baseName = sanitizedName.trim().length > 0 ? sanitizedName : `image-${i}`;
+                // Force the on-disk extension to match the decoded image MIME type.
+                // Downstream providers that detect images by extension (Claude,
+                // Codex) would otherwise silently drop an image whose client name
+                // lacks a valid image extension (e.g. a pasted "screenshot" with no
+                // suffix). The user-facing display name keeps the original name.
+                const safeName = withImageExtension(baseName, parsed.extension);
                 const filePath = path.join(tempDir, safeName);
                 fs.writeFileSync(filePath, parsed.buffer);
                 attachments.push({
@@ -228,6 +234,27 @@ function sanitizeFileName(name: string): string {
         .replace(/\.\./g, '_')
         .replace(/[<>:"|?*]/g, '_')
         .slice(0, 200);
+}
+
+/** Image extensions that are equivalent and must not be rewritten into each other. */
+const JPEG_EXTENSIONS = new Set(['jpg', 'jpeg']);
+
+/**
+ * Ensure an image's on-disk filename carries the extension that matches its
+ * decoded MIME type. Downstream providers (Claude, Codex) detect images by file
+ * extension, so a client-supplied name with a wrong or missing extension would
+ * be silently dropped. A wrong/missing extension is replaced; an already-correct
+ * one (or a jpg/jpeg equivalent) is preserved. Only the on-disk path is changed —
+ * the display name shown to the user keeps the original filename.
+ */
+function withImageExtension(name: string, mimeExtension: string): string {
+    const ext = mimeExtension.toLowerCase();
+    const dot = name.lastIndexOf('.');
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const current = dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+    if (current === ext) return name;
+    if (JPEG_EXTENSIONS.has(current) && JPEG_EXTENSIONS.has(ext)) return name;
+    return `${stem}.${ext}`;
 }
 
 function getAttachmentDisplayName(name: string, filePath: string): string {

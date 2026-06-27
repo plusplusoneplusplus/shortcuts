@@ -83,6 +83,8 @@ export {
     isImageFilePath,
     isSupportedCodexImagePath,
     evaluateClaudeImageFile,
+    sniffClaudeImageMediaType,
+    sniffUnsupportedImageFormat,
     MAX_CLAUDE_IMAGE_BYTES,
 } from './image-converter';
 

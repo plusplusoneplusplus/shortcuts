@@ -8,7 +8,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { tryConvertImageFileToDataUrl, tryReadImageAsBase64 } from '../../src/copilot-sdk-service';
-import { isImageFilePath, isSupportedCodexImagePath, evaluateClaudeImageFile, MAX_CLAUDE_IMAGE_BYTES } from '../../src/image-converter';
+import {
+    isImageFilePath,
+    isSupportedCodexImagePath,
+    evaluateClaudeImageFile,
+    sniffClaudeImageMediaType,
+    sniffUnsupportedImageFormat,
+    MAX_CLAUDE_IMAGE_BYTES,
+} from '../../src/image-converter';
 import { CopilotSDKService, resetCopilotSDKService } from '../../src/copilot-sdk-service';
 import { createStreamingMockSDKModule } from '../helpers/mock-sdk';
 
@@ -131,6 +138,60 @@ describe('image extension helpers', () => {
         expect(isSupportedCodexImagePath('image.webp')).toBe(true);
         expect(isSupportedCodexImagePath('icon.svg')).toBe(false);
         expect(isSupportedCodexImagePath('readme.txt')).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Magic-byte image sniffing (content-based detection)
+// ---------------------------------------------------------------------------
+
+// Minimal byte buffers carrying each format's magic-number signature.
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+const GIF_MAGIC = Buffer.from('GIF89a\x00\x00');
+const WEBP_MAGIC = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buffer.from('WEBP')]);
+const HEIC_MAGIC = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63]);
+const AVIF_MAGIC = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66]);
+const BMP_MAGIC = Buffer.from([0x42, 0x4d, 0x00, 0x00]);
+const TIFF_LE_MAGIC = Buffer.from([0x49, 0x49, 0x2a, 0x00]);
+const TIFF_BE_MAGIC = Buffer.from([0x4d, 0x4d, 0x00, 0x2a]);
+const ICO_MAGIC = Buffer.from([0x00, 0x00, 0x01, 0x00]);
+
+describe('sniffClaudeImageMediaType', () => {
+    it.each([
+        ['PNG', PNG_MAGIC, 'image/png'],
+        ['JPEG', JPEG_MAGIC, 'image/jpeg'],
+        ['GIF', GIF_MAGIC, 'image/gif'],
+        ['WebP', WEBP_MAGIC, 'image/webp'],
+    ] as const)('detects %s from its magic bytes', (_label, bytes, mediaType) => {
+        expect(sniffClaudeImageMediaType(bytes)).toBe(mediaType);
+    });
+
+    it('returns null for formats Claude cannot accept or non-image bytes', () => {
+        expect(sniffClaudeImageMediaType(HEIC_MAGIC)).toBeNull();
+        expect(sniffClaudeImageMediaType(BMP_MAGIC)).toBeNull();
+        expect(sniffClaudeImageMediaType(Buffer.from('hello world'))).toBeNull();
+        expect(sniffClaudeImageMediaType(Buffer.alloc(0))).toBeNull();
+    });
+});
+
+describe('sniffUnsupportedImageFormat', () => {
+    it.each([
+        ['HEIC', HEIC_MAGIC, 'heic'],
+        ['AVIF', AVIF_MAGIC, 'avif'],
+        ['BMP', BMP_MAGIC, 'bmp'],
+        ['TIFF little-endian', TIFF_LE_MAGIC, 'tiff'],
+        ['TIFF big-endian', TIFF_BE_MAGIC, 'tiff'],
+        ['ICO', ICO_MAGIC, 'ico'],
+    ] as const)('labels %s as an unsupported image format', (_label, bytes, format) => {
+        expect(sniffUnsupportedImageFormat(bytes)).toBe(format);
+    });
+
+    it('returns null for Claude-supported images and non-image bytes', () => {
+        expect(sniffUnsupportedImageFormat(PNG_MAGIC)).toBeNull();
+        expect(sniffUnsupportedImageFormat(JPEG_MAGIC)).toBeNull();
+        expect(sniffUnsupportedImageFormat(Buffer.from('<svg></svg>'))).toBeNull();
+        expect(sniffUnsupportedImageFormat(Buffer.from('plain text'))).toBeNull();
     });
 });
 
@@ -263,6 +324,47 @@ describe('evaluateClaudeImageFile', () => {
         expect(result).toEqual({
             ok: false,
             skip: { reason: 'not-a-regular-file', limit: MAX_CLAUDE_IMAGE_BYTES, extension: 'png', mediaType: 'image/png' },
+        });
+    });
+
+    it('forwards a real PNG whose filename has a non-image extension (content-first)', () => {
+        // Regression: an image written to a temp file with a wrong extension
+        // (e.g. a pasted screenshot that lost its suffix) must still be forwarded
+        // — detection is by magic bytes, not the filename.
+        const png = Buffer.concat([
+            Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+            Buffer.from('png-body-bytes'),
+        ]);
+        const result = evaluateClaudeImageFile(writeTmpFile('screenshot.bin', png));
+        expect(result?.ok).toBe(true);
+        if (result?.ok) {
+            expect(result.mediaType).toBe('image/png');
+            expect(result.source.data).toBe(png.toString('base64'));
+        }
+    });
+
+    it('forwards a real JPEG that has no extension at all (content-first)', () => {
+        const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from('jpeg-body')]);
+        const result = evaluateClaudeImageFile(writeTmpFile('pasted-image', jpeg));
+        expect(result?.ok).toBe(true);
+        if (result?.ok) expect(result.mediaType).toBe('image/jpeg');
+    });
+
+    it('records an unsupported-format skip for HEIC content instead of dropping it silently', () => {
+        const heic = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63]);
+        const result = evaluateClaudeImageFile(writeTmpFile('photo.heic', heic));
+        expect(result).toEqual({
+            ok: false,
+            skip: { reason: 'unsupported-format', limit: MAX_CLAUDE_IMAGE_BYTES, extension: 'heic', detectedFormat: 'heic' },
+        });
+    });
+
+    it('records an unsupported-format skip for BMP content behind a misleading extension', () => {
+        const bmp = Buffer.concat([Buffer.from([0x42, 0x4d]), Buffer.from('bmp-body')]);
+        const result = evaluateClaudeImageFile(writeTmpFile('image.dat', bmp));
+        expect(result).toEqual({
+            ok: false,
+            skip: { reason: 'unsupported-format', limit: MAX_CLAUDE_IMAGE_BYTES, extension: 'dat', detectedFormat: 'bmp' },
         });
     });
 });
