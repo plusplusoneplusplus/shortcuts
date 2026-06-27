@@ -24,8 +24,6 @@ export interface AgentProvidersQuotaContext {
     getCodexSdkService?: () => AccountQuotaService | undefined;
     /** Optional getter for Claude account quota. Queried only when Claude is enabled. */
     getClaudeSdkService?: () => AccountQuotaService | undefined;
-    /** Optional getter for OpenCode SDK service. OpenCode has no quota API; included for completeness. */
-    getOpenCodeSdkService?: () => AccountQuotaService | undefined;
 }
 
 export interface AgentProvidersQuotaCacheOptions {
