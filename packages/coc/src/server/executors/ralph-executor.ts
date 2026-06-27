@@ -85,6 +85,7 @@ export class RalphExecutor extends ChatBaseExecutor {
             broadcastWorkItem: this.getWsServerFn
                 ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                 : undefined,
+            enqueueChat: this.getEnqueueChat?.(),
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
         });

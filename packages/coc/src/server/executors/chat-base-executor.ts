@@ -165,6 +165,13 @@ export interface ChatModeExecutorOptions {
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     /** Late-bound loop infrastructure (getter because loop infra is created after executor registry). */
     getLoopInfra?: () => LoopInfraDeps | undefined;
+    /**
+     * Late-bound in-process enqueue capability (getter because the bound callback
+     * is constructed at the route layer — where the queue router + global state
+     * live — after the executor registry is created). Powers the opt-in
+     * `create_conversation` tool; absent → the tool is not offered.
+     */
+    getEnqueueChat?: () => import('../llm-tools/create-conversation-tool').EnqueueChatFn | undefined;
     /** Late-bound MCP OAuth manager (getter to allow optional/feature-flagged wiring). */
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider. Used to detect provider mismatches on follow-up resume. */
@@ -236,6 +243,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly resolveSkillConfigFn: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
     protected readonly getLoopInfra?: () => LoopInfraDeps | undefined;
+    protected readonly getEnqueueChat?: () => import('../llm-tools/create-conversation-tool').EnqueueChatFn | undefined;
     protected readonly getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider — used to guard against provider mismatches on follow-up resume. */
     protected readonly provider: 'copilot' | 'codex' | 'claude';
@@ -263,6 +271,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.resolveSkillConfigFn = options.resolveSkillConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
         this.getLoopInfra = options.getLoopInfra;
+        this.getEnqueueChat = options.getEnqueueChat;
         this.getMcpOauthManager = options.getMcpOauthManager;
         this.provider = options.provider ?? 'copilot';
         this.ralphMultiAgentGrillEnabled = options.ralphMultiAgentGrillEnabled === true;
@@ -470,6 +479,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             query: prompt,
             followUpSuggestions: this.followUpSuggestions,
             broadcastWorkItem,
+            enqueueChat: this.getEnqueueChat?.(),
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
             askUser: {

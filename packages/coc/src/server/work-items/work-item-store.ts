@@ -15,12 +15,14 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import {
-    detectRemoteUrl,
     getRepoDataPath,
-    resolveCanonicalOriginId,
     type ProcessStore,
-    type WorkspaceInfo,
 } from '@plusplusoneplusplus/forge';
+import {
+    isCanonicalOriginId,
+    mapWorkspaceOriginIds,
+    type OriginScopeProcessStore,
+} from '../repos/origin-scope';
 import type {
     WorkItem,
     WorkItemGitHubMirrorMetadata,
@@ -66,47 +68,21 @@ export type WorkItemStorageScopeResolver = (
     repoId: string,
 ) => WorkItemStorageScope | string | undefined | Promise<WorkItemStorageScope | string | undefined>;
 
-function isCanonicalOriginId(value: string): boolean {
-    return /^(gh|ado|git|local)_/.test(value);
-}
-
-async function resolveWorkspaceOriginId(
-    workspace: WorkspaceInfo,
-    processStore: Pick<ProcessStore, 'updateWorkspace'>,
-): Promise<string> {
-    let remoteUrl = workspace.remoteUrl;
-    if (!remoteUrl && workspace.rootPath) {
-        remoteUrl = await detectRemoteUrl(workspace.rootPath);
-        if (remoteUrl) {
-            await processStore.updateWorkspace(workspace.id, { remoteUrl });
-        }
-    }
-    return resolveCanonicalOriginId({ remoteUrl, workspaceId: workspace.id });
-}
-
 export function createWorkItemStorageScopeResolver(
-    processStore: Pick<ProcessStore, 'getWorkspaces' | 'updateWorkspace'>,
+    processStore: OriginScopeProcessStore,
 ): WorkItemStorageScopeResolver {
     return async (repoId: string) => {
-        const workspaces = await processStore.getWorkspaces();
-        const originIdsByWorkspace = new Map<string, string>();
-        for (const workspace of workspaces) {
-            originIdsByWorkspace.set(
-                workspace.id,
-                await resolveWorkspaceOriginId(workspace, processStore),
-            );
-        }
+        const originIdsByWorkspace = await mapWorkspaceOriginIds(processStore);
 
         const storageRepoId = originIdsByWorkspace.get(repoId)
             ?? (isCanonicalOriginId(repoId) ? repoId : undefined);
         if (!storageRepoId) return undefined;
 
-        return {
-            storageRepoId,
-            legacyRepoIds: workspaces
-                .filter(workspace => originIdsByWorkspace.get(workspace.id) === storageRepoId)
-                .map(workspace => workspace.id),
-        };
+        const legacyRepoIds: string[] = [];
+        for (const [workspaceId, originId] of originIdsByWorkspace) {
+            if (originId === storageRepoId) legacyRepoIds.push(workspaceId);
+        }
+        return { storageRepoId, legacyRepoIds };
     };
 }
 

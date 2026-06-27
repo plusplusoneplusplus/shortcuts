@@ -47,6 +47,12 @@ export interface CLITaskExecutorOptions {
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
     getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined;
+    /**
+     * Late-bound in-process enqueue capability supplied by the server/route layer
+     * (where the queue router + global state live). Powers the opt-in
+     * `create_conversation` tool so an agent can spawn a brand-new chat.
+     */
+    getEnqueueChat?: () => import('../llm-tools/create-conversation-tool').EnqueueChatFn | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     dreamRunExecutor?: DreamRunExecutor;
@@ -148,6 +154,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),
             getWsServer: options.getWsServer,
             getLoopInfra: options.getLoopInfra,
+            getEnqueueChat: options.getEnqueueChat,
             getMcpOauthManager: options.getMcpOauthManager,
             getDreamRunExecutor: () => this.dreamRunExecutor,
             cancelledTasks: this.cancelledTasks,

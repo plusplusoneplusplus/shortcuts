@@ -406,6 +406,22 @@ describe('pruneStaleClassifications', () => {
         expect(removed).toBe(1);
         expect(fs.existsSync(pendingPath)).toBe(false);
     });
+
+    it('prunes the canonical origin directory when a storage scope is supplied', () => {
+        const scope = 'gh_owner_repo';
+        writeClassification(dataDir, 'ws-clone', 'repo', 'old', 'sha', validResult, { storageScope: scope });
+        const { resultPath } = classificationPaths(dataDir, 'ws-clone', 'repo', 'old', 'sha', scope);
+        const ancient = Date.now() - 40 * 24 * 60 * 60 * 1000;
+        fs.utimesSync(resultPath, ancient / 1000, ancient / 1000);
+
+        // Pruning with only the workspace id misses the origin directory.
+        expect(pruneStaleClassifications(dataDir, 'ws-clone', 30)).toBe(0);
+        expect(fs.existsSync(resultPath)).toBe(true);
+
+        // Supplying the origin scope targets the canonical directory.
+        expect(pruneStaleClassifications(dataDir, 'ws-clone', 30, scope)).toBe(1);
+        expect(fs.existsSync(resultPath)).toBe(false);
+    });
 });
 
 describe('pruneAllStaleClassifications', () => {
