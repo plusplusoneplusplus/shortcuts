@@ -9,7 +9,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildCiFailurePrompt, buildBranchDeliveryContract } from '../../../src/server/triggers/ci-failure-prompt';
+import {
+    buildCiFailurePrompt,
+    buildBranchDeliveryContract,
+    buildLogExcerptBlock,
+} from '../../../src/server/triggers/ci-failure-prompt';
 
 describe('buildBranchDeliveryContract (AC-03)', () => {
     it('binds every prohibition when no branch name is known', () => {
@@ -70,5 +74,45 @@ describe('buildCiFailurePrompt', () => {
         expect(prompt).toContain('(no check details available)');
         // contract is present even when checks are unavailable
         expect(prompt).toContain('git reset --hard');
+    });
+
+    it('injects a truncated log excerpt as a fenced block when provided (AC-02)', () => {
+        const prompt = buildCiFailurePrompt(7, [{ name: 'build' }], undefined, 'error: boom\nstack frame');
+        expect(prompt).toContain('Recent failure log excerpt');
+        expect(prompt).toContain('error: boom');
+        expect(prompt).toContain('stack frame');
+        // fenced as a code block
+        expect(prompt).toMatch(/```text\nerror: boom\nstack frame\n```/);
+        // still binds the delivery contract after the excerpt
+        expect(prompt).toContain('git reset --hard');
+    });
+
+    it('omits the excerpt block when no log excerpt is supplied', () => {
+        const prompt = buildCiFailurePrompt(7, [{ name: 'build' }]);
+        expect(prompt).not.toContain('Recent failure log excerpt');
+        expect(prompt).not.toContain('```');
+    });
+});
+
+describe('buildLogExcerptBlock (AC-02)', () => {
+    it('returns an empty array for missing/blank excerpts', () => {
+        expect(buildLogExcerptBlock()).toEqual([]);
+        expect(buildLogExcerptBlock('')).toEqual([]);
+        expect(buildLogExcerptBlock('   \n  \t ')).toEqual([]);
+    });
+
+    it('wraps the excerpt in a fenced block with a heading', () => {
+        const block = buildLogExcerptBlock('line 1\nline 2').join('\n');
+        expect(block).toContain('Recent failure log excerpt');
+        expect(block).toMatch(/```text\nline 1\nline 2\n```/);
+    });
+
+    it('uses a longer fence when the excerpt itself contains triple backticks', () => {
+        // A log line containing ``` must not break out of the fenced block.
+        const block = buildLogExcerptBlock('before\n```\ncode\n```\nafter').join('\n');
+        // opening/closing fence must be longer than any backtick run inside
+        expect(block).toContain('````text');
+        expect(block.endsWith('````')).toBe(true);
+        expect(block).toContain('```\ncode');
     });
 });

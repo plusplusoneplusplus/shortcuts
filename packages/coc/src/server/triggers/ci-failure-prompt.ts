@@ -6,8 +6,9 @@
  * number and each failing check with its details URL, then asks the AI to
  * investigate and fix the failing CI.
  *
- * The AI is expected to fetch the check logs itself — logs are intentionally
- * NOT pre-fetched into the prompt (keeps the message small and the work fresh).
+ * When available, a truncated excerpt of the failing checks' logs is injected as
+ * a fenced block (AC-02) so the agent starts with the root-cause output already
+ * in hand; the agent is still told it can fetch the full logs itself.
  *
  * The prompt also carries a fixed "how to deliver the fix" contract: the agent
  * must work on the PR's existing branch only and push the fix there — never a
@@ -46,17 +47,52 @@ export function buildBranchDeliveryContract(branch?: string): string[] {
 }
 
 /**
+ * Render a truncated failure-log excerpt as a fenced block (AC-02). Returns an
+ * empty array when no excerpt is available so the prompt degrades to the
+ * "fetch the logs yourself" behavior. The excerpt is fenced with a backtick run
+ * long enough to survive any triple-backtick fences inside the logs themselves.
+ */
+export function buildLogExcerptBlock(logExcerpt?: string): string[] {
+    const excerpt = logExcerpt?.replace(/\s+$/, '');
+    if (!excerpt || !excerpt.trim()) return [];
+    const fence = longestSafeFence(excerpt);
+    return [
+        'Recent failure log excerpt (truncated — fetch the full logs if you need more):',
+        `${fence}text`,
+        excerpt,
+        fence,
+    ];
+}
+
+/**
+ * Pick a backtick fence at least 3 long that does not collide with any run of
+ * backticks inside the content, so log lines containing ``` cannot break out of
+ * the fenced block.
+ */
+function longestSafeFence(content: string): string {
+    let longestRun = 0;
+    const matches = content.match(/`+/g);
+    if (matches) {
+        for (const run of matches) longestRun = Math.max(longestRun, run.length);
+    }
+    return '`'.repeat(Math.max(3, longestRun + 1));
+}
+
+/**
  * Build the fix-CI prompt for a pull request and its failing checks.
  *
  * @param prNumber PR number/id (rendered as `#<n>`).
  * @param failingChecks The currently-failing checks to name in the prompt.
  * @param branch The PR's existing head branch, named in the delivery contract
  *   when known (AC-02 wires this through; omit to bind generically).
+ * @param logExcerpt A truncated excerpt of the failing checks' logs, injected as
+ *   a fenced block when present (AC-02; omit when logs could not be fetched).
  */
 export function buildCiFailurePrompt(
     prNumber: string | number,
     failingChecks: CiFailingCheck[],
     branch?: string,
+    logExcerpt?: string,
 ): string {
     const lines: string[] = [];
     lines.push(`The CI for PR #${prNumber} is failing. Please investigate and fix the failing CI checks.`);
@@ -69,6 +105,11 @@ export function buildCiFailurePrompt(
             const name = check.name?.trim() ? check.name.trim() : 'unnamed check';
             lines.push(check.detailsUrl ? `- ${name} — ${check.detailsUrl}` : `- ${name}`);
         }
+    }
+    const excerptBlock = buildLogExcerptBlock(logExcerpt);
+    if (excerptBlock.length > 0) {
+        lines.push('');
+        lines.push(...excerptBlock);
     }
     lines.push('');
     lines.push(

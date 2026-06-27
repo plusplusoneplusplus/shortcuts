@@ -79,15 +79,34 @@ export interface CiChecksFetcher {
     (args: { workspaceId: string; originId: string; prId: string }): Promise<CiPrChecksSnapshot>;
 }
 
+/**
+ * Fetches a truncated log excerpt for the currently-failing checks (AC-02).
+ * Injected and OPTIONAL so the evaluator stays pure/unit-testable and the fix
+ * still fires when logs cannot be fetched. Returns the excerpt to inject into
+ * the prompt, or `undefined` when no logs are available. Implementations must
+ * never throw on a transient log-fetch failure — resolve `undefined` instead;
+ * the evaluator also guards the call so a rejection can never block the fix.
+ */
+export interface CiLogFetcher {
+    (args: {
+        workspaceId: string;
+        originId: string;
+        prId: string;
+        failingChecks: CiCheckSnapshot[];
+    }): Promise<string | undefined>;
+}
+
 // ============================================================================
 // Evaluator
 // ============================================================================
 
 export class CiFailureEvaluator implements EventEvaluator {
     private readonly fetcher: CiChecksFetcher;
+    private readonly logFetcher?: CiLogFetcher;
 
-    constructor(fetcher: CiChecksFetcher) {
+    constructor(fetcher: CiChecksFetcher, logFetcher?: CiLogFetcher) {
         this.fetcher = fetcher;
+        this.logFetcher = logFetcher;
     }
 
     async evaluate(trigger: Trigger): Promise<EvaluationOutcome> {
@@ -166,7 +185,25 @@ export class CiFailureEvaluator implements EventEvaluator {
         // Name every currently-failing check (full picture), not only the newly
         // failed ones.
         const failingChecks = snapshot.checks.filter(c => c.status === 'failure');
-        const actionPrompt = buildCiFailurePrompt(snapshot.prNumber, failingChecks, snapshot.headRef);
+
+        // Best-effort: pre-fetch a truncated log excerpt to inject into the
+        // prompt (AC-02). A log-fetch failure must NEVER block the fix from
+        // firing, so the call is guarded and degrades to an excerpt-less prompt.
+        let logExcerpt: string | undefined;
+        if (this.logFetcher) {
+            try {
+                logExcerpt = await this.logFetcher({
+                    workspaceId: trigger.workspaceId,
+                    originId: event.originId,
+                    prId: event.prId,
+                    failingChecks,
+                });
+            } catch {
+                logExcerpt = undefined;
+            }
+        }
+
+        const actionPrompt = buildCiFailurePrompt(snapshot.prNumber, failingChecks, snapshot.headRef, logExcerpt);
         return {
             fire: true,
             event: { ...nextEvent, attemptCount: attemptCount + 1 },

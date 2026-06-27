@@ -370,4 +370,73 @@ describe('CiFailureEvaluator', () => {
             expect(outcome.retryLimitReached).toBe(true);
         });
     });
+
+    // ========================================================================
+    // Log excerpt injection (AC-02) — an optional injected log fetcher pre-fills
+    // a truncated excerpt into the fired prompt, best-effort.
+    // ========================================================================
+    describe('log excerpt injection (AC-02)', () => {
+        it('threads the injected log excerpt into the fired prompt as a fenced block', async () => {
+            const logCalls: Array<{ workspaceId: string; originId: string; prId: string; failingChecks: unknown[] }> = [];
+            const logFetcher = async (args: { workspaceId: string; originId: string; prId: string; failingChecks: unknown[] }) => {
+                logCalls.push(args);
+                return 'Error: build failed\n  at line 12';
+            };
+            const evaluator = new CiFailureEvaluator(
+                queuedFetcher([openWith([{ id: 'build', name: 'build', status: 'failure' }])]),
+                logFetcher,
+            );
+
+            const outcome = await evaluator.evaluate(makeTrigger({ build: 'success' }));
+
+            expect(outcome.fire).toBe(true);
+            expect(outcome.actionPrompt).toContain('Recent failure log excerpt');
+            expect(outcome.actionPrompt).toContain('Error: build failed');
+            // the fetcher receives the scope + the currently-failing checks
+            expect(logCalls).toHaveLength(1);
+            expect(logCalls[0].workspaceId).toBe('ws_a');
+            expect(logCalls[0].originId).toBe('origin_1');
+            expect(logCalls[0].prId).toBe('42');
+            expect(logCalls[0].failingChecks).toHaveLength(1);
+        });
+
+        it('fires without an excerpt when the log fetcher rejects (never blocks the fix)', async () => {
+            const logFetcher = async () => { throw new Error('gh exploded'); };
+            const evaluator = new CiFailureEvaluator(
+                queuedFetcher([openWith([{ id: 'build', name: 'build', status: 'failure', detailsUrl: 'https://ci/build' }])]),
+                logFetcher,
+            );
+
+            const outcome = await evaluator.evaluate(makeTrigger({ build: 'success' }));
+
+            expect(outcome.fire).toBe(true);
+            expect(outcome.actionPrompt).toContain('https://ci/build');
+            expect(outcome.actionPrompt).not.toContain('Recent failure log excerpt');
+        });
+
+        it('fires without an excerpt when the fetcher returns undefined', async () => {
+            const evaluator = new CiFailureEvaluator(
+                queuedFetcher([openWith([{ id: 'build', name: 'build', status: 'failure' }])]),
+                async () => undefined,
+            );
+
+            const outcome = await evaluator.evaluate(makeTrigger({ build: 'success' }));
+
+            expect(outcome.fire).toBe(true);
+            expect(outcome.actionPrompt).not.toContain('Recent failure log excerpt');
+        });
+
+        it('does not invoke the log fetcher when no fix fires', async () => {
+            let called = false;
+            const evaluator = new CiFailureEvaluator(
+                queuedFetcher([openWith([{ id: 'build', name: 'build', status: 'success' }])]),
+                async () => { called = true; return 'x'; },
+            );
+
+            const outcome = await evaluator.evaluate(makeTrigger({ build: 'success' }));
+
+            expect(outcome.fire).toBe(false);
+            expect(called).toBe(false);
+        });
+    });
 });

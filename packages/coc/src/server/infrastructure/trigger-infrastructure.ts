@@ -25,7 +25,7 @@ import { TriggerStore } from '../triggers/trigger-store';
 import { TriggerManager } from '../triggers/trigger-manager';
 import type { TriggerEventEmit } from '../triggers/trigger-manager';
 import { CiFailureEvaluator } from '../triggers/ci-failure-evaluator';
-import type { CiChecksFetcher } from '../triggers/ci-failure-evaluator';
+import type { CiChecksFetcher, CiLogFetcher } from '../triggers/ci-failure-evaluator';
 import { QueueActionExecutor } from '../triggers/queue-action-executor';
 import { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
 import type { TriggerEvent } from '../triggers/trigger-types';
@@ -61,6 +61,12 @@ export interface TriggerInfrastructureOptions {
      * passes the headless server-side checks fetcher (`createCiChecksFetcher`).
      */
     ciChecksFetcher: CiChecksFetcher;
+    /**
+     * Optional fetcher for a truncated failing-check log excerpt injected into
+     * the fix prompt (AC-02). Production wiring passes `createCiLogFetcher`; when
+     * omitted the prompt simply asks the agent to fetch the logs itself.
+     */
+    ciLogFetcher?: CiLogFetcher;
     /** Clock injection for deterministic tests. Defaults to `Date.now`. */
     now?: () => number;
 }
@@ -77,7 +83,7 @@ export interface TriggerInfrastructureOptions {
 export async function createTriggerInfrastructure(
     options: TriggerInfrastructureOptions,
 ): Promise<TriggerInfrastructure> {
-    const { dataDir, queueFacade, store, emit, resolveWorkspaceId, ciChecksFetcher, now } = options;
+    const { dataDir, queueFacade, store, emit, resolveWorkspaceId, ciChecksFetcher, ciLogFetcher, now } = options;
 
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or open processes.db in dataDir.
     let db: Database.Database;
@@ -97,7 +103,7 @@ export async function createTriggerInfrastructure(
     const timerRegistry = new ScheduleTimerRegistry();
 
     // The single evaluator implemented this iteration: the CI-failure monitor.
-    const ciFailureEvaluator = new CiFailureEvaluator(ciChecksFetcher);
+    const ciFailureEvaluator = new CiFailureEvaluator(ciChecksFetcher, ciLogFetcher);
 
     // The single action executor: queue-backed send-message into a conversation.
     const actionExecutor = new QueueActionExecutor({

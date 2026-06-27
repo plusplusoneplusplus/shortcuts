@@ -34,6 +34,7 @@ import { createScheduleInfrastructure } from './infrastructure/schedule-infrastr
 import { createLoopInfrastructure } from './infrastructure/loop-infrastructure';
 import { createTriggerInfrastructure } from './infrastructure/trigger-infrastructure';
 import { createCiChecksFetcher } from './triggers/ci-checks-fetcher';
+import { createCiLogFetcher } from './triggers/ci-log-fetcher';
 import { createMcpOauthInfrastructure } from './mcp-oauth';
 import type { LoopInfrastructure } from './infrastructure/loop-infrastructure';
 import type { TriggerInfrastructure } from './infrastructure/trigger-infrastructure';
@@ -441,6 +442,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 }
             },
             ciChecksFetcher: createCiChecksFetcher({ dataDir, store }),
+            ciLogFetcher: createCiLogFetcher({ store }),
         });
     }
 

@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import {
     buildCiFixPrompt,
     buildBranchDeliveryContract,
+    buildLogExcerptBlock,
 } from '../../../src/server/spa/client/react/features/chat/conversation/prAutoFixPrompt';
 
 describe('buildCiFixPrompt (client mirror)', () => {
@@ -41,5 +42,22 @@ describe('buildCiFixPrompt (client mirror)', () => {
         expect(contract).toContain('`feature/x`');
         expect(contract).toContain('git reset --hard');
         expect(contract).toMatch(/Do NOT commit to `main`/i);
+    });
+
+    it('omits the log excerpt block on the usual manual path (no excerpt)', () => {
+        const prompt = buildCiFixPrompt(7, [{ name: 'build' }]);
+        expect(prompt).not.toContain('Recent failure log excerpt');
+    });
+
+    it('renders an injected log excerpt identically to the server builder', () => {
+        // The browser builder mirrors buildLogExcerptBlock so a supplied excerpt
+        // reads the same as a server-fired one.
+        const block = buildLogExcerptBlock('err: boom\nframe').join('\n');
+        expect(block).toContain('Recent failure log excerpt');
+        expect(block).toMatch(/```text\nerr: boom\nframe\n```/);
+
+        const prompt = buildCiFixPrompt(7, [{ name: 'build' }], undefined, 'err: boom\nframe');
+        expect(prompt).toContain('err: boom');
+        expect(prompt).toMatch(/```text\nerr: boom\nframe\n```/);
     });
 });
