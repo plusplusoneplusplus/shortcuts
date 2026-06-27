@@ -37,7 +37,7 @@ export type {
     CiPrStatus,
 } from './ci-failure-evaluator';
 
-export { buildCiFailurePrompt } from './ci-failure-prompt';
+export { buildCiFailurePrompt, buildBranchDeliveryContract } from './ci-failure-prompt';
 export type { CiFailingCheck } from './ci-failure-prompt';
 
 export { QueueActionExecutor } from './queue-action-executor';
