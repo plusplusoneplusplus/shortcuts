@@ -6,7 +6,7 @@ export { AgentCascadeMenu } from './AgentCascadeMenu';
 export { SubAgentDetailView } from './SubAgentDetailView';
 export { readChatViewFromHash, applyChatViewToHash } from './chatViewHash';
 export { readAgentFromHash, applyAgentToHash } from './chatAgentHash';
-export { buildAgentRunTreeFromTurns, countRuns, findTurnIndexForRun } from './buildAgentRunTree';
+export { buildAgentRunTreeFromTurns, countRuns, findTurnIndexForRun, turnOrdinalForRun } from './buildAgentRunTree';
 export type { AgentRunRootMeta } from './buildAgentRunTree';
 export { flattenAgentLevels, findAgentNode, pathToAgent } from './agentLevels';
 export type { AgentLevel } from './agentLevels';

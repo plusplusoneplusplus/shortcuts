@@ -3,16 +3,23 @@ import {
     buildLayout,
     edgePath,
     spineVars,
+    groupRunsByTurn,
     COLW,
     ROWH,
     NODEW,
     NODEH,
     PAD,
+    TURN_GAP,
+    TURN_LABEL_RISE,
 } from '../../../../src/server/spa/client/react/features/chat/agent-canvas/layout';
 import type { AgentRunNode } from '../../../../src/server/spa/client/react/features/chat/agent-canvas/types';
 
 function node(id: string, children: AgentRunNode[] = []): AgentRunNode {
     return { id, name: id, role: 'agent', status: 'done', children };
+}
+
+function turnNode(id: string, turn: number, children: AgentRunNode[] = []): AgentRunNode {
+    return { ...node(id, children), turn };
 }
 
 describe('buildLayout', () => {
@@ -59,6 +66,74 @@ describe('buildLayout', () => {
         expect(layout.edges).toContainEqual({ from: 'a', to: 'a2', depth: 2 });
         expect(layout.edges).toContainEqual({ from: 'root', to: 'a', depth: 1 });
         expect(layout.worldW).toBe(COLW * 2 + NODEW + PAD * 2);
+    });
+});
+
+describe('groupRunsByTurn (AC-01)', () => {
+    it('partitions top-level runs into contiguous groups ordered by turn, preserving within-group order', () => {
+        const groups = groupRunsByTurn([
+            turnNode('a', 1),
+            turnNode('b', 1),
+            turnNode('c', 2),
+        ]);
+        expect(groups).toHaveLength(2);
+        expect(groups[0].turn).toBe(1);
+        expect(groups[0].runs.map((r) => r.id)).toEqual(['a', 'b']);
+        expect(groups[1].turn).toBe(2);
+        expect(groups[1].runs.map((r) => r.id)).toEqual(['c']);
+    });
+
+    it('yields exactly one group when every run shares a turn', () => {
+        const groups = groupRunsByTurn([turnNode('a', 3), turnNode('b', 3)]);
+        expect(groups).toHaveLength(1);
+        expect(groups[0].turn).toBe(3);
+        expect(groups[0].runs.map((r) => r.id)).toEqual(['a', 'b']);
+    });
+
+    it('keeps each turn contiguous and ascending even when input start order interleaves turns', () => {
+        const groups = groupRunsByTurn([
+            turnNode('a', 2),
+            turnNode('b', 1),
+            turnNode('c', 2),
+        ]);
+        expect(groups.map((g) => g.turn)).toEqual([1, 2]);
+        expect(groups[0].runs.map((r) => r.id)).toEqual(['b']);
+        // both turn-2 runs collapse into one contiguous group, original order kept
+        expect(groups[1].runs.map((r) => r.id)).toEqual(['a', 'c']);
+    });
+
+    it('sorts unknown-turn runs into a trailing group', () => {
+        const groups = groupRunsByTurn([node('x'), turnNode('a', 1)]);
+        expect(groups.map((g) => g.turn)).toEqual([1, undefined]);
+    });
+});
+
+describe('buildLayout turn dividers (AC-02)', () => {
+    it('emits one label marker with no line for a single-turn root', () => {
+        const layout = buildLayout(node('root', [turnNode('a', 1), turnNode('b', 1)]));
+        expect(layout.groups).toHaveLength(1);
+        expect(layout.groups[0]).toMatchObject({ turn: 1, hasLine: false, y: -TURN_LABEL_RISE });
+        // no extra gap is inserted for a lone group: rows stack one ROWH apart
+        expect(layout.pos.a.y).toBe(0);
+        expect(layout.pos.b.y).toBe(ROWH);
+    });
+
+    it('inserts a gap and a lined divider between two turn groups', () => {
+        const layout = buildLayout(node('root', [turnNode('a', 1), turnNode('b', 2)]));
+        expect(layout.groups).toHaveLength(2);
+        expect(layout.groups[0]).toMatchObject({ turn: 1, hasLine: false });
+        expect(layout.groups[1]).toMatchObject({ turn: 2, hasLine: true });
+        // the second group's leaf is pushed down by the inserted gap
+        expect(layout.pos.b.y).toBe(ROWH + TURN_GAP);
+        // the boundary divider sits in the middle of that gap
+        expect(layout.groups[1].y).toBe(ROWH + TURN_GAP / 2);
+        // root stays centered over its (now further-apart) children
+        expect(layout.pos.root.y).toBe((ROWH + TURN_GAP) / 2);
+    });
+
+    it('has no group markers for a lone root with no sub-agents', () => {
+        const layout = buildLayout(node('root'));
+        expect(layout.groups).toEqual([]);
     });
 });
 

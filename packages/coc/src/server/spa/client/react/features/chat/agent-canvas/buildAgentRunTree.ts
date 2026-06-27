@@ -175,6 +175,16 @@ export function buildAgentRunTreeFromTurns(
     }
     rootChildren.sort(byStartedAt);
 
+    // Tag each top-level run with the human turn ordinal that spawned it, so the
+    // canvas can group depth-1 runs by turn and label its dividers. Only depth-1
+    // runs carry this; nested (L2+) runs inherit their top-level ancestor's group.
+    for (const child of rootChildren) {
+        const ordinal = turnOrdinalForRun(turns, child.id);
+        if (ordinal !== null) {
+            child.turn = ordinal;
+        }
+    }
+
     // Root status reflects the whole subtree: any descendant still running/queued
     // keeps the orchestrator "live" when no explicit process status is given.
     const anyActive = Array.from(nodeById.values())
@@ -216,6 +226,37 @@ export function findTurnIndexForRun(
         const inTimeline = (turn.timeline || []).some((item) => item.toolCall?.id === runId);
         if (inToolCalls || inTimeline) {
             return turn.turnIndex ?? i;
+        }
+    }
+    return null;
+}
+
+/**
+ * The human-visible 1-based turn ordinal that spawned a run: the count of `user`
+ * turns at or before the assistant turn carrying the run's `Task` tool-call.
+ * Returns null when the run isn't found (or no turns).
+ *
+ * Unlike `findTurnIndexForRun` — which yields the raw `turnIndex` counting every
+ * turn (user + assistant) — this reads as the turn ordinal a human sees in the
+ * thread. Turns that spawned no agents therefore leave gaps in the sequence
+ * (e.g. … `turn 1`, `turn 4` …), which is exactly what the canvas labels show.
+ */
+export function turnOrdinalForRun(
+    turns: ClientConversationTurn[] | undefined,
+    runId: string,
+): number | null {
+    if (!turns) {
+        return null;
+    }
+    let userTurns = 0;
+    for (const turn of turns) {
+        if (turn.role === 'user') {
+            userTurns++;
+        }
+        const inToolCalls = Array.isArray(turn.toolCalls) && turn.toolCalls.some((tc) => tc.id === runId);
+        const inTimeline = (turn.timeline || []).some((item) => item.toolCall?.id === runId);
+        if (inToolCalls || inTimeline) {
+            return userTurns;
         }
     }
     return null;
