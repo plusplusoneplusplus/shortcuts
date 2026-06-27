@@ -289,6 +289,14 @@ export interface ChatContext {
         prId: string;
         headSha: string;
     };
+    /**
+     * Marks a follow-up task as an ask_user resume: instead of running the
+     * payload prompt, the runner rebuilds the synthesized answer message from
+     * the process's persisted `pendingAskUserAnswer` and resumes the SDK
+     * session. Set when an answer arrives after a restart tore down the live
+     * ask_user resolver, and re-set on startup re-enqueue.
+     */
+    askUserResume?: boolean;
 }
 
 // ============================================================================
@@ -596,6 +604,15 @@ export function isChatPayload(payload: Record<string, unknown>): payload is Reco
 
 export function isChatFollowUp(payload: Record<string, unknown>): payload is Record<string, unknown> & ChatPayload {
     return isChatPayload(payload) && !!payload.processId;
+}
+
+/**
+ * Check whether a chat payload is an ask_user resume follow-up — the task the
+ * answer-submit / startup re-enqueue paths schedule to resume a process whose
+ * durable `pendingAskUserAnswer` was persisted after a restart.
+ */
+export function isAskUserResumePayload(payload: Record<string, unknown>): boolean {
+    return isChatFollowUp(payload) && payload.context?.askUserResume === true;
 }
 
 export function isRunWorkflowPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunWorkflowPayload {

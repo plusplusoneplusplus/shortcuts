@@ -116,6 +116,7 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
         // Pending messages (plain JSON, no Date conversion needed)
         pendingMessages: process.pendingMessages,
         pendingAskUser: process.pendingAskUser,
+        pendingAskUserAnswer: process.pendingAskUserAnswer,
         // Last event timestamp
         lastEventAt: process.lastEventAt?.toISOString(),
     };
@@ -228,6 +229,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         // Pending messages (plain JSON, no Date conversion needed)
         pendingMessages: serialized.pendingMessages,
         pendingAskUser: serialized.pendingAskUser,
+        pendingAskUserAnswer: serialized.pendingAskUserAnswer,
         // Last event timestamp
         lastEventAt: serialized.lastEventAt ? new Date(serialized.lastEventAt) : undefined,
     };

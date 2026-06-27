@@ -157,6 +157,13 @@ export interface LifecycleRunnerOptions {
         /** Require this exact SDK session ID to be resumed; no fresh-session fallback. */
         strictResumeSessionId?: string,
     ) => Promise<void>;
+    /**
+     * Resume a process whose durable `pendingAskUserAnswer` was persisted after
+     * a restart. Used in place of `executeFollowUpFn` for follow-up tasks tagged
+     * with `context.askUserResume`. The synthesized answer message is rebuilt
+     * from the store at execution time.
+     */
+    resumePendingAskUserFn?: (processId: string) => Promise<void>;
     /** Dispatch execution by task type (chat/workflow/script). */
     executeByTypeFn: (task: QueuedTask, prompt: string) => Promise<unknown>;
     /** Resolve the working directory for a given task. */
@@ -404,24 +411,31 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 // explicitly. `task.config.reasoningEffort` is also populated,
                 // so executors that need it for restart/fork scenarios still
                 // find it there.
-                const followUpEffort = (followUpPayload as any).reasoningEffort
-                    ?? task.config.reasoningEffort;
-                const strictResumeSessionId = typeof followUpPayload.resumeSessionId === 'string'
-                    ? followUpPayload.resumeSessionId
-                    : undefined;
-                await opts.executeFollowUpFn(
-                    followUpPayload.processId!,
-                    followUpPayload.prompt,
-                    followUpPayload.attachments,
-                    followUpPayload.mode,
-                    (followUpPayload as any).deliveryMode,
-                    (followUpPayload as any).images,
-                    followUpPayload.context?.skills,
-                    (followUpPayload as any).model,
-                    turnSource,
-                    followUpEffort,
-                    strictResumeSessionId,
-                );
+                // Ask_user resume: the durable answer is replayed by the bridge,
+                // which rebuilds the synthesized message and resumes the SDK
+                // session. The payload prompt is a placeholder and is ignored.
+                if (followUpPayload.context?.askUserResume === true && opts.resumePendingAskUserFn) {
+                    await opts.resumePendingAskUserFn(followUpPayload.processId!);
+                } else {
+                    const followUpEffort = (followUpPayload as any).reasoningEffort
+                        ?? task.config.reasoningEffort;
+                    const strictResumeSessionId = typeof followUpPayload.resumeSessionId === 'string'
+                        ? followUpPayload.resumeSessionId
+                        : undefined;
+                    await opts.executeFollowUpFn(
+                        followUpPayload.processId!,
+                        followUpPayload.prompt,
+                        followUpPayload.attachments,
+                        followUpPayload.mode,
+                        (followUpPayload as any).deliveryMode,
+                        (followUpPayload as any).images,
+                        followUpPayload.context?.skills,
+                        (followUpPayload as any).model,
+                        turnSource,
+                        followUpEffort,
+                        strictResumeSessionId,
+                    );
+                }
                 const duration = Date.now() - startTime;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
                 // Drain pending messages after follow-up completion

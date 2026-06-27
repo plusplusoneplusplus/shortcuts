@@ -375,6 +375,36 @@ export interface PendingAskUserQuestion {
 }
 
 /**
+ * A single answered/skipped/deferred question within a durable
+ * {@link PendingAskUserAnswer} record. Carries a snapshot of the question text
+ * so a resume task can build the synthesized user message after the live
+ * `pendingAskUser` batch has been cleared.
+ */
+export interface PendingAskUserAnswerEntry {
+    questionId: string;
+    /** Snapshot of the question prompt, so the synthesized resume message can quote it. */
+    question: string;
+    answer: string | string[] | null;
+    skipped: boolean;
+    deferred: boolean;
+    reason?: 'needs-context';
+    note?: string;
+}
+
+/**
+ * Durable record of a user's answer to a pending `ask_user` batch, persisted
+ * when the answer arrives after the in-memory executor session was torn down
+ * by a server restart. A resume task reads this to continue the conversation;
+ * it survives further restarts until the resume succeeds (or honestly fails).
+ */
+export interface PendingAskUserAnswer {
+    batchId: string;
+    answers: PendingAskUserAnswerEntry[];
+    /** ISO 8601 timestamp of when the answer was submitted. */
+    submittedAt: string;
+}
+
+/**
  * A tracked AI process
  */
 export interface AIProcess {
@@ -484,6 +514,14 @@ export interface AIProcess {
     /** Interactive ask-user question batch awaiting user answers during execution */
     pendingAskUser?: PendingAskUserQuestion[];
 
+    /**
+     * Durable answer to a pending ask-user batch submitted after a server
+     * restart tore down the in-memory resolver. Drives the resume task and is
+     * cleared once the conversation has been resumed (or the resume has
+     * honestly failed).
+     */
+    pendingAskUserAnswer?: PendingAskUserAnswer;
+
     /** True when the stale task detector has flagged this process as stale (running past timeout) */
     stale?: boolean;
 
@@ -582,6 +620,9 @@ export interface SerializedAIProcess {
 
     /** Interactive ask-user question batch awaiting user answers during execution */
     pendingAskUser?: PendingAskUserQuestion[];
+
+    /** Durable answer to a pending ask-user batch submitted after a server restart. */
+    pendingAskUserAnswer?: PendingAskUserAnswer;
 
     /** Timestamp of the last conversation event (turn completion). ISO string. */
     lastEventAt?: string;
