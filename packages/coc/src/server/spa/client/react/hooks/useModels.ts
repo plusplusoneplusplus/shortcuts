@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { getActiveProvider } from '../utils/config';
+import { getOrFetchConfig, peekConfig, invalidateConfig, configCacheKey } from '../api/staticConfigCache';
 
 /** Billing metadata preserved from the model catalog (e.g. tokenPrices.longContext.contextMax). */
 export interface ModelBillingInfo {
@@ -115,32 +116,55 @@ function mapModel(m: RawModel): ModelInfo {
     };
 }
 
+/** Maps a raw provider models response (`{ models }`) into ModelInfo[]. */
+function mapModelsResponse(data: unknown): ModelInfo[] {
+    const models = (data as { models?: unknown } | null | undefined)?.models;
+    return Array.isArray(models) ? models.map(mapModel) : [];
+}
+
 /**
  * Fetches models from the active provider's catalog.
  * All model consumers (chat picker, queue dialogs, etc.) use this hook
  * so they automatically reflect the active provider's model list.
  */
 export function useModels(providerOverride?: string): { models: ModelInfo[]; loading: boolean; error: string | null; reload: () => void } {
-    const [models, setModels] = useState<ModelInfo[]>([]);
-    const [loading, setLoading] = useState(true);
+    const provider = providerOverride ?? getActiveProvider();
+    const modelsKey = configCacheKey.models(provider);
+    // Seed from the session cache so a warm reopen (provider already seen this
+    // session) paints the catalog immediately with no loading flash.
+    const [models, setModels] = useState<ModelInfo[]>(() => {
+        const cached = peekConfig(modelsKey);
+        return cached !== undefined ? mapModelsResponse(cached) : [];
+    });
+    const [loading, setLoading] = useState(() => peekConfig(modelsKey) === undefined);
     const [error, setError] = useState<string | null>(null);
     const [reloadToken, setReloadToken] = useState(0);
-    const provider = providerOverride ?? getActiveProvider();
 
     const load = useCallback(() => {
+        // Force a fresh fetch: drop the cached response so the effect refetches.
+        invalidateConfig(configCacheKey.models(provider));
         setReloadToken(token => token + 1);
-    }, []);
+    }, [provider]);
 
     useEffect(() => {
+        const key = configCacheKey.models(provider);
+        // Warm cache hit — serve synchronously without clearing models or
+        // flipping to a loading state, so a conversation switch does not flash.
+        const cached = peekConfig(key);
+        if (cached !== undefined) {
+            setModels(mapModelsResponse(cached));
+            setError(null);
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         setError(null);
         setModels([]);
         let cancelled = false;
-        getSpaCocClient().agentProviders.listModels(provider)
-            .then((data: any) => {
+        getOrFetchConfig(key, () => getSpaCocClient().agentProviders.listModels(provider))
+            .then((data: unknown) => {
                 if (cancelled) return;
-                const arr = Array.isArray(data?.models) ? data.models.map(mapModel) : [];
-                setModels(arr);
+                setModels(mapModelsResponse(data));
             })
             .catch((e: unknown) => {
                 if (!cancelled) setError(getSpaCocClientErrorMessage(e, 'Failed to load models'));
@@ -183,15 +207,21 @@ export function useModelConfig(): {
         setLocalModels(models);
     }, [models]);
 
-    // Load persisted reasoning efforts on mount
+    // Load persisted reasoning efforts on mount (through the session cache).
     useEffect(() => {
-        getSpaCocClient().agentProviders.getReasoningEfforts(provider)
-            .then((data: { reasoningEfforts: Record<string, string> }) => {
+        let cancelled = false;
+        getOrFetchConfig(
+            configCacheKey.reasoningEfforts(provider),
+            () => getSpaCocClient().agentProviders.getReasoningEfforts(provider),
+        )
+            .then((data: { reasoningEfforts?: Record<string, string> }) => {
+                if (cancelled) return;
                 if (data?.reasoningEfforts && typeof data.reasoningEfforts === 'object') {
                     setReasoningEfforts(data.reasoningEfforts);
                 }
             })
             .catch(() => { /* reasoning efforts are optional */ });
+        return () => { cancelled = true; };
     }, [provider]);
 
     const toggleModel = useCallback(async (modelId: string, enabled: boolean) => {
@@ -202,6 +232,9 @@ export function useModelConfig(): {
             const updated = localModels.map(m => m.id === modelId ? { ...m, enabled } : m);
             const enabledModels = updated.filter(m => m.id === modelId ? enabled : m.enabled).map(m => m.id);
             await getSpaCocClient().agentProviders.setEnabledModels(provider, enabledModels);
+            // Enabled-model set changed — drop the cached catalog so the next
+            // read (e.g. the chat model picker) refetches (AC-05).
+            invalidateConfig(configCacheKey.models(provider));
         } catch {
             // Revert optimistic update on error
             setLocalModels(models);
@@ -222,6 +255,9 @@ export function useModelConfig(): {
         }
         try {
             await getSpaCocClient().agentProviders.setReasoningEffort(provider, modelId, effort);
+            // Reasoning-effort map changed — drop the cached map so the next
+            // read refetches (AC-05).
+            invalidateConfig(configCacheKey.reasoningEfforts(provider));
         } catch {
             setReasoningEfforts(prev);
         }
