@@ -58,6 +58,22 @@ function extractGoalSpec(turns: ClientConversationTurn[]): string {
     return content.trim();
 }
 
+function renderRalphGlyph() {
+    return (
+        <span
+            className="shrink-0 inline-flex h-[18px] w-[18px] items-center justify-center rounded-md bg-purple-600 text-white dark:bg-purple-500"
+            aria-hidden="true"
+        >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M13.4 8a5.4 5.4 0 1 1-1.58-3.82" />
+                <path d="M13.4 2.8v3.5H9.9" />
+                <path d="M2.6 8a5.4 5.4 0 0 1 9.22-3.82" />
+                <path d="M2.6 13.2V9.7h3.5" />
+            </svg>
+        </span>
+    );
+}
+
 export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goalFilePath, useLaunchEndpoint }: RalphStartPanelProps) {
     const [open, setOpen] = useState(false);
     const repoSelection = useRalphExecutionRepoTargets({ open, sourceWorkspaceId: workspaceId });
@@ -148,21 +164,36 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
         : undefined;
 
     if (!open) {
+        const bannerText = goalFileName
+            ? `Goal spec: ${goalFileName}`
+            : 'Goal spec ready for execution';
+
         return (
-            <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-4 py-3">
+            <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-4 py-2" data-testid="ralph-start-banner">
                 <button
                     type="button"
                     data-testid="ralph-start-btn"
                     onClick={handleOpen}
-                    className="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white transition-colors"
+                    className={cn(
+                        'group flex w-full items-center gap-2 rounded-lg border border-[#d0d7de] bg-[#f6f8fa] px-3 py-1.5 text-left text-xs',
+                        'text-[#1f2328] transition-colors hover:border-purple-300 hover:bg-purple-50/60',
+                        'dark:border-[#3c3c3c] dark:bg-[#161b22] dark:text-[#c9d1d9] dark:hover:border-purple-500/60 dark:hover:bg-purple-500/10',
+                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/40',
+                    )}
                 >
-                    🔄 Start Ralph
+                    {renderRalphGlyph()}
+                    <span className="shrink-0 font-semibold">Ralph ready</span>
+                    <span
+                        className="min-w-0 flex-1 truncate text-[#57606a] dark:text-[#8b949e]"
+                        data-testid="ralph-start-description"
+                        title={bannerText}
+                    >
+                        {bannerText}
+                    </span>
+                    <span className="shrink-0 inline-flex h-[22px] items-center rounded-md bg-purple-600 px-2 text-[11px] font-medium text-white group-hover:bg-purple-700 dark:bg-purple-500 dark:group-hover:bg-purple-400">
+                        Start Ralph
+                    </span>
                 </button>
-                <p className="mt-1 text-xs text-[#848484]">
-                    {goalFileName
-                        ? `Launch the Ralph execution loop using the goal spec from ${goalFileName}.`
-                        : 'Review and confirm the goal spec, then start the automated coding loop.'}
-                </p>
             </div>
         );
     }
