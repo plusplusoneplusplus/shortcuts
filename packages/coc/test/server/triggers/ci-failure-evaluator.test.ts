@@ -87,6 +87,37 @@ describe('CiFailureEvaluator', () => {
         expect(outcome.actionPrompt).toContain('https://ci/build');
     });
 
+    it('names the PR head branch in the fired prompt when the snapshot carries it (AC-02)', async () => {
+        const fetcher = queuedFetcher([
+            {
+                prStatus: 'open',
+                prNumber: '42',
+                headRef: 'feature/login-fix',
+                headSha: 'abc1234',
+                checks: [{ id: 'build', name: 'build', status: 'failure' }],
+            },
+        ]);
+        const evaluator = new CiFailureEvaluator(fetcher);
+
+        const outcome = await evaluator.evaluate(makeTrigger({ build: 'success' }));
+
+        expect(outcome.fire).toBe(true);
+        // Branch flows into the delivery contract (AC-02 → AC-03).
+        expect(outcome.actionPrompt).toContain('feature/login-fix');
+    });
+
+    it('binds the contract generically when the snapshot has no branch', async () => {
+        const fetcher = queuedFetcher([
+            openWith([{ id: 'build', name: 'build', status: 'failure' }]),
+        ]);
+        const evaluator = new CiFailureEvaluator(fetcher);
+
+        const outcome = await evaluator.evaluate(makeTrigger({ build: 'success' }));
+
+        expect(outcome.fire).toBe(true);
+        expect(outcome.actionPrompt).toContain("the PR's existing branch");
+    });
+
     it('fires on a pending → failure transition', async () => {
         const fetcher = queuedFetcher([openWith([{ id: 'test', name: 'test', status: 'failure' }])]);
         const evaluator = new CiFailureEvaluator(fetcher);

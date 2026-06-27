@@ -62,6 +62,10 @@ export interface CiCheckSnapshot {
 export interface CiPrChecksSnapshot {
     prStatus: CiPrStatus;
     prNumber: string | number;
+    /** PR head (source) branch — named in the fix prompt's delivery contract (AC-02/AC-03). */
+    headRef?: string;
+    /** PR head commit SHA — keys the retry-limit attempt counter (AC-05). */
+    headSha?: string;
     checks: CiCheckSnapshot[];
 }
 
@@ -129,7 +133,7 @@ export class CiFailureEvaluator implements EventEvaluator {
         // Fire: name every currently-failing check (full picture) in the prompt,
         // not only the newly-failed ones.
         const failingChecks = snapshot.checks.filter(c => c.status === 'failure');
-        const actionPrompt = buildCiFailurePrompt(snapshot.prNumber, failingChecks);
+        const actionPrompt = buildCiFailurePrompt(snapshot.prNumber, failingChecks, snapshot.headRef);
         return { fire: true, event: nextEvent, actionPrompt };
     }
 }

@@ -51,6 +51,8 @@ export function createCiChecksFetcher(options: CreateCiChecksFetcherOptions): Ci
         return {
             prStatus: snapshot.prStatus,
             prNumber: snapshot.prNumber,
+            ...(snapshot.headRef !== undefined ? { headRef: snapshot.headRef } : {}),
+            ...(snapshot.headSha !== undefined ? { headSha: snapshot.headSha } : {}),
             checks,
         };
     };

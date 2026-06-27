@@ -571,6 +571,10 @@ export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWork
 export interface OriginPullRequestChecksSnapshot {
     prStatus: ProviderPullRequestStatus;
     prNumber: number | string;
+    /** PR head (source) branch name, when the provider reports it. */
+    headRef?: string;
+    /** PR head (source branch tip) commit SHA, when the provider reports it. */
+    headSha?: string;
     checks: ProviderPullRequestCheck[];
 }
 
@@ -606,7 +610,15 @@ export async function fetchOriginPullRequestChecksHeadless(
     const checks = typeof prSvc.getChecks === 'function'
         ? await prSvc.getChecks(repoId, options.prId)
         : [];
-    return { prStatus: pr.status, prNumber: pr.number, checks };
+    const headRef = typeof pr.sourceBranch === 'string' && pr.sourceBranch.trim() ? pr.sourceBranch.trim() : undefined;
+    const headSha = typeof pr.headSha === 'string' && pr.headSha.trim() ? pr.headSha.trim() : undefined;
+    return {
+        prStatus: pr.status,
+        prNumber: pr.number,
+        ...(headRef !== undefined ? { headRef } : {}),
+        ...(headSha !== undefined ? { headSha } : {}),
+        checks,
+    };
 }
 
 /** Clear all cached PR list entries. Exported for testing. */

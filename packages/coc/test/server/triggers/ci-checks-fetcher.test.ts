@@ -64,6 +64,32 @@ describe('createCiChecksFetcher', () => {
         expect('detailsUrl' in snapshot.checks[1]!).toBe(false);
     });
 
+    it('threads PR head branch + SHA through when the headless snapshot carries them (AC-02/AC-05)', async () => {
+        fetchHeadless.mockResolvedValue({
+            prStatus: 'open',
+            prNumber: 12,
+            headRef: 'feature/x',
+            headSha: 'deadbeef',
+            checks: [{ id: 'c1', name: 'build', status: 'failure' }],
+        });
+        const fetcher = createCiChecksFetcher({ dataDir: '/tmp/data' });
+
+        const snapshot = await fetcher({ workspaceId: 'ws_a', originId: 'origin_1', prId: '12' });
+
+        expect(snapshot.headRef).toBe('feature/x');
+        expect(snapshot.headSha).toBe('deadbeef');
+    });
+
+    it('omits headRef/headSha (not undefined) when the headless snapshot lacks them', async () => {
+        fetchHeadless.mockResolvedValue({ prStatus: 'open', prNumber: 3, checks: [] });
+        const fetcher = createCiChecksFetcher({ dataDir: '/tmp/data' });
+
+        const snapshot = await fetcher({ workspaceId: 'ws_a', originId: 'origin_1', prId: '3' });
+
+        expect('headRef' in snapshot).toBe(false);
+        expect('headSha' in snapshot).toBe(false);
+    });
+
     it('propagates errors from the headless fetch (caller decides how to react)', async () => {
         fetchHeadless.mockRejectedValue(new Error('no-credentials'));
         const fetcher = createCiChecksFetcher({ dataDir: '/tmp/data' });
