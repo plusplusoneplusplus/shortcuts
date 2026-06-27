@@ -317,160 +317,107 @@ export function ImplementPlanCard({
     const disabled = submitting || submitted;
 
     return (
-        <div
-            className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-4 py-3"
-            data-testid="implement-plan-card"
-        >
-            <div className="rounded-md border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f7f7f7] dark:bg-[#252526] p-3">
-                {/* ── Banner: prior runs ─────────────────────────── */}
-                {hasRuns && latestRun && (
-                    <div data-testid="implement-plan-card-banner">
-                        <div className="flex items-center gap-2 text-sm">
-                            <span data-testid="implement-plan-card-status-pill">
-                                {STATUS_CONFIG[latestRun.liveStatus].emoji}{' '}
-                                {STATUS_CONFIG[latestRun.liveStatus].label}
-                            </span>
-                            <span className="text-[#848484]">·</span>
-                            <span className="text-xs text-[#5a5a5a] dark:text-[#999]">
-                                started {formatRelativeTime(latestRun.enqueuedAt)}
-                                {existingRuns.length > 1 && ` · ${existingRuns.length} runs total`}
-                            </span>
-                            {describeRunTarget(latestRun) && (
-                                <span
-                                    className="text-xs text-[#5a5a5a] dark:text-[#999]"
-                                    data-testid="implement-plan-card-target-label"
-                                >
-                                    <span className="text-[#848484]">·</span>{' '}
-                                    {latestRun.isRemoteTarget ? '☁️ ' : ''}
-                                    {describeRunTarget(latestRun)}
-                                </span>
-                            )}
-                            <div className="ml-auto flex-shrink-0">
-                                <button
-                                    type="button"
-                                    data-testid="implement-plan-card-view-btn"
-                                    onClick={() => onViewRun?.(latestRun.processId, latestRun.targetWorkspaceId)}
-                                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium"
-                                >
-                                    View →
-                                </button>
-                            </div>
-                        </div>
+        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-4 py-3" data-testid="implement-plan-card">
+            <div className="rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#161b22] shadow-sm">
+                {/* ── Compact single-row header (PR-banner style) ── */}
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2.5 py-1.5">
+                    <span className="shrink-0" aria-hidden="true">🚀</span>
+                    <span className="shrink-0 text-xs font-semibold text-[#1f2328] dark:text-[#c9d1d9]">
+                        Implement this plan
+                    </span>
+                    <span
+                        className="min-w-0 flex-1 truncate text-[11px] font-mono text-[#848484]"
+                        title={`Start a new autopilot session to execute the plan.\n${planFilePath}`}
+                    >
+                        {planFilePath}
+                    </span>
 
-                        {/* Expandable list for additional runs */}
-                        {existingRuns.length > 1 && (
-                            <div className="mt-1">
-                                <button
-                                    type="button"
-                                    data-testid="implement-plan-card-expand-btn"
-                                    onClick={() => setExpanded(!expanded)}
-                                    className="text-[11px] text-[#848484] hover:text-[#5a5a5a] dark:hover:text-[#bbb]"
-                                >
-                                    {expanded ? '▾ Hide runs' : `▸ Show all ${existingRuns.length} runs`}
-                                </button>
-                                {expanded && (
-                                    <div className="mt-1 space-y-1" data-testid="implement-plan-card-run-list">
-                                        {[...existingRuns].reverse().map((run, i) => (
-                                            <div key={run.processId + '-' + i} className="flex items-center gap-2 text-[11px] text-[#5a5a5a] dark:text-[#999]">
-                                                <span>{STATUS_CONFIG[run.liveStatus].emoji} {STATUS_CONFIG[run.liveStatus].label}</span>
-                                                <span className="text-[#848484]">·</span>
-                                                <span>{formatRelativeTime(run.enqueuedAt)}</span>
-                                                {describeRunTarget(run) && (
-                                                    <>
-                                                        <span className="text-[#848484]">·</span>
-                                                        <span>{run.isRemoteTarget ? '☁️ ' : ''}{describeRunTarget(run)}</span>
-                                                    </>
-                                                )}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => onViewRun?.(run.processId, run.targetWorkspaceId)}
-                                                    className="ml-auto text-blue-600 dark:text-blue-400 hover:underline"
-                                                >
-                                                    View
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="my-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" />
-                    </div>
-                )}
-
-                {/* ── Main CTA area ─────────────────────────────── */}
-                <div className="flex items-start gap-3">
-                    <div className="text-xl leading-none" aria-hidden="true">🚀</div>
-                    <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
-                            Implement this plan
-                        </div>
-                        <p className="mt-0.5 text-xs text-[#5a5a5a] dark:text-[#999]">
-                            Start a new autopilot session to execute the plan produced in this conversation.
-                        </p>
-                        <p className="mt-1 text-[11px] font-mono text-[#848484] truncate" title={planFilePath}>
-                            {planFilePath}
-                        </p>
-                        {showSelector && (
-                            <div
-                                className="mt-2 flex items-center gap-2"
-                                data-testid="implement-plan-card-target"
-                            >
-                                <label
-                                    htmlFor="implement-plan-card-target-select"
-                                    className="text-[11px] text-[#5a5a5a] dark:text-[#999] flex-shrink-0"
-                                >
-                                    Run in
-                                </label>
-                                <select
-                                    id="implement-plan-card-target-select"
-                                    data-testid="implement-plan-card-target-select"
-                                    value={selectedTargetId}
-                                    onChange={(e) => setSelectedTargetId(e.target.value)}
-                                    disabled={disabled}
-                                    className="text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] px-1.5 py-0.5 max-w-[16rem] truncate disabled:opacity-60"
-                                >
-                                    {targets.map(t => {
-                                        const isCurrent = t.workspaceId === workspaceId;
-                                        const label = t.isRemote
-                                            ? `${t.label} · ${t.serverLabel ?? 'remote'}`
-                                            : `${t.label}${isCurrent ? ' (current)' : ''}`;
-                                        return (
-                                            <option key={t.workspaceId} value={t.workspaceId}>
-                                                {label}
-                                            </option>
-                                        );
-                                    })}
-                                </select>
-                            </div>
-                        )}
-                        {error && (
-                            <p className="mt-1 text-xs text-[#f14c4c]" data-testid="implement-plan-card-error">
-                                {error}
-                            </p>
-                        )}
-                    </div>
-                    <div className="flex-shrink-0">
+                    {hasRuns && latestRun && (
                         <button
                             type="button"
-                            data-testid="implement-plan-card-btn"
-                            onClick={handleClick}
-                            disabled={disabled}
-                            title={latestIsActive ? 'An implementation is already running. Click to start another.' : undefined}
-                            className={cn(
-                                'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                                disabled
-                                    ? 'bg-blue-400 text-white cursor-not-allowed'
-                                    : latestIsActive
-                                        ? 'border border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30'
-                                        : 'bg-blue-600 hover:bg-blue-700 text-white',
-                            )}
+                            data-testid="implement-plan-card-status-pill"
+                            onClick={() => onViewRun?.(latestRun.processId, latestRun.targetWorkspaceId)}
+                            title={`started ${formatRelativeTime(latestRun.enqueuedAt)}${existingRuns.length > 1 ? ` · ${existingRuns.length} runs total` : ''}${describeRunTarget(latestRun) ? ` · ${describeRunTarget(latestRun)}` : ''}`}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-black/[0.04] dark:bg-white/[0.06] text-[#57606a] dark:text-[#8b949e] hover:bg-black/[0.08] dark:hover:bg-white/[0.1]"
                         >
-                            {submitted ? '✓ Implementing' : submitting ? '⏳ Starting…' : hasRuns ? 'Implement again' : 'Implement →'}
+                            <span data-testid="implement-plan-card-view-btn" className="contents">
+                                {STATUS_CONFIG[latestRun.liveStatus].emoji} {STATUS_CONFIG[latestRun.liveStatus].label}
+                                {latestRun.isRemoteTarget ? ' ☁️' : ''}
+                                {existingRuns.length > 1 && ` · ${existingRuns.length}`}
+                                {' →'}
+                            </span>
                         </button>
-                    </div>
+                    )}
+
+                    {showSelector && (
+                        <div className="flex shrink-0 items-center gap-1" data-testid="implement-plan-card-target">
+                            <label htmlFor="implement-plan-card-target-select" className="text-[11px] text-[#57606a] dark:text-[#8b949e]">
+                                Run in
+                            </label>
+                            <select
+                                id="implement-plan-card-target-select"
+                                data-testid="implement-plan-card-target-select"
+                                value={selectedTargetId}
+                                onChange={(e) => setSelectedTargetId(e.target.value)}
+                                disabled={disabled}
+                                className="text-[11px] rounded border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#0d1117] text-[#1f2328] dark:text-[#c9d1d9] px-1 py-0.5 max-w-[12rem] truncate disabled:opacity-60"
+                            >
+                                {targets.map(t => {
+                                    const isCurrent = t.workspaceId === workspaceId;
+                                    const label = t.isRemote ? `${t.label} · ${t.serverLabel ?? 'remote'}` : `${t.label}${isCurrent ? ' (current)' : ''}`;
+                                    return <option key={t.workspaceId} value={t.workspaceId}>{label}</option>;
+                                })}
+                            </select>
+                        </div>
+                    )}
+
+                    <button
+                        type="button"
+                        data-testid="implement-plan-card-btn"
+                        onClick={handleClick}
+                        disabled={disabled}
+                        title={latestIsActive ? 'An implementation is already running. Click to start another.' : undefined}
+                        className={cn(
+                            'inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                            disabled ? 'bg-blue-400 text-white cursor-not-allowed'
+                                : latestIsActive ? 'border border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30'
+                                : 'bg-blue-600 hover:bg-blue-700 text-white',
+                        )}
+                    >
+                        {submitted ? '✓ Implementing' : submitting ? '⏳ Starting…' : hasRuns ? 'Implement again' : 'Implement →'}
+                    </button>
                 </div>
+
+                {error && (
+                    <p className="px-2.5 pb-1.5 text-[11px] text-[#cf222e] dark:text-[#f85149]" data-testid="implement-plan-card-error">
+                        {error}
+                    </p>
+                )}
+
+                {existingRuns.length > 1 && (
+                    <div className="border-t border-[#d0d7de] dark:border-[#3c3c3c] px-2.5 py-1">
+                        <button
+                            type="button"
+                            data-testid="implement-plan-card-expand-btn"
+                            onClick={() => setExpanded(!expanded)}
+                            className="text-[11px] text-[#57606a] dark:text-[#8b949e] hover:text-[#1f2328] dark:hover:text-[#c9d1d9]"
+                        >
+                            {expanded ? '▾ Hide runs' : `▸ Show all ${existingRuns.length} runs`}
+                        </button>
+                        {expanded && (
+                            <div className="mt-1 space-y-1" data-testid="implement-plan-card-run-list">
+                                {[...existingRuns].reverse().map((run, i) => (
+                                    <div key={run.processId + '-' + i} className="flex items-center gap-2 text-[11px] text-[#57606a] dark:text-[#8b949e]">
+                                        <span>{STATUS_CONFIG[run.liveStatus].emoji} {STATUS_CONFIG[run.liveStatus].label}</span>
+                                        <span>· {formatRelativeTime(run.enqueuedAt)}</span>
+                                        {describeRunTarget(run) && <span>· {run.isRemoteTarget ? '☁️ ' : ''}{describeRunTarget(run)}</span>}
+                                        <button type="button" onClick={() => onViewRun?.(run.processId, run.targetWorkspaceId)} className="ml-auto text-blue-600 dark:text-blue-400 hover:underline">View</button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -105,7 +105,7 @@ describe('ImplementPlanCard', () => {
         expect(screen.getByText('/repo/.vscode/tasks/feature.plan.md')).toBeTruthy();
     });
 
-    it('renders unchanged when no prior runs exist (no banner)', () => {
+    it('renders unchanged when no prior runs exist (no status pill)', () => {
         render(
             <ImplementPlanCard
                 planFilePath="/repo/plan.md"
@@ -113,7 +113,7 @@ describe('ImplementPlanCard', () => {
                 existingRuns={[]}
             />,
         );
-        expect(screen.queryByTestId('implement-plan-card-banner')).toBeNull();
+        expect(screen.queryByTestId('implement-plan-card-status-pill')).toBeNull();
         expect(screen.getByTestId('implement-plan-card-btn').textContent).toContain('Implement →');
     });
 
@@ -226,7 +226,7 @@ describe('ImplementPlanCard', () => {
 
     // ── New tests: existing runs banner ────────────────────────────────
 
-    it('renders a banner when a single completed run exists', () => {
+    it('renders a status chip when a single completed run exists', () => {
         const runs: ExistingRun[] = [{
             processId: 'queue_impl-1',
             planFilePath: '/plan.md',
@@ -243,7 +243,6 @@ describe('ImplementPlanCard', () => {
             />,
         );
 
-        expect(screen.getByTestId('implement-plan-card-banner')).toBeTruthy();
         const pill = screen.getByTestId('implement-plan-card-status-pill');
         expect(pill.textContent).toContain('Completed');
         expect(screen.getByTestId('implement-plan-card-view-btn')).toBeTruthy();
@@ -288,10 +287,10 @@ describe('ImplementPlanCard', () => {
             />,
         );
 
-        // Banner shows latest run (running) and total count
+        // Status chip shows latest run (running); title tooltip has the run count
         const pill = screen.getByTestId('implement-plan-card-status-pill');
         expect(pill.textContent).toContain('Running');
-        expect(screen.getByTestId('implement-plan-card-banner').textContent).toContain('2 runs total');
+        expect(pill.getAttribute('title')).toContain('2 runs total');
 
         // Expandable button exists
         const expandBtn = screen.getByTestId('implement-plan-card-expand-btn');
@@ -786,9 +785,10 @@ describe('ImplementPlanCard', () => {
             />,
         );
 
-        const targetLabel = screen.getByTestId('implement-plan-card-target-label');
-        expect(targetLabel.textContent).toContain('my-app');
-        expect(targetLabel.textContent).toContain('dev-vm');
+        // Target info is in the pill's title tooltip in the compact layout
+        const pill = screen.getByTestId('implement-plan-card-status-pill');
+        expect(pill.getAttribute('title')).toContain('my-app');
+        expect(pill.getAttribute('title')).toContain('dev-vm');
 
         fireEvent.click(screen.getByTestId('implement-plan-card-view-btn'));
         expect(onViewRun).toHaveBeenCalledWith('queue_impl-r', 'ws-remote');
