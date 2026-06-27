@@ -44,7 +44,7 @@ export interface MarkdownViewProps {
 interface ExcalidrawPortal {
     mountEl: HTMLElement;
     workspaceId: string;
-    diagramPath: string;
+    canvasId: string;
     key: string;
 }
 
@@ -165,10 +165,13 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
         for (let i = 0; i < placeholders.length; i++) {
             const el = placeholders[i];
             const wsId = el.dataset.wsId;
-            const diagramPath = el.dataset.diagramPath;
-            if (!wsId || !diagramPath) continue;
+            // Diagrams are canvases now — render from the canvas store via data-canvas-id.
+            // Legacy excalidraw:// embeds (data-diagram-path only) point at the removed
+            // /api/diagrams endpoint, so they are intentionally not mounted.
+            const canvasId = el.dataset.canvasId;
+            if (!wsId || !canvasId) continue;
 
-            const embedKey = `excalidraw-${wsId}-${diagramPath}-${i}`;
+            const embedKey = `excalidraw-${wsId}-${canvasId}-${i}`;
 
             // Re-render guard
             const existingMount = el.querySelector('.excalidraw-preview-mount');
@@ -176,7 +179,7 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
                 portals.push({
                     mountEl: existingMount as HTMLElement,
                     workspaceId: wsId,
-                    diagramPath,
+                    canvasId,
                     key: embedKey,
                 });
                 continue;
@@ -186,7 +189,7 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
             mountEl.className = 'excalidraw-preview-mount';
             el.appendChild(mountEl);
 
-            portals.push({ mountEl, workspaceId: wsId, diagramPath, key: embedKey });
+            portals.push({ mountEl, workspaceId: wsId, canvasId, key: embedKey });
         }
 
         setExcalidrawPortals(portals);
@@ -221,12 +224,12 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
                     mountEl
                 )
             )}
-            {excalidrawPortals.map(({ mountEl, workspaceId, diagramPath, key }) =>
+            {excalidrawPortals.map(({ mountEl, workspaceId, canvasId, key }) =>
                 createPortal(
                     <ExcalidrawPreview
                         key={key}
                         workspaceId={workspaceId}
-                        diagramPath={diagramPath}
+                        canvasId={canvasId}
                     />,
                     mountEl
                 )

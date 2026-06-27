@@ -54,6 +54,22 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useMarkdownPreview'
     useMarkdownPreview: ({ content }: { content: string }) => ({ html: content }),
 }));
 
+// @excalidraw/excalidraw can't load in Node; the global setup stubs it to
+// render nothing. Override locally so the excalidraw render branch is
+// observable: surface the element count handed to the viewer so the test can
+// assert the canvas scene actually reached <Excalidraw>. The companion
+// normalizers are identity passthroughs, mirroring the global setup mock.
+vi.mock('@excalidraw/excalidraw', () => ({
+    Excalidraw: ({ initialData }: { initialData: { elements?: unknown[] } }) => (
+        <div
+            data-testid="mock-excalidraw"
+            data-element-count={Array.isArray(initialData?.elements) ? initialData.elements.length : 0}
+        />
+    ),
+    restoreElements: (elements: unknown) => (Array.isArray(elements) ? elements : []),
+    convertToExcalidrawElements: (elements: unknown) => (Array.isArray(elements) ? elements : []),
+}));
+
 import { CanvasPanel } from '../../../../../src/server/spa/client/react/features/canvas/CanvasPanel';
 
 function makeCanvas(overrides: Record<string, unknown> = {}) {
@@ -449,6 +465,42 @@ describe('CanvasPanel', () => {
         expect(screen.getByTestId('mock-extension-view')).toBeTruthy();
         // Extension canvases do not show the markdown preview pane
         expect(screen.queryByTestId('canvas-panel-preview')).toBeNull();
+    });
+
+    it('renders excalidraw canvases through the view-only Excalidraw viewer with a diagram badge', async () => {
+        const scene = JSON.stringify({
+            type: 'excalidraw',
+            elements: [
+                { id: 'r1', type: 'rectangle', x: 10, y: 10, width: 100, height: 60 },
+                { id: 't1', type: 'text', x: 20, y: 30, width: 80, height: 20, text: 'Hi' },
+            ],
+            appState: {},
+        });
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'excalidraw', content: scene }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-excalidraw-badge')).toBeTruthy());
+        // The Excalidraw viewer mounts and receives the parsed scene elements.
+        const viewer = screen.getByTestId('canvas-panel-excalidraw');
+        expect(viewer).toBeTruthy();
+        expect(screen.getByTestId('mock-excalidraw').getAttribute('data-element-count')).toBe('2');
+        // Diagrams never go through the markdown preview pane.
+        expect(screen.queryByTestId('canvas-panel-preview')).toBeNull();
+    });
+
+    it('exposes no edit affordance for excalidraw canvases (view-only)', async () => {
+        const scene = JSON.stringify({ type: 'excalidraw', elements: [], appState: {} });
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'excalidraw', content: scene }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-excalidraw-badge')).toBeTruthy());
+
+        // No Preview/Edit toggle and no editor surfaces for a view-only diagram.
+        expect(screen.queryByTestId('canvas-panel-mode-edit')).toBeNull();
+        expect(screen.queryByTestId('canvas-panel-mode-preview')).toBeNull();
+        expect(screen.queryByTestId('canvas-panel-editor')).toBeNull();
+        expect(screen.queryByTestId('mock-monaco')).toBeNull();
     });
 
     it('saves markdown canvases to Notes and hides the option for code canvases', async () => {

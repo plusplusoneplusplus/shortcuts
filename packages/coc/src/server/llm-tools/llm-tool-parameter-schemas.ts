@@ -142,21 +142,6 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: ['prompt', 'delay'],
     },
-    create_or_update_excalidraw: {
-        type: 'object',
-        properties: {
-            filename: { type: 'string' },
-            content: { type: 'object' },
-        },
-        required: ['filename', 'content'],
-    },
-    read_excalidraw: {
-        type: 'object',
-        properties: {
-            filename: { type: 'string' },
-        },
-        required: ['filename'],
-    },
     write_canvas: {
         type: 'object',
         properties: {

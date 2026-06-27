@@ -15,7 +15,7 @@ import { LoopIcon } from '../icons/LoopIcon';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
-import { isExcalidrawEnabled } from '../../../utils/config';
+import { isExcalidrawEnabled, isCanvasEnabled } from '../../../utils/config';
 import { SHOW_EXCALIDRAW_DIAGRAMS } from '../../../featureFlags';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, copyImageToClipboard, splitMarkdownSections } from '../../../utils/format';
@@ -79,6 +79,47 @@ export function parseExcalidrawLink(url: string): { workspaceId: string; diagram
 }
 
 /**
+ * Parse a `canvas://<canvasId>` reference marker.
+ *
+ * Excalidraw diagrams are canvases, so `write_canvas` returns this marker for
+ * an excalidraw canvas; placing it in a chat reply renders the diagram inline.
+ * Returns null if the marker doesn't match a valid canvas id.
+ */
+export function parseCanvasEmbedLink(url: string): { canvasId: string } | null {
+    const match = url.match(/^canvas:\/\/([a-z0-9][a-z0-9-]{0,127})$/i);
+    if (!match) return null;
+    return { canvasId: match[1] };
+}
+
+/**
+ * Post-processing: convert bare `canvas://<id>` text in HTML (not already
+ * inside a tag attribute) into excalidraw embed divs. The workspace id is
+ * injected separately by `injectCanvasEmbedWorkspace` once it is known.
+ */
+function rewriteBareCanvasEmbedLinks(html: string): string {
+    return html.replace(
+        /(?<!="|=')canvas:\/\/([a-z0-9][a-z0-9-]{0,127})/gi,
+        (match) => {
+            const parsed = parseCanvasEmbedLink(match);
+            if (!parsed) return match;
+            return `<div class="md-excalidraw-embed" data-canvas-id="${escapeAttr(parsed.canvasId)}"></div>`;
+        },
+    );
+}
+
+/**
+ * Stamp the workspace id onto canvas embed placeholders. The `link`/bare-link
+ * rewriters emit `data-canvas-id` only (they don't know the workspace), so this
+ * pass adds `data-ws-id` from the render context once it is available.
+ */
+function injectCanvasEmbedWorkspace(html: string, wsId: string): string {
+    return html.replace(
+        /<div class="md-excalidraw-embed" data-canvas-id="([^"]*)"><\/div>/g,
+        (_match, canvasId) => `<div class="md-excalidraw-embed" data-canvas-id="${canvasId}" data-ws-id="${escapeAttr(wsId)}"></div>`,
+    );
+}
+
+/**
  * Post-processing: convert bare `excalidraw://...` text in HTML (not already
  * inside a tag attribute or an existing placeholder) into embed divs.
  */
@@ -132,6 +173,13 @@ function createChatMarked(htmlEmbedEnabled: boolean, excalidrawEmbedEnabled: boo
                     const parsed = parseExcalidrawLink(href);
                     if (parsed) {
                         return `<div class="md-excalidraw-embed" data-ws-id="${escapeAttr(parsed.workspaceId)}" data-diagram-path="${escapeAttr(parsed.diagramPath)}"></div>`;
+                    }
+                }
+                // Canvas reference markers → inline excalidraw embed (ws id stamped later)
+                if (excalidrawEmbedEnabled && href && /^canvas:\/\//i.test(href)) {
+                    const parsed = parseCanvasEmbedLink(href);
+                    if (parsed) {
+                        return `<div class="md-excalidraw-embed" data-canvas-id="${escapeAttr(parsed.canvasId)}"></div>`;
                     }
                 }
                 const isExternal = /^https?:\/\/|^mailto:/i.test(href ?? '');
@@ -218,9 +266,15 @@ export function chatMarkdownToHtml(content: string, wsId?: string, options?: { h
     if (wsId) {
         html = rewriteLocalImagePaths(html, wsId);
     }
-    // Post-process: convert bare excalidraw:// URLs to embed divs
+    // Post-process: convert bare excalidraw:// / canvas:// URLs to embed divs,
+    // then stamp the workspace id onto canvas embeds so the viewer can read the
+    // scene from the canvas store.
     if (excalidrawEnabled) {
         html = rewriteBareExcalidrawLinks(html);
+        html = rewriteBareCanvasEmbedLinks(html);
+        if (wsId) {
+            html = injectCanvasEmbedWorkspace(html, wsId);
+        }
     }
     return html;
 }
@@ -1220,7 +1274,9 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
     const htmlEmbedEnabled = useHtmlEmbedPreference(wsId) && !turn.streaming;
-    const excalidrawEmbedEnabled = SHOW_EXCALIDRAW_DIAGRAMS && isExcalidrawEnabled() && !turn.streaming;
+    // Excalidraw diagrams are now canvases, so enable inline embeds whenever the
+    // canvas feature is on (the legacy excalidraw flag still enables it too).
+    const excalidrawEmbedEnabled = SHOW_EXCALIDRAW_DIAGRAMS && (isExcalidrawEnabled() || isCanvasEnabled()) && !turn.streaming;
     const assistantRender = useMemo(
         () => isUser ? null : buildAssistantRender(turn, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled }),
         // turn.timeline + turn.content drive the markdown HTML; embed flags toggle inline-HTML/excalidraw rendering.

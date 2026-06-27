@@ -6,7 +6,7 @@ import React from 'react';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
-import { chatMarkdownToHtml, toContentHtml, normalizeMarkdownLinkUrls, parseExcalidrawLink } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
+import { chatMarkdownToHtml, toContentHtml, normalizeMarkdownLinkUrls, parseExcalidrawLink, parseCanvasEmbedLink } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 
 afterEach(() => {
     cleanup();
@@ -655,5 +655,90 @@ describe('chatMarkdownToHtml — excalidraw embeds', () => {
         expect(matches).toHaveLength(2);
         expect(html).toContain('data-diagram-path="a.excalidraw"');
         expect(html).toContain('data-diagram-path="b.excalidraw"');
+    });
+});
+
+// =====================================================================
+// parseCanvasEmbedLink
+// =====================================================================
+
+describe('parseCanvasEmbedLink', () => {
+    it('parses a valid canvas marker', () => {
+        expect(parseCanvasEmbedLink('canvas://arch-1a2b3c')).toEqual({ canvasId: 'arch-1a2b3c' });
+    });
+
+    it('is case-insensitive for the protocol', () => {
+        expect(parseCanvasEmbedLink('CANVAS://diagram-42')).toEqual({ canvasId: 'diagram-42' });
+    });
+
+    it('returns null for other URL schemes', () => {
+        expect(parseCanvasEmbedLink('https://example.com/foo')).toBeNull();
+        expect(parseCanvasEmbedLink('excalidraw://ws-1/a.excalidraw')).toBeNull();
+    });
+
+    it('returns null for malformed markers', () => {
+        expect(parseCanvasEmbedLink('canvas://')).toBeNull();
+        expect(parseCanvasEmbedLink('canvas://has/slash')).toBeNull();
+        expect(parseCanvasEmbedLink('canvas://-bad-start')).toBeNull();
+        expect(parseCanvasEmbedLink('canvas://has space')).toBeNull();
+    });
+});
+
+// =====================================================================
+// Canvas (excalidraw) embed markers in chatMarkdownToHtml
+// =====================================================================
+
+describe('chatMarkdownToHtml — canvas embeds', () => {
+    it('converts a markdown link with canvas:// to a placeholder div stamped with the workspace', () => {
+        const html = chatMarkdownToHtml(
+            'Here is the diagram: [Architecture](canvas://arch-1)',
+            'ws-1',
+            { excalidrawEmbedEnabled: true },
+        );
+        expect(html).toContain('class="md-excalidraw-embed"');
+        expect(html).toContain('data-canvas-id="arch-1"');
+        expect(html).toContain('data-ws-id="ws-1"');
+    });
+
+    it('converts a bare canvas:// marker in text to a placeholder div', () => {
+        const html = chatMarkdownToHtml(
+            'I created the diagram: canvas://flow-2',
+            'ws-9',
+            { excalidrawEmbedEnabled: true },
+        );
+        expect(html).toContain('class="md-excalidraw-embed"');
+        expect(html).toContain('data-canvas-id="flow-2"');
+        expect(html).toContain('data-ws-id="ws-9"');
+    });
+
+    it('does not create a placeholder when the embed feature is disabled', () => {
+        const html = chatMarkdownToHtml(
+            'See canvas://arch-1 here',
+            'ws-1',
+            { excalidrawEmbedEnabled: false },
+        );
+        expect(html).not.toContain('md-excalidraw-embed');
+        expect(html).toContain('canvas://arch-1');
+    });
+
+    it('round-trips the write_canvas embed marker into an inline placeholder', () => {
+        // Mirrors what write_canvas returns for an excalidraw canvas: canvas://<id>.
+        const canvasId = 'sequence-diagram-7';
+        const embed = `canvas://${canvasId}`;
+        const html = chatMarkdownToHtml(`Done — ${embed}`, 'ws-1', { excalidrawEmbedEnabled: true });
+        expect(html).toContain(`data-canvas-id="${canvasId}"`);
+        expect(html).toContain('data-ws-id="ws-1"');
+    });
+
+    it('handles multiple canvas markers in the same message', () => {
+        const html = chatMarkdownToHtml(
+            'First: [A](canvas://a-1) and second: [B](canvas://b-2)',
+            'ws-1',
+            { excalidrawEmbedEnabled: true },
+        );
+        const matches = html.match(/md-excalidraw-embed/g);
+        expect(matches).toHaveLength(2);
+        expect(html).toContain('data-canvas-id="a-1"');
+        expect(html).toContain('data-canvas-id="b-2"');
     });
 });

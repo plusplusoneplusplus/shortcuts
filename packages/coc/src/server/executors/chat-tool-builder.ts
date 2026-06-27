@@ -13,7 +13,6 @@ import {
     buildCanvasToolsAddon,
     buildCreateConversationAddon,
     buildCreateWorkItemAddon,
-    buildExcalidrawToolsAddon,
     buildFollowUpSuggestionsAddon,
     buildLoopToolsAddon,
     buildScheduleWakeupAddon,
@@ -50,7 +49,6 @@ export interface ChatToolBundleOptions {
     includeWorkItemTools?: boolean;
     includeTavilyWebSearch?: boolean;
     includeScheduleWakeup?: boolean;
-    includeExcalidrawTools?: boolean;
     includeCanvasTools?: boolean;
     /** Overrides the `canvas.enabled` config flag (used by tests). */
     canvasToolsEnabled?: boolean;
@@ -131,10 +129,6 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
 
     if (options.loopTools) {
         addons.push(buildLoopToolsAddon(options.loopTools));
-    }
-
-    if (options.includeExcalidrawTools !== false) {
-        addons.push(buildExcalidrawToolsAddon(options.dataDir, options.workspaceId));
     }
 
     if (options.includeCanvasTools !== false) {

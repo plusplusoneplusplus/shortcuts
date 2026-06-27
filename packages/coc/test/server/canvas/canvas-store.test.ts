@@ -406,6 +406,72 @@ describe('extension canvases', () => {
     });
 });
 
+describe('excalidraw canvases inherit canvas features (AC-06)', () => {
+    let dataDir: string;
+    let store: CanvasStore;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-canvas-excalidraw-'));
+        store = new CanvasStore(dataDir);
+    });
+
+    afterEach(() => {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    const scene = (boxId: string): string => JSON.stringify({
+        type: 'excalidraw',
+        elements: [{ id: boxId, type: 'rectangle', x: 0, y: 0, width: 100, height: 40 }],
+        appState: { viewBackgroundColor: '#ffffff' },
+    });
+
+    it('writes a versions/<rev>.json snapshot on a second write', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Arch', content: scene('box1'), type: 'excalidraw' });
+        const result = store.updateCanvas(WS, c.id, { content: scene('box2'), editor: 'ai', expectedRevision: 1 });
+        expect(result.ok).toBe(true);
+
+        // The second write must drop a per-revision snapshot on disk, not just bump revision.
+        const versionsDir = path.join(dataDir, 'repos', WS, 'canvases', c.id, 'versions');
+        expect(fs.existsSync(path.join(versionsDir, '1.json'))).toBe(true);
+        expect(fs.existsSync(path.join(versionsDir, '2.json'))).toBe(true);
+
+        const v2 = JSON.parse(fs.readFileSync(path.join(versionsDir, '2.json'), 'utf-8'));
+        expect(JSON.parse(v2.content).elements[0].id).toBe('box2');
+        expect(store.listVersions(WS, c.id).map(v => v.revision)).toEqual([2, 1]);
+        expect(store.getVersion(WS, c.id, 1)?.content).toBe(scene('box1'));
+    });
+
+    it('returns a revision conflict on a stale expectedRevision', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Arch', content: scene('box1'), type: 'excalidraw' });
+        store.updateCanvas(WS, c.id, { content: scene('box2'), editor: 'ai' }); // -> revision 2
+
+        const stale = store.updateCanvas(WS, c.id, { content: scene('box3'), editor: 'ai', expectedRevision: 1 });
+        expect(stale).toEqual({ ok: false, reason: 'revision-conflict', currentRevision: 2 });
+        // Content unchanged by the rejected write.
+        expect(JSON.parse(store.getCanvas(WS, c.id)!.content).elements[0].id).toBe('box2');
+    });
+
+    it('supports anchored comments on an excalidraw canvas', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Arch', content: scene('box1'), type: 'excalidraw' });
+        const comment = store.addComment(WS, c.id, { anchorText: 'box1', body: 'rename this box' });
+
+        expect(comment).not.toBeNull();
+        expect(comment!.status).toBe('open');
+        expect(store.listComments(WS, c.id)).toHaveLength(1);
+        expect(store.setCommentStatus(WS, c.id, comment!.id, 'resolved')?.status).toBe('resolved');
+    });
+
+    it('lists an excalidraw canvas filtered by processId', () => {
+        const diagram = store.createCanvas({ workspaceId: WS, title: 'Arch', content: scene('box1'), type: 'excalidraw', processId: 'p-diagram' });
+        store.createCanvas({ workspaceId: WS, title: 'Notes', content: '# notes', processId: 'p-other' });
+
+        const list = store.listCanvases(WS, { processId: 'p-diagram' });
+        expect(list).toHaveLength(1);
+        expect(list[0].id).toBe(diagram.id);
+        expect(list[0].type).toBe('excalidraw');
+    });
+});
+
 describe('canvas id helpers', () => {
     it('generateCanvasId produces valid filesystem-safe ids', () => {
         expect(isValidCanvasId(generateCanvasId('Hello World'))).toBe(true);

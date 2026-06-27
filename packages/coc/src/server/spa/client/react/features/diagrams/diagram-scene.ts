@@ -44,6 +44,25 @@ export function unwrapDiagramResponse(data: any): ExcalidrawScene {
 }
 
 /**
+ * Parse a canvas-store `content` string (an Excalidraw scene serialized as JSON)
+ * into a renderable `ExcalidrawScene`.
+ *
+ * `excalidraw` canvases persist the server-normalized scene as their UTF-8
+ * artifact content, so the viewer reads it straight from the canvas store
+ * rather than the (removed) `/api/diagrams` endpoint. Malformed or empty
+ * content degrades to an empty scene so the viewer renders blank instead of
+ * crashing.
+ */
+export function parseSceneContent(content: string | null | undefined): ExcalidrawScene {
+    if (!content || !content.trim()) return { elements: [], appState: {} };
+    try {
+        return unwrapDiagramResponse(JSON.parse(content));
+    } catch {
+        return { elements: [], appState: {} };
+    }
+}
+
+/**
  * Normalise raw scene elements so Excalidraw can render them.
  *
  * LLM-generated diagrams come in a "skeleton" shape — they carry the visible

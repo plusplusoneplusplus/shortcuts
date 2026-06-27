@@ -248,4 +248,63 @@ describe('canvas routes', () => {
         const res = await request(handler, 'PUT', `/api/workspaces/${WS}/canvases/${c.id}`, {});
         expect(res.status).toBe(400);
     });
+
+    describe('excalidraw canvases inherit canvas features (AC-06)', () => {
+        const scene = (boxId: string): string => JSON.stringify({
+            type: 'excalidraw',
+            elements: [{ id: boxId, type: 'rectangle', x: 0, y: 0, width: 100, height: 40 }],
+            appState: {},
+        });
+
+        it('lists an excalidraw canvas filtered by processId', async () => {
+            const diagram = store.createCanvas({ workspaceId: WS, title: 'Arch', content: scene('box1'), type: 'excalidraw', processId: 'p-diagram' });
+            store.createCanvas({ workspaceId: WS, title: 'Notes', content: '# notes', processId: 'p-other' });
+
+            const res = await request(handler, 'GET', `/api/workspaces/${WS}/canvases?processId=p-diagram`);
+            expect(res.status).toBe(200);
+            expect(res.body.canvases).toHaveLength(1);
+            expect(res.body.canvases[0].id).toBe(diagram.id);
+            expect(res.body.canvases[0].type).toBe('excalidraw');
+        });
+
+        it('versions and revision-checks an excalidraw canvas like any other', async () => {
+            const c = store.createCanvas({ workspaceId: WS, title: 'Arch', content: scene('box1'), type: 'excalidraw' });
+
+            const second = await request(handler, 'PUT', `/api/workspaces/${WS}/canvases/${c.id}`, {
+                content: scene('box2'),
+                expectedRevision: 1,
+            });
+            expect(second.status).toBe(200);
+            expect(second.body.canvas.revision).toBe(2);
+            expect(second.body.canvas.type).toBe('excalidraw');
+
+            const versions = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/${c.id}/versions`);
+            expect(versions.body.versions.map((v: any) => v.revision)).toEqual([2, 1]);
+
+            const v1 = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/${c.id}/versions/1`);
+            expect(JSON.parse(v1.body.version.content).elements[0].id).toBe('box1');
+
+            const stale = await request(handler, 'PUT', `/api/workspaces/${WS}/canvases/${c.id}`, {
+                content: scene('box3'),
+                expectedRevision: 1,
+            });
+            expect(stale.status).toBe(409);
+            expect(stale.body.error).toBe('revision-conflict');
+            expect(stale.body.currentRevision).toBe(2);
+        });
+
+        it('round-trips comments on an excalidraw canvas', async () => {
+            const c = store.createCanvas({ workspaceId: WS, title: 'Arch', content: scene('box1'), type: 'excalidraw' });
+
+            const created = await request(handler, 'POST', `/api/workspaces/${WS}/canvases/${c.id}/comments`, {
+                anchorText: 'box1',
+                body: 'tweak this box',
+            });
+            expect(created.status).toBe(201);
+
+            const listed = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/${c.id}/comments`);
+            expect(listed.body.comments).toHaveLength(1);
+            expect(listed.body.comments[0].body).toBe('tweak this box');
+        });
+    });
 });

@@ -668,16 +668,16 @@ describe('forEach.enabled live enablement end-to-end', () => {
 });
 
 describe('AC-08: live-classified route registration', () => {
-    it('diagram routes are always registered (not gated by excalidraw.enabled at startup)', async () => {
+    it('diagram routes are removed after the canvas-consolidation hard cutover', async () => {
         const routesSrc = await import('fs').then(fs =>
             fs.readFileSync(
                 require('path').resolve(__dirname, '../../../src/server/routes/index.ts'),
                 'utf-8',
             ),
         );
-        // registerDiagramRoutes must be called unconditionally
-        expect(routesSrc).toContain('registerDiagramRoutes(routes');
-        expect(routesSrc).not.toMatch(/if\s*\(.*excalidraw.*\)\s*\{?\s*registerDiagramRoutes/);
+        // The /api/diagrams routes were deleted; diagrams are now canvases.
+        expect(routesSrc).not.toContain('registerDiagramRoutes');
+        expect(routesSrc).not.toContain('diagrams-handler');
     });
 
     it('focused-diff classification routes are always registered (not gated by features.focusedDiff at startup)', async () => {
@@ -691,14 +691,14 @@ describe('AC-08: live-classified route registration', () => {
         expect(routesSrc).not.toMatch(/if\s*\(.*focusedDiff.*\)\s*\{?\s*registerGenericClassificationRoutes/);
     });
 
-    it('excalidraw LLM tool visibility uses live getter (not startup boolean)', async () => {
+    it('canvas LLM tool visibility uses live getter (not startup boolean)', async () => {
         const routesSrc = await import('fs').then(fs =>
             fs.readFileSync(
                 require('path').resolve(__dirname, '../../../src/server/routes/api-workspace-routes.ts'),
                 'utf-8',
             ),
         );
-        // Workspace routes should call getLiveFeatureFlags, not read a static excalidrawEnabled
+        // Workspace routes should call getLiveFeatureFlags, not read a static flag off ctx.
         expect(routesSrc).toContain('getLiveFeatureFlags');
         expect(routesSrc).not.toMatch(/ctx\.excalidrawEnabled/);
     });

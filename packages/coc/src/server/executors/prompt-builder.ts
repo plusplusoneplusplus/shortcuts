@@ -33,7 +33,6 @@ import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn, type CreateUpdateWorkItemToolDeps } from '../llm-tools/create-update-work-item-tool';
 import { createCreateConversationTool, type EnqueueChatFn } from '../llm-tools/create-conversation-tool';
-import { createExcalidrawTools } from '../llm-tools/excalidraw-tools';
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { createGetWorkItemTool } from '../llm-tools/get-work-item-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
@@ -703,23 +702,6 @@ export function buildLoopToolsAddon(
     const { tool: listTool } = createListLoopsTool(deps);
 
     return { tools: [createTool, cancelTool, listTool], suffix: '' };
-}
-
-// ============================================================================
-// Excalidraw Tools
-// ============================================================================
-
-export function buildExcalidrawToolsAddon(
-    dataDir: string | undefined,
-    workspaceId: string | undefined,
-): { tools: Tool<any>[]; suffix: string } {
-    if (!dataDir || !workspaceId) {
-        return { tools: [], suffix: '' };
-    }
-
-    const { createOrUpdate, read } = createExcalidrawTools({ dataDir, workspaceId });
-
-    return { tools: [createOrUpdate, read], suffix: '' };
 }
 
 // ============================================================================

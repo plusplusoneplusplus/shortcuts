@@ -221,30 +221,23 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('includes scheduleWakeup when loopsEnabled is true', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        const names = getEffectiveLlmToolRegistry({ loopsEnabled: true, excalidrawEnabled: true, canvasEnabled: true }).map(t => t.name);
+        const names = getEffectiveLlmToolRegistry({ loopsEnabled: true, canvasEnabled: true }).map(t => t.name);
         expect(names).toContain('scheduleWakeup');
         // Should equal the full registry length when all flags on
-        expect(getEffectiveLlmToolRegistry({ loopsEnabled: true, excalidrawEnabled: true, canvasEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
+        expect(getEffectiveLlmToolRegistry({ loopsEnabled: true, canvasEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
     });
 
-    it('filters out excalidraw tools when excalidrawEnabled is false', async () => {
+    it('no longer advertises the removed excalidraw tools regardless of flags', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        const names = getEffectiveLlmToolRegistry({ excalidrawEnabled: false }).map(t => t.name);
+        const names = getEffectiveLlmToolRegistry({ loopsEnabled: true, canvasEnabled: true }).map(t => t.name);
         expect(names).not.toContain('create_or_update_excalidraw');
         expect(names).not.toContain('read_excalidraw');
     });
 
-    it('includes excalidraw tools when excalidrawEnabled is true', async () => {
-        const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        const names = getEffectiveLlmToolRegistry({ excalidrawEnabled: true }).map(t => t.name);
-        expect(names).toContain('create_or_update_excalidraw');
-        expect(names).toContain('read_excalidraw');
-    });
-
     it('returns registry minus feature-gated entries when all off', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        // scheduleWakeup + 2 excalidraw tools + 3 canvas tools = 6 filtered
-        expect(getEffectiveLlmToolRegistry({ loopsEnabled: false, excalidrawEnabled: false, canvasEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 6);
+        // scheduleWakeup + 3 canvas tools = 4 filtered
+        expect(getEffectiveLlmToolRegistry({ loopsEnabled: false, canvasEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 4);
     });
 
     it('filters out canvas tools when canvasEnabled is false', async () => {
