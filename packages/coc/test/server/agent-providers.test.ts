@@ -184,17 +184,18 @@ describe('Claude provider when enabled but SDK unavailable', () => {
 // ── Response shape ────────────────────────────────────────────────────────────
 
 describe('response shape', () => {
-    it('always returns three providers in order: copilot, codex, claude', async () => {
+    it('always returns four providers in order: copilot, codex, claude, opencode', async () => {
         const svc = makeService(false);
         const { providers } = await buildAgentProvidersResponse({
             runtimeConfigService: svc,
             getCodexAvailability: codexUnavailable,
             getClaudeAvailability: claudeUnavailable,
         });
-        expect(providers).toHaveLength(3);
+        expect(providers).toHaveLength(4);
         expect(providers[0].id).toBe('copilot');
         expect(providers[1].id).toBe('codex');
         expect(providers[2].id).toBe('claude');
+        expect(providers[3].id).toBe('opencode');
     });
 
     it('codex is visible in the providers list even when disabled', async () => {

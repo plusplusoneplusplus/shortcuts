@@ -166,6 +166,14 @@ interface OpenCodeMessageEnvelope {
 interface OpenCodeEvent {
     type: string;
     properties?: Record<string, unknown>;
+    /** Session ID associated with this event, if any */
+    sessionID?: string;
+    /** Message ID associated with this event, if any */
+    messageID?: string;
+    /** Content part for streaming text events */
+    part?: OpenCodeResponsePart;
+    /** Incremental text delta for chunk events */
+    content?: string;
 }
 
 interface OpenCodeAgent {
@@ -370,12 +378,19 @@ export class OpenCodeSDKService implements ISDKService {
         const client = await this.ensureClient();
         const abortController = new AbortController();
         let sessionId: string | undefined;
+        let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
 
         let signalCleanup: (() => void) | undefined;
         if (options.signal) {
             const onAbort = () => abortController.abort();
             options.signal.addEventListener('abort', onAbort);
             signalCleanup = () => options.signal!.removeEventListener('abort', onAbort);
+        }
+
+        if (options.timeoutMs && options.timeoutMs > 0) {
+            timeoutTimer = setTimeout(() => {
+                abortController.abort();
+            }, options.timeoutMs);
         }
 
         let mcpCleanup: () => void = () => {};
@@ -386,6 +401,13 @@ export class OpenCodeSDKService implements ISDKService {
             // Create or resume session
             if (options.sessionId) {
                 sessionId = options.sessionId;
+                if (options.strictSessionResume) {
+                    try {
+                        await client.session.get({ path: { id: sessionId } });
+                    } catch {
+                        return { success: false, error: `Session ${sessionId} not found and strictSessionResume is enabled`, sessionId };
+                    }
+                }
             } else {
                 const session = await client.session.create({ body: {} });
                 sessionId = session.data.id;
@@ -397,19 +419,44 @@ export class OpenCodeSDKService implements ISDKService {
             // Build MCP bridge for CoC LLM tools when tools are provided
             const mcpConfig = await this.buildMcpConfig(options);
             mcpCleanup = mcpConfig.cleanup;
+            const toolNames = mcpConfig.toolNames;
+
+            // Build prompt text with working directory context and attachments
+            let promptText = options.prompt;
+            if (options.workingDirectory) {
+                promptText = `Working directory: ${options.workingDirectory}\n\n${promptText}`;
+            }
+            if (options.attachments && options.attachments.length > 0) {
+                const attachmentRefs = options.attachments
+                    .map(a => 'filePath' in a ? a.filePath : ('directory' in a ? a.directory : ''))
+                    .filter(Boolean);
+                if (attachmentRefs.length > 0) {
+                    promptText += `\n\nAttached files/directories:\n${attachmentRefs.map(r => `- ${r}`).join('\n')}`;
+                }
+            }
 
             // Build the prompt body
             const modelRef = parseOpenCodeModelRef(options.model);
             const systemMsg = resolveOpenCodeSystemMessage(options.systemMessage);
             const promptBody: OpenCodePromptBody = {
-                parts: [{ type: 'text', text: options.prompt }],
+                parts: [{ type: 'text', text: promptText }],
                 ...(modelRef ? { model: modelRef } : {}),
                 ...(systemMsg ? { system: systemMsg } : {}),
                 ...(options.mode ? { agent: mapAgentMode(options.mode) } : {}),
+                ...(toolNames.length > 0 ? { tools: toolNames } : {}),
             };
 
             if (abortController.signal.aborted) {
                 return { success: false, error: 'Request aborted', sessionId };
+            }
+
+            // Subscribe to SSE events for real-time streaming when callbacks are provided
+            const useStreaming = Boolean(options.onStreamingChunk || options.onToolEvent);
+            let eventStreamPromise: Promise<void> | undefined;
+            if (useStreaming) {
+                eventStreamPromise = this.consumeEventStream(
+                    client, sessionId, abortController.signal, options, chunks,
+                );
             }
 
             const result = await client.session.prompt({
@@ -417,14 +464,21 @@ export class OpenCodeSDKService implements ISDKService {
                 body: promptBody,
             });
 
-            // Extract response text and tool events from parts
-            const responseParts = result.data?.parts ?? [];
-            for (const part of responseParts) {
-                if (part.type === 'text' && part.text) {
-                    chunks.push(part.text);
-                    options.onStreamingChunk?.(part.text);
-                } else if (part.type === 'tool-invocation' || part.type === 'tool_use') {
-                    this.emitToolEvent(part, options);
+            // If streaming, wait for the event stream to finish processing
+            if (eventStreamPromise) {
+                await eventStreamPromise;
+            }
+
+            // If SSE streaming produced no chunks, fall back to response parts
+            if (chunks.length === 0) {
+                const responseParts = result.data?.parts ?? [];
+                for (const part of responseParts) {
+                    if (part.type === 'text' && part.text) {
+                        chunks.push(part.text);
+                        options.onStreamingChunk?.(part.text);
+                    } else if (part.type === 'tool-invocation' || part.type === 'tool_use') {
+                        this.emitToolEvent(part, options);
+                    }
                 }
             }
 
@@ -432,25 +486,33 @@ export class OpenCodeSDKService implements ISDKService {
             options.onStreamingChunk?.('');
 
             const response = chunks.join('');
+            const effectiveModel = resolveEffectiveModel(options.model, result.data?.info);
             return {
                 success: true,
                 response,
                 sessionId,
-                effectiveModel: options.model,
+                effectiveModel,
                 ...(tokenUsage ? { tokenUsage } : {}),
             };
         } catch (err) {
+            const isAbort = err instanceof Error && (err.name === 'AbortError' || abortController.signal.aborted);
+            if (isAbort) {
+                return { success: false, error: 'Request aborted', sessionId };
+            }
             getSDKLogger().error(
                 {
                     provider: OPENCODE_PROVIDER,
                     error: err instanceof Error ? err.message : String(err),
                     sessionId,
+                    workingDirectory: options.workingDirectory,
+                    model: options.model,
                 },
                 'OpenCode SDK sendMessage threw',
             );
             const message = err instanceof Error ? err.message : String(err);
-            return { success: false, error: message, sessionId };
+            return { success: false, error: `OpenCode SDK error: ${message}`, sessionId };
         } finally {
+            if (timeoutTimer) clearTimeout(timeoutTimer);
             signalCleanup?.();
             mcpCleanup();
             if (sessionId) this.sessions.delete(sessionId);
@@ -497,28 +559,100 @@ export class OpenCodeSDKService implements ISDKService {
     }
 
     /**
+     * Subscribe to the OpenCode SSE event stream and correlate events for the
+     * given session. Emits incremental text chunks and normalized tool events
+     * to the caller's callbacks. Resolves when the stream signals completion
+     * for this session or when aborted.
+     */
+    private async consumeEventStream(
+        client: OpenCodeClient,
+        sessionId: string,
+        signal: AbortSignal,
+        options: SendMessageOptions,
+        chunks: string[],
+    ): Promise<void> {
+        try {
+            const { stream } = await client.event.subscribe();
+            for await (const event of stream) {
+                if (signal.aborted) break;
+
+                // Only process events for our session
+                const eventSessionId = event.sessionID ?? event.properties?.['sessionID'] as string | undefined;
+                if (eventSessionId && eventSessionId !== sessionId) continue;
+
+                switch (event.type) {
+                    case 'message.chunk':
+                    case 'content.delta':
+                    case 'text': {
+                        const delta = event.content
+                            ?? (event.properties?.['content'] as string | undefined)
+                            ?? event.part?.text;
+                        if (delta) {
+                            chunks.push(delta);
+                            options.onStreamingChunk?.(delta);
+                        }
+                        break;
+                    }
+                    case 'tool.start':
+                    case 'tool-invocation': {
+                        const part = event.part ?? event.properties as unknown as OpenCodeResponsePart | undefined;
+                        if (part) this.emitToolEvent({ ...part, state: part.state ?? 'running' }, options);
+                        break;
+                    }
+                    case 'tool.complete':
+                    case 'tool.done': {
+                        const part = event.part ?? event.properties as unknown as OpenCodeResponsePart | undefined;
+                        if (part) this.emitToolEvent({ ...part, state: 'completed' }, options);
+                        break;
+                    }
+                    case 'tool.error': {
+                        const part = event.part ?? event.properties as unknown as OpenCodeResponsePart | undefined;
+                        if (part) this.emitToolEvent({ ...part, state: 'error' }, options);
+                        break;
+                    }
+                    case 'message.complete':
+                    case 'done':
+                    case 'session.complete':
+                        return;
+                    default:
+                        break;
+                }
+            }
+        } catch (err) {
+            if (signal.aborted) return;
+            getSDKLogger().warn(
+                { provider: OPENCODE_PROVIDER, error: err instanceof Error ? err.message : String(err), sessionId },
+                'OpenCode SSE event stream error; falling back to response parts',
+            );
+        }
+    }
+
+    /**
      * Build MCP configuration for CoC LLM tools when custom tools are provided.
-     * Returns a cleanup function to tear down the bridge after the turn.
+     * Registers a per-turn CocToolRuntime on the loopback bridge server and
+     * returns the tool names plus a cleanup function.
+     *
+     * OpenCode manages its own MCP server connections, so the bridge is exposed
+     * as a CoC tools endpoint that the opencode agent can reach during the turn.
+     * The tool names are surfaced in the prompt body so the model knows they exist.
      */
     private async buildMcpConfig(
         options: SendMessageOptions,
-    ): Promise<{ cleanup: () => void }> {
+    ): Promise<{ toolNames: string[]; cleanup: () => void }> {
         const tools = options.tools;
-        if (!tools || tools.length === 0) return { cleanup: () => {} };
+        if (!tools || tools.length === 0) return { toolNames: [], cleanup: () => {} };
 
         const runtime = new CocToolRuntime(tools, { sessionId: options.sessionId });
         const registration = await cocToolBridgeServer.register(runtime);
-        // The MCP bridge config is built but not injected into the opencode prompt
-        // body directly — opencode manages its own MCP server connections. The
-        // bridge is available for tools that call back via the CoC LLM tools
-        // endpoint during the turn.
-        void buildCocLlmToolsMcpConfig({
+        const enabledTools = Array.from(new Set(tools.map(tool => tool.name).filter(Boolean)));
+        buildCocLlmToolsMcpConfig({
             endpoint: registration.endpoint,
             token: registration.token,
-            enabledTools: Array.from(new Set(tools.map(tool => tool.name).filter(Boolean))),
+            enabledTools,
         });
 
         return {
+            toolNames: enabledTools,
             cleanup: () => {
                 registration.unregister();
                 runtime.dispose();
@@ -711,6 +845,16 @@ function resolveOpenCodeSystemMessage(
         return systemMessage.content;
     }
     return undefined;
+}
+
+/**
+ * Resolve the model actually used by the server. If the response metadata
+ * contains a model field use that; otherwise fall back to the request model.
+ */
+function resolveEffectiveModel(requestedModel: string | undefined, info?: OpenCodeMessage): string | undefined {
+    const serverModel = info?.model ?? info?.['modelID'];
+    if (typeof serverModel === 'string' && serverModel) return serverModel;
+    return requestedModel;
 }
 
 /**

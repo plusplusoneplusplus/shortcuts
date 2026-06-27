@@ -104,7 +104,7 @@ function mapModelsResponse(data: unknown): ProviderModelInfo[] {
     return Array.isArray(models) ? models.map(mapModel) : [];
 }
 
-export type AgentProvider = 'copilot' | 'codex' | 'claude';
+export type AgentProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 
 export function useProviderModels(provider: AgentProvider): {
     models: ProviderModelInfo[];

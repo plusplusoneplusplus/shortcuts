@@ -161,7 +161,7 @@ export interface FollowUpInputAreaProps {
     /** Conversation-history token count (Copilot SDK only). */
     sessionConversationTokens?: number;
     /** Active AI provider — shown as a read-only badge in the toolbar when set to 'codex' or 'claude'. */
-    activeProvider?: 'copilot' | 'codex' | 'claude';
+    activeProvider?: 'copilot' | 'codex' | 'claude' | 'opencode';
     /**
      * Current per-turn reasoning-effort override (`'low' | 'medium' | 'high' | 'xhigh'`).
      * `null` means no override — the executor falls back to the persisted

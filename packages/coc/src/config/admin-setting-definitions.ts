@@ -611,7 +611,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     }),
     {
         key: 'dreams.provider',
-        value: { kind: 'enum', values: ['copilot', 'codex', 'claude'], nullable: true, message: 'dreams.provider must be "copilot", "codex", or "claude"' },
+        value: { kind: 'enum', values: ['copilot', 'codex', 'claude', 'opencode'], nullable: true, message: 'dreams.provider must be "copilot", "codex", "claude", or "opencode"' },
         default: undefined,
         runtime: 'live',
     },

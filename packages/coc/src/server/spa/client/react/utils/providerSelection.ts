@@ -2,7 +2,7 @@ import type { AgentProviderStatus } from '@plusplusoneplusplus/coc-client';
 import type { EffortTierKey, LocalEffortTiersMap } from '../hooks/useProviderEffortTiers';
 import { getConfiguredDefaultProvider, getDefaultProvider, isAutoAgentProviderRoutingEnabled } from './config';
 
-export type ConcreteChatProvider = 'copilot' | 'codex' | 'claude';
+export type ConcreteChatProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 export type ChatProvider = ConcreteChatProvider | 'auto';
 
 export interface AgentSelectorProvider {
@@ -37,7 +37,7 @@ export const AUTO_EFFORT_TIER_MAP: LocalEffortTiersMap = {
 };
 
 export function isConcreteChatProvider(value: unknown): value is ConcreteChatProvider {
-    return value === 'copilot' || value === 'codex' || value === 'claude';
+    return value === 'copilot' || value === 'codex' || value === 'claude' || value === 'opencode';
 }
 
 export function isChatProvider(value: unknown): value is ChatProvider {

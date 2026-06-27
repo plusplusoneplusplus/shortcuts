@@ -1,7 +1,7 @@
 import type { AgentProviderId, QueueListResponse, QueueHistoryResponse, QueueTaskSummary } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../api/cocClient';
 
-const PROVIDER_IDS = new Set<AgentProviderId>(['copilot', 'codex', 'claude']);
+const PROVIDER_IDS = new Set<AgentProviderId>(['copilot', 'codex', 'claude', 'opencode']);
 const ACTIVE_STATUSES = new Set(['queued', 'running']);
 
 export interface AgentProviderWorkActivity {

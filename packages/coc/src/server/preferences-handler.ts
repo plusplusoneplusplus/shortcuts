@@ -285,7 +285,7 @@ export const PerRepoPreferencesSchema = z.object({
         .optional(),
     defaultModel: z.string().max(100).optional(),
     defaultModels: DefaultModelsByModeSchema.optional(),
-    lastChatProvider: z.enum(['copilot', 'codex', 'claude', 'auto']).optional(),
+    lastChatProvider: z.enum(['copilot', 'codex', 'claude', 'opencode', 'auto']).optional(),
     maxRalphIterations: z.number().int().min(1).max(RALPH_MAX_ITERATIONS_LIMIT).optional(),
     additionalNotesRoots: z.array(z.unknown())
         .transform(arr => {

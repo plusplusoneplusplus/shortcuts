@@ -24,7 +24,7 @@ export interface DreamsConfigForm {
     /** Global `dreams.enabled` flag — gates idle-time reflection everywhere. */
     enabled: boolean;
     /** Default provider for idle-triggered Dream runs; blank uses the global default provider. */
-    provider: '' | 'copilot' | 'codex' | 'claude';
+    provider: '' | 'copilot' | 'codex' | 'claude' | 'opencode';
     /** Optional default model for idle-triggered Dream runs. */
     model: string;
     /** Default Dream AI request timeout, edited in minutes and persisted as milliseconds. */

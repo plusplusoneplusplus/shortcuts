@@ -20,7 +20,7 @@ import { sendJson, send400, send500, setStaticConfigCacheHeaders } from '../shar
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import type { AgentProviderStatus, AgentProvidersResponse } from '@plusplusoneplusplus/coc-client';
 import type { CopilotSDKService, IAvailabilityResult, CodexSDKService, ClaudeSDKService, ModelInfo, ISDKService } from '@plusplusoneplusplus/forge';
-import { getAllModels, modelMetadataStore, sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, mergeEffortTiersWithDefaults, getDefaultEffortTiers, type MergedEffortTiersMap, type EffortTierDefaultsMap } from '@plusplusoneplusplus/forge';
+import { getAllModels, modelMetadataStore, sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_OPENCODE, mergeEffortTiersWithDefaults, getDefaultEffortTiers, type MergedEffortTiersMap, type EffortTierDefaultsMap } from '@plusplusoneplusplus/forge';
 import { getResolvedInstallState } from '../providers/provider-install-routes';
 import type { CLIConfig } from '../../config';
 import { AgentProvidersQuotaCache, type AgentProvidersQuotaContext } from './quota-cache';
@@ -31,12 +31,16 @@ export interface AgentProvidersRouteContext extends AgentProvidersQuotaContext {
     getCodexAvailability: () => Promise<IAvailabilityResult>;
     /** Checks Claude SDK availability. Resolved per-request; the service caches the result. */
     getClaudeAvailability: () => Promise<IAvailabilityResult>;
+    /** Checks OpenCode SDK availability. Resolved per-request; the service caches the result. */
+    getOpenCodeAvailability: () => Promise<IAvailabilityResult>;
     /** Optional: getter for Copilot account quota. Used by the quota endpoint. */
     getCopilotSdkService?: () => CopilotSDKService;
     /** Optional: getter for Codex account quota. Used by the quota endpoint. */
     getCodexSdkService?: () => CodexSDKService | undefined;
     /** Optional: getter for Claude account quota. Used by the quota endpoint. */
     getClaudeSdkService?: () => ClaudeSDKService | undefined;
+    /** Optional: getter for OpenCode SDK service. Used for model queries. OpenCode has no quota API. */
+    getOpenCodeSdkService?: () => ISDKService | undefined;
     /** Config persistence functions for model settings. */
     configPath?: string;
     loadConfigFile: (p?: string) => CLIConfig | undefined;
@@ -125,7 +129,41 @@ export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContex
         }
     }
 
-    return { providers: [copilot, codexProvider, claudeProvider] };
+    const opencodeEnabled = config.opencode?.enabled ?? false;
+    const opencodeInstallState = getResolvedInstallState('opencode');
+
+    let opencodeProvider: AgentProviderStatus;
+    if (!opencodeEnabled) {
+        opencodeProvider = {
+            id: 'opencode',
+            label: 'OpenCode',
+            enabled: false,
+            available: false,
+            installStatus: opencodeInstallState.status,
+        };
+    } else {
+        const availability = await ctx.getOpenCodeAvailability();
+        if (availability.available) {
+            opencodeProvider = {
+                id: 'opencode',
+                label: 'OpenCode',
+                enabled: true,
+                available: true,
+                installStatus: opencodeInstallState.status,
+            };
+        } else {
+            opencodeProvider = {
+                id: 'opencode',
+                label: 'OpenCode',
+                enabled: true,
+                available: false,
+                reason: availability.error ?? 'OpenCode SDK is not available.',
+                installStatus: opencodeInstallState.status,
+            };
+        }
+    }
+
+    return { providers: [copilot, codexProvider, claudeProvider, opencodeProvider] };
 }
 
 // ── Effort-tier types ────────────────────────────────────────────────────────
@@ -142,11 +180,12 @@ const VALID_TIER_KEYS_LABEL = 'very-low, low, medium, high';
 
 // ── Provider-scoped model helpers ────────────────────────────────────────────
 
-const VALID_PROVIDERS = new Set(['copilot', 'codex', 'claude']);
+const VALID_PROVIDERS = new Set(['copilot', 'codex', 'claude', 'opencode']);
 const PROVIDER_SDK_KEYS: Record<string, string> = {
     copilot: SDK_PROVIDER_COPILOT,
     codex: SDK_PROVIDER_CODEX,
     claude: SDK_PROVIDER_CLAUDE,
+    opencode: SDK_PROVIDER_OPENCODE,
 };
 
 function getProviderModelSettings(cfg: CLIConfig | undefined, provider: string): { enabled: string[]; reasoningEfforts: Record<string, string>; effortTiers: EffortTiersMap } {
@@ -199,6 +238,9 @@ function getProviderSdkService(ctx: AgentProvidersRouteContext, provider: string
     }
     if (provider === 'claude') {
         return ctx.getClaudeSdkService?.() as unknown as ISDKService | undefined;
+    }
+    if (provider === 'opencode') {
+        return ctx.getOpenCodeSdkService?.();
     }
     return undefined;
 }
@@ -567,6 +609,10 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
             }
             if (provider === 'claude' && !(config.claude?.enabled ?? false)) {
                 sendJson(res, { success: false, provider, error: 'Claude provider is not enabled' }, 400);
+                return;
+            }
+            if (provider === 'opencode' && !(config.opencode?.enabled ?? false)) {
+                sendJson(res, { success: false, provider, error: 'OpenCode provider is not enabled' }, 400);
                 return;
             }
 

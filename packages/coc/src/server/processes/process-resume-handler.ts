@@ -86,6 +86,9 @@ function buildResumeInvocation(provider: ResumeProvider, quotedSessionId: string
     if (provider === 'claude') {
         return `claude --dangerously-skip-permissions --resume ${quotedSessionId}`;
     }
+    if (provider === 'opencode') {
+        return `opencode --resume ${quotedSessionId}`;
+    }
     return `copilot --yolo --resume ${quotedSessionId}`;
 }
 

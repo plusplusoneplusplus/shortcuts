@@ -250,7 +250,7 @@ async function notifyLoopTickComplete(
 type AutoProviderRoutingMetadata = NonNullable<ChatPayload['context']>['autoProviderRouting'];
 
 function isConcreteProvider(provider: unknown): provider is ChatProvider {
-    return provider === 'copilot' || provider === 'codex' || provider === 'claude';
+    return provider === 'copilot' || provider === 'codex' || provider === 'claude' || provider === 'opencode';
 }
 
 function isAutoProviderRoutingRequested(payload: ChatPayload): boolean {

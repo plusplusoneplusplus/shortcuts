@@ -15,7 +15,7 @@ import { createInterface } from 'readline/promises';
 
 const DEFAULT_SERVER_URL = 'http://localhost:4000';
 const CHAT_MODES = ['ask', 'autopilot'] as const;
-const CHAT_PROVIDERS = ['copilot', 'codex', 'claude'] as const;
+const CHAT_PROVIDERS = ['copilot', 'codex', 'claude', 'opencode'] as const;
 const EFFORT_TIERS = ['low', 'medium', 'high'] as const;
 const REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
 const PRIORITIES = ['low', 'normal', 'high'] as const;

@@ -41,7 +41,7 @@ import {
     toNativeSessionMetadataProcess,
 } from './nativeSessionChatAdapter';
 
-const PROVIDERS: NativeCliSessionProviderId[] = ['copilot', 'codex', 'claude'];
+const PROVIDERS: NativeCliSessionProviderId[] = ['copilot', 'codex', 'claude', 'opencode'];
 
 const PROVIDER_META: Record<NativeCliSessionProviderId, { label: string; externalLabel: string; store: string }> = {
     codex: {

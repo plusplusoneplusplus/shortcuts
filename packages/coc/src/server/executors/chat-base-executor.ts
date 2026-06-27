@@ -673,7 +673,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
             const availability = await effectiveAiService.isAvailable();
             if (!availability.available) {
-                const label = taskProvider === 'codex' ? 'Codex' : taskProvider === 'claude' ? 'Claude' : 'Copilot';
+                const label = taskProvider === 'codex' ? 'Codex' : taskProvider === 'claude' ? 'Claude' : taskProvider === 'opencode' ? 'OpenCode' : 'Copilot';
                 throw new Error(`${label} SDK not available: ${availability.error || 'unknown reason'}`);
             }
 

@@ -24,6 +24,8 @@ export interface AgentProvidersQuotaContext {
     getCodexSdkService?: () => AccountQuotaService | undefined;
     /** Optional getter for Claude account quota. Queried only when Claude is enabled. */
     getClaudeSdkService?: () => AccountQuotaService | undefined;
+    /** Optional getter for OpenCode SDK service. OpenCode has no quota API; included for completeness. */
+    getOpenCodeSdkService?: () => AccountQuotaService | undefined;
 }
 
 export interface AgentProvidersQuotaCacheOptions {
@@ -104,6 +106,12 @@ export async function fetchAgentProvidersQuota(ctx: AgentProvidersQuotaContext):
             getLogger().warn(LogCategory.AI, `[ClaudeQuota] quota lookup failed: ${msg}`);
             providers.push({ id: 'claude', quotaTypes: [], error: msg });
         }
+    }
+
+    const opencodeEnabled = config.opencode?.enabled ?? false;
+    if (opencodeEnabled) {
+        // OpenCode has no quota API; emit an empty entry so the dashboard shows the provider.
+        providers.push({ id: 'opencode', quotaTypes: [] });
     }
 
     return { providers, lastUpdated: null };

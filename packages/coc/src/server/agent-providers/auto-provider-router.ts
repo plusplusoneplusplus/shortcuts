@@ -1,7 +1,7 @@
 import type { AgentProvidersQuotaResponse, ProviderQuotaResult, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
 import type { ConcreteAgentProvider, ResolvedCLIConfig } from '../../config';
 
-const PROVIDERS: readonly ConcreteAgentProvider[] = ['copilot', 'codex', 'claude'];
+const PROVIDERS: readonly ConcreteAgentProvider[] = ['copilot', 'codex', 'claude', 'opencode'];
 const WEEKLY_QUOTA_TYPE_ALIASES = new Set([
     'seven_day',
     '7_day',

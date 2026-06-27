@@ -53,6 +53,8 @@ export interface AIProviderPageProps {
     setCodexEnabled: (v: boolean) => void;
     claudeEnabled: boolean;
     setClaudeEnabled: (v: boolean) => void;
+    opencodeEnabled: boolean;
+    setOpencodeEnabled: (v: boolean) => void;
     autoAgentProviderRoutingEnabled: boolean;
     setAutoAgentProviderRoutingEnabled: (v: boolean) => void;
     autoRoutingConfig: AdminAutoProviderRoutingConfig | null | undefined;
@@ -60,7 +62,7 @@ export interface AIProviderPageProps {
     providerAvailability: Record<string, { available: boolean; error?: string }>;
     sdkInstallStatuses: Record<string, ProviderInstallStatus>;
     sdkInstallErrors: Record<string, string | undefined>;
-    onInstallSdk: (provider: 'codex' | 'claude') => void;
+    onInstallSdk: (provider: 'codex' | 'claude' | 'opencode') => void;
 
     dirty: boolean;
     saving: boolean;
@@ -76,7 +78,7 @@ export interface AIProviderPageProps {
 }
 
 const DEFAULT_PROVIDER_LABELS: Record<DefaultProvider, string> = PROVIDER_LABELS;
-const PROVIDER_IDS: Provider[] = ['copilot', 'codex', 'claude'];
+const PROVIDER_IDS: Provider[] = ['copilot', 'codex', 'claude', 'opencode'];
 export const DEFAULT_AUTO_PROVIDER_ROUTING_CONFIG: NormalizedAutoProviderRoutingConfig = {
     rules: [
         {
@@ -95,6 +97,15 @@ export const DEFAULT_AUTO_PROVIDER_ROUTING_CONFIG: NormalizedAutoProviderRouting
             weeklyGuard: {
                 enabled: true,
                 minimumRemainingPercent: 33,
+            },
+        },
+        {
+            provider: 'opencode',
+            enabled: true,
+            minimumRemainingPercent: 25,
+            weeklyGuard: {
+                enabled: true,
+                minimumRemainingPercent: 25,
             },
         },
         {
@@ -358,6 +369,7 @@ export function AIProviderPage(props: AIProviderPageProps) {
         defaultProvider, setDefaultProvider,
         codexEnabled, setCodexEnabled,
         claudeEnabled, setClaudeEnabled,
+        opencodeEnabled, setOpencodeEnabled,
         autoAgentProviderRoutingEnabled, setAutoAgentProviderRoutingEnabled, autoRoutingConfig, setAutoRoutingConfig,
         providerAvailability, sdkInstallStatuses, sdkInstallErrors, onInstallSdk,
         dirty, saving, onSave, onCancel,
@@ -409,6 +421,16 @@ export function AIProviderPage(props: AIProviderPageProps) {
             note: '@anthropic-ai/claude-agent-sdk',
             installStatus: sdkInstallStatuses['claude'],
         },
+        {
+            id: 'opencode',
+            label: 'OpenCode',
+            enabled: opencodeEnabled,
+            available: providerAvailability['opencode']?.available ?? false,
+            locked: false,
+            source: 'config',
+            note: 'opencode',
+            installStatus: sdkInstallStatuses['opencode'],
+        },
     ];
 
     const availableCount = providers.filter(p => p.available || p.locked).length;
@@ -426,6 +448,11 @@ export function AIProviderPage(props: AIProviderPageProps) {
                     enabled: claudeEnabled,
                     available: providerAvailability['claude']?.available ?? false,
                     error: providerAvailability['claude']?.error,
+                },
+                opencode: {
+                    enabled: opencodeEnabled,
+                    available: providerAvailability['opencode']?.available ?? false,
+                    error: providerAvailability['opencode']?.error,
                 },
             },
             quotaData,
@@ -774,10 +801,11 @@ export function AIProviderPage(props: AIProviderPageProps) {
                                                 onChange={(v) => {
                                                     if (provider.id === 'codex') setCodexEnabled(v);
                                                     if (provider.id === 'claude') setClaudeEnabled(v);
+                                                    if (provider.id === 'opencode') setOpencodeEnabled(v);
                                                 }}
                                                 disabled={provider.locked}
                                                 label={`Toggle ${provider.label}`}
-                                                testId={provider.id === 'codex' ? 'toggle-codex-enabled' : provider.id === 'claude' ? 'toggle-claude-enabled' : undefined}
+                                                testId={provider.id === 'codex' ? 'toggle-codex-enabled' : provider.id === 'claude' ? 'toggle-claude-enabled' : provider.id === 'opencode' ? 'toggle-opencode-enabled' : undefined}
                                             />
                                         </td>
                                     </tr>
@@ -839,11 +867,11 @@ export function AIProviderPage(props: AIProviderPageProps) {
                         activeModelProvider === 'copilot'
                             ? true
                             : (providerAvailability[activeModelProvider]?.available ?? false)
-                                && (activeModelProvider === 'codex' ? codexEnabled : claudeEnabled)
+                                && (activeModelProvider === 'codex' ? codexEnabled : activeModelProvider === 'claude' ? claudeEnabled : opencodeEnabled)
                     }
                     unavailableMessage={
-                        activeModelProvider !== 'copilot' && !(activeModelProvider === 'codex' ? codexEnabled : claudeEnabled)
-                            ? `Enable the ${activeModelProvider === 'codex' ? 'Codex' : 'Claude'} provider above to access its model catalog.`
+                        activeModelProvider !== 'copilot' && !(activeModelProvider === 'codex' ? codexEnabled : activeModelProvider === 'claude' ? claudeEnabled : opencodeEnabled)
+                            ? `Enable the ${PROVIDER_LABELS[activeModelProvider]} provider above to access its model catalog.`
                             : providerAvailability[activeModelProvider]?.error
                     }
                     allProviders={PROVIDER_IDS}

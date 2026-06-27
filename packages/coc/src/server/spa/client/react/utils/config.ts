@@ -49,8 +49,10 @@ interface DashboardConfig {
     bindAddress?: string;
     /** Whether the Codex SDK provider is enabled (feature flag). */
     codexEnabled?: boolean;
+    /** Whether the OpenCode SDK provider is enabled (feature flag). */
+    opencodeEnabled?: boolean;
     /** Concrete default AI provider when Auto routing is disabled. */
-    defaultProvider?: 'copilot' | 'codex' | 'claude';
+    defaultProvider?: 'copilot' | 'codex' | 'claude' | 'opencode';
     /** Whether Auto agent provider routing is enabled. */
     autoAgentProviderRoutingEnabled?: boolean;
     /** Whether the Work Items hierarchy board is enabled (feature flag). */
@@ -422,17 +424,17 @@ export function isEffortLevelsEnabled(): boolean {
 }
 
 /** Returns the configured concrete default AI provider. */
-export function getConfiguredDefaultProvider(): 'copilot' | 'codex' | 'claude' {
+export function getConfiguredDefaultProvider(): 'copilot' | 'codex' | 'claude' | 'opencode' {
     return getConfig().defaultProvider ?? 'copilot';
 }
 
 /** Returns the concrete default AI provider for UI surfaces that require an SDK provider. */
-export function getDefaultProvider(): 'copilot' | 'codex' | 'claude' {
+export function getDefaultProvider(): 'copilot' | 'codex' | 'claude' | 'opencode' {
     return getConfiguredDefaultProvider();
 }
 
 /** Returns the currently active provider (alias for getDefaultProvider). */
-export function getActiveProvider(): 'copilot' | 'codex' | 'claude' {
+export function getActiveProvider(): 'copilot' | 'codex' | 'claude' | 'opencode' {
     return getDefaultProvider();
 }
 

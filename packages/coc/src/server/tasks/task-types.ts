@@ -526,7 +526,7 @@ export interface ChatPayload {
     /**
      * AI provider to use for this chat task.
      * Defaults to the server-level default provider when omitted.
-     * Supported values: 'copilot' | 'codex' | 'claude'.
+     * Supported values: 'copilot' | 'codex' | 'claude' | 'opencode'.
      */
     provider?: ChatProvider;
     /** Per-turn reasoning-effort override, normalized to task config by queue validation. */

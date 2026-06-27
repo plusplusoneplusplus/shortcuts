@@ -24,7 +24,7 @@ export interface EffortTierDefaultEntry {
 export type EffortTierDefaultsMap = Record<EffortTierKey, EffortTierDefaultEntry>;
 
 /** Known provider IDs that ship hardcoded defaults. */
-export type DefaultedProvider = 'copilot' | 'codex' | 'claude';
+export type DefaultedProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 
 const COPILOT_DEFAULTS: EffortTierDefaultsMap = {
     'very-low': { model: 'gpt-5.4-mini',      reasoningEffort: 'low'   },
@@ -51,10 +51,20 @@ const CLAUDE_DEFAULTS: EffortTierDefaultsMap = {
     high:   { model: 'opus',   reasoningEffort: 'xhigh'  },
 };
 
+// OpenCode uses provider/model composite IDs. These defaults use well-known
+// model references; the opencode server resolves the provider prefix.
+const OPENCODE_DEFAULTS: EffortTierDefaultsMap = {
+    'very-low': { model: 'anthropic/claude-haiku',    reasoningEffort: null    },
+    low:    { model: 'anthropic/claude-sonnet',   reasoningEffort: null    },
+    medium: { model: 'anthropic/claude-sonnet',   reasoningEffort: 'high'  },
+    high:   { model: 'anthropic/claude-opus',     reasoningEffort: null    },
+};
+
 const PROVIDER_DEFAULTS: Record<DefaultedProvider, EffortTierDefaultsMap> = {
     copilot: COPILOT_DEFAULTS,
     codex:   CODEX_DEFAULTS,
     claude:  CLAUDE_DEFAULTS,
+    opencode: OPENCODE_DEFAULTS,
 };
 
 /**

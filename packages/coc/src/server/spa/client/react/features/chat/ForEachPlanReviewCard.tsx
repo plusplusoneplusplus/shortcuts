@@ -51,7 +51,7 @@ export interface ForEachPlanReviewCardProps {
     metadataProcess: any;
     forEach: ForEachGenerationMetadata;
     turns: ClientConversationTurn[];
-    provider?: 'copilot' | 'codex' | 'claude';
+    provider?: 'copilot' | 'codex' | 'claude' | 'opencode';
     model?: string;
     reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
     onApprovedRun?: (runId: string) => void;

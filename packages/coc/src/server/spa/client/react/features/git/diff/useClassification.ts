@@ -31,7 +31,7 @@ import type { ResolvedModalJobAiSelection } from '../../../shared/ModalJobAiCont
 // ── Public types ──────────────────────────────────────────────────────
 
 /** AI provider identifier (mirrors server ChatProvider). */
-export type ChatProvider = 'copilot' | 'codex' | 'claude';
+export type ChatProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 
 export type ClassificationStatus = 'idle' | 'loading' | 'ready' | 'error';
 

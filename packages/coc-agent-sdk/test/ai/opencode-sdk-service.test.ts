@@ -438,7 +438,69 @@ describe('OpenCodeSDKService', () => {
 
             const result = await svc.sendMessage({ prompt: 'Hello' });
             expect(result.success).toBe(false);
-            expect(result.error).toBe('Server error');
+            expect(result.error).toContain('Server error');
+        });
+
+        it('prepends working directory to prompt', async () => {
+            const client = createMockClient();
+            stubSDKWithClient(client);
+
+            await svc.sendMessage({
+                prompt: 'Hello',
+                workingDirectory: '/home/user/project',
+            });
+
+            const callBody = client.session.prompt.mock.calls[0]?.[0]?.body;
+            expect(callBody?.parts[0]?.text).toContain('Working directory: /home/user/project');
+            expect(callBody?.parts[0]?.text).toContain('Hello');
+        });
+
+        it('appends file attachment references to prompt', async () => {
+            const client = createMockClient();
+            stubSDKWithClient(client);
+
+            await svc.sendMessage({
+                prompt: 'Review these files',
+                attachments: [{ filePath: '/tmp/foo.ts' }, { filePath: '/tmp/bar.ts' }] as any,
+            });
+
+            const callBody = client.session.prompt.mock.calls[0]?.[0]?.body;
+            expect(callBody?.parts[0]?.text).toContain('/tmp/foo.ts');
+            expect(callBody?.parts[0]?.text).toContain('/tmp/bar.ts');
+        });
+
+        it('enforces strict session resume', async () => {
+            const client = createMockClient();
+            client.session.get.mockRejectedValue(new Error('Not found'));
+            stubSDKWithClient(client);
+
+            const result = await svc.sendMessage({
+                prompt: 'Follow up',
+                sessionId: 'missing-session',
+                strictSessionResume: true,
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('strictSessionResume');
+        });
+
+        it('resolves effective model from server response', async () => {
+            const client = createMockClient();
+            client.session.prompt.mockResolvedValue({
+                data: {
+                    info: { id: 'msg-1', sessionID: 'new-session-1', role: 'assistant', model: 'anthropic/claude-3-5-sonnet-v2' },
+                    parts: [{ type: 'text', text: 'Hello' }],
+                },
+            });
+            stubSDKWithClient(client);
+
+            const result = await svc.sendMessage({
+                prompt: 'Hello',
+                model: 'anthropic/claude-3-5-sonnet',
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.effectiveModel).toBe('anthropic/claude-3-5-sonnet-v2');
         });
 
         it('emits tool-start event for pending tool state', async () => {
@@ -522,7 +584,7 @@ describe('OpenCodeSDKService', () => {
             const result = await svc.transform('Transform this');
             expect(result.success).toBe(false);
             expect(result.text).toBe('');
-            expect(result.error).toBe('Transform failed');
+            expect(result.error).toContain('Transform failed');
         });
 
         it('passes model and cwd through options', async () => {

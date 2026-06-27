@@ -590,7 +590,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (!proc?.pendingMessages?.length) return;
         if (!this.queueManager) return;
         const [nextMsg, ...rest] = proc.pendingMessages;
-        const sessionProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
+        const sessionProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot' || proc.metadata?.provider === 'opencode'
             ? proc.metadata.provider
             : 'copilot';
         const resolvedModel = resolveModelForProvider(sessionProvider, nextMsg.model);

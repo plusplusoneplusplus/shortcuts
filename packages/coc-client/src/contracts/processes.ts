@@ -139,7 +139,7 @@ export type RalphGrillAgentRole =
   | 'quality-test'
   | 'deduplication'
   | 'provenance';
-export type RalphGrillAgentProvider = 'copilot' | 'codex' | 'claude';
+export type RalphGrillAgentProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 export type RalphGrillEffortTier = 'very-low' | 'low' | 'medium' | 'high';
 
 export interface RalphGrillAgentModelSelection {
