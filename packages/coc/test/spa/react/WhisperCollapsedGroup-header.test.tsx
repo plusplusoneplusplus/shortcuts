@@ -999,4 +999,93 @@ describe('WhisperCollapsedGroup — actionable file rows', () => {
         fireEvent.click(row);
         expect(onOpenFileDiff).not.toHaveBeenCalled();
     });
+
+    // ── Click-propagation guard tests ─────────────────────────────────────────
+
+    function renderWithContainer(fileEdits: FileEdit[], onOpenFileDiff?: (ctx: unknown) => void) {
+        const { container } = render(
+            <WhisperCollapsedGroup
+                precedingChunks={[]}
+                summary={{
+                    toolCallCount: 3,
+                    messageCount: 0,
+                    fileEditCount: fileEdits.length,
+                    fileEdits,
+                } as WhisperSummary}
+                toolById={new Map()}
+                toolsWithChildren={new Set()}
+                toolParentById={new Map()}
+                isStreaming={false}
+                groupSingleLineMessages={false}
+                workspaceId="test-ws"
+                renderToolTree={() => null}
+                onOpenFileDiff={onOpenFileDiff}
+            />,
+        );
+        const span = container.querySelector('[data-testid="whisper-file-hover"]') as HTMLElement;
+        if (span) fireEvent.mouseEnter(span);
+        return container;
+    }
+
+    it('clicking a file row opens the diff without expanding the group', () => {
+        const onOpenFileDiff = vi.fn();
+        const container = renderWithContainer(
+            [{ path: 'src/a.ts', insertions: 4, deletions: 2, netInsertions: 4, netDeletions: 2, isCreate: false, isDeleted: false }],
+            onOpenFileDiff,
+        );
+        const row = document.body.querySelector('[data-testid="file-popover-row"]') as HTMLElement;
+        fireEvent.click(row);
+        expect(onOpenFileDiff).toHaveBeenCalledTimes(1);
+        const toggle = container.querySelector('[data-testid="whisper-toggle"]') as HTMLElement;
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(container.querySelector('[data-testid="whisper-expanded-content"]')).toBeNull();
+    });
+
+    it('Enter on a file row opens the diff without expanding the group', () => {
+        const onOpenFileDiff = vi.fn();
+        const container = renderWithContainer(
+            [{ path: 'src/a.ts', insertions: 4, deletions: 2, netInsertions: 4, netDeletions: 2, isCreate: false, isDeleted: false }],
+            onOpenFileDiff,
+        );
+        const row = document.body.querySelector('[data-testid="file-popover-row"]') as HTMLElement;
+        fireEvent.keyDown(row, { key: 'Enter' });
+        expect(onOpenFileDiff).toHaveBeenCalledTimes(1);
+        const toggle = container.querySelector('[data-testid="whisper-toggle"]') as HTMLElement;
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(container.querySelector('[data-testid="whisper-expanded-content"]')).toBeNull();
+    });
+
+    it('Space on a file row opens the diff without expanding the group', () => {
+        const onOpenFileDiff = vi.fn();
+        const container = renderWithContainer(
+            [{ path: 'src/a.ts', insertions: 4, deletions: 2, netInsertions: 4, netDeletions: 2, isCreate: false, isDeleted: false }],
+            onOpenFileDiff,
+        );
+        const row = document.body.querySelector('[data-testid="file-popover-row"]') as HTMLElement;
+        fireEvent.keyDown(row, { key: ' ' });
+        expect(onOpenFileDiff).toHaveBeenCalledTimes(1);
+        const toggle = container.querySelector('[data-testid="whisper-toggle"]') as HTMLElement;
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(container.querySelector('[data-testid="whisper-expanded-content"]')).toBeNull();
+    });
+
+    it('clicking the inline file-hover summary text does not expand the group', () => {
+        const container = renderWithContainer(
+            [{ path: 'src/a.ts', insertions: 4, deletions: 2, netInsertions: 4, netDeletions: 2, isCreate: false, isDeleted: false }],
+        );
+        const span = container.querySelector('[data-testid="whisper-file-hover"]') as HTMLElement;
+        fireEvent.click(span);
+        const toggle = container.querySelector('[data-testid="whisper-toggle"]') as HTMLElement;
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(container.querySelector('[data-testid="whisper-expanded-content"]')).toBeNull();
+    });
+
+    it('clicking the normal whisper-toggle still expands the group', () => {
+        const container = renderWithContainer(
+            [{ path: 'src/a.ts', insertions: 4, deletions: 2, netInsertions: 4, netDeletions: 2, isCreate: false, isDeleted: false }],
+        );
+        const toggle = container.querySelector('[data-testid="whisper-toggle"]') as HTMLElement;
+        fireEvent.click(toggle);
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    });
 });
