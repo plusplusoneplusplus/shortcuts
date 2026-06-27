@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import type { LlmToolsConfig } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
+import { getOrFetchConfig, peekConfig, configCacheKey } from '../../api/staticConfigCache';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import {
     GIT_COMMIT_CONTEXT_DRAG_KIND,
@@ -542,10 +544,26 @@ export function validateSessionContextAttachmentsForSend(options: {
     return null;
 }
 
+/** Derives conversation-retrieval availability from a workspace's LLM-tools config. */
+function deriveRetrievalAvailable(config: LlmToolsConfig): boolean {
+    const hasGetConversation = (config.tools ?? []).some(tool => tool.name === 'get_conversation');
+    const disabled = config.disabledLlmTools ?? [];
+    return config.conversationRetrievalAvailable === true
+        && hasGetConversation
+        && !disabled.includes('get_conversation');
+}
+
 export function useConversationRetrievalCapability(workspaceId: string | undefined, enabled: boolean): boolean | null {
-    const [available, setAvailable] = useState<boolean | null>(enabled && workspaceId ? null : false);
     // AC-07: read the LLM-tools config from the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
+    // Seed from a warm workspace-config cache hit so a reopen resolves without a
+    // transient null (AC-01: llm-tools-config is cached per workspace, so
+    // switching conversations in the same workspace issues no refetch).
+    const [available, setAvailable] = useState<boolean | null>(() => {
+        if (!enabled || !workspaceId) return false;
+        const cached = peekConfig<LlmToolsConfig>(configCacheKey.llmToolsConfig(workspaceId));
+        return cached !== undefined ? deriveRetrievalAvailable(cached) : null;
+    });
 
     useEffect(() => {
         if (!enabled || !workspaceId) {
@@ -553,16 +571,20 @@ export function useConversationRetrievalCapability(workspaceId: string | undefin
             return;
         }
 
+        const key = configCacheKey.llmToolsConfig(workspaceId);
+        // Warm cache hit — resolve synchronously, no network round-trip (AC-01).
+        const cached = peekConfig<LlmToolsConfig>(key);
+        if (cached !== undefined) {
+            setAvailable(deriveRetrievalAvailable(cached));
+            return;
+        }
+
         let cancelled = false;
         setAvailable(null);
-        cloneClient.preferences.getLlmToolsConfig(workspaceId)
+        getOrFetchConfig(key, () => cloneClient.preferences.getLlmToolsConfig(workspaceId))
             .then((config) => {
                 if (cancelled) return;
-                const hasGetConversation = (config.tools ?? []).some(tool => tool.name === 'get_conversation');
-                const disabled = config.disabledLlmTools ?? [];
-                setAvailable(config.conversationRetrievalAvailable === true
-                    && hasGetConversation
-                    && !disabled.includes('get_conversation'));
+                setAvailable(deriveRetrievalAvailable(config));
             })
             .catch(() => {
                 if (!cancelled) setAvailable(false);
