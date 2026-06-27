@@ -113,10 +113,11 @@ async function stopServer(): Promise<void> {
     return new Promise(resolve => server.close(() => resolve()));
 }
 
-async function apiGet(path: string): Promise<{ status: number; body: unknown }> {
+async function apiGet(path: string): Promise<{ status: number; body: unknown; cacheControl: string | null }> {
     const res = await fetch(`${baseUrl}${path}`);
+    const cacheControl = res.headers.get('cache-control');
     const body = await res.json();
-    return { status: res.status, body };
+    return { status: res.status, body, cacheControl };
 }
 
 async function apiPut(path: string, payload: unknown): Promise<{ status: number; body: unknown }> {
@@ -406,6 +407,27 @@ describe('GET /api/agent-providers/:provider/models/reasoning-efforts', () => {
         expect(status).toBe(200);
         const data = body as { provider: string; reasoningEfforts: Record<string, string> };
         expect(data.reasoningEfforts).toEqual({ 'model-y': 'low' });
+    });
+
+    // AC-04: short-lived HTTP cache so a cold reload within the TTL skips the round-trip.
+    it('sets a short-lived private Cache-Control header on the 200', async () => {
+        const ctx = makeCtx({ ...makeConfigFunctions({}) });
+        server = makeServer(ctx);
+        await startServer();
+
+        const { status, cacheControl } = await apiGet('/api/agent-providers/copilot/models/reasoning-efforts');
+        expect(status).toBe(200);
+        expect(cacheControl).toBe('private, max-age=60');
+    });
+
+    it('does not set Cache-Control on the 400 invalid-provider response', async () => {
+        const ctx = makeCtx();
+        server = makeServer(ctx);
+        await startServer();
+
+        const { status, cacheControl } = await apiGet('/api/agent-providers/bogus/models/reasoning-efforts');
+        expect(status).toBe(400);
+        expect(cacheControl).toBeNull();
     });
 });
 
