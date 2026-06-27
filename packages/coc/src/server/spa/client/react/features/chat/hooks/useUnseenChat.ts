@@ -28,14 +28,26 @@ export interface useUnseenChatResult {
     unseenProcessIds: Set<string>;
     /** Number of tasks with unseen activity. */
     unseenCount: number;
-    /** Mark a process as seen (call when user selects a task). */
-    markSeen: (processId: string) => void;
-    /** Mark all history tasks as seen. */
-    markAllSeen: () => void;
-    /** Mark a specific subset of tasks as seen (e.g. the currently filtered list). */
-    markTasksSeen: (tasks: any[]) => void;
-    /** Mark a process as unseen/unread (removes it from the seen map). */
-    markUnseen: (processId: string) => void;
+    /**
+     * Mark a process as seen (call when user selects a task).
+     * Returns `true` when the seen-state actually changed (a real transition),
+     * `false` when it was already seen — callers gate workspace-scoped side
+     * effects (e.g. the unseen-count refetch) on this so a warm reopen of an
+     * already-seen conversation does not re-fire the count request.
+     */
+    markSeen: (processId: string) => boolean;
+    /** Mark all history tasks as seen. Returns `true` if anything changed. */
+    markAllSeen: () => boolean;
+    /**
+     * Mark a specific subset of tasks as seen (e.g. the currently filtered list).
+     * Returns `true` if anything changed.
+     */
+    markTasksSeen: (tasks: any[]) => boolean;
+    /**
+     * Mark a process as unseen/unread (removes it from the seen map).
+     * Returns `true` if an entry was actually removed.
+     */
+    markUnseen: (processId: string) => boolean;
 }
 
 export function useUnseenChat(
@@ -44,6 +56,14 @@ export function useUnseenChat(
     selectedTaskId: string | null,
 ): useUnseenChatResult {
     const [seenMap, setSeenMap] = useState<Record<string, string>>({});
+    // Synchronous mirror of seenMap. The mutators below run inside event
+    // handlers and must report whether they actually changed state *before* the
+    // next render commits, so they read/update this ref instead of relying on
+    // the async `setSeenMap` updater closure. Kept in sync with `seenMap` after
+    // every commit (incl. async effects) and eagerly updated inside each mutator
+    // so back-to-back synchronous calls in one tick stay correct.
+    const seenMapRef = useRef<Record<string, string>>({});
+    useEffect(() => { seenMapRef.current = seenMap; }, [seenMap]);
     const initializedRef = useRef(false);
     const seededRef = useRef(false);
     const prevSelectedRef = useRef<string | null>(null);
@@ -181,66 +201,65 @@ export function useUnseenChat(
         return unseen;
     }, [history, seenMap]);
 
-    // Mark a specific task as seen.
-    const markSeen = useCallback((processId: string) => {
+    // Mark a specific task as seen. Returns whether the state actually changed.
+    const markSeen = useCallback((processId: string): boolean => {
         const task = history.find(t => t.id === processId);
         const completedAt = task ? getTaskCompletedAtIso(task) : undefined;
-        if (completedAt) {
-            setSeenMap(prev => {
-                if (prev[processId] === completedAt) return prev;
-                schedulePatch([{ processId, seenAt: completedAt }]);
-                return { ...prev, [processId]: completedAt };
-            });
-        }
+        if (!completedAt) return false;
+        if (seenMapRef.current[processId] === completedAt) return false;
+        const updated = { ...seenMapRef.current, [processId]: completedAt };
+        seenMapRef.current = updated;
+        schedulePatch([{ processId, seenAt: completedAt }]);
+        setSeenMap(updated);
+        return true;
     }, [history, schedulePatch]);
 
-    // Mark all history tasks as seen.
-    const markAllSeen = useCallback(() => {
-        setSeenMap(prev => {
-            const updated = { ...prev };
-            const entries: Array<{ processId: string; seenAt: string }> = [];
-            let changed = false;
-            for (const task of history) {
-                const completedAt = getTaskCompletedAtIso(task);
-                if (completedAt && updated[task.id] !== completedAt) {
-                    updated[task.id] = completedAt;
-                    entries.push({ processId: task.id, seenAt: completedAt });
-                    changed = true;
-                }
+    // Mark all history tasks as seen. Returns whether anything changed.
+    const markAllSeen = useCallback((): boolean => {
+        const updated = { ...seenMapRef.current };
+        const entries: Array<{ processId: string; seenAt: string }> = [];
+        for (const task of history) {
+            const completedAt = getTaskCompletedAtIso(task);
+            if (completedAt && updated[task.id] !== completedAt) {
+                updated[task.id] = completedAt;
+                entries.push({ processId: task.id, seenAt: completedAt });
             }
-            if (entries.length > 0) schedulePatch(entries);
-            return changed ? updated : prev;
-        });
+        }
+        if (entries.length === 0) return false;
+        seenMapRef.current = updated;
+        schedulePatch(entries);
+        setSeenMap(updated);
+        return true;
     }, [history, schedulePatch]);
 
     // Mark a specific subset of tasks as seen (e.g. the currently filtered list).
-    const markTasksSeen = useCallback((tasks: any[]) => {
-        setSeenMap(prev => {
-            const updated = { ...prev };
-            const entries: Array<{ processId: string; seenAt: string }> = [];
-            let changed = false;
-            for (const task of tasks) {
-                const completedAt = getTaskCompletedAtIso(task);
-                if (completedAt && updated[task.id] !== completedAt) {
-                    updated[task.id] = completedAt;
-                    entries.push({ processId: task.id, seenAt: completedAt });
-                    changed = true;
-                }
+    // Returns whether anything changed.
+    const markTasksSeen = useCallback((tasks: any[]): boolean => {
+        const updated = { ...seenMapRef.current };
+        const entries: Array<{ processId: string; seenAt: string }> = [];
+        for (const task of tasks) {
+            const completedAt = getTaskCompletedAtIso(task);
+            if (completedAt && updated[task.id] !== completedAt) {
+                updated[task.id] = completedAt;
+                entries.push({ processId: task.id, seenAt: completedAt });
             }
-            if (entries.length > 0) schedulePatch(entries);
-            return changed ? updated : prev;
-        });
+        }
+        if (entries.length === 0) return false;
+        seenMapRef.current = updated;
+        schedulePatch(entries);
+        setSeenMap(updated);
+        return true;
     }, [schedulePatch]);
 
-    // Mark a specific task as unseen/unread.
-    const markUnseen = useCallback((processId: string) => {
-        setSeenMap(prev => {
-            if (!(processId in prev)) return prev;
-            const updated = { ...prev };
-            delete updated[processId];
-            deleteSeenEntry(workspaceId, processId).catch(() => {});
-            return updated;
-        });
+    // Mark a specific task as unseen/unread. Returns whether an entry was removed.
+    const markUnseen = useCallback((processId: string): boolean => {
+        if (!(processId in seenMapRef.current)) return false;
+        const updated = { ...seenMapRef.current };
+        delete updated[processId];
+        seenMapRef.current = updated;
+        deleteSeenEntry(workspaceId, processId).catch(() => {});
+        setSeenMap(updated);
+        return true;
     }, [workspaceId]);
 
     return { unseenProcessIds, unseenCount: unseenProcessIds.size, markSeen, markAllSeen, markTasksSeen, markUnseen };

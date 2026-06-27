@@ -591,6 +591,106 @@ describe('useUnseenChat', () => {
             expect(result.current.unseenProcessIds.has('b')).toBe(true);
         });
     });
+
+    // AC-02 (count half): the mark fns report whether the seen-state actually
+    // changed so RepoChatTab can gate the workspace-scoped count refetch and
+    // avoid re-firing it on a warm reopen of an already-seen conversation.
+    describe('mark fns return whether seen-state changed', () => {
+        it('markSeen returns true on a real transition and false on a no-op', async () => {
+            const history = makeTasks('a');
+            // Server reports an older seenAt → 'a' is currently unseen.
+            mockFetchSeenMap.mockResolvedValue({ a: 'old-value' });
+            const { result } = renderHook(() => useUnseenChat('ws1', history, null));
+
+            await waitFor(() => {
+                expect(result.current.unseenProcessIds.has('a')).toBe(true);
+            });
+
+            let first: boolean | undefined;
+            act(() => { first = result.current.markSeen('a'); });
+            expect(first).toBe(true);
+
+            // Reopening the now-seen task is a no-op → no count refetch upstream.
+            let second: boolean | undefined;
+            act(() => { second = result.current.markSeen('a'); });
+            expect(second).toBe(false);
+        });
+
+        it('markSeen returns false for a task without a completion timestamp', async () => {
+            mockFetchSeenMap.mockResolvedValue({ other: '2026-01-01T00:00:00Z' });
+            const history = [{ id: 'r', status: 'running' }];
+            const { result } = renderHook(() => useUnseenChat('ws1', history, null));
+
+            await waitFor(() => {
+                expect(mockFetchSeenMap).toHaveBeenCalled();
+            });
+
+            let changed: boolean | undefined;
+            act(() => { changed = result.current.markSeen('r'); });
+            expect(changed).toBe(false);
+        });
+
+        it('markAllSeen returns true when something changed, then false when already all seen', async () => {
+            const history = makeTasks('a', 'b');
+            mockFetchSeenMap.mockResolvedValue({ a: 'old' }); // 'a' unseen, 'b' unseen (absent)
+            const { result } = renderHook(() => useUnseenChat('ws1', history, null));
+
+            await waitFor(() => {
+                expect(result.current.unseenCount).toBeGreaterThan(0);
+            });
+
+            let first: boolean | undefined;
+            act(() => { first = result.current.markAllSeen(); });
+            expect(first).toBe(true);
+
+            let second: boolean | undefined;
+            act(() => { second = result.current.markAllSeen(); });
+            expect(second).toBe(false);
+        });
+
+        it('markTasksSeen returns false for an empty list and true when it changes state', async () => {
+            const history = makeTasks('a', 'b');
+            mockFetchSeenMap.mockResolvedValue({ a: 'old' });
+            const { result } = renderHook(() => useUnseenChat('ws1', history, null));
+
+            await waitFor(() => {
+                expect(result.current.unseenProcessIds.has('a')).toBe(true);
+            });
+
+            let empty: boolean | undefined;
+            act(() => { empty = result.current.markTasksSeen([]); });
+            expect(empty).toBe(false);
+
+            let changed: boolean | undefined;
+            act(() => { changed = result.current.markTasksSeen([history[0]]); });
+            expect(changed).toBe(true);
+
+            let again: boolean | undefined;
+            act(() => { again = result.current.markTasksSeen([history[0]]); });
+            expect(again).toBe(false);
+        });
+
+        it('markUnseen returns true when an entry is removed and false otherwise', async () => {
+            const history = makeTasks('a', 'b');
+            mockFetchSeenMap.mockResolvedValue({
+                a: history[0].completedAt,
+                b: history[1].completedAt,
+            });
+            const { result } = renderHook(() => useUnseenChat('ws1', history, null));
+
+            await waitFor(() => {
+                expect(result.current.unseenCount).toBe(0);
+            });
+
+            let removed: boolean | undefined;
+            act(() => { removed = result.current.markUnseen('a'); });
+            expect(removed).toBe(true);
+
+            let again: boolean | undefined;
+            act(() => { again = result.current.markUnseen('a'); });
+            expect(again).toBe(false);
+        });
+    });
 });
 
 describe('getTaskCompletedAtIso', () => {
