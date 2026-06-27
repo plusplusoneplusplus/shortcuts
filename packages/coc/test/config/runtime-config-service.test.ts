@@ -237,7 +237,7 @@ describe('RuntimeConfigService', () => {
 
             await expect(
                 svc.updateConfig({ defaultProvider: 'auto' }),
-            ).rejects.toThrow('defaultProvider must be "copilot", "codex", or "claude"');
+            ).rejects.toThrow('defaultProvider must be "copilot", "codex", "claude", or "opencode"');
 
             expect(svc.revision).toBe(0);
             expect(svc.config.defaultProvider).toBe('copilot');
