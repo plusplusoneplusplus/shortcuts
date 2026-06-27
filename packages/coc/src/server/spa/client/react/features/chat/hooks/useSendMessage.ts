@@ -161,20 +161,25 @@ export function useSendMessage({
             return refreshConversation(pid);
         }
         return new Promise<void>(resolve => {
-            resolveCurrentSendRef.current = resolve;
-            // Fallback timeout: 3s for follow-up completion.
-            // If main SSE is blocked/missed, this ensures send re-enables promptly.
-            const timeout = setTimeout(() => {
-                if (resolveCurrentSendRef.current === resolve) {
-                    resolveCurrentSendRef.current = null;
-                    resolve();
-                }
-            }, 3_000);
-            const origResolve = resolve;
-            resolveCurrentSendRef.current = () => {
+            let settled = false;
+            let timeout: ReturnType<typeof setTimeout>;
+            // Resolve exactly once, whether via the main SSE 'done' (onSendComplete
+            // invokes this through resolveCurrentSendRef) or the fallback timeout.
+            const finish = () => {
+                if (settled) return;
+                settled = true;
                 clearTimeout(timeout);
-                origResolve();
+                if (resolveCurrentSendRef.current === finish) {
+                    resolveCurrentSendRef.current = null;
+                }
+                resolve();
             };
+            // Fallback timeout: 3s for follow-up completion. If the main SSE
+            // stream is blocked or missed, this re-enables send promptly instead
+            // of leaving the button disabled until onSendComplete — which may
+            // never fire.
+            timeout = setTimeout(finish, 3_000);
+            resolveCurrentSendRef.current = finish;
         });
     }, [refreshConversation]);
 
