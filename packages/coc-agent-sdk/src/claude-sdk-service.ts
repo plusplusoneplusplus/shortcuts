@@ -171,8 +171,8 @@ interface ClaudeStreamingUserMessage {
     type: 'user';
     message: {
         role: 'user';
-        // A plain string for text-only turns (matches the SDK's MessageParam.content),
-        // or a block array when image attachments are present.
+        // Text-only turns keep the SDK's plain-string content shape; image turns
+        // use a block array so text and images can be sent together.
         content: string | Array<ClaudeTextBlock | ClaudeImageBlock>;
     };
     parent_tool_use_id: null;
@@ -182,10 +182,7 @@ interface ClaudeStreamingUserMessage {
 /**
  * Task-lifecycle messages the SDK emits over the `type:'system'` channel while a
  * backgrounded task (Bash `run_in_background`, native `Agent`/`Task` subagent, or
- * `backgroundTasks()`) runs. `task_started` marks a task in flight; the terminal
- * `task_notification` reports its outcome. `task_updated`/`task_progress` are
- * informational only and must NOT drive the in-flight counter (they would
- * double-count). See {@link applyClaudeTaskInflight}.
+ * `backgroundTasks()`) runs.
  */
 export interface ClaudeTaskSystemMessage {
     type: 'system';
@@ -193,23 +190,6 @@ export interface ClaudeTaskSystemMessage {
     task_id?: string;
     status?: 'completed' | 'failed' | 'stopped';
     [key: string]: unknown;
-}
-
-/**
- * A controllable streaming-input channel for a single Claude turn.
- *
- * The Claude turn is driven in streaming-input mode (an `AsyncIterable` prompt)
- * rather than single-shot (a bare string). A bare string EOFs stdin as soon as
- * the SDK reads it, so the SDK applies an end-of-session grace deadline (~5s) and
- * kills any longer-running background task — dropping the model re-invocation.
- * Holding the input stream open keeps the session "active" so long background
- * tasks complete and the SDK re-invokes the model; closing the stream (EOF) lets
- * the session end once all background tasks have drained.
- */
-interface ClaudeInputChannel {
-    stream: AsyncIterable<ClaudeStreamingUserMessage>;
-    /** EOF the input stream so the SDK session can end. Idempotent. */
-    close: () => void;
 }
 
 export interface ClaudeRateLimitInfo {
@@ -229,7 +209,75 @@ interface ClaudeRateLimitEvent {
     session_id?: string;
 }
 
-type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeUserMessage | ClaudeResultMessage | ClaudeSystemMessage | ClaudeRateLimitEvent | Record<string, unknown>;
+/**
+ * Authoritative turn-over signal. `state: 'idle'` fires after the SDK's
+ * held-back result flushes and its background-agent drain loop exits — i.e. the
+ * turn is genuinely done with no pending background work. Mirrors Copilot's
+ * `session.idle`; the keep-alive loop settles the turn on it.
+ */
+interface ClaudeSessionStateChangedMessage {
+    type: 'system';
+    subtype: 'session_state_changed';
+    state: 'idle' | 'running' | 'requires_action';
+    session_id?: string;
+}
+
+/** A background/foreground task was registered with the session. */
+interface ClaudeTaskStartedMessage {
+    type: 'system';
+    subtype: 'task_started';
+    task_id: string;
+    tool_use_id?: string;
+    description?: string;
+    /** Subagent type name; present for subagent tasks. */
+    subagent_type?: string;
+    task_type?: string;
+    session_id?: string;
+}
+
+/** A background task settled (the async notification that resumes the turn). */
+interface ClaudeTaskNotificationMessage {
+    type: 'system';
+    subtype: 'task_notification';
+    task_id: string;
+    tool_use_id?: string;
+    status: 'completed' | 'failed' | 'stopped';
+    summary?: string;
+    session_id?: string;
+}
+
+/** Wire-safe patch of changed task fields (status / backgrounded flag). */
+interface ClaudeTaskUpdatedMessage {
+    type: 'system';
+    subtype: 'task_updated';
+    task_id: string;
+    patch?: {
+        status?: 'pending' | 'running' | 'completed' | 'failed' | 'killed' | 'paused';
+        is_backgrounded?: boolean;
+    };
+    session_id?: string;
+}
+
+/** Maps an SDK `system` message `subtype` to its concrete message shape. */
+interface ClaudeSystemSubtypeMap {
+    task_started: ClaudeTaskStartedMessage;
+    task_updated: ClaudeTaskUpdatedMessage;
+    task_notification: ClaudeTaskNotificationMessage;
+    session_state_changed: ClaudeSessionStateChangedMessage;
+}
+
+/** Terminal task-update statuses that drain a tracked background task. */
+const CLAUDE_TERMINAL_TASK_STATUSES: ReadonlySet<string> = new Set(['completed', 'failed', 'killed']);
+
+/** Active background task tracked for keep-alive + `onBackgroundTasksChanged`. */
+interface ClaudeBackgroundTaskEntry {
+    id: string;
+    kind: 'agent' | 'shell';
+    type?: string;
+    description?: string;
+}
+
+type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeUserMessage | ClaudeResultMessage | ClaudeSystemMessage | ClaudeRateLimitEvent | ClaudeSessionStateChangedMessage | ClaudeTaskStartedMessage | ClaudeTaskNotificationMessage | ClaudeTaskUpdatedMessage | Record<string, unknown>;
 type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto';
 
 /**
@@ -329,6 +377,51 @@ interface ClaudeSDKModule {
 interface ActiveClaudeSession {
     sessionId: string;
     abortController: AbortController;
+}
+
+/**
+ * Controllable streaming-input source for a Claude `query()` turn.
+ *
+ * A plain string prompt (or a single-yield generator) tells the SDK the turn is
+ * single-shot: it closes the session right after the first `result`, killing the
+ * `claude-code` subprocess and any background jobs it owns. Instead we hand the
+ * SDK an async-iterable that yields the initial user message(s) and then stays
+ * open — the session (and its background work) stays alive until {@link close}
+ * is called, at which point the SDK observes end-of-input and settles the turn.
+ */
+class ClaudeInputGate {
+    private readonly closeSignal: Promise<void>;
+    private resolveClose!: () => void;
+    private closed = false;
+
+    constructor(private readonly initialMessages: ClaudeStreamingUserMessage[]) {
+        this.closeSignal = new Promise<void>((resolve) => {
+            this.resolveClose = resolve;
+        });
+    }
+
+    get isClosed(): boolean {
+        return this.closed;
+    }
+
+    /** Signal end-of-input so the SDK settles the turn. Idempotent. */
+    close(): void {
+        if (this.closed) return;
+        this.closed = true;
+        this.resolveClose();
+    }
+
+    /** Async-iterable input: yields the initial message(s), then blocks until {@link close}. */
+    stream(): AsyncGenerator<ClaudeStreamingUserMessage> {
+        const initialMessages = this.initialMessages;
+        const closeSignal = this.closeSignal;
+        return (async function* () {
+            for (const message of initialMessages) {
+                yield message;
+            }
+            await closeSignal;
+        })();
+    }
 }
 
 interface ClaudeDiagnosticLogContext {
@@ -686,13 +779,6 @@ export class ClaudeSDKService implements ISDKService {
         let currentSessionId = sessionId;
         const abortController = new AbortController();
 
-        // EOF the streaming-input channel (assigned once the channel is built).
-        // Any abort — caller signal, abortSession(), or the background-drain cap —
-        // closes the input so the SDK session can wind down instead of blocking
-        // the loop on the next message while the input stream is still held open.
-        let closeClaudeInput: () => void = () => {};
-        abortController.signal.addEventListener('abort', () => closeClaudeInput());
-
         // Propagate caller's AbortSignal into our internal controller.
         let signalCleanup: (() => void) | undefined;
         if (options.signal) {
@@ -740,6 +826,53 @@ export class ClaudeSDKService implements ISDKService {
         const permissionOptions = this.resolveClaudePermissionOptions(options.mode);
         let mcpServerNames = inferClaudeMcpServerNamesFromOptions(options);
 
+        // Streaming-input gate that keeps the query() session alive past the
+        // first `result` while SDK-native background work is still pending. The
+        // `finally` closes it so a thrown/aborted turn never leaks the generator.
+        let inputGate: ClaudeInputGate | undefined;
+        const closeClaudeInput = () => inputGate?.close();
+        abortController.signal.addEventListener('abort', closeClaudeInput);
+
+        // Background tasks (background Bash, backgrounded subagents) tracked for
+        // keep-alive settlement and the `onBackgroundTasksChanged` UI callback.
+        const backgroundTasks = new Map<string, ClaudeBackgroundTaskEntry>();
+        const emitBackgroundTasksChanged = () => {
+            if (!options.onBackgroundTasksChanged) return;
+            const toSummary = (entry: ClaudeBackgroundTaskEntry) => ({
+                id: entry.id,
+                ...(entry.type ? { type: entry.type } : {}),
+                ...(entry.description ? { description: entry.description } : {}),
+            });
+            const entries = Array.from(backgroundTasks.values());
+            try {
+                options.onBackgroundTasksChanged({
+                    backgroundAgents: entries.filter(e => e.kind === 'agent').map(toSummary),
+                    backgroundShells: entries.filter(e => e.kind === 'shell').map(toSummary),
+                    backgroundTotalActive: backgroundTasks.size,
+                    backgroundWaitingForDrain: backgroundTasks.size > 0,
+                });
+            } catch {
+                // Observational only; never fail the turn on a renderer error.
+            }
+        };
+        const registerBackgroundTask = (
+            id: string | undefined,
+            kind: ClaudeBackgroundTaskEntry['kind'],
+            type?: string,
+            description?: string,
+        ) => {
+            if (!id || backgroundTasks.has(id)) return;
+            backgroundTasks.set(id, { id, kind, ...(type ? { type } : {}), ...(description ? { description } : {}) });
+            emitBackgroundTasksChanged();
+        };
+        const settleBackgroundTasks = (...ids: Array<string | undefined>) => {
+            let changed = false;
+            for (const id of ids) {
+                if (id && backgroundTasks.delete(id)) changed = true;
+            }
+            if (changed) emitBackgroundTasksChanged();
+        };
+
         try {
             const effort = this.normalizeClaudeEffort(options.reasoningEffort);
             const { servers: mcpServers, allowedTools, cleanup } = await this.buildClaudeMcpServers(options);
@@ -752,22 +885,19 @@ export class ClaudeSDKService implements ISDKService {
                     ? [...ASK_MODE_AUTO_APPROVED_TOOLS]
                     : [];
             const effectiveAllowedTools = [...allowedTools, ...askModeAllowed];
-
-            // Streaming-input transport: hold stdin open until background tasks
-            // drain, then EOF to let the session end (see ClaudeInputChannel).
-            const inputChannel = this.buildClaudeInputChannel(options);
-            closeClaudeInput = inputChannel.close;
-            // task_id set of background tasks currently in flight. A `result` is
-            // only allowed to settle the turn when this is empty (AC-02).
-            const inflightTasks = new Set<string>();
             const drainCapMs = this.resolveBackgroundDrainCapMs(options);
             // Arm the drain cap lazily — only when a `result` defers settle with
-            // tasks still in flight. A no-background turn never arms it (AC-04).
+            // background work still tracked. A no-background turn never arms it.
             const armDrainCap = () => {
                 if (drainCapTimer || drainCapMs <= 0) return;
                 drainCapTimer = setTimeout(() => {
                     getSDKLogger().warn(
-                        { provider: CLAUDE_PROVIDER, event: 'claude_background_drain_timeout', drainCapMs, inflight: inflightTasks.size },
+                        {
+                            provider: CLAUDE_PROVIDER,
+                            event: 'claude_background_drain_timeout',
+                            drainCapMs,
+                            backgroundTaskCount: backgroundTasks.size,
+                        },
                         'Claude background-task drain exceeded the wall-clock cap; closing input and aborting',
                     );
                     closeClaudeInput();
@@ -776,8 +906,9 @@ export class ClaudeSDKService implements ISDKService {
                 drainCapTimer.unref?.();
             };
 
+            inputGate = new ClaudeInputGate(this.buildClaudeInitialMessages(options));
             const queryOptions: ClaudeQueryOptions = {
-                prompt: inputChannel.stream,
+                prompt: inputGate.stream(),
                 abortController,
                 options: {
                     ...(options.workingDirectory ? { cwd: options.workingDirectory } : {}),
@@ -805,6 +936,12 @@ export class ClaudeSDKService implements ISDKService {
                             options.onStreamingChunk?.(block.text);
                         } else if (this.isClaudeToolUseBlock(block)) {
                             this.handleClaudeToolUse(block, options, toolCalls, startedToolCalls, msg.parent_tool_use_id ?? undefined);
+                            // A tool launched with run_in_background keeps the
+                            // session alive until its task_notification settles.
+                            if (isClaudeBackgroundToolUse(block)) {
+                                const toolName = normalizeClaudeToolName(block.name ?? '');
+                                registerBackgroundTask(block.id, toolName === 'task' ? 'agent' : 'shell', toolName);
+                            }
                         }
                     }
                 } else if (this.isUserMessage(msg)) {
@@ -835,14 +972,13 @@ export class ClaudeSDKService implements ISDKService {
                         chunks.push(msg.result);
                         options.onStreamingChunk?.(msg.result);
                     }
-                    // Settle decision: with no background task in flight, EOF the
-                    // input so the session ends now (no-background turns close at
-                    // their first result — parity with single-shot). Otherwise keep
-                    // stdin open and keep iterating; the SDK will deliver the task's
-                    // terminal notification and re-invoke the model (AC-02).
-                    if (inflightTasks.size === 0) {
+                    // Fast path / common case: no background work pending, so close
+                    // the input stream and let the SDK settle the turn immediately.
+                    // When background work is pending, keep the gate open until the
+                    // SDK reports idle, bounded by the drain cap.
+                    if (backgroundTasks.size === 0) {
                         clearDrainCap();
-                        inputChannel.close();
+                        inputGate.close();
                     } else {
                         armDrainCap();
                     }
@@ -855,10 +991,29 @@ export class ClaudeSDKService implements ISDKService {
                     );
                     latestRateLimitInfo = msg.rate_limit_info;
                     this.lastRateLimitInfo = msg.rate_limit_info;
-                } else if (this.isClaudeTaskSystemMessage(msg)) {
-                    // task_started/task_notification drive the in-flight counter
-                    // (AC-03); previously every type:'system' message was dropped.
-                    applyClaudeTaskInflight(inflightTasks, msg);
+                } else if (this.isClaudeSystemSubtype(msg, 'task_started')) {
+                    registerBackgroundTask(
+                        msg.task_id,
+                        msg.subagent_type ? 'agent' : 'shell',
+                        msg.task_type ?? msg.subagent_type,
+                        msg.description,
+                    );
+                } else if (this.isClaudeSystemSubtype(msg, 'task_updated')) {
+                    const status = msg.patch?.status;
+                    if (status && CLAUDE_TERMINAL_TASK_STATUSES.has(status)) {
+                        settleBackgroundTasks(msg.task_id);
+                    } else if (msg.patch?.is_backgrounded === true) {
+                        registerBackgroundTask(msg.task_id, 'shell');
+                    }
+                } else if (this.isClaudeSystemSubtype(msg, 'task_notification')) {
+                    settleBackgroundTasks(msg.task_id, msg.tool_use_id);
+                } else if (this.isClaudeSystemSubtype(msg, 'session_state_changed')) {
+                    // Authoritative turn-over signal: the SDK's background drain
+                    // loop has exited. Settle regardless of our local tracking.
+                    if (msg.state === 'idle') {
+                        clearDrainCap();
+                        inputGate.close();
+                    }
                 }
             }
 
@@ -887,7 +1042,9 @@ export class ClaudeSDKService implements ISDKService {
             return { success: false, error: message, sessionId: currentSessionId, effectiveModel: model };
         } finally {
             clearDrainCap();
-            closeClaudeInput();
+            // Idempotent: unblocks the streaming-input generator if the turn
+            // ended via abort/throw before a settle signal closed it.
+            inputGate?.close();
             signalCleanup?.();
             mcpCleanup();
             this.sessions.delete(currentSessionId);
@@ -919,38 +1076,14 @@ export class ClaudeSDKService implements ISDKService {
     }
 
     /**
-     * Build the controllable streaming-input channel for a turn. The stream
-     * yields exactly one initial user message (text and/or image blocks), then
-     * stays open — awaiting an internal close — so the SDK treats the session as
-     * active while background tasks run. Calling `close()` EOFs the stream.
+     * Build the initial streaming-input user message(s) for a turn.
+     *
+     * Always returns streaming `user` messages (never a bare string) so the turn
+     * runs through {@link ClaudeInputGate}: the gate yields these, then keeps the
+     * SDK session open for background-work resume until the turn settles. The
+     * text-only case keeps a plain string content value; images use block content.
      */
-    private buildClaudeInputChannel(options: SendMessageOptions): ClaudeInputChannel {
-        const message = this.buildInitialClaudeUserMessage(options);
-        let resolveClosed!: () => void;
-        const closed = new Promise<void>((resolve) => { resolveClosed = resolve; });
-        let closeCalled = false;
-        const stream = (async function* (): AsyncGenerator<ClaudeStreamingUserMessage> {
-            yield message;
-            await closed;
-        })();
-        return {
-            stream,
-            close: () => {
-                if (closeCalled) return;
-                closeCalled = true;
-                resolveClosed();
-            },
-        };
-    }
-
-    /**
-     * Build the single initial user message for a turn. Text-only turns use a
-     * plain string `content`; attachments are converted to base64 image blocks
-     * (oversized/malformed supported images are dropped with a sanitized skip
-     * diagnostic; unsupported extensions are ignored so text-only behavior is
-     * preserved).
-     */
-    private buildInitialClaudeUserMessage(options: SendMessageOptions): ClaudeStreamingUserMessage {
+    private buildClaudeInitialMessages(options: SendMessageOptions): ClaudeStreamingUserMessage[] {
         const text = options.prompt ?? '';
         const images: ClaudeImageSource[] = [];
         for (const attachment of options.attachments ?? []) {
@@ -978,15 +1111,15 @@ export class ClaudeSDKService implements ISDKService {
                 })),
             ];
 
-        return {
+        return [{
             type: 'user',
             message: { role: 'user', content },
             parent_tool_use_id: null,
-        };
+        }];
     }
 
     /**
-     * Resolve the wall-clock ceiling for holding the input channel open while
+     * Resolve the wall-clock ceiling for holding the input gate open while
      * background tasks drain. Honors a smaller caller `timeoutMs` budget when
      * given, but never exceeds {@link CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS}.
      */
@@ -1141,20 +1274,16 @@ export class ClaudeSDKService implements ISDKService {
         );
     }
 
-    /**
-     * A `type:'system'` task-lifecycle message (`task_started`/`task_updated`/
-     * `task_progress`/`task_notification`). Other system messages (`init`, etc.)
-     * are not task messages and have no counter effect.
-     */
-    private isClaudeTaskSystemMessage(msg: ClaudeSDKMessage): msg is ClaudeTaskSystemMessage {
-        if (typeof msg !== 'object' || msg === null) return false;
-        const record = msg as Record<string, unknown>;
-        if (record.type !== 'system') return false;
+    /** Narrow an SDK `system` message by its `subtype` discriminant. */
+    private isClaudeSystemSubtype<K extends keyof ClaudeSystemSubtypeMap>(
+        msg: ClaudeSDKMessage,
+        subtype: K,
+    ): msg is ClaudeSystemSubtypeMap[K] {
         return (
-            record.subtype === 'task_started' ||
-            record.subtype === 'task_updated' ||
-            record.subtype === 'task_progress' ||
-            record.subtype === 'task_notification'
+            typeof msg === 'object' &&
+            msg !== null &&
+            (msg as Record<string, unknown>).type === 'system' &&
+            (msg as Record<string, unknown>).subtype === subtype
         );
     }
 
@@ -1654,6 +1783,22 @@ function normalizeBridgedToolName(name: string): string {
     return name.startsWith(prefix) ? name.slice(prefix.length) : name;
 }
 
+/**
+ * True when a tool_use block requests background execution
+ * (`run_in_background: true`) — e.g. background Bash or a backgrounded subagent.
+ * Such tools return immediately and keep running after the turn's `result`, so
+ * the keep-alive loop must not settle until they report back.
+ */
+function isClaudeBackgroundToolUse(block: ClaudeToolUseBlock): boolean {
+    const input = block.input;
+    return (
+        typeof input === 'object' &&
+        input !== null &&
+        !Array.isArray(input) &&
+        (input as Record<string, unknown>).run_in_background === true
+    );
+}
+
 function normalizeClaudeToolName(name: string): string {
     const normalized = normalizeBridgedToolName(name);
     switch (normalized) {
@@ -1994,14 +2139,10 @@ function addClaudeUsage(current: TokenUsage | undefined, msg: Pick<ClaudeResultM
 }
 
 /**
- * Apply a `type:'system'` task-lifecycle message to the in-flight background-task
- * set. `task_started` marks a task in flight; the terminal `task_notification`
- * (status `completed`/`failed`/`stopped`) clears it. `task_updated`/
- * `task_progress` are informational status pings and intentionally have NO effect
- * — counting them would double-count a single task. A message without a
- * `task_id` is ignored.
- *
- * Exported for direct unit testing of the counter rule (AC-03).
+ * Apply a `type:'system'` task-lifecycle message to an in-flight background-task
+ * set. `task_started` marks a task in flight; terminal `task_notification`
+ * messages clear it. `task_updated`/`task_progress` are informational pings and
+ * intentionally have no effect so they cannot double-count a single task.
  */
 export function applyClaudeTaskInflight(inflight: Set<string>, msg: ClaudeTaskSystemMessage): void {
     const taskId = typeof msg.task_id === 'string' && msg.task_id ? msg.task_id : undefined;

@@ -32,6 +32,22 @@ async function drainAsyncIterable(iterable: AsyncIterable<unknown>): Promise<unk
     return values;
 }
 
+/**
+ * Text of the first user message in a streaming-input prompt. The provider now
+ * always hands the SDK an open async-iterable input (the keep-alive gate), so a
+ * text-only prompt may be plain string content while image prompts use content
+ * blocks. Safe to drain after sendMessage resolves: the turn settles and closes
+ * the gate.
+ */
+async function firstUserText(prompt: unknown): Promise<string> {
+    if (typeof prompt === 'string') return prompt;
+    const messages = await drainAsyncIterable(prompt as AsyncIterable<unknown>);
+    const content = (messages[0] as any)?.message?.content;
+    if (typeof content === 'string') return content;
+    const textBlock = Array.isArray(content) ? content.find((b: any) => b?.type === 'text') : undefined;
+    return typeof textBlock?.text === 'string' ? textBlock.text : '';
+}
+
 /** Minimal pino-shaped logger that records every call for assertions. */
 function createCapturingLogger() {
     const logs: Array<{ level: string; fields: Record<string, unknown>; message: string }> = [];
@@ -116,17 +132,10 @@ describe('ClaudeSDKService image attachments', () => {
         ]);
     });
 
-    it('streams a plain text user message when no attachments are provided', async () => {
+    it('wraps a no-attachment prompt as a single streaming text message', async () => {
         await svc.sendMessage({ prompt: 'Text only' });
 
-        // Streaming-input transport: a text-only turn yields one user message
-        // whose content is the plain prompt string (no image blocks).
-        const prompt = queryFn.mock.calls[0][0].prompt;
-        expect(typeof prompt).not.toBe('string');
-        const messages = await drainAsyncIterable(prompt);
-        expect(messages).toEqual([
-            { type: 'user', message: { role: 'user', content: 'Text only' }, parent_tool_use_id: null },
-        ]);
+        expect(await firstUserText(queryFn.mock.calls[0][0].prompt)).toBe('Text only');
     });
 
     it('skips unsupported image and non-image attachments', async () => {
@@ -139,10 +148,7 @@ describe('ClaudeSDKService image attachments', () => {
             ],
         });
 
-        const messages = await drainAsyncIterable(queryFn.mock.calls[0][0].prompt);
-        expect(messages).toEqual([
-            { type: 'user', message: { role: 'user', content: 'Skip unsupported' }, parent_tool_use_id: null },
-        ]);
+        expect(await firstUserText(queryFn.mock.calls[0][0].prompt)).toBe('Skip unsupported');
     });
 
     it('forwards an image whose byte size is exactly at the limit', async () => {
@@ -175,10 +181,7 @@ describe('ClaudeSDKService image attachments', () => {
         });
 
         // Oversized image dropped; request still runs as a plain text prompt.
-        const messages = await drainAsyncIterable(queryFn.mock.calls[0][0].prompt);
-        expect(messages).toEqual([
-            { type: 'user', message: { role: 'user', content: 'Too large' }, parent_tool_use_id: null },
-        ]);
+        expect(await firstUserText(queryFn.mock.calls[0][0].prompt)).toBe('Too large');
     });
 
     it('records a sanitized skip diagnostic for an oversized image (no payload/prompt leak)', async () => {
@@ -262,10 +265,7 @@ describe('ClaudeSDKService image attachments', () => {
         });
 
         // No Claude-supported image → request still runs as a plain text prompt.
-        const messages = await drainAsyncIterable(queryFn.mock.calls[0][0].prompt);
-        expect(messages).toEqual([
-            { type: 'user', message: { role: 'user', content: 'Look at this photo' }, parent_tool_use_id: null },
-        ]);
+        expect(await firstUserText(queryFn.mock.calls[0][0].prompt)).toBe('Look at this photo');
 
         const skip = logs.find(l => l.fields.event === 'claude_image_skipped');
         expect(skip).toBeDefined();

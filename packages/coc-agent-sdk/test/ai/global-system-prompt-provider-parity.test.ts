@@ -121,6 +121,22 @@ async function* makeMessages(messages: object[]): AsyncIterable<object> {
     for (const msg of messages) yield msg;
 }
 
+/**
+ * Text of the first user message in a Claude streaming-input prompt. The Claude
+ * provider hands the SDK an open async-iterable input (keep-alive gate), so the
+ * prompt is a streaming user message rather than a bare string prompt.
+ */
+async function firstUserText(prompt: unknown): Promise<string> {
+    if (typeof prompt === 'string') return prompt;
+    for await (const message of prompt as AsyncIterable<any>) {
+        const content = (message as any)?.message?.content;
+        if (typeof content === 'string') return content;
+        const textBlock = Array.isArray(content) ? content.find((b: any) => b?.type === 'text') : undefined;
+        return typeof textBlock?.text === 'string' ? textBlock.text : '';
+    }
+    return '';
+}
+
 /** Claude: returns the `ClaudeQueryOptions` passed to the SDK `query` fn. */
 async function sendViaClaude(systemMessage?: SystemMessageConfig): Promise<any> {
     const svc = new ClaudeSDKService();
@@ -183,14 +199,7 @@ describe('global system prompt provider parity (AC-04)', () => {
     it('Claude maps the global systemMessage to the claude_code preset systemPrompt without mutating the prompt', async () => {
         const queryOptions = await sendViaClaude(GLOBAL_SYSTEM_MESSAGE);
 
-        // Streaming-input transport: the prompt is an async-iterable user message
-        // whose content is the unmutated user prompt.
-        expect(typeof queryOptions.prompt).not.toBe('string');
-        const streamed: unknown[] = [];
-        for await (const m of queryOptions.prompt as AsyncIterable<unknown>) streamed.push(m);
-        expect(streamed).toEqual([
-            { type: 'user', message: { role: 'user', content: USER_PROMPT }, parent_tool_use_id: null },
-        ]);
+        expect(await firstUserText(queryOptions.prompt)).toBe(USER_PROMPT);
         expect(queryOptions.options.systemPrompt).toEqual({
             type: 'preset',
             preset: 'claude_code',

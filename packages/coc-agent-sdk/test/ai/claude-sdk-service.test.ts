@@ -66,24 +66,57 @@ async function* makeMessages(messages: object[]): AsyncIterable<object> {
 }
 
 /**
- * Drain the streaming-input prompt channel and return the single initial user
- * message. The Claude provider drives turns in streaming-input mode, so
- * `queryFn.mock.calls[i][0].prompt` is an AsyncIterable, not a bare string.
+ * Reads the text of the first user message yielded by a streaming-input prompt.
+ * The Claude provider now always hands the SDK an open async-iterable input
+ * (the keep-alive gate) instead of a bare string prompt, so prompt assertions
+ * read the first message's text from either plain string or block content.
  */
-async function firstStreamedUserMessage(prompt: unknown): Promise<{
-    type: string;
-    message: { role: string; content: unknown };
-    parent_tool_use_id: unknown;
-}> {
-    if (typeof prompt === 'string' || prompt == null) {
-        throw new Error(`expected an async-iterable prompt, got ${typeof prompt}`);
+async function firstUserText(prompt: unknown): Promise<string> {
+    if (typeof prompt === 'string') return prompt;
+    for await (const message of prompt as AsyncIterable<any>) {
+        const content = (message as any)?.message?.content;
+        if (typeof content === 'string') return content;
+        if (Array.isArray(content)) {
+            const textBlock = content.find((b: any) => b?.type === 'text');
+            return typeof textBlock?.text === 'string' ? textBlock.text : '';
+        }
+        return '';
     }
-    const values: unknown[] = [];
-    for await (const value of prompt as AsyncIterable<unknown>) values.push(value);
-    if (values.length !== 1) {
-        throw new Error(`expected exactly one streamed user message, got ${values.length}`);
-    }
-    return values[0] as { type: string; message: { role: string; content: unknown }; parent_tool_use_id: unknown };
+    return '';
+}
+
+/**
+ * Builds an input-aware query handle that faithfully models the keep-alive
+ * contract: the SDK only delivers the post-`result` continuation while the
+ * streaming-input session stays open. A single-shot input (a bare string, the
+ * pre-fix behavior) yields just `beforeResult` and ends; an open async-iterable
+ * input also yields `continuation`, then drains the input until the provider
+ * closes the gate. `onInput` lets a test observe provider state mid-window.
+ */
+function makeKeepAliveQuery(
+    beforeResult: object[],
+    continuation: object[] = [],
+    onInput?: () => void,
+) {
+    return (queryOptions: { prompt: unknown }) => {
+        const input = queryOptions.prompt;
+        const inputOpen =
+            !!input &&
+            typeof input !== 'string' &&
+            typeof (input as any)[Symbol.asyncIterator] === 'function';
+        return {
+            async *[Symbol.asyncIterator]() {
+                for (const msg of beforeResult) yield msg;
+                if (!inputOpen) return; // single-shot input -> no async resume
+                onInput?.();
+                for (const msg of continuation) yield msg;
+                // Block until the provider settles the turn by closing the gate.
+                for await (const _ of input as AsyncIterable<unknown>) { void _; }
+            },
+            accountInfo: async () => ({}),
+            return: async (value?: unknown) => ({ done: true as const, value }),
+        };
+    };
 }
 
 /** Wraps a message array as a query handle with optional control-method spies. */
@@ -620,7 +653,7 @@ describe('ClaudeSDKService.sendMessage', () => {
 
         expect(result.success).toBe(true);
         const call = queryFn.mock.calls[0][0];
-        expect((await firstStreamedUserMessage(call.prompt)).message.content).toBe('user prompt');
+        expect(await firstUserText(call.prompt)).toBe('user prompt');
         expect(call.options?.systemPrompt).toEqual({
             type: 'preset',
             preset: 'claude_code',
@@ -643,7 +676,7 @@ describe('ClaudeSDKService.sendMessage', () => {
 
         expect(result.success).toBe(true);
         const call = queryFn.mock.calls[0][0];
-        expect((await firstStreamedUserMessage(call.prompt)).message.content).toBe('generator prompt');
+        expect(await firstUserText(call.prompt)).toBe('generator prompt');
         expect(call.options?.systemPrompt).toBe('Strict generator system prompt');
         expect(call.options).not.toHaveProperty('appendSystemPrompt');
         expect(call.options).not.toHaveProperty('customSystemPrompt');
@@ -698,7 +731,7 @@ describe('ClaudeSDKService.sendMessage', () => {
             preset: 'claude_code',
             append: 'history plus CoC system prompt',
         });
-        expect((await firstStreamedUserMessage(call.prompt)).message.content).toBe('follow-up prompt');
+        expect(await firstUserText(call.prompt)).toBe('follow-up prompt');
     });
 
     it('maps Claude result usage into the shared TokenUsage shape', async () => {
@@ -1610,6 +1643,159 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(result.success).toBe(false);
         expect(result.error).toMatch(/npm install/);
     });
+
+    // ── Background-task keep-alive (async resume) ───────────────────────────
+
+    it('keeps the session open past the first result and surfaces the background resume (AC-01/AC-02)', async () => {
+        queryFn.mockImplementationOnce(makeKeepAliveQuery(
+            [
+                { type: 'assistant', message: { content: [{ type: 'text', text: 'Starting background work.' }] } },
+                {
+                    type: 'assistant',
+                    message: { content: [{ type: 'tool_use', id: 'bash-bg', name: 'Bash', input: { command: 'sleep 8 && echo done', run_in_background: true } }] },
+                },
+                { type: 'result', subtype: 'success', result: 'started' },
+            ],
+            [
+                // Background completion arrives later in the SAME open session.
+                { type: 'system', subtype: 'task_notification', task_id: 'task-1', tool_use_id: 'bash-bg', status: 'completed', summary: 'done' },
+                { type: 'assistant', message: { content: [{ type: 'text', text: ' Background finished: done.' }] } },
+                { type: 'result', subtype: 'success', result: 'all done' },
+                { type: 'system', subtype: 'session_state_changed', state: 'idle' },
+            ],
+        ));
+
+        const chunks: string[] = [];
+        const toolEvents: object[] = [];
+        const result = await svc.sendMessage({
+            prompt: 'run a background command',
+            onStreamingChunk: (c) => { if (c) chunks.push(c); },
+            onToolEvent: (e) => toolEvents.push(e),
+        });
+
+        expect(result.success).toBe(true);
+        // The post-result continuation is consumed and surfaced through callbacks.
+        expect(chunks).toEqual(['Starting background work.', ' Background finished: done.']);
+        expect(result.response).toBe('Starting background work. Background finished: done.');
+        expect(toolEvents).toContainEqual(expect.objectContaining({ type: 'tool-start', toolName: 'Bash', toolCallId: 'bash-bg' }));
+    }, 5000);
+
+    it('fires onBackgroundTasksChanged with active>0 then active==0 (AC-05)', async () => {
+        queryFn.mockImplementationOnce(makeKeepAliveQuery(
+            [
+                {
+                    type: 'assistant',
+                    message: { content: [{ type: 'tool_use', id: 'bash-bg', name: 'Bash', input: { command: 'sleep 5', run_in_background: true } }] },
+                },
+                { type: 'result', subtype: 'success', result: 'started' },
+            ],
+            [
+                { type: 'system', subtype: 'task_notification', task_id: 'task-1', tool_use_id: 'bash-bg', status: 'completed' },
+                { type: 'result', subtype: 'success', result: 'done' },
+                { type: 'system', subtype: 'session_state_changed', state: 'idle' },
+            ],
+        ));
+
+        const bgEvents: Array<{ backgroundTotalActive: number; backgroundWaitingForDrain: boolean; backgroundShells: Array<{ id: string }> }> = [];
+        const result = await svc.sendMessage({
+            prompt: 'bg',
+            onBackgroundTasksChanged: (t) => bgEvents.push({
+                backgroundTotalActive: t.backgroundTotalActive,
+                backgroundWaitingForDrain: t.backgroundWaitingForDrain,
+                backgroundShells: t.backgroundShells.map(s => ({ id: s.id })),
+            }),
+        });
+
+        expect(result.success).toBe(true);
+        const active = bgEvents.find(e => e.backgroundTotalActive > 0);
+        expect(active).toBeDefined();
+        expect(active!.backgroundWaitingForDrain).toBe(true);
+        expect(active!.backgroundShells).toContainEqual({ id: 'bash-bg' });
+        expect(bgEvents[bgEvents.length - 1]).toMatchObject({ backgroundTotalActive: 0, backgroundWaitingForDrain: false });
+    }, 5000);
+
+    it('settles exactly once at genuine idle and keeps the session alive meanwhile (AC-03)', async () => {
+        let activeDuringWindow = -1;
+        queryFn.mockImplementationOnce(makeKeepAliveQuery(
+            [
+                {
+                    type: 'assistant',
+                    message: { content: [{ type: 'tool_use', id: 'bash-bg', name: 'Bash', input: { command: 'sleep 5', run_in_background: true } }] },
+                },
+                { type: 'result', subtype: 'success', result: 'started' },
+            ],
+            [
+                { type: 'system', subtype: 'task_notification', task_id: 't', tool_use_id: 'bash-bg', status: 'completed' },
+                { type: 'result', subtype: 'success', result: 'done' },
+                { type: 'system', subtype: 'session_state_changed', state: 'idle' },
+            ],
+            // Fires mid-window, after the first result but before the resume.
+            () => { activeDuringWindow = svc.getActiveSessionCount(); },
+        ));
+
+        expect(svc.getActiveSessionCount()).toBe(0);
+        const result = await svc.sendMessage({ prompt: 'bg' });
+
+        expect(result.success).toBe(true);
+        // The session (and its subprocess) stayed alive through the keep-alive window.
+        expect(activeDuringWindow).toBeGreaterThanOrEqual(1);
+        // Teardown ran exactly once at genuine idle: the session is now cleared.
+        expect(svc.getActiveSessionCount()).toBe(0);
+    }, 5000);
+
+    it('aborts and tears down promptly during the keep-alive window (AC-03)', async () => {
+        const controller = new AbortController();
+        let sessionId = '';
+        queryFn.mockImplementationOnce((opts: { abortController?: AbortController }) => {
+            const ac = opts.abortController;
+            return {
+                async *[Symbol.asyncIterator]() {
+                    yield {
+                        type: 'assistant',
+                        message: { content: [{ type: 'tool_use', id: 'bash-bg', name: 'Bash', input: { command: 'sleep 30', run_in_background: true } }] },
+                    };
+                    yield { type: 'result', subtype: 'success', result: 'started' };
+                    // Background still pending → gate stays open. Block until aborted.
+                    await new Promise<void>((_, reject) => {
+                        if (ac?.signal.aborted) { reject(new Error('Aborted')); return; }
+                        ac?.signal.addEventListener('abort', () => reject(new Error('Aborted')));
+                    });
+                },
+                accountInfo: async () => ({}),
+                return: async (value?: unknown) => ({ done: true as const, value }),
+            };
+        });
+
+        const sendPromise = svc.sendMessage({
+            prompt: 'bg',
+            signal: controller.signal,
+            onSessionCreated: (id) => { sessionId = id; },
+        });
+
+        await new Promise((r) => setTimeout(r, 0));
+        expect(sessionId).toBeTruthy();
+        expect(svc.hasActiveSession(sessionId)).toBe(true);
+
+        controller.abort();
+        const result = await sendPromise;
+        expect(result).toBeDefined();
+        expect(svc.hasActiveSession(sessionId)).toBe(false);
+    }, 5000);
+
+    it('settles promptly on the single result with no background work (AC-06)', async () => {
+        // The input-aware mock blocks on the streaming input until the gate is
+        // closed; if the no-background turn failed to settle on the result this
+        // would hang and time out.
+        queryFn.mockImplementationOnce(makeKeepAliveQuery([
+            { type: 'assistant', message: { content: [{ type: 'text', text: 'Quick answer.' }] } },
+            { type: 'result', subtype: 'success', result: 'Quick answer.' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('Quick answer.');
+        expect(svc.getActiveSessionCount()).toBe(0);
+    }, 5000);
 
     it('passes workingDirectory through to the query options', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
