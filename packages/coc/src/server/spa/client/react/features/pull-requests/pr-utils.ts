@@ -131,6 +131,14 @@ export interface QueueRiskSignals {
     hasUnresolvedBlockingThread?: boolean;
 }
 
+export interface PullRequestAutoMerge {
+    enabled: boolean;
+    state: 'not-enabled' | 'armed' | 'queued' | 'blocked';
+    enabledBy?: { name: string; email?: string } | null;
+    mergeMethod?: 'merge' | 'squash' | 'rebase';
+    blockedReason?: string;
+}
+
 /** Shape of a pull request as returned by the /api/origins/:originId/pull-requests endpoint. */
 export interface PullRequest {
     id: number | string;
@@ -154,6 +162,8 @@ export interface PullRequest {
     headSha?: string;
     /** Real diff stats enriched by the server for list/detail queue metadata. */
     diffStats?: PullRequestDiffStats;
+    /** Auto-merge configuration and state. */
+    autoMerge?: PullRequestAutoMerge;
 }
 
 function stringifyIdentityId(id: string | number | undefined): string {
@@ -258,6 +268,37 @@ export function prStatusBadge(status: PrStatus | string): StatusBadge {
 
 export function prStatusColor(status: PrStatus | string): string {
     return prStatusBadge(status).className;
+}
+
+export function autoMergeBadge(autoMerge?: PullRequestAutoMerge): StatusBadge | null {
+    if (!autoMerge?.enabled) return null;
+
+    switch (autoMerge.state) {
+        case 'blocked':
+            return {
+                emoji: '🚫',
+                label: 'Auto-merge blocked',
+                className: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
+            };
+        case 'queued':
+            return {
+                emoji: '⏳',
+                label: 'Auto-merge queued',
+                className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200',
+            };
+        case 'armed':
+            return {
+                emoji: '🔄',
+                label: 'Auto-merge armed',
+                className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
+            };
+        default:
+            return {
+                emoji: '✅',
+                label: 'Auto-merge enabled',
+                className: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
+            };
+    }
 }
 
 export function normalizeReviewVote(vote?: string | null): string {

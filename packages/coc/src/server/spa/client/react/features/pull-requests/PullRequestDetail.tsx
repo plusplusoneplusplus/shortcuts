@@ -21,7 +21,7 @@ import { cn } from '../../ui';
 import { useApp } from '../../contexts/AppContext';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useCocClient } from '../../repos/cloneRouting';
-import { formatTimestamp, prStatusBadge } from './pr-utils';
+import { formatTimestamp, prStatusBadge, autoMergeBadge } from './pr-utils';
 import { ReviewerBadge } from './ReviewerBadge';
 import { ThreadList } from './ThreadList';
 import { PrReviewSummaryPanel } from './PrReviewSummaryPanel';
@@ -393,6 +393,20 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
                             Risk: {reviewSummary.risk}
                         </span>
                     )}
+                    {pr.autoMerge?.enabled && (() => {
+                        const badge = autoMergeBadge(pr.autoMerge);
+                        return badge ? (
+                            <span
+                                className={cn(
+                                    'inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
+                                    badge.className,
+                                )}
+                                data-testid="pr-auto-merge-badge"
+                            >
+                                {badge.emoji} {badge.label}
+                            </span>
+                        ) : null;
+                    })()}
                     {unresolvedCount > 0 && (
                         <span className="inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full bg-yellow-100 px-1.5 py-0.5 text-[11px] font-semibold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
                             {unresolvedCount} unresolved
