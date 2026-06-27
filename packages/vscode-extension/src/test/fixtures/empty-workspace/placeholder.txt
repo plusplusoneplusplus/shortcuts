@@ -1,2 +1,0 @@
-This workspace intentionally starts empty for testing group creation from scratch.
-
