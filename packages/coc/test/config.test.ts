@@ -1040,6 +1040,8 @@ timeout: 300
                 '    enabled: true',
                 'effortLevels:',
                 '  enabled: true',
+                'triggers:',
+                '  enabled: true',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);
 
@@ -1350,6 +1352,9 @@ timeout: 300
                   },
                   "timeout": 450,
                   "toolCompactness": 2,
+                  "triggers": {
+                    "enabled": false,
+                  },
                   "vimNavigation": {
                     "enabled": true,
                   },
@@ -1442,6 +1447,7 @@ timeout: 300
                   "terminal.enabled": "file",
                   "timeout": "file",
                   "toolCompactness": "file",
+                  "triggers.enabled": "default",
                   "vimNavigation.enabled": "file",
                   "workItems.aiAuthoring.enabled": "default",
                   "workItems.hierarchy.enabled": "default",
