@@ -34,6 +34,7 @@ import { useChatSSE } from './hooks/useChatSSE';
 import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/useChatSSE';
 import { CanvasPanel } from '../canvas/CanvasPanel';
 import { SourceCanvasDock, useSourceCanvasState, useSourceCanvasContent, useSourceCanvasDirectory } from './source-canvas';
+import { readCanvasClosed, writeCanvasClosed } from './canvasClosedPreference';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
@@ -287,6 +288,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const scratchpadEnabled = useScratchpadEnabled() && !disableScratchpad;
     const { scratchpadLayout } = useDisplaySettings();
     const bareTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
+    // Conversation identity used to key the agent-canvas "closed" preference in
+    // localStorage — the same `processId ?? bareTaskId` the canvas discovery
+    // effect uses, so the persisted flag is read/written under one identity.
+    const canvasPid = processId ?? bareTaskId;
     const scratchpad = useScratchpadState(scratchpadContainerRef, scratchpadLayout, bareTaskId);
     const workspaceRootPath = useMemo(() => {
         const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
@@ -1031,7 +1036,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         onCanvasUpdated: (data) => {
             setActiveCanvasId(data.canvasId);
             setCanvasLiveEvent(data);
+            // A fresh AI canvas edit auto-opens the panel AND clears any
+            // persisted deliberate-close, so future switch-backs auto-open too.
             setCanvasPanelClosed(false);
+            writeCanvasClosed(workspaceId, canvasPid, false);
             sourceCanvas.close();
         },
     });
@@ -1044,19 +1052,23 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
     // Canvas side panel: reset on chat switch, then discover canvases linked
     // to this process (live `canvas-updated` SSE events take over from there).
+    // Note: this no longer force-opens the panel — the persisted per-chat
+    // "closed" flag is applied by the discovery effect below, so a deliberately
+    // closed canvas stays collapsed when the user switches away and back.
     useEffect(() => {
         setActiveCanvasId(null);
         setCanvasLiveEvent(null);
-        setCanvasPanelClosed(false);
         sourceCanvas.close();
     }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
-        if (!isCanvasEnabled() || !workspaceId) return;
-        const pid = processId ?? bareTaskId;
-        if (!pid) return;
+        if (!isCanvasEnabled() || !workspaceId || !canvasPid) return;
+        // Apply the persisted deliberate-close preference synchronously, before
+        // the async discovery resolves `activeCanvasId`, so a closed chat settles
+        // straight into the collapsed rail without flashing the expanded panel.
+        setCanvasPanelClosed(readCanvasClosed(workspaceId, canvasPid));
         let cancelled = false;
-        client.canvases.list(workspaceId, { processId: pid })
+        client.canvases.list(workspaceId, { processId: canvasPid })
             .then(canvases => {
                 if (!cancelled && canvases.length > 0) {
                     setActiveCanvasId(prev => prev ?? canvases[0].id);
@@ -1064,7 +1076,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             })
             .catch(() => { /* canvas discovery is best-effort */ });
         return () => { cancelled = true; };
-    }, [workspaceId, processId, bareTaskId]);
+    }, [workspaceId, canvasPid]);
 
     const canvasResize = useResizablePanel({
         initialWidth: 520,
@@ -1096,7 +1108,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 <button
                     type="button"
                     className="inline-flex items-center justify-center w-7 h-7 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
-                    onClick={() => { sourceCanvas.close(); setCanvasPanelClosed(false); }}
+                    onClick={() => { sourceCanvas.close(); setCanvasPanelClosed(false); writeCanvasClosed(workspaceId, canvasPid, false); }}
                     aria-label="Open canvas"
                     title="Open canvas"
                     data-testid="canvas-reopen"
@@ -1127,7 +1139,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     workspaceId={workspaceId}
                     canvasId={activeCanvasId}
                     liveEvent={canvasLiveEvent}
-                    onClose={() => setCanvasPanelClosed(true)}
+                    onClose={() => { setCanvasPanelClosed(true); writeCanvasClosed(workspaceId, canvasPid, true); }}
                     onFullscreenChange={setCanvasFullscreen}
                     onPopOut={handleCanvasPopOut}
                     onAskAi={(prompt) => {
