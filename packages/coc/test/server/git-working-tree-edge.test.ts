@@ -32,6 +32,7 @@ const mockGetAllChanges = vi.fn();
 const mockStageFile = vi.fn();
 const mockUnstageFile = vi.fn();
 const mockDiscardChanges = vi.fn();
+const mockDiscardAll = vi.fn();
 const mockDeleteUntrackedFile = vi.fn();
 const mockGetFileDiff = vi.fn();
 const mockStageFiles = vi.fn();
@@ -46,6 +47,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             stageFile: mockStageFile,
             unstageFile: mockUnstageFile,
             discardChanges: mockDiscardChanges,
+            discardAll: mockDiscardAll,
             deleteUntrackedFile: mockDeleteUntrackedFile,
             getFileDiff: mockGetFileDiff,
             stageFiles: mockStageFiles,
@@ -134,6 +136,7 @@ describe('Git Working Tree Edge Cases', () => {
         mockStageFile.mockReset();
         mockUnstageFile.mockReset();
         mockDiscardChanges.mockReset();
+        mockDiscardAll.mockReset();
         mockDeleteUntrackedFile.mockReset();
         mockGetFileDiff.mockReset();
         mockStageFiles.mockReset();
@@ -226,6 +229,49 @@ deleted file mode 100644
             });
 
             expect(res.status).toBe(400);
+        });
+    });
+
+    describe('POST /api/workspaces/:id/git/changes/discard-all', () => {
+        it('discards the whole working tree and reports the count', async () => {
+            mockDiscardAll.mockResolvedValue({ success: true, discarded: 4, errors: [] });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes/discard-all`, {
+                method: 'POST',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true, discarded: 4, errors: [] });
+            expect(mockDiscardAll).toHaveBeenCalledWith(WORKSPACE_ROOT);
+        });
+
+        it('passes through partial failures without hiding them', async () => {
+            mockDiscardAll.mockResolvedValue({
+                success: false,
+                discarded: 2,
+                errors: ['delete /repo/locked.log: EPERM: operation not permitted'],
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes/discard-all`, {
+                method: 'POST',
+            });
+
+            // Service result is returned verbatim (200) so the UI can surface the error.
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.success).toBe(false);
+            expect(data.discarded).toBe(2);
+            expect(data.errors).toHaveLength(1);
+            expect(data.errors[0]).toContain('EPERM');
+        });
+
+        it('returns 404 for unknown workspace', async () => {
+            const res = await request(`${base()}/api/workspaces/ws-does-not-exist/git/changes/discard-all`, {
+                method: 'POST',
+            });
+
+            expect(res.status).toBe(404);
+            expect(mockDiscardAll).not.toHaveBeenCalled();
         });
     });
 

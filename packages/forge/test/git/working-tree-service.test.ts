@@ -421,3 +421,99 @@ describe('WorkingTreeService.deleteUntrackedFile', () => {
         expect(result.error).toContain('permission denied');
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WorkingTreeService.discardAll
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WorkingTreeService.discardAll', () => {
+    const service = new WorkingTreeService();
+    const repoRoot = ROOT;
+
+    beforeEach(() => {
+        vi.resetAllMocks();
+    });
+
+    it('returns success with discarded=0 when there are no changes', async () => {
+        mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        const result = await service.discardAll(repoRoot);
+        expect(result).toEqual({ success: true, discarded: 0, errors: [] });
+        // Only the initial status query runs; nothing to unstage/discard/delete.
+        expect(mockExecFileAsync).toHaveBeenCalledTimes(1);
+    });
+
+    it('unstages, discards, and deletes a mixed working tree', async () => {
+        // Call order: status → unstage(reset) batch → re-read status → discard(checkout) batch.
+        mockExecFileAsync
+            .mockResolvedValueOnce({ stdout: 'M  staged.ts\n M unstaged.ts\n?? untracked.txt\n', stderr: '' } as any)
+            .mockResolvedValueOnce({ stdout: '', stderr: '' } as any)
+            .mockResolvedValueOnce({ stdout: ' M staged.ts\n M unstaged.ts\n?? untracked.txt\n', stderr: '' } as any)
+            .mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
+        mockFs.existsSync.mockReturnValue(true);
+        mockFs.statSync.mockReturnValue({ isDirectory: () => false } as any);
+
+        const result = await service.discardAll(repoRoot);
+
+        expect(result.success).toBe(true);
+        expect(result.errors).toEqual([]);
+        // 2 tracked files reverted + 1 untracked deleted.
+        expect(result.discarded).toBe(3);
+        const commands = mockExecFileAsync.mock.calls.map(c => (c[1] as string[]).join(' '));
+        expect(commands.some(c => c.includes('reset HEAD'))).toBe(true);
+        expect(commands.some(c => c.includes('checkout --'))).toBe(true);
+        expect(mockFs.unlinkSync).toHaveBeenCalledWith(path.join(ROOT, 'untracked.txt'));
+    });
+
+    it('deletes a staged-added file after unstaging turns it untracked', async () => {
+        // A staged "added" file becomes untracked once unstaged, so it is deleted, not checked out.
+        mockExecFileAsync
+            .mockResolvedValueOnce({ stdout: 'A  brand-new.ts\n', stderr: '' } as any) // status: staged add
+            .mockResolvedValueOnce({ stdout: '', stderr: '' } as any)                   // unstage(reset) batch
+            .mockResolvedValueOnce({ stdout: '?? brand-new.ts\n', stderr: '' } as any);  // re-read: now untracked
+        mockFs.existsSync.mockReturnValue(true);
+        mockFs.statSync.mockReturnValue({ isDirectory: () => false } as any);
+
+        const result = await service.discardAll(repoRoot);
+
+        expect(result.success).toBe(true);
+        expect(result.discarded).toBe(1);
+        // No checkout needed — nothing tracked remained after unstaging.
+        const commands = mockExecFileAsync.mock.calls.map(c => (c[1] as string[]).join(' '));
+        expect(commands.some(c => c.includes('checkout --'))).toBe(false);
+        expect(mockFs.unlinkSync).toHaveBeenCalledWith(path.join(ROOT, 'brand-new.ts'));
+    });
+
+    it('surfaces a phase-prefixed error when discarding a tracked file fails', async () => {
+        // No staged paths → no re-read. status → checkout batch (fail) → per-file checkout (fail).
+        mockExecFileAsync
+            .mockResolvedValueOnce({ stdout: ' M a.ts\n?? b.txt\n', stderr: '' } as any)
+            .mockRejectedValueOnce(new Error('batch checkout failed'))
+            .mockRejectedValueOnce(new Error('checkout: pathspec error'));
+        mockFs.existsSync.mockReturnValue(true);
+        mockFs.statSync.mockReturnValue({ isDirectory: () => false } as any);
+
+        const result = await service.discardAll(repoRoot);
+
+        expect(result.success).toBe(false);
+        expect(result.errors).toHaveLength(1);
+        expect(result.errors[0]).toContain('discard');
+        expect(result.errors[0]).toContain('pathspec');
+        // Untracked file is still deleted despite the discard failure (no hidden partial failure).
+        expect(result.discarded).toBe(1);
+        expect(mockFs.unlinkSync).toHaveBeenCalledWith(path.join(ROOT, 'b.txt'));
+    });
+
+    it('surfaces a delete-phase error when an untracked file cannot be removed', async () => {
+        mockExecFileAsync.mockResolvedValueOnce({ stdout: '?? c.txt\n', stderr: '' } as any);
+        mockFs.existsSync.mockReturnValue(false); // delete fails: file does not exist
+
+        const result = await service.discardAll(repoRoot);
+
+        expect(result.success).toBe(false);
+        expect(result.errors).toHaveLength(1);
+        expect(result.errors[0]).toContain('delete');
+        expect(result.discarded).toBe(0);
+        // Only the status query ran — no tracked files to checkout.
+        expect(mockExecFileAsync).toHaveBeenCalledTimes(1);
+    });
+});

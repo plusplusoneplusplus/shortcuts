@@ -262,6 +262,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
     /** Set of filePaths currently being acted on */
     const [busyFiles, setBusyFiles] = useState<Set<string>>(new Set());
     const [stagingAll, setStagingAll] = useState(false);
+    const [discardingAll, setDiscardingAll] = useState(false);
     const [workingChangesExpanded, setWorkingChangesExpanded] = useState(false);
     const [allWorkingComments, setAllWorkingComments] = useState<DiffComment[]>([]);
 
@@ -372,6 +373,27 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
             setActionError(err.message || 'Unstage all failed');
         } finally {
             setStagingAll(false);
+        }
+    }, [workspaceId, cloneClient, fetchChanges, onRefresh]);
+
+    // Discard every visible change (staged, unstaged, untracked) in one server call.
+    // On failure we still refresh so the tree reflects any partial completion, then
+    // surface the error — partial failures must not look like success (AC-03).
+    const handleDiscardAll = useCallback(async () => {
+        setDiscardingAll(true);
+        setActionError(null);
+        try {
+            const result = await cloneClient.git.discardAllChanges(workspaceId);
+            if (result.success === false) {
+                setActionError(result.errors?.length ? result.errors.join('; ') : 'Discard all failed');
+            }
+        } catch (err: any) {
+            setActionError(err.message || 'Discard all failed');
+        } finally {
+            // Always re-read so the tree reflects any partial completion, even on error.
+            await fetchChanges();
+            onRefresh?.();
+            setDiscardingAll(false);
         }
     }, [workspaceId, cloneClient, fetchChanges, onRefresh]);
 
@@ -509,6 +531,23 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                 </div>
                 {workingChangesExpanded && (
                     <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="working-changes-content">
+                        {totalCount > 0 && (
+                            <div
+                                className="flex items-center justify-end gap-1.5 pl-7 pr-4 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
+                                data-testid="working-tree-bulk-actions"
+                            >
+                                <button
+                                    className="text-[10px] px-1.5 py-0.5 rounded border border-[#d32f2f] text-[#d32f2f] hover:bg-[#d32f2f] hover:text-white dark:border-[#f48771] dark:text-[#f48771] dark:hover:bg-[#f48771] dark:hover:text-[#1e1e1e] transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1 flex-shrink-0"
+                                    onClick={(e) => { e.stopPropagation(); handleDiscardAll(); }}
+                                    disabled={discardingAll || stagingAll}
+                                    title="Discard all changes — staged, unstaged, and untracked. This is irreversible."
+                                    data-testid="working-tree-discard-all"
+                                >
+                                    {discardingAll && <Spinner size="sm" />}
+                                    {discardingAll ? 'Discarding…' : '↩ Discard All'}
+                                </button>
+                            </div>
+                        )}
                         <Section
                             title="Staged"
                             count={staged.length}

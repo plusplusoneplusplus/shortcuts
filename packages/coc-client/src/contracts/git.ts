@@ -241,6 +241,14 @@ export interface GitWorkingTreeChangesResponse {
   repoState: GitRepoState;
 }
 
+export interface GitDiscardAllResponse {
+  success: boolean;
+  /** Number of files successfully discarded/deleted. */
+  discarded: number;
+  /** Per-file/phase error messages; empty when fully successful. */
+  errors: string[];
+}
+
 export interface GitCommitChatBinding {
   commitHash: string;
   taskId: string;
