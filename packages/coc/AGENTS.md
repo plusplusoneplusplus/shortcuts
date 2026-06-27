@@ -127,6 +127,32 @@ all have their own `references/*.md`.
   follow-up send paths pass `warmKey: processId` whenever `keepWarm: true`;
   `/api/processes/:id/prewarm` and warm-only SSE status use that same process id.
   `workingDirectory` remains provider execution context only, not the warm key.
+- **Per-conversation request budget** keeps opening a chat lean. A **warm**
+  second open of a conversation (same SPA session, same workspace, provider
+  already seen) must stay at **≤3** fetch round-trips — process detail,
+  `canvases?processId=`, and `pull-request-chat-bindings?taskId=` — excluding the
+  `stream?warm=1` SSE. Static provider/workspace config is cached client-side in
+  the module-level singleton
+  `src/server/spa/client/react/api/staticConfigCache.ts` (mirrors the AppContext
+  `ConversationCacheEntry` 60-min-TTL pattern, **not** React-Query/SWR): `models`
+  / `reasoning-efforts` / `effort-tiers` keyed by **provider**, `llm-tools-config`
+  keyed by **workspace**; the provider/workspace config hooks read through
+  `getOrFetchConfig` and seed from `peekConfig` (no loading flash), and every
+  mutation site `invalidateConfig`s its own key (invalidate-on-mutate, no reload).
+  Workspace-scoped data must not refetch per conversation: `useLoops` fetches
+  keyed by `[workspaceId, cloneClient]` only (processId drives a `useMemo` view,
+  never a round-trip) and the unseen `count` refresh fires only when a `markSeen`
+  family call actually changes seen-state. The two remaining non-critical
+  per-conversation fetches (`canvases.list`, `listChatBindingsForOrigin`) are
+  deferred past first paint through `utils/runWhenIdle.ts` (requestIdleCallback
+  with a timeout bound, setTimeout fallback for Safari/jsdom) so messages render
+  first; synchronous panel/reset state stays immediate, and a generation/cancel
+  guard drops a stale deferred fetch on an A→B switch. The four static-config GET
+  routes also carry `Cache-Control: private, max-age=60` via
+  `setStaticConfigCacheHeaders` in `src/server/shared/router.ts` (200-path only).
+  Do not reintroduce a per-conversation refetch of cached config or
+  workspace-scoped data, and do not add a new server aggregation/bootstrap
+  endpoint — keep these as separate cached/deferred client calls.
 - **Implement-plan target routing** (`ImplementPlanCard` + `implementTargets.ts`)
   keeps local runs path-based and remote runs content-embedded: a **local**
   target enqueues `Read and implement the plan file at <path>` + `context.files`
