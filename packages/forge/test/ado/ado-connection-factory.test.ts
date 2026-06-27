@@ -13,9 +13,13 @@ vi.mock('azure-devops-node-api', () => {
     };
 });
 
-vi.mock('../../src/utils/exec-utils', () => ({
-    execAsync: vi.fn(),
-}));
+vi.mock('../../src/ado/ado-token-resolver', async (importOriginal) => {
+    const original = await importOriginal<typeof import('../../src/ado/ado-token-resolver')>();
+    return {
+        ...original,
+        resolveAdoAccessToken: vi.fn(),
+    };
+});
 
 vi.mock('../../src/ado/ado-session-cache', async (importOriginal) => {
     const original = await importOriginal<typeof import('../../src/ado/ado-session-cache')>();
@@ -32,12 +36,11 @@ import {
     resetAdoConnectionFactory,
 } from '../../src/ado/ado-connection-factory';
 import * as azdev from 'azure-devops-node-api';
-import { execAsync } from '../../src/utils/exec-utils';
-import { readAdoSessionCache, writeAdoSessionCache } from '../../src/ado/ado-session-cache';
+import { resolveAdoAccessToken } from '../../src/ado/ado-token-resolver';
+import { readAdoSessionCache } from '../../src/ado/ado-session-cache';
 
-const mockedExecAsync = vi.mocked(execAsync);
+const mockedResolveToken = vi.mocked(resolveAdoAccessToken);
 const mockedReadCache = vi.mocked(readAdoSessionCache);
-const mockedWriteCache = vi.mocked(writeAdoSessionCache);
 
 const NOW = 1_700_000_000_000;
 const TOKEN_JSON = JSON.stringify({
@@ -54,9 +57,8 @@ describe('AdoConnectionFactory', () => {
         delete process.env.AZURE_DEVOPS_ORG_URL;
         vi.clearAllMocks();
         vi.setSystemTime(NOW);
-        // Default: no valid cache
-        mockedReadCache.mockResolvedValue(null);
-        mockedWriteCache.mockResolvedValue(undefined);
+        // Default: token resolver returns null (no token available)
+        mockedResolveToken.mockResolvedValue(null);
     });
 
     afterEach(() => {
@@ -96,8 +98,8 @@ describe('AdoConnectionFactory', () => {
             process.env.AZURE_DEVOPS_ORG_URL = 'https://dev.azure.com/myorg';
         });
 
-        it('skips az CLI when cache is valid', async () => {
-            mockedReadCache.mockResolvedValueOnce({
+        it('uses resolved token from shared resolver', async () => {
+            mockedResolveToken.mockResolvedValueOnce({
                 token: 'cached-token',
                 expiresAt: NOW + 10 * 60 * 1000,
                 account: { upn: 'user@example.com', displayName: 'Test User', adoId: null },
@@ -107,13 +109,12 @@ describe('AdoConnectionFactory', () => {
             const result = await factory.connect();
 
             expect(result.connected).toBe(true);
-            expect(mockedExecAsync).not.toHaveBeenCalled();
             expect(azdev.getBearerHandler).toHaveBeenCalledWith('cached-token');
         });
 
-        it('exposes account from cache on successful connect', async () => {
+        it('exposes account from resolver on successful connect', async () => {
             const account = { upn: 'user@example.com', displayName: 'Test User', adoId: 'guid-123' };
-            mockedReadCache.mockResolvedValueOnce({
+            mockedResolveToken.mockResolvedValueOnce({
                 token: 'cached-token',
                 expiresAt: NOW + 10 * 60 * 1000,
                 account,
@@ -129,59 +130,57 @@ describe('AdoConnectionFactory', () => {
         });
     });
 
-    describe('connect — Azure CLI fallback (cache miss)', () => {
+    describe('connect — token resolution (cache miss)', () => {
         beforeEach(() => {
             process.env.AZURE_DEVOPS_ORG_URL = 'https://dev.azure.com/myorg';
         });
 
-        it('fetches token via az CLI and writes cache', async () => {
-            mockedExecAsync
-                .mockResolvedValueOnce({ stdout: TOKEN_JSON, stderr: '' })  // get-access-token
-                .mockResolvedValueOnce({ stdout: ACCOUNT_JSON, stderr: '' }); // account show
-
-            const factory = getAdoConnectionFactory();
-            const result = await factory.connect();
-
-            expect(result.connected).toBe(true);
-            expect(mockedExecAsync).toHaveBeenCalledWith(
-                expect.stringContaining('az account get-access-token'),
-            );
-            expect(mockedWriteCache).toHaveBeenCalledOnce();
-            expect(azdev.getBearerHandler).toHaveBeenCalledWith('az-bearer-token-123');
-        });
-
-        it('returns error when az CLI returns empty token', async () => {
-            mockedExecAsync.mockResolvedValueOnce({
-                stdout: JSON.stringify({ token: '', expiresOn: new Date().toISOString() }),
-                stderr: '',
+        it('connects when shared resolver returns a token', async () => {
+            mockedResolveToken.mockResolvedValueOnce({
+                token: 'az-bearer-token-123',
+                expiresAt: NOW + 3600_000,
+                account: { upn: 'user@example.com', displayName: 'Test User', adoId: null },
             });
 
             const factory = getAdoConnectionFactory();
             const result = await factory.connect();
 
-            expect(result.connected).toBe(false);
-            if (!result.connected) {
-                expect(result.error).toContain('empty token');
-            }
+            expect(result.connected).toBe(true);
+            expect(mockedResolveToken).toHaveBeenCalledWith({ dataDir: undefined });
+            expect(azdev.getBearerHandler).toHaveBeenCalledWith('az-bearer-token-123');
         });
 
-        it('returns error with helpful message when az CLI fails', async () => {
-            mockedExecAsync.mockRejectedValueOnce(new Error('az: command not found'));
+        it('returns error when token resolver returns null', async () => {
+            mockedResolveToken.mockResolvedValueOnce(null);
 
             const factory = getAdoConnectionFactory();
             const result = await factory.connect();
 
             expect(result.connected).toBe(false);
             if (!result.connected) {
-                expect(result.error).toContain('Azure CLI');
                 expect(result.error).toContain('az login');
             }
         });
 
-        it('still connects even if account show fails', async () => {
-            mockedExecAsync
-                .mockResolvedValueOnce({ stdout: TOKEN_JSON, stderr: '' })
-                .mockRejectedValueOnce(new Error('account show failed'));
+        it('passes dataDir to the shared resolver', async () => {
+            mockedResolveToken.mockResolvedValueOnce({
+                token: 'token-for-dir',
+                expiresAt: NOW + 3600_000,
+                account: null,
+            });
+
+            const factory = getAdoConnectionFactory();
+            await factory.connect({ orgUrl: 'https://dev.azure.com/myorg', dataDir: '/custom/dir' });
+
+            expect(mockedResolveToken).toHaveBeenCalledWith({ dataDir: '/custom/dir' });
+        });
+
+        it('still connects when account is null', async () => {
+            mockedResolveToken.mockResolvedValueOnce({
+                token: 'token-no-account',
+                expiresAt: NOW + 3600_000,
+                account: null,
+            });
 
             const factory = getAdoConnectionFactory();
             const result = await factory.connect();
@@ -191,42 +190,6 @@ describe('AdoConnectionFactory', () => {
                 expect(result.account).toBeNull();
             }
         });
-
-        it('still connects even if cache write fails', async () => {
-            mockedExecAsync
-                .mockResolvedValueOnce({ stdout: TOKEN_JSON, stderr: '' })
-                .mockResolvedValueOnce({ stdout: ACCOUNT_JSON, stderr: '' });
-            mockedWriteCache.mockRejectedValueOnce(new Error('disk full'));
-
-            const factory = getAdoConnectionFactory();
-            const result = await factory.connect();
-
-            expect(result.connected).toBe(true);
-        });
-    });
-
-    describe('connect — expired cache falls back to az CLI', () => {
-        beforeEach(() => {
-            process.env.AZURE_DEVOPS_ORG_URL = 'https://dev.azure.com/myorg';
-        });
-
-        it('calls az CLI when cached token is within 5-min buffer', async () => {
-            mockedReadCache.mockResolvedValueOnce({
-                token: 'old-token',
-                expiresAt: NOW + 3 * 60 * 1000, // < 5 min buffer
-                account: null,
-            });
-            mockedExecAsync
-                .mockResolvedValueOnce({ stdout: TOKEN_JSON, stderr: '' })
-                .mockResolvedValueOnce({ stdout: ACCOUNT_JSON, stderr: '' });
-
-            const factory = getAdoConnectionFactory();
-            const result = await factory.connect();
-
-            expect(result.connected).toBe(true);
-            expect(mockedExecAsync).toHaveBeenCalled();
-            expect(azdev.getBearerHandler).toHaveBeenCalledWith('az-bearer-token-123');
-        });
     });
 
     describe('connect — error handling', () => {
@@ -234,9 +197,11 @@ describe('AdoConnectionFactory', () => {
             vi.mocked(azdev.WebApi).mockImplementationOnce(function (this: any) {
                 throw new Error('network failure');
             });
-            mockedExecAsync
-                .mockResolvedValueOnce({ stdout: TOKEN_JSON, stderr: '' })
-                .mockResolvedValueOnce({ stdout: ACCOUNT_JSON, stderr: '' });
+            mockedResolveToken.mockResolvedValueOnce({
+                token: 'az-bearer-token-123',
+                expiresAt: NOW + 3600_000,
+                account: null,
+            });
             process.env.AZURE_DEVOPS_ORG_URL = 'https://org';
 
             const factory = getAdoConnectionFactory();

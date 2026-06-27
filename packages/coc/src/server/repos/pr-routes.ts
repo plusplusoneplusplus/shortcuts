@@ -387,7 +387,7 @@ async function resolvePullRequestsService(
     }
 
     const cfg = await readProvidersConfig(dataDir);
-    const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+    const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg, { dataDir });
     if (!prSvc || isNoAdoCredentials(prSvc)) {
         if (isNoAdoCredentials(prSvc)) {
             throw new PullRequestRouteError(401, 'no-ado-credentials', { error: 'no-ado-credentials' });
@@ -1258,7 +1258,7 @@ export function registerPrRoutes(
 
     async function createPullRequestsServiceForRepo(repo: RepoInfo): Promise<IPullRequestsService> {
         const cfg = await readProvidersConfig(dataDir);
-        const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+        const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg, { dataDir });
         if (!prSvc || isNoAdoCredentials(prSvc)) {
             if (isNoAdoCredentials(prSvc)) {
                 throw new PullRequestRouteError(401, 'no-ado-credentials', { error: 'no-ado-credentials' });
@@ -1750,7 +1750,7 @@ export function registerPrRoutes(
                 const { workspaceId, repoId, repo, storageScope } = scopeResult.value;
 
                 const cfg = await readProvidersConfig(dataDir);
-                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg, { dataDir });
                 if (!prSvc || isNoAdoCredentials(prSvc)) {
                     if (isNoAdoCredentials(prSvc)) {
                         return sendJson(res, { error: 'no-ado-credentials' }, 401);
@@ -1812,7 +1812,7 @@ export function registerPrRoutes(
                 }
 
                 const cfg = await readProvidersConfig(dataDir);
-                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg, { dataDir });
                 if (!prSvc || isNoAdoCredentials(prSvc)) {
                     if (isNoAdoCredentials(prSvc)) {
                         return sendJson(res, { error: 'no-ado-credentials' }, 401);

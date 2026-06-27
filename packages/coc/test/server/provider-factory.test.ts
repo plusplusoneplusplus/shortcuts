@@ -7,18 +7,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProviderFactory, ProviderType } from '../../src/server/providers/provider-factory';
 import type { ProvidersFileConfig } from '../../src/server/providers/providers-config';
 
-// Mock execAsync, createAdoPullRequestsAdapter, and getOrResolveAdoUserId from forge
+// Mock resolveAdoAccessTokenValue, createAdoPullRequestsAdapter, and getOrResolveAdoUserId from forge
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
-        execAsync: vi.fn(),
+        resolveAdoAccessTokenValue: vi.fn(),
         createAdoPullRequestsAdapter: vi.fn(actual.createAdoPullRequestsAdapter),
         getOrResolveAdoUserId: vi.fn(),
     };
 });
 
-import { execAsync, createAdoPullRequestsAdapter, getOrResolveAdoUserId } from '@plusplusoneplusplus/forge';
+import { resolveAdoAccessTokenValue, createAdoPullRequestsAdapter, getOrResolveAdoUserId } from '@plusplusoneplusplus/forge';
 
 // ── detectProviderType ────────────────────────────────────────────────────────
 
@@ -137,8 +137,8 @@ describe('ProviderFactory.parseAdoRemote', () => {
 describe('ProviderFactory.createPullRequestsService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        // Default: az CLI fails (not logged in)
-        (execAsync as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('az: command not found'));
+        // Default: shared resolver returns no token (not logged in)
+        (resolveAdoAccessTokenValue as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
         // Default: no cached user identity
         (getOrResolveAdoUserId as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     });
@@ -152,7 +152,7 @@ describe('ProviderFactory.createPullRequestsService', () => {
         expect(result).toBeNull();
     });
 
-    it('returns no-ado-credentials sentinel when az CLI fails', async () => {
+    it('returns no-ado-credentials sentinel when shared resolver returns no token', async () => {
         const config: ProvidersFileConfig = { providers: {} };
         const result = await ProviderFactory.createPullRequestsService(
             'https://dev.azure.com/org/proj/_git/repo',
@@ -161,8 +161,8 @@ describe('ProviderFactory.createPullRequestsService', () => {
         expect(result).toEqual({ error: 'no-ado-credentials' });
     });
 
-    it('returns a service when ADO token missing but az CLI succeeds', async () => {
-        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'bearer-token-xyz\n', stderr: '' });
+    it('returns a service when shared resolver returns a token', async () => {
+        (resolveAdoAccessTokenValue as ReturnType<typeof vi.fn>).mockResolvedValue('bearer-token-xyz');
         const config: ProvidersFileConfig = { providers: {} };
         const result = await ProviderFactory.createPullRequestsService(
             'https://dev.azure.com/org/proj/_git/repo',
@@ -194,8 +194,8 @@ describe('ProviderFactory.createPullRequestsService', () => {
         expect(result).not.toBeNull();
     });
 
-    it('returns a service instance when ADO orgUrl is configured and az CLI succeeds', async () => {
-        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'bearer-token-xyz\n', stderr: '' });
+    it('returns a service instance when ADO orgUrl is configured and shared resolver returns a token', async () => {
+        (resolveAdoAccessTokenValue as ReturnType<typeof vi.fn>).mockResolvedValue('bearer-token-xyz');
         const config: ProvidersFileConfig = {
             providers: {
                 ado: { orgUrl: 'https://dev.azure.com/myorg' },
@@ -232,7 +232,7 @@ describe('ProviderFactory.createPullRequestsService', () => {
     });
 
     it('passes parsed repo name to createAdoPullRequestsAdapter (regression: workspace ID bug)', async () => {
-        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'bearer-token-xyz\n', stderr: '' });
+        (resolveAdoAccessTokenValue as ReturnType<typeof vi.fn>).mockResolvedValue('bearer-token-xyz');
         const config: ProvidersFileConfig = { providers: {} };
         await ProviderFactory.createPullRequestsService(
             'https://dev.azure.com/org/proj/_git/MyRepo',
@@ -243,8 +243,19 @@ describe('ProviderFactory.createPullRequestsService', () => {
         );
     });
 
+    it('passes dataDir to shared resolver', async () => {
+        (resolveAdoAccessTokenValue as ReturnType<typeof vi.fn>).mockResolvedValue('bearer-token');
+        const config: ProvidersFileConfig = { providers: {} };
+        await ProviderFactory.createPullRequestsService(
+            'https://dev.azure.com/org/proj/_git/repo',
+            config,
+            { dataDir: '/custom/data' },
+        );
+        expect(resolveAdoAccessTokenValue).toHaveBeenCalledWith({ dataDir: '/custom/data' });
+    });
+
     it('passes cached ADO user ID as currentUserId', async () => {
-        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'bearer-token\n', stderr: '' });
+        (resolveAdoAccessTokenValue as ReturnType<typeof vi.fn>).mockResolvedValue('bearer-token');
         (getOrResolveAdoUserId as ReturnType<typeof vi.fn>).mockResolvedValue('ado-guid-123');
         const config: ProvidersFileConfig = { providers: {} };
         await ProviderFactory.createPullRequestsService(
@@ -258,7 +269,7 @@ describe('ProviderFactory.createPullRequestsService', () => {
     });
 
     it('creates adapter without currentUserId when identity resolution returns null', async () => {
-        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'bearer-token\n', stderr: '' });
+        (resolveAdoAccessTokenValue as ReturnType<typeof vi.fn>).mockResolvedValue('bearer-token');
         (getOrResolveAdoUserId as ReturnType<typeof vi.fn>).mockResolvedValue(null);
         const config: ProvidersFileConfig = { providers: {} };
         await ProviderFactory.createPullRequestsService(
@@ -271,7 +282,7 @@ describe('ProviderFactory.createPullRequestsService', () => {
     });
 
     it('creates adapter without currentUserId when identity resolution throws', async () => {
-        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'bearer-token\n', stderr: '' });
+        (resolveAdoAccessTokenValue as ReturnType<typeof vi.fn>).mockResolvedValue('bearer-token');
         (getOrResolveAdoUserId as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network error'));
         const config: ProvidersFileConfig = { providers: {} };
         const result = await ProviderFactory.createPullRequestsService(

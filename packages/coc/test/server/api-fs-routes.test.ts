@@ -10,6 +10,11 @@ vi.mock('@plusplusoneplusplus/forge', () => ({
     // `sdkServiceRegistry`. A full forge mock must stub it (the bridge only calls
     // `.get()`, defensively) or the import graph throws on a missing export.
     sdkServiceRegistry: { get: () => undefined },
+    // The work-items import graph (work-item-commands -> azure-boards provider)
+    // pulls these in at module load. The full mock must stub them or the import
+    // graph throws on a missing export.
+    ADO_RESOURCE_ID: '499b84ac-1321-427f-aa17-267ca6975798',
+    resolveAdoAccessTokenValue: vi.fn(),
 }));
 
 vi.mock('fs', async () => {
