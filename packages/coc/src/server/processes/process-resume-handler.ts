@@ -13,7 +13,7 @@ import { resolveWorkspaceExecutionContext, translatePathForHostFilesystem } from
 import { sendError, sendJSON, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
 
-export type ResumeProvider = 'copilot' | 'codex' | 'claude';
+export type ResumeProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 
 export interface LaunchResumeInput {
     sessionId: string;
@@ -34,12 +34,13 @@ export type ResumeCommandLauncher = (input: LaunchResumeInput) => Promise<Launch
 function normalizeResumeProvider(value: unknown): ResumeProvider {
     return value === 'codex' ? 'codex'
         : value === 'claude' ? 'claude'
+        : value === 'opencode' ? 'opencode'
         : 'copilot';
 }
 
 /** Return the validated provider, or undefined when the value is not a known provider. */
 function asResumeProvider(value: unknown): ResumeProvider | undefined {
-    return value === 'copilot' || value === 'codex' || value === 'claude' ? value : undefined;
+    return value === 'copilot' || value === 'codex' || value === 'claude' || value === 'opencode' ? value : undefined;
 }
 
 function toNonEmptyString(value: unknown): string | undefined {
@@ -273,7 +274,7 @@ export async function launchResumeCommandInTerminal(input: LaunchResumeInput): P
 
 export interface LaunchFreshChatInput {
     workingDirectory: string;
-    provider?: 'copilot' | 'codex' | 'claude';
+    provider?: ResumeProvider;
 }
 
 export type FreshChatTerminalLauncher = (input: LaunchFreshChatInput) => Promise<LaunchResumeResult>;
@@ -282,7 +283,7 @@ type MaybePromise<T> = T | Promise<T>;
 function buildFreshChatCommand(
     workingDirectory: string,
     platform: NodeJS.Platform = process.platform,
-    provider: 'copilot' | 'codex' | 'claude' = 'copilot'
+    provider: ResumeProvider = 'copilot'
 ): string {
     let cliCommand: string;
     if (provider === 'codex') {
@@ -300,10 +301,7 @@ function buildFreshChatCommand(
 
 export async function launchFreshChatInTerminal(input: LaunchFreshChatInput): Promise<LaunchResumeResult> {
     const platform = process.platform;
-    const provider: 'copilot' | 'codex' | 'claude' =
-        input.provider === 'codex' ? 'codex' :
-        input.provider === 'claude' ? 'claude' :
-        'copilot';
+    const provider = normalizeResumeProvider(input.provider);
     const terminalWorkingDirectory = platform === 'win32'
         ? translatePathForHostFilesystem(input.workingDirectory)
         : input.workingDirectory;
@@ -347,7 +345,7 @@ export async function launchFreshChatInTerminal(input: LaunchFreshChatInput): Pr
 export function registerFreshChatTerminalRoutes(
     routes: Route[],
     launcher: FreshChatTerminalLauncher = launchFreshChatInTerminal,
-    options?: { getProvider?: () => MaybePromise<'copilot' | 'codex' | 'claude'> }
+    options?: { getProvider?: () => MaybePromise<ResumeProvider> }
 ): void {
     routes.push({
         method: 'POST',
@@ -362,10 +360,7 @@ export function registerFreshChatTerminalRoutes(
             const workingDirectory = toNonEmptyString(body?.workingDirectory) ?? process.cwd();
             try {
                 const rawProvider = await options?.getProvider?.();
-                const provider: 'copilot' | 'codex' | 'claude' =
-                    rawProvider === 'codex' ? 'codex' :
-                    rawProvider === 'claude' ? 'claude' :
-                    'copilot';
+                const provider = normalizeResumeProvider(rawProvider);
                 const result = await launcher({ workingDirectory, provider });
                 process.stderr.write(`[Chat] launch-terminal workingDirectory=${workingDirectory} provider=${provider} launched=${result.launched}\n`);
                 return sendJSON(res, 200, {

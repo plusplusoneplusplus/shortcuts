@@ -1,7 +1,7 @@
 {
   "name": "@plusplusoneplusplus/coc-agent-sdk",
   "version": "0.1.0",
-  "description": "Provider-agnostic AI agent SDK for CoC — supports Copilot and Codex",
+  "description": "Provider-agnostic AI agent SDK for CoC — supports Copilot, Codex, Claude, and OpenCode",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -29,13 +29,17 @@
   "peerDependencies": {
     "@github/copilot-sdk": "^1.0.0",
     "@openai/codex-sdk": ">=0.1.0",
-    "@anthropic-ai/claude-agent-sdk": ">=0.3.0"
+    "@anthropic-ai/claude-agent-sdk": ">=0.3.0",
+    "@opencode-ai/sdk": ">=0.1.0"
   },
   "peerDependenciesMeta": {
     "@openai/codex-sdk": {
       "optional": true
     },
     "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    },
+    "@opencode-ai/sdk": {
       "optional": true
     }
   },

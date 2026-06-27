@@ -23,7 +23,7 @@ import {
 // Types
 // ============================================================================
 
-export type ConcreteAgentProvider = 'copilot' | 'codex' | 'claude';
+export type ConcreteAgentProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 export type DefaultAgentProvider = ConcreteAgentProvider;
 export type AutoProviderRoutingRule = {
     provider: ConcreteAgentProvider;
@@ -237,6 +237,10 @@ export interface CLIConfig {
     };
     /** Claude Code SDK provider support. Disabled by default. */
     claude?: {
+        enabled?: boolean;
+    };
+    /** OpenCode SDK provider support. Disabled by default. */
+    opencode?: {
         enabled?: boolean;
     };
     /**
@@ -537,6 +541,10 @@ export interface ResolvedCLIConfig {
     claude: {
         enabled: boolean;
     };
+    /** OpenCode SDK provider support. Disabled by default. */
+    opencode: {
+        enabled: boolean;
+    };
     /**
      * Concrete default AI provider when Auto routing is disabled.
      * Per-chat provider selection overrides this value.
@@ -787,6 +795,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     claude: {
+        enabled: false,
+    },
+    opencode: {
         enabled: false,
     },
     defaultProvider: 'copilot',

@@ -290,7 +290,7 @@ export function buildRuntimeFeatureFlags(config: unknown): Record<string, unknow
 
 // ── agentProviderRouting.auto custom validation ───────────────────────────────
 
-const VALID_CONCRETE_PROVIDER_VALUES = ['copilot', 'codex', 'claude'] as const;
+const VALID_CONCRETE_PROVIDER_VALUES = ['copilot', 'codex', 'claude', 'opencode'] as const;
 
 function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -668,9 +668,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({ key: 'containerDefaultAgent.enabled', default: false, runtime: 'live', runtimeFlag: 'containerDefaultAgentEnabled' }),
     bool({ key: 'codex.enabled', default: false, runtime: 'live', runtimeFlag: 'codexEnabled' }),
     bool({ key: 'claude.enabled', default: false, runtime: 'live', runtimeFlag: 'claudeEnabled' }),
+    bool({ key: 'opencode.enabled', default: false, runtime: 'live', runtimeFlag: 'opencodeEnabled' }),
     {
         key: 'defaultProvider',
-        value: { kind: 'enum', values: ['copilot', 'codex', 'claude'], message: 'defaultProvider must be "copilot", "codex", or "claude"' },
+        value: { kind: 'enum', values: ['copilot', 'codex', 'claude', 'opencode'], message: 'defaultProvider must be "copilot", "codex", "claude", or "opencode"' },
         default: 'copilot',
         runtime: 'restartRequired',
         runtimeFlag: 'defaultProvider',

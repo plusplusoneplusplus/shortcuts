@@ -22,7 +22,7 @@ import * as fs from 'fs';
 import { createRequire } from 'module';
 import type { Route } from '../types';
 import { sendJson, send400, send404, send500 } from '../shared/router';
-import { registerCodexSDKService, registerClaudeSDKService } from '@plusplusoneplusplus/forge';
+import { registerCodexSDKService, registerClaudeSDKService, registerOpenCodeSDKService } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Provider → package name mapping
@@ -31,6 +31,7 @@ import { registerCodexSDKService, registerClaudeSDKService } from '@plusplusonep
 const PROVIDER_PACKAGES: Record<string, string> = {
     codex: '@openai/codex-sdk',
     claude: '@anthropic-ai/claude-agent-sdk',
+    opencode: '@opencode-ai/sdk',
 };
 
 const PROVIDER_INSTALL_PROBES: Record<string, string[]> = {
@@ -39,6 +40,7 @@ const PROVIDER_INSTALL_PROBES: Record<string, string[]> = {
     // dependency is required for quota/model RPCs and exposes a resolvable bin.
     codex: ['@openai/codex/bin/codex.js', '@openai/codex/package.json'],
     claude: ['@anthropic-ai/claude-agent-sdk'],
+    opencode: ['@opencode-ai/sdk'],
 };
 
 // ============================================================================
@@ -128,6 +130,8 @@ function reRegisterProvider(provider: string): void {
         registerCodexSDKService();
     } else if (provider === 'claude') {
         registerClaudeSDKService();
+    } else if (provider === 'opencode') {
+        registerOpenCodeSDKService();
     }
 }
 

@@ -18,7 +18,7 @@ export const RALPH_GRILL_AGENT_ROLES = [
 ] as const;
 export type RalphGrillAgentRole = typeof RALPH_GRILL_AGENT_ROLES[number];
 
-export type RalphGrillAgentProvider = 'copilot' | 'codex' | 'claude';
+export type RalphGrillAgentProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 export const RALPH_GRILL_EFFORT_TIERS = ['very-low', 'low', 'medium', 'high'] as const;
 export type RalphGrillEffortTier = typeof RALPH_GRILL_EFFORT_TIERS[number];
 
@@ -415,7 +415,7 @@ const DEPTH_AGENT_ROLES: Record<RalphGrillDepth, readonly RalphGrillAgentRole[]>
     ],
 };
 
-const PROVIDERS = new Set<RalphGrillAgentProvider>(['copilot', 'codex', 'claude']);
+const PROVIDERS = new Set<RalphGrillAgentProvider>(['copilot', 'codex', 'claude', 'opencode']);
 const EFFORT_TIERS = new Set<RalphGrillEffortTier>(RALPH_GRILL_EFFORT_TIERS);
 const REASONING_EFFORTS = new Set<ReasoningEffort>(['low', 'medium', 'high', 'xhigh']);
 

@@ -28,7 +28,7 @@ export interface CLITaskExecutorOptions {
     followUpSuggestions?: { enabled: boolean; count: number };
     askUser?: { enabled: boolean };
     /** Default AI provider name recorded on new processes when the task has no provider override. */
-    provider?: 'copilot' | 'codex' | 'claude';
+    provider?: 'copilot' | 'codex' | 'claude' | 'opencode';
     /** Enables the gated multi-agent Ralph grilling prompt contract. */
     ralphMultiAgentGrillEnabled?: boolean;
     /**

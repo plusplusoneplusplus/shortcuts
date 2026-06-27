@@ -175,7 +175,7 @@ export interface ChatModeExecutorOptions {
     /** Late-bound MCP OAuth manager (getter to allow optional/feature-flagged wiring). */
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider. Used to detect provider mismatches on follow-up resume. */
-    provider?: 'copilot' | 'codex' | 'claude';
+    provider?: 'copilot' | 'codex' | 'claude' | 'opencode';
     /** Enables the gated multi-agent Ralph grilling prompt contract. */
     ralphMultiAgentGrillEnabled?: boolean;
     /**
@@ -246,7 +246,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly getEnqueueChat?: () => import('../llm-tools/create-conversation-tool').EnqueueChatFn | undefined;
     protected readonly getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider — used to guard against provider mismatches on follow-up resume. */
-    protected readonly provider: 'copilot' | 'codex' | 'claude';
+    protected readonly provider: 'copilot' | 'codex' | 'claude' | 'opencode';
     protected readonly ralphMultiAgentGrillEnabled: boolean;
     /** Resolves per-task SDK service by provider, checking enablement. Optional — falls back to sdkServiceRegistry. */
     protected readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;

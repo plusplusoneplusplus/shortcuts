@@ -326,14 +326,14 @@ async function resolveExecutionProvider(
 
 export class ProcessLifecycleRunner extends BaseExecutor {
     private readonly onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void;
-    /** Active AI provider recorded on new processes for attribution ('copilot' | 'codex' | 'claude'). */
-    private readonly provider: 'copilot' | 'codex' | 'claude';
+    /** Active AI provider recorded on new processes for attribution. */
+    private readonly provider: 'copilot' | 'codex' | 'claude' | 'opencode';
 
     constructor(
         store: ProcessStore,
         dataDir: string | undefined,
         onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void,
-        provider?: 'copilot' | 'codex' | 'claude',
+        provider?: 'copilot' | 'codex' | 'claude' | 'opencode',
     ) {
         super(store, dataDir);
         this.onGenerateTitle = onGenerateTitle;

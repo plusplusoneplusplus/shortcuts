@@ -117,9 +117,11 @@ export {
     COPILOT_PROVIDER,
     CODEX_PROVIDER,
     CLAUDE_PROVIDER,
+    OPENCODE_PROVIDER,
     SDK_PROVIDER_COPILOT,
     SDK_PROVIDER_CODEX,
     SDK_PROVIDER_CLAUDE,
+    SDK_PROVIDER_OPENCODE,
 } from './sdk-service-registry';
 
 export {
@@ -153,6 +155,13 @@ export type {
     ClaudeRateLimitInfo,
     ClaudeAccountInfo,
 } from './claude-sdk-service';
+
+export {
+    OpenCodeSDKService,
+    registerOpenCodeSDKService,
+    flattenOpenCodeProvidersToModelInfo,
+    parseOpenCodeModelRef,
+} from './opencode-sdk-service';
 
 export {
     SessionManager,

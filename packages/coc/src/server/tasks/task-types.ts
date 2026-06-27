@@ -453,10 +453,10 @@ export type PostAction =
 // ============================================================================
 
 /** Supported AI provider IDs for per-chat routing. */
-export type ChatProvider = 'copilot' | 'codex' | 'claude';
+export type ChatProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 
 /** Supported ChatProvider values (for runtime validation). */
-export const VALID_CHAT_PROVIDERS: ReadonlySet<ChatProvider> = new Set(['copilot', 'codex', 'claude']);
+export const VALID_CHAT_PROVIDERS: ReadonlySet<ChatProvider> = new Set(['copilot', 'codex', 'claude', 'opencode']);
 
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
