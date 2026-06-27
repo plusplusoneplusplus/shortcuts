@@ -645,6 +645,7 @@ function FileHoverPopover({ files, anchorRef, popoverRef, onMouseEnter, onMouseL
             data-testid="file-hover-popover"
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
+            onClick={e => e.stopPropagation()}
         >
             {files.map(file => {
                 const display = shortenPath(file.path);
@@ -669,10 +670,11 @@ function FileHoverPopover({ files, anchorRef, popoverRef, onMouseEnter, onMouseL
                         tabIndex={interactive ? 0 : undefined}
                         aria-disabled={file.isDeleted ? true : undefined}
                         aria-label={interactive ? `Open diff for ${file.path}` : undefined}
-                        onClick={interactive ? () => onFileClick!(file) : undefined}
+                        onClick={interactive ? (e) => { e.stopPropagation(); onFileClick!(file); } : undefined}
                         onKeyDown={interactive ? (e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
+                                e.stopPropagation();
                                 onFileClick!(file);
                             }
                         } : undefined}
@@ -770,6 +772,7 @@ function FileHoverSpan({ text, files, testId, showInlineTotals = true, onFileCli
             ref={anchorRef}
             onMouseEnter={showPopover}
             onMouseLeave={hidePopover}
+            onClick={e => e.stopPropagation()}
             className="underline decoration-dotted cursor-default"
             data-testid={testId}
         >
