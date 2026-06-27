@@ -30,6 +30,7 @@ import { ToolCallGroupView } from './tool-calls/ToolCallGroupView';
 import { normalizeToolForDisplay } from './tool-calls/toolNormalization';
 import { TaskDefs } from '../../../../../../tasks/task-types';
 import { WhisperCollapsedGroup } from './tool-calls/WhisperCollapsedGroup';
+import { dispatchOpenWhisperDiff } from '../whisper-diff/whisperDiffEvent';
 import { detectCommitsByToolCallId, type DetectedCommit } from './commitDetection';
 import { CommitStrip } from './CommitStrip';
 import { NoteEditCard } from './NoteEditCard';
@@ -1887,6 +1888,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                                         groupSingleLineMessages={groupSingleLineMessages}
                                         workspaceId={wsId}
                                         renderToolTree={renderToolTree}
+                                        onOpenFileDiff={dispatchOpenWhisperDiff}
                                     />
                                 );
                             }
