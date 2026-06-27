@@ -363,6 +363,27 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
         expect(mocks.pullRequests.getForOrigin).not.toHaveBeenCalled();
     });
 
+    it('AC-03: defers the bindings round-trip past the synchronous mount', async () => {
+        vi.useFakeTimers();
+        try {
+            mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+            // Empty turns → no detected PRs → no detail fetch; isolates the
+            // bindings probe itself for the deferral assertion.
+            render(
+                <ChatPrStatusCard turns={[]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+            );
+            // The bindings probe is non-critical chrome: it must NOT fire during
+            // the synchronous mount/effect commit — it is deferred to browser
+            // idle so the conversation paints first.
+            expect(mocks.pullRequests.listChatBindingsForOrigin).not.toHaveBeenCalled();
+            // Once the browser idles (macrotask fallback in jsdom), it loads.
+            await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+            expect(mocks.pullRequests.listChatBindingsForOrigin).toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('regression: a remote workspace routes through getCocClientForWorkspace, never the local client', async () => {
         // A remote-owned chat: the workspace id only resolves on its remote server.
         // Resolving it against the local client 404s with "Repo <ws> not found".

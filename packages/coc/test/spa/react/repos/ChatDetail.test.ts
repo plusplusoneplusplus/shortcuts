@@ -1468,4 +1468,28 @@ describe('ChatDetail', () => {
             expect(USE_SEND_MESSAGE_SOURCE).toContain('promoteToRalph(processId');
         });
     });
+
+    describe('canvas discovery defers past first paint (AC-03)', () => {
+        it('imports the runWhenIdle deferral helper', () => {
+            expect(source).toContain("import { runWhenIdle } from '../../utils/runWhenIdle'");
+        });
+
+        it('wraps the canvases.list probe in runWhenIdle so messages paint first', () => {
+            // The discovery effect must schedule the round-trip through runWhenIdle
+            // rather than calling client.canvases.list synchronously on mount.
+            const idleIdx = source.indexOf('const cancelIdle = runWhenIdle(() => {');
+            const listIdx = source.indexOf('client.canvases.list(workspaceId, { processId: canvasPid })');
+            expect(idleIdx).toBeGreaterThan(-1);
+            expect(listIdx).toBeGreaterThan(idleIdx);
+            // The persisted close flag still applies synchronously, before the
+            // deferred probe — guards against regressing the no-flash behaviour.
+            const closeFlagIdx = source.indexOf('setCanvasPanelClosed(readCanvasClosed(workspaceId, canvasPid))');
+            expect(closeFlagIdx).toBeGreaterThan(-1);
+            expect(closeFlagIdx).toBeLessThan(idleIdx);
+        });
+
+        it('cancels the deferred probe on cleanup', () => {
+            expect(source).toContain('return () => { cancelled = true; cancelIdle(); };');
+        });
+    });
 });

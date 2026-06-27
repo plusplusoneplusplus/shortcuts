@@ -24,6 +24,7 @@ import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { scanTurnsForCreatedFiles, scanTurnsForPlanCanvas } from '../../utils/conversationScan';
+import { runWhenIdle } from '../../utils/runWhenIdle';
 import { toQueueProcessId, isQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import { getDraft, setDraft, pruneExpired } from './hooks/useDraftStore';
@@ -1115,14 +1116,20 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         // straight into the collapsed rail without flashing the expanded panel.
         setCanvasPanelClosed(readCanvasClosed(workspaceId, canvasPid));
         let cancelled = false;
-        client.canvases.list(workspaceId, { processId: canvasPid })
-            .then(canvases => {
-                if (!cancelled && canvases.length > 0) {
-                    setActiveCanvasId(prev => prev ?? canvases[0].id);
-                }
-            })
-            .catch(() => { /* canvas discovery is best-effort */ });
-        return () => { cancelled = true; };
+        // Canvas discovery is non-critical: defer the round-trip to browser idle
+        // so the conversation messages paint first (AC-03). The persisted close
+        // flag above still applies synchronously; only the network probe waits.
+        const cancelIdle = runWhenIdle(() => {
+            if (cancelled) return;
+            client.canvases.list(workspaceId, { processId: canvasPid })
+                .then(canvases => {
+                    if (!cancelled && canvases.length > 0) {
+                        setActiveCanvasId(prev => prev ?? canvases[0].id);
+                    }
+                })
+                .catch(() => { /* canvas discovery is best-effort */ });
+        });
+        return () => { cancelled = true; cancelIdle(); };
     }, [workspaceId, canvasPid]);
 
     const canvasResize = useResizablePanel({
