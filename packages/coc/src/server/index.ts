@@ -33,6 +33,7 @@ import { ensureMyWorkWorkspace } from './workspaces/my-work-workspace';
 import { ensureMyLifeWorkspace } from './workspaces/my-life-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { createLoopInfrastructure } from './infrastructure/loop-infrastructure';
+import { createEnqueueWakeup } from './loops/enqueue-wakeup';
 import { createTriggerInfrastructure } from './infrastructure/trigger-infrastructure';
 import { createCiChecksFetcher } from './triggers/ci-checks-fetcher';
 import { createCiLogFetcher } from './triggers/ci-log-fetcher';
@@ -315,35 +316,12 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                         return task?.repoId;
                     } catch { return undefined; }
                 },
-                enqueueWakeup: (opts) => {
-                    loopInfra!.timerRegistry.set(
-                        `wakeup:${opts.wakeupId}`,
-                        () => {
-                            const turnSource = { source: 'wakeup' as const, wakeupId: opts.wakeupId };
-                            void (async () => {
-                                try {
-                                    const { resolveFollowUpMode } = await import('./executors/follow-up-mode');
-                                    const mode = await resolveFollowUpMode(store, opts.processId);
-                                    await bridge.executeFollowUp(
-                                        opts.processId,
-                                        opts.prompt,
-                                        undefined,
-                                        mode,
-                                        undefined,
-                                        undefined,
-                                        undefined,
-                                        opts.model,
-                                        turnSource,
-                                    );
-                                } catch (err) {
-                                    const msg = err instanceof Error ? err.message : String(err);
-                                    process.stderr.write(`[Wakeup] Failed to execute wakeup ${opts.wakeupId}: ${msg}\n`);
-                                }
-                            })();
-                        },
-                        opts.delayMs,
-                    );
-                },
+                enqueueWakeup: createEnqueueWakeup({
+                    timerRegistry: loopInfra!.timerRegistry,
+                    store,
+                    executeFollowUp: (processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource) =>
+                        bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource),
+                }),
             };
         },
         () => mcpOauthInfra?.manager,
