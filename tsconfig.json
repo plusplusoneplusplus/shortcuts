@@ -2,33 +2,17 @@
   "compilerOptions": {
     "module": "commonjs",
     "target": "ES2020",
-    "outDir": "out",
     "lib": [
       "ES2020"
     ],
-    "sourceMap": true,
-    "rootDir": "packages/vscode-extension/src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["vscode", "node", "mocha"],
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": false,
-    "declarationMap": false,
-    "inlineSourceMap": false,
-    "inlineSources": false
+    "resolveJsonModule": true
   },
-  "include": [
-    "packages/vscode-extension/src/**/*"
-  ],
   "exclude": [
     "node_modules",
-    ".vscode-test",
-    "packages/vscode-extension/src/test/fixtures/**/*",
-    "packages/vscode-extension/src/shortcuts/markdown-comments/webview-scripts/**/*",
-    "packages/vscode-extension/src/shortcuts/markdown-comments/webview-logic/**/*",
-    "packages/vscode-extension/src/shortcuts/git-diff-comments/webview-scripts/**/*",
-    "packages/vscode-extension/src/shortcuts/shared/webview/**/*"
+    "**/*.d.ts"
   ]
 }
