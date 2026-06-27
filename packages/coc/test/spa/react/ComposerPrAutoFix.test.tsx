@@ -330,4 +330,29 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
         // Disabled feature performs no trigger network calls.
         expect(mocks.triggers.list).not.toHaveBeenCalled();
     });
+
+    it('toggle label reads "Auto-fix CI & address comments" (Phase 1 relabel)', async () => {
+        const { badge, getByTestId } = await renderWithFailingPr('proc-1');
+        fireEvent.click(badge);
+        const toggle = getByTestId(`composer-pr-chip-autofix-toggle-${ITEM_KEY}`);
+        expect(toggle.textContent).toContain('Auto-fix CI');
+        expect(toggle.textContent).toContain('address comments');
+    });
+
+    it('auto-merge read-only indicator reflects the PR autoMerge state', async () => {
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 42,
+            title: 'Fix the thing',
+            status: 'open',
+            sourceBranch: 'feat/x',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: GH_URL,
+            autoMerge: { enabled: true, state: 'armed' },
+        });
+        const { badge, getByTestId } = await renderWithFailingPr('proc-1');
+        fireEvent.click(badge);
+        const indicator = getByTestId(`composer-pr-chip-automerge-${ITEM_KEY}`);
+        expect(indicator.getAttribute('data-enabled')).toBe('true');
+    });
 });

@@ -292,6 +292,10 @@ function ChecksBadge({ item, autoFix }: { item: PrStatusCardItem; autoFix?: UseP
             },
         }
         : undefined;
+    const openHref = item.pr?.url || item.url;
+    const archiveSettingsHref = `#repos/${encodeURIComponent(item.repoId)}/settings/preferences`;
+    const autoMergeEnabled = item.pr?.autoMerge?.enabled;
+
     return (
         <>
             <button
@@ -313,10 +317,14 @@ function ChecksBadge({ item, autoFix }: { item: PrStatusCardItem; autoFix?: UseP
                 <ComposerPrChecksPopover
                     anchorRef={anchorRef}
                     failed={failed}
+                    allRows={rows}
                     prNumber={item.pr?.number ?? item.number}
                     itemKey={item.key}
                     onClose={() => setOpen(false)}
                     autoFix={popoverAutoFix}
+                    openHref={openHref}
+                    autoMergeEnabled={autoMergeEnabled}
+                    archiveSettingsHref={archiveSettingsHref}
                 />
             )}
         </>
