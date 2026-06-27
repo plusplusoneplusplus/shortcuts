@@ -64,6 +64,27 @@ async function* makeMessages(messages: object[]): AsyncIterable<object> {
     }
 }
 
+/**
+ * Drain the streaming-input prompt channel and return the single initial user
+ * message. The Claude provider drives turns in streaming-input mode, so
+ * `queryFn.mock.calls[i][0].prompt` is an AsyncIterable, not a bare string.
+ */
+async function firstStreamedUserMessage(prompt: unknown): Promise<{
+    type: string;
+    message: { role: string; content: unknown };
+    parent_tool_use_id: unknown;
+}> {
+    if (typeof prompt === 'string' || prompt == null) {
+        throw new Error(`expected an async-iterable prompt, got ${typeof prompt}`);
+    }
+    const values: unknown[] = [];
+    for await (const value of prompt as AsyncIterable<unknown>) values.push(value);
+    if (values.length !== 1) {
+        throw new Error(`expected exactly one streamed user message, got ${values.length}`);
+    }
+    return values[0] as { type: string; message: { role: string; content: unknown }; parent_tool_use_id: unknown };
+}
+
 /** Wraps a message array as a query handle with optional control-method spies. */
 function makeQueryHandle(
     messages: object[],
@@ -598,7 +619,7 @@ describe('ClaudeSDKService.sendMessage', () => {
 
         expect(result.success).toBe(true);
         const call = queryFn.mock.calls[0][0];
-        expect(call.prompt).toBe('user prompt');
+        expect((await firstStreamedUserMessage(call.prompt)).message.content).toBe('user prompt');
         expect(call.options?.systemPrompt).toEqual({
             type: 'preset',
             preset: 'claude_code',
@@ -621,7 +642,7 @@ describe('ClaudeSDKService.sendMessage', () => {
 
         expect(result.success).toBe(true);
         const call = queryFn.mock.calls[0][0];
-        expect(call.prompt).toBe('generator prompt');
+        expect((await firstStreamedUserMessage(call.prompt)).message.content).toBe('generator prompt');
         expect(call.options?.systemPrompt).toBe('Strict generator system prompt');
         expect(call.options).not.toHaveProperty('appendSystemPrompt');
         expect(call.options).not.toHaveProperty('customSystemPrompt');
@@ -676,7 +697,7 @@ describe('ClaudeSDKService.sendMessage', () => {
             preset: 'claude_code',
             append: 'history plus CoC system prompt',
         });
-        expect(call.prompt).toBe('follow-up prompt');
+        expect((await firstStreamedUserMessage(call.prompt)).message.content).toBe('follow-up prompt');
     });
 
     it('maps Claude result usage into the shared TokenUsage shape', async () => {

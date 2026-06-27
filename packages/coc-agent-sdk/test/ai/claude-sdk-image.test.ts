@@ -116,10 +116,17 @@ describe('ClaudeSDKService image attachments', () => {
         ]);
     });
 
-    it('keeps a plain string prompt when no attachments are provided', async () => {
+    it('streams a plain text user message when no attachments are provided', async () => {
         await svc.sendMessage({ prompt: 'Text only' });
 
-        expect(queryFn.mock.calls[0][0].prompt).toBe('Text only');
+        // Streaming-input transport: a text-only turn yields one user message
+        // whose content is the plain prompt string (no image blocks).
+        const prompt = queryFn.mock.calls[0][0].prompt;
+        expect(typeof prompt).not.toBe('string');
+        const messages = await drainAsyncIterable(prompt);
+        expect(messages).toEqual([
+            { type: 'user', message: { role: 'user', content: 'Text only' }, parent_tool_use_id: null },
+        ]);
     });
 
     it('skips unsupported image and non-image attachments', async () => {
@@ -132,7 +139,10 @@ describe('ClaudeSDKService image attachments', () => {
             ],
         });
 
-        expect(queryFn.mock.calls[0][0].prompt).toBe('Skip unsupported');
+        const messages = await drainAsyncIterable(queryFn.mock.calls[0][0].prompt);
+        expect(messages).toEqual([
+            { type: 'user', message: { role: 'user', content: 'Skip unsupported' }, parent_tool_use_id: null },
+        ]);
     });
 
     it('forwards an image whose byte size is exactly at the limit', async () => {
@@ -165,7 +175,10 @@ describe('ClaudeSDKService image attachments', () => {
         });
 
         // Oversized image dropped; request still runs as a plain text prompt.
-        expect(queryFn.mock.calls[0][0].prompt).toBe('Too large');
+        const messages = await drainAsyncIterable(queryFn.mock.calls[0][0].prompt);
+        expect(messages).toEqual([
+            { type: 'user', message: { role: 'user', content: 'Too large' }, parent_tool_use_id: null },
+        ]);
     });
 
     it('records a sanitized skip diagnostic for an oversized image (no payload/prompt leak)', async () => {
@@ -249,7 +262,10 @@ describe('ClaudeSDKService image attachments', () => {
         });
 
         // No Claude-supported image → request still runs as a plain text prompt.
-        expect(queryFn.mock.calls[0][0].prompt).toBe('Look at this photo');
+        const messages = await drainAsyncIterable(queryFn.mock.calls[0][0].prompt);
+        expect(messages).toEqual([
+            { type: 'user', message: { role: 'user', content: 'Look at this photo' }, parent_tool_use_id: null },
+        ]);
 
         const skip = logs.find(l => l.fields.event === 'claude_image_skipped');
         expect(skip).toBeDefined();
