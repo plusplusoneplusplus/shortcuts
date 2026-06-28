@@ -16,7 +16,7 @@ import type { MockFnFactory } from '../../src/testing/index';
 // ---------------------------------------------------------------------------
 
 describe('createMockSDKService (default shim)', () => {
-    it('returns a service with all 14 ISDKService methods + createClient', () => {
+    it('returns a service with all 15 ISDKService methods + createClient', () => {
         const { service } = createMockSDKService();
         const s: ISDKService = service;
         expect(typeof s.isAvailable).toBe('function');
@@ -26,6 +26,7 @@ describe('createMockSDKService (default shim)', () => {
         expect(typeof s.transform).toBe('function');
         expect(typeof s.forkSession).toBe('function');
         expect(typeof s.rewindSession).toBe('function');
+        expect(typeof s.compactSession).toBe('function');
         expect(typeof s.abortSession).toBe('function');
         expect(typeof s.softAbortSession).toBe('function');
         expect(typeof s.steerSession).toBe('function');
@@ -76,6 +77,15 @@ describe('createMockSDKService (default shim)', () => {
         expect(await service.rewindSession('sess-1', 'evt-9')).toEqual({
             eventsRemoved: 0,
             upToEventId: 'evt-9',
+        });
+    });
+
+    it('default compactSession reports a successful no-op compaction', async () => {
+        const { service } = createMockSDKService();
+        expect(await service.compactSession('sess-1', 'focus')).toEqual({
+            success: true,
+            tokensRemoved: 0,
+            messagesRemoved: 0,
         });
     });
 

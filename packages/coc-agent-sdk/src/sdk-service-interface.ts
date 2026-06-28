@@ -131,6 +131,67 @@ export function isRewindUnsupportedError(err: unknown): err is RewindUnsupported
 }
 
 /**
+ * Result of a successful {@link ISDKService.compactSession} call (AC-01).
+ *
+ * Mirrors the Copilot SDK's `HistoryCompactResult`: it reports whether the
+ * compaction ran, how much context the summarization reclaimed, and the summary
+ * text it produced. Unlike {@link RewindResult}, compaction summarizes older
+ * turns in place rather than truncating to an anchor — so there is no event id.
+ * `summaryContent` is omitted when the provider produced no summary (e.g. a
+ * no-op or failed compaction).
+ */
+export interface CompactResult {
+    /** Whether compaction completed successfully. */
+    success: boolean;
+    /** Number of tokens freed by compaction. */
+    tokensRemoved: number;
+    /** Number of messages removed (summarized away) during compaction. */
+    messagesRemoved: number;
+    /** Summary text produced by compaction; omitted when none was produced. */
+    summaryContent?: string;
+}
+
+/**
+ * Error thrown by {@link ISDKService.compactSession} when the provider does not
+ * support history compaction (currently every provider except Copilot).
+ *
+ * Mirrors {@link RewindUnsupportedError}: it carries a stable `code` so callers
+ * can recognize it across module/build boundaries where `instanceof` is
+ * unreliable (dual ESM/CJS). The backend compact endpoint maps this to a typed
+ * "compact unsupported" rejection surfaced to the user as an error toast. Prefer
+ * {@link isCompactUnsupportedError} over a bare `instanceof` check at call sites.
+ */
+export class CompactUnsupportedError extends Error {
+    /** Stable discriminator that survives serialization / cross-bundle checks. */
+    public readonly code = 'COMPACT_UNSUPPORTED' as const;
+    /** The provider that rejected the compaction (e.g. `claude`, `codex`). */
+    public readonly provider: string;
+
+    constructor(provider: string, message?: string) {
+        super(message ?? `Compaction is not supported for provider '${provider}'.`);
+        this.name = 'CompactUnsupportedError';
+        this.provider = provider;
+        // Restore the prototype chain so `instanceof` works under transpiled
+        // (ES5/CommonJS) targets where extending built-ins otherwise breaks it.
+        Object.setPrototypeOf(this, CompactUnsupportedError.prototype);
+    }
+}
+
+/**
+ * Type guard for {@link CompactUnsupportedError} that is robust to duplicate
+ * class identities across bundles: it accepts either a true `instanceof` match
+ * or any error carrying the stable `COMPACT_UNSUPPORTED` code.
+ */
+export function isCompactUnsupportedError(err: unknown): err is CompactUnsupportedError {
+    return (
+        err instanceof CompactUnsupportedError ||
+        (typeof err === 'object' &&
+            err !== null &&
+            (err as { code?: unknown }).code === 'COMPACT_UNSUPPORTED')
+    );
+}
+
+/**
  * Options for a one-shot {@link ISDKService.transform} call.
  *
  * The transform primitive is deliberately minimal: it runs a single isolated
@@ -343,6 +404,23 @@ export interface ISDKService {
      * session in its place.
      */
     rewindSession(sessionId: string, eventId: string): Promise<RewindResult>;
+
+    /**
+     * Compact (summarize) a session's live history to shrink the model context
+     * used on the *next* turn. Unlike {@link rewindSession}, this does not
+     * truncate to an anchor — the provider summarizes older turns in place and
+     * reports how much context the summary reclaimed.
+     *
+     * Copilot resumes the session and calls
+     * `rpc.history.compact({ customInstructions })`, mapping the outcome to
+     * {@link CompactResult}. `customInstructions` (when non-empty) focuses the
+     * summary. Providers that cannot compact history (Claude, Codex) throw
+     * {@link CompactUnsupportedError}; the backend maps that to a user-facing
+     * "compaction unsupported" error. A missing/unresumable session surfaces as a
+     * thrown error — the implementation never silently creates a new empty
+     * session in its place.
+     */
+    compactSession(sessionId: string, customInstructions?: string): Promise<CompactResult>;
 
     /** Hard-abort a session — terminates in-flight work immediately. */
     abortSession(sessionId: string): Promise<boolean>;

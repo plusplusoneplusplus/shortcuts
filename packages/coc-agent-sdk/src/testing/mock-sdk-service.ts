@@ -1,7 +1,7 @@
 /**
  * Shared vitest-free mock of ISDKService.
  *
- * Implements all 14 interface methods plus the off-interface `createClient`.
+ * Implements all 15 interface methods plus the off-interface `createClient`.
  * The mock-function factory is injectable so consumers can bind `vi.fn` for
  * full spy assertions while the package itself imports nothing from vitest.
  */
@@ -43,6 +43,7 @@ export interface MockSDKServiceResult {
     mockListModels: MockFnHandle;
     mockForkSession: MockFnHandle;
     mockRewindSession: MockFnHandle;
+    mockCompactSession: MockFnHandle;
     mockClearAvailabilityCache: MockFnHandle;
     mockHasActiveSession: MockFnHandle;
     mockGetActiveSessionCount: MockFnHandle;
@@ -105,6 +106,9 @@ export function createMockSDKService(
     const mockRewindSession = fn((...args: unknown[]) =>
         Promise.resolve({ eventsRemoved: 0, upToEventId: String(args[1]) }),
     );
+    const mockCompactSession = fn(() =>
+        Promise.resolve({ success: true, tokensRemoved: 0, messagesRemoved: 0 }),
+    );
     const mockClearAvailabilityCache = fn(() => undefined);
     const mockHasActiveSession = fn(() => true);
     const mockGetActiveSessionCount = fn(() => 0);
@@ -122,6 +126,7 @@ export function createMockSDKService(
         listModels: mockListModels as unknown as ISDKService['listModels'],
         forkSession: mockForkSession as unknown as ISDKService['forkSession'],
         rewindSession: mockRewindSession as unknown as ISDKService['rewindSession'],
+        compactSession: mockCompactSession as unknown as ISDKService['compactSession'],
         clearAvailabilityCache: mockClearAvailabilityCache as unknown as ISDKService['clearAvailabilityCache'],
         hasActiveSession: mockHasActiveSession as unknown as ISDKService['hasActiveSession'],
         getActiveSessionCount: mockGetActiveSessionCount as unknown as ISDKService['getActiveSessionCount'],
@@ -161,6 +166,7 @@ export function createMockSDKService(
         mockRewindSession.mockReset().mockImplementation((...args: unknown[]) =>
             Promise.resolve({ eventsRemoved: 0, upToEventId: String(args[1]) }),
         );
+        mockCompactSession.mockReset().mockResolvedValue({ success: true, tokensRemoved: 0, messagesRemoved: 0 });
         mockClearAvailabilityCache.mockReset();
         mockHasActiveSession.mockReset().mockImplementation(() => true);
         mockGetActiveSessionCount.mockReset().mockImplementation(() => 0);
@@ -181,6 +187,7 @@ export function createMockSDKService(
         mockListModels,
         mockForkSession,
         mockRewindSession,
+        mockCompactSession,
         mockClearAvailabilityCache,
         mockHasActiveSession,
         mockGetActiveSessionCount,

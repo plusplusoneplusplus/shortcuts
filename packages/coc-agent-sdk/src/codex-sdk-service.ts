@@ -20,8 +20,8 @@
 import type { SendMessageOptions, SystemMessageConfig, TokenUsage } from './types';
 import type { ToolEvent } from './types';
 import { denyAllPermissions } from './types';
-import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult, PrewarmOptions, RewindResult } from './sdk-service-interface';
-import { RewindUnsupportedError } from './sdk-service-interface';
+import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult, PrewarmOptions, RewindResult, CompactResult } from './sdk-service-interface';
+import { RewindUnsupportedError, CompactUnsupportedError } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
 import type { ToolCall } from './tool-call';
 import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
@@ -1713,6 +1713,16 @@ export class CodexSDKService implements ISDKService {
      */
     public async rewindSession(_sessionId: string, _eventId: string): Promise<RewindResult> {
         throw new RewindUnsupportedError(CODEX_PROVIDER);
+    }
+
+    /**
+     * History compaction is not supported by the Codex SDK (AC-03). Throws the
+     * typed {@link CompactUnsupportedError} so the backend can surface a
+     * "compaction unsupported" rejection to the user, mirroring
+     * {@link rewindSession}.
+     */
+    public async compactSession(_sessionId: string, _customInstructions?: string): Promise<CompactResult> {
+        throw new CompactUnsupportedError(CODEX_PROVIDER);
     }
 
     public async abortSession(sessionId: string): Promise<boolean> {

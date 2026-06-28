@@ -319,6 +319,165 @@ describe('CopilotSDKService - rewindSession', () => {
 });
 
 // ============================================================================
+// compactSession Tests (AC-02)
+// ============================================================================
+
+describe('CopilotSDKService - compactSession', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    /** A resumable session whose `rpc.history.compact` is a controllable spy. */
+    function makeCompactSession(compactResult: Record<string, unknown>) {
+        const compact = vi.fn().mockResolvedValue(compactResult);
+        const disconnect = vi.fn().mockResolvedValue(undefined);
+        const session = { rpc: { history: { compact } }, disconnect };
+        return { session, compact, disconnect };
+    }
+
+    /** Park a warm handle by stubbing the registry's idle-borrow accessor. */
+    function parkWarmHandle(resumeSession: ReturnType<typeof vi.fn>) {
+        const handleStop = vi.fn().mockResolvedValue(undefined);
+        const clientStop = vi.fn().mockResolvedValue(undefined);
+        const clientStart = vi.fn().mockResolvedValue(undefined);
+        const warmClient = { resumeSession, start: clientStart, stop: clientStop };
+        const handle = { client: warmClient, stop: handleStop };
+        const registry = (service as any).warmRegistry;
+        vi.spyOn(registry, 'peekIdleWarmHandle').mockReturnValue(handle);
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+        return { handleStop, clientStop, clientStart };
+    }
+
+    it('warm hit: reuses the parked client, maps the result, and never stops it', async () => {
+        const { session, compact, disconnect } = makeCompactSession({
+            success: true,
+            tokensRemoved: 1200,
+            messagesRemoved: 5,
+            summaryContent: 'summary text',
+        });
+        const resumeSession = vi.fn().mockResolvedValue(session);
+        const { handleStop, clientStop, clientStart } = parkWarmHandle(resumeSession);
+
+        const result = await service.compactSession('sess-1', 'focus on auth');
+
+        expect(result).toEqual({
+            success: true,
+            tokensRemoved: 1200,
+            messagesRemoved: 5,
+            summaryContent: 'summary text',
+        });
+        expect(resumeSession).toHaveBeenCalledWith('sess-1', expect.any(Object));
+        expect(compact).toHaveBeenCalledWith({ customInstructions: 'focus on auth' });
+        expect(disconnect).toHaveBeenCalled();
+        // Warm path: the live process is never stopped and never re-started.
+        expect(handleStop).not.toHaveBeenCalled();
+        expect(clientStop).not.toHaveBeenCalled();
+        expect(clientStart).not.toHaveBeenCalled();
+        // Cold-start path must NOT be taken on a warm hit.
+        expect(createSdkClientMock).not.toHaveBeenCalled();
+    });
+
+    it('warm hit: resumes with a deny-all permission handler (no tool side effects)', async () => {
+        const { session } = makeCompactSession({ success: true, tokensRemoved: 1, messagesRemoved: 1 });
+        const resumeSession = vi.fn().mockResolvedValue(session);
+        parkWarmHandle(resumeSession);
+
+        await service.compactSession('sess-1');
+
+        const config = resumeSession.mock.calls[0][1];
+        expect(typeof config.onPermissionRequest).toBe('function');
+        expect(config.onPermissionRequest()).toEqual({ kind: 'reject' });
+    });
+
+    it('warm hit: omits customInstructions (sends {}) when none is provided', async () => {
+        const { compact, session } = makeCompactSession({ success: true, tokensRemoved: 0, messagesRemoved: 0 });
+        const resumeSession = vi.fn().mockResolvedValue(session);
+        parkWarmHandle(resumeSession);
+
+        await service.compactSession('sess-1');
+        expect(compact).toHaveBeenCalledWith({});
+
+        // An empty-string instruction is also treated as "none".
+        await service.compactSession('sess-1', '');
+        expect(compact).toHaveBeenLastCalledWith({});
+    });
+
+    /** Cold-fallback setup: no warm handle parked; createClient yields a throwaway client. */
+    function setupColdCompact(compactResult: Record<string, unknown>) {
+        const { session, compact, disconnect } = makeCompactSession(compactResult);
+        const resumeSession = vi.fn().mockResolvedValue(session);
+        const start = vi.fn().mockResolvedValue(undefined);
+        const stop = vi.fn().mockResolvedValue(undefined);
+        const registry = (service as any).warmRegistry;
+        vi.spyOn(registry, 'peekIdleWarmHandle').mockReturnValue(undefined);
+        createSdkClientMock.mockResolvedValue({ start, stop, resumeSession });
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+        return { compact, disconnect, resumeSession, start, stop };
+    }
+
+    it('cold fallback: cold-starts a throwaway client, compacts, and stops it', async () => {
+        const { compact, disconnect, resumeSession, start, stop } = setupColdCompact({
+            success: true,
+            tokensRemoved: 300,
+            messagesRemoved: 2,
+        });
+
+        const result = await service.compactSession('sess-2');
+
+        expect(result).toMatchObject({ success: true, tokensRemoved: 300, messagesRemoved: 2 });
+        expect(start).toHaveBeenCalled();
+        expect(resumeSession).toHaveBeenCalledWith('sess-2', expect.any(Object));
+        expect(compact).toHaveBeenCalledWith({});
+        expect(disconnect).toHaveBeenCalled();
+        // The cold temp client is torn down — never parked in the warm pool.
+        expect(stop).toHaveBeenCalled();
+    });
+
+    it('cold fallback: maps missing provider fields to safe defaults', async () => {
+        setupColdCompact({});
+
+        const result = await service.compactSession('sess-3');
+
+        expect(result).toEqual({
+            success: false,
+            tokensRemoved: 0,
+            messagesRemoved: 0,
+            summaryContent: undefined,
+        });
+    });
+
+    it('cold fallback: disconnects the session and stops the client even if compact fails', async () => {
+        const disconnect = vi.fn().mockResolvedValue(undefined);
+        const compact = vi.fn().mockRejectedValue(new Error('compact failed'));
+        const session = { rpc: { history: { compact } }, disconnect };
+        const resumeSession = vi.fn().mockResolvedValue(session);
+        const stop = vi.fn().mockResolvedValue(undefined);
+        const registry = (service as any).warmRegistry;
+        vi.spyOn(registry, 'peekIdleWarmHandle').mockReturnValue(undefined);
+        createSdkClientMock.mockResolvedValue({ start: vi.fn().mockResolvedValue(undefined), stop, resumeSession });
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        await expect(service.compactSession('sess-1')).rejects.toThrow('compact failed');
+        expect(disconnect).toHaveBeenCalled();
+        expect(stop).toHaveBeenCalled();
+    });
+
+    it('throws when service is disposed', async () => {
+        service.dispose();
+        await expect(service.compactSession('any-session')).rejects.toThrow('disposed');
+    });
+});
+
+// ============================================================================
 // onSessionCreated Callback Tests
 // ============================================================================
 
