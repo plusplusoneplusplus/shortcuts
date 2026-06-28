@@ -110,13 +110,13 @@ class TestFindCocTasksRoot:
 
 # ── main() integration tests ───────────────────────────────────────
 
-class TestMainLegacyVscode:
+class TestMainLegacyConfig:
     """Legacy .vscode/ path archiving."""
 
-    def test_archives_vscode_task(self, tmp_path: Path):
-        vscode = tmp_path / ".vscode" / "tasks" / "feat"
-        vscode.mkdir(parents=True)
-        task = vscode / "plan.md"
+    def test_archives_legacy_task(self, tmp_path: Path):
+        legacy_tasks_dir = tmp_path / ".vscode" / "tasks" / "feat"
+        legacy_tasks_dir.mkdir(parents=True)
+        task = legacy_tasks_dir / "plan.md"
         task.write_text("hello")
 
         with mock.patch("sys.argv", ["prog", "--task", str(task), "--workspace", str(tmp_path)]):
@@ -128,7 +128,7 @@ class TestMainLegacyVscode:
         assert archived.exists()
         assert archived.read_text() == "hello"
 
-    def test_skip_outside_vscode(self, tmp_path: Path):
+    def test_skip_outside_legacy_config(self, tmp_path: Path):
         other = tmp_path / "somewhere" / "plan.md"
         other.parent.mkdir(parents=True)
         other.write_text("hello")
@@ -214,7 +214,7 @@ class TestMainCocTasks:
         assert (archive_dir / "plan (1).md").exists()
         assert (archive_dir / "plan (1).md").read_text() == "new"
 
-    def test_coc_takes_priority_over_vscode(self, tmp_path: Path):
+    def test_coc_takes_priority_over_legacy_config(self, tmp_path: Path):
         """If a file is under both .coc and .vscode (unusual), .coc wins."""
         # This wouldn't happen in practice, but tests priority ordering
         coc = tmp_path / ".vscode"  # pathological: coc data dir = .vscode

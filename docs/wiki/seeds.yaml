@@ -263,7 +263,7 @@ themes:
     hints:
       - sync-manager
       - SyncProvider
-      - vscode-sync-provider
+      - WorkItemSyncProvider
       - workspaceShortcuts.sync
       - cloud-sync
   - theme: drag-and-drop-reordering

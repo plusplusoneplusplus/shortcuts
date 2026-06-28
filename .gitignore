@@ -119,9 +119,6 @@ dist/
 ehthumbs.db
 Thumbs.db
 
-# Legacy integration test runner
-.vscode-test/
-
 # Webpack build output
 out/
 dist/

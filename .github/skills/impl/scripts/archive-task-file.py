@@ -121,9 +121,9 @@ def main() -> int:
         return 0
 
     # 3) Check legacy location: <workspace>/.vscode/
-    vscode_root = workspace_root / ".vscode"
-    if is_subpath(task_abs, vscode_root):
-        archive_dir = vscode_root / "tasks" / "archive"
+    legacy_config_root = workspace_root / ".vscode"
+    if is_subpath(task_abs, legacy_config_root):
+        archive_dir = legacy_config_root / "tasks" / "archive"
         archive_dir.mkdir(parents=True, exist_ok=True)
         dest = unique_dest(archive_dir / task_abs.name)
         shutil.move(str(task_abs), str(dest))
