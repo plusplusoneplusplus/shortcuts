@@ -14,8 +14,11 @@
 
 import * as path from 'path';
 import { app, BrowserWindow } from 'electron';
+import { attachOrStart, ServerHandle } from './server-controller';
 
 let mainWindow: BrowserWindow | null = null;
+/** The embedded (or attached) CoC server for this app instance. */
+let serverHandle: ServerHandle | null = null;
 
 function createWindow(): BrowserWindow {
     const win = new BrowserWindow({
@@ -31,16 +34,36 @@ function createWindow(): BrowserWindow {
     return win;
 }
 
-function bootstrap(): void {
+async function bootstrap(): Promise<void> {
     mainWindow = createWindow();
-    // Server boot + window.loadURL wiring is added in AC-02 / AC-03.
+
+    // AC-02: attach to an already-running CoC server, or fork our own against
+    // the shared ~/.coc data dir. AC-03 layers the splash + loadURL on top.
+    try {
+        serverHandle = await attachOrStart();
+        process.stdout.write(
+            `[coc-desktop] server ${serverHandle.started ? 'started (forked)' : 'attached (external)'} at ${serverHandle.url}\n`,
+        );
+        // AC-03 will: show a splash, then mainWindow.loadURL(serverHandle.url).
+    } catch (err) {
+        process.stderr.write(
+            `[coc-desktop] failed to start CoC server: ${err instanceof Error ? err.message : String(err)}\n`,
+        );
+    }
 }
 
 app.whenReady().then(bootstrap);
 
 app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-        bootstrap();
+    if (BrowserWindow.getAllWindows().length > 0) {
+        return;
+    }
+    // Re-open the window without re-booting the server if one already exists.
+    if (serverHandle) {
+        mainWindow = createWindow();
+        // AC-03 will reload serverHandle.url here.
+    } else {
+        void bootstrap();
     }
 });
 
