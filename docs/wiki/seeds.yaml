@@ -366,8 +366,7 @@ themes:
   - theme: copilot-cli-invocation
     description: >-
       Invokes the GitHub Copilot CLI as a child process or copies prompts to the
-      clipboard as a fallback, bridging the VS Code extension with the Copilot
-      CLI tool.
+      clipboard as a fallback, bridging CoC workflows with the Copilot CLI tool.
     hints:
       - CopilotCLIInvoker
       - copilot-cli-invoker

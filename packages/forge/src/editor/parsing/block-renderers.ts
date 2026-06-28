@@ -92,9 +92,8 @@ function computeColumnWidths(table: ParsedTable): number[] {
 /**
  * Render a `ParsedTable` as an HTML `<table>` string.
  *
- * The output intentionally mirrors the CSS class names used by the
- * review-editor webview so that the same stylesheet works for both
- * the VS Code extension and the CoC SPA.
+ * The output intentionally mirrors the CSS class names used by the review
+ * editor so the CoC SPA can share one stylesheet.
  *
  * A `<colgroup>` with content-proportional widths is always emitted so that
  * the `table-layout: fixed` CSS rule distributes space meaningfully instead

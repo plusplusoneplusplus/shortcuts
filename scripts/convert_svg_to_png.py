@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Smart SVG to PNG converter for VS Code extensions
+Smart SVG to PNG converter for package icons
 Converts SVG icons to PNG format with proper sizing for marketplace requirements
 """
 

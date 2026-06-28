@@ -2,7 +2,7 @@
  * Anchor Types
  *
  * Platform-agnostic interfaces for anchor-based comment location tracking.
- * Used by both the VS Code extension and the CoC standalone server.
+ * Used by the CoC dashboard and standalone server.
  */
 
 /**

@@ -1,6 +1,6 @@
 /**
- * Tasks module - Types and parsing utilities for task management.
- * Extracted from the VS Code extension's tasks-viewer for use in CLI tools.
+ * Tasks module - types and parsing utilities for task management in CLI tools
+ * and CoC server flows.
  */
 
 export {
