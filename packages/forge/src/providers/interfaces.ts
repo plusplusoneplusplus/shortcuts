@@ -75,6 +75,17 @@ export interface IPullRequestsService {
      * Optional — not all providers support this.
      */
     getReviewedPullRequests?(repositoryId: string, top?: number): Promise<ReviewedPullRequest[]>;
+    /**
+     * Enable or disable auto-merge (GitHub) / auto-complete (ADO) on a pull
+     * request. Passing `enabled: false` disables it. Optional — not all
+     * providers implement this.
+     */
+    setAutoMerge?(
+        repositoryId: string,
+        pullRequestId: number | string,
+        enabled: boolean,
+        opts?: { mergeMethod?: string },
+    ): Promise<void>;
 }
 
 export interface IWorkItemsService {

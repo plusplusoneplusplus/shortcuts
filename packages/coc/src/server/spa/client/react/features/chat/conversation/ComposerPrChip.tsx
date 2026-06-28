@@ -25,6 +25,7 @@ import { summarizeCheckRows } from '../../pull-requests/PrChecksSummary';
 import { ComposerPrChecksPopover, type ComposerPrChecksAutoFix } from './ComposerPrChecksPopover';
 import { ComposerPrReviewersPopover } from './ComposerPrReviewersPopover';
 import { usePrAutoFixTrigger, type UsePrAutoFixTriggerResult } from './usePrAutoFixTrigger';
+import { usePrAutoMergeMutation, type UsePrAutoMergeMutationResult } from './usePrAutoMergeMutation';
 import type { PrStatusCardItem } from './PrStatusCard';
 
 /** CI auto-fix wiring passed from the connected chip stack (AC-05). */
@@ -215,7 +216,7 @@ function ReviewersBadge({ item }: { item: PrStatusCardItem }) {
  * any failure). With nothing failing AND no auto-fix it stays a plain,
  * non-interactive pill.
  */
-function ChecksBadge({ item, autoFix }: { item: PrStatusCardItem; autoFix?: UsePrAutoFixTriggerResult }) {
+function ChecksBadge({ item, autoFix, autoMerge }: { item: PrStatusCardItem; autoFix?: UsePrAutoFixTriggerResult; autoMerge?: UsePrAutoMergeMutationResult }) {
     const [open, setOpen] = React.useState(false);
     const anchorRef = React.useRef<HTMLButtonElement | null>(null);
 
@@ -294,7 +295,9 @@ function ChecksBadge({ item, autoFix }: { item: PrStatusCardItem; autoFix?: UseP
         : undefined;
     const openHref = item.pr?.url || item.url;
     const archiveSettingsHref = `#repos/${encodeURIComponent(item.repoId)}/settings/preferences`;
-    const autoMergeEnabled = item.pr?.autoMerge?.enabled;
+    const popoverAutoMerge = autoMerge
+        ? { enabled: autoMerge.enabled, busy: autoMerge.busy, disabledReason: autoMerge.disabledReason, onToggle: (next: boolean) => { void autoMerge.toggle(next); } }
+        : undefined;
 
     return (
         <>
@@ -323,7 +326,7 @@ function ChecksBadge({ item, autoFix }: { item: PrStatusCardItem; autoFix?: UseP
                     onClose={() => setOpen(false)}
                     autoFix={popoverAutoFix}
                     openHref={openHref}
-                    autoMergeEnabled={autoMergeEnabled}
+                    autoMerge={popoverAutoMerge}
                     archiveSettingsHref={archiveSettingsHref}
                 />
             )}
@@ -396,6 +399,13 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
         prNumber: number,
     });
 
+    const autoMergeState = usePrAutoMergeMutation({
+        workspaceId: autoFix?.workspaceId,
+        originId: item.originId,
+        prId: item.prId,
+        currentEnabled: item.pr?.autoMerge?.enabled ?? false,
+    });
+
     if (item.state === 'loading') {
         return (
             <div className={ROW_CLASS} data-testid="composer-pr-chip" data-state="loading" data-pr-key={item.key}>
@@ -457,7 +467,7 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
             </span>
             {pr && <StatusBadge status={pr.status} />}
             <ReviewersBadge item={item} />
-            <ChecksBadge item={item} autoFix={autoFix?.enabled ? autoFixState : undefined} />
+            <ChecksBadge item={item} autoFix={autoFix?.enabled ? autoFixState : undefined} autoMerge={autoFix?.enabled ? autoMergeState : undefined} />
             {autoFix?.enabled && autoFixState.armed && <AutoFixOnBadge itemKey={item.key} />}
             {diff && (
                 <span className="shrink-0 font-mono text-[11px]" data-testid="composer-pr-chip-diff">

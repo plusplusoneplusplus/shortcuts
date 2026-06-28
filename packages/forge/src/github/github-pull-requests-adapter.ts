@@ -622,4 +622,30 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
 
         return results;
     }
+
+    async setAutoMerge(
+        _repositoryId: string,
+        pullRequestId: number | string,
+        enabled: boolean,
+        opts?: { mergeMethod?: string },
+    ): Promise<void> {
+        const { data: pr } = await this.octokit.pulls.get({
+            owner: this.owner,
+            repo: this.repo,
+            pull_number: Number(pullRequestId),
+        });
+        const nodeId = (pr as unknown as { node_id: string }).node_id;
+        if (enabled) {
+            const mergeMethod = opts?.mergeMethod?.toUpperCase() ?? 'SQUASH';
+            await this.octokit.request('POST /graphql', {
+                query: `mutation($id:ID!,$m:PullRequestMergeMethod!){enablePullRequestAutoMerge(input:{pullRequestId:$id,mergeMethod:$m}){pullRequest{id}}}`,
+                variables: { id: nodeId, m: mergeMethod },
+            });
+        } else {
+            await this.octokit.request('POST /graphql', {
+                query: `mutation($id:ID!){disablePullRequestAutoMerge(input:{pullRequestId:$id}){pullRequest{id}}}`,
+                variables: { id: nodeId },
+            });
+        }
+    }
 }

@@ -47,6 +47,18 @@ export interface ComposerPrChecksAutoFix {
     onFixNow: () => void;
 }
 
+/** Auto-merge toggle wired to the server mutation (Phase 2). */
+export interface ComposerPrChecksAutoMerge {
+    /** Current enabled state (optimistic — flips immediately on click). */
+    enabled: boolean;
+    /** Mutation in flight. */
+    busy: boolean;
+    /** Non-null disables the toggle with this tooltip. */
+    disabledReason: string | null;
+    /** Toggle auto-merge on/off (receives the desired next state). */
+    onToggle: (next: boolean) => void;
+}
+
 export interface ComposerPrChecksPopoverProps {
     /** The badge button the popover anchors to (for positioning + outside-click). */
     anchorRef: React.RefObject<HTMLElement>;
@@ -64,8 +76,8 @@ export interface ComposerPrChecksPopoverProps {
     autoFix?: ComposerPrChecksAutoFix;
     /** External PR link shown as the ↗ icon in the header. Omit when no provider URL. */
     openHref?: string;
-    /** Whether auto-merge is currently enabled on the PR (read-only indicator). */
-    autoMergeEnabled?: boolean;
+    /** Auto-merge toggle wired to the server mutation. Omit when unavailable. */
+    autoMerge?: ComposerPrChecksAutoMerge;
     /** Hash link to the auto-archive settings section (e.g. `#repos/{id}/settings/preferences`). */
     archiveSettingsHref?: string;
 }
@@ -106,7 +118,7 @@ export function ComposerPrChecksPopover({
     onClose,
     autoFix,
     openHref,
-    autoMergeEnabled,
+    autoMerge,
     archiveSettingsHref,
 }: ComposerPrChecksPopoverProps) {
     const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -340,16 +352,38 @@ export function ComposerPrChecksPopover({
                         </button>
                     </div>
 
-                    {/* Auto-merge when ready — read-only until Phase 2 */}
-                    <div
-                        className="flex items-center gap-2 rounded-md px-1.5 py-1 text-[11px] text-[#1f2328] opacity-60 dark:text-[#c9d1d9]"
-                        title="Auto-merge toggle coming soon — currently read-only"
-                        data-testid={`composer-pr-chip-automerge-${itemKey}`}
-                        data-enabled={autoMergeEnabled ? 'true' : 'false'}
-                    >
-                        <CheckboxMark checked={autoMergeEnabled ?? false} />
-                        <span>Auto-merge when ready</span>
-                    </div>
+                    {/* Auto-merge when ready */}
+                    {autoMerge ? (
+                        <button
+                            type="button"
+                            role="checkbox"
+                            aria-checked={autoMerge.enabled}
+                            disabled={Boolean(autoMerge.disabledReason) || autoMerge.busy}
+                            title={autoMerge.disabledReason ?? (autoMerge.enabled ? 'Auto-merge is on — click to turn off' : 'Enable auto-merge for this PR when all checks pass')}
+                            data-testid={`composer-pr-chip-automerge-${itemKey}`}
+                            data-enabled={autoMerge.enabled ? 'true' : 'false'}
+                            onClick={() => autoMerge.onToggle(!autoMerge.enabled)}
+                            className={cn(
+                                'inline-flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-[11px] text-[#1f2328] dark:text-[#c9d1d9]',
+                                'cursor-pointer border-none bg-transparent text-left',
+                                'hover:bg-black/[0.04] dark:hover:bg-white/[0.06]',
+                                'disabled:cursor-default disabled:opacity-60',
+                            )}
+                        >
+                            <CheckboxMark checked={autoMerge.enabled} />
+                            <span>Auto-merge when ready</span>
+                        </button>
+                    ) : (
+                        <div
+                            className="flex items-center gap-2 rounded-md px-1.5 py-1 text-[11px] text-[#1f2328] opacity-60 dark:text-[#c9d1d9]"
+                            title="Auto-merge toggle coming soon"
+                            data-testid={`composer-pr-chip-automerge-${itemKey}`}
+                            data-enabled="false"
+                        >
+                            <CheckboxMark checked={false} />
+                            <span>Auto-merge when ready</span>
+                        </div>
+                    )}
                 </div>
             )}
 
