@@ -134,6 +134,29 @@ describe('RalphStartPanel', () => {
         expect(screen.queryByTestId('ralph-start-panel')).toBeNull();
     });
 
+    it('renders the closed state as a compact banner row', () => {
+        render(
+            <RalphStartPanel
+                processId="queue_test-banner"
+                workspaceId="ws-1"
+                turns={GRILLING_TURNS}
+                goalFilePath="/repos/myrepo/remove-vscode-extension.goal.md"
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        const banner = screen.getByTestId('ralph-start-banner');
+        const button = screen.getByTestId('ralph-start-btn');
+        const description = screen.getByTestId('ralph-start-description');
+
+        expect(banner).toBeTruthy();
+        expect(button.className).toContain('w-full');
+        expect(button.textContent).toContain('Ralph ready');
+        expect(button.textContent).toContain('Start Ralph');
+        expect(description.className).toContain('truncate');
+        expect(description.textContent).toBe('Goal spec: remove-vscode-extension.goal.md');
+    });
+
     it('renders shared AI controls when the panel is open', async () => {
         render(
             <RalphStartPanel
