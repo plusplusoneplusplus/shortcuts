@@ -102,6 +102,7 @@ export function buildCiFixPrompt(
         'Fetch the logs for each failing check yourself to diagnose the root cause, ' +
             'then make the code changes needed to make CI pass.',
     );
+    lines.push('Also read and address any unresolved review comments on the PR.');
     lines.push('');
     lines.push(...buildBranchDeliveryContract(branch));
     return lines.join('\n');

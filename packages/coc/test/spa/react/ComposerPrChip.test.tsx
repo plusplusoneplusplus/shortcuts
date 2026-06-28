@@ -308,7 +308,7 @@ describe('ComposerPrChip — failed-checks popover', () => {
         expect(queryByTestId(POPOVER_TESTID)).toBeNull();
     });
 
-    it('failing: the popover lists ONLY the failed checks', () => {
+    it('failing: the popover lists ONLY the failed checks in the drill-down, and shows count summary', () => {
         const { getByTestId, getAllByTestId } = render(
             <ComposerPrChip item={readyItem({ checksState: 'ready', checks: failingChecks })} onDismiss={() => {}} />,
         );
@@ -319,12 +319,18 @@ describe('ComposerPrChip — failed-checks popover', () => {
         expect(rows.every(row => row.getAttribute('data-status') === 'failure')).toBe(true);
 
         const popover = getByTestId(POPOVER_TESTID);
-        expect(popover.textContent).toContain('2 failed checks');
-        // The passing/pending checks are not listed.
-        expect(popover.textContent).not.toContain('unit');
-        expect(popover.textContent).not.toContain('e2e');
+        // Redesigned header shows "CI monitoring" instead of the old "N failed checks" heading.
+        expect(popover.textContent).toContain('CI monitoring');
+        // Count summary rows for this set: 2 failing, 1 passing (unit), 1 in-progress (e2e).
+        expect(getByTestId(`composer-pr-chip-counts-failed-${KEY}`).textContent).toBe('2');
+        expect(getByTestId(`composer-pr-chip-counts-passed-${KEY}`).textContent).toBe('1');
+        expect(getByTestId(`composer-pr-chip-counts-pending-${KEY}`).textContent).toBe('1');
+        // The failing check names appear in the drill-down list.
         expect(popover.textContent).toContain('build');
         expect(popover.textContent).toContain('lint');
+        // The passing/pending check names do NOT appear (only failing checks are listed).
+        expect(popover.textContent).not.toContain('unit');
+        expect(popover.textContent).not.toContain('e2e');
     });
 
     it('failing: each failed check links to its provider details page in a new tab', () => {
@@ -365,7 +371,7 @@ describe('ComposerPrChip — failed-checks popover', () => {
         expect(rows).toHaveLength(1);
         expect(rows[0].textContent).toContain('build');
         expect(queryByTestId('composer-pr-chip-checks-failed-link')).toBeNull();
-        expect(getByTestId(POPOVER_TESTID).textContent).toContain('1 failed check');
+        expect(getByTestId(POPOVER_TESTID).textContent).toContain('CI monitoring');
     });
 
     it('failing: Escape closes the popover', () => {
@@ -386,6 +392,56 @@ describe('ComposerPrChip — failed-checks popover', () => {
         expect(queryByTestId(POPOVER_TESTID)).not.toBeNull();
         fireEvent.mouseDown(document.body);
         expect(queryByTestId(POPOVER_TESTID)).toBeNull();
+    });
+
+    it('redesign: popover header shows "CI monitoring" and an external link when the PR has a provider URL', () => {
+        const { getByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks: failingChecks })} onDismiss={() => {}} />,
+        );
+        fireEvent.click(getByTestId('composer-pr-chip-checks'));
+        const popover = getByTestId(POPOVER_TESTID);
+        expect(popover.textContent).toContain('CI monitoring');
+        const extLink = getByTestId(`composer-pr-chip-popover-open-${KEY}`) as HTMLAnchorElement;
+        expect(extLink.getAttribute('href')).toBe(GH_URL);
+        expect(extLink.getAttribute('target')).toBe('_blank');
+    });
+
+    it('redesign: count summary shows In progress / Passed / Failed tallies', () => {
+        const checks: PrCheckRow[] = [
+            check('a', 'success'),
+            check('b', 'success'),
+            check('c', 'pending'),
+            check('d', 'failure'),
+        ];
+        const { getByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks })} onDismiss={() => {}} />,
+        );
+        fireEvent.click(getByTestId('composer-pr-chip-checks'));
+        expect(getByTestId(`composer-pr-chip-counts-passed-${KEY}`).textContent).toBe('2');
+        expect(getByTestId(`composer-pr-chip-counts-pending-${KEY}`).textContent).toBe('1');
+        expect(getByTestId(`composer-pr-chip-counts-failed-${KEY}`).textContent).toBe('1');
+    });
+
+    it('redesign: auto-archive settings link points to preferences settings', () => {
+        const { getByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks: failingChecks })} onDismiss={() => {}} />,
+        );
+        fireEvent.click(getByTestId('composer-pr-chip-checks'));
+        const link = getByTestId(`composer-pr-chip-archive-settings-${KEY}`) as HTMLAnchorElement;
+        expect(link.getAttribute('href')).toBe('#repos/ws1/settings/preferences');
+        expect(link.textContent).toContain('Auto-archive settings');
+    });
+
+    it('redesign: external open link is absent when the PR has no provider URL', () => {
+        const item = readyItem({
+            checksState: 'ready',
+            checks: failingChecks,
+            pr: { ...readyItem().pr!, url: undefined },
+            url: undefined,
+        });
+        const { queryByTestId, getByTestId } = render(<ComposerPrChip item={item} onDismiss={() => {}} />);
+        fireEvent.click(getByTestId('composer-pr-chip-checks'));
+        expect(queryByTestId(`composer-pr-chip-popover-open-${KEY}`)).toBeNull();
     });
 
     it('all passing: the checks badge stays a non-interactive span and opens no popover', () => {

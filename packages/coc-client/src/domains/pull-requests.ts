@@ -317,6 +317,25 @@ export class PullRequestsClient {
     );
   }
 
+  setAutoMergeForOrigin(
+    originId: string,
+    prId: string,
+    enabled: boolean,
+    options: OriginPrProviderOptions & { mergeMethod?: string },
+  ): Promise<{ enabled: boolean }> {
+    const body: Record<string, unknown> = { enabled, workspaceId: options.workspaceId };
+    if (options.repoId) body['repoId'] = options.repoId;
+    if (options.mergeMethod) body['mergeMethod'] = options.mergeMethod;
+    return this.transport.request<{ enabled: boolean }>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/auto-merge`,
+      {
+        method: 'POST',
+        body,
+        signal: options.signal,
+      },
+    );
+  }
+
   // ── Pull-request chat bindings ──────────────────────────────────
 
   listChatBindingsForOrigin(

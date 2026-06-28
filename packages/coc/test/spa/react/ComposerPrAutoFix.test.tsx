@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
         getForOrigin: vi.fn(),
         getReviewersForOrigin: vi.fn(),
         getChecksForOrigin: vi.fn(),
+        setAutoMergeForOrigin: vi.fn(),
     },
     triggers: {
         list: vi.fn(),
@@ -167,6 +168,7 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
         mocks.triggers.create.mockResolvedValue(activeMonitor());
         mocks.triggers.delete.mockResolvedValue({ deleted: true, trigger: activeMonitor({ status: 'disarmed' }) });
         mocks.processes.sendMessage.mockResolvedValue({});
+        mocks.pullRequests.setAutoMergeForOrigin.mockResolvedValue({ enabled: false });
 
         mocks.getCocClientForWorkspace.mockReturnValue({
             pullRequests: mocks.pullRequests,
@@ -329,5 +331,59 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
         expect(queryByTestId(`composer-pr-chip-autofix-badge-${ITEM_KEY}`)).toBeNull();
         // Disabled feature performs no trigger network calls.
         expect(mocks.triggers.list).not.toHaveBeenCalled();
+    });
+
+    it('toggle label reads "Auto-fix CI & address comments" (Phase 1 relabel)', async () => {
+        const { badge, getByTestId } = await renderWithFailingPr('proc-1');
+        fireEvent.click(badge);
+        const toggle = getByTestId(`composer-pr-chip-autofix-toggle-${ITEM_KEY}`);
+        expect(toggle.textContent).toContain('Auto-fix CI');
+        expect(toggle.textContent).toContain('address comments');
+    });
+
+    it('auto-merge indicator reflects the PR autoMerge state', async () => {
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 42,
+            title: 'Fix the thing',
+            status: 'open',
+            sourceBranch: 'feat/x',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: GH_URL,
+            autoMerge: { enabled: true, state: 'armed' },
+        });
+        const { badge, getByTestId } = await renderWithFailingPr('proc-1');
+        fireEvent.click(badge);
+        const indicator = getByTestId(`composer-pr-chip-automerge-${ITEM_KEY}`);
+        expect(indicator.getAttribute('data-enabled')).toBe('true');
+    });
+
+    it('auto-merge toggle calls setAutoMergeForOrigin via the workspace-scoped client', async () => {
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 42,
+            title: 'Fix the thing',
+            status: 'open',
+            sourceBranch: 'feat/x',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: GH_URL,
+            autoMerge: { enabled: true, state: 'armed' },
+        });
+        mocks.pullRequests.setAutoMergeForOrigin.mockResolvedValue({ enabled: false });
+
+        const { badge, getByTestId } = await renderWithFailingPr('proc-1');
+        fireEvent.click(badge);
+        const toggle = getByTestId(`composer-pr-chip-automerge-${ITEM_KEY}`);
+        // Starts enabled.
+        expect(toggle.getAttribute('data-enabled')).toBe('true');
+
+        await act(async () => { fireEvent.click(toggle); });
+
+        expect(mocks.pullRequests.setAutoMergeForOrigin).toHaveBeenCalledTimes(1);
+        expect(mocks.pullRequests.setAutoMergeForOrigin).toHaveBeenCalledWith(
+            GH_ORIGIN, '42', false, { workspaceId: 'ws1' },
+        );
+        // Workspace-scoped client was used (mirrors AC-06).
+        expect(mocks.getCocClientForWorkspace).toHaveBeenCalledWith('ws1');
     });
 });

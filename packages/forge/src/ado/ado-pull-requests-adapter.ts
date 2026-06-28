@@ -698,4 +698,20 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             return '';
         }
     }
+
+    async setAutoMerge(
+        repositoryId: string,
+        pullRequestId: number | string,
+        enabled: boolean,
+        _opts?: { mergeMethod?: string },
+    ): Promise<void> {
+        const logger = getLogger();
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(LogCategory.ADO, `setAutoMerge: repo=${effectiveRepo} id=${pullRequestId} enabled=${enabled}`);
+        const update: Record<string, unknown> = enabled
+            ? { autoCompleteSetBy: this.currentUserId ? { id: this.currentUserId } : undefined }
+            : { autoCompleteSetBy: null };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await this.service.updatePullRequest(effectiveRepo, Number(pullRequestId), update as any, this.project);
+    }
 }

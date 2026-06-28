@@ -2061,6 +2061,49 @@ export function registerPrRoutes(
     });
 
     routes.push({
+        method: 'POST',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/([^/]+)\/auto-merge$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+                const prId = decodeURIComponent(match![2]);
+
+                let raw: unknown;
+                try {
+                    raw = await readJsonBody<unknown>(req);
+                } catch {
+                    return send400(res, 'Invalid JSON body');
+                }
+
+                if (!raw || typeof raw !== 'object') return send400(res, 'Body must be an object');
+                const body = raw as Record<string, unknown>;
+                if (typeof body.enabled !== 'boolean') return send400(res, '`enabled` must be a boolean');
+
+                const scopeResult = await resolveOriginPrRepoScope(req, raw, originId, svc, store);
+                if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
+                const { repoId, repo } = scopeResult.value;
+
+                const prSvc = await createPullRequestsServiceForRepo(repo);
+                if (typeof prSvc.setAutoMerge !== 'function') {
+                    return sendJson(res, { error: 'not-supported' }, 501);
+                }
+
+                await prSvc.setAutoMerge(
+                    repoId,
+                    prId,
+                    body.enabled,
+                    typeof body.mergeMethod === 'string' && body.mergeMethod ? { mergeMethod: body.mergeMethod } : undefined,
+                );
+
+                return sendJson(res, { enabled: body.enabled });
+            } catch (err) {
+                sendProviderBackedPrRouteError(res, err);
+            }
+        },
+    });
+
+    routes.push({
         method: 'GET',
         pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/([^/]+)\/diff\/files\/(.+)$/,
         handler: async (req, res, match) => {

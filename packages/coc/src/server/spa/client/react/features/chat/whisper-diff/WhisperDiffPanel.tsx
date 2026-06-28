@@ -62,19 +62,11 @@ export function WhisperDiffPanel({
         >
             <div className="px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                        <div
-                            className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate"
-                            data-testid="whisper-diff-filename"
-                        >
-                            {fileName}
-                        </div>
-                        <span
-                            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[#5a5a5a] bg-[#ececec] dark:text-[#9d9d9d] dark:bg-[#333335]"
-                            data-testid="whisper-diff-source-label"
-                        >
-                            Whisper diff
-                        </span>
+                    <div
+                        className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate"
+                        data-testid="whisper-diff-filename"
+                    >
+                        {fileName}
                     </div>
                     <div
                         className="text-xs text-[#848484] truncate mt-0.5"
