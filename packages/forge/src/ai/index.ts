@@ -87,6 +87,9 @@ export {
     RewindResult,
     RewindUnsupportedError,
     isRewindUnsupportedError,
+    CompactResult,
+    CompactUnsupportedError,
+    isCompactUnsupportedError,
     // SDK Service Registry
     SDKServiceRegistry,
     sdkServiceRegistry,

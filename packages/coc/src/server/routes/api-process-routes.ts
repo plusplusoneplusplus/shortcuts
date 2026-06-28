@@ -606,6 +606,70 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
+    // POST /api/processes/:id/compact — Compact (summarize) the live conversation
+    // to shrink the model's context-window usage on the NEXT turn (AC-04).
+    //
+    // Unlike /rewind, this is non-destructive to CoC's stored transcript: the
+    // provider session's history is summarized in place, but CoC's
+    // conversation_turns are left untouched — the SPA surfaces the result as a
+    // transient inline info message rather than rewriting the displayed history.
+    //
+    // Body (optional): { customInstructions?: string } — focuses the summary.
+    //
+    // Guards:
+    //   - unknown process                          → 404
+    //   - process has no SDK session               → 400
+    //   - a turn is active (running/queued/pending) → 409 CONVERSATION_NOT_IDLE
+    //   - provider does not support compaction     → 422 COMPACT_UNSUPPORTED
+    routes.push(createRoute({
+        method: 'POST',
+        pattern: /^\/api\/processes\/([^/]+)\/compact$/,
+        handler: async ({ req, res, match }) => {
+            const id = decodeURIComponent(match[1]);
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const proc = await resolveProcess(store, id, wsId);
+            if (!proc) {
+                return void handleAPIError(res, notFound('Process'));
+            }
+            if (!proc.sdkSessionId) {
+                return void handleAPIError(res, badRequest('Process has no SDK session to compact'));
+            }
+
+            // Idle guard: a running/queued/cancelling status — or any buffered
+            // pending message — would race the compaction. Mirror the rewind guard.
+            if (!TERMINAL_STATUSES.has(proc.status) || (proc.pendingMessages?.length ?? 0) > 0) {
+                return void handleAPIError(res, new APIError(409, 'Conversation must be idle (not running, queued, or streaming) to compact.', 'CONVERSATION_NOT_IDLE'));
+            }
+
+            // Optional { customInstructions?: string } body. parseBody resolves {}
+            // for an empty body; only invalid JSON rejects (sends its own 400).
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            const customInstructions = typeof body.customInstructions === 'string' && body.customInstructions.trim()
+                ? body.customInstructions
+                : undefined;
+
+            // Resolve the conversation provider; default to copilot. The provider
+            // string doubles as the SDK service registry key. Non-copilot providers
+            // throw CompactUnsupportedError, which maps to a 422.
+            const provider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
+                ? proc.metadata.provider
+                : 'copilot';
+
+            const { sdkServiceRegistry, isCompactUnsupportedError } = await import('@plusplusoneplusplus/forge');
+            try {
+                const sdkService = sdkServiceRegistry.getOrThrow(provider);
+                const result = await sdkService.compactSession(proc.sdkSessionId, customInstructions);
+                return result;
+            } catch (err: any) {
+                if (isCompactUnsupportedError(err)) {
+                    return void handleAPIError(res, new APIError(422, err?.message || `Compaction is not supported for provider '${provider}'.`, 'COMPACT_UNSUPPORTED'));
+                }
+                return void handleAPIError(res, internalError(`Failed to compact SDK session: ${err?.message || err}`));
+            }
+        },
+    }));
+
     // POST /api/processes/:id/turns/:turnIndex/rewind — Rewind a copilot
     // conversation to an earlier user turn.
     //
