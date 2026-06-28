@@ -465,7 +465,7 @@ nodes:
 1. Save this as `.vscode/workflows/[name]/pipeline.yaml`
 2. Place any referenced CSV/JSON files in the same directory
 3. Place any referenced scripts in the same directory (or adjust `cwd`)
-4. Execute from the VSCode Workflows view or via `coc run`
+4. Execute from the CoC dashboard Workflows tab or via `coc run`
 ````
 
 **For Linear Pipelines:**
@@ -500,7 +500,7 @@ reduce:
 **How to use:**
 1. Save this as `.vscode/workflows/[name]/pipeline.yaml`
 2. If using CSV input, create the CSV file at the specified path
-3. Execute from the VSCode Workflows view or via `coc run`
+3. Execute from the CoC dashboard Workflows tab or via `coc run`
 4. For testing: The `limit: 100` setting processes only the first 100 items
 
 **Key design decisions:**

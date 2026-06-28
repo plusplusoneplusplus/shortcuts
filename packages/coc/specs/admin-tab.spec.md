@@ -156,7 +156,7 @@ Tool routes (separate `DashboardTab`s) sharing the admin shell: `memory`, `skill
 ### 3.6 Settings Sub-Tab — Integrations
 
 **US-08 — Configure desktop link handlers**
-> As an administrator, I want CoC to register URL handlers (e.g. `vscode://`).
+> As an administrator, I want to choose which external URL schemes CoC opens through desktop link handlers.
 
 - **Given** Settings → Integrations is active
 - **When** the user toggles a handler

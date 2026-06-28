@@ -1,6 +1,6 @@
 ---
 name: draft
-description: Draft a user experience specification for a requested feature. Use when planning new features, designing user flows, or creating UX specs for this VS Code extension.
+description: Draft a user experience specification for a requested CoC feature. Use when planning new features, designing user flows, or creating UX specs for the CoC dashboard, CLI, server, or Node packages.
 ---
 
 # Draft UX Specification
@@ -10,10 +10,11 @@ Draft a user experience specification for the requested feature or ask. Include:
 1. **User Story**: Who is the user and what problem are they solving?
 
 2. **Entry Points**: How does the user discover and access this feature?
-   - Commands (Command Palette)
+   - Dashboard tabs, routes, or panels
+   - CLI commands
    - Context menus (right-click)
    - Keyboard shortcuts
-   - Tree view interactions
+   - Lists, tables, sidebars, or detail views
    - Settings
 
 3. **User Flow**: Step-by-step walkthrough of the primary workflow
@@ -29,9 +30,9 @@ Draft a user experience specification for the requested feature or ask. Include:
 
 5. **Visual Design Considerations**:
    - Icons needed
-   - Tree view representation
+   - List, table, sidebar, or detail-view representation
    - Notifications/status indicators
-   - Any webview or editor requirements
+   - Any dashboard or editor requirements
 
 6. **Settings & Configuration**:
    - What should be configurable?
@@ -39,4 +40,4 @@ Draft a user experience specification for the requested feature or ask. Include:
 
 7. **Discoverability**: How will users learn about this feature?
 
-Focus on clarity and simplicity. Prefer conventions already established in this extension. No code details.
+Focus on clarity and simplicity. Prefer conventions already established in CoC. No code details.
