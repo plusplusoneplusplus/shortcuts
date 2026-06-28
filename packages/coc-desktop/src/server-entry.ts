@@ -83,7 +83,13 @@ async function main(): Promise<void> {
         if (closing) { return; }
         closing = true;
         try {
-            await server.close(drain ? { drain: true } : undefined);
+            // AC-05: the desktop main process drives the started-vs-attached
+            // choice; when it asks us to drain, gracefully flush in-flight work.
+            if (drain) {
+                await server.close({ drain: true });
+            } else {
+                await server.close();
+            }
         } catch {
             /* best-effort */
         }

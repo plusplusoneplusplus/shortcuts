@@ -13,15 +13,26 @@
  */
 
 import * as path from 'path';
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell } from 'electron';
 import { attachOrStart, defaultDataDir, ServerHandle } from './server-controller';
 import { splashDataUrl } from './splash';
 import { detectAgentClis, missingAgentClis, runFirstRunPreflight } from './agent-preflight';
+import { shutdownServer, shouldOpenExternally } from './lifecycle';
 
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
 /** The embedded (or attached) CoC server for this app instance. */
 let serverHandle: ServerHandle | null = null;
+/** Set once we begin draining on quit, so `before-quit` only intercepts once. */
+let isQuitting = false;
+
+/**
+ * A tiny built-in tray glyph (16×16 template PNG) so the tray works without a
+ * packaged asset. AC-07 supplies the real app/tray icons from `media/`.
+ */
+const TRAY_ICON_DATA_URL =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAANklEQVR4nGNgoBH4jwNTpJkoQwhpxmsIsZqxGkKqZgxDRg2gggHkGIIVUKSZWEOIAhRpJgkAANCAm2UMZlD6AAAAAElFTkSuQmCC';
 
 /** The main app window. Created hidden; shown once the SPA is ready to paint. */
 function createWindow(): BrowserWindow {
@@ -68,12 +79,35 @@ function closeSplash(): void {
 }
 
 /**
+ * AC-05: route genuine external http(s) links to the system browser, keeping
+ * same-origin navigation (the SPA and its sub-routes) inside the window. Covers
+ * both `target=_blank`/`window.open` (window-open handler) and in-page
+ * navigations (`will-navigate`).
+ */
+function wireExternalLinkRouting(win: BrowserWindow, servedUrl: string): void {
+    win.webContents.setWindowOpenHandler(({ url }) => {
+        if (shouldOpenExternally(url, servedUrl)) {
+            void shell.openExternal(url);
+            return { action: 'deny' };
+        }
+        return { action: 'allow' };
+    });
+    win.webContents.on('will-navigate', (event, url) => {
+        if (shouldOpenExternally(url, servedUrl)) {
+            event.preventDefault();
+            void shell.openExternal(url);
+        }
+    });
+}
+
+/**
  * Point the main window at the live CoC SPA and reveal it once painted.
  * Always `loadURL` against `http://127.0.0.1:<port>` — never a bundled
  * `file://` asset — so the window renders the real, server-served client.
  */
 async function showServedSpa(url: string): Promise<void> {
     mainWindow = createWindow();
+    wireExternalLinkRouting(mainWindow, url);
 
     // Reveal the window only once the renderer can paint, then drop the splash,
     // so the user never sees an empty white frame.
@@ -145,6 +179,57 @@ function showSplashError(message: string): void {
     splashWindow.show();
 }
 
+/**
+ * AC-05: bring the existing app window back to the foreground. Used both by the
+ * single-instance `second-instance` handler and the tray "Show" item.
+ */
+function focusMainWindow(): void {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        // No window yet (e.g. still on the splash) — re-show the SPA if we can.
+        if (serverHandle) {
+            void showServedSpa(serverHandle.url);
+        }
+        return;
+    }
+    if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+}
+
+/**
+ * AC-05: a minimal tray icon offering show/hide of the window and quit.
+ * Created once, after the first window is up.
+ */
+function createTray(): void {
+    if (tray) {
+        return;
+    }
+    const icon = nativeImage.createFromDataURL(TRAY_ICON_DATA_URL);
+    if (process.platform === 'darwin') {
+        icon.setTemplateImage(true);
+    }
+    tray = new Tray(icon);
+    tray.setToolTip('CoC');
+    const menu = Menu.buildFromTemplate([
+        { label: 'Show CoC', click: () => focusMainWindow() },
+        {
+            label: 'Hide CoC',
+            click: () => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.hide();
+                }
+            },
+        },
+        { type: 'separator' },
+        { label: 'Quit CoC', click: () => app.quit() },
+    ]);
+    tray.setContextMenu(menu);
+    // A left-click on the tray toggles the window into view.
+    tray.on('click', () => focusMainWindow());
+}
+
 async function bootstrap(): Promise<void> {
     // Show the loading splash immediately, before the (slower) server boot.
     splashWindow = createSplashWindow();
@@ -158,6 +243,8 @@ async function bootstrap(): Promise<void> {
         );
         // AC-03: render the live SPA served from 127.0.0.1.
         await showServedSpa(serverHandle.url);
+        // AC-05: a tray to show/hide + quit, now that a window exists.
+        createTray();
         // AC-06: warn (non-blocking) about any missing agent CLI now that the
         // window is up. The app is already usable regardless of the outcome.
         runAgentPreflight();
@@ -168,7 +255,18 @@ async function bootstrap(): Promise<void> {
     }
 }
 
-app.whenReady().then(bootstrap);
+// AC-05: single-instance lock. A second launch must focus the existing window
+// instead of opening a new app (and a second embedded server).
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+    app.quit();
+} else {
+    app.on('second-instance', () => {
+        focusMainWindow();
+    });
+
+    app.whenReady().then(bootstrap);
+}
 
 app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length > 0) {
@@ -180,6 +278,28 @@ app.on('activate', () => {
     } else {
         void bootstrap();
     }
+});
+
+// AC-05: on quit, drain a server WE started; detach (leave running) one we only
+// attached to. Intercept once, run the async drain, then let the quit proceed.
+app.on('before-quit', (event) => {
+    if (isQuitting) {
+        return;
+    }
+    if (!serverHandle || !serverHandle.started) {
+        // Nothing to drain (no server, or attached to an external one).
+        return;
+    }
+    event.preventDefault();
+    isQuitting = true;
+    void shutdownServer(serverHandle)
+        .then((outcome) => {
+            process.stdout.write(`[coc-desktop] server shutdown on quit: ${outcome}\n`);
+        })
+        .finally(() => {
+            serverHandle = null;
+            app.quit();
+        });
 });
 
 app.on('window-all-closed', () => {
