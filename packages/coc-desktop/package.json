@@ -1,12 +1,13 @@
 {
   "name": "@plusplusoneplusplus/coc-desktop",
+  "productName": "CoC",
   "version": "0.1.0",
   "private": true,
   "description": "CoC desktop app (Electron) — boots the CoC server in a forked child and points a native window at the served SPA",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
-    "start": "electron dist/main.js",
+    "start": "electron .",
     "icon": "node scripts/generate-icon.mjs",
     "rebuild:native": "electron-rebuild --force --only better-sqlite3,node-pty --module-dir ../coc",
     "prebuild:sqlite:win": "node scripts/fetch-win-sqlite.mjs",

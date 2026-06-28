@@ -23,12 +23,22 @@ function scripts(pkg: Record<string, unknown>): Record<string, string> {
 
 describe('desktop launch scripts', () => {
     it('exposes a package-local start script that launches the built main via electron', () => {
-        const desktop = scripts(readJson('../package.json'));
+        const pkg = readJson('../package.json');
+        const desktop = scripts(pkg);
         expect(desktop.start).toBeDefined();
         // Must invoke electron (resolved from this package's local .bin)…
         expect(desktop.start).toMatch(/\belectron\b/);
-        // …and point it at the compiled entry, not a source .ts file.
-        expect(desktop.start).toContain('dist/main.js');
+        // …pointed at the package dir so Electron reads name/version/main from
+        // package.json (this brands the dev app instead of showing "Electron").
+        expect(desktop.start).toMatch(/electron\s+\.\s*$/);
+        // The package's main entry is the compiled JS, never a source .ts file.
+        expect(pkg.main).toBe('dist/main.js');
+        expect(desktop.start).not.toMatch(/\.ts\b/);
+    });
+
+    it('brands the app via productName so Electron does not show "Electron" in dev', () => {
+        const pkg = readJson('../package.json');
+        expect(pkg.productName).toBe('CoC');
     });
 
     it('roots dev:desktop through the workspace start script, never a bare electron', () => {

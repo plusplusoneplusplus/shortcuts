@@ -19,6 +19,13 @@ import { splashDataUrl } from './splash';
 import { detectAgentClis, missingAgentClis, runFirstRunPreflight } from './agent-preflight';
 import { shutdownServer, shouldOpenExternally } from './lifecycle';
 import { resolveIconPath } from './app-icon';
+import { APP_NAME, buildAboutPanelOptions, readDesktopVersion } from './app-identity';
+
+// Brand the app identity before anything builds the menu / dock / About panel.
+// In dev (electron launched against this package) this fixes the menu-bar name,
+// the Hide/Quit/About labels, and the dock tooltip that would otherwise read
+// "Electron". Packaged builds get the name from electron-builder's productName.
+app.setName(APP_NAME);
 
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
@@ -51,6 +58,7 @@ function createWindow(): BrowserWindow {
         height: 800,
         show: false,
         backgroundColor: '#0d1117',
+        title: APP_NAME,
         // Windows/Linux: the BrowserWindow icon controls the taskbar/window icon.
         // macOS: ignored here; dock icon is set via app.dock.setIcon() in bootstrap().
         icon: loadCocIcon(),
@@ -60,6 +68,9 @@ function createWindow(): BrowserWindow {
             nodeIntegration: false,
         },
     });
+    // Keep the OS window title as "CoC" rather than letting the served page
+    // overwrite it (the SPA renders its own in-app title separately).
+    win.on('page-title-updated', (event) => event.preventDefault());
     return win;
 }
 
@@ -244,6 +255,16 @@ function createTray(): void {
 }
 
 async function bootstrap(): Promise<void> {
+    // Brand the native "About CoC" panel: CoC name, version, copyright and icon
+    // instead of the default Electron atom + Electron version.
+    app.setAboutPanelOptions(
+        buildAboutPanelOptions({
+            version: readDesktopVersion(__dirname),
+            iconPath: resolveIconPath(__dirname),
+            electronVersion: process.versions.electron,
+        }),
+    );
+
     // macOS: set the dock icon early (BrowserWindow `icon` is ignored by macOS).
     if (process.platform === 'darwin' && app.dock) {
         const dockIcon = loadCocIcon();
