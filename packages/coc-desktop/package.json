@@ -6,6 +6,10 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
+    "icon": "node scripts/generate-icon.mjs",
+    "rebuild:native": "electron-rebuild --force --only better-sqlite3,node-pty --module-dir ../..",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
     "test": "vitest",
     "test:run": "vitest run"
   },
@@ -22,5 +26,48 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "build": {
+    "appId": "com.plusplusoneplusplus.coc",
+    "productName": "CoC",
+    "copyright": "Copyright © plusplusoneplusplus",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "files": [
+      "**/*",
+      "!**/*.map",
+      "node_modules/@plusplusoneplusplus/coc/dist/**/*",
+      "node_modules/@plusplusoneplusplus/coc/dist/server/spa/client/dist/**/*"
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "../../media/coc-icon.png",
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "CoC ${version}"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "../../media/coc-icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "CoC"
+    }
   }
 }
