@@ -14,6 +14,7 @@ import * as path from 'path';
 import { getActiveModels, modelMetadataStore, ensureQueueProcessId, toQueueProcessId, isQueueProcessId, toTaskId, SqliteProcessStore, sdkServiceRegistry, mergeEffortTiersWithDefaults, resolveModelForProvider, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
+import { setStaticConfigCacheHeaders } from '../shared/router';
 import {
     isWireAttachmentArray,
     processMessageAttachments,
@@ -93,6 +94,9 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
                 return sendError(res, 500, err instanceof Error ? err.message : 'Failed to resolve default provider');
             }
             const activeProvider = resolution.provider;
+            // Static config — short-lived private cache (resolution succeeded; all
+            // branches below are 200s). Skipped on the 500 early-return above.
+            setStaticConfigCacheHeaders(res);
             if (activeProvider === 'copilot') {
                 const live = modelMetadataStore.getCachedModels()
                     .filter(m => m.policy?.state !== 'disabled');

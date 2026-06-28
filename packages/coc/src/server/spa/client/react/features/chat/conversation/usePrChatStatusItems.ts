@@ -28,6 +28,7 @@ import type { ClientConversationTurn } from '../../../types/dashboard';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { resolveCanonicalOriginId } from '../../../repos/originScope';
+import { runWhenIdle } from '../../../utils/runWhenIdle';
 import { buildCheckRowsFromChecks } from '../../pull-requests/pr-derived-data';
 import type { PullRequestCheck, PullRequestDiffStats, Reviewer } from '../../pull-requests/pr-utils';
 import {
@@ -395,7 +396,14 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
         const generation = ++generationRef.current;
         const client = getCocClientForWorkspace(workspaceId);
 
-        (async () => {
+        // The bindings round-trip is non-critical chrome (the PR status card),
+        // not the message-render path: defer it to browser idle so the
+        // conversation paints first (AC-03). The synchronous reset above still
+        // clears stale items immediately; the generation guard invalidates this
+        // run if the deps change before idle fires.
+        const cancelIdle = runWhenIdle(() => {
+            if (generationRef.current !== generation) return;
+            void (async () => {
             const detected = detectedRef.current;
             let bindings: PrChatBindingLike[] = [];
             try {
@@ -432,11 +440,14 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
             for (const association of associations) {
                 fetchDetailForAssociation(association, workspaceId, generation);
             }
-        })();
+            })();
+        });
 
         return () => {
-            // Invalidate this generation on dep change / unmount.
+            // Invalidate this generation on dep change / unmount, and drop the
+            // deferred bindings probe if idle has not fired yet.
             generationRef.current++;
+            cancelIdle();
         };
     }, [workspaceId, chatOriginId, taskId, detectedKey, fetchDetailForAssociation]);
 

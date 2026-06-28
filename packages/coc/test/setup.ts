@@ -6,10 +6,19 @@
  * should inject a mock `aiService` via `createExecutionServer({ aiService })`.
  */
 
-import { vi, expect } from 'vitest';
+import { vi, expect, beforeEach } from 'vitest';
 import * as matchers from '@testing-library/jest-dom/matchers';
+import { _clearConfigCache } from '../src/server/spa/client/react/api/staticConfigCache';
 
 expect.extend(matchers);
+
+// The static-config client cache is a module-level singleton that persists for
+// the lifetime of a test file. Clear it before every test so a provider/
+// workspace config cached by one test never leaks into the next and silently
+// suppresses an expected refetch.
+beforeEach(() => {
+    _clearConfigCache();
+});
 
 // Mock @excalidraw/excalidraw — the package imports open-color.json without
 // `type: "json"` import assertions, which fails on Node.js ≥ 24. Since tests

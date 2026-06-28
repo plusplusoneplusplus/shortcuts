@@ -16,7 +16,7 @@
  */
 
 import type { Route } from '../types';
-import { sendJson, send400, send500 } from '../shared/router';
+import { sendJson, send400, send500, setStaticConfigCacheHeaders } from '../shared/router';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import type { AgentProviderStatus, AgentProvidersResponse } from '@plusplusoneplusplus/coc-client';
 import type { CopilotSDKService, IAvailabilityResult, CodexSDKService, ClaudeSDKService, ModelInfo, ISDKService } from '@plusplusoneplusplus/forge';
@@ -378,6 +378,7 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
             try {
                 const cfg = ctx.loadConfigFile(ctx.configPath);
                 const settings = getProviderModelSettings(cfg, provider);
+                setStaticConfigCacheHeaders(res);
                 sendJson(res, { provider, reasoningEfforts: settings.reasoningEfforts });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : 'Failed to retrieve reasoning efforts');
@@ -443,6 +444,7 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
                 const settings = getProviderModelSettings(cfg, provider);
                 const effortTiers: MergedEffortTiersMap = mergeEffortTiersWithDefaults(provider, settings.effortTiers);
                 const defaults: EffortTierDefaultsMap | Record<string, never> = getDefaultEffortTiers(provider) ?? {};
+                setStaticConfigCacheHeaders(res);
                 sendJson(res, { provider, effortTiers, defaults });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : 'Failed to retrieve effort tiers');

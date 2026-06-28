@@ -500,24 +500,23 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         setTimeout(() => refreshUnseenCounts([workspaceId]), 300);
     }, [refreshUnseenCounts, workspaceId]);
 
+    // Only refresh the workspace-scoped unseen count when the seen-state
+    // actually changed. Reopening an already-seen conversation (a warm A→B→A
+    // switch) no-ops the raw mark, so we skip the redundant `count` round-trip.
     const markSeen = useCallback((processId: string) => {
-        rawMarkSeen(processId);
-        scheduleUnseenRefresh();
+        if (rawMarkSeen(processId)) scheduleUnseenRefresh();
     }, [rawMarkSeen, scheduleUnseenRefresh]);
 
     const markAllSeen = useCallback(() => {
-        rawMarkAllSeen();
-        scheduleUnseenRefresh();
+        if (rawMarkAllSeen()) scheduleUnseenRefresh();
     }, [rawMarkAllSeen, scheduleUnseenRefresh]);
 
     const markTasksSeen = useCallback((tasks: any[]) => {
-        rawMarkTasksSeen(tasks);
-        scheduleUnseenRefresh();
+        if (rawMarkTasksSeen(tasks)) scheduleUnseenRefresh();
     }, [rawMarkTasksSeen, scheduleUnseenRefresh]);
 
     const markUnseen = useCallback((processId: string) => {
-        rawMarkUnseen(processId);
-        scheduleUnseenRefresh();
+        if (rawMarkUnseen(processId)) scheduleUnseenRefresh();
     }, [rawMarkUnseen, scheduleUnseenRefresh]);
     // Activity-specific selectTask: chat tasks stay inline instead of navigating away
     const selectTask = useCallback((id: string, task?: any) => {

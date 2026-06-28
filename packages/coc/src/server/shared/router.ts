@@ -335,6 +335,29 @@ export function sendJson(res: http.ServerResponse, data: unknown, statusCode = 2
     res.end(bodyBuf);
 }
 
+/**
+ * Short-lived TTL (seconds) for the static provider/workspace config endpoints
+ * (`models`, `reasoning-efforts`, `effort-tiers`, `llm-tools-config`). These
+ * change rarely and are also invalidated client-side on mutation, so 60s is a
+ * conservative window: a cold page reload within it can skip the round-trip
+ * entirely while a settings edit still shows within at most a minute even
+ * without the client-side invalidate-on-mutate.
+ */
+export const STATIC_CONFIG_CACHE_MAX_AGE_SECONDS = 60;
+
+/** Cache-Control value for the static config endpoints. `private` keeps it out
+ * of shared proxy caches (responses are per-provider/per-workspace). */
+export const STATIC_CONFIG_CACHE_CONTROL = `private, max-age=${STATIC_CONFIG_CACHE_MAX_AGE_SECONDS}`;
+
+/**
+ * Tag a response as short-lived private cache for static config. Call this
+ * BEFORE the success `sendJson`/`sendJSON` so the header survives `writeHead`'s
+ * merge, and only on the 200 path — never cache a 4xx/5xx.
+ */
+export function setStaticConfigCacheHeaders(res: http.ServerResponse): void {
+    res.setHeader('Cache-Control', STATIC_CONFIG_CACHE_CONTROL);
+}
+
 /** Send a 404 Not Found response. */
 export function send404(res: http.ServerResponse, message = 'Not Found'): void {
     sendJson(res, { error: message }, 404);

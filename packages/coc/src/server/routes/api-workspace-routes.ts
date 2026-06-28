@@ -13,6 +13,7 @@ import type { MCPServerConfig, ProcessStore, WorkspaceInfo } from '@plusplusonep
 import { BranchService, loadDefaultMcpConfig, loadWorkspaceMcpConfig, detectRemoteUrl, resolvePathForHostFilesystem, computeWorkspaceId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
+import { setStaticConfigCacheHeaders } from '../shared/router';
 import { handleAPIError, missingFields, notFound, badRequest } from '../errors';
 import { gitCache } from '../git/git-cache';
 import { gitInfoCache, type GitInfoResult } from '../git/git-info-cache';
@@ -768,6 +769,8 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
         handler: async (_req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
+            // Static config — short-lived private cache (both branches below are 200s).
+            setStaticConfigCacheHeaders(res);
             const liveFlags = ctx.getLiveFeatureFlags?.() ?? { excalidrawEnabled: false, canvasEnabled: false };
             const effectiveRegistry = withToolParameterMetadata(getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, canvasEnabled: liveFlags.canvasEnabled }));
             const conversationRetrievalAvailable = typeof ctx.store.searchConversations === 'function';

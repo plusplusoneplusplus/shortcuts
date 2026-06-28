@@ -158,10 +158,13 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', ()
     },
 }));
 
-const mockMarkSeen = vi.fn();
-const mockMarkAllSeen = vi.fn();
-const mockMarkTasksSeen = vi.fn();
-const mockMarkUnseen = vi.fn();
+// Default to returning `true` (a real seen-state transition) so the wrapper's
+// gated `scheduleUnseenRefresh` fires; tests that exercise the no-op/warm-reopen
+// path override the return value with `.mockReturnValueOnce(false)`.
+const mockMarkSeen = vi.fn().mockReturnValue(true);
+const mockMarkAllSeen = vi.fn().mockReturnValue(true);
+const mockMarkTasksSeen = vi.fn().mockReturnValue(true);
+const mockMarkUnseen = vi.fn().mockReturnValue(true);
 let mockUnseenTaskIds = new Set<string>();
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useUnseenChat', () => ({
     useUnseenChat: () => ({
@@ -984,6 +987,33 @@ describe('RepoChatTab: unseen activity wiring', () => {
         await waitFor(() => {
             expect(mockRefreshUnseenCounts).toHaveBeenCalledWith(['ws-1']);
         }, { timeout: 1000 });
+    });
+
+    // AC-02 (count half): a warm reopen of an already-seen conversation no-ops
+    // the raw mark (returns false), so the wrapper must NOT re-fire the
+    // workspace-scoped count refetch.
+    it('does NOT refresh unseen counts when markSeen is a no-op (already seen)', async () => {
+        await renderTab();
+        const lastProps = mockListPane.mock.calls.at(-1)?.[0];
+
+        // Drop any render-time noise, then drive the debounce window on a fake
+        // clock so no wall-clock elapses (prevents leaked real timers from other
+        // tests from firing refreshUnseenCounts during this assertion).
+        mockRefreshUnseenCounts.mockClear();
+        vi.useFakeTimers();
+        try {
+            // Simulate reopening an already-seen conversation: raw mark reports no change.
+            mockMarkSeen.mockReturnValueOnce(false);
+            lastProps?.onMarkRead('proc-1');
+            expect(mockMarkSeen).toHaveBeenCalledWith('proc-1');
+
+            // No transition → the wrapper never schedules a refresh; advancing past
+            // the 300ms debounce window confirms nothing fires.
+            vi.advanceTimersByTime(400);
+            expect(mockRefreshUnseenCounts).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('auto-marks deep-linked task via markReadByProcessId', async () => {

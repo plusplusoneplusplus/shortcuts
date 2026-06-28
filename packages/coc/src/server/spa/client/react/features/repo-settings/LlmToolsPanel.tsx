@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { LlmToolMeta, LlmToolParam, LlmToolsConfig } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../../api/cocClient';
+import { getOrFetchConfig, peekConfig, invalidateConfig, configCacheKey } from '../../api/staticConfigCache';
 import { useGlobalToast } from '../../contexts/ToastContext';
 
 interface LlmToolsPanelProps {
@@ -99,14 +100,26 @@ function ToolParams({ tool }: { tool: LlmToolMeta }) {
 
 export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
     const { addToast } = useGlobalToast();
-    const [tools, setTools] = useState<LlmToolMeta[]>([]);
-    const [disabledTools, setDisabledTools] = useState<string[]>([]);
-    const [loading, setLoading] = useState(true);
+    // Seed from a warm per-workspace cache hit so a reopen paints without a
+    // loading flash and without refetching (AC-01).
+    const seed = peekConfig<LlmToolsConfig>(configCacheKey.llmToolsConfig(workspaceId));
+    const [tools, setTools] = useState<LlmToolMeta[]>(seed?.tools ?? []);
+    const [disabledTools, setDisabledTools] = useState<string[]>(seed?.disabledLlmTools ?? []);
+    const [loading, setLoading] = useState(seed === undefined);
     const [saving, setSaving] = useState(false);
 
     const loadConfig = useCallback(() => {
+        const key = configCacheKey.llmToolsConfig(workspaceId);
+        // Warm cache hit — apply synchronously without a loading flash (AC-01).
+        const cached = peekConfig<LlmToolsConfig>(key);
+        if (cached !== undefined) {
+            setTools(cached.tools ?? []);
+            setDisabledTools(cached.disabledLlmTools ?? []);
+            setLoading(false);
+            return;
+        }
         setLoading(true);
-        getSpaCocClient().preferences.getLlmToolsConfig(workspaceId)
+        getOrFetchConfig(key, () => getSpaCocClient().preferences.getLlmToolsConfig(workspaceId))
             .then((data: LlmToolsConfig) => {
                 setTools(data.tools ?? []);
                 setDisabledTools(data.disabledLlmTools ?? []);
@@ -129,6 +142,9 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
                 workspaceId,
                 { disabledLlmTools: nextDisabled },
             );
+            // AC-05: drop the cached workspace config so other readers (e.g. the
+            // chat conversation-retrieval check) refetch the changed config.
+            invalidateConfig(configCacheKey.llmToolsConfig(workspaceId));
         } catch (e: any) {
             setDisabledTools(prevDisabled);
             addToast(e?.message ?? 'Failed to save LLM tools config', 'error');

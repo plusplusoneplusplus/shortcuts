@@ -12,15 +12,31 @@
  */
 import { useState, useEffect } from 'react';
 import { getSpaCocClient } from '../api/cocClient';
+import { getOrFetchConfig, peekConfig, configCacheKey } from '../api/staticConfigCache';
 import type { AgentProvider } from './useProviderModels';
 
+type ReasoningEffortsResponse = { reasoningEfforts?: Record<string, string> };
+
+function extractMap(data: ReasoningEffortsResponse | undefined): Record<string, string> {
+    return data?.reasoningEfforts && typeof data.reasoningEfforts === 'object' ? data.reasoningEfforts : {};
+}
+
 export function useProviderReasoningEfforts(provider: AgentProvider): Record<string, string> {
-    const [reasoningEfforts, setReasoningEfforts] = useState<Record<string, string>>({});
+    // Seed from the session cache so a warm reopen has the map immediately.
+    const [reasoningEfforts, setReasoningEfforts] = useState<Record<string, string>>(
+        () => extractMap(peekConfig<ReasoningEffortsResponse>(configCacheKey.reasoningEfforts(provider))),
+    );
 
     useEffect(() => {
+        const key = configCacheKey.reasoningEfforts(provider);
+        const cached = peekConfig<ReasoningEffortsResponse>(key);
+        if (cached !== undefined) {
+            setReasoningEfforts(extractMap(cached));
+            return;
+        }
         let cancelled = false;
-        getSpaCocClient().agentProviders.getReasoningEfforts(provider)
-            .then((data: { reasoningEfforts?: Record<string, string> }) => {
+        getOrFetchConfig(key, () => getSpaCocClient().agentProviders.getReasoningEfforts(provider))
+            .then((data: ReasoningEffortsResponse) => {
                 if (cancelled) return;
                 if (data?.reasoningEfforts && typeof data.reasoningEfforts === 'object') {
                     setReasoningEfforts(data.reasoningEfforts);

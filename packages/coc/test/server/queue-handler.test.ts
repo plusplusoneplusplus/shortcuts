@@ -582,6 +582,15 @@ describe('Queue Handler', () => {
             expect(body.models).toContain('claude-haiku-4.5');
         });
 
+        // AC-04: short-lived HTTP cache so a cold reload within the TTL skips the round-trip.
+        it('sets a short-lived private Cache-Control header on the 200', async () => {
+            const srv = await startServer();
+
+            const res = await request(`${srv.url}/api/queue/models`);
+            expect(res.status).toBe(200);
+            expect(res.headers['cache-control']).toBe('private, max-age=60');
+        });
+
         it('should resolve provider from the queue route context', async () => {
             const routes: any[] = [];
             let providerLookups = 0;

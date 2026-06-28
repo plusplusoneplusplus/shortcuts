@@ -337,6 +337,77 @@ present.
 | `useDiffComments` | Inline diff comment state |
 | `useUnseenChat` | Read/unread tracking |
 
+## Chat load performance (per-conversation request budget)
+
+Opening a chat used to fan out ~11 separate requests
+(`pull-request-chat-bindings`, `models`, `reasoning-efforts`, `effort-tiers`,
+`loops`, `llm-tools-config`, `canvases`, the sidebar `all`, the process detail
+`queue_<id>`, `stream?warm=1`, and the unseen `count`). Most were redundant —
+static provider/workspace config is identical across conversations, and several
+workspace-scoped calls refetched on every conversation switch. The target is a
+**warm** second open (same SPA session, same workspace, provider already seen)
+that issues **≤3** fetch round-trips — process detail, `canvases?processId=`,
+and `pull-request-chat-bindings?taskId=` — excluding the persistent
+`stream?warm=1` SSE EventSource (which opens only for running conversations).
+The sidebar `all` list is left untouched and there is no new server
+aggregation/bootstrap endpoint; the wins are all client caching, re-keying,
+deferral, and additive cache headers.
+
+- **Static config client cache** — `react/api/staticConfigCache.ts` is a
+  module-level singleton mirroring the AppContext `ConversationCacheEntry`
+  `{value, cachedAt}` + 60-min-TTL pattern (deliberately **not** React-Query/SWR).
+  `getOrFetchConfig(key, fetcher, ttlMs?)` returns a cache hit, fetches once on a
+  miss, dedupes concurrent same-key fetches, and does **not** cache failures;
+  `peekConfig(key)` is a synchronous seed used so a warm reopen paints with no
+  loading flash; `invalidateConfig(key)` drops one key; `configCacheKey` builds
+  the keys (`.models`/`.reasoningEfforts`/`.effortTiers(provider)` per **provider**,
+  `.llmToolsConfig(workspaceId)` per **workspace**). The provider-config hooks
+  (`hooks/useModels.ts`, `hooks/useProviderModels.ts`,
+  `hooks/useProviderReasoningEfforts.ts`, `hooks/useProviderEffortTiers.ts`) and
+  the two llm-tools-config consumers (`features/repo-settings/LlmToolsPanel.tsx`
+  `loadConfig`, `features/chat/sessionContextDrop.ts`
+  `useConversationRetrievalCapability`) all read through this cache, so a
+  conversation whose provider/workspace was already seen this session triggers
+  **zero** config calls. `test/setup.ts` clears the singleton in a global
+  `beforeEach` so it stays transparent to consumer tests.
+- **Invalidate-on-mutate** — each settings mutation drops only its own key so the
+  next read refetches without a page reload: `setEnabledModels` →
+  `models:<provider>`, `setReasoningEffort` → `reasoning-efforts:<provider>`,
+  `effortTiers.save()` → `effort-tiers:<provider>`, and `LlmToolsPanel`'s toggle
+  → `llm-tools-config:<workspaceId>` after a successful `updateLlmToolsConfig`.
+- **Workspace-scoped data is not refetched per conversation** —
+  `features/chat/hooks/useLoops.ts` fetches `loops.list` keyed by
+  `[workspaceId, cloneClient]` only (processId is dropped from the fetch dep); the
+  per-process view is a `useMemo([allLoops, processId])`, so a conversation switch
+  re-derives the filtered list with no round-trip and only a workspace change
+  refetches. The unseen `count` refresh is gated on a real seen-state change:
+  `useUnseenChat`'s `markSeen`/`markAllSeen`/`markTasksSeen`/`markUnseen` now
+  return whether they changed seen-state (detected synchronously via a
+  `seenMapRef`), and `RepoChatTab` only calls `scheduleUnseenRefresh()` when that
+  boolean is true — so reopening an already-seen conversation issues no `count`
+  call.
+- **Deferral past first paint** — the conversation process-detail fetch + message
+  render is the critical path; the two remaining non-critical per-conversation
+  fetches run after first paint via `utils/runWhenIdle.ts`
+  (`requestIdleCallback` with a `{timeout}` bound so the data still loads
+  automatically on a busy page, `setTimeout(cb, 0)` fallback for Safari/jsdom;
+  returns a disposer). `ChatDetail` keeps
+  `setCanvasPanelClosed(readCanvasClosed(...))` synchronous (no collapse-rail
+  flash) and defers only `client.canvases.list`; `usePrChatStatusItems` keeps its
+  synchronous resets immediate and defers only the async binding IIFE
+  (`listChatBindingsForOrigin` + association build + detail fan-out), guarding the
+  idle fire with `generationRef` so an A→B switch never fires a stale fetch. Both
+  effects `cancelIdle()` in cleanup.
+- **Short-lived HTTP cache headers** — the four static-config GET routes carry
+  `Cache-Control: private, max-age=60` (so a cold reload within the window skips
+  the round-trip) via `setStaticConfigCacheHeaders(res)` in
+  `src/server/shared/router.ts`, applied on the 200 path only:
+  `agent-providers/agent-providers-routes.ts` (`reasoning-efforts`, `effort-tiers`),
+  `routes/queue-enqueue.ts` (`models`), and `routes/api-workspace-routes.ts`
+  (`llm-tools-config`). The 60s TTL is conservative because client-side
+  invalidate-on-mutate already covers same-session edits, so the header only
+  bounds cross-reload staleness.
+
 ## Work Items UI
 
 The hierarchy tree uses `WorkItemHierarchyTree` and `WorkItemHierarchyNode`.

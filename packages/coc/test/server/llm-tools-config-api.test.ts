@@ -34,7 +34,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 function request(
     url: string,
     options: { method?: string; body?: string; headers?: Record<string, string> } = {},
-): Promise<{ status: number; body: string; json: () => any }> {
+): Promise<{ status: number; body: string; json: () => any; headers: http.IncomingHttpHeaders }> {
     return new Promise((resolve, reject) => {
         const parsed = new URL(url);
         const req = http.request(
@@ -54,6 +54,7 @@ function request(
                         status: res.statusCode || 0,
                         body: bodyStr,
                         json: () => JSON.parse(bodyStr),
+                        headers: res.headers,
                     });
                 });
             },
@@ -123,6 +124,19 @@ describe('LLM Tools Config API endpoints', () => {
         it('returns 404 when workspace not found', async () => {
             const res = await request(`${base()}/api/workspaces/unknown-ws/llm-tools-config`);
             expect(res.status).toBe(404);
+        });
+
+        // AC-04: short-lived HTTP cache so a cold reload within the TTL skips the round-trip.
+        it('sets a short-lived private Cache-Control header on the 200', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
+            expect(res.status).toBe(200);
+            expect(res.headers['cache-control']).toBe('private, max-age=60');
+        });
+
+        it('does not set Cache-Control on the 404 unknown-workspace response', async () => {
+            const res = await request(`${base()}/api/workspaces/unknown-ws/llm-tools-config`);
+            expect(res.status).toBe(404);
+            expect(res.headers['cache-control']).toBeUndefined();
         });
 
         it('returns all tools from the registry', async () => {

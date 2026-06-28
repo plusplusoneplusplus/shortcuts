@@ -4,7 +4,7 @@
  * Fetches loops associated with the current process, listens for WebSocket
  * loop events to keep state up to date in real time.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { isLoopsEnabled } from '../../../utils/config';
 import type { LoopEntry } from '@plusplusoneplusplus/coc-client';
@@ -31,7 +31,11 @@ export interface UseLoopsResult {
 }
 
 export function useLoops(workspaceId: string | undefined, processId: string | null): UseLoopsResult {
-    const [loops, setLoops] = useState<LoopEntry[]>([]);
+    // AC-02: loops are workspace-scoped, so we fetch the full workspace list and
+    // keep it keyed by workspace only. The per-process view is derived client-side
+    // (below) so switching conversations within the same workspace never re-issues
+    // `loops.list` — the fetch dependency intentionally omits processId.
+    const [allLoops, setAllLoops] = useState<LoopEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const mountedRef = useRef(true);
     // AC-07: loop list/pause/resume/cancel target the selected clone's server.
@@ -41,24 +45,27 @@ export function useLoops(workspaceId: string | undefined, processId: string | nu
         if (!workspaceId) return;
         // Skip network calls when loops feature is disabled — REST routes are not registered.
         if (!isLoopsEnabled()) {
-            setLoops([]);
+            setAllLoops([]);
             return;
         }
         setLoading(true);
         cloneClient.loops.list(workspaceId)
             .then((all) => {
                 if (!mountedRef.current) return;
-                // Filter to loops for this process
-                const filtered = processId
-                    ? all.filter(l => l.processId === processId)
-                    : all;
-                setLoops(filtered);
+                setAllLoops(all);
             })
             .catch(() => { /* ignore — loops panel is best-effort */ })
             .finally(() => {
                 if (mountedRef.current) setLoading(false);
             });
-    }, [workspaceId, processId, cloneClient]);
+    }, [workspaceId, cloneClient]);
+
+    // Per-process view, derived from the workspace-scoped list. Re-deriving on a
+    // processId change is cheap and never triggers a network round-trip.
+    const loops = useMemo(
+        () => (processId ? allLoops.filter(l => l.processId === processId) : allLoops),
+        [allLoops, processId],
+    );
 
     useEffect(() => {
         mountedRef.current = true;
