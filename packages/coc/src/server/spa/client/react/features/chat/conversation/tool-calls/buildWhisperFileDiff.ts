@@ -141,7 +141,12 @@ function collectHunks(toolCalls: WhisperDiffToolCall[], targetPath: string): Fil
             });
         } else if (toolName === 'create' && isRecord(call.args)) {
             if (normalizePath(editPath(call.args)) !== target) continue;
-            const fileText = typeof call.args.file_text === 'string' ? call.args.file_text : '';
+            // Different file-create tools name the body differently: Codex uses
+            // `file_text`, Claude Code's `Write` uses `content`. Accept either so
+            // a `Write`-created file reconstructs its lines instead of showing an
+            // empty new-file diff.
+            const rawText = call.args.file_text ?? call.args.content ?? call.args.contents;
+            const fileText = typeof rawText === 'string' ? rawText : '';
             const body = fileText === '' ? [] : fileText.split('\n').map(l => '+' + l);
             hunks.push({
                 header: `@@ -0,0 +1,${lineCount(fileText)} @@`,

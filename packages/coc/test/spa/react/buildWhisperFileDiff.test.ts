@@ -105,12 +105,46 @@ describe('buildWhisperFileDiff', () => {
         expect(diff).toContain('-x');
         expect(diff).toContain('+y');
 
+        // Claude Code's `Write` tool stores the body under `content` (not Codex's
+        // `file_text`); both must reconstruct.
         const createCalls: WhisperDiffToolCall[] = [
-            { toolName: 'Write', args: { file_path: 'src/z.ts', file_text: 'hi' } },
+            { toolName: 'Write', args: { file_path: 'src/z.ts', content: 'hi' } },
         ];
         const createDiff = buildWhisperFileDiff(createCalls, 'src/z.ts')!;
         expect(createDiff).toContain('--- /dev/null');
         expect(createDiff).toContain('+hi');
+    });
+
+    // Regression: a `Write`-created file carries its body under `content`, not
+    // `file_text`. Reading only `file_text` reconstructed an empty new-file diff
+    // (`@@ -0,0 +1,0 @@` with no body lines). Accept `content` so the real lines
+    // show.
+    it('reconstructs a Write create from its `content` arg, not an empty diff', () => {
+        const calls: WhisperDiffToolCall[] = [
+            { toolName: 'Write', args: { file_path: 'src/new.tsx', content: 'line1\nline2\nline3' } },
+        ];
+        const lines = buildWhisperFileDiff(calls, 'src/new.tsx')!.split('\n');
+        expect(lines[0]).toBe('diff --git a/src/new.tsx b/src/new.tsx');
+        expect(lines).toContain('new file mode 100644');
+        expect(lines).toContain('--- /dev/null');
+        expect(lines).toContain('@@ -0,0 +1,3 @@');
+        expect(lines).toContain('+line1');
+        expect(lines).toContain('+line2');
+        expect(lines).toContain('+line3');
+        // The bug produced this empty-file header with no added lines.
+        expect(lines).not.toContain('@@ -0,0 +1,0 @@');
+    });
+
+    it('prefers `file_text` over `content` when both are present on a create', () => {
+        const calls: WhisperDiffToolCall[] = [
+            {
+                toolName: 'create',
+                args: { path: 'src/dup.ts', file_text: 'from-file_text', content: 'from-content' },
+            },
+        ];
+        const diff = buildWhisperFileDiff(calls, 'src/dup.ts')!;
+        expect(diff).toContain('+from-file_text');
+        expect(diff).not.toContain('+from-content');
     });
 
     it('matches paths irrespective of slash direction', () => {
