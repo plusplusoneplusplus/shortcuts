@@ -9,6 +9,7 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import {
@@ -99,6 +100,13 @@ export async function resolveSkillConfig(
     if (dataDir) {
         const globalSkillsDir = path.join(dataDir, 'skills');
         await tryAddSkillDirectory(globalSkillsDir, globalSkillsDir);
+    }
+
+    // Check OneDrive-based default skill directories (Windows)
+    const homedir = os.homedir();
+    for (const variant of ['OneDrive', 'OneDrive - Microsoft']) {
+        const oneDriveSkillsDir = path.join(homedir, variant, '.github', 'skills');
+        await tryAddSkillDirectory(oneDriveSkillsDir, oneDriveSkillsDir);
     }
 
     if (extraSkillFolders) {
