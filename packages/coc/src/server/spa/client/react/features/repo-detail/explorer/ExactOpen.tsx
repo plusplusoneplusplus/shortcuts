@@ -204,7 +204,7 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
             onClick={onClose}
             data-testid="exact-open-overlay"
         >
-            {/* Dialog at top-center, like VS Code */}
+            {/* Dialog at top-center, matching the command palette placement. */}
             <div
                 className={cn(
                     'mt-[10vh] w-[90vw] max-w-[600px] h-fit max-h-[60vh] flex flex-col',

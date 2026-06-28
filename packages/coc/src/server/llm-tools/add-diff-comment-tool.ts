@@ -9,7 +9,7 @@
  * avoiding cross-request contamination. Pre-bound context (workspace,
  * commit, parent) is closed over so the AI only provides per-call values.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

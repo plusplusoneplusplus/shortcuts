@@ -291,7 +291,7 @@ export function buildDeepModePrompt(
 
 /**
  * Gather context from a feature folder (related.yaml, plan.md, spec.md).
- * Pure Node.js — no VS Code dependencies.
+ * Pure Node.js.
  */
 export async function gatherFeatureContext(
     folderPath: string,

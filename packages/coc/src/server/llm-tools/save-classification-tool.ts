@@ -10,7 +10,7 @@
  * `classifications` array. Validation is strict — the tool returns an error
  * response when entries are malformed so the AI can retry with corrections.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

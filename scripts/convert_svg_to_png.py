@@ -124,7 +124,7 @@ def main():
     # Default paths
     svg_path = Path("resources/icons/shortcuts.svg")
     png_path = Path("resources/icons/shortcuts.png")
-    size = 128  # VS Code marketplace recommended size
+    size = 128  # legacy marketplace icon size
 
     # Parse command line arguments
     if len(sys.argv) > 1:

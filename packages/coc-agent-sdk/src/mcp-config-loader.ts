@@ -2,7 +2,7 @@
  * MCP Config Loader
  *
  * Utility for loading MCP server configuration from the user's home directory
- * and from VS Code workspace configuration.
+ * and from workspace MCP configuration.
  * 
  * Features:
  * - Cross-platform home directory resolution
@@ -26,7 +26,7 @@ export interface MCPConfigFile {
 }
 
 /**
- * Structure of VS Code workspace MCP config (.vscode/mcp.json)
+ * Structure of workspace MCP config (.vscode/mcp.json)
  */
 export interface VSCodeMCPConfigFile {
     /** Map of server names to their configurations */
@@ -52,8 +52,8 @@ export interface MCPConfigLoadResult {
 /** Default config file path relative to home directory */
 const CONFIG_DIR = '.copilot';
 const CONFIG_FILE = 'mcp-config.json';
-const VSCODE_CONFIG_DIR = '.vscode';
-const VSCODE_MCP_CONFIG_FILE = 'mcp.json';
+const WORKSPACE_CONFIG_DIR = '.vscode';
+const WORKSPACE_MCP_CONFIG_FILE = 'mcp.json';
 
 /** Cached config keyed by absolute config path to avoid cross-workspace contamination */
 const cachedConfigs = new Map<string, MCPConfigLoadResult>();
@@ -100,13 +100,13 @@ export function getMcpConfigPath(): string {
 }
 
 /**
- * Get the path to a workspace VS Code MCP config file.
+ * Get the path to a workspace MCP config file.
  *
  * @param workingDirectory - Workspace directory for the request
  * @returns The full path to <workingDirectory>/.vscode/mcp.json
  */
 export function getWorkspaceMcpConfigPath(workingDirectory: string): string {
-    return path.join(workingDirectory, VSCODE_CONFIG_DIR, VSCODE_MCP_CONFIG_FILE);
+    return path.join(workingDirectory, WORKSPACE_CONFIG_DIR, WORKSPACE_MCP_CONFIG_FILE);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -140,7 +140,7 @@ function optionalBoolean(value: unknown): boolean | undefined {
     return typeof value === 'boolean' ? value : undefined;
 }
 
-function normalizeVSCodeServer(server: Record<string, unknown>): MCPServerConfig | undefined {
+function normalizeWorkspaceMcpServer(server: Record<string, unknown>): MCPServerConfig | undefined {
     if (typeof server.command === 'string') {
         const config: MCPLocalServerConfig = { command: server.command };
         if (server.type === 'local' || server.type === 'stdio') config.type = server.type;
@@ -150,7 +150,7 @@ function normalizeVSCodeServer(server: Record<string, unknown>): MCPServerConfig
         if (env) config.env = env;
         if (typeof server.cwd === 'string') config.cwd = server.cwd;
         // The SDK requires `tools: string[]`; missing/empty means "no tools".
-        // Default to ["*"] (all tools) when not specified, matching VS Code behavior.
+        // Default to ["*"] (all tools) when not specified, matching the workspace config behavior.
         config.tools = stringArray(server.tools) ?? ['*'];
         const timeout = optionalNumber(server.timeout);
         if (timeout !== undefined) config.timeout = timeout;
@@ -174,7 +174,7 @@ function normalizeVSCodeServer(server: Record<string, unknown>): MCPServerConfig
     return undefined;
 }
 
-function normalizeVSCodeServers(config: VSCodeMCPConfigFile): Record<string, MCPServerConfig> {
+function normalizeWorkspaceMcpServers(config: VSCodeMCPConfigFile): Record<string, MCPServerConfig> {
     if (!isRecord(config.servers)) {
         return {};
     }
@@ -187,7 +187,7 @@ function normalizeVSCodeServers(config: VSCodeMCPConfigFile): Record<string, MCP
             continue;
         }
 
-        const normalizedServer = normalizeVSCodeServer(server);
+        const normalizedServer = normalizeWorkspaceMcpServer(server);
         if (normalizedServer) {
             const serverType = normalizedServer.type ?? ('command' in normalizedServer ? 'stdio' : 'unknown');
             aiLog.debug({ serverName: name, type: serverType, enabled: normalizedServer.enabled }, '[MCP] Workspace server normalized');
@@ -307,7 +307,7 @@ export function loadDefaultMcpConfig(forceReload = false): MCPConfigLoadResult {
 
 /**
  * Load MCP server configuration from <workingDirectory>/.vscode/mcp.json.
- * VS Code's top-level `servers` map is normalized to Forge's mcpServers shape.
+ * The workspace top-level `servers` map is normalized to Forge's mcpServers shape.
  *
  * @param workingDirectory - Workspace directory for the request
  * @param forceReload - If true, bypass the cache and reload from disk
@@ -317,7 +317,7 @@ export function loadWorkspaceMcpConfig(workingDirectory: string, forceReload = f
     const configPath = getWorkspaceMcpConfigPath(workingDirectory);
     return loadMcpConfigFromPath(
         configPath,
-        (config) => normalizeVSCodeServers(config as VSCodeMCPConfigFile),
+        (config) => normalizeWorkspaceMcpServers(config as VSCodeMCPConfigFile),
         'workspace',
         forceReload,
     );

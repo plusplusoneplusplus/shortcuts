@@ -9,7 +9,7 @@
  * best-effort emit). Only the `condition-monitor` / `ci-failure` event and the
  * `send-message` action are implemented this iteration.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  */
 
 import * as crypto from 'crypto';

@@ -8,7 +8,7 @@
  * - systemMessage: READ_ONLY_SYSTEM_MESSAGE + optional auto-folder location block
  * - tools: follow-up suggestion tool (when configured)
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

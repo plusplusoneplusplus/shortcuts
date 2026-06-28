@@ -12,7 +12,7 @@
  * Workspace memory (gated by repoPrefs.memoryV2.enabled). Returns the empty
  * addon when neither scope is enabled or any error occurs.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

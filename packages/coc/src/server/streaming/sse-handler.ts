@@ -5,7 +5,7 @@
  * Clients connect to `GET /api/processes/:id/stream` to receive output chunks
  * as they arrive, followed by a status + done event on completion.
  *
- * No VS Code dependencies - uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

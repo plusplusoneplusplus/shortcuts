@@ -1,5 +1,5 @@
 /**
- * usePromptAutocomplete — VS Code-style inline ghost-text completion hook.
+ * usePromptAutocomplete — inline ghost-text completion hook.
  *
  * Given the current text and cursor position of a prompt input, fetches a
  * single best completion suffix from the server and exposes it for overlay

@@ -2,7 +2,7 @@
  * WorkflowResult → Flat Display Adapter
  *
  * Converts the Map-based WorkflowResult into a flat structure suitable for
- * CLI output formatting, SPA display, and VS Code result viewers.
+ * CLI output formatting and SPA display.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */

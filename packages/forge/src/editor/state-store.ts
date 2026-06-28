@@ -1,7 +1,7 @@
 /**
  * State persistence abstraction for the Markdown Review Editor.
  *
- * Replaces direct usage of vscode.Memento (context.workspaceState)
+ * Replaces direct usage of editor workspace-state storage.
  * with a platform-agnostic key-value interface.
  */
 

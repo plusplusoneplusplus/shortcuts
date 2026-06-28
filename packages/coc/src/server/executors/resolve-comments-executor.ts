@@ -10,7 +10,7 @@
  * The `buildModeOptions()` creates the resolve-comment tool and stores
  * `getResolvedIds` in a per-process Map for retrieval after the AI call.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

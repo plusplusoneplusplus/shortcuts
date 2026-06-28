@@ -4,7 +4,7 @@
  * HTTP API routes for managing skills in the global ~/.coc/skills/ directory.
  * Provides listing, scanning, installing, and deleting global skills.
  *
- * No VS Code dependencies — uses pipeline-core skill utilities.
+ * Pure Node.js; uses pipeline-core skill utilities.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

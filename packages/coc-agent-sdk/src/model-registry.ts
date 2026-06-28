@@ -3,7 +3,6 @@
  *
  * Single source of truth for all AI model definitions used across the codebase.
  * When adding, updating, or removing a model, only this file needs to change
- * (plus `package.json` enum for VS Code settings UI).
  *
  * Design:
  * - `MODEL_REGISTRY` is the authoritative list of supported models.
@@ -47,8 +46,7 @@ export interface ModelDefinition {
  *
  * To add a new model:
  * 1. Add an entry here
- * 2. Update the `package.json` enum (for VS Code settings UI)
- * 3. All types, helpers, and tests will automatically pick it up
+ * 2. All types, helpers, and tests will automatically pick it up
  */
 const MODEL_DEFINITIONS: readonly ModelDefinition[] = [
     {
@@ -227,7 +225,7 @@ export interface IModelListClient {
 export async function fetchModelsFromClient(client: IModelListClient): Promise<ModelInfo[]> {
     // Pre-emptively suppress EPIPE re-throws from the SDK's connectViaStdio() stdin
     // error handler. When the CLI exits unexpectedly (e.g., in test environments
-    // where VS Code's process.execPath is used to spawn the CLI, causing argument
+    // where the host process.execPath is used to spawn the CLI, causing argument
     // parsing failures), writing to its stdin raises EPIPE. The SDK re-throws that
     // error inside the stdin 'error' listener unless forceStopping is true, which
     // makes it an uncaughtException that bypasses normal promise-rejection handling.

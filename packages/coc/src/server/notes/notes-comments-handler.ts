@@ -11,7 +11,7 @@
  *   `~/.coc/repos/<workspaceId>/notes-comments/<encoded-root-path>/`
  *   to keep the workspace repo clean.
  *
- * No VS Code dependencies - uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

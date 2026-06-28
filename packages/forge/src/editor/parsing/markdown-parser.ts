@@ -3,7 +3,7 @@
  *
  * Pure TypeScript structural parsing functions for markdown content.
  * Every function takes strings/arrays and returns parsed structures —
- * no side effects, no state, no DOM or VS Code dependencies.
+ * no side effects, no state, no DOM or editor-host dependencies.
  */
 
 /**

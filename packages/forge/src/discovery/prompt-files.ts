@@ -11,7 +11,7 @@ const DEFAULT_PROMPT_LOCATION = '.github/prompts';
  *
  * Adapted from extension's getPromptFiles() + findPromptFilesInFolder()
  * (src/shortcuts/shared/prompt-files-utils.ts:58-121) — same recursive
- * walk logic but with explicit location parameters instead of VS Code
+ * walk logic but with explicit location parameters instead of editor-host
  * settings.
  *
  * @param rootDir   Workspace/project root (absolute path)

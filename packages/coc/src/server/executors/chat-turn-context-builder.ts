@@ -11,7 +11,7 @@
  * independently coordinate Memory V2 tools, Memory V2 prompt context,
  * SDK built-in exclusions, ask-user handles, and resource disposal.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

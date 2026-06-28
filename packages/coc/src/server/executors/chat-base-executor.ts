@@ -11,7 +11,7 @@
  * - tools (follow-up suggestions or other injected tools)
  * - effectivePrompt (prompt with any mode-specific suffix appended)
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

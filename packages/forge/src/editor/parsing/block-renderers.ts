@@ -2,8 +2,8 @@
  * Block renderers — pure HTML string generation
  *
  * These functions take parsed markdown structures and produce HTML strings.
- * They have no DOM, state, or VS Code dependencies, making them suitable
- * for server-side rendering in both the VS Code webview and the CoC SPA.
+ * They have no DOM, state, or editor-host dependencies, making them suitable
+ * for server-side rendering and the CoC SPA.
  */
 
 import { escapeHtml } from '../rendering/markdown-renderer';

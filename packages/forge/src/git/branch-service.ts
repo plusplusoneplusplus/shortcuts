@@ -1,5 +1,5 @@
 /**
- * Pure Node.js BranchService — no VS Code dependencies.
+ * Pure Node.js BranchService.
  *
  * Provides branch listing, switching, creating, deleting, merging,
  * push/pull/fetch, stash, and status queries using git CLI.

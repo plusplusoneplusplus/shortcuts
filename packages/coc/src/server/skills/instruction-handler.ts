@@ -10,7 +10,7 @@
  *   PUT    /api/workspaces/:id/instructions/:mode   — create/update file
  *   DELETE /api/workspaces/:id/instructions/:mode   — delete file
  *
- * No VS Code dependencies. Cross-platform (Linux/Mac/Windows).
+ * Pure Node.js. Cross-platform (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

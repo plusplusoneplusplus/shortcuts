@@ -10,7 +10,7 @@
  * For working-tree diffs (newRef === 'working-tree'), the storage key is
  *   sha256(repoId+filePath+'working-tree') and every comment is ephemeral.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

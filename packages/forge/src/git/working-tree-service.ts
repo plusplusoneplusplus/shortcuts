@@ -4,7 +4,7 @@
  * Provides stage, unstage, discard, delete-untracked, and getAllChanges
  * using the git CLI (via execGit) and Node's `fs` module.
  *
- * No VS Code dependencies.
+ * Pure Node.js.
  */
 
 import * as fs from 'fs';

@@ -5,7 +5,7 @@
  * Workspace-scoped primary routes at `/api/workspaces/:id/loops`,
  * secondary server-wide route at `/api/loops`.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  */
 
 import type * as http from 'http';

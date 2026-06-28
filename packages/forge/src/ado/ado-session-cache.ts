@@ -4,7 +4,7 @@
  * calls (which take ~300–800 ms each).
  *
  * Cache is considered valid when the token expires more than 5 minutes from now.
- * No VS Code dependencies — pure Node.js.
+ * Pure Node.js.
  */
 import * as fs from 'fs/promises';
 import * as path from 'path';

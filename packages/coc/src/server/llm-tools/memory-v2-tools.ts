@@ -8,7 +8,7 @@
  * Both tools require a fully wired MemoryV2ToolDeps bundle injected at
  * executor construction time.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  */
 
 import {

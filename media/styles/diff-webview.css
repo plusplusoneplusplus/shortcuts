@@ -498,7 +498,7 @@ body.vscode-light {
     color: var(--vscode-gitDecoration-deletedResourceForeground, #cf222e);
 }
 
-/* High contrast theme - use VS Code variables */
+/* High contrast theme - use editor variables */
 body.vscode-high-contrast .diff-line-addition,
 body.vscode-high-contrast .line-added {
     background-color: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
@@ -779,7 +779,7 @@ body.vscode-high-contrast .inline-diff-line-deletion {
 }
 
 /* ================================== */
-/* Highlight.js Theme (VSCode-like)   */
+/* Highlight.js Theme (editor-like)   */
 /* ================================== */
 
 /* Base styles for highlighted code */
@@ -1209,4 +1209,3 @@ body.vscode-high-contrast .inline-diff-line-deletion {
     outline: 1px solid var(--vscode-focusBorder, #007fd4);
     outline-offset: 1px;
 }
-

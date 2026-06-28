@@ -9,7 +9,7 @@
  * killed via signal, process crash) without going through the normal
  * cancellation flow, leaving them stuck in 'running' state.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

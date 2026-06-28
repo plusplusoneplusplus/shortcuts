@@ -4,7 +4,7 @@
  * REST API handlers for reading/writing the memory storage configuration.
  * Config is persisted to <dataDir>/memory-config.json using atomic write-then-rename.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

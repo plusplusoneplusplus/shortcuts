@@ -6,7 +6,7 @@
  *
  * Templates are stored as `.vscode/templates/*.yaml` per workspace.
  * Mirrors workflows-handler.ts pattern (separate read + write registration).
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

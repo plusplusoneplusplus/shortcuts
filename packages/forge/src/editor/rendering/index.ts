@@ -2,7 +2,7 @@
  * Rendering module exports
  *
  * Pure TypeScript rendering primitives for markdown content.
- * These functions have no DOM or VS Code dependencies — they are
+ * These functions have no DOM or editor-host dependencies, so they are
  * string-in, string-out transformations suitable for any environment.
  */
 

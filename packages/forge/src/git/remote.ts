@@ -5,7 +5,7 @@
  * hashes, and resolving canonical origin IDs shared by local clones that point
  * at the same upstream repository.
  *
- * No VS Code dependencies — pure Node.js.
+ * Pure Node.js.
  */
 
 import { createHash } from 'crypto';

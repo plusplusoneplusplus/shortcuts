@@ -8,7 +8,7 @@
  * - systemMessage: undefined (no read-only restriction — full read/write access)
  * - tools: follow-up suggestion tool (when configured)
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

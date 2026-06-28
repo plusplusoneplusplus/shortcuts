@@ -2,7 +2,7 @@
  * AI Command Types
  *
  * Type definitions for configurable AI commands.
- * These are pure types with no VS Code dependencies.
+ * These are pure types with no editor-host dependencies.
  */
 
 import { DEFAULT_PROMPTS } from './types';

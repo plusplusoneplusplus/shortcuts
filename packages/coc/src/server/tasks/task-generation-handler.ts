@@ -8,7 +8,7 @@
  *   POST /api/workspaces/:id/tasks/generate  — Generate a task with AI (SSE stream)
  *   POST /api/workspaces/:id/tasks/discover  — Discover related items for a feature
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

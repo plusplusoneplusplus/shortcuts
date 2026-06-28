@@ -4,7 +4,7 @@
  * HTTP API routes for administrative operations (data wipe).
  * Uses time-limited tokens for confirmation of destructive operations.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

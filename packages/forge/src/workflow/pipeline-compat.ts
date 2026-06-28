@@ -36,7 +36,7 @@ export interface PipelineConfig {
      *
      * - Absolute paths are used as-is
      * - Relative paths are resolved relative to the pipeline package directory
-     * - If omitted, callers use their own default (VS Code uses workspaceRoot, CLI uses --workspace-root or pipeline dir)
+     * - If omitted, callers use their own default (selected workspace root, CLI --workspace-root, or pipeline dir)
      */
     workingDirectory?: string;
     /** Input configuration (required for map-reduce mode, optional for job mode) */

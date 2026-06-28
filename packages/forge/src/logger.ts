@@ -4,7 +4,7 @@ import { resetLogger as resetWorkflowLogger, setLogger as setWorkflowLogger } fr
  * Logger abstraction for pipeline-core package.
  * 
  * This module provides a simple logger interface that can be implemented
- * by different environments (VS Code, CLI, tests, etc.).
+ * by different environments (CLI, server, tests, etc.).
  * 
  * Usage:
  *   import { getLogger, setLogger, consoleLogger } from 'pipeline-core';
@@ -13,7 +13,7 @@ import { resetLogger as resetWorkflowLogger, setLogger as setWorkflowLogger } fr
  *   const logger = getLogger();
  *   logger.info('AI', 'Processing started');
  *   
- *   // Or set a custom logger (e.g., VS Code output channel)
+ *   // Or set a custom logger sink
  *   setLogger(myCustomLogger);
  */
 

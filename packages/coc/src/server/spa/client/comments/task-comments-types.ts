@@ -2,7 +2,7 @@
  * Task Comments Types
  *
  * Core TypeScript types for task comments in the web UI.
- * Browser-compatible — no Node.js or VS Code dependencies.
+ * Browser-compatible with no platform dependencies.
  *
  * Selection, anchor, and relocation types are re-exported from pipeline-core.
  * CoC-specific types (TaskComment, TaskCommentsData) are defined here.

@@ -4,7 +4,7 @@
  * Provides a structured APIError class, factory functions for common HTTP errors,
  * and a handleAPIError function for consistent error responses across all API routes.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

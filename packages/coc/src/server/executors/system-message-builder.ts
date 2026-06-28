@@ -12,7 +12,7 @@
  *
  * `build()` is always async and resolves deferred steps in insertion order.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

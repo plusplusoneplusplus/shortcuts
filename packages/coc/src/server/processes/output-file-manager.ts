@@ -5,7 +5,7 @@
  * Files are stored per-repo at `<dataDir>/repos/<workspaceId>/outputs/<processId>.md`.
  * When no workspaceId is available, falls back to the `_shared` workspace.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

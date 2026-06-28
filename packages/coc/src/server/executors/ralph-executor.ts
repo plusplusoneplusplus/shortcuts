@@ -19,7 +19,7 @@
  * AGENTS.md: "Prefer use file path in the prompt instead of expanding the
  * prompt with file's content."
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

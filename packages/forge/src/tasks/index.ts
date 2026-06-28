@@ -100,7 +100,7 @@ export {
 } from './task-operations';
 
 export {
-    // Task prompt builders (pure Node.js, no VS Code deps)
+    // Task prompt builders (pure Node.js)
     AUTO_FOLDER_SENTINEL,
     AutoFolderContext,
     buildAutoFolderLocationBlock,

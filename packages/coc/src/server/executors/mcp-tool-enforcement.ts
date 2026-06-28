@@ -24,7 +24,7 @@
  * is identical to the SDK's default global+workspace load, so behavior is
  * preserved; it only narrows the set when a server or tool is actually disabled.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
