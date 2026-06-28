@@ -13,9 +13,10 @@
  */
 
 import * as path from 'path';
-import { app, BrowserWindow } from 'electron';
-import { attachOrStart, ServerHandle } from './server-controller';
+import { app, BrowserWindow, dialog, shell } from 'electron';
+import { attachOrStart, defaultDataDir, ServerHandle } from './server-controller';
 import { splashDataUrl } from './splash';
+import { detectAgentClis, missingAgentClis, runFirstRunPreflight } from './agent-preflight';
 
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
@@ -95,6 +96,46 @@ async function showServedSpa(url: string): Promise<void> {
     await mainWindow.loadURL(url);
 }
 
+/**
+ * AC-06: agent-CLI preflight. On first run, detect whether the Copilot / Codex /
+ * Claude CLIs are on PATH and surface non-blocking install guidance for any that
+ * are missing. The CLIs are NOT bundled — we only require them to be installed.
+ *
+ * This must never block startup: it runs after the window is already shown, the
+ * dialog is unparented and fire-and-forget, and any failure is swallowed.
+ */
+function runAgentPreflight(): void {
+    try {
+        const guidance = runFirstRunPreflight(defaultDataDir());
+        if (!guidance) {
+            return;
+        }
+        process.stdout.write(`[coc-desktop] agent-CLI preflight: ${guidance.summary}\n`);
+        void dialog
+            .showMessageBox({
+                type: 'info',
+                title: guidance.title,
+                message: guidance.summary,
+                detail: guidance.detail,
+                buttons: ['OK', 'Open install docs'],
+                defaultId: 0,
+                cancelId: 0,
+                noLink: true,
+            })
+            .then((result) => {
+                if (result.response === 1) {
+                    // Open the docs for each still-missing CLI in the system browser.
+                    for (const { cli } of missingAgentClis(detectAgentClis())) {
+                        void shell.openExternal(cli.docsUrl);
+                    }
+                }
+            })
+            .catch(() => { /* dialog failures are non-fatal */ });
+    } catch {
+        // Preflight is a startup nicety — it must never break boot.
+    }
+}
+
 /** Surface a fatal startup error in the (re-shown) splash window. */
 function showSplashError(message: string): void {
     if (!splashWindow || splashWindow.isDestroyed()) {
@@ -117,6 +158,9 @@ async function bootstrap(): Promise<void> {
         );
         // AC-03: render the live SPA served from 127.0.0.1.
         await showServedSpa(serverHandle.url);
+        // AC-06: warn (non-blocking) about any missing agent CLI now that the
+        // window is up. The app is already usable regardless of the outcome.
+        runAgentPreflight();
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         process.stderr.write(`[coc-desktop] failed to start CoC server: ${message}\n`);
