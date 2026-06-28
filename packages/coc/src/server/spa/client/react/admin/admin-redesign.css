@@ -1467,6 +1467,14 @@
   background: #f5ebe4;
   color: #d97757;
 }
+.admin-redesign .aip-avatar-opencode {
+  background: #131010;
+  color: #fff;
+}
+[data-theme="light"] .admin-redesign .aip-avatar-opencode {
+  background: #131010;
+  color: #fff;
+}
 .admin-redesign .aip-provider-main {
   min-width: 0;
   display: block;
