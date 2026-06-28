@@ -11,7 +11,7 @@ Guidance for AI agents working in this repository. NEVER create document files u
 
 ## Repo Layout (one-liner)
 
-npm workspaces monorepo with one frozen VS Code extension and published Node packages including `coc-workflow`, `forge`, `coc`, `coc-client`, `coc-agent-sdk`, and `deep-wiki`. `packages/vscode-extension/` is **FROZEN — do not read, edit, or reason about its code.**
+npm workspaces monorepo for published Node packages including `coc-workflow`, `forge`, `coc`, `coc-client`, `coc-agent-sdk`, `coc-memory`, `deep-wiki`, `coccontainer`, `whatsapp-bot`, and `teams-bot`.
 
 ## Load the CoC Knowledge Skill
 
@@ -22,7 +22,6 @@ For anything touching CoC, forge, deep-wiki, coc-client, the dashboard SPA, REST
 - **Multi-repo:** every feature must support multiple workspaces.
 - **Repo-scoped data:** all per-repo runtime data lives under `~/.coc/repos/<workspaceId>/`; resolve paths with `getRepoDataPath(dataDir, workspaceId, filename)`. Never add new top-level dirs under `~/.coc/` for per-repo data.
 - **Work items:** create/update via `POST http://localhost:4000/api/workspaces/<workspaceId>/work-items` — never write `work-items/*.json` files directly.
-- **VS Code extension is frozen:** do not read, edit, or reason about `packages/vscode-extension/`. It is not an npm workspace.
 - **Warm client keep-alive (client process only):** `coc-agent-sdk` and above MAY keep a provider *client process* warm between turns, keyed by `(provider, workingDirectory)`, for a short idle TTL (`COC_WARM_CLIENT_TTL_MS`, default `300000`ms; `0` disables warming entirely). A fresh session is still created/resumed per turn on the warm client — never cache *session objects* and never add `sendFollowUp`. Warm clients are torn down on abort/interrupt/error, on TTL expiry, and on SDK `cleanup()`/`dispose()`. Providers that cannot stay warm (Claude, whose `query()` spawns per turn) fall back to cold-start transparently. See `WarmClientRegistry` in `coc-agent-sdk`. The SPA prewarms the client while the user types a follow-up, debounced by `COC_WARM_PREWARM_DEBOUNCE_MS` (default `500`ms; resolved on the server and surfaced via runtime config).
 - **Model resolution order:** `task.config.model` > `PerRepoPreferences.defaultModels[mode]` > `defaultModel` > CLI default.
 - **Node.js ≥ 24** for every package (`engines.node`).
