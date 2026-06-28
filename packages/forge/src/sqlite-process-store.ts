@@ -37,6 +37,7 @@ import {
     ToolCallPermissionResult,
     ProcessEvent,
 } from './ai/process-types';
+import type { PendingMessage } from './ai/process-interfaces';
 import type { AIBackendType } from './ai/types';
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import { initializeDatabase } from './sqlite-schema';
@@ -1378,6 +1379,36 @@ export class SqliteProcessStore implements ProcessStore {
         }
 
         return appendResult;
+    }
+
+    async appendPendingMessage(
+        processId: string,
+        message: PendingMessage,
+    ): Promise<PendingMessage[] | undefined> {
+        let result: PendingMessage[] | undefined;
+
+        const appendTxn = this.db.transaction(() => {
+            const processRow = this.getProcessStmt.get(processId) as ProcessRow | undefined;
+            if (!processRow) return;
+
+            const currentProcess = rowToProcess(processRow);
+            const pendingMessages = [...(currentProcess.pendingMessages ?? []), message];
+
+            // Read-append-persist runs inside the same SQLite transaction, so two
+            // concurrent follow-ups cannot lose each other's pending messages.
+            this.applyProcessUpdatesInline(processId, { pendingMessages }, processRow);
+
+            result = pendingMessages;
+        });
+
+        appendTxn();
+
+        if (result) {
+            const updated = await this.getProcess(processId);
+            this.onProcessChange?.({ type: 'process-updated', process: updated ?? undefined });
+        }
+
+        return result;
     }
 
     async updateTurnContent(

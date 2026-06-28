@@ -25,6 +25,7 @@ import {
     deserializeProcess,
     ProcessEvent
 } from './ai/process-types';
+import type { PendingMessage } from './ai/process-interfaces';
 import { withRetry } from './runtime/retry';
 import { getLogger } from './logger';
 import { computeMessagePreview } from './utils/message-preview';
@@ -435,6 +436,52 @@ export class FileProcessStore implements ProcessStore {
         }
 
         return appendResult;
+    }
+
+    /**
+     * Atomically append a pending follow-up message inside the write queue, so
+     * concurrent follow-ups cannot lose updates by reading the same array.
+     */
+    async appendPendingMessage(
+        processId: string,
+        message: PendingMessage,
+    ): Promise<PendingMessage[] | undefined> {
+        let result: PendingMessage[] | undefined;
+        let updatedProcess: AIProcess | undefined;
+
+        await this.enqueueWrite(async () => {
+            const workspaceId = await this.findWorkspaceIdForProcess(processId);
+            if (workspaceId === undefined) { return; }
+
+            const entry = await this.readProcessFile(workspaceId, processId);
+            if (!entry) { return; }
+
+            const existing = deserializeProcess(entry.process);
+            const pendingMessages = [...(existing.pendingMessages ?? []), message];
+            const merged: AIProcess = { ...existing, pendingMessages, lastEventAt: new Date() };
+
+            const newEntry: StoredProcessEntry = {
+                workspaceId: merged.metadata?.workspaceId ?? entry.workspaceId,
+                process: serializeProcess(merged),
+            };
+            await this.writeProcessFile(workspaceId, processId, newEntry);
+
+            const index = await this.readIndex(workspaceId);
+            const idx = index.findIndex(e => e.id === processId);
+            if (idx !== -1) {
+                index[idx] = this.toIndexEntry(newEntry);
+                await this.writeIndex(workspaceId, index);
+            }
+
+            result = pendingMessages;
+            updatedProcess = merged;
+        });
+
+        if (updatedProcess) {
+            this.onProcessChange?.({ type: 'process-updated', process: updatedProcess });
+        }
+
+        return result;
     }
 
     /**

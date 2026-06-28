@@ -16,6 +16,7 @@ import {
     AIProcessStatus,
     ConversationTurn,
 } from '../src/index';
+import type { PendingMessage } from '../src/index';
 
 let tmpDir: string;
 let store: SqliteProcessStore;
@@ -305,5 +306,44 @@ describe('SqliteProcessStore.listRecentProcesses', () => {
 
         const entries = await store.listRecentProcesses({});
         expect(entries).toHaveLength(10);
+    });
+});
+
+// ============================================================================
+// appendPendingMessage
+// ============================================================================
+
+describe('SqliteProcessStore.appendPendingMessage', () => {
+    function makePending(id: string, content: string): PendingMessage {
+        return { id, content, createdAt: new Date().toISOString() };
+    }
+
+    it('appends a pending message and returns the full array', async () => {
+        await store.addProcess(makeProcess('pm1'));
+
+        const result = await store.appendPendingMessage('pm1', makePending('m1', 'first'));
+
+        expect(result).toHaveLength(1);
+        expect(result![0].content).toBe('first');
+
+        const updated = await store.getProcess('pm1');
+        expect(updated!.pendingMessages).toHaveLength(1);
+        expect(updated!.pendingMessages![0].id).toBe('m1');
+    });
+
+    it('accumulates pending messages in order', async () => {
+        await store.addProcess(makeProcess('pm2'));
+
+        await store.appendPendingMessage('pm2', makePending('m1', 'first'));
+        await store.appendPendingMessage('pm2', makePending('m2', 'second'));
+        await store.appendPendingMessage('pm2', makePending('m3', 'third'));
+
+        const updated = await store.getProcess('pm2');
+        expect(updated!.pendingMessages!.map(m => m.content)).toEqual(['first', 'second', 'third']);
+    });
+
+    it('returns undefined for a non-existent process', async () => {
+        const result = await store.appendPendingMessage('no-such', makePending('m1', 'x'));
+        expect(result).toBeUndefined();
     });
 });

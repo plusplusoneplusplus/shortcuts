@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 import { FileProcessStore, AIProcess, AIProcessStatus } from '../src/index';
+import type { PendingMessage } from '../src/index';
 
 function makeProcess(id: string, overrides?: Partial<AIProcess>): AIProcess {
     return {
@@ -327,5 +328,70 @@ describe('FileProcessStore.appendConversationTurn', () => {
             expect(entry).toBeDefined();
             expect(entry!.lastEventAt).toBe(startTime.toISOString());
         });
+    });
+});
+
+describe('FileProcessStore.appendPendingMessage', () => {
+    let tmpDir: string;
+
+    beforeEach(async () => {
+        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fps-pending-test-'));
+    });
+
+    afterEach(async () => {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    function makePending(id: string, content: string): PendingMessage {
+        return { id, content, createdAt: new Date().toISOString() };
+    }
+
+    it('appends a pending message and returns the full array', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('pm1'));
+
+        const result = await store.appendPendingMessage('pm1', makePending('m1', 'first'));
+
+        expect(result).toHaveLength(1);
+        expect(result![0].content).toBe('first');
+
+        const updated = await store.getProcess('pm1');
+        expect(updated!.pendingMessages).toHaveLength(1);
+        expect(updated!.pendingMessages![0].id).toBe('m1');
+    });
+
+    it('accumulates pending messages in order', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('pm2'));
+
+        await store.appendPendingMessage('pm2', makePending('m1', 'first'));
+        await store.appendPendingMessage('pm2', makePending('m2', 'second'));
+        await store.appendPendingMessage('pm2', makePending('m3', 'third'));
+
+        const updated = await store.getProcess('pm2');
+        expect(updated!.pendingMessages!.map(m => m.content)).toEqual(['first', 'second', 'third']);
+    });
+
+    it('does NOT lose messages under concurrent appends (lost-update regression)', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('pm3'));
+
+        await Promise.all(
+            Array.from({ length: 5 }, (_, i) =>
+                store.appendPendingMessage('pm3', makePending(`m${i}`, `msg-${i}`)),
+            ),
+        );
+
+        const updated = await store.getProcess('pm3');
+        // All 5 survive — the read-modify-write runs under the write queue lock.
+        expect(updated!.pendingMessages).toHaveLength(5);
+        const ids = updated!.pendingMessages!.map(m => m.id).sort();
+        expect(ids).toEqual(['m0', 'm1', 'm2', 'm3', 'm4']);
+    });
+
+    it('returns undefined for a non-existent process', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const result = await store.appendPendingMessage('no-such', makePending('m1', 'x'));
+        expect(result).toBeUndefined();
     });
 });

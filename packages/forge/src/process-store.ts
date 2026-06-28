@@ -8,6 +8,7 @@
  */
 
 import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent, ConversationTurn, TimelineItem } from './ai/process-types';
+import type { PendingMessage } from './ai/process-interfaces';
 import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline-types';
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ConversationCostEstimate } from './ai/conversation-cost-estimate';
@@ -490,6 +491,21 @@ export interface ProcessStore {
                 | ((current: AIProcess) => Partial<Omit<AIProcess, 'conversationTurns'>>);
         }
     ): Promise<{ turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined>;
+
+    /**
+     * Atomically append a pending follow-up message inside the write queue.
+     * Prevents the lost-update race where two concurrent follow-ups both read the
+     * same `pendingMessages` array before either write completes — the read,
+     * append, and persist run under the same lock as other process writes.
+     *
+     * @param processId - Target process ID.
+     * @param message - The pending message to append.
+     * @returns The full pending-message array after the append, or undefined if the process was not found.
+     */
+    appendPendingMessage(
+        processId: string,
+        message: PendingMessage,
+    ): Promise<PendingMessage[] | undefined>;
 
     /**
      * Atomically upsert a streaming assistant turn inside the write queue.

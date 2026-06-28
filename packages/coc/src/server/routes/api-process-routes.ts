@@ -14,7 +14,7 @@ import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
     CreateTaskInput, Attachment, QueuedTask, SearchFilter,
 } from '@plusplusoneplusplus/forge';
-import { deserializeProcess, getLogger, LogCategory, PASTE_THRESHOLD, isQueueProcessId, resolveModelForProvider, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { deserializeProcess, getLogger, LogCategory, PASTE_THRESHOLD, isQueueProcessId, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import {
     sendJSON, parseBody, parseQueryParams, parseIncludeFields, stripExcludedFields,
@@ -22,13 +22,18 @@ import {
 import type { QueueExecutorBridge } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, internalError, APIError } from '../errors';
 import { handleProcessStream, emitMessageQueued, emitPendingMessageAdded, emitMessageSteering } from '../streaming/sse-handler';
-import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from '../core/image-utils';
+import { saveImagesToTempFiles, isImageDataUrl } from '../core/image-utils';
 import { processMessageAttachments } from '../core/attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
-import { truncateDisplayName } from '../shared/queue-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import { getStoppedChatResumeUnavailableMessage, normalizeChatMode } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
+import {
+    ProcessMessageDeliveryService,
+    normalizeFollowUpInput,
+    FollowUpDeliveryError,
+} from '../processes/process-message-delivery-service';
+import type { FollowUpMessageInput } from '../processes/process-message-delivery-service';
 import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
 import { buildMetadataProcess } from '../processes/process-metadata-read-model';
@@ -39,9 +44,6 @@ const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 
 
 /** Terminal statuses that cannot be cancelled. */
 const TERMINAL_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
-
-/** Non-terminal statuses where a task may still be executing. */
-const NONTERMINAL_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'created']);
 
 type AskUserRouteAnswer = {
     questionId?: unknown;
@@ -901,197 +903,86 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, new APIError(501, 'Follow-up execution not available', 'NOT_IMPLEMENTED'));
             }
 
-            // Validate optional mode override; legacy `plan` is accepted as Ask.
-            const normalizedMode = normalizeChatMode(body.mode);
-            const modeOverride: string | undefined = normalizedMode === 'ralph' ? undefined : normalizedMode;
-
-            // Validate optional deliveryMode (immediate | enqueue), default to 'enqueue'
-            const VALID_DELIVERY_MODES = ['immediate', 'enqueue'];
-            if (body.deliveryMode !== undefined && body.deliveryMode !== null) {
-                if (typeof body.deliveryMode !== 'string' || !VALID_DELIVERY_MODES.includes(body.deliveryMode)) {
-                    return handleAPIError(res, badRequest(`Invalid deliveryMode: must be one of ${VALID_DELIVERY_MODES.join(', ')}`));
-                }
-            }
-            const deliveryMode: 'immediate' | 'enqueue' = (body.deliveryMode === 'immediate') ? 'immediate' : 'enqueue';
-            const requestedSkillNames = Array.isArray(body.skillNames) ? body.skillNames as unknown[] : undefined;
-            const selectedSkillNames: string[] | undefined = requestedSkillNames
-                ? [...new Set(requestedSkillNames.filter((value): value is string => typeof value === 'string' && value.trim().length > 0))]
-                : undefined;
-
-            // Read optional client-provided optimistic ID for reconciliation
-            const optimisticId: string | undefined = typeof body.optimisticId === 'string' ? body.optimisticId : undefined;
-
-            // Validate optional model override against the conversation provider.
-            const rawModelOverride: string | undefined = typeof body.model === 'string' && body.model.trim().length > 0 ? body.model.trim() : undefined;
+            // Normalize the optional scalar follow-up fields (mode, delivery mode,
+            // selected skills, model override, reasoning effort) against the
+            // conversation provider. The only client error here is an invalid
+            // deliveryMode, which maps to 400.
             const sessionProvider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
                 ? proc.metadata.provider
                 : 'copilot';
-            const resolvedModelOverride = resolveModelForProvider(sessionProvider, rawModelOverride);
-            if (resolvedModelOverride.coerced) {
+            const normalized = normalizeFollowUpInput(body, sessionProvider);
+            if (!normalized.ok) {
+                return handleAPIError(res, badRequest(normalized.error));
+            }
+            const fields = normalized.value;
+            if (fields.modelCoerced) {
                 getLogger().warn(
                     LogCategory.AI,
-                    `[Process] Dropping model '${resolvedModelOverride.requestedModel}' for process ${id} because provider '${sessionProvider}' does not support it; using provider default.`,
+                    `[Process] Dropping model '${fields.requestedModel}' for process ${id} because provider '${sessionProvider}' does not support it; using provider default.`,
                 );
             }
-            const modelOverride = resolvedModelOverride.model;
-
-            // Validate optional per-turn reasoning-effort override. Accepted
-            // values mirror the SDK contract: low | medium | high | xhigh.
-            // Unknown values are silently dropped so a stale client never
-            // breaks an otherwise-valid follow-up.
-            const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
-            const effortOverride: 'low' | 'medium' | 'high' | 'xhigh' | undefined =
-                typeof body.reasoningEffort === 'string' && VALID_EFFORTS.has(body.reasoningEffort)
-                    ? (body.reasoningEffort as 'low' | 'medium' | 'high' | 'xhigh')
-                    : undefined;
 
             // Pass content through as-is — /skill tokens are kept in the prompt
             // so the AI SDK receives the full user intent (e.g. "/impl fix the bug").
             const messageContent = (body.content as string);
-            const displayContent = prependSelectedSkillsDirective(messageContent, selectedSkillNames);
-
-            const priorStatus = proc.status;
+            const displayContent = prependSelectedSkillsDirective(messageContent, fields.selectedSkillNames);
             const isPasteExternalized = messageContent.length > PASTE_THRESHOLD;
 
-            // Helper: buffer a follow-up as a pending message for server-side drain.
-            // The server drains pending messages when the running task completes,
-            // avoiding duplicate task IDs in the queue.
-            // When buffered, the user turn is NOT appended to conversationTurns yet —
-            // it is deferred until drainPendingMessages runs, preserving correct
-            // [user, assistant, user, assistant] ordering.
-            let buffered = false;
-            const bufferAsPendingMessage = async () => {
-                buffered = true;
-                const pendingMsg = {
-                    id: crypto.randomUUID(),
-                    content: messageContent,
-                    displayContent,
-                    ...(validatedImages ? { images: validatedImages } : {}),
-                    ...(isPasteExternalized ? { pasteExternalized: true } : {}),
-                    ...(modelOverride ? { model: modelOverride } : {}),
-                    ...(effortOverride ? { reasoningEffort: effortOverride } : {}),
-                    ...(modeOverride ? { mode: modeOverride } : {}),
-                    ...(attachments ? { attachments } : {}),
-                    ...(imageTempDir ? { imageTempDir } : {}),
-                    ...(fileAttachmentMeta ? { fileAttachmentMeta } : {}),
-                    ...(selectedSkillNames && selectedSkillNames.length > 0 ? { skillNames: selectedSkillNames } : {}),
-                    createdAt: new Date().toISOString(),
-                };
-                const current = await store.getProcess(id);
-                const existing = current?.pendingMessages ?? [];
-                await store.updateProcess(id, {
-                    pendingMessages: [...existing, pendingMsg],
-                });
-                emitPendingMessageAdded(store, id, pendingMsg);
+            const deliveryInput: FollowUpMessageInput = {
+                content: messageContent,
+                displayContent,
+                ...(messageContentWithContext ? { contentWithContext: messageContentWithContext } : {}),
+                ...(attachments ? { attachments } : {}),
+                ...(validatedImages ? { images: validatedImages } : {}),
+                ...(imageTempDir ? { imageTempDir } : {}),
+                ...(fileAttachmentMeta ? { fileAttachmentMeta } : {}),
+                ...(fields.selectedSkillNames ? { selectedSkillNames: fields.selectedSkillNames } : {}),
+                ...(fields.mode ? { mode: fields.mode } : {}),
+                ...(fields.model ? { model: fields.model } : {}),
+                ...(fields.effort ? { effort: fields.effort } : {}),
+                deliveryMode: fields.deliveryMode,
+                ...(resumeSessionId ? { resumeSessionId } : {}),
+                ...(fields.optimisticId !== undefined ? { optimisticId: fields.optimisticId } : {}),
+                pasteExternalized: isPasteExternalized,
             };
 
-            let steerSucceeded = false;
-
+            const deliveryService = new ProcessMessageDeliveryService({ store, bridge });
+            let result;
             try {
-                if (bridge.enqueue) {
-                    const displayName = truncateDisplayName(messageContent.trim());
-                    const parentTask = bridge.findTaskByProcessId?.(id);
-                    if (parentTask && parentTask.status === 'running' && deliveryMode === 'immediate' && bridge.steerProcess) {
-                        const steered = await bridge.steerProcess(id, messageContent);
-                        if (!steered) {
-                            // Steering failed (no active SDK session); buffer for server-side drain
-                            await bufferAsPendingMessage();
-                        } else {
-                            steerSucceeded = true;
-                        }
-                    } else if (
-                        (parentTask && (parentTask.status === 'running' || parentTask.status === 'queued')) ||
-                        (!parentTask && NONTERMINAL_STATUSES.has(priorStatus))
-                    ) {
-                        // Task running/queued, or task not found but process was non-terminal:
-                        // buffer as pending message — server drains on task completion
-                        await bufferAsPendingMessage();
-                    } else {
-                        // Terminal status (failed or resumable cancelled) or restart fallback → enqueue
-                        const enqueueWsId = (proc.metadata?.workspaceId as string) ?? undefined;
-                        await bridge.enqueue({
-                            ...(isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
-                            processId: id,
-                            type: 'chat',
-                            priority: 'normal',
-                            payload: {
-                                kind: 'chat',
-                                prompt: messageContentWithContext ?? messageContent,
-                                processId: id,
-                                ...(resumeSessionId ? { resumeSessionId } : {}),
-                                attachments,
-                                imageTempDir,
-                                images: validatedImages,
-                                ...(fileAttachmentMeta ? { fileAttachmentMeta } : {}),
-                                workingDirectory: proc.workingDirectory,
-                                ...(enqueueWsId ? { workspaceId: enqueueWsId } : {}),
-                                readonly: (proc as any).payload?.readonly,
-                                ...(selectedSkillNames && selectedSkillNames.length > 0 ? { context: { skills: selectedSkillNames } } : {}),
-                                ...(modeOverride ? { mode: modeOverride } : {}),
-                                ...(modelOverride ? { model: modelOverride } : {}),
-                                ...(effortOverride ? { reasoningEffort: effortOverride } : {}),
-                                deliveryMode,
-                            },
-                            // Mirror the per-turn reasoning-effort into
-                            // config so executors that inspect
-                            // `task.config.reasoningEffort` (e.g. chat-base
-                            // executor for non-follow-up forks) see it too.
-                            config: effortOverride ? { reasoningEffort: effortOverride } : {},
-                            displayName,
-                        });
-                    }
-                } else {
-                    bridge.executeFollowUp(id, messageContentWithContext ?? messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames, modelOverride, undefined, effortOverride, resumeSessionId).catch(() => {
-                    }).finally(() => {
-                        if (imageTempDir) { cleanupTempDir(imageTempDir); }
-                    });
-                }
+                result = await deliveryService.deliver(proc, deliveryInput);
             } catch (err) {
-                await store.updateProcess(id, { status: priorStatus as AIProcessStatus }).catch(() => {});
-                return handleAPIError(res, new APIError(500, 'Failed to enqueue follow-up', 'ENQUEUE_FAILED'));
+                if (err instanceof FollowUpDeliveryError) {
+                    return handleAPIError(res, new APIError(500, 'Failed to enqueue follow-up', 'ENQUEUE_FAILED'));
+                }
+                throw err;
             }
 
-            // Persist the user turn and mark the process as running atomically.
-            // Skipped for the buffered path — the turn is deferred until
-            // drainPendingMessages appends it at the correct position after
-            // the current assistant response completes.
-            let turnIndex = -1;
-            if (!buffered) {
-                const appendResult = await store.appendConversationTurn(
-                    id,
-                    (idx) => ({
-                        role: 'user' as const,
-                        content: displayContent,
-                        timestamp: new Date(),
-                        turnIndex: idx,
-                        timeline: [],
-                        images: validatedImages,
-                        ...(isPasteExternalized ? { pasteExternalized: true } : {}),
-                        ...(modelOverride ? { model: modelOverride } : {}),
-                        ...(modeOverride ? { mode: modeOverride } : {}),
-                    }),
-                    { additionalUpdates: { status: 'running' } },
-                );
-                turnIndex = appendResult?.turn.turnIndex ?? (proc.conversationTurns?.length ?? 0);
+            // Emit the delivery service's event intents exactly once, in order.
+            for (const event of result.events) {
+                switch (event.kind) {
+                    case 'pending-message-added':
+                        emitPendingMessageAdded(store, id, event.pendingMessage);
+                        break;
+                    case 'message-queued':
+                        emitMessageQueued(store, id, {
+                            turnIndex: event.turnIndex,
+                            deliveryMode: event.deliveryMode,
+                            queuePosition: event.queuePosition,
+                            optimisticId: event.optimisticId,
+                        });
+                        break;
+                    case 'message-steering':
+                        emitMessageSteering(store, id, { turnIndex: event.turnIndex, optimisticId: event.optimisticId });
+                        break;
+                }
             }
 
-            emitMessageQueued(store, id, {
-                turnIndex,
-                deliveryMode,
-                queuePosition: deliveryMode === 'immediate' ? 0 : 1,
-                optimisticId,
-            });
-
-            if (steerSucceeded) {
-                emitMessageSteering(store, id, { turnIndex, optimisticId });
-            }
-
-            globalThis.process.stderr.write(`[Process] message id=${id} turnIndex=${turnIndex}\n`);
+            globalThis.process.stderr.write(`[Process] message id=${id} turnIndex=${result.turnIndex}\n`);
 
             sendJSON(res, 202, {
                 processId: id,
-                turnIndex,
-                ...(isPasteExternalized ? { pasteExternalized: true } : {}),
+                turnIndex: result.turnIndex,
+                ...(result.pasteExternalized ? { pasteExternalized: true } : {}),
             });
         },
     });
