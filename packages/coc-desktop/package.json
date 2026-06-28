@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "icon": "node scripts/generate-icon.mjs",
-    "rebuild:native": "electron-rebuild --force --only better-sqlite3,node-pty --module-dir ../..",
+    "rebuild:native": "electron-rebuild --force --only better-sqlite3,node-pty --module-dir ../coc",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "test": "vitest",
@@ -19,13 +19,13 @@
   "devDependencies": {
     "@electron/rebuild": "^4.0.6",
     "@types/node": "^20.0.0",
-    "electron": "^42.5.0",
+    "electron": "^35.0.0",
     "electron-builder": "^26.15.3",
     "typescript": "^5.3.0",
     "vitest": "^4.1.5"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=20"
   },
   "build": {
     "appId": "com.plusplusoneplusplus.coc",
