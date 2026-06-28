@@ -193,6 +193,132 @@ describe('CopilotSDKService - forkSession', () => {
 });
 
 // ============================================================================
+// rewindSession Tests (AC-02)
+// ============================================================================
+
+describe('CopilotSDKService - rewindSession', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    /**
+     * Build a mock client whose resumed session exposes
+     * `rpc.history.truncate`. Returns the individual spies so each test can
+     * assert call order / arguments. `createSession` is intentionally absent:
+     * rewind must never fall back to it.
+     */
+    function setupRewindClient(overrides?: {
+        truncate?: ReturnType<typeof vi.fn>;
+        resumeSession?: ReturnType<typeof vi.fn>;
+        disconnect?: ReturnType<typeof vi.fn>;
+        start?: ReturnType<typeof vi.fn>;
+        stop?: ReturnType<typeof vi.fn>;
+    }) {
+        const truncate = overrides?.truncate ?? vi.fn().mockResolvedValue({ eventsRemoved: 3 });
+        const disconnect = overrides?.disconnect ?? vi.fn().mockResolvedValue(undefined);
+        const session = { rpc: { history: { truncate } }, disconnect };
+        const resumeSession = overrides?.resumeSession ?? vi.fn().mockResolvedValue(session);
+        const start = overrides?.start ?? vi.fn().mockResolvedValue(undefined);
+        const stop = overrides?.stop ?? vi.fn().mockResolvedValue(undefined);
+        createSdkClientMock.mockResolvedValue({ start, stop, resumeSession });
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+        return { truncate, disconnect, resumeSession, start, stop };
+    }
+
+    it('should resume the session, truncate at the event id, and return the result', async () => {
+        const { truncate, resumeSession, start, stop, disconnect } = setupRewindClient();
+
+        const result = await service.rewindSession('sess-1', 'evt-42');
+
+        expect(result).toEqual({ eventsRemoved: 3, upToEventId: 'evt-42' });
+        expect(start).toHaveBeenCalled();
+        expect(resumeSession).toHaveBeenCalledWith('sess-1', expect.any(Object));
+        expect(truncate).toHaveBeenCalledWith({ eventId: 'evt-42' });
+        expect(disconnect).toHaveBeenCalled();
+        expect(stop).toHaveBeenCalled();
+    });
+
+    it('should resume with a permission handler that denies all requests (no tool side effects)', async () => {
+        const { resumeSession } = setupRewindClient();
+
+        await service.rewindSession('sess-1', 'evt-1');
+
+        const config = resumeSession.mock.calls[0][1];
+        expect(typeof config.onPermissionRequest).toBe('function');
+        // The handler denies every permission so truncation runs no tools.
+        expect(config.onPermissionRequest()).toEqual({ kind: 'reject' });
+    });
+
+    it('should default eventsRemoved to 0 when the provider omits it', async () => {
+        setupRewindClient({ truncate: vi.fn().mockResolvedValue({}) });
+
+        const result = await service.rewindSession('sess-1', 'evt-7');
+
+        expect(result).toEqual({ eventsRemoved: 0, upToEventId: 'evt-7' });
+    });
+
+    it('should NOT fall back to createSession when resume fails — it rethrows', async () => {
+        const resumeSession = vi.fn().mockRejectedValue(new Error('session state missing'));
+        const stop = vi.fn().mockResolvedValue(undefined);
+        const createSession = vi.fn();
+        createSdkClientMock.mockResolvedValue({
+            start: vi.fn().mockResolvedValue(undefined),
+            stop,
+            resumeSession,
+            createSession,
+        });
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        await expect(service.rewindSession('missing-session', 'evt-1')).rejects.toThrow('session state missing');
+        // A missing session must surface as an error, never a silent new session.
+        expect(createSession).not.toHaveBeenCalled();
+        expect(stop).toHaveBeenCalled();
+    });
+
+    it('should disconnect the session and stop the client even if truncate fails', async () => {
+        const disconnect = vi.fn().mockResolvedValue(undefined);
+        const stop = vi.fn().mockResolvedValue(undefined);
+        setupRewindClient({
+            truncate: vi.fn().mockRejectedValue(new Error('truncate failed')),
+            disconnect,
+            stop,
+        });
+
+        await expect(service.rewindSession('sess-1', 'evt-1')).rejects.toThrow('truncate failed');
+        expect(disconnect).toHaveBeenCalled();
+        expect(stop).toHaveBeenCalled();
+    });
+
+    it('should call start, resume, then truncate in order', async () => {
+        const callOrder: string[] = [];
+        const truncate = vi.fn().mockImplementation(async () => { callOrder.push('truncate'); return { eventsRemoved: 1 }; });
+        const session = { rpc: { history: { truncate } }, disconnect: vi.fn().mockResolvedValue(undefined) };
+        const resumeSession = vi.fn().mockImplementation(async () => { callOrder.push('resume'); return session; });
+        const start = vi.fn().mockImplementation(async () => { callOrder.push('start'); });
+        createSdkClientMock.mockResolvedValue({ start, stop: vi.fn().mockResolvedValue(undefined), resumeSession });
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        await service.rewindSession('sess-1', 'evt-1');
+
+        expect(callOrder).toEqual(['start', 'resume', 'truncate']);
+    });
+
+    it('should throw when service is disposed', async () => {
+        service.dispose();
+        await expect(service.rewindSession('any-session', 'evt-1')).rejects.toThrow('disposed');
+    });
+});
+
+// ============================================================================
 // onSessionCreated Callback Tests
 // ============================================================================
 

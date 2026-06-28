@@ -238,6 +238,27 @@ describe('RequestRunner.send() — streaming path', () => {
         expect(result.success).toBe(true);
         expect(result.response).toBe('streamed');
     });
+
+    it('surfaces the captured user.message event id on the result (rewind anchor — AC-01)', async () => {
+        const { session, dispatchEvent } = createStreamingMockSession();
+        const mockClient = { createSession: vi.fn().mockResolvedValue(session), stop: vi.fn().mockResolvedValue(undefined) };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        const resultPromise = runner.send({
+            prompt: 'stream test',
+            timeoutMs: 200_000,
+            loadDefaultMcpConfig: false,
+        });
+
+        await vi.waitFor(() => expect(session.on).toHaveBeenCalled(), { timeout: 1000 });
+        dispatchEvent({ type: 'user.message', id: 'evt-user-42', data: { content: 'stream test' } });
+        dispatchEvent({ type: 'assistant.message', data: { content: 'streamed' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.userMessageEventId).toBe('evt-user-42');
+    });
 });
 
 // ============================================================================

@@ -606,6 +606,127 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
+    // POST /api/processes/:id/turns/:turnIndex/rewind — Rewind a copilot
+    // conversation to an earlier user turn.
+    //
+    // Destructive, in-place truncation (chat history only): the target user turn
+    // and everything after it are permanently dropped from BOTH the copilot-sdk
+    // session history (via rewindSession) AND the CoC conversation_turns store
+    // (hard delete). The removed user message's text + images are returned so the
+    // client can repopulate the composer for edit/resend (AC-03 → AC-04). Files,
+    // git state, and code edits made during the removed turns are NOT reverted.
+    //
+    // Guards (all surface typed errors the SPA shows as a toast):
+    //   - provider must be copilot                 → 409 REWIND_UNSUPPORTED
+    //   - conversation must be idle (no queued work) → 409 CONVERSATION_NOT_IDLE
+    //   - target must be a user turn carrying a
+    //     captured sdkEventId anchor               → 400 TURN_NOT_REWINDABLE
+    //   - unknown process / turn index             → 404
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/processes\/([^/]+)\/turns\/(\d+)\/rewind$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const turnIndex = parseInt(match![2], 10);
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+
+            const proc = await resolveProcess(store, id, wsId);
+            if (!proc) {
+                return handleAPIError(res, notFound('Process'));
+            }
+
+            // Provider guard: rewind relies on the copilot-sdk history.truncate RPC,
+            // so it is copilot-only. The provider string defaults to copilot.
+            const provider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
+                ? proc.metadata.provider
+                : 'copilot';
+            if (provider !== 'copilot') {
+                return handleAPIError(res, new APIError(409, `Rewind is not supported for provider '${provider}'.`, 'REWIND_UNSUPPORTED'));
+            }
+
+            // Idle guard: only a settled conversation with no buffered work can be
+            // rewound. A running/queued/cancelling status — or any pending message
+            // waiting to drain — would race the truncation.
+            if (!TERMINAL_STATUSES.has(proc.status) || (proc.pendingMessages?.length ?? 0) > 0) {
+                return handleAPIError(res, new APIError(409, 'Conversation must be idle (not running, queued, or streaming) to rewind.', 'CONVERSATION_NOT_IDLE'));
+            }
+
+            // Locate the target turn by its turnIndex value (not array position) so
+            // a prior truncation or any gap is handled correctly.
+            const target = (proc.conversationTurns ?? []).find(t => t.turnIndex === turnIndex);
+            if (!target) {
+                return handleAPIError(res, notFound('Turn'));
+            }
+            if (target.role !== 'user') {
+                return handleAPIError(res, new APIError(400, 'Only user turns can be rewound to.', 'TURN_NOT_REWINDABLE'));
+            }
+            if (!target.sdkEventId) {
+                return handleAPIError(res, new APIError(400, 'This turn has no captured rewind anchor and cannot be rewound (legacy or pre-fork turn).', 'TURN_NOT_REWINDABLE'));
+            }
+            if (!proc.sdkSessionId) {
+                return handleAPIError(res, new APIError(400, 'Conversation has no SDK session to rewind.', 'TURN_NOT_REWINDABLE'));
+            }
+            if (!store.truncateConversationTurns) {
+                return handleAPIError(res, badRequest('Rewind not supported by this store'));
+            }
+
+            // Truncate the SDK session FIRST. Only on success do we hard-delete the
+            // CoC turns — so we never drop CoC history while the provider session
+            // still remembers it (the reverse would resurrect removed turns on the
+            // next resume).
+            const { sdkServiceRegistry, SDK_PROVIDER_COPILOT, isRewindUnsupportedError } = await import('@plusplusoneplusplus/forge');
+            try {
+                const sdkService = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
+                await sdkService.rewindSession(proc.sdkSessionId, target.sdkEventId);
+            } catch (err: any) {
+                if (isRewindUnsupportedError(err)) {
+                    return handleAPIError(res, new APIError(409, err?.message || 'Rewind is not supported for this conversation.', 'REWIND_UNSUPPORTED'));
+                }
+                return handleAPIError(res, internalError(`Failed to rewind SDK session: ${err?.message || err}`));
+            }
+
+            // SDK history is already gone. Hard-delete the CoC turns at/after the
+            // target. A failure here leaves the stores inconsistent (SDK ahead);
+            // surface it (handleAPIError logs the 500) — the SDK truncation is
+            // irreversible, so we do not try to roll it back.
+            let result;
+            try {
+                result = await store.truncateConversationTurns(proc.id, turnIndex);
+            } catch (err: any) {
+                return handleAPIError(res, internalError(`SDK history was truncated but CoC turns could not be removed: ${err?.message || err}`));
+            }
+            if (!result) {
+                return handleAPIError(res, notFound('Process'));
+            }
+
+            // Invalidate the warm client so the next send resumes the truncated
+            // session from a cold client rather than a warm one whose in-memory
+            // session view is now stale. Best-effort — never fails the rewind.
+            try {
+                const sdkService = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
+                await sdkService.evictWarm?.({ warmKey: proc.id });
+            } catch {
+                /* best-effort cache invalidation */
+            }
+
+            // Notify open viewers so they refresh the (now shorter) conversation.
+            getWsServer?.()?.broadcastProcessEvent({
+                type: 'turn-rewound',
+                processId: proc.id,
+                turnIndex,
+                turnsRemoved: result.removed.length,
+            });
+
+            sendJSON(res, 200, {
+                restored: {
+                    content: target.content,
+                    ...(target.images && target.images.length > 0 ? { images: target.images } : {}),
+                },
+                turnsRemoved: result.removed.length,
+            });
+        },
+    });
+
     // POST /api/processes/:id/prewarm — Pre-warm this process's provider client
     //
     // Fired when the user starts typing a follow-up (see FollowUpInputArea). Warms

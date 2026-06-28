@@ -204,6 +204,26 @@ export interface TurnArchiveResponse {
   archived: boolean;
 }
 
+/**
+ * Response from `POST /processes/:id/turns/:turnIndex/rewind`.
+ *
+ * The rewind destructively truncated the conversation at the target user turn:
+ * that turn and everything after it were removed from both the SDK session
+ * history and the CoC store. `restored` carries the removed user message's text
+ * and images so the caller can repopulate the composer for edit/resend;
+ * `turnsRemoved` is how many CoC turns were deleted.
+ */
+export interface TurnRewindResponse {
+  restored: {
+    /** The rewound user message's text, to restore into the composer. */
+    content: string;
+    /** Base64 data-URL image attachments on the rewound turn, if any. */
+    images?: string[];
+  };
+  /** Number of CoC conversation turns removed (target turn + everything after). */
+  turnsRemoved: number;
+}
+
 export interface PinnedTurnsResponse {
   turns: ConversationTurn[];
 }

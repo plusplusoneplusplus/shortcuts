@@ -268,6 +268,13 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
                 onClick: () => props.onArchiveTurn(turnIndex, !props.turn?.archived),
             }, props.turn?.archived ? 'Unarchive' : 'Archive'));
         }
+        if (props.turn?.interrupted && props.onContinueInterrupted && turnIndex != null) {
+            children.push(React.createElement('button', {
+                key: 'continue-interrupted',
+                'data-testid': `continue-interrupted-${turnIndex}`,
+                onClick: props.onContinueInterrupted,
+            }, 'Continue / retry'));
+        }
         return React.createElement('div', {
             'data-testid': `turn-${props.turn?.role}`,
             'data-turn-index': turnIndex,
@@ -920,6 +927,89 @@ describe('ChatDetail', () => {
             });
             fireEvent.click(screen.getByTestId('activity-chat-send-btn'));
             expect(mockState.sendFollowUp).toHaveBeenCalled();
+        });
+
+        it('continues an interrupted turn using the live process metadata mode instead of the composer mode', async () => {
+            const task = makeTask({
+                payload: {
+                    ...makeTask().payload,
+                    mode: 'ask',
+                },
+            });
+            const proc = makeProcess({
+                metadata: { mode: 'autopilot', sessionId: 'sess-live-mode' },
+                conversationTurns: [
+                    { role: 'user', content: 'Start in ask', turnIndex: 0, timeline: [], mode: 'ask' },
+                    {
+                        role: 'assistant',
+                        content: 'Partial autopilot answer',
+                        turnIndex: 1,
+                        timeline: [],
+                        interrupted: true,
+                        interruptionReason: 'Request timed out after 90000ms',
+                    },
+                ],
+            });
+            setupStandardFetch(task, proc);
+
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('continue-interrupted-1')).toBeTruthy();
+                expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+            });
+
+            fireEvent.click(screen.getByTestId('continue-interrupted-1'));
+
+            expect(mockState.sendFollowUp).toHaveBeenCalledWith(
+                expect.any(String),
+                'enqueue',
+                expect.objectContaining({
+                    includeComposerContext: false,
+                    modeOverride: 'autopilot',
+                }),
+            );
+        });
+
+        it('still coerces interrupted Ralph retries to ask follow-ups', async () => {
+            const task = makeTask({
+                payload: {
+                    ...makeTask().payload,
+                    mode: 'ask',
+                },
+            });
+            const proc = makeProcess({
+                metadata: { mode: 'ralph', sessionId: 'sess-ralph-mode' },
+                conversationTurns: [
+                    { role: 'user', content: 'Promote this', turnIndex: 0, timeline: [], mode: 'ask' },
+                    {
+                        role: 'assistant',
+                        content: 'Partial Ralph answer',
+                        turnIndex: 1,
+                        timeline: [],
+                        interrupted: true,
+                        interruptionReason: 'Request timed out after 90000ms',
+                    },
+                ],
+            });
+            setupStandardFetch(task, proc);
+
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('continue-interrupted-1')).toBeTruthy();
+            });
+
+            fireEvent.click(screen.getByTestId('continue-interrupted-1'));
+
+            expect(mockState.sendFollowUp).toHaveBeenCalledWith(
+                expect.any(String),
+                'enqueue',
+                expect.objectContaining({
+                    includeComposerContext: false,
+                    modeOverride: 'ask',
+                }),
+            );
         });
 
         it('input enabled for cancelled task with a saved sdkSessionId', async () => {

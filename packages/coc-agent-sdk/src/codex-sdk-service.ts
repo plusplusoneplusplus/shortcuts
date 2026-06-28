@@ -20,7 +20,8 @@
 import type { SendMessageOptions, SystemMessageConfig, TokenUsage } from './types';
 import type { ToolEvent } from './types';
 import { denyAllPermissions } from './types';
-import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult, PrewarmOptions } from './sdk-service-interface';
+import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult, PrewarmOptions, RewindResult } from './sdk-service-interface';
+import { RewindUnsupportedError } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
 import type { ToolCall } from './tool-call';
 import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
@@ -1703,6 +1704,15 @@ export class CodexSDKService implements ISDKService {
             abortController: new AbortController(),
         });
         return newThreadId;
+    }
+
+    /**
+     * History rewind/truncation is not supported by the Codex SDK (AC-02).
+     * Throws the typed {@link RewindUnsupportedError} so the backend can surface
+     * a "rewind unsupported" rejection to the user.
+     */
+    public async rewindSession(_sessionId: string, _eventId: string): Promise<RewindResult> {
+        throw new RewindUnsupportedError(CODEX_PROVIDER);
     }
 
     public async abortSession(sessionId: string): Promise<boolean> {

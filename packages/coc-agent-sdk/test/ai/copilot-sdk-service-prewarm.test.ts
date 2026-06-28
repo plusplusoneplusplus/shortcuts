@@ -276,6 +276,72 @@ describe('CopilotSDKService.getWarmStatus — current warm snapshot (AC-02)', ()
 });
 
 // ============================================================================
+// evictWarm — tears down the parked client after a rewind (AC-03)
+// ============================================================================
+
+describe('CopilotSDKService.evictWarm — invalidates the warm client (AC-03)', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        service.dispose();
+        resetCopilotSDKService();
+        resetSDKLogger();
+    });
+
+    function wireMock() {
+        const mod = createMockSDKModule(() => createMockSession());
+        createSdkClientMock.mockImplementation((opts: any) => new mod.MockCopilotClient(opts));
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+        return mod;
+    }
+
+    it('evicts a warm client so the key goes cold and the process is stopped', async () => {
+        const { mockClient } = wireMock();
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
+        expect((service as any).warmRegistry.isWarm(KEY)).toBe(true);
+
+        await service.evictWarm({ warmKey: PROCESS_A });
+
+        expect((service as any).warmRegistry.isWarm(KEY)).toBe(false);
+        expect((service as any).warmRegistry.size()).toBe(0);
+        expect(mockClient.stop).toHaveBeenCalledTimes(1);
+        // After eviction the next send must cold-start a fresh client.
+        expect(service.getWarmStatus({ warmKey: PROCESS_A, workingDirectory: WD })).toBe('cold');
+    });
+
+    it('only evicts the targeted key, leaving other warm clients parked', async () => {
+        wireMock();
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
+        await service.prewarm({ warmKey: PROCESS_B, workingDirectory: WD });
+
+        await service.evictWarm({ warmKey: PROCESS_A });
+
+        expect((service as any).warmRegistry.isWarm(KEY)).toBe(false);
+        expect((service as any).warmRegistry.isWarm(KEY_B)).toBe(true);
+    });
+
+    it('is a quiet no-op for a key with no warm client', async () => {
+        wireMock();
+        await expect(service.evictWarm({ warmKey: PROCESS_A })).resolves.toBeUndefined();
+        expect((service as any).warmRegistry.size()).toBe(0);
+    });
+
+    it('no-ops without a warmKey', async () => {
+        wireMock();
+        await service.prewarm({ warmKey: PROCESS_A, workingDirectory: WD });
+        await service.evictWarm({ warmKey: '' });
+        // The empty-key guard returns early; the real warm client is untouched.
+        expect((service as any).warmRegistry.isWarm(KEY)).toBe(true);
+    });
+});
+
+// ============================================================================
 // Warming disabled (TTL = 0)
 // ============================================================================
 

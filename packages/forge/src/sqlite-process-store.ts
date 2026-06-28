@@ -138,6 +138,7 @@ interface TurnRow {
     deleted_at: string | null;
     pinned_at: string | null;
     archived: number;
+    sdk_event_id: string | null;
 }
 
 interface PromptAutocompleteHistoryRow {
@@ -469,6 +470,7 @@ function turnToRow(turn: ConversationTurn, processId: string): Record<string, un
         paste_externalized: boolToInt(turn.pasteExternalized),
         model: turn.model ?? null,
         mode: turn.mode ?? null,
+        sdk_event_id: turn.sdkEventId ?? null,
         deleted_at: dateToIso(turn.deletedAt),
         pinned_at: dateToIso(turn.pinnedAt),
         archived: boolToInt(turn.archived),
@@ -522,6 +524,7 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         pasteExternalized: intToBool(row.paste_externalized),
         ...(row.model ? { model: row.model } : {}),
         ...(row.mode ? { mode: row.mode } : {}),
+        ...(row.sdk_event_id ? { sdkEventId: row.sdk_event_id } : {}),
         deletedAt: isoToDate(row.deleted_at),
         pinnedAt: isoToDate(row.pinned_at),
         archived: intToBool(row.archived),
@@ -651,11 +654,11 @@ export class SqliteProcessStore implements ProcessStore {
             INSERT INTO conversation_turns (
                 process_id, turn_index, role, content, timestamp, streaming,
                 interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
-                token_usage, paste_externalized, model, mode
+                token_usage, paste_externalized, model, mode, sdk_event_id
             ) VALUES (
                 @process_id, @turn_index, @role, @content, @timestamp, @streaming,
                 @interrupted, @interruption_reason, @tool_calls, @timeline, @images, @historical, @suggestions,
-                @token_usage, @paste_externalized, @model, @mode
+                @token_usage, @paste_externalized, @model, @mode, @sdk_event_id
             )
         `);
 
@@ -1273,6 +1276,7 @@ export class SqliteProcessStore implements ProcessStore {
                     paste_externalized: 0,
                     model: null,
                     mode: null,
+                    sdk_event_id: null,
                 });
             }
         });
@@ -1389,6 +1393,67 @@ export class SqliteProcessStore implements ProcessStore {
             getLogger().warn('SqliteProcessStore', `Turn not found: processId=${processId}, turnIndex=${turnIndex}`);
         }
         this.onProcessChange?.({ type: 'process-updated' });
+    }
+
+    async updateTurnSdkEventId(
+        processId: string,
+        turnIndex: number,
+        sdkEventId: string,
+    ): Promise<void> {
+        const result = this.db.prepare(
+            "UPDATE conversation_turns SET sdk_event_id = ? WHERE process_id = ? AND turn_index = ? AND role = 'user'"
+        ).run(sdkEventId, processId, turnIndex);
+
+        if (result.changes === 0) {
+            getLogger().warn('SqliteProcessStore', `User turn not found for sdkEventId update: processId=${processId}, turnIndex=${turnIndex}`);
+        }
+        this.onProcessChange?.({ type: 'process-updated' });
+    }
+
+    async truncateConversationTurns(
+        processId: string,
+        fromTurnIndex: number,
+    ): Promise<{ removed: ConversationTurn[]; allTurns: ConversationTurn[] } | undefined> {
+        let result: { removed: ConversationTurn[]; allTurns: ConversationTurn[] } | undefined;
+
+        const txn = this.db.transaction(() => {
+            const processRow = this.getProcessStmt.get(processId) as ProcessRow | undefined;
+            if (!processRow) return;
+
+            // Snapshot the turns being dropped (turn_index >= fromTurnIndex), in order,
+            // so the caller can repopulate the composer from the removed user message.
+            const removedRows = this.db.prepare(
+                'SELECT * FROM conversation_turns WHERE process_id = ? AND turn_index >= ? ORDER BY turn_index'
+            ).all(processId, fromTurnIndex) as TurnRow[];
+            const removed = removedRows.map(rowToTurn);
+
+            // Hard-delete them — destructive in-place truncation, mirroring the SDK
+            // history events that a rewind permanently drops.
+            this.db.prepare(
+                'DELETE FROM conversation_turns WHERE process_id = ? AND turn_index >= ?'
+            ).run(processId, fromTurnIndex);
+
+            // Recompute conversation-derived process metadata from the survivors.
+            // Remaining turns keep their original turn_index (no renumbering).
+            const allTurnRows = this.getTurnsStmt.all(processId) as TurnRow[];
+            const allTurns = allTurnRows.map(rowToTurn);
+            const lastTurn = allTurns[allTurns.length - 1];
+            const lastUserTurn = [...allTurns].reverse().find(t => t.role === 'user');
+            const lastEventAt = lastTurn ? lastTurn.timestamp.toISOString() : null;
+            const lastMessagePreview = lastUserTurn ? (computeMessagePreview(lastUserTurn.content) ?? null) : null;
+            this.db.prepare('UPDATE processes SET last_event_at = ?, last_message_preview = ? WHERE id = ?')
+                .run(lastEventAt, lastMessagePreview, processId);
+
+            result = { removed, allTurns };
+        });
+
+        txn();
+
+        if (result) {
+            const updated = await this.getProcess(processId);
+            this.onProcessChange?.({ type: 'process-updated', process: updated ?? undefined });
+        }
+        return result;
     }
 
     // ========================================================================

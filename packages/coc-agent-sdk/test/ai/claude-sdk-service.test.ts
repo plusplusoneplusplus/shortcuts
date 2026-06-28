@@ -35,6 +35,7 @@ import {
     SDK_PROVIDER_CLAUDE,
     sdkServiceRegistry,
 } from '../../src/sdk-service-registry';
+import { RewindUnsupportedError, isRewindUnsupportedError } from '../../src/sdk-service-interface';
 import { initSDKLogger, resetSDKLogger } from '../../src/logger';
 
 // ============================================================================
@@ -2776,6 +2777,16 @@ describe('ClaudeSDKService session operations', () => {
         await expect(unsupportedSvc.forkSession('any-id')).rejects.toThrow(/does not export forkSession/);
 
         unsupportedSvc.dispose();
+    });
+
+    it('rewindSession throws the typed RewindUnsupportedError (AC-02)', async () => {
+        await expect(svc.rewindSession('any-id', 'evt-1')).rejects.toBeInstanceOf(RewindUnsupportedError);
+        await expect(svc.rewindSession('any-id', 'evt-1')).rejects.toMatchObject({
+            code: 'REWIND_UNSUPPORTED',
+            provider: CLAUDE_PROVIDER,
+        });
+        const err = await svc.rewindSession('any-id', 'evt-1').catch((e) => e);
+        expect(isRewindUnsupportedError(err)).toBe(true);
     });
 
     it('steerSession returns false (unsupported, not silent success)', async () => {

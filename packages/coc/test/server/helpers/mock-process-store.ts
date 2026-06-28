@@ -183,6 +183,24 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             const updatedTurns = turns.map((turn: ConversationTurn, i: number) => i === turnIndex ? { ...turn, content } : turn);
             processes.set(processId, { ...existing, conversationTurns: updatedTurns });
         }),
+        updateTurnSdkEventId: vi.fn(async (processId: string, turnIndex: number, sdkEventId: string) => {
+            const existing = processes.get(processId);
+            if (!existing) return;
+            const turns = existing.conversationTurns ?? [];
+            if (turnIndex < 0 || turnIndex >= turns.length) return;
+            if (turns[turnIndex].role !== 'user') return;
+            const updatedTurns = turns.map((turn: ConversationTurn, i: number) => i === turnIndex ? { ...turn, sdkEventId } : turn);
+            processes.set(processId, { ...existing, conversationTurns: updatedTurns });
+        }),
+        truncateConversationTurns: vi.fn(async (processId: string, fromTurnIndex: number) => {
+            const existing = processes.get(processId);
+            if (!existing) return undefined;
+            const turns = existing.conversationTurns ?? [];
+            const removed = turns.filter((t: ConversationTurn) => t.turnIndex >= fromTurnIndex);
+            const allTurns = turns.filter((t: ConversationTurn) => t.turnIndex < fromTurnIndex);
+            processes.set(processId, { ...existing, conversationTurns: allTurns });
+            return { removed, allTurns };
+        }),
         getProcessCount: vi.fn(async (filter?: { workspaceId?: string; status?: string | string[] }) => {
             let result = Array.from(processes.values());
             if (filter?.workspaceId) {

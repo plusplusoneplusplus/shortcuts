@@ -135,6 +135,28 @@ export function createStubStore(): ProcessStore {
             processes.set(processId, merged);
             changeCallback?.({ type: 'process-updated', process: merged });
         },
+        updateTurnSdkEventId: async (processId, turnIndex, sdkEventId) => {
+            const existing = processes.get(processId);
+            if (!existing) return;
+            const turns = existing.conversationTurns ?? [];
+            if (turnIndex < 0 || turnIndex >= turns.length) return;
+            if (turns[turnIndex].role !== 'user') return;
+            const updatedTurns = turns.map((turn, i) => i === turnIndex ? { ...turn, sdkEventId } : turn);
+            const merged = { ...existing, conversationTurns: updatedTurns };
+            processes.set(processId, merged);
+            changeCallback?.({ type: 'process-updated', process: merged });
+        },
+        truncateConversationTurns: async (processId, fromTurnIndex) => {
+            const existing = processes.get(processId);
+            if (!existing) return undefined;
+            const turns = existing.conversationTurns ?? [];
+            const removed = turns.filter(t => t.turnIndex >= fromTurnIndex);
+            const allTurns = turns.filter(t => t.turnIndex < fromTurnIndex);
+            const merged = { ...existing, conversationTurns: allTurns };
+            processes.set(processId, merged);
+            changeCallback?.({ type: 'process-updated', process: merged });
+            return { removed, allTurns };
+        },
     };
 
     // Expose onProcessChange setter via defineProperty

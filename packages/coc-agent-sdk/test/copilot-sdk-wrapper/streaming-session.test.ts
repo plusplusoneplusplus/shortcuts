@@ -516,6 +516,66 @@ describe('StreamingSession — tool call capture', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// user.message event-id capture (rewind anchor — AC-01)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('StreamingSession — user.message event id capture', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('captures the user.message event id and returns it on the result', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+
+        emit({ type: 'user.message', id: 'evt-user-1', data: { content: 'Hello' } });
+        emit({ type: 'assistant.message', data: { content: 'hi' } });
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(result.userMessageEventId).toBe('evt-user-1');
+    });
+
+    it('keeps the FIRST user.message id when several arrive in one run (steering/queued)', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+
+        // Earliest event begins the turn; truncating there drops the whole turn.
+        emit({ type: 'user.message', id: 'evt-first', data: { content: 'first' } });
+        emit({ type: 'user.message', id: 'evt-second', data: { content: 'queued' } });
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(result.userMessageEventId).toBe('evt-first');
+    });
+
+    it('leaves userMessageEventId undefined when no user.message event is observed', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+
+        emit({ type: 'assistant.message', data: { content: 'hi' } });
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(result.userMessageEventId).toBeUndefined();
+    });
+
+    it('ignores a user.message event that carries no id (non-rewindable)', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+
+        emit({ type: 'user.message', data: { content: 'Hello' } });
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(result.userMessageEventId).toBeUndefined();
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Multiple-timer race condition
 // ─────────────────────────────────────────────────────────────────────────────
 

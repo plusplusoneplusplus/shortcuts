@@ -807,6 +807,12 @@ export interface SDKInvocationResult extends AIInvocationResult {
     tokenUsage?: TokenUsage;
     /** Tool calls captured during this request (if any). Only populated for streaming sessions. */
     toolCalls?: ToolCall[];
+    /**
+     * Copilot-SDK `user.message` event id that began this turn, captured from
+     * the live event stream. Durable anchor for history rewind/truncation;
+     * undefined when no such event was observed (turn is not rewindable).
+     */
+    userMessageEventId?: string;
 }
 
 /**

@@ -93,6 +93,23 @@ describe('ConversationArea mode-change divider', () => {
         expect(screen.queryByTestId('mode-change-divider')).toBeNull();
     });
 
+    it('renders no divider when an interrupted retry user turn keeps the current mode', () => {
+        const turns = [
+            makeTurn({ turnIndex: 0, role: 'user', mode: 'autopilot', content: 'Run the task' }),
+            makeTurn({
+                turnIndex: 1,
+                role: 'assistant',
+                content: 'Partial response before timeout',
+                interrupted: true,
+                interruptionReason: 'Request timed out after 90000ms',
+            }),
+            makeTurn({ turnIndex: 2, role: 'user', mode: 'autopilot', content: 'Please continue' }),
+        ];
+
+        render(<ConversationArea {...baseProps} turns={turns} />);
+        expect(screen.queryByTestId('mode-change-divider')).toBeNull();
+    });
+
     it('renders divider when mode changes between user turns', () => {
         const turns = [
             makeTurn({ turnIndex: 0, role: 'user', mode: 'plan' }),

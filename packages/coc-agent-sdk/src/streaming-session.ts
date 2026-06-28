@@ -40,6 +40,14 @@ export interface StreamingResult {
     turnCount: number;
     /** Tool calls captured during the session (if any). */
     toolCalls?: ToolCall[];
+    /**
+     * Copilot-SDK event id of the `user.message` event that began this turn,
+     * captured from the live event stream. Used as the durable anchor for
+     * history rewind/truncation. Undefined when no `user.message` event was
+     * observed (e.g. providers that do not emit one) — such turns are not
+     * rewindable.
+     */
+    userMessageEventId?: string;
 }
 
 /**
@@ -63,6 +71,12 @@ export interface IStreamableSession {
 /** SDK event fired by the streaming session. */
 export interface ISessionEvent {
     type: string;
+    /**
+     * Unique event identifier (UUID v4) carried on the event itself — not in
+     * `data`. Present on persisted session events such as `user.message`; used
+     * to anchor history truncation/rewind.
+     */
+    id?: string;
     data?: {
         content?: string;
         deltaContent?: string;
@@ -158,6 +172,15 @@ export class StreamingSession {
 
     // ── Background task tracking ────────────────────────────────────────────
     private waitingForBackgroundTasks = false;
+
+    // ── Rewind anchor ────────────────────────────────────────────────────────
+    /**
+     * Event id of the FIRST `user.message` event observed during this run.
+     * A single run() == one send() == one CoC user turn; capturing the earliest
+     * user.message ensures truncation later removes the whole turn and
+     * everything after it, even if steering/queuing emits more than one.
+     */
+    private userMessageEventId?: string;
 
     // ── Misc ─────────────────────────────────────────────────────────────────
     private streamingStartTime = 0;
@@ -324,6 +347,7 @@ export class StreamingSession {
             tokenUsage: this.telemetry.buildTokenUsage(),
             turnCount: this.telemetry.turnCount,
             toolCalls: this.telemetry.getCapturedToolCalls(),
+            userMessageEventId: this.userMessageEventId,
         });
     }
 
@@ -331,6 +355,7 @@ export class StreamingSession {
 
     private handleEvent(event: ISessionEvent): void {
         switch (event.type) {
+            case 'user.message':              this.handleUserMessage(event);   break;
             case 'assistant.message_delta':   this.handleMessageDelta(event);  break;
             case 'assistant.message':         this.handleMessage(event);       break;
             case 'assistant.turn_start':      this.handleTurnStart();          break;
@@ -358,6 +383,20 @@ export class StreamingSession {
     }
 
     // ── Event handlers ───────────────────────────────────────────────────────
+
+    /**
+     * Capture the copilot-sdk `user.message` event id as the durable rewind
+     * anchor for this turn. Only the first one seen is kept: per the AC-01
+     * multi-event-turn rule, steering/queued sends may emit additional
+     * user.message events within one run, but truncating at the earliest event
+     * drops the whole turn and everything after it. Events without an `id` are
+     * ignored, leaving the turn non-rewindable.
+     */
+    private handleUserMessage(event: ISessionEvent): void {
+        if (this.userMessageEventId || !event.id) { return; }
+        this.userMessageEventId = event.id;
+        this.sessionLog.debug({ userMessageEventId: event.id }, 'Captured user.message event id');
+    }
 
     private handleMessageDelta(event: ISessionEvent): void {
         const delta = event.data?.deltaContent || '';

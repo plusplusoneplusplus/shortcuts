@@ -103,7 +103,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(23);
+        expect(SCHEMA_VERSION).toBe(24);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -903,6 +903,78 @@ describe('sqlite-schema', () => {
             `).get() as any;
             expect(row.interrupted).toBe(0);
             expect(row.interruption_reason).toBeNull();
+        });
+    });
+
+    describe('V23 → V24 migration (sdk_event_id on conversation_turns)', () => {
+        it('fresh DB includes sdk_event_id column on conversation_turns', () => {
+            initializeDatabase(db);
+
+            const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('sdk_event_id');
+        });
+
+        it('adds sdk_event_id to an existing V23 database without data loss', () => {
+            // Simulate a V23 conversation_turns table that lacks sdk_event_id
+            db.exec(`
+                CREATE TABLE processes (
+                    id                    TEXT PRIMARY KEY,
+                    workspace_id          TEXT NOT NULL,
+                    type                  TEXT,
+                    status                TEXT NOT NULL,
+                    start_time            TEXT NOT NULL,
+                    parent_process_id     TEXT,
+                    sdk_session_id        TEXT,
+                    archived              INTEGER DEFAULT 0,
+                    last_event_at         TEXT
+                );
+
+                CREATE TABLE conversation_turns (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    process_id        TEXT NOT NULL REFERENCES processes(id) ON DELETE CASCADE,
+                    turn_index        INTEGER NOT NULL,
+                    role              TEXT NOT NULL,
+                    content           TEXT,
+                    timestamp         TEXT NOT NULL,
+                    streaming         INTEGER DEFAULT 0,
+                    tool_calls        TEXT,
+                    timeline          TEXT,
+                    model             TEXT,
+                    mode              TEXT,
+                    UNIQUE(process_id, turn_index)
+                );
+            `);
+            db.prepare(`
+                INSERT INTO processes (id, workspace_id, status, start_time)
+                VALUES ('p-v23', 'ws1', 'completed', '2026-01-01T00:00:00.000Z')
+            `).run();
+            db.prepare(`
+                INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp)
+                VALUES ('p-v23', 0, 'user', 'hello', '2026-01-01T00:00:01.000Z')
+            `).run();
+            db.pragma('user_version = 23');
+
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+
+            const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('sdk_event_id');
+
+            // Existing turn preserved with null sdk_event_id
+            const row = db.prepare(`
+                SELECT content, sdk_event_id FROM conversation_turns WHERE process_id = 'p-v23'
+            `).get() as any;
+            expect(row.content).toBe('hello');
+            expect(row.sdk_event_id).toBeNull();
+
+            // New column is writable
+            db.prepare('UPDATE conversation_turns SET sdk_event_id = ? WHERE process_id = ? AND turn_index = ?')
+                .run('evt_abc123', 'p-v23', 0);
+            const updated = db.prepare(`
+                SELECT sdk_event_id FROM conversation_turns WHERE process_id = 'p-v23'
+            `).get() as any;
+            expect(updated.sdk_event_id).toBe('evt_abc123');
         });
     });
 });
