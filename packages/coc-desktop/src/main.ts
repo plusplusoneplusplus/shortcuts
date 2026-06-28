@@ -18,6 +18,7 @@ import { attachOrStart, defaultDataDir, ServerHandle } from './server-controller
 import { splashDataUrl } from './splash';
 import { detectAgentClis, missingAgentClis, runFirstRunPreflight } from './agent-preflight';
 import { shutdownServer, shouldOpenExternally } from './lifecycle';
+import { resolveIconPath } from './app-icon';
 
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
@@ -27,12 +28,21 @@ let serverHandle: ServerHandle | null = null;
 /** Set once we begin draining on quit, so `before-quit` only intercepts once. */
 let isQuitting = false;
 
-/**
- * A tiny built-in tray glyph (16×16 template PNG) so the tray works without a
- * packaged asset. AC-07 supplies the real app/tray icons from `media/`.
- */
-const TRAY_ICON_DATA_URL =
+/** Fallback tray glyph used when the real icon file cannot be found. */
+const TRAY_ICON_FALLBACK_DATA_URL =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAANklEQVR4nGNgoBH4jwNTpJkoQwhpxmsIsZqxGkKqZgxDRg2gggHkGIIVUKSZWEOIAhRpJgkAANCAm2UMZlD6AAAAAElFTkSuQmCC';
+
+/**
+ * Loads the CoC icon as a NativeImage, falling back to the tiny inline glyph
+ * if the PNG cannot be found (e.g. a production asar without a bundled media/).
+ */
+function loadCocIcon(): ReturnType<typeof nativeImage.createFromPath> {
+    const iconPath = resolveIconPath(__dirname);
+    if (iconPath) {
+        return nativeImage.createFromPath(iconPath);
+    }
+    return nativeImage.createFromDataURL(TRAY_ICON_FALLBACK_DATA_URL);
+}
 
 /** The main app window. Created hidden; shown once the SPA is ready to paint. */
 function createWindow(): BrowserWindow {
@@ -41,6 +51,9 @@ function createWindow(): BrowserWindow {
         height: 800,
         show: false,
         backgroundColor: '#0d1117',
+        // Windows/Linux: the BrowserWindow icon controls the taskbar/window icon.
+        // macOS: ignored here; dock icon is set via app.dock.setIcon() in bootstrap().
+        icon: loadCocIcon(),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -206,7 +219,7 @@ function createTray(): void {
     if (tray) {
         return;
     }
-    const icon = nativeImage.createFromDataURL(TRAY_ICON_DATA_URL);
+    const icon = loadCocIcon();
     if (process.platform === 'darwin') {
         icon.setTemplateImage(true);
     }
@@ -231,6 +244,14 @@ function createTray(): void {
 }
 
 async function bootstrap(): Promise<void> {
+    // macOS: set the dock icon early (BrowserWindow `icon` is ignored by macOS).
+    if (process.platform === 'darwin' && app.dock) {
+        const dockIcon = loadCocIcon();
+        if (!dockIcon.isEmpty()) {
+            app.dock.setIcon(dockIcon);
+        }
+    }
+
     // Show the loading splash immediately, before the (slower) server boot.
     splashWindow = createSplashWindow();
 
