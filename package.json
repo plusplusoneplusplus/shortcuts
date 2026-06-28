@@ -12,6 +12,7 @@
     "packages/forge",
     "packages/coc",
     "packages/coc-client",
+    "packages/coc-desktop",
     "packages/deep-wiki",
     "packages/coccontainer",
     "packages/whatsapp-bot",
