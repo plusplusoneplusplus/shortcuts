@@ -486,6 +486,16 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         () => (selectedAgentNode && selectedAgentId ? pathToAgent(agentRoot, selectedAgentId) : []),
         [agentRoot, selectedAgentNode, selectedAgentId],
     );
+    // A terminal *failed* chat can always be re-run from its original payload via
+    // the queue retry endpoint, regardless of whether a resumable session was
+    // saved. This single flag drives every "Retry task" affordance: the
+    // no-session notice (state 1) and the otherwise dead-end inline error shown
+    // when the chat can't be continued (state 3, `nonRetryableFollowUpError`).
+    const canRetryFailedTask = effectiveStatus === 'failed'
+        && processDetails !== null
+        && !readOnly
+        && !showSubAgentDetail
+        && !isPending;
     // Open a sub-agent (forcing the agents context so closing returns to the
     // canvas) or return to the orchestrator (null), which lands back on the
     // main thread rather than the agents canvas.
@@ -2211,6 +2221,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             isCancelling={isCancelling}
                             error={error}
                             nonRetryableError={nonRetryableFollowUpError}
+                            onRetryTask={canRetryFailedTask ? handleRetryTask : undefined}
+                            retryingTask={retryingTask}
                             disabledPlaceholder={nonRetryableFollowUpError ? 'Cannot continue this stopped chat.' : undefined}
                             resumeFeedback={resumeFeedback}
                             onDismissResumeFeedback={() => setResumeFeedback(null)}
@@ -2352,6 +2364,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     isCancelling={isCancelling}
                     error={error}
                     nonRetryableError={nonRetryableFollowUpError}
+                    onRetryTask={canRetryFailedTask ? handleRetryTask : undefined}
+                    retryingTask={retryingTask}
                     disabledPlaceholder={nonRetryableFollowUpError ? 'Cannot continue this stopped chat.' : undefined}
                     resumeFeedback={resumeFeedback}
                     onDismissResumeFeedback={() => setResumeFeedback(null)}

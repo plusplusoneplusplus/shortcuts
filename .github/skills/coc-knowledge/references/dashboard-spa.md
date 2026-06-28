@@ -6,8 +6,12 @@ Chat detail composer gating is driven by persisted process state. A cancelled
 chat can be continued only when the process has a saved `sdkSessionId`; if no
 SDK session was saved, or if `metadata.stoppedChatResume.resumable === false`
 after a strict stopped-chat resume failure, `ChatDetail` keeps
-`FollowUpInputArea` disabled and shows a non-retryable inline error with no retry
-button or fresh-session fallback.
+`FollowUpInputArea` disabled and shows a non-retryable inline error with no
+follow-up resume or fresh-session fallback. A terminal **failed** chat in that
+state still surfaces a "Retry task" button (`onRetryTask` → `retry-task-button`)
+inside the error block, gated by `ChatDetail.canRetryFailedTask`, which re-runs
+the original payload as a new conversation via `client.queue.retry`; a
+`cancelled` chat without a session does not get this button.
 
 ## Entry Point & Shell
 

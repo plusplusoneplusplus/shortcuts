@@ -578,3 +578,50 @@ describe('FollowUpInputArea — resume feedback dismiss', () => {
         expect(screen.getByRole('button', { name: 'Dismiss' })).toBeTruthy();
     });
 });
+
+describe('FollowUpInputArea — retry-task affordance', () => {
+    const nonRetryableError = 'This stopped chat cannot be continued because no SDK session was saved. Start a new chat manually.';
+
+    it('renders a "Retry task" button inside the non-retryable error when onRetryTask is provided', () => {
+        const onRetryTask = vi.fn();
+        render(<FollowUpInputArea {...makeProps({
+            inputDisabled: true,
+            nonRetryableError,
+            onRetryTask,
+            disabledPlaceholder: 'Cannot continue this stopped chat.',
+        })} />);
+        const btn = screen.getByTestId('retry-task-button');
+        expect(btn.textContent).toBe('Retry task');
+        fireEvent.click(btn);
+        expect(onRetryTask).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not render the "Retry task" button when onRetryTask is absent (back-compat)', () => {
+        render(<FollowUpInputArea {...makeProps({
+            inputDisabled: true,
+            nonRetryableError,
+            disabledPlaceholder: 'Cannot continue this stopped chat.',
+        })} />);
+        expect(screen.getByTestId('follow-up-inline-error').textContent).toContain('no SDK session was saved');
+        expect(screen.queryByTestId('retry-task-button')).toBeNull();
+    });
+
+    it('disables the "Retry task" button and shows a busy label while retrying', () => {
+        const onRetryTask = vi.fn();
+        render(<FollowUpInputArea {...makeProps({
+            inputDisabled: true,
+            nonRetryableError,
+            onRetryTask,
+            retryingTask: true,
+        })} />);
+        const btn = screen.getByTestId('retry-task-button') as HTMLButtonElement;
+        expect(btn.disabled).toBe(true);
+        expect(btn.textContent).toBe('Retrying…');
+    });
+
+    it('shows no "Retry task" button when there is no non-retryable error', () => {
+        const onRetryTask = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ onRetryTask })} />);
+        expect(screen.queryByTestId('retry-task-button')).toBeNull();
+    });
+});
