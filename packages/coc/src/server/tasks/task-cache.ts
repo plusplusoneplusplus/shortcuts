@@ -3,22 +3,22 @@
  *
  * Keyed by `{workspaceId}:{taskRootPath}`. TTL-based expiry (default 5 min).
  * Workspace-scoped invalidation for write operations and file watcher events.
- * Follows the same pattern as GitCacheService.
+ *
+ * Backed by the unified in-memory cache primitive (namespace `task`). Entries
+ * are tagged with their workspace id — parsed from the key prefix — so
+ * `invalidateWorkspace` resolves through the unified per-workspace index
+ * (O(matching entries)) instead of scanning the whole map.
  */
+
+import { createCache, type CacheHandle } from '../cache';
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-interface CacheEntry<T = unknown> {
-    value: T;
-    expiresAt: number;
-}
-
 export class TaskCacheService {
-    private cache = new Map<string, CacheEntry>();
-    private readonly ttlMs: number;
+    private readonly cache: CacheHandle<unknown>;
 
     constructor(ttlMs = DEFAULT_TTL_MS) {
-        this.ttlMs = ttlMs;
+        this.cache = createCache<unknown>({ namespace: 'task', ttlMs });
     }
 
     /** Build a cache key from workspaceId and task root path. */
@@ -28,31 +28,17 @@ export class TaskCacheService {
 
     /** Get a cached value, returning undefined if missing or expired. */
     get<T>(key: string): T | undefined {
-        const entry = this.cache.get(key);
-        if (!entry) return undefined;
-        if (Date.now() > entry.expiresAt) {
-            this.cache.delete(key);
-            return undefined;
-        }
-        return entry.value as T;
+        return this.cache.get(key) as T | undefined;
     }
 
     /** Store a value with TTL-based expiry. */
     set(key: string, value: unknown): void {
-        this.cache.set(key, {
-            value,
-            expiresAt: Date.now() + this.ttlMs,
-        });
+        this.cache.set(key, value, { workspaceId: workspaceIdFromKey(key) });
     }
 
     /** Delete all entries for a workspace (any task root). */
     invalidateWorkspace(workspaceId: string): void {
-        const prefix = `${workspaceId}:`;
-        for (const key of [...this.cache.keys()]) {
-            if (key.startsWith(prefix)) {
-                this.cache.delete(key);
-            }
-        }
+        this.cache.invalidateWorkspace(workspaceId);
     }
 
     /** Delete all entries across all workspaces. */
@@ -69,6 +55,16 @@ export class TaskCacheService {
     clear(): void {
         this.cache.clear();
     }
+}
+
+/**
+ * Extract the workspace id — the key segment before the first `:` — so the
+ * entry can be workspace-tagged. Keys are built by {@link TaskCacheService.key}
+ * as `{workspaceId}:{taskRootPath}`, and workspace ids never contain `:`.
+ */
+function workspaceIdFromKey(key: string): string | undefined {
+    const idx = key.indexOf(':');
+    return idx >= 0 ? key.slice(0, idx) : undefined;
 }
 
 export const taskCache = new TaskCacheService();
