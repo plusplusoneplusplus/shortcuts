@@ -6,6 +6,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
+    "start": "electron dist/main.js",
     "icon": "node scripts/generate-icon.mjs",
     "rebuild:native": "electron-rebuild --force --only better-sqlite3,node-pty --module-dir ../coc",
     "prebuild:sqlite:win": "node scripts/fetch-win-sqlite.mjs",
