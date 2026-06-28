@@ -15,6 +15,7 @@
     "dist:mac": "electron-builder --mac",
     "dist:win": "npm run prebuild:sqlite:win && electron-builder --win nsis --x64 -c.npmRebuild=false",
     "dist": "npm run dist:mac && npm run dist:win",
+    "lint": "eslint src --ext .ts",
     "test": "vitest",
     "test:run": "vitest run"
   },
