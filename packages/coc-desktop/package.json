@@ -8,8 +8,11 @@
     "build": "tsc",
     "icon": "node scripts/generate-icon.mjs",
     "rebuild:native": "electron-rebuild --force --only better-sqlite3,node-pty --module-dir ../coc",
+    "prebuild:sqlite:win": "node scripts/fetch-win-sqlite.mjs",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "npm run prebuild:sqlite:win && electron-builder --win nsis --x64 -c.npmRebuild=false",
+    "dist": "npm run dist:mac && npm run dist:win",
     "test": "vitest",
     "test:run": "vitest run"
   },
