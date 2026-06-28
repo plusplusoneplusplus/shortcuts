@@ -225,6 +225,13 @@ describe('SlashCommandMenu (redesigned card)', () => {
         expect(loop?.description).toBeTruthy();
         expect(loop?.args).toBe('[interval] <prompt>');
     });
+
+    it('META_SKILL_ITEMS includes compact with description and [instructions] args', () => {
+        const compact = META_SKILL_ITEMS.find(s => s.name === 'compact');
+        expect(compact).toBeDefined();
+        expect(compact?.description).toBe('Compact the conversation to free context');
+        expect(compact?.args).toBe('[instructions]');
+    });
 });
 
 describe('getMetaSkillItems', () => {
@@ -238,6 +245,11 @@ describe('getMetaSkillItems', () => {
         const items = getMetaSkillItems(false);
         expect(items.find(s => s.name === 'loop')).toBeUndefined();
         expect(items.find(s => s.name === 'model')).toBeDefined();
+    });
+
+    it('always includes compact regardless of the loops flag', () => {
+        expect(getMetaSkillItems(true).find(s => s.name === 'compact')).toBeDefined();
+        expect(getMetaSkillItems(false).find(s => s.name === 'compact')).toBeDefined();
     });
 });
 

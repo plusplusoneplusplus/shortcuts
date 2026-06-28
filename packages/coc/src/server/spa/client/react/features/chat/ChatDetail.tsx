@@ -1035,6 +1035,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         // disappears; reset the selector to a value that still exists so we
         // don't show a "selected pill that no longer exists" UI glitch.
         onPromotedToRalph: () => setSelectedMode('ask'),
+        // `/compact` surfaces its result (or error) as a transient toast; the
+        // displayed transcript is never rewritten.
+        notifyCompact: addToast,
     });
 
     const sendFollowUpWithPrefix = useCallback(async (overrideContent?: string, deliveryMode?: any) => {

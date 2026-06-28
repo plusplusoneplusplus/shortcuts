@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { parseSlashCommands, getSlashCommandContext, getActiveMetaCommands } from '../slash-command-parser';
+import { parseSlashCommands, getSlashCommandContext, getActiveMetaCommands, type ParsedSlashCommands } from '../slash-command-parser';
 import { isLoopsEnabled } from '../../../utils/config';
 import type { SkillItem } from '../SlashCommandMenu';
 import type { RichTextInputHandle } from '../../../shared/RichTextInput';
@@ -27,8 +27,8 @@ export interface UseSlashCommandsResult {
         setText: (t: string) => void,
         ref?: React.RefObject<RichTextInputHandle>,
     ) => void;
-    /** Extract skills and clean prompt for submission */
-    parseAndExtract: (text: string) => { skills: string[]; prompt: string };
+    /** Extract skills, meta-commands, and clean prompt for submission */
+    parseAndExtract: (text: string) => ParsedSlashCommands;
     /** Dismiss the menu */
     dismissMenu: () => void;
     /** Ghost text hint shown after a meta-command with no argument yet (e.g. "[interval] <prompt>" after /loop) */
