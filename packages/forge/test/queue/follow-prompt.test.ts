@@ -1,8 +1,8 @@
 /**
  * Tests for follow-prompt shared utilities.
  *
- * Validates buildFollowPromptText and isFollowPromptPayload used by both
- * the VS Code extension and the CoC server.
+ * Validates buildFollowPromptText and isFollowPromptPayload for CoC server
+ * and Node queue consumers.
  */
 import { describe, it, expect } from 'vitest';
 import {

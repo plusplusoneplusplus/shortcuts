@@ -1,11 +1,11 @@
 /**
  * Platform host abstraction for the Markdown Review Editor.
  *
- * Abstracts platform-specific operations that differ between
- * VS Code and a standalone HTTP server.
+ * Abstracts platform-specific operations for editor hosts and the standalone
+ * HTTP server.
  */
 
-/** Abstracts platform-specific operations that differ between VS Code and HTTP server */
+/** Abstracts platform-specific operations that differ between UI hosts. */
 export interface EditorHost {
     /** Show an informational notification */
     showInformation(message: string): void;

@@ -1,478 +1,214 @@
-# Pipeline Core Package Extraction
+# Workflow Core Package Boundary
 
 ## Overview
 
-Extract the AI pipeline execution engine, map-reduce framework, and Copilot SDK integration into a standalone Node.js package. This enables:
+The workflow core boundary keeps AI workflow execution, map-reduce helpers, git utilities, diff providers, editor-independent rendering helpers, and SDK integration in reusable Node packages. CoC then consumes those packages from the CLI, HTTP server, queue executors, and dashboard.
 
-1. **CLI usage** - Run pipelines from command line without VS Code
-2. **Testability** - Pure Node.js tests without VS Code test runner
-3. **Reusability** - Use in other tools, scripts, or applications
+This boundary serves three goals:
 
-## Current State
+1. **CLI usage** - `coc run` and package APIs run workflows without a UI runtime.
+2. **Testability** - Pure logic has Vitest coverage in package tests.
+3. **Reusability** - Other tools can consume workflow, AI, git, diff, and rendering helpers through package exports.
 
-After decoupling work, the following files are now **VS Code-free**:
+## Package Responsibilities
 
-| File | Status |
-|------|--------|
-| `ai-service/copilot-sdk-service.ts` | ✅ Pure (config via `configureSessionPool()`) |
-| `ai-service/session-pool.ts` | ✅ Pure |
-| `ai-service/types.ts` | ✅ Pure |
-| `ai-service/cli-utils.ts` | ✅ Pure |
-| `ai-service/prompt-builder.ts` | ✅ Pure |
-| `map-reduce/**/*.ts` | ✅ All pure |
-| `yaml-pipeline/*.ts` (except `ui/`) | ✅ All pure |
-| `shared/file-utils.ts` | ✅ Pure |
-| `shared/glob-utils.ts` | ✅ Pure |
-| `shared/exec-utils.ts` | ✅ Pure |
-| `shared/http-utils.ts` | ✅ Pure |
-| `shared/text-matching.ts` | ✅ Pure |
-| `shared/ai-response-parser.ts` | ✅ Pure |
+| Package | Responsibility |
+|---------|----------------|
+| `@plusplusoneplusplus/coc-workflow` | Pure DAG workflow compiler/executor, legacy pipeline YAML compatibility, workflow logger contracts, workflow errors, and Ralph portable helpers. |
+| `@plusplusoneplusplus/forge` | AI utilities, map-reduce, git CLI services, diff providers, process store, review helpers, editor-independent rendering/anchor helpers, and compatibility exports. |
+| `@plusplusoneplusplus/coc-agent-sdk` | Provider-agnostic Copilot/Codex SDK wrapper, model registry, session lifecycle, warm client registry, and streaming state machine. |
+| `@plusplusoneplusplus/coc` | CLI, HTTP server, queue executors, dashboard SPA, workspace routing, and runtime persistence. |
+| `@plusplusoneplusplus/coc-client` | Framework-free REST and realtime client for dashboard and external consumers. |
 
-**Remaining dependency:** `ai-service-logger.ts` → `shared/extension-logger.ts` uses `vscode.OutputChannel`
+Shared behavior belongs in these packages. Runtime surfaces that depend on CoC workspace state, HTTP routes, queue semantics, or dashboard components stay in `packages/coc/`.
 
-## Package Structure
+## Core Module Layout
 
-```
-packages/
-└── pipeline-core/
-    ├── package.json
-    ├── tsconfig.json
-    ├── vitest.config.ts
-    ├── src/
-    │   ├── index.ts                    # Public API exports
-    │   │
-    │   ├── ai/
-    │   │   ├── index.ts
-    │   │   ├── copilot-sdk-service.ts
-    │   │   ├── session-pool.ts
-    │   │   ├── cli-utils.ts
-    │   │   ├── prompt-builder.ts
-    │   │   ├── logger.ts               # New: simple logger interface
-    │   │   └── types.ts
-    │   │
-    │   ├── map-reduce/
-    │   │   ├── index.ts
-    │   │   ├── executor.ts
-    │   │   ├── concurrency-limiter.ts
-    │   │   ├── prompt-template.ts
-    │   │   ├── temp-file-utils.ts
-    │   │   ├── types.ts
-    │   │   ├── jobs/
-    │   │   ├── reducers/
-    │   │   └── splitters/
-    │   │
-    │   ├── pipeline/
-    │   │   ├── index.ts
-    │   │   ├── executor.ts
-    │   │   ├── csv-reader.ts
-    │   │   ├── template.ts
-    │   │   ├── filter-executor.ts
-    │   │   ├── prompt-resolver.ts
-    │   │   ├── skill-resolver.ts
-    │   │   ├── input-generator.ts
-    │   │   └── types.ts
-    │   │
-    │   └── utils/
-    │       ├── index.ts
-    │       ├── file-utils.ts
-    │       ├── glob-utils.ts
-    │       ├── exec-utils.ts
-    │       ├── http-utils.ts
-    │       ├── text-matching.ts
-    │       └── ai-response-parser.ts
-    │
-    └── test/
+```text
+packages/coc-workflow/src/
+  index.ts
+  logger.ts
+  errors/
+  workflow/
+    compiler.ts
+    executor.ts
+    scheduler.ts
+    validator.ts
+    pipeline-compat.ts
+    nodes/
+    types.ts
+  ralph/
+
+packages/forge/src/
+  ai/
+  map-reduce/
+  git/
+  diff/
+  editor/
+  review/
+  workflow/
+  utils/
+
+packages/coc-agent-sdk/src/
+  providers/
+  services/
+  model-registry/
+  warm-client-registry.ts
 ```
 
 ## Logger Abstraction
 
-The only remaining VS Code dependency is the logger. Create a simple interface:
+Package code uses a small logger interface instead of depending on any host UI.
 
 ```typescript
-// packages/pipeline-core/src/logger.ts
-
 export interface Logger {
-    debug(category: string, message: string): void;
-    info(category: string, message: string): void;
-    warn(category: string, message: string): void;
-    error(category: string, message: string, error?: Error): void;
+  debug(category: string, message: string): void;
+  info(category: string, message: string): void;
+  warn(category: string, message: string): void;
+  error(category: string, message: string, error?: Error): void;
 }
 
 export const consoleLogger: Logger = {
-    debug: (cat, msg) => console.debug(`[${cat}] ${msg}`),
-    info: (cat, msg) => console.log(`[${cat}] ${msg}`),
-    warn: (cat, msg) => console.warn(`[${cat}] ${msg}`),
-    error: (cat, msg, err) => console.error(`[${cat}] ${msg}`, err || ''),
+  debug: (category, message) => console.debug(`[${category}] ${message}`),
+  info: (category, message) => console.log(`[${category}] ${message}`),
+  warn: (category, message) => console.warn(`[${category}] ${message}`),
+  error: (category, message, error) => console.error(`[${category}] ${message}`, error ?? ''),
 };
 
-export const nullLogger: Logger = {
-    debug: () => {},
-    info: () => {},
-    warn: () => {},
-    error: () => {},
-};
-
-// Global logger instance (can be replaced)
 let globalLogger: Logger = consoleLogger;
 
 export function setLogger(logger: Logger): void {
-    globalLogger = logger;
+  globalLogger = logger;
 }
 
 export function getLogger(): Logger {
-    return globalLogger;
+  return globalLogger;
 }
 ```
 
-**In extension**, bridge to VS Code logger:
+CoC wraps this contract with Pino-backed server logging. Tests can use a null or in-memory logger.
 
-```typescript
-// vscode-extension/src/adapters/logger-adapter.ts
-import { Logger, setLogger } from 'pipeline-core';
-import { getExtensionLogger, LogCategory } from './shared/extension-logger';
-
-export function initializeCoreLogger(): void {
-    const vscodeLogger = getExtensionLogger();
-
-    setLogger({
-        debug: (cat, msg) => vscodeLogger.debug(cat as LogCategory, msg),
-        info: (cat, msg) => vscodeLogger.info(cat as LogCategory, msg),
-        warn: (cat, msg) => vscodeLogger.warn(cat as LogCategory, msg),
-        error: (cat, msg, err) => vscodeLogger.error(cat as LogCategory, msg, err),
-    });
-}
-```
-
-## File Migration Map
-
-### AI Service
-
-| Source | Destination | Changes |
-|--------|-------------|---------|
-| `copilot-sdk-service.ts` | `src/ai/` | Replace `getExtensionLogger()` with `getLogger()` |
-| `session-pool.ts` | `src/ai/` | None |
-| `types.ts` | `src/ai/` | None |
-| `cli-utils.ts` | `src/ai/` | None |
-| `prompt-builder.ts` | `src/ai/` | None |
-
-### Map-Reduce (all files move as-is)
-
-| Source | Destination |
-|--------|-------------|
-| `executor.ts` | `src/map-reduce/` |
-| `concurrency-limiter.ts` | `src/map-reduce/` |
-| `prompt-template.ts` | `src/map-reduce/` |
-| `temp-file-utils.ts` | `src/map-reduce/` |
-| `types.ts` | `src/map-reduce/` |
-| `jobs/*.ts` | `src/map-reduce/jobs/` |
-| `reducers/*.ts` | `src/map-reduce/reducers/` |
-| `splitters/*.ts` | `src/map-reduce/splitters/` |
-
-### YAML Pipeline (core files only)
-
-| Source | Destination |
-|--------|-------------|
-| `executor.ts` | `src/pipeline/` |
-| `csv-reader.ts` | `src/pipeline/` |
-| `template.ts` | `src/pipeline/` |
-| `filter-executor.ts` | `src/pipeline/` |
-| `prompt-resolver.ts` | `src/pipeline/` |
-| `skill-resolver.ts` | `src/pipeline/` |
-| `input-generator.ts` | `src/pipeline/` |
-| `types.ts` | `src/pipeline/` |
-
-**Stay in extension:**
-- `yaml-pipeline/ui/*` - VS Code tree views and commands
-- `yaml-pipeline/bundled/*` - VS Code-specific bundled pipelines
-
-### Shared Utils
-
-| Source | Destination |
-|--------|-------------|
-| `file-utils.ts` | `src/utils/` |
-| `glob-utils.ts` | `src/utils/` |
-| `exec-utils.ts` | `src/utils/` |
-| `http-utils.ts` | `src/utils/` |
-| `text-matching.ts` | `src/utils/` |
-| `ai-response-parser.ts` | `src/utils/` |
-
-## Package Configuration
-
-### package.json
-
-```json
-{
-  "name": "pipeline-core",
-  "version": "1.0.0",
-  "description": "AI pipeline execution engine with map-reduce framework",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": "./dist/index.js",
-    "./ai": "./dist/ai/index.js",
-    "./map-reduce": "./dist/map-reduce/index.js",
-    "./pipeline": "./dist/pipeline/index.js",
-    "./utils": "./dist/utils/index.js"
-  },
-  "files": ["dist"],
-  "scripts": {
-    "build": "tsc",
-    "test": "vitest",
-    "lint": "eslint src"
-  },
-  "dependencies": {
-    "@anthropic-ai/claude-code": "^1.0.0",
-    "js-yaml": "^4.1.0",
-    "csv-parse": "^5.5.0",
-    "glob": "^10.3.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.3.0",
-    "vitest": "^1.0.0",
-    "@types/node": "^20.0.0",
-    "@types/js-yaml": "^4.0.0"
-  },
-  "engines": {
-    "node": ">=18"
-  }
-}
-```
-
-## Public API
-
-### Main Exports
-
-```typescript
-// packages/pipeline-core/src/index.ts
-
-// Logger
-export { Logger, consoleLogger, nullLogger, setLogger, getLogger } from './logger';
-
-// AI Service
-export {
-    CopilotSDKService,
-    getCopilotSDKService,
-    resetCopilotSDKService,
-    SessionPoolConfig,
-    DEFAULT_SESSION_POOL_CONFIG,
-    SendMessageOptions,
-    SDKInvocationResult,
-    PermissionHandler,
-    approveAllPermissions,
-    denyAllPermissions,
-} from './ai';
-
-export { SessionPool } from './ai/session-pool';
-
-// Map-Reduce
-export { MapReduceExecutor, createExecutor } from './map-reduce';
-export type { MapReduceOptions, MapReduceResult, MapJob } from './map-reduce/types';
-
-// Pipeline
-export { executePipeline, parsePipelineYaml } from './pipeline';
-export type { PipelineConfig, PipelineResult } from './pipeline/types';
-
-// Utils
-export * from './utils';
-```
-
-## Usage Examples
-
-### Standalone CLI Usage
+## Public Workflow API
 
 ```typescript
 import {
-    CopilotSDKService,
-    executePipeline,
-    consoleLogger,
-    setLogger
-} from 'pipeline-core';
-import { readFileSync } from 'fs';
+  compileToWorkflow,
+  executeWorkflow,
+  flattenWorkflowResult,
+} from '@plusplusoneplusplus/coc-workflow';
 
-// Use console logger (default)
-setLogger(consoleLogger);
-
-// Get the service and configure
-const aiService = CopilotSDKService.getInstance();
-aiService.configureSessionPool({
-    maxSessions: 5,
-    idleTimeoutMs: 300000
+const config = compileToWorkflow(yamlContent);
+const result = await executeWorkflow(config, {
+  aiInvoker,
+  workingDirectory,
+  onProgress,
+  signal,
 });
 
-// Execute pipeline
-const pipelineYaml = readFileSync('./pipeline.yaml', 'utf-8');
-const result = await executePipeline({
-    pipelineYaml,
-    basePath: './my-pipeline',
-    aiService,
-    onProgress: (current, total) => {
-        console.log(`Processing ${current}/${total}`);
-    }
-});
-
-console.log('Results:', result.outputs);
+const flat = flattenWorkflowResult(result);
 ```
 
-### VS Code Extension Usage
+## Public Diff API
 
 ```typescript
-// In extension activation
 import {
-    CopilotSDKService,
-    setLogger
-} from 'pipeline-core';
-import * as vscode from 'vscode';
-import { getExtensionLogger, LogCategory } from './shared/extension-logger';
+  createCommitDiffProvider,
+  createRangeDiffProvider,
+  createWorkingTreeDiffProvider,
+} from '@plusplusoneplusplus/forge';
 
-export function activate(context: vscode.ExtensionContext) {
-    // Bridge logger to VS Code output channel
-    const vscodeLogger = getExtensionLogger();
-    setLogger({
-        debug: (cat, msg) => vscodeLogger.debug(cat as LogCategory, msg),
-        info: (cat, msg) => vscodeLogger.info(cat as LogCategory, msg),
-        warn: (cat, msg) => vscodeLogger.warn(cat as LogCategory, msg),
-        error: (cat, msg, err) => vscodeLogger.error(cat as LogCategory, msg, err),
-    });
-
-    // Configure SDK service from VS Code settings
-    const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.sdk');
-    const aiService = CopilotSDKService.getInstance();
-    aiService.configureSessionPool({
-        maxSessions: config.get('maxSessions', 5),
-        idleTimeoutMs: config.get('sessionTimeout', 300000)
-    });
-}
+const provider = createRangeDiffProvider('/repo', 'origin/main', 'HEAD');
+const files = await provider.listFiles();
+const diff = await provider.getFileDiff(files[0].path, { maxLines: 500 });
 ```
 
-## Monorepo Setup
+The diff provider contract supports single commits, commit ranges, working tree changes, pull requests, and pull-request iterations behind one interface.
 
-### Directory Structure
+## Public AI Service Boundary
 
-```
-shortcuts/
-├── package.json                  # Workspace root
-├── packages/
-│   └── pipeline-core/            # pipeline-core
-│       ├── package.json
-│       └── src/
-└── vscode-extension/             # VS Code extension
-    ├── package.json              # depends on pipeline-core
-    └── src/
-        ├── extension.ts
-        └── shortcuts/
-            ├── ai-service/       # Only VS Code-specific files remain
-            │   ├── ai-process-manager.ts
-            │   ├── ai-process-tree-provider.ts
-            │   └── ...
-            └── yaml-pipeline/
-                └── ui/           # Only UI components remain
+The SDK package owns provider process lifecycle and per-turn session creation. Higher packages may warm provider client processes for a short TTL, but they must not cache session objects or add follow-up shortcuts that bypass the per-turn session lifecycle.
+
+```typescript
+import { SDKServiceRegistry } from '@plusplusoneplusplus/coc-agent-sdk';
+
+const service = SDKServiceRegistry.get(provider);
+const result = await service.sendMessage(prompt, {
+  workingDirectory,
+  model,
+  reasoningEffort,
+  signal,
+});
 ```
 
-### Root package.json
+## CoC Integration
 
-```json
-{
-  "name": "shortcuts-monorepo",
-  "private": true,
-  "workspaces": [
-    "packages/*",
-    "vscode-extension"
-  ]
-}
+CLI execution:
+
+```bash
+coc run path/to/workflow.yaml
+coc validate path/to/workflow.yaml
 ```
 
-## Implementation Tasks
+Queue execution:
 
-### Phase 1: Setup ✅ COMPLETED
-- [x] Create monorepo structure with npm workspaces
-- [x] Set up `packages/pipeline-core/` with package.json and tsconfig
-- [x] Create logger abstraction module
+```typescript
+import { compileToWorkflow, executeWorkflow } from '@plusplusoneplusplus/coc-workflow';
 
-### Phase 2: Copy Files ✅ COMPLETED
-- [x] Copy map-reduce module to core package
-- [x] Copy pipeline module to core package
-- [x] Copy utils module to core package
-- [x] Copy ai module to core package
+const config = compileToWorkflow(yamlContent);
+const result = await executeWorkflow(config, {
+  aiInvoker: createQueueAIInvoker(task, workspace),
+  workingDirectory: workspace.root,
+  onProgress: event => publishProgress(task.id, event),
+  signal: task.abortSignal,
+});
+```
 
-### Phase 3: Update Extension ✅ COMPLETED
-- [x] Update extension to import from `pipeline-core` instead of local files
-- [x] Initialize logger bridge in extension activation
-- [x] Verify all functionality works with core package imports (6900 tests passing)
-- [x] Remove duplicated files from `src/shortcuts/`
+Dashboard integration:
 
-**Current state:** Extension index files re-export from `pipeline-core`. Duplicated source files
-have been removed from the extension. All imports now use either the index files (which re-export
-from pipeline-core) or import directly from `@anthropic-ai/pipeline-core`.
+- Workflow list and run controls call CoC routes.
+- Process detail subscribes to progress events.
+- Task and diff comments use workspace-scoped persistence.
+- Git, PR, branch range, and work item features consume Forge services through server routes.
 
-### Phase 4: Test Migration ✅ COMPLETED
-- [x] Set up vitest for core package (`vitest.config.ts`)
-- [x] Migrated all pure logic tests (see Test Migration Map below)
-- [x] All 569 tests passing in pipeline-core package
-- [x] All 6900 extension tests passing
-- [x] Remove duplicated tests from extension after Phase 3 completion
+## Workspace and Persistence Rules
 
-### Phase 5: Cleanup ✅ COMPLETED
-- [x] Remove duplicated source files from extension after Phase 3
-- [x] Remove duplicated test files from extension after Phase 4
-- [x] Update all AGENTS.md files
-- [x] Final documentation updates
+- All per-repo runtime data lives under `~/.coc/repos/<workspaceId>/`.
+- Use `getRepoDataPath(dataDir, workspaceId, filename)` when adding repo-scoped server data.
+- Work items are created and updated through the CoC REST API.
+- Runtime paths must support multiple registered workspaces in one server.
+- YAML workflow examples may live in `.vscode/workflows/` or `.vscode/pipelines/` as repository configuration directories.
 
-## Test Migration Map
+## Test Strategy
 
-### Map-Reduce Tests
+Package tests:
 
-| Test File | Status | Tests | Destination |
-|-----------|--------|-------|-------------|
-| `concurrency-limiter.test.ts` | ✅ Migrated | 21 | `test/map-reduce/` |
-| `temp-file-utils.test.ts` | ✅ Migrated | 38 | `test/map-reduce/` |
-| `executor.test.ts` | ✅ Migrated | 19 | `test/map-reduce/` |
-| `prompt-template.test.ts` | ✅ Migrated | 35 | `test/map-reduce/` |
-| `reducers.test.ts` | ✅ Migrated | 20 | `test/map-reduce/` |
-| `splitters.test.ts` | ✅ Migrated | 23 | `test/map-reduce/` |
-| `reduce-process-tracking.test.ts` | ✅ Migrated | 6 | `test/map-reduce/` |
+- Workflow compiler, validator, scheduler, node executors, parameters, and progress events.
+- Map-reduce executor, splitters, reducers, concurrency limits, and temp-file utilities.
+- Git range, git log, branch services, and diff provider parsing.
+- Logger adapters and error helpers.
 
-### Pipeline Tests
+CoC tests:
 
-| Test File | Status | Tests | Destination |
-|-----------|--------|-------|-------------|
-| `csv-reader.test.ts` | ✅ Migrated | 40 | `test/pipeline/` |
-| `executor.test.ts` | ✅ Migrated | 56 | `test/pipeline/` |
-| `template.test.ts` | ✅ Migrated | 65 | `test/pipeline/` |
-| `skill-resolver.test.ts` | ✅ Migrated | 42 | `test/pipeline/` |
-| `input-generator.test.ts` | ✅ Migrated | 48 | `test/pipeline/` |
-| `edge-cases.test.ts` | ✅ Migrated | 22 | `test/pipeline/` |
-| `ai-reduce.test.ts` | ✅ Migrated | 19 | `test/pipeline/` |
-| `batch-mapping.test.ts` | ✅ Migrated | 26 | `test/pipeline/` |
-| `text-mode.test.ts` | ✅ Migrated | 38 | `test/pipeline/` |
-| `results-file.test.ts` | ✅ Migrated | 12 | `test/pipeline/` |
-| `multi-model-fanout.test.ts` | ✅ Migrated | 32 | `test/pipeline/` |
-| `index.test.ts` | ✅ Migrated | 25 | `test/pipeline/` |
+- CLI command behavior.
+- Server queue execution.
+- Workspace-scoped route handling.
+- Dashboard rendering and browser flows.
 
-**Total: 569 tests migrated to pipeline-core package**
+## Build Contract
 
-### Tests That Stay in Extension (VS Code UI)
+Root package build order:
 
-| Test File | Reason |
-|-----------|--------|
-| `commands.test.ts` | Tests VS Code commands |
-| `pipeline-executor-service.test.ts` | Uses MockAIProcessManager, VS Code integration |
-| `preview-content.test.ts` | Tests UI, imports from `ui/types` |
-| `preview-mermaid.test.ts` | Tests UI, imports from `ui/types` |
-| `result-viewer.test.ts` | Tests UI content generation |
+```text
+coc-agent-sdk -> coc-workflow -> forge -> coc-client -> coc-memory -> teams-bot -> coc -> deep-wiki
+```
 
-## What Stays in Extension
+Direct package builds keep the same dependency order through package prebuild scripts.
 
-These files remain in the VS Code extension (not extracted):
+## Design Constraints
 
-| Module | Files | Reason |
-|--------|-------|--------|
-| AI Service | `ai-process-manager.ts` | Uses vscode.Memento |
-| AI Service | `ai-process-tree-provider.ts` | VS Code TreeDataProvider |
-| AI Service | `ai-process-document-provider.ts` | VS Code TextDocumentContentProvider |
-| AI Service | `copilot-cli-invoker.ts` | Uses vscode config/clipboard |
-| AI Service | `interactive-session-*.ts` | VS Code UI |
-| Pipeline | `yaml-pipeline/ui/*` | VS Code tree views |
-| Pipeline | `yaml-pipeline/bundled/*` | VS Code-specific |
-| Shared | `extension-logger.ts` | Uses vscode.OutputChannel |
-| Shared | `*-tree-data-provider.ts` | VS Code TreeDataProvider |
-| Shared | `*-document-provider.ts` | VS Code providers |
+1. Keep pure workflow execution in `coc-workflow`.
+2. Keep compatibility utilities and git/diff/review helpers in `forge`.
+3. Keep HTTP, queue, workspace, and dashboard concerns in `coc`.
+4. Keep SDK provider lifecycle in `coc-agent-sdk`.
+5. Do not introduce repo-scoped runtime data outside `~/.coc/repos/<workspaceId>/`.
+6. Do not break multi-repo routing.

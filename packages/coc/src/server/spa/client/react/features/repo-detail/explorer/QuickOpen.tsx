@@ -1,5 +1,5 @@
 /**
- * QuickOpen — VS Code-style Ctrl+P file finder dialog.
+ * QuickOpen — command-palette-style file finder dialog.
  * Debounces keystrokes and delegates search to the server-side /search endpoint.
  * Portal-rendered to document.body.
  */
@@ -192,7 +192,7 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
             onClick={onClose}
             data-testid="quick-open-overlay"
         >
-            {/* Dialog at top-center, like VS Code */}
+            {/* Dialog at top-center, matching the command palette placement. */}
             <div
                 className={cn(
                     'mt-[10vh] w-[90vw] max-w-[600px] h-fit max-h-[60vh] flex flex-col',

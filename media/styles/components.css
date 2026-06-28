@@ -125,7 +125,7 @@
 }
 
 /* ==============================
- * Highlight.js Theme (VSCode-like)
+ * Highlight.js Theme (editor-like)
  * ============================== */
 .hljs {
     background: transparent !important;
@@ -260,7 +260,7 @@
     }
 }
 
-/* VSCode theme detection */
+/* Editor theme detection */
 body.vscode-light .hljs-keyword {
     color: #0000ff;
 }

@@ -84,7 +84,7 @@ describe('MCP Config Loader', () => {
     });
 
     describe('getWorkspaceMcpConfigPath', () => {
-        it('returns the VS Code workspace MCP config path', () => {
+        it('returns the workspace MCP config path', () => {
             expect(getWorkspaceMcpConfigPath(workspaceDir)).toBe(workspaceConfigPath);
         });
     });
@@ -349,7 +349,7 @@ describe('MCP Config Loader', () => {
             expect(result.configPath).toBe(workspaceConfigPath);
         });
 
-        it('loads VS Code servers from .vscode/mcp.json', () => {
+        it('loads workspace servers from .vscode/mcp.json', () => {
             const config: VSCodeMCPConfigFile = {
                 servers: {
                     'workspace-server': {
@@ -372,7 +372,7 @@ describe('MCP Config Loader', () => {
             expect(result.mcpServers).toEqual(config.servers);
         });
 
-        it('normalizes VS Code servers and strips unsupported top-level fields', () => {
+        it('normalizes workspace servers and strips unsupported top-level fields', () => {
             const config = {
                 servers: {
                     vscode: {

@@ -2,7 +2,7 @@
  * Diff Comment Utilities
  *
  * Browser-compatible helpers for diff comments.
- * No Node.js or VS Code dependencies.
+ * Browser-compatible with no platform dependencies.
  */
 
 /**

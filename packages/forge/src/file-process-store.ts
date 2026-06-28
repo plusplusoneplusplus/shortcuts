@@ -6,7 +6,7 @@
  * Cross-workspace ID lookups via index scan across per-workspace index.json files.
  * Empty workspaceId maps to repos/_default/processes/.
  *
- * No VS Code dependencies - designed for the standalone pipeline server.
+ * Pure Node.js; designed for the standalone pipeline server.
  */
 
 import * as fs from 'fs/promises';

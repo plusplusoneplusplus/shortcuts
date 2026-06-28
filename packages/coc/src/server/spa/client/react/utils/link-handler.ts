@@ -98,8 +98,8 @@ export const LINK_HANDLER_META: LinkHandlerMeta[] = [
     },
     {
         name: 'vscode',
-        label: 'VS Code',
-        description: 'Open vscode:// and vscode-insiders:// links in the VS Code desktop app.',
+        label: 'Code Editor',
+        description: 'Open vscode:// and vscode-insiders:// links with the registered desktop handler.',
     },
     {
         name: 'file',

@@ -2,11 +2,10 @@
  * TaskManager Facade
  *
  * Composes task-scanner, task-operations, task-parser, and related-items-loader
- * into a single entry point with the same public API as the VS Code TaskManager,
- * but free of all VS Code dependencies.
+ * into a single entry point with a stable task-management API.
  *
  * Consumers pass settings at construction time instead of reading from
- * vscode.workspace.getConfiguration(). File watching is left to the consumer;
+ * editor workspace configuration APIs. File watching is left to the consumer;
  * an optional onRefresh callback is stored for internal use (e.g., after batch
  * operations).
  */

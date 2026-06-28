@@ -1,6 +1,6 @@
 /**
- * Task types extracted from the VS Code extension's tasks-viewer module.
- * Pure TypeScript types with no VS Code dependencies.
+ * Task management types.
+ * Pure TypeScript types with no editor dependencies.
  */
 
 /**

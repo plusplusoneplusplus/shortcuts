@@ -21,7 +21,7 @@
  * All workspace-scoped routes are gated by prefs.memoryV2.enabled. Returns 404 when
  * disabled. The "global" wsId is gated by global preferences.memoryV2.enabled.
  *
- * No VS Code dependencies — pure Node.js.
+ * Pure Node.js.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

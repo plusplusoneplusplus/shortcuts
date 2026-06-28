@@ -2,7 +2,7 @@
  * Diff Comment Types
  *
  * Core TypeScript types for diff comments in the web UI.
- * Browser-compatible — no Node.js or VS Code dependencies.
+ * Browser-compatible with no platform dependencies.
  *
  * Selection and context types are re-exported from pipeline-core.
  * CoC-specific types (DiffComment, DiffCommentsData) are defined here.

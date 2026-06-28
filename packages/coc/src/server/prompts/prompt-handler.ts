@@ -4,7 +4,7 @@
  * HTTP API route for discovering skills available in a workspace.
  * Consumed by the SPA dashboard to populate the skill selection dialogs.
  *
- * No VS Code dependencies — uses only Node.js built-in modules
+ * Pure Node.js — uses only Node.js built-in modules
  * and pipeline-core exports.
  * Cross-platform compatible (Linux/Mac/Windows).
  */

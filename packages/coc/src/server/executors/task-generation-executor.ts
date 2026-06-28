@@ -11,7 +11,7 @@
  * `super.execute(task, aiPrompt)`, and `buildModeOptions()` injects the
  * plan-generation system message stored in a per-task Map.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

@@ -1,8 +1,8 @@
 /**
  * Related Items Loader
  * 
- * Handles reading and writing of related.yaml files in feature folders.
- * Extracted from the VS Code extension for use in CLI tools and other Node.js consumers.
+ * Handles reading and writing of related.yaml files in feature folders for CLI
+ * tools and other Node.js consumers.
  */
 
 import * as fs from 'fs';

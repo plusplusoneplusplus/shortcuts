@@ -2,8 +2,8 @@
  * Block renderers — pure HTML string generation
  *
  * These functions take parsed markdown structures and produce HTML strings.
- * They have no DOM, state, or VS Code dependencies, making them suitable
- * for server-side rendering in both the VS Code webview and the CoC SPA.
+ * They have no DOM, state, or editor-host dependencies, making them suitable
+ * for server-side rendering and the CoC SPA.
  */
 
 import { escapeHtml } from '../rendering/markdown-renderer';
@@ -92,9 +92,8 @@ function computeColumnWidths(table: ParsedTable): number[] {
 /**
  * Render a `ParsedTable` as an HTML `<table>` string.
  *
- * The output intentionally mirrors the CSS class names used by the
- * review-editor webview so that the same stylesheet works for both
- * the VS Code extension and the CoC SPA.
+ * The output intentionally mirrors the CSS class names used by the review
+ * editor so the CoC SPA can share one stylesheet.
  *
  * A `<colgroup>` with content-proportional widths is always emitted so that
  * the `table-layout: fixed` CSS rule distributes space meaningfully instead

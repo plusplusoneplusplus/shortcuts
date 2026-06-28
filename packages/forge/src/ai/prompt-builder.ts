@@ -2,7 +2,7 @@
  * Prompt Builder (Pure Implementation)
  *
  * Pure template variable substitution for AI prompts.
- * No VS Code dependencies - can be used in CLI tools and other environments.
+ * Pure Node.js; can be used in CLI tools and other environments.
  */
 
 import { substituteVariables } from '../utils/template-engine';

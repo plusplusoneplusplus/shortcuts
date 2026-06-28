@@ -19,8 +19,8 @@ export interface RichTextInputProps {
     id?: string;
     'data-testid'?: string;
     /**
-     * VS Code-style inline ghost-text suffix rendered after the cursor in
-     * gray italic. Pure visual; does not affect the input's value or events.
+     * Inline ghost-text suffix rendered after the cursor in gray italic.
+     * Pure visual; does not affect the input's value or events.
      * Hidden when `disabled` or empty.
      */
     ghostText?: string;

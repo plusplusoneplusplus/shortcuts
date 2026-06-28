@@ -2,7 +2,7 @@
  * Image Utilities
  *
  * Shared image helpers for decoding base64 data URL images into temp files
- * and producing SDK Attachment objects. Pure Node.js (no VS Code deps).
+ * and producing SDK Attachment objects. Pure Node.js.
  *
  * Replicates the pattern from src/shortcuts/tasks-viewer/ai-task-commands.ts
  * adapted for server context.

@@ -4,7 +4,7 @@
  * Core memory system for CoC: types, store interfaces, embedding provider
  * abstraction, safety scanning, and extraction contracts.
  *
- * This package is pure Node.js/TypeScript — no UI code, no VS Code deps.
+ * This package is pure Node.js/TypeScript with no UI-specific dependencies.
  * UI lives in packages/coc. SQLite store implementations also live in
  * packages/coc-memory/src/store-impl/ (added in AC-02/AC-03).
  */

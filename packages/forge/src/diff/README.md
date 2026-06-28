@@ -91,4 +91,4 @@ diff/
 └── index.ts              # Barrel re-exports
 ```
 
-The diff module depends only on `../git/exec` (for `execGitAsync`) and `../providers/interfaces` (for `IPullRequestsService`). It has no VS Code dependencies.
+The diff module depends only on `../git/exec` (for `execGitAsync`) and `../providers/interfaces` (for `IPullRequestsService`). It has no editor-specific runtime dependencies.

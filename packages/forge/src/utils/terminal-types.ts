@@ -2,7 +2,7 @@
  * Terminal Types (Pure Node.js)
  * 
  * Types for terminal detection and external terminal launching.
- * These types are VS Code-free and can be used in CLI tools.
+ * These types are editor-independent and can be used in CLI tools.
  */
 
 import { InteractiveToolType } from '../ai/types';
@@ -33,7 +33,7 @@ export type InteractiveSessionStatus = 'starting' | 'active' | 'ended' | 'error'
 
 /**
  * An interactive CLI session running in an external terminal.
- * This is a pure data type without VS Code dependencies.
+ * This is a pure data type without editor-host dependencies.
  */
 export interface InteractiveSession {
     /** Unique session identifier */

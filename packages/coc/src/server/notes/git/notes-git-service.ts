@@ -5,7 +5,7 @@
  * (`~/.coc/repos/<wsId>/notes/`). Completely separate from the source code repo —
  * tracks markdown files only.
  *
- * No VS Code dependencies — uses only Node.js built-in modules + forge git helpers.
+ * Pure Node.js; uses built-in modules and forge git helpers.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

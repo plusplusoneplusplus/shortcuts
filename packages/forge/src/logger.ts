@@ -4,7 +4,7 @@ import { resetLogger as resetWorkflowLogger, setLogger as setWorkflowLogger } fr
  * Logger abstraction for pipeline-core package.
  * 
  * This module provides a simple logger interface that can be implemented
- * by different environments (VS Code, CLI, tests, etc.).
+ * by different environments (CLI, server, tests, etc.).
  * 
  * Usage:
  *   import { getLogger, setLogger, consoleLogger } from 'pipeline-core';
@@ -13,7 +13,7 @@ import { resetLogger as resetWorkflowLogger, setLogger as setWorkflowLogger } fr
  *   const logger = getLogger();
  *   logger.info('AI', 'Processing started');
  *   
- *   // Or set a custom logger (e.g., VS Code output channel)
+ *   // Or set a custom logger sink
  *   setLogger(myCustomLogger);
  */
 
@@ -111,15 +111,15 @@ let globalLogger: Logger = consoleLogger;
  * @param logger The logger implementation to use
  * 
  * @example
- * // In VS Code extension
- * import { setLogger } from 'pipeline-core';
- * import { getExtensionLogger } from './shared/extension-logger';
+ * // During server startup
+ * import { setLogger } from '@plusplusoneplusplus/forge';
+ * import { serverLogger } from './server-logger';
  * 
  * setLogger({
- *     debug: (cat, msg) => getExtensionLogger().debug(cat, msg),
- *     info: (cat, msg) => getExtensionLogger().info(cat, msg),
- *     warn: (cat, msg) => getExtensionLogger().warn(cat, msg),
- *     error: (cat, msg, err) => getExtensionLogger().error(cat, msg, err),
+ *     debug: (cat, msg) => serverLogger.debug(cat, msg),
+ *     info: (cat, msg) => serverLogger.info(cat, msg),
+ *     warn: (cat, msg) => serverLogger.warn(cat, msg),
+ *     error: (cat, msg, err) => serverLogger.error(cat, msg, err),
  * });
  */
 export function setLogger(logger: Logger): void {

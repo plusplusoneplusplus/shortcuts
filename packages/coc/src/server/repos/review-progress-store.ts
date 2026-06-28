@@ -13,7 +13,7 @@
  * Layout:
  *   ~/.coc/repos/<originId>/review-progress/<prId>.json
  *
- * No VS Code dependencies. Cross-platform compatible (Linux/Mac/Windows).
+ * Pure Node.js. Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

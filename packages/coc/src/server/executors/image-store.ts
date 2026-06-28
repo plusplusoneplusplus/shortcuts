@@ -6,7 +6,7 @@
  * - Temp-file helpers for decoding images into SDK Attachment objects
  * - Rehydration helper for restoring images lazily from external blob files
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

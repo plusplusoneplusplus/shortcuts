@@ -17,7 +17,7 @@
  * `undefined` so the evaluator falls back to an excerpt-less prompt and the fix
  * still fires.
  *
- * No VS Code dependencies — Node.js built-ins only. Cross-platform.
+ * Pure Node.js with built-ins only. Cross-platform.
  */
 
 import { execFile } from 'child_process';

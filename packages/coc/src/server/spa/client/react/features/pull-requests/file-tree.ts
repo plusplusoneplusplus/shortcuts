@@ -2,7 +2,7 @@
  * File-tree helper for the PR "Files changed" panel.
  *
  * Builds a folder tree from a flat list of `FileChange`s, then
- * collapses single-child folder chains the way VS Code / GitHub do
+ * collapses single-child folder chains the way common source browsers do
  * (e.g. `packages/coc/src/server` shown as one row) so reviewers can
  * see meaningful structure without scrolling past redundant prefixes.
  *
@@ -121,7 +121,7 @@ function aggregate(folder: MutableFolder): void {
     folder.fileCount = 0;
     folder.additions = 0;
     folder.deletions = 0;
-    // Folders first, then files, each alphabetical (mirrors VS Code).
+    // Folders first, then files, each alphabetical.
     const folders: MutableFolder[] = [];
     const files: FileTreeFile[] = [];
     for (const child of folder.childMap.values()) {

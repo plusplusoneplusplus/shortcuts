@@ -105,7 +105,7 @@ dist
 # TernJS port file
 .tern-port
 
-# VSCode extension specific
+# Legacy package build artifacts
 out/
 dist/
 *.vsix
@@ -118,9 +118,6 @@ dist/
 .Trashes
 ehthumbs.db
 Thumbs.db
-
-# VSCode test runner
-.vscode-test/
 
 # Webpack build output
 out/

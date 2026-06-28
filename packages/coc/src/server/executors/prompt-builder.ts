@@ -4,7 +4,7 @@
  * Pure-function helpers for assembling prompts and system messages used by
  * CLITaskExecutor.  No class state, no side-effects, no streaming references.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

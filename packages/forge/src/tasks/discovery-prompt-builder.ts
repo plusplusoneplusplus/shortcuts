@@ -3,7 +3,7 @@
  *
  * Pure-Node prompt builder for feature-folder discovery.
  * Builds a discovery request prompt from a feature description,
- * keywords, and scope parameters — no VS Code dependencies.
+ * keywords, and scope parameters.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */

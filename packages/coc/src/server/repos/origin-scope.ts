@@ -15,7 +15,7 @@
  * Centralizing these primitives keeps two clones of the same upstream repo from
  * resolving to different storage directories.
  *
- * No VS Code dependencies — uses only Node.js + forge git helpers.
+ * Pure Node.js; uses forge git helpers.
  */
 
 import {

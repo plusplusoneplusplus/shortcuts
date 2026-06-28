@@ -8,7 +8,7 @@
  * Follows the same pattern as SqliteQueuePersistence: receives a
  * shared Database handle, uses prepared statements for hot paths.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

@@ -196,4 +196,4 @@ A: Comments persist. Anchors attempt to relocate to the new content via fuzzy ma
 
 - [CoC README](../packages/coc/README.md) — Main CoC documentation
 - [Pipeline YAML Guide](../CLAUDE.md#yaml-pipeline-framework) — Pipeline configuration
-- [VS Code Extension](../README.md) — Extension features
+- [Dashboard SPA](dashboard-spa.md) — Dashboard module layout

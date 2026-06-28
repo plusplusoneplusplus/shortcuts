@@ -1,6 +1,6 @@
 /**
- * Task scanning and grouping utilities extracted from the VS Code extension's TaskManager.
- * Pure Node.js functions with no VS Code dependencies.
+ * Task scanning and grouping utilities for task management.
+ * Pure Node.js functions with no editor dependencies.
  * All scanning functions use async I/O via fs.promises.
  */
 
@@ -365,4 +365,3 @@ export async function buildTaskFolderHierarchy(
 
     return { root: rootFolder, folderMap };
 }
-

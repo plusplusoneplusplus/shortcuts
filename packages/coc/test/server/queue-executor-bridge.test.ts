@@ -1412,7 +1412,7 @@ describe('CLITaskExecutor', () => {
                 }));
             });
 
-            it('should use VS Code extension style prompt with planFilePath and no additionalContext', async () => {
+            it('should use follow-prompt text with planFilePath and no additionalContext', async () => {
                 const existsSyncMock = vi.mocked(fs.existsSync);
 
                 existsSyncMock.mockImplementation((p: fs.PathLike) => {
@@ -1546,7 +1546,7 @@ describe('CLITaskExecutor', () => {
                 }));
             });
 
-            it('should use VS Code extension style even with additionalContext and planFilePath', async () => {
+            it('should use follow-prompt text with additionalContext and planFilePath', async () => {
                 const executor = new CLITaskExecutor(store);
 
                 const task: QueuedTask = {

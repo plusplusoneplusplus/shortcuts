@@ -4,7 +4,7 @@
  * Provides GET /api/stats/token-usage, which aggregates per-day per-model
  * token consumption across all persisted processes.
  *
- * No VS Code dependencies — uses only Node.js built-ins.
+ * Pure Node.js; uses only built-ins.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

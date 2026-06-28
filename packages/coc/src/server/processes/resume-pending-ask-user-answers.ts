@@ -15,7 +15,7 @@
  * re-enqueued by an earlier invocation) is skipped, so repeated restarts never
  * stack duplicate concurrent resumes.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

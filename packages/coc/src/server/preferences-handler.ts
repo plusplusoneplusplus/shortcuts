@@ -5,7 +5,7 @@
  * Stores preferences in a JSON file under the CoC data directory (~/.coc/preferences.json).
  * File format: { global?: GlobalPreferences, repos?: Record<string, PerRepoPreferences> }
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
@@ -413,7 +413,7 @@ export const GlobalPreferencesSchema = z.object({
     linkHandlers: LinkHandlersSchema.optional().catch(undefined),
     /** Sandboxed inline previews for local .html/.htm links whose title is "embed". */
     htmlEmbed: HtmlEmbedSchema.optional().catch(undefined),
-    /** VS Code-style inline ghost-text autocomplete for the Queue Task and follow-up inputs. */
+    /** Inline ghost-text autocomplete for the Queue Task and follow-up inputs. */
     promptAutocomplete: PromptAutocompleteSchema.optional().catch(undefined),
     /** Global Memory V2 settings — independent of any workspace scope. */
     memoryV2: GlobalMemoryV2Schema.optional().catch(undefined),

@@ -1,8 +1,7 @@
 /**
- * Pure Node.js git types — no VS Code dependencies.
+ * Pure Node.js git types.
  *
- * Extracted from `src/shortcuts/git/types.ts`.
- * `vscode.Uri` replaced with `filePath: string`.
+ * Editor URI objects are represented as `filePath: string`.
  * UI-only types (`GitSectionType`, `GitViewCounts`) are omitted.
  */
 
@@ -180,7 +179,7 @@ export interface GitCommitRangeFile {
 }
 
 /**
- * Configuration for GitRangeService (replaces vscode.workspace.getConfiguration).
+ * Configuration for GitRangeService.
  */
 export interface GitRangeConfig {
     /** Maximum number of changed files to return from detectCommitRange (default: 100) */

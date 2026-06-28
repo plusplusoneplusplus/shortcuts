@@ -4,7 +4,7 @@
  * HTTP API routes for exposing the Tasks Viewer folder hierarchy,
  * file content, and settings for a given workspace.
  *
- * No VS Code dependencies - uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

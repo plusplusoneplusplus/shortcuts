@@ -1,6 +1,6 @@
 # CoC (Copilot of Copilot)
 
-A standalone Node.js CLI for executing YAML-based AI pipelines outside VS Code.
+A standalone Node.js CLI and dashboard for executing YAML-based AI pipelines.
 
 ## Prerequisites
 

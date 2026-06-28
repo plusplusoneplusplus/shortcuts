@@ -5,7 +5,7 @@
  * store, queue files, and preferences.  Supports Replace (wipe-then-restore)
  * and Merge (add-only-missing) modes.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

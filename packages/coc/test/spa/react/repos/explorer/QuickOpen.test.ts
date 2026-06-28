@@ -1,5 +1,5 @@
 /**
- * Tests for QuickOpen component — VS Code-style Ctrl+P file finder.
+ * Tests for QuickOpen component — command-palette-style file finder.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';

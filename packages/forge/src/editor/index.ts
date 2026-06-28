@@ -2,8 +2,7 @@
  * Editor Abstractions
  *
  * Platform-agnostic interfaces and types for the Markdown Review Editor.
- * Both the VS Code extension and the CoC standalone HTTP server implement
- * these contracts.
+ * CoC dashboard and server-side hosts implement these contracts.
  */
 
 // Domain types

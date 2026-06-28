@@ -118,7 +118,12 @@ all have their own `references/*.md`.
   session. If strict resume fails, persist
   `metadata.stoppedChatResume = { resumable: false, reason:
   'strict-resume-failed', ... }`; the REST API and SPA must treat that process
-  as non-resumable and must not offer retry or fresh-session fallback.
+  as non-resumable and must not offer follow-up resume or a fresh-session
+  fallback that continues the stopped chat. A terminal **failed** chat may still
+  expose a "Retry task" button (`FollowUpInputArea` `onRetryTask` →
+  `retry-task-button`, gated by `ChatDetail.canRetryFailedTask`) that re-runs the
+  original task payload as a brand-new conversation via `client.queue.retry` —
+  distinct from resuming the dead session.
 - **Process metadata field updates** from dashboard/server callers should use
   `client.processes.patchMetadata(...)` or API `metadataPatch` unless a full
   metadata replacement is intentional; full `metadata` on

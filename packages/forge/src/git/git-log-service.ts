@@ -1,5 +1,5 @@
 /**
- * Pure Node.js GitLogService — no VS Code dependencies.
+ * Pure Node.js GitLogService.
  *
  * Provides git commit history, branch management, diff retrieval,
  * and file content queries using the async `execAsync` helper so that

@@ -1,6 +1,6 @@
 /**
- * Task parsing utilities extracted from the VS Code extension's tasks-viewer module.
- * Pure Node.js functions with no VS Code dependencies.
+ * Task parsing utilities for task management.
+ * Pure Node.js functions with no editor dependencies.
  */
 
 import * as fs from 'fs';

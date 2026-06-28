@@ -4,7 +4,7 @@
  * Provides endpoints for syncing action items from Work IQ (via MCP)
  * and generating weekly summaries from notes + cross-repo data.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  */
 
 import * as path from 'path';

@@ -58,6 +58,14 @@ export interface FollowUpInputAreaProps {
     error: string | null;
     /** Inline error that should not expose the retry affordance. */
     nonRetryableError?: string | null;
+    /**
+     * Re-run the whole task from its original payload. When provided alongside a
+     * `nonRetryableError`, a "Retry task" button is shown inside the error block
+     * so an un-continuable failed chat still has a one-click recovery path.
+     */
+    onRetryTask?: () => void;
+    /** Disables the "Retry task" button while a retry is in flight. */
+    retryingTask?: boolean;
     /** Placeholder to show while disabled for a known non-expiry reason. */
     disabledPlaceholder?: string;
     resumeFeedback: { type: 'success' | 'error'; message: string; command?: string } | null;
@@ -211,6 +219,8 @@ export function FollowUpInputArea({
     isCancelling,
     error,
     nonRetryableError = null,
+    onRetryTask,
+    retryingTask = false,
     disabledPlaceholder,
     resumeFeedback,
     onDismissResumeFeedback,
@@ -679,7 +689,18 @@ export function FollowUpInputArea({
                     className="chat-error-bubble bubble-error text-xs text-[#f14c4c]"
                     data-testid="follow-up-inline-error"
                 >
-                    {nonRetryableError}
+                    <div>{nonRetryableError}</div>
+                    {onRetryTask && (
+                        <button
+                            type="button"
+                            data-testid="retry-task-button"
+                            onClick={onRetryTask}
+                            disabled={retryingTask}
+                            className="mt-2 px-3 py-1.5 text-sm rounded bg-[#0e639c] hover:bg-[#1177bb] text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {retryingTask ? 'Retrying…' : 'Retry task'}
+                        </button>
+                    )}
                 </div>
             )}
             {!nonRetryableError && error && <div className="chat-error-bubble bubble-error text-xs text-[#f14c4c]">{error}</div>}

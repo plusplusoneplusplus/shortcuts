@@ -440,23 +440,28 @@ describe('ChatDetail', () => {
         });
 
         it('renders Retry button when error is set (not gated on lastFailedMessageRef)', () => {
-            // The retry button is shown whenever error is truthy
-            const errorBubbleIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('chat-error-bubble');
+            // The retry button is shown whenever error is truthy. Anchor on the
+            // retry button itself rather than the first chat-error-bubble, since
+            // the non-retryable error block above it can grow (e.g. the
+            // "Retry task" affordance) and shift a fixed-width window off target.
+            const retryBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('data-testid="retry-btn"');
             const retrySection = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
-                errorBubbleIdx,
-                errorBubbleIdx + 600,
+                retryBtnIdx - 400,
+                retryBtnIdx + 200,
             );
             // Should NOT require lastFailedMessageRef.current in the render condition
-            expect(retrySection).not.toContain('error && lastFailedMessageRef.current');
+            expect(retrySection).not.toContain('lastFailedMessageRef.current');
             expect(retrySection).toContain('Retry');
             expect(retrySection).toContain('onRetry');
         });
 
         it('uses the shared Button component for the retry button', () => {
-            const errorBubbleIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('chat-error-bubble');
+            // Anchor on the retry button marker so an enlarged non-retryable
+            // error block above cannot push the <Button> out of the window.
+            const retryBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('data-testid="retry-btn"');
             const retrySection = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
-                errorBubbleIdx,
-                errorBubbleIdx + 600,
+                retryBtnIdx - 200,
+                retryBtnIdx + 200,
             );
             expect(retrySection).toContain('<Button');
             expect(retrySection).toContain('variant="danger"');

@@ -14,7 +14,7 @@
  * Every successful create/update emits a `canvas-updated` SSE event on the
  * process channel so the dashboard panel re-renders live.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

@@ -2,8 +2,8 @@
  * Follow-Prompt Types and Utilities
  *
  * Shared payload interface and prompt-building logic for follow-prompt tasks.
- * Used by both the VS Code extension and the CoC server to ensure consistent
- * prompt construction when executing skill/prompt-file based AI tasks.
+ * Used by the CoC server and Node queue consumers to ensure consistent prompt
+ * construction when executing skill/prompt-file based AI tasks.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */

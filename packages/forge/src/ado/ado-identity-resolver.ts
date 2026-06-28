@@ -6,7 +6,7 @@
  * session cache so future calls do not need to re-resolve.
  *
  * Best-effort: on any failure the function logs a warning and returns null.
- * No VS Code dependencies — pure Node.js.
+ * Pure Node.js.
  */
 import type { WebApi } from 'azure-devops-node-api';
 import { getLogger, LogCategory } from '../logger';

@@ -1204,6 +1204,74 @@ describe('ChatDetail', () => {
             });
             expect(screen.queryByTestId('retry-task-button')).toBeNull();
         });
+
+        it('shows a Retry task button for a failed chat with a non-retryable resume error and calls retry', async () => {
+            const task = makeTask({ status: 'failed', processId: 'proc-1' });
+            const proc = makeProcess({
+                status: 'failed',
+                sdkSessionId: 'stopped-session',
+                error: 'Provider did not resume the stopped SDK session.',
+                metadata: {
+                    mode: 'autopilot',
+                    stoppedChatResume: {
+                        resumable: false,
+                        reason: STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+                        message: STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+                        failedAt: '2026-06-23T18:53:00.000Z',
+                        sdkSessionId: 'stopped-session',
+                    },
+                },
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/queue/': (url: string) => {
+                    if (url.includes('/retry')) {
+                        return new Response(
+                            JSON.stringify({ task: { id: 'task-2', status: 'queued' } }),
+                            { status: 201, headers: { 'content-type': 'application/json' } },
+                        );
+                    }
+                    return new Response(
+                        JSON.stringify({ task }),
+                        { status: 200, headers: { 'content-type': 'application/json' } },
+                    );
+                },
+                '/processes/': { body: { process: proc } },
+                '/models': { body: [] },
+            });
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+            // The dead-end inline error is still shown, but now with a retry path.
+            await waitFor(() => {
+                expect(screen.getByTestId('follow-up-inline-error').textContent)
+                    .toContain('saved SDK session could not be resumed');
+            });
+            const btn = await screen.findByTestId('retry-task-button');
+            fireEvent.click(btn);
+
+            await waitFor(() => {
+                const retryCalls = fetchMock.mock.calls.filter(
+                    (c: any) => typeof c[0] === 'string' && c[0].includes('/queue/task-1/retry'),
+                );
+                expect(retryCalls.length).toBeGreaterThan(0);
+            });
+        });
+
+        it('does not show a Retry task button for a cancelled chat without a saved session', async () => {
+            const task = makeTask({ status: 'cancelled', processId: 'proc-1' });
+            const proc = makeProcess({
+                status: 'cancelled',
+                sessionId: 'legacy-session-id',
+                metadata: { mode: 'autopilot', sessionId: 'legacy-metadata-session-id' },
+            });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('follow-up-inline-error').textContent)
+                    .toContain('no SDK session was saved');
+            });
+            expect(screen.queryByTestId('retry-task-button')).toBeNull();
+        });
     });
 
     // ── Task actions ───────────────────────────────────────────────────────

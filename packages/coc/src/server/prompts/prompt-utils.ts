@@ -1,7 +1,7 @@
 /**
  * Prompt File Utilities
  *
- * Discover and read `.prompt.md` files without VS Code dependencies.
+ * Discover and read `.prompt.md` files without editor-host dependencies.
  * Mirrors src/shortcuts/shared/prompt-files-utils.ts using
  * pipeline-core's findPromptFiles() for the actual scanning.
  *

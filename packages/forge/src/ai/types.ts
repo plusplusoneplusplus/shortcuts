@@ -1,7 +1,7 @@
 /**
  * AI Service Types (Pure Node.js)
  *
- * Core types for AI service operations. These types are VS Code-free
+ * Core types for AI service operations. These types are editor-independent
  * and can be used in CLI tools, tests, and other Node.js environments.
  */
 

@@ -10,7 +10,7 @@
  * headSha) tuple. The AI calls the tool with the final per-hunk classifications
  * and the handler writes them to the file-based classification store.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

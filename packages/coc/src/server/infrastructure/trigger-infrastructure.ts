@@ -14,7 +14,7 @@
  * reuses the server-side checks path — see `createCiChecksFetcher`) so this
  * builder stays free of provider/HTTP details and is unit-testable.
  *
- * No VS Code dependencies — Node.js built-ins only. Cross-platform.
+ * Pure Node.js with built-ins only. Cross-platform.
  */
 
 import DatabaseConstructor from 'better-sqlite3';

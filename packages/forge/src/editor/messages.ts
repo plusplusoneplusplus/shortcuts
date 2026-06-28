@@ -5,7 +5,7 @@
  *   • WebviewToBackendMessage — messages sent from the UI to the backend
  *   • BackendToWebviewMessage — messages sent from the backend to the UI
  *
- * "Backend" can be the VS Code extension host OR a standalone HTTP server.
+ * "Backend" is the server-side host that serves the review editor UI.
  */
 
 import type { SerializedAICommand, SerializedAIMenuConfig, AICommandMode } from '../ai';

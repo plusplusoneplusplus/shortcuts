@@ -1,15 +1,16 @@
 # Monorepo Layout, Build, and Release
 
-The published Node packages plus a frozen VS Code extension live in one npm workspaces monorepo. This file documents the cross-package contract, build/test commands, package management, and conventions enforced across the whole tree. Load it when planning multi-package changes, debugging build/release issues, or wiring new conventions.
+The repository is an npm workspaces monorepo for published Node packages. This file documents the cross-package contract, build/test commands, package management, and conventions enforced across the whole tree. Load it when planning multi-package changes, debugging build/release issues, or wiring new conventions.
 
 ## Products & Shared Packages
 
 | Product | Location | Runtime | Description |
 |---------|----------|---------|-------------|
-| **VS Code Extension** | `packages/vscode-extension/` | VS Code | Markdown review, git diff review, code review, shortcut groups, global notes, tasks viewer, YAML workflows — **FROZEN: do not modify** |
 | **CoC CLI** | `packages/coc/` | Node.js | CLI for executing YAML-based AI workflows (`coc run|validate|list|serve|wipe-data`) |
+| **CoC Container** | `packages/coccontainer/` | Node.js | Container-oriented CoC server package with messaging integrations and service entry points |
 | **CoC Client** | `packages/coc-client/` | Node.js/browser | Framework-free TypeScript client for CoC REST and realtime APIs |
 | **Deep Wiki** | `packages/deep-wiki/` | Node.js | CLI that auto-generates comprehensive wikis for codebases (`deep-wiki seeds|discover|generate|theme|init`) |
+| **Teams Bot** | `packages/teams-bot/` | Node.js | Microsoft Teams bot integration for CoC-backed workflows |
 
 | Shared Package | Location | Description |
 |----------------|----------|-------------|
@@ -19,7 +20,7 @@ The published Node packages plus a frozen VS Code extension live in one npm work
 | **coc-memory** | `packages/coc-memory/` | Memory V2 core package: SQLite-backed fact/episode stores, hybrid search, embedding provider abstraction, capture service, safety scanning |
 | **whatsapp-bot** | `packages/whatsapp-bot/` | Standalone WhatsApp bot via Baileys — no CoC/forge deps. Used by `coccontainer` when `messaging.whatsapp.enabled` is true |
 
-**Architectural boundary:** Pure Node.js logic lives in packages (no VS Code deps). VS Code-specific wrappers live in `packages/vscode-extension/src/shortcuts/`. Example: `forge/src/ai/` = pure AI SDK; `packages/vscode-extension/src/shortcuts/ai-service/` = VS Code UI wrapper. **`packages/vscode-extension/` is frozen — do not read, edit, or reason about its code.**
+**Architectural boundary:** Shared behavior belongs in Node packages with explicit package contracts. UI-facing behavior for the CoC dashboard lives under `packages/coc/`; reusable REST clients live in `packages/coc-client/`; workflow, memory, SDK, and utility logic stay in their dedicated packages.
 
 ## Package Management & Publishing
 
@@ -43,13 +44,11 @@ Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memo
 ## Build & Test
 
 - **Build packages:** `npm run build:packages`
-- **Build extension:** `npm run compile`
-- **Watch:** `npm run watch`
-- **Test all:** `npm run test` (extension Mocha tests, 6900+)
+- **Build all:** `npm run build`
+- **Compile:** `npm run compile` (alias for package build)
+- **Test all:** `npm run test`
 - **Test packages:** `npm run test:run` in any package directory (Vitest)
 - **Lint:** `npm run lint`
-- **Package:** `npm run vsce:package`
-- **Publish:** `npm run vsce:publish`
 - **Debug CoC:** `cd packages/coc && npm run build && npm link && cd ../..` then `coc run <path>` or `coc serve --no-open`
 - **Debug Deep Wiki:** `cd packages/deep-wiki && npm run build && npm link && cd ../..` then `deep-wiki generate <repo>`
 - **Run CoCContainer with rebuild loop:** `./scripts/coccontainer-serve-loop.sh --port 8080` installs dependencies, builds and links the package chain, verifies native dependencies such as `better-sqlite3`, then starts `coccontainer serve --no-open`
@@ -72,15 +71,8 @@ Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memo
 
 **Model resolution:** `task.config.model` > `PerRepoPreferences.defaultModels[mode]` > `defaultModel` > CLI default.
 
-## VS Code Extension (FROZEN)
-
-> ⚠️ `packages/vscode-extension/` is frozen and no longer actively developed. AI agents must NOT read, edit, or reason about code in `packages/vscode-extension/`. It is not an npm workspace.
-
-Historical reference (do not modify): entry point `packages/vscode-extension/src/extension.ts`. Feature modules under `packages/vscode-extension/src/shortcuts/` covered markdown comments, git diff comments, code review, YAML pipelines, tasks viewer, AI service, git layer, skills, and shared base classes. Configuration lived in `.vscode/shortcuts.yaml` with a versioned migration system (v1→v4). MCP/Permissions were handled via `SendMessageOptions`.
-
 ## Development Notes
 
-- TypeScript, webpack bundling, VS Code API ≥ 1.95.0, Node.js ≥ 24
+- TypeScript packages targeting Node.js ≥ 24
 - Format on save and import organization enabled
 - Cross-platform: Linux, macOS, Windows
-- (Extension only, frozen) Tree data providers extend `BaseTreeDataProvider` or `FilterableTreeDataProvider`; commands are registered centrally in `src/shortcuts/commands.ts`

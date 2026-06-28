@@ -5,7 +5,7 @@
  * Repo-folder roots: images stored co-located at `<repoRoot>/.images/<uuid>.<ext>`.
  * Markdown references use relative paths: `.attachments/<uuid>.<ext>` or `.images/<uuid>.<ext>`.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

@@ -7,7 +7,7 @@
  * - Safe JSON reads with default value (readJSON)
  * - Safe subdirectory listing (listDirectory)
  *
- * No VS Code dependencies — pure Node.js.
+ * Pure Node.js.
  */
 import * as fs from 'fs/promises';
 import * as path from 'path';

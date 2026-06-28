@@ -7,7 +7,7 @@ Workspace MCP servers in CoC are a merge of two sources: global servers from `~/
 - **Global**: `~/.copilot/mcp-config.json` — root key `mcpServers`
 - **Workspace**: `<repo>/.vscode/mcp.json` — root key `servers`
 
-Extra fields (`description`, `toolScope`) are stored directly on server entries in config files. VS Code ignores unknown keys; CoC reads and surfaces them.
+Extra fields (`description`, `toolScope`) are stored directly on server entries in config files. Consumers that ignore unknown keys can keep using the same file; CoC reads and surfaces these fields.
 
 ## REST API
 

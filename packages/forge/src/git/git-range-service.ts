@@ -1,5 +1,5 @@
 /**
- * Pure Node.js GitRangeService — no VS Code dependencies.
+ * Pure Node.js GitRangeService.
  *
  * Provides commit range calculations:
  * - Detecting the default remote branch (origin/main or origin/master)

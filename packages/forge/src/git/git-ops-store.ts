@@ -9,7 +9,7 @@
  *
  * Follows the same atomic-write and write-queue patterns as FileProcessStore.
  *
- * No VS Code dependencies — pure Node.js.
+ * Pure Node.js.
  */
 
 import * as fs from 'fs/promises';

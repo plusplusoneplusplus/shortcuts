@@ -9,7 +9,7 @@
  * construction time so the AI only provides per-call values (filePath,
  * lineStart, side, comment).
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

@@ -4,7 +4,7 @@
  * HTTP API routes for notes git operations (init, status, log, diff, commit)
  * for a given workspace's notes directory.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

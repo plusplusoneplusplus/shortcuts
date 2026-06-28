@@ -4,7 +4,7 @@
  * Cleans up orphaned output files under per-repo outputs/ directories when
  * processes are removed, cleared, or pruned. Also purges stale queue.json entries.
  *
- * No VS Code dependencies -- uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

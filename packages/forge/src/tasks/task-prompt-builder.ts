@@ -1,9 +1,8 @@
 /**
  * Task Prompt Builder
  *
- * Pure-Node prompt-building functions for AI task generation.
- * Extracted from the VS Code extension's ai-task-commands.ts for reuse
- * in CLI tools and the CoC server without any VS Code dependencies.
+ * Pure-Node prompt-building functions for AI task generation in CLI tools and
+ * the CoC server.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -19,7 +18,6 @@ import { loadRelatedItems } from './related-items-loader';
 
 /**
  * Feature context gathered from a feature folder.
- * Mirror of the extension's FeatureContext but without VS Code types.
  */
 export interface FeatureContextInput {
     hasContent: boolean;
@@ -293,7 +291,7 @@ export function buildDeepModePrompt(
 
 /**
  * Gather context from a feature folder (related.yaml, plan.md, spec.md).
- * Pure Node.js — no VS Code dependencies.
+ * Pure Node.js.
  */
 export async function gatherFeatureContext(
     folderPath: string,

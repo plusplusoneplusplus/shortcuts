@@ -1,6 +1,6 @@
 /**
  * Shared queue utilities used across bridge classes.
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  */
 
 import type { TaskQueueManager, Attachment } from '@plusplusoneplusplus/forge';

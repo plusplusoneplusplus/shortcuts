@@ -2,7 +2,7 @@
  * Program Utilities
  *
  * Pure Node.js utilities for checking program availability and parsing CLI output.
- * No VS Code dependencies.
+ * Pure Node.js.
  */
 
 import { execSync } from 'child_process';

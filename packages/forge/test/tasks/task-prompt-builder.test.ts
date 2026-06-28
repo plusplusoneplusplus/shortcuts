@@ -1,8 +1,8 @@
 /**
  * Task Prompt Builder Tests
  *
- * Tests for the pure-Node prompt-building functions extracted from
- * the VS Code extension's ai-task-commands.ts.
+ * Tests for the pure-Node prompt-building functions used by CoC task
+ * generation.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

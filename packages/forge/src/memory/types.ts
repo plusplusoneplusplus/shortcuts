@@ -4,7 +4,7 @@
  * Core type definitions shared by the bounded memory store and tool-call
  * cache subsystems.
  *
- * No VS Code dependencies — pure Node.js types for pipeline-core.
+ * Pure Node.js types for pipeline-core.
  */
 
 // ---------------------------------------------------------------------------

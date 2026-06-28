@@ -1,136 +1,27 @@
-# YAML Pipeline Framework Design (MVP)
+# YAML Pipeline Framework Design
 
 ## Summary
 
-A simple YAML-based configuration for running AI MapReduce workflows. Start with CSV input, a prompt template for map, and list output.
+The YAML pipeline framework lets users define AI workflows in a single YAML file and run them through CoC. The MVP centers on CSV input, a prompt template for each row, and deterministic list output. The same configuration compiles into the shared workflow engine used by the CoC CLI, server queue, dashboard, and package consumers.
 
 ## Goals
 
-- Define a workflow in a single YAML file
-- CSV file as input (each row becomes an item)
-- Simple prompt template with `{{column}}` variable substitution
-- Schema-light output definition (just field names)
-- Deterministic list/table output
+- Define a workflow in one YAML file.
+- Read CSV input where each row becomes an item.
+- Substitute `{{column}}` values into a prompt template.
+- Ask AI to return a small JSON object with declared fields.
+- Produce deterministic list or table output.
+- Run from `coc run`, the CoC dashboard Workflows tab, or direct package APIs.
 
-## Non-Goals (for now)
+## Non-Goals
 
-- Git integration, file globs, shell commands
-- AI-powered reduce phase
-- Complex reduce operations (group-by, stats, etc.)
-- Caching, retries, streaming
-- Multiple output destinations
-
----
+- Git input, file globs, shell commands, or HTTP sources.
+- AI-powered reduce.
+- Complex reduce operations such as grouping and statistics.
+- Caching, retries, or streaming.
+- Multiple output destinations.
 
 ## YAML Schema
-
-```yaml
-name: "Pipeline Name"
-
-input:
-  type: csv
-  path: "./data.csv"
-
-map:
-  prompt: |
-    Analyze this item:
-    Title: {{title}}
-    Description: {{description}}
-  
-  output: [severity, category, summary]
-
-reduce:
-  type: list
-```
-
----
-
-## Input: CSV
-
-Read a CSV file. First row is headers. Each row becomes an item.
-
-```yaml
-input:
-  type: csv
-  path: "./bugs.csv"          # Required: path to CSV file
-  delimiter: ","               # Optional: default ","
-```
-
-**Example CSV:**
-```csv
-id,title,description,priority
-1,Login broken,Users can't login,high
-2,Slow search,Search takes 10s,medium
-```
-
-**Produces items:**
-```json
-{ "id": "1", "title": "Login broken", "description": "Users can't login", "priority": "high" }
-{ "id": "2", "title": "Slow search", "description": "Search takes 10s", "priority": "medium" }
-```
-
----
-
-## Map: Prompt Template
-
-Run a prompt for each item. Use `{{column_name}}` to insert values.
-
-```yaml
-map:
-  prompt: |
-    Analyze this bug report:
-    
-    ID: {{id}}
-    Title: {{title}}
-    Description: {{description}}
-    Priority: {{priority}}
-    
-    Classify this bug and provide your assessment.
-  
-  output: [severity, category, effort_hours, needs_more_info]
-  
-  parallel: 3                  # Optional: max concurrent calls (default: 5)
-```
-
-**How it works:**
-
-1. The `prompt` is sent to AI with each row's values substituted
-2. The `output` field names are appended to the prompt automatically:
-   > "Return JSON with these fields: severity, category, effort_hours, needs_more_info"
-3. The AI response is parsed as JSON and stored as `output` for each item
-4. If AI returns extra fields, they are ignored. If fields are missing, they become `null`.
-
----
-
-## Reduce: List Output
-
-Show all results as a formatted list (no AI call, deterministic).
-
-```yaml
-reduce:
-  type: list
-```
-
-**Output:**
-```
-## Results (3 items)
-
-### Item 1
-**Input:** id=1, title=Login broken, priority=high
-**Output:** severity=critical, category=backend, effort_hours=4, needs_more_info=false
-
-### Item 2
-**Input:** id=2, title=Slow search, priority=medium
-**Output:** severity=medium, category=database, effort_hours=8, needs_more_info=false
-
-...
-```
-
-The list shows both input (CSV row) and output (AI response) for each item.
-
----
-
-## Complete Example
 
 ```yaml
 name: "Bug Triage"
@@ -142,57 +33,128 @@ input:
 map:
   prompt: |
     Analyze this bug:
-    
+
     Title: {{title}}
     Description: {{description}}
     Reporter Priority: {{priority}}
-    
-    Classify the severity (critical/high/medium/low), 
-    category (ui/backend/database/infra),
-    estimate effort in hours,
-    and note if more info is needed.
-  
+
+    Classify the severity, category, effort, and whether more info is needed.
   output: [severity, category, effort_hours, needs_more_info]
-  
   parallel: 3
 
 reduce:
   type: list
 ```
 
----
+Pipeline files can live anywhere a user can pass to `coc run`. Repository-scoped workflow examples often use `.vscode/workflows/` or `.vscode/pipelines/` as configuration directories.
+
+## Input: CSV
+
+The CSV reader treats the first row as headers and turns each following row into a string-valued item.
+
+```yaml
+input:
+  type: csv
+  path: "./bugs.csv"
+  delimiter: ","
+```
+
+Example CSV:
+
+```csv
+id,title,description,priority
+1,Login broken,Users can't login,high
+2,Slow search,Search takes 10s,medium
+```
+
+Produced items:
+
+```json
+{ "id": "1", "title": "Login broken", "description": "Users can't login", "priority": "high" }
+{ "id": "2", "title": "Slow search", "description": "Search takes 10s", "priority": "medium" }
+```
+
+## Map Phase
+
+For each item, the engine substitutes item fields into the prompt and invokes AI with a concurrency limit.
+
+```yaml
+map:
+  prompt: |
+    Analyze this bug report:
+    ID: {{id}}
+    Title: {{title}}
+    Description: {{description}}
+    Priority: {{priority}}
+  output: [severity, category, effort_hours, needs_more_info]
+  parallel: 3
+```
+
+Execution rules:
+
+1. `{{field}}` placeholders are replaced with matching item values.
+2. The declared output fields are added to the AI instruction.
+3. The AI response is parsed as JSON.
+4. Missing declared fields become `null`.
+5. Extra response fields are ignored.
+
+## Reduce Phase
+
+The MVP reduce phase is deterministic and formats mapped outputs without another AI call.
+
+```yaml
+reduce:
+  type: list
+```
+
+Example output:
+
+```text
+## Results (2 items)
+
+### Item 1
+Input: id=1, title=Login broken, priority=high
+Output: severity=critical, category=backend, effort_hours=4, needs_more_info=false
+
+### Item 2
+Input: id=2, title=Slow search, priority=medium
+Output: severity=medium, category=database, effort_hours=8, needs_more_info=false
+```
 
 ## Execution Flow
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Read CSV   │ ──▶ │  Map: AI    │ ──▶ │   Reduce    │ ──▶ │   Output    │
-│  (N rows)   │     │  (N calls)  │     │  (1 call or │     │  (panel)    │
-│             │     │             │     │   format)   │     │             │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+```text
+Read CSV -> Map with AI -> Reduce deterministically -> Store and display result
 ```
 
-1. **Read CSV** - Parse file, create N items
-2. **Map** - For each item, run prompt with substituted values (parallel with limit)
-3. **Reduce** - Either AI summarize, or format as list/table
-4. **Output** - Show in AI Processes panel
+1. Parse the YAML file.
+2. Resolve relative paths against the workflow directory.
+3. Load CSV rows.
+4. Run the map prompt over each item with a concurrency limit.
+5. Parse AI JSON responses into declared output fields.
+6. Format the final result.
+7. Return output to the CLI, dashboard task/process view, or package caller.
 
----
+## Package Boundaries
 
-## Implementation
+```text
+packages/coc-workflow/src/workflow/
+  compiler.ts          # YAML to WorkflowConfig
+  executor.ts          # DAG execution lifecycle
+  nodes/               # load/map/ai/reduce/filter/script/merge/transform executors
+  pipeline-compat.ts   # Legacy pipeline YAML compatibility
+  types.ts             # Public workflow contracts
 
-### Files
-
+packages/coc/src/
+  commands/run.ts      # coc run
+  commands/validate.ts # YAML validation
+  server/executors/    # Queue-backed workflow execution
+  server/spa/client/   # Dashboard workflow surfaces
 ```
-src/shortcuts/yaml-pipeline/
-├── types.ts              # PipelineConfig interface
-├── csv-reader.ts         # Parse CSV to items
-├── template.ts           # Simple {{var}} substitution
-├── executor.ts           # Run the pipeline
-└── commands.ts           # VSCode command registration
-```
 
-### Key Types
+`@plusplusoneplusplus/coc-workflow` owns the pure compile and execute path. `@plusplusoneplusplus/forge` keeps compatibility exports and utility surfaces. CoC owns CLI/server/dashboard integration.
+
+## Key Types
 
 ```typescript
 interface PipelineConfig {
@@ -204,7 +166,7 @@ interface PipelineConfig {
   };
   map: {
     prompt: string;
-    output: string[];      // Field names expected from AI
+    output: string[];
     parallel?: number;
   };
   reduce: {
@@ -213,18 +175,16 @@ interface PipelineConfig {
 }
 
 interface PipelineItem {
-  [key: string]: string;  // CSV columns
+  [key: string]: string;
 }
 
 interface MapResult {
   item: PipelineItem;
-  output: Record<string, unknown>;  // AI response with declared fields
+  output: Record<string, unknown>;
 }
 ```
 
-### Template Engine
-
-Simple implementation - just replace `{{var}}` with values:
+## Template Substitution
 
 ```typescript
 function substituteTemplate(template: string, item: Record<string, string>): string {
@@ -232,72 +192,65 @@ function substituteTemplate(template: string, item: Record<string, string>): str
 }
 ```
 
-### Prompt Generation
-
-Append output schema to the user's prompt:
+## Prompt Generation
 
 ```typescript
 function buildFullPrompt(userPrompt: string, outputFields: string[]): string {
-  const fieldsStr = outputFields.join(', ');
   return `${userPrompt}
 
-Return JSON with these fields: ${fieldsStr}`;
+Return JSON with these fields: ${outputFields.join(', ')}`;
 }
 ```
 
----
+## Execution Surfaces
 
-## VSCode Integration
+CLI:
 
-### Command
+```bash
+coc run path/to/pipeline.yaml
+```
+
+Validation:
+
+```bash
+coc validate path/to/pipeline.yaml
+```
+
+Package API:
 
 ```typescript
-vscode.commands.registerCommand('shortcuts.runPipeline', async (uri: vscode.Uri) => {
-  const yamlContent = await vscode.workspace.fs.readFile(uri);
-  const config = yaml.parse(yamlContent.toString());
-  
-  await executePipeline(config);
-});
+import { compileToWorkflow, executeWorkflow } from '@plusplusoneplusplus/coc-workflow';
+
+const config = compileToWorkflow(yamlContent);
+const result = await executeWorkflow(config, { aiInvoker });
 ```
 
-### Context Menu
+Dashboard:
 
-Add to `package.json`:
-```json
-{
-  "menus": {
-    "explorer/context": [
-      {
-        "command": "shortcuts.runPipeline",
-        "when": "resourceExtname == .yaml || resourceExtname == .yml",
-        "group": "shortcuts"
-      }
-    ]
-  }
-}
-```
+- Workflows tab for saved workspace workflows.
+- Process/task detail for progress, output, comments, and follow-up AI work.
 
-### Output
+## Error Handling
 
-Results appear in the existing AI Processes panel as a grouped process.
-
----
+| Error | Behavior |
+|-------|----------|
+| YAML parse failure | Return validation error with line context when available. |
+| Missing CSV file | Fail before starting map execution. |
+| Missing CSV column | Substitute an empty string. |
+| AI JSON parse failure | Mark the item failed and apply the configured workflow error policy. |
+| Map item failure | Abort or warn according to workflow settings. |
 
 ## Future Extensions
 
-Once MVP works, consider adding:
-
-1. **More input types**: git commits, file glob, shell command output
-2. **AI reduce**: Summarize results with another AI call
-3. **Table reduce**: Format output as markdown table
-4. **More reduce operations**: group-by, filter, sort
-5. **Output options**: file, clipboard, notification
-6. **Settings**: model selection, temperature, retries
-
----
+1. More input types: file glob, git commits, shell command output, HTTP.
+2. AI reduce: summarize or synthesize mapped outputs.
+3. Table reduce and JSON reduce.
+4. Filtering, grouping, and sorting.
+5. Output destinations: file, notes, clipboard, work item, or webhook.
+6. Runtime settings: model selection, timeouts, retries, and cancellation.
 
 ## Open Questions
 
-1. **Error handling**: Skip failed items or abort entire pipeline?
-2. **Large CSVs**: Stream or load all at once? Limit rows?
-3. **JSON parse failures**: Retry with correction prompt, or skip item?
+1. Should large CSVs stream by default or load all rows first?
+2. Should invalid AI JSON retry with a correction prompt?
+3. Should item-level failures be resumable from a persisted checkpoint?

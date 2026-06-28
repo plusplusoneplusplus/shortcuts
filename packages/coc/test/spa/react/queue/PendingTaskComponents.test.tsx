@@ -236,7 +236,7 @@ describe('PendingTaskPayload resolve comments', () => {
                 prompt: 'Fix it',
                 context: {
                     resolveComments: {
-                        documentUri: 'vscode://notes/my-note.md',
+                        documentUri: 'coc://notes/my-note.md',
                         commentIds: ['c-5'],
                     },
                 },
@@ -246,7 +246,7 @@ describe('PendingTaskPayload resolve comments', () => {
         render(<PendingTaskPayload task={task} />);
 
         expect(screen.getByText('Document')).toBeTruthy();
-        expect(screen.getByText('vscode://notes/my-note.md')).toBeTruthy();
+        expect(screen.getByText('coc://notes/my-note.md')).toBeTruthy();
     });
 
     it('renders Document Snapshot section (collapsed) when documentContent is present', () => {

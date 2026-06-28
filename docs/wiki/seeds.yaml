@@ -3,7 +3,7 @@ themes:
     description: >-
       Allows users to organize files and folders into named logical groups for
       quick access. Supports nested subgroups, icons, and drag-and-drop
-      reordering within the VS Code sidebar.
+      reordering in the dashboard file navigation.
     hints:
       - LogicalGroup
       - logicalGroups
@@ -67,8 +67,7 @@ themes:
   - theme: ai-process-queue
     description: >-
       Manages a queue of AI tasks with per-repo isolation, status tracking, and
-      real-time progress in the VS Code status bar and tree view. Supports
-      cancellation and retry.
+      real-time progress in the CoC dashboard. Supports cancellation and retry.
     hints:
       - AIQueueService
       - TaskQueueManager
@@ -79,7 +78,7 @@ themes:
     description: >-
       Wraps the GitHub Copilot SDK to provide session management, session
       pooling, MCP server control, and permission handling for all AI features
-      in the extension.
+      in CoC.
     hints:
       - CopilotSDKService
       - session-pool
@@ -89,7 +88,7 @@ themes:
   - theme: interactive-ai-sessions
     description: >-
       Enables long-running, multi-turn conversations with AI that can be
-      monitored and resumed. Sessions are tracked in a tree view and support
+      monitored and resumed. Sessions are tracked in the dashboard and support
       streaming output.
     hints:
       - interactive-session-manager
@@ -98,9 +97,9 @@ themes:
       - ai-session-resume
   - theme: ai-process-persistence
     description: >-
-      Persists AI process history across VS Code restarts using the Memento API.
-      Processes are isolated per workspace and can be viewed, removed, or
-      cleared via a dedicated tree view.
+      Persists AI process history across CoC server restarts. Processes are
+      isolated per workspace and can be viewed, removed, or cleared from the
+      dashboard.
     hints:
       - AIProcessManager
       - mock-ai-process-manager
@@ -152,8 +151,8 @@ themes:
       - article-cache
   - theme: coc-cli-pipeline-runner
     description: >-
-      A standalone CLI (coc) that executes YAML-based AI pipelines outside of VS
-      Code, with commands for run, validate, list, and serve.
+      A standalone CLI (coc) that executes YAML-based AI pipelines, with
+      commands for run, validate, list, and serve.
     hints:
       - coc run
       - coc validate
@@ -163,8 +162,8 @@ themes:
   - theme: ai-execution-dashboard
     description: >-
       A web server and SPA dashboard for tracking AI process execution across
-      multiple VS Code workspaces in real time. Provides REST API, WebSocket,
-      and SSE streaming.
+      multiple registered workspaces in real time. Provides REST API,
+      WebSocket, and SSE streaming.
     hints:
       - coc serve
       - ProcessStore
@@ -173,9 +172,9 @@ themes:
       - SPA
   - theme: multi-workspace-process-tracking
     description: >-
-      Allows multiple VS Code workspaces to submit AI processes to a shared
-      server with workspace-scoped filtering and deterministic workspace
-      identity via SHA-256 hash.
+      Allows multiple workspaces to submit AI processes to a shared server with
+      workspace-scoped filtering and deterministic workspace identity via
+      SHA-256 hash.
     hints:
       - WorkspaceInfo
       - workspace-identity
@@ -195,9 +194,9 @@ themes:
       - availableTools
   - theme: git-repository-exploration
     description: >-
-      Provides a tree view of git commits, branches, staged/unstaged changes,
-      and commit ranges within VS Code. Supports looking up commits and browsing
-      file changes per commit.
+      Provides dashboard views of git commits, branches, staged/unstaged
+      changes, and commit ranges. Supports looking up commits and browsing file
+      changes per commit.
     hints:
       - git-service
       - GitCommitItem
@@ -207,7 +206,8 @@ themes:
   - theme: commit-range-review
     description: >-
       Lets users select a range of commits and submit the combined diff for AI
-      review or annotation. Surfaces range items in the git tree view.
+      review or annotation. Surfaces range details through git/diff review
+      views.
     hints:
       - git-commit-range-item
       - git-range-service
@@ -216,8 +216,8 @@ themes:
   - theme: global-notes
     description: >-
       Stores short notes accessible from any workspace, independent of shortcut
-      groups. Notes use a virtual document provider and are persisted in global
-      VS Code storage.
+      groups. Notes use CoC note storage and are available across registered
+      workspaces.
     hints:
       - GlobalNotesTreeDataProvider
       - NoteDocumentProvider
@@ -258,13 +258,12 @@ themes:
       - resolveBasePath
   - theme: cloud-sync
     description: >-
-      Synchronizes shortcuts configuration across devices using VS Code Settings
-      Sync. Supports configurable sync providers, intervals, and manual trigger
-      commands.
+      Synchronizes notes and workspace data across devices using configurable
+      sync providers, intervals, and manual trigger commands.
     hints:
       - sync-manager
       - SyncProvider
-      - vscode-sync-provider
+      - WorkItemSyncProvider
       - workspaceShortcuts.sync
       - cloud-sync
   - theme: drag-and-drop-reordering
@@ -299,9 +298,9 @@ themes:
       - onKey
   - theme: theme-and-icon-management
     description: >-
-      Manages VS Code theme-aware icon selection and centralized icon constants,
-      ensuring correct icons appear in light/dark/high-contrast modes across all
-      tree views.
+      Manages dashboard theme-aware icon selection and centralized icon
+      constants, ensuring correct icons appear in light, dark, and
+      high-contrast modes.
     hints:
       - ThemeManager
       - tree-icon-utils
@@ -366,8 +365,7 @@ themes:
   - theme: copilot-cli-invocation
     description: >-
       Invokes the GitHub Copilot CLI as a child process or copies prompts to the
-      clipboard as a fallback, bridging the VS Code extension with the Copilot
-      CLI tool.
+      clipboard as a fallback, bridging CoC workflows with the Copilot CLI tool.
     hints:
       - CopilotCLIInvoker
       - copilot-cli-invoker
@@ -387,8 +385,8 @@ themes:
       - job-template-commands
   - theme: lm-tools-integration
     description: >-
-      Registers language model tools (via VS Code LM API) that can be called by
-      AI agents, such as resolving review comments programmatically.
+      Registers language model tools that can be called by AI agents, such as
+      resolving review comments programmatically.
     hints:
       - lm-tools
       - register-tools
@@ -398,7 +396,7 @@ themes:
   - theme: notification-and-error-handling
     description: >-
       Provides centralized user-facing error notifications and status messages
-      with consistent formatting across all extension features.
+      with consistent formatting across CoC features.
     hints:
       - notification-manager
       - error-handler
@@ -418,7 +416,7 @@ themes:
   - theme: webview-search-integration
     description: >-
       Integrates a webview-based search provider that filters the shortcuts tree
-      in response to user search queries entered in a VS Code search input.
+      in response to user search queries entered in the dashboard.
     hints:
       - inline-search-provider
       - WebviewSearchProvider
@@ -426,9 +424,8 @@ themes:
       - searchFilter
   - theme: debug-panel
     description: >-
-      Provides a VS Code panel for inspecting extension internals, configuration
-      state, and diagnostic information to aid in development and
-      troubleshooting.
+      Provides a dashboard panel for inspecting configuration state and
+      diagnostic information to aid in development and troubleshooting.
     hints:
       - debug-panel
       - DebugPanel
@@ -447,19 +444,17 @@ themes:
   - theme: pipeline-core-extraction
     description: >-
       A standalone Node.js package (pipeline-core) encapsulating the AI pipeline
-      engine, logger, map-reduce framework, and utilities with no VS Code
-      dependencies, enabling reuse in CLI tools.
+      engine, logger, map-reduce framework, and utilities, enabling reuse in CLI
+      tools.
     hints:
       - pipeline-core
       - packages/forge
       - pure Node.js
-      - no VS Code
       - TaskQueueManager
   - theme: process-store-persistence
     description: >-
       Provides a file-based process store (~/.coc/) with atomic writes and
-      bounded retention for persisting AI process state outside VS Code across
-      server restarts.
+      bounded retention for persisting AI process state across server restarts.
     hints:
       - FileProcessStore
       - ProcessStore

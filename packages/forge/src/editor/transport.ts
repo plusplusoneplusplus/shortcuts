@@ -1,8 +1,8 @@
 /**
  * Transport abstraction for the Markdown Review Editor.
  *
- * Abstracts the bidirectional message channel between the UI (webview)
- * and the backend (VS Code extension host or standalone HTTP server).
+ * Abstracts the bidirectional message channel between the review UI and the
+ * backend host.
  */
 
 import type { Disposable } from '../utils/process-monitor';

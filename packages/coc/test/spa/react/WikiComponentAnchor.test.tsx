@@ -73,7 +73,7 @@ const GRAPH = {
         },
     ],
     categories: [{ id: 'ai-processing', name: 'AI Processing' }],
-    project: { name: 'shortcuts', description: 'VS Code extension' },
+    project: { name: 'shortcuts', description: 'CoC dashboard' },
 };
 
 function fakeMarkedParse(md: string): string {

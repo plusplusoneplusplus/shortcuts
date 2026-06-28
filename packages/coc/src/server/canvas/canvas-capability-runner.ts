@@ -15,7 +15,7 @@
  * `capabilities` object whose values are synchronous functions taking
  * `(state, params)` and returning the complete next state object.
  *
- * No VS Code dependencies — uses only Node.js built-in modules.
+ * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 

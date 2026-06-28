@@ -14,7 +14,7 @@ import { getLogger, LogCategory } from '../logger';
 
 /**
  * Disposable interface for cleanup
- * Compatible with VS Code's Disposable interface
+ * Compatible with Disposable-like interfaces
  */
 export interface Disposable {
     dispose(): void;

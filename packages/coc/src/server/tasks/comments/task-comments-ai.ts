@@ -37,7 +37,7 @@ export function buildEnrichedPrompt(
 
 /**
  * Build a document revision prompt for one or more open comments.
- * Ported from VS Code's PromptGenerator.generateMarkdownPrompt().
+ * Adapted from the shared markdown prompt-generation flow.
  *
  * @param comments       - Array of TaskComment objects; only status==='open' are included.
  * @param absoluteFilePath - Absolute path to the task file.

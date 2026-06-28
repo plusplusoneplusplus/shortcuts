@@ -6,7 +6,7 @@
  *   Works with any Entra ID app that has Teams Graph permissions.
  * - 'mcp': Uses the Teams MCP server (agent365). Requires McpServers.Teams.All
  *   scope, which is only preauthorized for first-party Microsoft apps
- *   (Copilot Studio, M365 Copilot, VS Code Copilot Chat).
+ *   (Copilot Studio, M365 Copilot, editor chat clients).
  */
 
 import type { TeamsBotOptions, BotStatus, InboundTeamsMessage, TeamsChannel, TeamsTransportMode, TeamsTransport } from './types';
@@ -386,4 +386,3 @@ export class TeamsBot {
         return hasAgent && hasRepo && hasMessage;
     }
 }
-

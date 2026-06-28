@@ -1,6 +1,6 @@
 /**
  * Task CRUD operations and composite helpers — Pure Node.js functions for task file management.
- * No VS Code dependencies. Every function takes explicit path arguments.
+ * Pure Node.js. Every function takes explicit path arguments.
  */
 
 import * as fs from 'fs';
