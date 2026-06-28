@@ -2,8 +2,8 @@
  * Tests for WhisperDiffPanel — the inner chrome of the transient read-only
  * whisper diff panel (AC-03).
  *
- * Asserts the header (file name, project-relative path, "Whisper diff" source
- * label) and the four explicit body states (loading / success / empty / error)
+ * Asserts the header (file name, project-relative path) and the four explicit
+ * body states (loading / success / empty / error)
  * driven by `useWhisperDiffState`'s output, plus the read-only contract (no
  * copy/reveal/comment affordances). The heavy `UnifiedDiffViewer` is stubbed so
  * the test stays focused on the panel's state switch (same approach as the
@@ -39,7 +39,7 @@ function state(partial: Partial<WhisperDiffState>): WhisperDiffState {
 }
 
 describe('WhisperDiffPanel', () => {
-    it('renders the file name, project-relative path, and "Whisper diff" source label', () => {
+    it('renders the file name and project-relative path', () => {
         render(
             <WhisperDiffPanel
                 file={file}
@@ -53,7 +53,7 @@ describe('WhisperDiffPanel', () => {
         const pathEl = screen.getByTestId('whisper-diff-path');
         expect(pathEl).toHaveTextContent('src/foo/bar.ts');
         expect(pathEl).toHaveAttribute('title', '/home/u/proj/src/foo/bar.ts');
-        expect(screen.getByTestId('whisper-diff-source-label')).toHaveTextContent('Whisper diff');
+        expect(screen.queryByTestId('whisper-diff-source-label')).toBeNull();
     });
 
     it('renders the unified diff in the success state', () => {
