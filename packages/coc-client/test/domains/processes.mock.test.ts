@@ -381,6 +381,35 @@ describe('ProcessesClient mock server contract', () => {
     expectJsonRequest(mock.requests[6], 'POST', '/api/processes/proc%2F1/fork', {}, { workspace: 'repo/a' });
   });
 
+  it('compacts a conversation: forwards trimmed customInstructions, omits an empty body, and parses CompactResult', async () => {
+    mock = await startMockServer();
+    const result = { success: true, tokensRemoved: 1200, messagesRemoved: 8, summaryContent: 'summary text' };
+    mock.on('POST', '/api/processes/proc%2F1/compact', { body: result });
+    const client = createClient(mock);
+
+    await expect(
+      client.processes.compact('proc/1', '  focus on the auth refactor  ', { workspace: 'repo/a' }),
+    ).resolves.toEqual(result);
+    // Whitespace-only / omitted instructions send a bare `{}` body.
+    await expect(client.processes.compact('proc/1', '   ')).resolves.toEqual(result);
+    await expect(client.processes.compact('proc/1')).resolves.toEqual(result);
+
+    expect(mock.requests.map(request => request.path)).toEqual([
+      '/api/processes/proc%2F1/compact',
+      '/api/processes/proc%2F1/compact',
+      '/api/processes/proc%2F1/compact',
+    ]);
+    expectJsonRequest(
+      mock.requests[0],
+      'POST',
+      '/api/processes/proc%2F1/compact',
+      { customInstructions: 'focus on the auth refactor' },
+      { workspace: 'repo/a' },
+    );
+    expectJsonRequest(mock.requests[1], 'POST', '/api/processes/proc%2F1/compact', {});
+    expectJsonRequest(mock.requests[2], 'POST', '/api/processes/proc%2F1/compact', {});
+  });
+
   it('reads output text fallback and serializes range and offset query params', async () => {
     mock = await startMockServer();
     const markdown = '# Conversation output\n\nHello.';
