@@ -408,21 +408,20 @@ describe('RepoGitTab', () => {
             expect(source).toContain('data-testid="git-action-error"');
         });
 
-        it('handleDropCommit polls async jobs before refreshing', () => {
+        it('handleDropCommit polls async jobs via the shared poller before refreshing', () => {
             const block = source.match(/const handleDropCommit = useCallback[\s\S]*?(?=const handleCommitContextMenu)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('.git.dropCommit(workspaceId, commit.hash)');
             expect(block![0]).toContain('if (result.jobId)');
-            expect(block![0]).toContain('.git.getOperation(workspaceId, jobId)');
-            expect(block![0]).toContain("job.status !== 'running'");
+            expect(block![0]).toContain('dropPoller.start(result.jobId');
             expect(block![0]).toContain("refreshAll({ selectFallbackToHead: true })");
         });
 
         it('handleDropCommit shows action-error banner state when the async job fails', () => {
             const block = source.match(/const handleDropCommit = useCallback[\s\S]*?(?=const handleCommitContextMenu)/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain("job?.status === 'failed'");
-            expect(block![0]).toContain("setActionError(job.error || 'Drop commit failed')");
+            expect(block![0]).toContain('onFailure:');
+            expect(block![0]).toContain("setActionError(error || 'Drop commit failed')");
             expect(source).toContain('data-testid="git-action-error"');
         });
 
@@ -1839,6 +1838,59 @@ describe('RepoGitTab', () => {
 
         it('initial-load effect includes retryKey in deps', () => {
             expect(source).toContain(', [workspaceId, fetchCommits, fetchBranchRange, retryKey]');
+        });
+    });
+
+    describe('git operation poller migration', () => {
+        it('imports the shared useGitOperationPoller hook', () => {
+            expect(source).toContain("import { useGitOperationPoller } from './hooks/useGitOperationPoller'");
+        });
+
+        it('creates a dedicated poller instance per async operation', () => {
+            expect(source).toContain('const pullPoller = useGitOperationPoller(workspaceId)');
+            expect(source).toContain('const rebasePoller = useGitOperationPoller(workspaceId)');
+            expect(source).toContain('const dropPoller = useGitOperationPoller(workspaceId)');
+            expect(source).toContain('const reorderPoller = useGitOperationPoller(workspaceId)');
+        });
+
+        it('no longer manages raw intervals inline', () => {
+            expect(source).not.toContain('setInterval');
+            expect(source).not.toContain('pullPollRef');
+            expect(source).not.toContain('pullJobRef');
+        });
+
+        it('routes pull polling through the poller while keeping the pulling flag', () => {
+            const block = source.match(/const startPullPolling = useCallback[\s\S]*?\}, \[pullPoller, refreshAll\]\);/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('pullPoller.start(jobId');
+            expect(block![0]).toContain('setPulling(true)');
+            expect(block![0]).toContain("setActionError(error || 'Pull failed')");
+        });
+
+        it('stopPullPolling delegates to the poller and resets the pulling flag', () => {
+            const block = source.match(/const stopPullPolling = useCallback[\s\S]*?\}, \[pullPoller\]\);/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('pullPoller.stop()');
+            expect(block![0]).toContain('setPulling(false)');
+        });
+
+        it('the websocket git-changed handler reads the active pull job from the poller', () => {
+            expect(source).toContain('pullPoller.activeJobId()');
+        });
+
+        it('rebase autosquash starts the rebase poller', () => {
+            const block = source.match(/const handleRebaseAutosquash = useCallback[\s\S]*?(?=const handleSelect)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('rebasePoller.start(result.jobId');
+            expect(block![0]).toContain('setRebasing(false)');
+        });
+
+        it('reorder preserves its explicit success/failed completion rule', () => {
+            const block = source.match(/const handleApplyReorder = useCallback[\s\S]*?(?=const handleCancelReorder)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('reorderPoller.start(resp.jobId');
+            expect(block![0]).toContain("isComplete: (job) => job?.status === 'success' || job?.status === 'failed'");
+            expect(block![0]).toContain("setActionError(error || 'Reorder failed')");
         });
     });
 

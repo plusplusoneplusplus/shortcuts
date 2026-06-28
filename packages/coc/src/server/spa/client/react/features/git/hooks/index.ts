@@ -17,3 +17,10 @@ export { useCommitChatBinding } from './useCommitChatBinding';
 export { useFilesViewMode } from './useFilesViewMode';
 export { useCommitClassificationStatus } from './useCommitClassificationStatus';
 export type { UseCommitClassificationStatusReturn } from './useCommitClassificationStatus';
+export { useGitOperationPoller } from './useGitOperationPoller';
+export type {
+    GitOperationPollerCallbacks,
+    PolledGitOperation,
+    UseGitOperationPollerOptions,
+    UseGitOperationPollerReturn,
+} from './useGitOperationPoller';

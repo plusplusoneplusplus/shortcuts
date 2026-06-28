@@ -51,6 +51,7 @@ import { isGitCommitLookupEnabled, isGitCrossCloneCherryPickEnabled } from '../.
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
 import { mergeAutoProviderRoutingContext } from '../../utils/providerSelection';
 import { useCommitClassificationStatus } from './hooks/useCommitClassificationStatus';
+import { useGitOperationPoller } from './hooks/useGitOperationPoller';
 
 /**
  * Best-effort rebind of commit-chat binding when a hash changes.
@@ -172,8 +173,12 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [pulling, setPulling] = useState(false);
     const [pushing, setPushing] = useState(false);
     const [rebasing, setRebasing] = useState(false);
-    const pullJobRef = useRef<string | null>(null);
-    const pullPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // Lifecycle-aware pollers for async git jobs (pull/rebase/drop/reorder). Each
+    // owns its interval and clears it on unmount / repo switch (useGitOperationPoller).
+    const pullPoller = useGitOperationPoller(workspaceId);
+    const rebasePoller = useGitOperationPoller(workspaceId);
+    const dropPoller = useGitOperationPoller(workspaceId);
+    const reorderPoller = useGitOperationPoller(workspaceId);
     const [rightPanelView, setRightPanelView] = useState<RightPanelView | null>(null);
     const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>();
     const [workingChangesRefreshKey, setWorkingChangesRefreshKey] = useState(0);
@@ -573,8 +578,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     setWorkingChangesRefreshKey(k => k + 1);
                 }, 500);
                 // If we're tracking a pull job, re-fetch its status on git-changed
-                if (pullJobRef.current) {
-                    cloneClient.git.getOperation(workspaceId, pullJobRef.current)
+                const pullJobId = pullPoller.activeJobId();
+                if (pullJobId) {
+                    cloneClient.git.getOperation(workspaceId, pullJobId)
                         .then((job: any) => {
                             if (job && job.status !== 'running') {
                                 stopPullPolling();
@@ -589,36 +595,22 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }, [workspaceId, commits, fetchCommits, fetchBranchRange, searchQuery]),
     });
 
-    // Pull job polling helpers
+    // Pull job polling helpers — delegate interval lifecycle to the shared poller,
+    // keep the pull-specific `pulling` flag and error handling here.
     const stopPullPolling = useCallback(() => {
-        if (pullPollRef.current) {
-            clearInterval(pullPollRef.current);
-            pullPollRef.current = null;
-        }
-        pullJobRef.current = null;
+        pullPoller.stop();
         setPulling(false);
-    }, []);
+    }, [pullPoller]);
 
     const startPullPolling = useCallback((jobId: string) => {
-        pullJobRef.current = jobId;
         setPulling(true);
-        if (pullPollRef.current) clearInterval(pullPollRef.current);
-        pullPollRef.current = setInterval(async () => {
-            try {
-                const job = await cloneClient.git.getOperation(workspaceId, jobId);
-                if (!job || job.status !== 'running') {
-                    stopPullPolling();
-                    if (job?.status === 'failed') {
-                        setActionError(job.error || 'Pull failed');
-                    } else {
-                        refreshAll();
-                    }
-                }
-            } catch {
-                stopPullPolling();
-            }
-        }, 3000);
-    }, [workspaceId, stopPullPolling, refreshAll]);
+        pullPoller.start(jobId, {
+            // A missing job falls back to onSuccess → refreshAll, matching prior behavior.
+            onSuccess: () => { setPulling(false); refreshAll(); },
+            onFailure: (error) => { setPulling(false); setActionError(error || 'Pull failed'); },
+            onError: () => { setPulling(false); },
+        });
+    }, [pullPoller, refreshAll]);
 
     // Stable refs so mount-recovery effect doesn't re-fire on callback identity changes
     const startPullPollingRef = useRef(startPullPolling);
@@ -728,25 +720,12 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         try {
             const result = await cloneClient.git.rebaseAutosquash(workspaceId);
             if (result.jobId) {
-                // Async rebase — poll for job completion
-                const jobId: string = result.jobId;
-                const poll = setInterval(async () => {
-                    try {
-                        const job = await cloneClient.git.getOperation(workspaceId, jobId);
-                        if (!job || job.status !== 'running') {
-                            clearInterval(poll);
-                            setRebasing(false);
-                            if (job?.status === 'failed') {
-                                setActionError(job.error || 'Rebase failed');
-                            } else {
-                                refreshAll();
-                            }
-                        }
-                    } catch {
-                        clearInterval(poll);
-                        setRebasing(false);
-                    }
-                }, 3000);
+                // Async rebase — poll for job completion (missing job → onSuccess → refreshAll)
+                rebasePoller.start(result.jobId, {
+                    onSuccess: () => { setRebasing(false); refreshAll(); },
+                    onFailure: (error) => { setRebasing(false); setActionError(error || 'Rebase failed'); },
+                    onError: () => { setRebasing(false); },
+                });
             } else if (result.success === false) {
                 throw new Error(result.error || 'Rebase failed');
             } else {
@@ -757,7 +736,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             setActionError(err.message || 'Rebase failed');
             setRebasing(false);
         }
-    }, [rebasing, workspaceId, refreshAll]);
+    }, [rebasing, workspaceId, refreshAll, rebasePoller]);
 
     const handleSelect = useCallback((commit: GitCommitItem) => {
         setRightPanelView({ type: 'commit', commit });
@@ -1048,22 +1027,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         try {
             const result = await cloneClient.git.dropCommit(workspaceId, commit.hash);
             if (result.jobId) {
-                const jobId: string = result.jobId;
-                const poll = setInterval(async () => {
-                    try {
-                        const job = await cloneClient.git.getOperation(workspaceId, jobId);
-                        if (!job || job.status !== 'running') {
-                            clearInterval(poll);
-                            if (job?.status === 'failed') {
-                                setActionError(job.error || 'Drop commit failed');
-                            } else {
-                                refreshAll({ selectFallbackToHead: true });
-                            }
-                        }
-                    } catch {
-                        clearInterval(poll);
-                    }
-                }, 3000);
+                // Async drop — poll for completion (missing job → onSuccess → refreshAll)
+                dropPoller.start(result.jobId, {
+                    onSuccess: () => refreshAll({ selectFallbackToHead: true }),
+                    onFailure: (error) => setActionError(error || 'Drop commit failed'),
+                });
                 return;
             }
             if (result.error) throw new Error(result.error);
@@ -1071,7 +1039,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         } catch (err: any) {
             setActionError(err.message || 'Drop commit failed');
         }
-    }, [closeContextMenu, workspaceId, refreshAll]);
+    }, [closeContextMenu, workspaceId, refreshAll, dropPoller]);
 
     const handleCommitContextMenu = useCallback((e: React.MouseEvent, commitHash: string) => {
         if (
@@ -1350,26 +1318,20 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             setEnqueueToast('Reorder started');
             setTimeout(() => setEnqueueToast(null), 3000);
             setPendingReorder(null);
-            // Poll for completion similar to rebase-autosquash
+            // Poll for completion — reorder is terminal only on explicit success/failed
+            // and refreshes on both, so a missing job keeps polling.
             if (resp?.jobId) {
-                const poll = setInterval(async () => {
-                    try {
-                        const job = await cloneClient.git.getOperation(workspaceId, resp.jobId);
-                        if (job?.status === 'success' || job?.status === 'failed') {
-                            clearInterval(poll);
-                            if (job.status === 'failed') {
-                                setActionError(job.error || 'Reorder failed');
-                            }
-                            refreshAll();
-                        }
-                    } catch { clearInterval(poll); }
-                }, 3000);
+                reorderPoller.start(resp.jobId, {
+                    isComplete: (job) => job?.status === 'success' || job?.status === 'failed',
+                    onSuccess: () => refreshAll(),
+                    onFailure: (error) => { setActionError(error || 'Reorder failed'); refreshAll(); },
+                });
             }
         } catch (err: any) {
             setActionError(`Reorder failed: ${err.message || 'Unknown error'}`);
             setPendingReorder(null);
         }
-    }, [pendingReorder, unpushedCount, workspaceId, refreshAll]);
+    }, [pendingReorder, unpushedCount, workspaceId, refreshAll, reorderPoller]);
 
     const handleCancelReorder = useCallback(() => {
         setPendingReorder(null);
