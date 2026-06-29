@@ -13,7 +13,7 @@
  */
 
 import * as path from 'path';
-import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell, clipboard } from 'electron';
 import { attachOrStart, defaultDataDir, ServerHandle } from './server-controller';
 import { splashDataUrl } from './splash';
 import { detectAgentClis, missingAgentClis, runFirstRunPreflight } from './agent-preflight';
@@ -21,6 +21,12 @@ import { augmentPathWithBundledAgents } from './agent-bin-path';
 import { shutdownServer, shouldOpenExternally } from './lifecycle';
 import { resolveIconPath } from './app-icon';
 import { APP_NAME, buildAboutPanelOptions, readDesktopVersion } from './app-identity';
+import {
+    checkForUpdate,
+    getSkippedVersion,
+    setSkippedVersion,
+    UpdatePrompt,
+} from './update-check';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
 // In dev (electron launched against this package) this fixes the menu-bar name,
@@ -202,6 +208,88 @@ function runAgentPreflight(): void {
     }
 }
 
+/**
+ * In-app update check. Polls GitHub Releases for a newer published build and, if
+ * one exists, shows a non-blocking dialog so the user can upgrade "from the app
+ * directly" — one click opens the platform installer in the system browser.
+ *
+ * Auto (on-launch) checks honour a "Skip This Version" choice so we never nag for
+ * a version the user already declined. A manual "Check for Updates…" invocation
+ * (`auto = false`) ignores the skip marker and also reports "you're up to date".
+ *
+ * True silent auto-install is intentionally not used: macOS refuses to apply
+ * updates to an unsigned app, so a notify + one-click-download flow is the only
+ * thing that works across both unsigned platforms today. See `update-check.ts`.
+ *
+ * Never blocks startup and never throws — any failure is swallowed.
+ */
+async function runUpdateCheck(auto: boolean): Promise<void> {
+    try {
+        const result = await checkForUpdate({ currentVersion: app.getVersion() });
+        if (result.reason !== 'newer' || !result.prompt || !result.release) {
+            if (!auto) {
+                // Manual check: give explicit feedback even when nothing is new.
+                const upToDate = result.reason === 'up-to-date';
+                void dialog.showMessageBox({
+                    type: upToDate ? 'info' : 'warning',
+                    title: upToDate ? 'You’re up to date' : 'Update Check Failed',
+                    message: upToDate
+                        ? `CoC ${app.getVersion()} is the latest version.`
+                        : 'Could not check for updates. Please try again later.',
+                    buttons: ['OK'],
+                    noLink: true,
+                });
+            }
+            return;
+        }
+        // Auto checks respect a previously skipped version; manual checks don't.
+        if (auto && getSkippedVersion(defaultDataDir()) === result.release.version) {
+            return;
+        }
+        process.stdout.write(`[coc-desktop] update available: ${result.release.version}\n`);
+        await promptForUpdate(result.prompt);
+    } catch {
+        // Update checking is a nicety — it must never break the app.
+    }
+}
+
+/**
+ * Render an {@link UpdatePrompt} as a native dialog and act on the choice. Maps
+ * the chosen button by its label (not index) so the platform-specific button
+ * sets in `formatUpdatePrompt` stay decoupled from this handler.
+ */
+async function promptForUpdate(prompt: UpdatePrompt): Promise<void> {
+    const { response } = await dialog.showMessageBox({
+        type: 'info',
+        title: prompt.title,
+        message: prompt.message,
+        detail: prompt.detail,
+        buttons: prompt.buttons,
+        defaultId: 0,
+        cancelId: prompt.buttons.length - 1,
+        noLink: true,
+    });
+    const choice = prompt.buttons[response];
+    switch (choice) {
+        case 'Download':
+            void shell.openExternal(prompt.downloadUrl);
+            break;
+        case 'Copy fix command':
+            if (prompt.quarantineFix) {
+                clipboard.writeText(prompt.quarantineFix);
+            }
+            // Then still send them to the download — the fix is a post-install step.
+            void shell.openExternal(prompt.downloadUrl);
+            break;
+        case 'Skip This Version':
+            setSkippedVersion(defaultDataDir(), prompt.version);
+            break;
+        default:
+            // "Later" (or dialog dismissed): do nothing; re-prompt next launch.
+            break;
+    }
+}
+
 /** Surface a fatal startup error in the (re-shown) splash window. */
 function showSplashError(message: string): void {
     if (!splashWindow || splashWindow.isDestroyed()) {
@@ -255,6 +343,8 @@ function createTray(): void {
             },
         },
         { type: 'separator' },
+        { label: 'Check for Updates…', click: () => void runUpdateCheck(false) },
+        { type: 'separator' },
         { label: 'Quit CoC', click: () => app.quit() },
     ]);
     tray.setContextMenu(menu);
@@ -304,6 +394,11 @@ async function bootstrap(): Promise<void> {
         // AC-06: warn (non-blocking) about any missing agent CLI now that the
         // window is up. The app is already usable regardless of the outcome.
         runAgentPreflight();
+        // In-app update check: only for packaged builds (a dev run has no
+        // meaningful release to compare against). Fire-and-forget; never blocks.
+        if (app.isPackaged) {
+            void runUpdateCheck(true);
+        }
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         process.stderr.write(`[coc-desktop] failed to start CoC server: ${message}\n`);
