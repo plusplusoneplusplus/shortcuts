@@ -238,6 +238,16 @@ describe('ChatDetail', () => {
             expect(source).toContain('useSlashCommands(augmentedSkills)');
         });
 
+        it('passes augmentedSkills (not raw skills) to FollowUpInputArea so meta-commands appear in the slash menu', () => {
+            // Regression: the follow-up input previously received the raw `skills` list,
+            // which excludes meta-commands (compact/model/loop). The menu render must use
+            // the same augmentedSkills list that drives parsing/selection, otherwise
+            // `/compact` & co. never autocomplete in existing chats and the displayed rows
+            // drift out of sync with slashCommands.highlightIndex.
+            expect(source).toContain('skills={augmentedSkills}');
+            expect(source).not.toContain('skills={skills}');
+        });
+
         it('renders SlashCommandMenu with correct props', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<SlashCommandMenu');
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('skills={skills}');
