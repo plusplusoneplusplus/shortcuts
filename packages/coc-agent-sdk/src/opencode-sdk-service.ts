@@ -46,8 +46,8 @@
 import type { SendMessageOptions, TokenUsage } from './types';
 import type { ToolEvent } from './types';
 import { denyAllPermissions } from './types';
-import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult, RewindResult } from './sdk-service-interface';
-import { RewindUnsupportedError } from './sdk-service-interface';
+import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult, RewindResult, CompactResult } from './sdk-service-interface';
+import { RewindUnsupportedError, CompactUnsupportedError } from './sdk-service-interface';
 import { sdkServiceRegistry, OPENCODE_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { getSDKLogger } from './logger';
@@ -748,6 +748,10 @@ export class OpenCodeSDKService implements ISDKService {
 
     public async rewindSession(_sessionId: string, _eventId: string): Promise<RewindResult> {
         throw new RewindUnsupportedError(OPENCODE_PROVIDER);
+    }
+
+    public async compactSession(_sessionId: string, _customInstructions?: string): Promise<CompactResult> {
+        throw new CompactUnsupportedError(OPENCODE_PROVIDER);
     }
 
     public async softAbortSession(sessionId: string): Promise<boolean> {
