@@ -7,6 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 import type { CopilotClient, CopilotClientOptions } from '@github/copilot-sdk';
 import { ensureFolderTrusted } from './trusted-folder';
 import { getAIServiceLogger } from './logger';
@@ -33,6 +34,40 @@ export function findCopilotCliPath(startDir?: string): string | undefined {
     }
     return undefined;
 }
+
+let cachedSystemNodePath: string | undefined | null = null;
+
+/**
+ * Resolve the system `node` binary to an absolute path. Required when running
+ * under Electron because the copilot-sdk validates the path via `existsSync`.
+ * The result is cached after the first lookup.
+ */
+export function resolveSystemNodePath(): string | undefined {
+    if (cachedSystemNodePath !== null) return cachedSystemNodePath;
+    try {
+        const cmd = process.platform === 'win32' ? 'where' : 'which';
+        const resolved = execFileSync(cmd, ['node'], { encoding: 'utf8', timeout: 5000 }).trim();
+        if (resolved && fs.existsSync(resolved)) {
+            cachedSystemNodePath = resolved;
+            return resolved;
+        }
+    } catch { /* which/where failed */ }
+
+    const candidates = process.platform === 'win32'
+        ? ['C:\\Program Files\\nodejs\\node.exe']
+        : ['/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node'];
+    for (const c of candidates) {
+        if (fs.existsSync(c)) {
+            cachedSystemNodePath = c;
+            return c;
+        }
+    }
+    cachedSystemNodePath = undefined;
+    return undefined;
+}
+
+/** @internal Reset for testing */
+export function resetSystemNodePathCache(): void { cachedSystemNodePath = null; }
 
 /**
  * Spawn a new `CopilotClient`.
@@ -92,20 +127,35 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
     if (!sdk) throw new Error('Copilot SDK not loaded. Call loadCopilotSdk() first.');
 
     // In desktop mode the server runs under Electron Helper (ELECTRON_RUN_AS_NODE=1),
-    // so process.execPath is the Electron binary. Spawning the copilot CLI through it
-    // causes an extra argv entry that Commander.js rejects as "too many arguments".
-    // Override the connection to use the system `node` binary instead.
+    // so process.execPath is the Electron binary. The copilot-sdk spawns the CLI via
+    // `spawn(process.execPath, [cliPath, ...])` which would use the Electron binary.
+    // Override the connection to use the system `node` binary (absolute path) instead.
+    // The copilot-sdk validates the path with `existsSync`, so a bare `'node'` fails.
     if (
         (process.versions as Record<string, string | undefined>).electron &&
         !clientOptions.connection
     ) {
         const copilotCliPath = findCopilotCliPath();
-        if (copilotCliPath) {
+        const systemNode = resolveSystemNodePath();
+        if (copilotCliPath && systemNode) {
             clientOptions.connection = sdk.RuntimeConnection.forStdio({
-                path: 'node',
+                path: systemNode,
                 args: [copilotCliPath],
             });
-            aiLog.debug({ copilotCliPath }, 'Electron detected: overriding copilot CLI connection to use system node');
+            // Strip Electron-specific env vars so the spawned child is a clean node process.
+            const cleanEnv: Record<string, string> = {};
+            for (const [k, v] of Object.entries(process.env)) {
+                if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') {
+                    cleanEnv[k] = v;
+                }
+            }
+            clientOptions.env = cleanEnv;
+            aiLog.debug({ copilotCliPath, systemNode }, 'Electron detected: overriding copilot CLI connection to use system node');
+        } else if (copilotCliPath) {
+            aiLog.warn(
+                { copilotCliPath },
+                'Electron detected but system node binary not found. Copilot SDK will use Electron binary which may fail.',
+            );
         }
     }
 

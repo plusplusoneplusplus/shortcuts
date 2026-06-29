@@ -65,7 +65,7 @@ vi.mock('../../src/sdk-esm-loader', () => ({
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import { createSdkClient } from '../../src/sdk-client-factory';
+import { createSdkClient, resetSystemNodePathCache } from '../../src/sdk-client-factory';
 import * as trustedFolder from '../../src/trusted-folder';
 import * as fs from 'fs';
 import * as workspaceExecution from '../../src/internal/workspace-execution';
@@ -198,11 +198,12 @@ describe('createSdkClient — Electron connection override', () => {
         capturedOptions.length = 0;
         vi.mocked(fs.existsSync).mockReturnValue(true);
         mockRuntimeConnection.forStdio.mockClear();
+        resetSystemNodePathCache();
     });
 
     afterEach(() => {
-        // Restore process.versions.electron after each test
         delete (process.versions as Record<string, string | undefined>).electron;
+        resetSystemNodePathCache();
     });
 
     it('sets connection to use system node + copilot CLI when running under Electron', () => {
@@ -214,17 +215,20 @@ describe('createSdkClient — Electron connection override', () => {
         const conn = capturedOptions[0].connection;
         expect(conn).toBeDefined();
         expect(conn.kind).toBe('stdio');
-        expect(conn.path).toBe('node');
+        // The path must be an absolute path to the system node binary
+        expect(path.isAbsolute(conn.path)).toBe(true);
         expect(conn.args).toHaveLength(1);
-        // The resolved path must end with the platform-appropriate copilot CLI entry point
         expect(conn.args[0]).toContain(path.join('@github', 'copilot', 'index.js'));
+        // Must set env without ELECTRON_RUN_AS_NODE
+        expect(capturedOptions[0].env).toBeDefined();
+        expect(capturedOptions[0].env.ELECTRON_RUN_AS_NODE).toBeUndefined();
     });
 
     it('does NOT set connection when not running under Electron', () => {
-        // process.versions.electron is undefined (non-Electron environment)
         createSdkClient({ workingDirectory: '/project' });
 
         expect(capturedOptions[0].connection).toBeUndefined();
+        expect(capturedOptions[0].env).toBeUndefined();
     });
 
     it('does NOT override an explicitly provided connection even under Electron', () => {
