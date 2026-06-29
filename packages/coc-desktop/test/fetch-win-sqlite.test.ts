@@ -110,6 +110,20 @@ describe('fetch-win-sqlite helpers', () => {
     });
 });
 
+describe('fetch-win-sqlite source', () => {
+    it('has no shebang (it is imported by vitest and run via `node`, never executed directly)', () => {
+        // Regression: a leading `#!/usr/bin/env node` shebang parses fine when run
+        // as Node's main entry (the shebang is stripped) but vitest's importer on
+        // Windows leaves it in place, so the stray `#` throws
+        // `SyntaxError: Invalid or unexpected token` and the whole suite fails to load.
+        const src = fs.readFileSync(
+            path.resolve(__dirname, '../scripts/fetch-win-sqlite.mjs'),
+            'utf8',
+        );
+        expect(src.startsWith('#!')).toBe(false);
+    });
+});
+
 describe('fetch-win-sqlite script wiring', () => {
     it('runs the fetch script for prebuild:sqlite:win', () => {
         const desktop = scripts(readJson('../package.json'));

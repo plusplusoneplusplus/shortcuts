@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Cross-fetch the Windows better-sqlite3 prebuilt for the installed Electron ABI.
 //
 // Why this exists: better-sqlite3 is V8/ABI-bound and keeps ONE host binary in
