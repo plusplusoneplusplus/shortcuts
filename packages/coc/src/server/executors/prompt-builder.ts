@@ -519,17 +519,20 @@ export function buildSearchConversationsAddon(
  * @param store        ProcessStore — used to validate the target workspace exists.
  * @param workspaceId  The caller's current workspace; the default enqueue target.
  * @param enqueueChat  Bound in-process enqueue capability; when omitted, no tool.
+ * @param parentProcessId The current chat's processId; the spawned conversation
+ *                        inherits its resolved provider/model/reasoningEffort.
  */
 export function buildCreateConversationAddon(
     store: ProcessStore | undefined,
     workspaceId: string | undefined,
     enqueueChat: EnqueueChatFn | undefined,
+    parentProcessId?: string,
 ): { tools: Tool<any>[]; suffix: string } {
     if (!store || !enqueueChat) {
         return { tools: [], suffix: '' };
     }
 
-    const { tool } = createCreateConversationTool({ store, workspaceId, enqueueChat });
+    const { tool } = createCreateConversationTool({ store, workspaceId, enqueueChat, parentProcessId });
 
     // No prose suffix — the create_conversation tool description carries its own guidance.
     return { tools: [tool], suffix: '' };

@@ -19,28 +19,61 @@ const invocationStub = {
     arguments: {},
 };
 
-function makeStore(workspaceIds: string[] = ['ws-1']): ProcessStore {
+/** Parent process metadata the handler inherits provider/model/reasoningEffort from. */
+type ParentMeta = { provider?: string; model?: string; reasoningEffort?: string };
+
+/** Default parent so the common success path has a provider to inherit. */
+const DEFAULT_PARENT_ID = 'queue_parent';
+const DEFAULT_PARENT_META: ParentMeta = { provider: 'copilot' };
+
+function makeStore(
+    workspaceIds: string[] = ['ws-1'],
+    processes: Record<string, { id: string; metadata?: ParentMeta }> = {},
+): ProcessStore {
     const store: Partial<ProcessStore> = {
         getWorkspaces: vi.fn().mockResolvedValue(
             workspaceIds.map(id => ({ id, name: id, rootPath: `/repo/${id}` })),
         ),
+        getProcess: vi.fn(async (id: string) => processes[id] as never),
     };
     return store as ProcessStore;
 }
 
+interface MakeToolOpts {
+    workspaceId?: string;
+    storeWorkspaces?: string[];
+    taskId?: string;
+    /** Parent processId in scope. Pass `null` for a non-chat context (no parent). */
+    parentProcessId?: string | null;
+    /** Parent process metadata; omit a field to model an absent inherited value. */
+    parentMeta?: ParentMeta;
+}
+
 /** Build a tool wired to a stub enqueue that captures the CreateTaskInput it receives. */
-function makeTool(opts?: { workspaceId?: string; storeWorkspaces?: string[]; taskId?: string }) {
+function makeTool(opts?: MakeToolOpts) {
     const captured: { input?: CreateTaskInput } = {};
     const enqueueChat = vi.fn(async (input: CreateTaskInput) => {
         captured.input = input;
         return opts?.taskId ?? 'task-123';
     });
+
+    const parentProcessId = opts && 'parentProcessId' in opts ? opts.parentProcessId : DEFAULT_PARENT_ID;
+    const parentMeta = opts?.parentMeta ?? DEFAULT_PARENT_META;
+    const processes = parentProcessId
+        ? { [parentProcessId]: { id: parentProcessId, metadata: parentMeta } }
+        : {};
+
     const { tool } = createCreateConversationTool({
-        store: makeStore(opts?.storeWorkspaces),
+        store: makeStore(opts?.storeWorkspaces, processes),
         workspaceId: opts?.workspaceId ?? 'ws-1',
         enqueueChat,
+        parentProcessId: parentProcessId ?? undefined,
     });
     return { tool, enqueueChat, captured };
+}
+
+function payloadOf(input: CreateTaskInput): Record<string, unknown> {
+    return input.payload as Record<string, unknown>;
 }
 
 function asSuccess(result: CreateConversationResult): CreateConversationSuccess {
@@ -188,5 +221,134 @@ describe('createCreateConversationTool', () => {
         );
         expect('error' in result && result.error).toMatch(/invalid priority/i);
         expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    // ---- parent inheritance (AC-01 / AC-02) -------------------------------
+
+    it('inherits provider/model/reasoningEffort from the parent for { prompt } only', async () => {
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'claude', model: 'claude-sonnet-4-6', reasoningEffort: 'high' },
+        });
+        await tool.handler({ prompt: 'spawned' }, invocationStub);
+        const payload = payloadOf(captured.input!);
+        expect(payload.provider).toBe('claude');
+        expect(captured.input!.config?.model).toBe('claude-sonnet-4-6');
+        expect(captured.input!.config?.reasoningEffort).toBe('high');
+    });
+
+    it('reads the parent process via store.getProcess(parentProcessId)', async () => {
+        const getProcess = vi.fn(async (_id: string) => ({
+            id: 'queue_p1',
+            metadata: { provider: 'claude', model: 'claude-opus-4-8', reasoningEffort: 'medium' },
+        }) as never);
+        const store = {
+            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'ws-1', name: 'ws-1', rootPath: '/repo/ws-1' }]),
+            getProcess,
+        } as unknown as ProcessStore;
+        const captured: { input?: CreateTaskInput } = {};
+        const { tool } = createCreateConversationTool({
+            store,
+            workspaceId: 'ws-1',
+            enqueueChat: async input => { captured.input = input; return 'task-1'; },
+            parentProcessId: 'queue_p1',
+        });
+        await tool.handler({ prompt: 'hi' }, invocationStub);
+        expect(getProcess).toHaveBeenCalledWith('queue_p1');
+        expect(payloadOf(captured.input!).provider).toBe('claude');
+    });
+
+    it('explicit model overrides parent model; provider + effort still inherited', async () => {
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'claude', model: 'claude-sonnet-4-6', reasoningEffort: 'high' },
+        });
+        await tool.handler({ prompt: 'hi', model: 'claude-opus-4-8' }, invocationStub);
+        const payload = payloadOf(captured.input!);
+        expect(payload.provider).toBe('claude');
+        expect(captured.input!.config?.model).toBe('claude-opus-4-8');
+        expect(captured.input!.config?.reasoningEffort).toBe('high');
+    });
+
+    it('explicit provider overrides parent provider; model + effort still inherited', async () => {
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'copilot', model: 'gpt-5', reasoningEffort: 'low' },
+        });
+        await tool.handler({ prompt: 'hi', provider: 'claude' }, invocationStub);
+        const payload = payloadOf(captured.input!);
+        expect(payload.provider).toBe('claude');
+        // model 'gpt-5' is inherited but coerced to the claude provider default downstream.
+        expect(captured.input!.config?.reasoningEffort).toBe('low');
+    });
+
+    it('reasoningEffort is always inherited and exposes no schema param', async () => {
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'claude', model: 'claude-opus-4-8', reasoningEffort: 'xhigh' },
+        });
+        await tool.handler({ prompt: 'hi' }, invocationStub);
+        expect(captured.input!.config?.reasoningEffort).toBe('xhigh');
+
+        const props = (tool.parameters as { properties: Record<string, unknown> }).properties;
+        expect(props.reasoningEffort).toBeUndefined();
+    });
+
+    it('falls back to provider default (no error) when parent has provider but no model', async () => {
+        const { tool, enqueueChat, captured } = makeTool({
+            parentMeta: { provider: 'claude' },
+        });
+        const result = await tool.handler({ prompt: 'hi' }, invocationStub);
+        expect('error' in result).toBe(false);
+        expect(enqueueChat).toHaveBeenCalledTimes(1);
+        expect(payloadOf(captured.input!).provider).toBe('claude');
+        // No inherited model → config.model stays undefined; the executor resolves
+        // the provider's default later. The key point is no error is returned.
+        expect(captured.input!.config?.model).toBeUndefined();
+    });
+
+    it('errors (and does NOT enqueue) with no resolvable parent and no explicit provider', async () => {
+        const { tool, enqueueChat } = makeTool({ parentProcessId: null });
+        const result = await tool.handler({ prompt: 'hi' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/provider/i);
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('spawns with explicit provider+model even when no parent is resolvable', async () => {
+        const { tool, enqueueChat, captured } = makeTool({ parentProcessId: null });
+        const result = await tool.handler(
+            { prompt: 'hi', provider: 'claude', model: 'claude-opus-4-8' },
+            invocationStub,
+        );
+        expect('error' in result).toBe(false);
+        expect(enqueueChat).toHaveBeenCalledTimes(1);
+        expect(payloadOf(captured.input!).provider).toBe('claude');
+        expect(captured.input!.config?.model).toBe('claude-opus-4-8');
+    });
+
+    it('inherited provider is set on payload (suppresses default-provider auto-routing)', async () => {
+        // Setting payload.provider makes the enqueue path treat the provider as
+        // explicit, so resolveDefaultProviderForTask skips auto-routing.
+        const { tool, captured } = makeTool({ parentMeta: { provider: 'claude' } });
+        await tool.handler({ prompt: 'hi' }, invocationStub);
+        expect(payloadOf(captured.input!).provider).toBe('claude');
+    });
+
+    it('inherits parent settings even when targeting a different workspace', async () => {
+        const { tool, captured } = makeTool({
+            workspaceId: 'ws-1',
+            storeWorkspaces: ['ws-1', 'ws-2'],
+            parentMeta: { provider: 'claude', model: 'claude-opus-4-8', reasoningEffort: 'high' },
+        });
+        await tool.handler({ prompt: 'hi', workspaceId: 'ws-2' }, invocationStub);
+        const payload = payloadOf(captured.input!);
+        expect(payload.workspaceId).toBe('ws-2');
+        expect(payload.provider).toBe('claude');
+        expect(captured.input!.config?.reasoningEffort).toBe('high');
+    });
+
+    it('mode defaults to ask and is never read from the parent', async () => {
+        const { tool, captured } = makeTool({
+            // A parent "mode" must not leak into the spawned conversation.
+            parentMeta: { provider: 'claude', model: 'claude-opus-4-8' } as ParentMeta & { mode?: string },
+        });
+        await tool.handler({ prompt: 'hi' }, invocationStub);
+        expect(payloadOf(captured.input!).mode).toBe('ask');
     });
 });

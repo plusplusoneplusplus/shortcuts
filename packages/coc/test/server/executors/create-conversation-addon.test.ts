@@ -111,8 +111,9 @@ describe('buildChatToolBundle create_conversation wiring', () => {
         expect(tool).toBeDefined();
 
         // Invoking with no workspaceId should fall back to options.workspaceId and
-        // enqueue a chat task scoped to that workspace.
-        await (tool as any).handler({ prompt: 'hello' });
+        // enqueue a chat task scoped to that workspace. An explicit provider is
+        // supplied because this bundle has no parent process to inherit one from.
+        await (tool as any).handler({ prompt: 'hello', provider: 'copilot' });
         expect(enqueueChat).toHaveBeenCalledTimes(1);
         const input = enqueueChat.mock.calls[0][0];
         expect(input.type).toBe('chat');
