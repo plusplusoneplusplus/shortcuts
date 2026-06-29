@@ -272,16 +272,16 @@ export class BranchService {
                 return { ahead: 0, behind: 0 };
             }
 
-            const aheadCmd = `git rev-list --count "${trackingBranch}..${branchName}"`;
-            const behindCmd = `git rev-list --count "${branchName}..${trackingBranch}"`;
+            // A single symmetric-difference rev-list yields both counts in one process.
+            // `--left-right --count "<upstream>...<branch>"` prints "<behind>\t<ahead>":
+            // the left side counts commits the upstream has that we lack (behind), the
+            // right side counts commits we have that the upstream lacks (ahead).
+            const revListCmd = `git rev-list --left-right --count "${trackingBranch}...${branchName}"`;
+            const output = (await this.execGit(revListCmd, { cwd: repoRoot })).trim();
+            const [behindStr = '', aheadStr = ''] = output.split(/\s+/);
 
-            const [aheadStr, behindStr] = await Promise.all([
-                this.execGit(aheadCmd, { cwd: repoRoot }),
-                this.execGit(behindCmd, { cwd: repoRoot }),
-            ]);
-
-            const ahead = parseInt(aheadStr.trim(), 10) || 0;
-            const behind = parseInt(behindStr.trim(), 10) || 0;
+            const ahead = parseInt(aheadStr, 10) || 0;
+            const behind = parseInt(behindStr, 10) || 0;
 
             return { trackingBranch, ahead, behind };
         } catch (error) {
