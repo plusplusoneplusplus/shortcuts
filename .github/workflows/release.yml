@@ -1,0 +1,138 @@
+name: Release
+
+# Build and publish the CoC desktop binaries when a release tag is pushed.
+# Fires only for tags shaped like v1.2.3 (see AC-01). ci.yml is left untouched.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+# create-release needs the injected GITHUB_TOKEN to create a GitHub Release.
+permissions:
+  contents: write
+
+jobs:
+  # AC-03 — macOS binaries (.dmg + .zip).
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # AC-02 — write the tag's semver (minus the leading "v") into the desktop
+      # package.json for this build only. Never committed back to the repo.
+      - name: Sync desktop version from tag
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          export VERSION
+          echo "Setting coc-desktop version to $VERSION"
+          node -e "const fs=require('fs');const p='packages/coc-desktop/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version=process.env.VERSION;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');"
+
+      # Root build also produces the coc server bundle the app embeds
+      # (electron-builder packs node_modules/@plusplusoneplusplus/coc/dist/**).
+      - name: Build packages
+        run: npm run build
+
+      - name: Build macOS distributables
+        run: npm run dist:mac
+        working-directory: packages/coc-desktop
+        env:
+          # No signing certs yet (out of scope) — stop electron-builder from
+          # trying to auto-discover a macOS signing identity.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coc-mac
+          path: |
+            packages/coc-desktop/release/*.dmg
+            packages/coc-desktop/release/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  # AC-04 — Windows installer (.exe via nsis). Mirrors build-mac.
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # AC-02 — same version sync as the mac job (build-only, not committed).
+      - name: Sync desktop version from tag
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          export VERSION
+          echo "Setting coc-desktop version to $VERSION"
+          node -e "const fs=require('fs');const p='packages/coc-desktop/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version=process.env.VERSION;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');"
+
+      - name: Build packages
+        run: npm run build
+
+      # dist:win runs prebuild:sqlite:win internally before electron-builder.
+      - name: Build Windows distributables
+        run: npm run dist:win
+        working-directory: packages/coc-desktop
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coc-win
+          path: packages/coc-desktop/release/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  # AC-05 — collect both platforms' artifacts into a single draft release.
+  create-release:
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create draft GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          mapfile -t files < <(find artifacts -type f | sort)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::No artifacts were downloaded for the release."
+            exit 1
+          fi
+          echo "Attaching ${#files[@]} file(s) to the release:"
+          printf '  %s\n' "${files[@]}"
+          gh release create "$TAG" \
+            --draft \
+            --title "CoC $TAG" \
+            --notes "Release notes go here" \
+            "${files[@]}"
