@@ -37,6 +37,7 @@ import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
 import { isSupportedCodexImagePath } from './image-converter';
+import { resolveCodexExecutablePath } from './codex-exec-path';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
 import * as readline from 'readline';
@@ -454,6 +455,12 @@ interface CodexClient {
  */
 interface CodexConstructorOptions {
     config?: Record<string, unknown>;
+    /**
+     * Absolute path to the native `codex` binary. Set for packaged desktop
+     * builds so the SDK spawns the `app.asar.unpacked` copy instead of its own
+     * resolution, which points inside `app.asar` and fails to spawn (`ENOTDIR`).
+     */
+    codexPathOverride?: string;
 }
 
 /** Constructs a Codex client. The published SDK accepts optional `CodexOptions`. */
@@ -547,6 +554,12 @@ export class CodexSDKService implements ISDKService {
     private codexCtor: CodexClientCtor | null = null;
     private disposed = false;
     private authChecker: CodexAuthChecker | null = null;
+    /**
+     * Memoized native-binary override for packaged desktop builds. `null` means
+     * "not yet computed"; `undefined` is a computed "no override" (the SDK
+     * resolves the binary itself). See {@link resolveCodexConstructorOptions}.
+     */
+    private codexPathOverride: string | undefined | null = null;
 
     /** sessionId → active session metadata */
     private readonly sessions = new Map<string, ActiveCodexSession>();
@@ -607,7 +620,7 @@ export class CodexSDKService implements ISDKService {
                 throw new Error('Codex SDK did not export Codex');
             }
             this.codexCtor = CodexCtor;
-            this.sdk = new CodexCtor();
+            this.sdk = new CodexCtor(this.resolveCodexConstructorOptions());
             this.availabilityCache = { available: true };
         } catch {
             const installCmd = isGlobalInstall()
@@ -666,13 +679,15 @@ export class CodexSDKService implements ISDKService {
             tool_timeout_sec: CODEX_LLM_TOOLS_TIMEOUT_SEC,
             ...(mcpConfig.enabled_tools ? { enabled_tools: mcpConfig.enabled_tools } : {}),
         };
-        const client = new this.codexCtor({
-            config: {
-                mcp_servers: {
-                    [COC_LLM_TOOLS_MCP_SERVER_NAME]: serverConfig,
+        const client = new this.codexCtor(
+            this.resolveCodexConstructorOptions({
+                config: {
+                    mcp_servers: {
+                        [COC_LLM_TOOLS_MCP_SERVER_NAME]: serverConfig,
+                    },
                 },
-            },
-        });
+            }),
+        );
         return {
             client,
             cleanup: () => {
@@ -753,6 +768,24 @@ export class CodexSDKService implements ISDKService {
         const codexBinPath = this.resolveCodexBinPath();
         const rpcResult = await this.fetchRateLimitsViaRpc(codexBinPath);
         return this.mapRateLimitsToQuota(rpcResult);
+    }
+
+    /**
+     * Build the options for `new Codex(...)`, injecting `codexPathOverride` for
+     * packaged desktop builds so the SDK spawns the unpacked native binary
+     * rather than the `app.asar` path it would resolve itself (which fails to
+     * spawn with `ENOTDIR`). A no-op for normal CLI / global installs, where the
+     * override resolves to `undefined`. The override is computed once and cached.
+     */
+    private resolveCodexConstructorOptions(
+        extra: CodexConstructorOptions = {},
+    ): CodexConstructorOptions {
+        if (this.codexPathOverride === null) {
+            this.codexPathOverride = resolveCodexExecutablePath();
+        }
+        return this.codexPathOverride
+            ? { codexPathOverride: this.codexPathOverride, ...extra }
+            : { ...extra };
     }
 
     private resolveCodexBinPath(): string {
