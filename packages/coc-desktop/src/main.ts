@@ -45,7 +45,7 @@ const TRAY_ICON_FALLBACK_DATA_URL =
  * if the PNG cannot be found (e.g. a production asar without a bundled media/).
  */
 function loadCocIcon(): ReturnType<typeof nativeImage.createFromPath> {
-    const iconPath = resolveIconPath(__dirname);
+    const iconPath = resolveIconPath(__dirname, process.resourcesPath);
     if (iconPath) {
         return nativeImage.createFromPath(iconPath);
     }
@@ -268,16 +268,22 @@ async function bootstrap(): Promise<void> {
     app.setAboutPanelOptions(
         buildAboutPanelOptions({
             version: readDesktopVersion(__dirname),
-            iconPath: resolveIconPath(__dirname),
+            iconPath: resolveIconPath(__dirname, process.resourcesPath),
             electronVersion: process.versions.electron,
         }),
     );
 
     // macOS: set the dock icon early (BrowserWindow `icon` is ignored by macOS).
+    // Only override when the real icon file resolves — otherwise leave the dock
+    // showing the app bundle's `.icns` (set by electron-builder) rather than
+    // stamping the tiny placeholder glyph over it.
     if (process.platform === 'darwin' && app.dock) {
-        const dockIcon = loadCocIcon();
-        if (!dockIcon.isEmpty()) {
-            app.dock.setIcon(dockIcon);
+        const iconPath = resolveIconPath(__dirname, process.resourcesPath);
+        if (iconPath) {
+            const dockIcon = nativeImage.createFromPath(iconPath);
+            if (!dockIcon.isEmpty()) {
+                app.dock.setIcon(dockIcon);
+            }
         }
     }
 

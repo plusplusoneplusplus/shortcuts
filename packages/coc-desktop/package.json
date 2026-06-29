@@ -49,6 +49,12 @@
       "**/@openai/codex-*/**",
       "**/@github/copilot-*-*/**"
     ],
+    "extraResources": [
+      {
+        "from": "../../media/coc-icon.png",
+        "to": "coc-icon.png"
+      }
+    ],
     "files": [
       "**/*",
       "!**/*.map",
