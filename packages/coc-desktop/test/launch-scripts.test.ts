@@ -44,7 +44,12 @@ describe('desktop launch scripts', () => {
     it('roots dev:desktop through the workspace start script, never a bare electron', () => {
         const root = scripts(readJson('../../../package.json'));
         expect(root['dev:desktop']).toBeDefined();
-        // It still builds this package first…
+        // It rebuilds the coc server first — the desktop app forks the *built*
+        // `@plusplusoneplusplus/coc/dist/server`, so without this the launched
+        // background server would run stale code. The `(?:\s|&)` guard makes sure
+        // this matches `packages/coc` exactly and not `packages/coc-desktop`.
+        expect(root['dev:desktop']).toMatch(/npm run build -w packages\/coc(?:\s|&|$)/);
+        // …and builds this package too.
         expect(root['dev:desktop']).toContain('npm run build -w packages/coc-desktop');
         // …then launches via the workspace-scoped start (so electron is on PATH).
         expect(root['dev:desktop']).toContain('npm run start -w packages/coc-desktop');
