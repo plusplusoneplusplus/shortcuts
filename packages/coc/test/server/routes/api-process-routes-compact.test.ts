@@ -218,11 +218,18 @@ describe('POST /api/processes/:id/compact', () => {
             metadata: { type: 'chat', provider: 'copilot', workspaceId: 'ws-test' },
         });
 
-        mockCompactSession.mockResolvedValue({
-            success: true,
-            tokensRemoved: 4200,
-            messagesRemoved: 7,
-            summaryContent: 'Summary of the conversation so far.',
+        // Capture the persisted process state at the moment compaction runs, to
+        // prove the in-progress marking (AC-01) happens BEFORE the SDK call.
+        let midFlight: { status?: string; compaction?: any } | undefined;
+        mockCompactSession.mockImplementation(async () => {
+            const p = store.processes.get('proc-ok');
+            midFlight = { status: p?.status, compaction: (p?.metadata as any)?.compaction };
+            return {
+                success: true,
+                tokensRemoved: 4200,
+                messagesRemoved: 7,
+                summaryContent: 'Summary of the conversation so far.',
+            };
         });
 
         const res = await request(baseUrl, '/api/processes/proc-ok/compact', {
@@ -240,6 +247,27 @@ describe('POST /api/processes/:id/compact', () => {
         });
         // Empty body → customInstructions omitted (undefined).
         expect(mockCompactSession).toHaveBeenCalledWith('sdk-123', undefined);
+
+        // While compacting: status flipped to a non-terminal value and the
+        // compaction lifecycle recorded as running, with the prior terminal
+        // status preserved for restoration.
+        expect(midFlight?.status).toBe('running');
+        expect(midFlight?.compaction).toMatchObject({ state: 'running', priorStatus: 'completed' });
+        expect(typeof midFlight?.compaction?.startedAt).toBe('string');
+
+        // After completion: prior terminal status restored, lifecycle marked
+        // completed with the removed counts + a settle timestamp, and the rest of
+        // the metadata preserved.
+        const after = store.processes.get('proc-ok');
+        expect(after?.status).toBe('completed');
+        expect((after?.metadata as any)?.provider).toBe('copilot');
+        expect((after?.metadata as any)?.compaction).toMatchObject({
+            state: 'completed',
+            priorStatus: 'completed',
+            messagesRemoved: 7,
+            tokensRemoved: 4200,
+        });
+        expect(typeof (after?.metadata as any)?.compaction?.completedAt).toBe('string');
     });
 
     it('forwards a non-empty customInstructions body to compactSession', async () => {
@@ -262,6 +290,13 @@ describe('POST /api/processes/:id/compact', () => {
 
         expect(res.status).toBe(200);
         expect(mockCompactSession).toHaveBeenCalledWith('sdk-456', 'focus on the auth refactor');
+        // Custom instructions are recorded on the compaction metadata so the SPA
+        // can show enough text to make the `/compact` action recognizable (AC-02).
+        const after = store.processes.get('proc-instr');
+        expect((after?.metadata as any)?.compaction).toMatchObject({
+            state: 'completed',
+            customInstructions: 'focus on the auth refactor',
+        });
     });
 
     it('omits a blank (whitespace-only) customInstructions', async () => {
@@ -307,6 +342,16 @@ describe('POST /api/processes/:id/compact', () => {
         const data = res.json();
         expect(data.code).toBe('COMPACT_UNSUPPORTED');
         expect(data.error).toContain('claude');
+
+        // Failure restores the prior terminal status and records the lifecycle as
+        // failed so the UI stops showing the in-progress bubble (AC-01).
+        const after = store.processes.get('proc-claude');
+        expect(after?.status).toBe('completed');
+        expect((after?.metadata as any)?.compaction).toMatchObject({
+            state: 'failed',
+            priorStatus: 'completed',
+        });
+        expect(typeof (after?.metadata as any)?.compaction?.error).toBe('string');
     });
 
     it('returns 500 when compaction fails for a generic reason', async () => {
@@ -329,5 +374,40 @@ describe('POST /api/processes/:id/compact', () => {
 
         expect(res.status).toBe(500);
         expect(res.json().error).toContain('compact SDK session');
+
+        // A generic failure also restores the prior terminal status and records
+        // the captured error message on the compaction lifecycle (AC-01).
+        const after = store.processes.get('proc-boom');
+        expect(after?.status).toBe('completed');
+        expect((after?.metadata as any)?.compaction).toMatchObject({
+            state: 'failed',
+            priorStatus: 'completed',
+            error: 'rpc.history.compact unavailable',
+        });
+    });
+
+    it('does not mutate process state when the idle guard rejects (409)', async () => {
+        await store.addProcess({
+            id: 'proc-busy',
+            type: 'chat',
+            status: 'running',
+            startTime: new Date(),
+            promptPreview: 'busy',
+            sdkSessionId: 'sdk-busy',
+            metadata: { type: 'chat', provider: 'copilot', workspaceId: 'ws-test' },
+        });
+
+        const res = await request(baseUrl, '/api/processes/proc-busy/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+
+        expect(res.status).toBe(409);
+        // The guard runs before any state mutation: no compaction metadata is
+        // written and the status is untouched.
+        const after = store.processes.get('proc-busy');
+        expect(after?.status).toBe('running');
+        expect((after?.metadata as any)?.compaction).toBeUndefined();
+        expect(mockCompactSession).not.toHaveBeenCalled();
     });
 });

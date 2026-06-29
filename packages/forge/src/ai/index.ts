@@ -191,6 +191,7 @@ export {
     AIProcessStatus,
     AIProcessType,
     SessionCategory,
+    ProcessCompactionState,
     GenericProcessMetadata,
     GenericGroupMetadata,
     TypedProcessOptions,

@@ -13,6 +13,7 @@ import * as path from 'path';
 import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
     CreateTaskInput, Attachment, QueuedTask, SearchFilter,
+    GenericProcessMetadata, ProcessCompactionState,
 } from '@plusplusoneplusplus/forge';
 import { deserializeProcess, getLogger, LogCategory, PASTE_THRESHOLD, isQueueProcessId, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
@@ -658,12 +659,57 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ? proc.metadata.provider
                 : 'copilot';
 
+            // ── Persist in-progress compacting state (AC-01) ──
+            // Mark the process running and record compaction metadata BEFORE the
+            // SDK call so the chat list, other browser tabs, and reloads all show
+            // the conversation as compacting — not only the originating tab's
+            // local React state. `store.updateProcess` fires a 'process-updated'
+            // event through `store.onProcessChange`, so no manual broadcast is
+            // needed. `proc.status` is guaranteed terminal here (idle guard
+            // above), so it is the correct state to restore on settle.
+            const priorStatus = proc.status;
+            const startedAt = new Date().toISOString();
+            // Both stores REPLACE `metadata` on update rather than deep-merging,
+            // so spread the existing metadata wholesale and only own `compaction`.
+            const baseMeta = (proc.metadata ?? { type: proc.type ?? 'chat' }) as GenericProcessMetadata;
+            const writeCompaction = (status: AIProcessStatus, compaction: ProcessCompactionState) =>
+                store.updateProcess(id, { status, metadata: { ...baseMeta, compaction } });
+
+            await writeCompaction('running', {
+                state: 'running',
+                priorStatus,
+                startedAt,
+                ...(customInstructions ? { customInstructions } : {}),
+            });
+
             const { sdkServiceRegistry, isCompactUnsupportedError } = await import('@plusplusoneplusplus/forge');
             try {
                 const sdkService = sdkServiceRegistry.getOrThrow(provider);
                 const result = await sdkService.compactSession(proc.sdkSessionId, customInstructions);
+                // Restore the prior terminal status and record the completed
+                // result so the UI can drop the in-progress bubble and (AC-03)
+                // render a display-only result turn.
+                await writeCompaction(priorStatus, {
+                    state: 'completed',
+                    priorStatus,
+                    startedAt,
+                    completedAt: new Date().toISOString(),
+                    ...(customInstructions ? { customInstructions } : {}),
+                    messagesRemoved: result?.messagesRemoved ?? 0,
+                    tokensRemoved: result?.tokensRemoved ?? 0,
+                });
                 return result;
             } catch (err: any) {
+                // Failure also restores the prior terminal status and clears the
+                // in-progress marker (recorded as failed for the UI).
+                await writeCompaction(priorStatus, {
+                    state: 'failed',
+                    priorStatus,
+                    startedAt,
+                    completedAt: new Date().toISOString(),
+                    ...(customInstructions ? { customInstructions } : {}),
+                    error: err?.message ? String(err.message) : String(err),
+                });
                 if (isCompactUnsupportedError(err)) {
                     return void handleAPIError(res, new APIError(422, err?.message || `Compaction is not supported for provider '${provider}'.`, 'COMPACT_UNSUPPORTED'));
                 }
