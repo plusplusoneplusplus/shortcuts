@@ -793,4 +793,206 @@ describe('ImplementPlanCard', () => {
         fireEvent.click(screen.getByTestId('implement-plan-card-view-btn'));
         expect(onViewRun).toHaveBeenCalledWith('queue_impl-r', 'ws-remote');
     });
+
+    // ── Plan-file selector (multi-plan-file-switcher AC-02/AC-03) ───────
+
+    const PLAN_016 = '/repo/plans/016-alpha.plan.md';
+    const PLAN_017 = '/repo/plans/017-beta.plan.md';
+    const PLAN_018 = '/repo/plans/018-gamma.plan.md';
+
+    it('hides the plan-file selector with no planFiles prop (single-file unchanged)', () => {
+        render(
+            <ImplementPlanCard
+                planFilePath={PLAN_016}
+                onImplemented={onImplemented}
+            />,
+        );
+        expect(screen.queryByTestId('implement-plan-card-file-select')).toBeNull();
+        // Path text is still rendered exactly as before.
+        expect(screen.getByText(PLAN_016)).toBeTruthy();
+    });
+
+    it('hides the plan-file selector when only one plan file is detected', () => {
+        render(
+            <ImplementPlanCard
+                planFilePath={PLAN_016}
+                planFiles={[PLAN_016]}
+                onImplemented={onImplemented}
+            />,
+        );
+        expect(screen.queryByTestId('implement-plan-card-file-select')).toBeNull();
+    });
+
+    it('renders the plan-file selector with basename labels in scan order for 2+ files', () => {
+        render(
+            <ImplementPlanCard
+                planFilePath={PLAN_016}
+                planFiles={[PLAN_016, PLAN_017, PLAN_018]}
+                onImplemented={onImplemented}
+            />,
+        );
+        const select = screen.getByTestId('implement-plan-card-file-select') as HTMLSelectElement;
+        expect(select).toBeTruthy();
+        // Defaults to the first detected file.
+        expect(select.value).toBe(PLAN_016);
+        // Option labels are basenames only, in conversation scan order.
+        expect(Array.from(select.options).map(o => o.textContent)).toEqual([
+            '016-alpha.plan.md',
+            '017-beta.plan.md',
+            '018-gamma.plan.md',
+        ]);
+        // The displayed full path reflects the default selection.
+        expect(screen.getByText(PLAN_016)).toBeTruthy();
+    });
+
+    it('switching the selected plan file updates the displayed path and enqueued file', async () => {
+        mockEnqueue.mockResolvedValue({ task: { id: 'task-017' } });
+
+        render(
+            <ImplementPlanCard
+                planFilePath={PLAN_016}
+                planFiles={[PLAN_016, PLAN_017, PLAN_018]}
+                workspaceId="ws-1"
+                workingDirectory="/repo"
+                onImplemented={onImplemented}
+            />,
+        );
+
+        await act(async () => {
+            fireEvent.change(screen.getByTestId('implement-plan-card-file-select'), {
+                target: { value: PLAN_017 },
+            });
+        });
+
+        // Displayed path follows the selection.
+        expect(screen.getByText(PLAN_017)).toBeTruthy();
+        expect(screen.queryByText(PLAN_016)).toBeNull();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-plan-card-btn'));
+        });
+
+        await waitFor(() => expect(mockEnqueue).toHaveBeenCalledTimes(1));
+        const payload = mockEnqueue.mock.calls[0][0];
+        expect(payload.payload.context.files).toEqual([PLAN_017]);
+        expect(payload.payload.prompt).toBe(`Read and implement the plan file at ${PLAN_017}`);
+    });
+
+    it('persists the selected plan file path in the implementation record', async () => {
+        mockEnqueue.mockResolvedValue({ task: { id: 'task-018' } });
+        mockProcessUpdate.mockResolvedValue({ process: {} });
+
+        render(
+            <ImplementPlanCard
+                planFilePath={PLAN_016}
+                planFiles={[PLAN_016, PLAN_017, PLAN_018]}
+                workspaceId="ws-1"
+                onImplemented={onImplemented}
+                sourceProcessId="queue_source-1"
+                sourceMetadata={{ type: 'chat' }}
+                onRecordPersisted={onRecordPersisted}
+            />,
+        );
+
+        await act(async () => {
+            fireEvent.change(screen.getByTestId('implement-plan-card-file-select'), {
+                target: { value: PLAN_018 },
+            });
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-plan-card-btn'));
+        });
+
+        await waitFor(() => expect(mockProcessUpdate).toHaveBeenCalledTimes(1));
+        const rec = mockProcessUpdate.mock.calls[0][1].set.implementations[0];
+        expect(rec.planFilePath).toBe(PLAN_018);
+    });
+
+    it('filters the status pill and button label to the selected plan file (AC-03)', () => {
+        const runs: ExistingRun[] = [
+            { processId: 'queue_r16', planFilePath: PLAN_016, enqueuedAt: new Date().toISOString(), liveStatus: 'completed' },
+            { processId: 'queue_r17', planFilePath: PLAN_017, enqueuedAt: new Date().toISOString(), liveStatus: 'running' },
+        ];
+
+        render(
+            <ImplementPlanCard
+                planFilePath={PLAN_016}
+                planFiles={[PLAN_016, PLAN_017, PLAN_018]}
+                onImplemented={onImplemented}
+                existingRuns={runs}
+                onViewRun={onViewRun}
+            />,
+        );
+
+        // Default file (016) has a completed run → pill + "Implement again".
+        expect(screen.getByTestId('implement-plan-card-status-pill').textContent).toContain('Completed');
+        expect(screen.getByTestId('implement-plan-card-btn').textContent).toContain('Implement again');
+
+        // Switch to 018 (no prior runs) → no pill, "Implement →".
+        fireEvent.change(screen.getByTestId('implement-plan-card-file-select'), {
+            target: { value: PLAN_018 },
+        });
+        expect(screen.queryByTestId('implement-plan-card-status-pill')).toBeNull();
+        expect(screen.getByTestId('implement-plan-card-btn').textContent).toContain('Implement →');
+
+        // Switch to 017 (its own running run) → pill back, scoped to 017.
+        fireEvent.change(screen.getByTestId('implement-plan-card-file-select'), {
+            target: { value: PLAN_017 },
+        });
+        expect(screen.getByTestId('implement-plan-card-status-pill').textContent).toContain('Running');
+    });
+
+    it('navigates to the selected file\'s latest run from the status pill', () => {
+        const runs: ExistingRun[] = [
+            { processId: 'queue_r16', planFilePath: PLAN_016, enqueuedAt: new Date().toISOString(), liveStatus: 'completed' },
+            { processId: 'queue_r17', planFilePath: PLAN_017, enqueuedAt: new Date().toISOString(), liveStatus: 'running' },
+        ];
+
+        render(
+            <ImplementPlanCard
+                planFilePath={PLAN_016}
+                planFiles={[PLAN_016, PLAN_017, PLAN_018]}
+                onImplemented={onImplemented}
+                existingRuns={runs}
+                onViewRun={onViewRun}
+            />,
+        );
+
+        fireEvent.change(screen.getByTestId('implement-plan-card-file-select'), {
+            target: { value: PLAN_017 },
+        });
+        fireEvent.click(screen.getByTestId('implement-plan-card-view-btn'));
+        expect(onViewRun).toHaveBeenCalledWith('queue_r17', undefined);
+    });
+
+    it('scopes the expandable run list to the selected plan file', () => {
+        const runs: ExistingRun[] = [
+            { processId: 'queue_r16a', planFilePath: PLAN_016, enqueuedAt: new Date(Date.now() - 60000).toISOString(), liveStatus: 'failed' },
+            { processId: 'queue_r16b', planFilePath: PLAN_016, enqueuedAt: new Date().toISOString(), liveStatus: 'completed' },
+            { processId: 'queue_r17', planFilePath: PLAN_017, enqueuedAt: new Date().toISOString(), liveStatus: 'running' },
+        ];
+
+        render(
+            <ImplementPlanCard
+                planFilePath={PLAN_016}
+                planFiles={[PLAN_016, PLAN_017]}
+                onImplemented={onImplemented}
+                existingRuns={runs}
+                onViewRun={onViewRun}
+            />,
+        );
+
+        // 016 has two runs → expandable list appears and shows two entries.
+        const expandBtn = screen.getByTestId('implement-plan-card-expand-btn');
+        expect(expandBtn.textContent).toContain('Show all 2 runs');
+        fireEvent.click(expandBtn);
+        const list = screen.getByTestId('implement-plan-card-run-list');
+        expect(list.querySelectorAll('button').length).toBe(2);
+
+        // 017 has a single run → no expandable list at all.
+        fireEvent.change(screen.getByTestId('implement-plan-card-file-select'), {
+            target: { value: PLAN_017 },
+        });
+        expect(screen.queryByTestId('implement-plan-card-expand-btn')).toBeNull();
+    });
 });

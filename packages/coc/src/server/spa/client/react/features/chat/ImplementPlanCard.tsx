@@ -77,6 +77,14 @@ export interface ImplementTarget {
 export interface ImplementPlanCardProps {
     planFilePath: string;
     /**
+     * All detected `.plan.md` files for this chat, in conversation scan order
+     * (AC-01). When 2+ are present the card renders a plan-file selector and
+     * tracks the chosen file for the implement action, status pill, button
+     * label, and prior-runs list (AC-02/AC-03). An empty or single-element list
+     * keeps the card's single-file behavior byte-for-byte unchanged.
+     */
+    planFiles?: string[];
+    /**
      * When the plan lives in a canvas instead of a `.plan.md` file, this is the
      * canvas id. The content is read from the canvas and embedded inline in the
      * prompt (the plan has no on-disk path); `planFilePath` is treated as a
@@ -155,6 +163,13 @@ function buildCanvasPrompt(planLabel: string, planContent: string): string {
     ].join('\n');
 }
 
+/** File basename (last path segment) for a plan-file dropdown label. */
+function planFileBasename(filePath: string): string {
+    const normalized = filePath.replace(/\\/g, '/');
+    const idx = normalized.lastIndexOf('/');
+    return idx >= 0 ? normalized.slice(idx + 1) : normalized;
+}
+
 /** Resolve a target to a CocClient routing ref: remote → object marker, local → id. */
 function toCloneRef(target: ImplementTarget | undefined, fallbackId: string | undefined): CloneRef | undefined {
     if (target?.isRemote && target.baseUrl) {
@@ -167,6 +182,7 @@ function toCloneRef(target: ImplementTarget | undefined, fallbackId: string | un
 
 export function ImplementPlanCard({
     planFilePath,
+    planFiles = [],
     planCanvasId,
     workspaceId,
     workingDirectory,
@@ -201,13 +217,28 @@ export function ImplementPlanCard({
     const [error, setError] = useState<string | null>(null);
     const [expanded, setExpanded] = useState(false);
 
-    const latestRun = existingRuns.length > 0 ? existingRuns[existingRuns.length - 1] : null;
+    // ── Plan-file selector (AC-02/AC-03) ───────────────────────────────
+    // The selector appears only in the auto-detected multi-file case. With 0–1
+    // files the card falls back to `planFilePath` so single-file behavior is
+    // byte-for-byte unchanged. Selection is ephemeral local state, defaulting to
+    // the first detected file (which equals `planFilePath`).
+    const showFileSelector = planFiles.length > 1;
+    const [selectedPlanFile, setSelectedPlanFile] = useState<string>(planFiles[0] ?? planFilePath);
+    const activePlanFilePath = showFileSelector ? selectedPlanFile : planFilePath;
+
+    // Prior runs filtered to the selected plan file (AC-03), matched against each
+    // record's `planFilePath`. Single-file keeps the full, unfiltered list.
+    const filteredRuns = showFileSelector
+        ? existingRuns.filter(r => r.planFilePath === activePlanFilePath)
+        : existingRuns;
+
+    const latestRun = filteredRuns.length > 0 ? filteredRuns[filteredRuns.length - 1] : null;
     const latestIsActive = latestRun ? isActiveStatus(latestRun.liveStatus) : false;
-    const hasRuns = existingRuns.length > 0;
+    const hasRuns = filteredRuns.length > 0;
 
     async function readSourcePlanContent(): Promise<string> {
         try {
-            const blob = await sourceClient.explorer.readTrustedBlob(planFilePath);
+            const blob = await sourceClient.explorer.readTrustedBlob(activePlanFilePath);
             if (blob.encoding === 'base64') {
                 try {
                     return typeof atob === 'function' ? atob(blob.content) : blob.content;
@@ -252,15 +283,15 @@ export function ImplementPlanCard({
             let context: { files: string[] } | undefined;
             if (planCanvasId) {
                 const planContent = await readSourceCanvasContent(planCanvasId);
-                prompt = buildCanvasPrompt(planFilePath, planContent);
+                prompt = buildCanvasPrompt(activePlanFilePath, planContent);
                 context = undefined;
             } else if (isRemote) {
                 const planContent = await readSourcePlanContent();
-                prompt = buildRemotePrompt(planFilePath, planContent);
+                prompt = buildRemotePrompt(activePlanFilePath, planContent);
                 context = undefined;
             } else {
-                prompt = `Read and implement the plan file at ${planFilePath}`;
-                context = { files: [planFilePath] };
+                prompt = `Read and implement the plan file at ${activePlanFilePath}`;
+                context = { files: [activePlanFilePath] };
             }
 
             const result = await targetClient.queue.enqueue({
@@ -284,7 +315,7 @@ export function ImplementPlanCard({
             if (sourceProcessId) {
                 const record: ImplementationRecord = {
                     processId,
-                    planFilePath,
+                    planFilePath: activePlanFilePath,
                     enqueuedAt: new Date().toISOString(),
                     targetWorkspaceId,
                     targetLabel: selectedTarget?.label,
@@ -327,23 +358,43 @@ export function ImplementPlanCard({
                     </span>
                     <span
                         className="min-w-0 flex-1 truncate text-[11px] font-mono text-[#848484]"
-                        title={`Start a new autopilot session to execute the plan.\n${planFilePath}`}
+                        title={`Start a new autopilot session to execute the plan.\n${activePlanFilePath}`}
                     >
-                        {planFilePath}
+                        {activePlanFilePath}
                     </span>
+
+                    {showFileSelector && (
+                        <div className="flex shrink-0 items-center gap-1" data-testid="implement-plan-card-file">
+                            <label htmlFor="implement-plan-card-file-select" className="text-[11px] text-[#57606a] dark:text-[#8b949e]">
+                                Plan
+                            </label>
+                            <select
+                                id="implement-plan-card-file-select"
+                                data-testid="implement-plan-card-file-select"
+                                value={selectedPlanFile}
+                                onChange={(e) => setSelectedPlanFile(e.target.value)}
+                                disabled={disabled}
+                                className="text-[11px] rounded border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#0d1117] text-[#1f2328] dark:text-[#c9d1d9] px-1 py-0.5 max-w-[12rem] truncate disabled:opacity-60"
+                            >
+                                {planFiles.map(p => (
+                                    <option key={p} value={p}>{planFileBasename(p)}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     {hasRuns && latestRun && (
                         <button
                             type="button"
                             data-testid="implement-plan-card-status-pill"
                             onClick={() => onViewRun?.(latestRun.processId, latestRun.targetWorkspaceId)}
-                            title={`started ${formatRelativeTime(latestRun.enqueuedAt)}${existingRuns.length > 1 ? ` · ${existingRuns.length} runs total` : ''}${describeRunTarget(latestRun) ? ` · ${describeRunTarget(latestRun)}` : ''}`}
+                            title={`started ${formatRelativeTime(latestRun.enqueuedAt)}${filteredRuns.length > 1 ? ` · ${filteredRuns.length} runs total` : ''}${describeRunTarget(latestRun) ? ` · ${describeRunTarget(latestRun)}` : ''}`}
                             className="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-black/[0.04] dark:bg-white/[0.06] text-[#57606a] dark:text-[#8b949e] hover:bg-black/[0.08] dark:hover:bg-white/[0.1]"
                         >
                             <span data-testid="implement-plan-card-view-btn" className="contents">
                                 {STATUS_CONFIG[latestRun.liveStatus].emoji} {STATUS_CONFIG[latestRun.liveStatus].label}
                                 {latestRun.isRemoteTarget ? ' ☁️' : ''}
-                                {existingRuns.length > 1 && ` · ${existingRuns.length}`}
+                                {filteredRuns.length > 1 && ` · ${filteredRuns.length}`}
                                 {' →'}
                             </span>
                         </button>
@@ -394,7 +445,7 @@ export function ImplementPlanCard({
                     </p>
                 )}
 
-                {existingRuns.length > 1 && (
+                {filteredRuns.length > 1 && (
                     <div className="border-t border-[#d0d7de] dark:border-[#3c3c3c] px-2.5 py-1">
                         <button
                             type="button"
@@ -402,11 +453,11 @@ export function ImplementPlanCard({
                             onClick={() => setExpanded(!expanded)}
                             className="text-[11px] text-[#57606a] dark:text-[#8b949e] hover:text-[#1f2328] dark:hover:text-[#c9d1d9]"
                         >
-                            {expanded ? '▾ Hide runs' : `▸ Show all ${existingRuns.length} runs`}
+                            {expanded ? '▾ Hide runs' : `▸ Show all ${filteredRuns.length} runs`}
                         </button>
                         {expanded && (
                             <div className="mt-1 space-y-1" data-testid="implement-plan-card-run-list">
-                                {[...existingRuns].reverse().map((run, i) => (
+                                {[...filteredRuns].reverse().map((run, i) => (
                                     <div key={run.processId + '-' + i} className="flex items-center gap-2 text-[11px] text-[#57606a] dark:text-[#8b949e]">
                                         <span>{STATUS_CONFIG[run.liveStatus].emoji} {STATUS_CONFIG[run.liveStatus].label}</span>
                                         <span>· {formatRelativeTime(run.enqueuedAt)}</span>
