@@ -1688,6 +1688,7 @@ describe('AdminPanel', () => {
                             resolved: {
                                 codex: { enabled: true },
                                 claude: { enabled: true },
+                                opencode: { enabled: false },
                                 defaultProvider: 'copilot',
                                 features: { autoAgentProviderRouting: true },
                                 agentProviderRouting: {
@@ -1696,6 +1697,7 @@ describe('AdminPanel', () => {
                                             { provider: 'claude', enabled: true, minimumRemainingPercent: 33, weeklyGuard: { enabled: true, minimumRemainingPercent: 33 } },
                                             { provider: 'codex', enabled: true, minimumRemainingPercent: 33, weeklyGuard: { enabled: true, minimumRemainingPercent: 33 } },
                                             { provider: 'copilot', enabled: true, minimumRemainingPercent: 10, weeklyGuard: { enabled: true, minimumRemainingPercent: 10 } },
+                                            { provider: 'opencode', enabled: true, minimumRemainingPercent: 25, weeklyGuard: { enabled: true, minimumRemainingPercent: 25 } },
                                         ],
                                         fallbackProvider: 'copilot',
                                     },
@@ -1708,7 +1710,7 @@ describe('AdminPanel', () => {
                 if (url.includes('/admin/providers/availability')) {
                     return Promise.resolve({
                         ok: true,
-                        json: () => Promise.resolve({ codex: { available: true }, claude: { available: true } }),
+                        json: () => Promise.resolve({ codex: { available: true }, claude: { available: true }, opencode: { available: false, error: 'SDK not installed' } }),
                     });
                 }
                 if (url.includes('/agent-providers/quota')) {
@@ -1720,6 +1722,7 @@ describe('AdminPanel', () => {
                                 { id: 'claude', quotaTypes: [{ type: 'five_hour', isUnlimitedEntitlement: false, usedRequests: 10, entitlementRequests: 100, remainingPercentage: 0.9, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
                                 { id: 'codex', quotaTypes: [{ type: 'five_hour', isUnlimitedEntitlement: false, usedRequests: 10, entitlementRequests: 100, remainingPercentage: 0.9, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
                                 { id: 'copilot', quotaTypes: [{ type: 'five_hour', isUnlimitedEntitlement: false, usedRequests: 10, entitlementRequests: 100, remainingPercentage: 0.9, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
+                                { id: 'opencode', quotaTypes: [{ type: 'five_hour', isUnlimitedEntitlement: false, usedRequests: 10, entitlementRequests: 100, remainingPercentage: 0.9, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
                             ],
                         }),
                     });
@@ -1731,6 +1734,7 @@ describe('AdminPanel', () => {
                             providers: [
                                 { id: 'codex', installStatus: 'installed' },
                                 { id: 'claude', installStatus: 'installed' },
+                                { id: 'opencode', installStatus: 'not-installed' },
                             ],
                         }),
                     });
@@ -1763,6 +1767,7 @@ describe('AdminPanel', () => {
                     expect.objectContaining({ provider: 'claude', minimumRemainingPercent: 35 }),
                     expect.objectContaining({ provider: 'codex', minimumRemainingPercent: 33 }),
                     expect.objectContaining({ provider: 'copilot', minimumRemainingPercent: 10 }),
+                    expect.objectContaining({ provider: 'opencode', minimumRemainingPercent: 25 }),
                 ],
             }));
         });
