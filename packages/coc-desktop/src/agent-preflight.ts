@@ -5,10 +5,13 @@
  * `claude`) when a user resumes or starts an agent session — see
  * `packages/coc/src/server/processes/process-resume-handler.ts`, which invokes
  * `copilot --yolo`, `codex …`, and `claude --dangerously-skip-permissions`.
- * Those CLIs are NOT bundled with the desktop app (per the goal: "require
- * installed + non-blocking preflight; do not bundle"). This module detects
- * whether each one is reachable on `PATH` so the app can surface non-blocking
- * install guidance on first run.
+ * This module detects whether each one is reachable on `PATH` so the app can
+ * surface non-blocking install guidance on first run.
+ *
+ * The app bundles those CLIs (see `agent-bin-path.ts`) and `main.ts` runs this
+ * check against a PATH with the bundled directories prepended — the same PATH
+ * the forked server gets — so a bundled provider reads as present and the nag
+ * only appears for one that genuinely can't be resolved.
  *
  * It imports NOTHING from `electron`, so the detection + formatting logic is
  * unit-testable under plain Node/vitest. The electron wiring (showing the
