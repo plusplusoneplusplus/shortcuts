@@ -24,8 +24,13 @@ export interface DecideRalphIterationActionsInput<TAdapterContext = Record<strin
      * (for example schedule metadata). This module does not inspect it.
      */
     adapterContext?: TAdapterContext;
-    /** Optional host-provided recent journal sections for conservative stagnation classification. */
-    recentProgressSections?: Pick<ParsedProgressSection, 'signal' | 'body'>[];
+    /**
+     * Optional host-provided recent journal sections for conservative stagnation
+     * classification and inline-signal recovery. Must carry `iteration` so a
+     * dropped inline signal can be recovered from the section the agent wrote for
+     * the current iteration.
+     */
+    recentProgressSections?: Pick<ParsedProgressSection, 'iteration' | 'signal' | 'body'>[];
     /** Optional iteration-start timestamp to pass through to the record intent. */
     iterationStartMs?: number;
 }
@@ -61,6 +66,8 @@ export interface RalphRecordIterationAction<TAdapterContext = Record<string, unk
     originalGoal?: string;
     terminalReason?: RalphTerminalReason;
     iterationStartMs?: number;
+    /** Where the recorded signal came from: the inline response token or the journal fallback. */
+    signalSource?: 'response' | 'journal';
 }
 
 export interface RalphEnqueueNextIterationAction<TAdapterContext = Record<string, unknown>>
@@ -100,6 +107,8 @@ export interface RalphSurfaceTerminalReasonAction<TAdapterContext = Record<strin
     signal: RalphExitSignal;
     terminalReason: RalphTerminalReason;
     completionReason: RalphIterationCompletionReason;
+    /** Where the signal came from: the inline response token or the journal fallback. */
+    signalSource?: 'response' | 'journal';
 }
 
 export type RalphIterationAction<TAdapterContext = Record<string, unknown>> =
@@ -112,17 +121,26 @@ export type RalphIterationAction<TAdapterContext = Record<string, unknown>> =
 export function decideRalphIterationActions<TAdapterContext = Record<string, unknown>>(
     input: DecideRalphIterationActionsInput<TAdapterContext>,
 ): RalphIterationDecision<TAdapterContext> {
-    const { signal, progress } = parseRalphSignal(input.responseText);
+    const { signal: inlineSignal, progress } = parseRalphSignal(input.responseText);
     const currentIteration = input.currentIteration ?? 1;
     const maxIterations = input.maxIterations ?? 20;
+    // When the response carries no inline token, recover the agent's intended
+    // signal from the journal section it wrote for this iteration. The inline
+    // token stays authoritative when present, even if it disagrees.
+    const recovered = inlineSignal === 'NONE'
+        ? recoverSignalFromJournal(input.recentProgressSections, currentIteration)
+        : 'NONE';
+    const effectiveSignal: RalphExitSignal = inlineSignal !== 'NONE' ? inlineSignal : recovered;
+    const signalSource: 'response' | 'journal' =
+        inlineSignal === 'NONE' && recovered !== 'NONE' ? 'journal' : 'response';
     const progressClassification = classifyRalphProgressStagnation({
         progress,
         recentSections: input.recentProgressSections,
     });
-    const manualVerificationOnly = signal === 'RALPH_NEXT'
+    const manualVerificationOnly = effectiveSignal === 'RALPH_NEXT'
         && progressClassification === 'manualVerificationOnly';
-    const shouldContinue = signal === 'RALPH_NEXT' && currentIteration < maxIterations && !manualVerificationOnly;
-    const terminalReason = shouldContinue ? undefined : getTerminalReason(signal, manualVerificationOnly);
+    const shouldContinue = effectiveSignal === 'RALPH_NEXT' && currentIteration < maxIterations && !manualVerificationOnly;
+    const terminalReason = shouldContinue ? undefined : getTerminalReason(effectiveSignal, manualVerificationOnly);
     const completionReason = terminalReason ? getCompletionReason(terminalReason) : undefined;
 
     const recordAction: RalphRecordIterationAction<TAdapterContext> = {
@@ -132,7 +150,7 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
         adapterContext: input.adapterContext,
         iteration: currentIteration,
         maxIterations,
-        signal,
+        signal: effectiveSignal,
         progressBody: progress,
         taskId: input.taskId,
         processId: input.processId,
@@ -140,6 +158,7 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
         originalGoal: input.originalGoal,
         terminalReason,
         iterationStartMs: input.iterationStartMs,
+        signalSource,
     };
 
     const actions: RalphIterationAction<TAdapterContext>[] = [recordAction];
@@ -159,10 +178,10 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
             displayName: `Ralph iteration ${nextIteration}${input.sessionId ? ` (${input.sessionId})` : ''}`,
         });
 
-        return { signal, progress, currentIteration, maxIterations, shouldContinue, progressClassification, actions };
+        return { signal: effectiveSignal, progress, currentIteration, maxIterations, shouldContinue, progressClassification, actions };
     }
 
-    const finalTerminalReason = terminalReason ?? getTerminalReason(signal);
+    const finalTerminalReason = terminalReason ?? getTerminalReason(effectiveSignal);
     const finalCompletionReason = getCompletionReason(finalTerminalReason);
 
     actions.push({
@@ -171,12 +190,13 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
         sessionId: input.sessionId,
         adapterContext: input.adapterContext,
         iteration: currentIteration,
-        signal,
+        signal: effectiveSignal,
         terminalReason: finalTerminalReason,
         completionReason: finalCompletionReason,
+        signalSource,
     });
 
-    if (signal === 'RALPH_COMPLETE' || finalTerminalReason === 'MANUAL_VERIFICATION_ONLY') {
+    if (effectiveSignal === 'RALPH_COMPLETE' || finalTerminalReason === 'MANUAL_VERIFICATION_ONLY') {
         actions.push({
             type: 'enqueueFinalCheck',
             workspaceId: input.workspaceId,
@@ -203,7 +223,7 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
     }
 
     return {
-        signal,
+        signal: effectiveSignal,
         progress,
         currentIteration,
         maxIterations,
@@ -213,6 +233,28 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
         progressClassification,
         actions,
     };
+}
+
+/**
+ * Recover the agent's intended exit signal from the journal section it wrote for
+ * the current iteration. Returns the decisive (non-`NONE`) signal of the matching
+ * section, preferring the last such match when duplicate iteration-N sections
+ * exist. Returns `NONE` when no matching decisive section is present.
+ */
+function recoverSignalFromJournal(
+    sections: Pick<ParsedProgressSection, 'iteration' | 'signal' | 'body'>[] | undefined,
+    currentIteration: number,
+): RalphExitSignal {
+    if (!sections?.length) {
+        return 'NONE';
+    }
+    let recovered: RalphExitSignal = 'NONE';
+    for (const section of sections) {
+        if (section.iteration === currentIteration && section.signal !== 'NONE') {
+            recovered = section.signal;
+        }
+    }
+    return recovered;
 }
 
 function getTerminalReason(signal: RalphExitSignal, manualVerificationOnly = false): RalphTerminalReason {

@@ -80,6 +80,11 @@ all have their own `references/*.md`.
   `Remaining:` progress as complete autonomous work: do not queue another
   implementation iteration; enqueue final-check and preserve the manual
   verification-needed terminal status.
+- **Ralph signal recovery** falls back to the journal when the response carries
+  no inline `RALPH_*` token: `decideRalphIterationActions` recovers the signal
+  from the current iteration's `progress.md` section (via `recentProgressSections`,
+  which must include `iteration`). The inline token stays authoritative when
+  present; `NO_SIGNAL` is terminal only when neither source carries a signal.
 - **Loop ticks** must route completion through
   `ProcessLifecycleRunner → onLoopTickComplete → LoopExecutor.onTickComplete`;
   bookkeeping errors must never mask the follow-up's actual result.

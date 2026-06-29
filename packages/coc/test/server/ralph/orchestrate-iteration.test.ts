@@ -487,6 +487,113 @@ describe('orchestrateRalphIteration — NONE / no signal', () => {
     });
 });
 
+describe('orchestrateRalphIteration — journal signal recovery', () => {
+    let dataDir: string;
+
+    beforeEach(async () => {
+        dataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'orch-iter-recover-'));
+        _clearFinalCheckEnqueuedSet();
+        const store = new RalphSessionStore({ dataDir });
+        await store.initSession(WS, SID, { originalGoal: 'Do the goal.', maxIterations: 5 });
+    });
+
+    afterEach(async () => {
+        _clearFinalCheckEnqueuedSet();
+        await fs.promises.rm(dataDir, { recursive: true, force: true });
+    });
+
+    it('enqueues final-check when the response drops the token but the journal header says RALPH_COMPLETE', async () => {
+        // The agent wrote `## Iteration 3 — RALPH_COMPLETE` into the journal but
+        // its final response carried no inline token. Recovery should drive the
+        // final-check enqueue instead of a bare session-complete broadcast.
+        const store = new RalphSessionStore({ dataDir });
+        await store.appendProgressSection(WS, SID, {
+            iteration: 3,
+            signal: 'RALPH_COMPLETE',
+            body: 'Files: b.ts\nDecisions: done\nRemaining: none',
+        });
+
+        const deps = makeDeps({ dataDir });
+        await orchestrateRalphIteration({
+            responseText: makeNoSignalResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 3,
+            maxIterations: 5,
+            deps,
+        });
+
+        expect(deps.enqueueTask).toHaveBeenCalledTimes(1);
+        const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(enqueuedTask.displayName).toContain('final check');
+        expect(enqueuedTask.payload.context.ralph.finalCheck.sourceIteration).toBe(3);
+        expect(deps.broadcastSessionComplete).not.toHaveBeenCalled();
+
+        const record = await store.readSessionRecord(WS, SID);
+        expect(record?.terminalReason).toBe('RALPH_COMPLETE');
+        expect(record?.finalChecks?.[0]?.status).toBe('queued');
+    });
+
+    it('continues the loop when the response drops the token but the journal header says RALPH_NEXT', async () => {
+        const store = new RalphSessionStore({ dataDir });
+        await store.appendProgressSection(WS, SID, {
+            iteration: 2,
+            signal: 'RALPH_NEXT',
+            body: 'Files: a.ts\nRemaining: implement filter persistence tests',
+        });
+
+        const deps = makeDeps({ dataDir });
+        await orchestrateRalphIteration({
+            responseText: makeNoSignalResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 2,
+            maxIterations: 5,
+            deps,
+        });
+
+        expect(deps.enqueueTask).toHaveBeenCalledTimes(1);
+        const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(enqueuedTask.payload.context.ralph.currentIteration).toBe(3);
+        expect(deps.broadcastSessionComplete).not.toHaveBeenCalled();
+    });
+
+    it('stays NO_SIGNAL terminal when neither the response nor the journal carries a signal', async () => {
+        const store = new RalphSessionStore({ dataDir });
+        await store.appendProgressSection(WS, SID, {
+            iteration: 3,
+            signal: 'NONE',
+            body: 'Files: a.ts\nRemaining: more',
+        });
+
+        const deps = makeDeps({ dataDir });
+        await orchestrateRalphIteration({
+            responseText: makeNoSignalResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 3,
+            maxIterations: 5,
+            deps,
+        });
+
+        expect(deps.enqueueTask).not.toHaveBeenCalled();
+        expect(deps.broadcastSessionComplete).toHaveBeenCalledWith(
+            expect.objectContaining({ reason: 'cap' }),
+        );
+        const record = await store.readSessionRecord(WS, SID);
+        expect(record?.terminalReason).toBe('NO_SIGNAL');
+    });
+});
+
 describe('orchestrateRalphIteration — persistent idempotency (final-check)', () => {
     let dataDir: string;
 

@@ -398,6 +398,17 @@ iterations, queueing continuations/final checks, and broadcasting terminal
 completion; CoC remains the only owner of queue payloads, process metadata,
 repo-scoped paths, WebSocket events, and filesystem writes.
 
+`decideRalphIterationActions(...)` derives an effective signal: when the response
+text carries no inline `RALPH_*` token, it recovers the agent's intent from the
+journal section the agent wrote for the current iteration. `orchestrate-iteration`
+supplies that section via `recentProgressSections`, which carry `iteration`,
+`signal`, and `body` and always include the current iteration's section (not just
+the trailing `-3` window). The recovered signal drives control flow and is the
+value recorded to `session.json`/`progress.md`, so a dropped `RALPH_COMPLETE`
+still enqueues final-check and a dropped `RALPH_NEXT` still continues the loop. An
+inline token stays authoritative when present (even if it disagrees with the
+journal); `NO_SIGNAL` stays terminal only when neither source carries a signal.
+
 Final-check tasks are still queued as Ralph chat tasks and still use autopilot
 capability, but `RalphExecutor` switches to validation-only system instructions
 when `context.ralph.finalCheck` is present. Those instructions allow inspection
