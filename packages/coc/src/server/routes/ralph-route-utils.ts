@@ -209,7 +209,7 @@ function asString(value: unknown): string | undefined {
 }
 
 function asProvider(value: unknown): ChatProvider | undefined {
-    return value === 'copilot' || value === 'codex' || value === 'claude'
+    return value === 'copilot' || value === 'codex' || value === 'claude' || value === 'opencode'
         ? value
         : undefined;
 }

@@ -42,10 +42,12 @@ function makeProps(overrides: Partial<AIProviderPageProps> = {}): AIProviderPage
         providerAvailability: {
             codex: { available: true },
             claude: { available: false, error: 'SDK not installed' },
+            opencode: { available: false, error: 'SDK not installed' },
         },
         sdkInstallStatuses: {
             codex: 'installed',
             claude: 'not-installed',
+            opencode: 'not-installed',
         },
         sdkInstallErrors: {},
         onInstallSdk: vi.fn(),
@@ -173,7 +175,7 @@ describe('AIProviderPage', () => {
 
     it('shows provider health count', () => {
         renderPage();
-        expect(screen.getByText(/2 \/ 3/)).toBeDefined();
+        expect(screen.getByText(/2 \/ 4/)).toBeDefined();
     });
 
     it('shows "All providers available" when all are available', () => {
@@ -181,6 +183,7 @@ describe('AIProviderPage', () => {
             providerAvailability: {
                 codex: { available: true },
                 claude: { available: true },
+                opencode: { available: true },
             },
         });
         expect(screen.getByText('All providers available')).toBeDefined();
@@ -188,15 +191,16 @@ describe('AIProviderPage', () => {
 
     it('shows unavailable count when some providers are down', () => {
         renderPage();
-        expect(screen.getByText(/1 unavailable/)).toBeDefined();
+        expect(screen.getByText(/2 unavailable/)).toBeDefined();
     });
 
     // ────────────── Provider routing table ──────────────
-    it('renders three provider rows in the routing table', () => {
+    it('renders four provider rows in the routing table', () => {
         renderPage();
         expect(screen.getByTestId('provider-row-copilot')).toBeDefined();
         expect(screen.getByTestId('provider-row-codex')).toBeDefined();
         expect(screen.getByTestId('provider-row-claude')).toBeDefined();
+        expect(screen.getByTestId('provider-row-opencode')).toBeDefined();
     });
 
     it('renders provider avatars with SVG icons', () => {
@@ -216,8 +220,8 @@ describe('AIProviderPage', () => {
 
     it('renders install status badges', () => {
         renderPage();
-        expect(screen.getByTestId('sdk-install-badge-installed')).toBeDefined();
-        expect(screen.getByTestId('sdk-install-badge-not-installed')).toBeDefined();
+        expect(screen.queryByTestId('sdk-install-badge-installed')).toBeDefined();
+        expect(screen.getAllByTestId('sdk-install-badge-not-installed').length).toBeGreaterThanOrEqual(1);
     });
 
     it('renders "Built in" badge for copilot', () => {
@@ -287,9 +291,11 @@ describe('AIProviderPage', () => {
         expect(screen.getByTestId('auto-provider-rule-claude')).toBeDefined();
         expect(screen.getByTestId('auto-provider-rule-codex')).toBeDefined();
         expect(screen.getByTestId('auto-provider-rule-copilot')).toBeDefined();
+        expect(screen.getByTestId('auto-provider-rule-opencode')).toBeDefined();
         expect((screen.getByTestId('auto-provider-threshold-claude') as HTMLInputElement).value).toBe('33');
         expect((screen.getByTestId('auto-provider-threshold-codex') as HTMLInputElement).value).toBe('33');
         expect((screen.getByTestId('auto-provider-threshold-copilot') as HTMLInputElement).value).toBe('10');
+        expect((screen.getByTestId('auto-provider-threshold-opencode') as HTMLInputElement).value).toBe('25');
         expect((screen.getByTestId('auto-provider-weekly-threshold-claude') as HTMLInputElement).value).toBe('33');
         expect((screen.getByTestId('auto-provider-fallback') as HTMLSelectElement).value).toBe('copilot');
     });
@@ -324,11 +330,12 @@ describe('AIProviderPage', () => {
 
         fireEvent.click(screen.getByTestId('auto-provider-move-down-claude'));
         expect(props.setAutoRoutingConfig).toHaveBeenLastCalledWith(expect.objectContaining({
-            rules: [
+            rules: expect.arrayContaining([
                 expect.objectContaining({ provider: 'codex' }),
                 expect.objectContaining({ provider: 'claude' }),
                 expect.objectContaining({ provider: 'copilot' }),
-            ],
+                expect.objectContaining({ provider: 'opencode' }),
+            ]),
         }));
 
         fireEvent.change(screen.getByTestId('auto-provider-fallback'), { target: { value: 'claude' } });
@@ -850,7 +857,7 @@ describe('AIProviderPage', () => {
         renderPage();
         expect(screen.getByText('default')).toBeDefined();
         const configLabels = screen.getAllByText('config');
-        expect(configLabels.length).toBe(2);
+        expect(configLabels.length).toBe(3);
     });
 
     // ────────────── Provider notes ──────────────

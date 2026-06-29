@@ -61,7 +61,7 @@ export function createQueueInfrastructure(
     getWsServer: () => ProcessWebSocketServer,
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined,
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined,
-    provider?: 'copilot' | 'codex' | 'claude',
+    provider?: 'copilot' | 'codex' | 'claude' | 'opencode',
     resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => import('@plusplusoneplusplus/forge').ISDKService,
     ralphMultiAgentGrillEnabled?: boolean,
     getGlobalSystemPrompt?: () => string | undefined,

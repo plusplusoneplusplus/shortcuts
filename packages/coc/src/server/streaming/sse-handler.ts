@@ -454,7 +454,7 @@ function sendEvent(res: ServerResponse, event: string, data: unknown): void {
  * key matches the SDK service that owns the registry for that conversation.
  */
 function resolveProviderId(provider: unknown): string {
-    return provider === 'codex' || provider === 'claude' || provider === 'copilot'
+    return provider === 'codex' || provider === 'claude' || provider === 'copilot' || provider === 'opencode'
         ? provider
         : 'copilot';
 }

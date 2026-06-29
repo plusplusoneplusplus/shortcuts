@@ -176,7 +176,7 @@ export type NativeCopilotSessionDetailResult =
     | { available: true; session: NativeCopilotSessionDetail | null }
     | { available: false; reason: Exclude<NativeCopilotSessionsUnavailableReason, 'feature-disabled'> };
 
-export type NativeCliSessionProviderId = 'copilot' | 'codex' | 'claude';
+export type NativeCliSessionProviderId = 'copilot' | 'codex' | 'claude' | 'opencode';
 
 export type NativeCliSessionsUnavailableReason = 'feature-disabled' | 'store-missing' | 'store-invalid';
 

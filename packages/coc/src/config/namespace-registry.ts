@@ -50,6 +50,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'agentProviderRouting'
     | 'codex'
     | 'claude'
+    | 'opencode'
     | 'features'
     | 'memoryPromotion'
     | 'store'

@@ -1,6 +1,6 @@
 export type JsonObject = Record<string, unknown>;
 
-export type ChatProvider = 'copilot' | 'codex' | 'claude';
+export type ChatProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
 export interface PaginatedResponse<T> {

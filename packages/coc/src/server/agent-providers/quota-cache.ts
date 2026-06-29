@@ -106,6 +106,12 @@ export async function fetchAgentProvidersQuota(ctx: AgentProvidersQuotaContext):
         }
     }
 
+    const opencodeEnabled = config.opencode?.enabled ?? false;
+    if (opencodeEnabled) {
+        // OpenCode has no quota API; emit an empty entry so the dashboard shows the provider.
+        providers.push({ id: 'opencode', quotaTypes: [] });
+    }
+
     return { providers, lastUpdated: null };
 }
 

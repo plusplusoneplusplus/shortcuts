@@ -22,7 +22,7 @@ import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from
 import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
-import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, modelMetadataStore, registerCodexSDKService, registerClaudeSDKService } from '@plusplusoneplusplus/forge';
+import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_OPENCODE, modelMetadataStore, registerCodexSDKService, registerClaudeSDKService, registerOpenCodeSDKService } from '@plusplusoneplusplus/forge';
 import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
@@ -251,23 +251,34 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // claude.enabled was set at startup. Live config gates actual usage.
     registerClaudeSDKService();
 
+    // Register the OpenCode provider unconditionally so per-chat routing can
+    // resolve OpenCode. Live config gates actual usage.
+    registerOpenCodeSDKService();
+
     const requestedProvider = resolvedConfig.defaultProvider === 'codex' ? 'codex'
         : resolvedConfig.defaultProvider === 'claude' ? 'claude'
+        : resolvedConfig.defaultProvider === 'opencode' ? 'opencode'
         : 'copilot';
     const effectiveProvider = requestedProvider === 'codex' && sdkServiceRegistry.has(SDK_PROVIDER_CODEX)
         ? 'codex'
         : requestedProvider === 'claude' && sdkServiceRegistry.has(SDK_PROVIDER_CLAUDE)
             ? 'claude'
-            : 'copilot';
+            : requestedProvider === 'opencode' && sdkServiceRegistry.has(SDK_PROVIDER_OPENCODE)
+                ? 'opencode'
+                : 'copilot';
     if (requestedProvider === 'codex' && effectiveProvider !== 'codex') {
         process.stderr.write('[ExecutionServer] defaultProvider=codex requested, but Codex provider is not registered; falling back to Copilot\n');
     }
     if (requestedProvider === 'claude' && effectiveProvider !== 'claude') {
         process.stderr.write('[ExecutionServer] defaultProvider=claude requested, but Claude provider is not registered; falling back to Copilot\n');
     }
+    if (requestedProvider === 'opencode' && effectiveProvider !== 'opencode') {
+        process.stderr.write('[ExecutionServer] defaultProvider=opencode requested, but OpenCode provider is not registered; falling back to Copilot\n');
+    }
     const resolvedAiService = options.aiService ?? sdkServiceRegistry.getOrThrow(
         effectiveProvider === 'codex' ? SDK_PROVIDER_CODEX
             : effectiveProvider === 'claude' ? SDK_PROVIDER_CLAUDE
+            : effectiveProvider === 'opencode' ? SDK_PROVIDER_OPENCODE
             : SDK_PROVIDER_COPILOT,
     );
 
@@ -294,6 +305,17 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             const svc = sdkServiceRegistry.get(SDK_PROVIDER_CLAUDE);
             if (!svc) {
                 throw new Error('Claude SDK service is not available. Install @anthropic-ai/claude-agent-sdk and restart the server.');
+            }
+            return svc;
+        }
+        if (provider === 'opencode') {
+            const liveConfig = runtimeConfigService.config;
+            if (!liveConfig.opencode?.enabled) {
+                throw new Error('OpenCode provider is currently disabled. Enable OpenCode in Admin settings to use it.');
+            }
+            const svc = sdkServiceRegistry.get(SDK_PROVIDER_OPENCODE);
+            if (!svc) {
+                throw new Error('OpenCode SDK service is not available. Install @opencode-ai/sdk and restart the server.');
             }
             return svc;
         }

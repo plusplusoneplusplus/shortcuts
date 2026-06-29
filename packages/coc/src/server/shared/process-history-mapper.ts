@@ -27,8 +27,8 @@ export interface HistorySummary {
     lastMessagePreview?: string;
     /** AI-generated title (separate from customTitle). */
     title?: string;
-    /** AI provider that handled this process ('copilot' | 'codex' | 'claude'). */
-    provider?: 'copilot' | 'codex' | 'claude';
+    /** AI provider that handled this process. */
+    provider?: 'copilot' | 'codex' | 'claude' | 'opencode';
 }
 
 interface DreamProcessLinks {
@@ -124,7 +124,7 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
         customTitle: proc.customTitle,
         lastMessagePreview: proc.lastMessagePreview,
         title: proc.title,
-        provider: (proc.metadata?.provider === 'codex' ? 'codex' : proc.metadata?.provider === 'claude' ? 'claude' : 'copilot') as 'copilot' | 'codex' | 'claude',
+        provider: (proc.metadata?.provider === 'codex' ? 'codex' : proc.metadata?.provider === 'claude' ? 'claude' : proc.metadata?.provider === 'opencode' ? 'opencode' : 'copilot') as 'copilot' | 'codex' | 'claude' | 'opencode',
     };
 }
 

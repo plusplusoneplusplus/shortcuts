@@ -663,7 +663,7 @@ export function resolveEffortTierConfig(input: CreateTaskInput, ctx: Pick<QueueR
 }
 
 function isChatProvider(value: unknown): value is ChatProvider {
-    return value === 'copilot' || value === 'codex' || value === 'claude';
+    return value === 'copilot' || value === 'codex' || value === 'claude' || value === 'opencode';
 }
 
 /**

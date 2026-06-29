@@ -305,8 +305,8 @@ function normalizeRunTrigger(value: unknown): CreateDreamRunInput['trigger'] {
 
 function normalizeRunProvider(value: unknown): ChatProvider | undefined {
     if (value === undefined) return undefined;
-    if (value === 'copilot' || value === 'codex' || value === 'claude') return value;
-    throw new Error('Dream run provider must be copilot, codex, or claude');
+    if (value === 'copilot' || value === 'codex' || value === 'claude' || value === 'opencode') return value;
+    throw new Error('Dream run provider must be copilot, codex, claude, or opencode');
 }
 
 function normalizeRunReasoningEffort(value: unknown): ReasoningEffort | undefined {

@@ -41,7 +41,7 @@ import {
     toNativeSessionMetadataProcess,
 } from './nativeSessionChatAdapter';
 
-const PROVIDERS: NativeCliSessionProviderId[] = ['copilot', 'codex', 'claude'];
+const PROVIDERS: NativeCliSessionProviderId[] = ['copilot', 'codex', 'claude', 'opencode'];
 
 const PROVIDER_META: Record<NativeCliSessionProviderId, { label: string; externalLabel: string; store: string }> = {
     codex: {
@@ -58,6 +58,11 @@ const PROVIDER_META: Record<NativeCliSessionProviderId, { label: string; externa
         label: 'Copilot',
         externalLabel: 'Native Copilot CLI session',
         store: '~/.copilot/session-store.db',
+    },
+    opencode: {
+        label: 'OpenCode',
+        externalLabel: 'Native OpenCode CLI session',
+        store: '~/.opencode/session-store.db',
     },
 };
 

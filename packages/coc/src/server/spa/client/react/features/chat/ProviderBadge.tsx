@@ -19,7 +19,7 @@
 
 import { cn } from '../../ui/cn';
 
-export type ChatProvider = 'copilot' | 'codex' | 'claude';
+export type ChatProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 export type ProviderBadgeProvider = ChatProvider | 'auto-pending';
 
 interface ProviderColorVariant {
@@ -53,6 +53,13 @@ const PROVIDER_VARIANTS: Record<ChatProvider, ProviderColorVariant> = {
             'bg-[#eef0ff] text-[#4f46e5] border-[#c7d2fe]'
             + ' dark:bg-[#1a1c3d] dark:text-[#a5b4fc] dark:border-[#3c40a0]',
     },
+    opencode: {
+        pill: 'border-[#0ea5e9]/45 bg-[#0ea5e9]/12 text-[#0284c7] dark:text-[#7dd3fc]',
+        dot: 'bg-[#0ea5e9] dark:bg-[#7dd3fc]',
+        avatar:
+            'bg-[#e0f2fe] text-[#0284c7] border-[#bae6fd]'
+            + ' dark:bg-[#0c2d4d] dark:text-[#7dd3fc] dark:border-[#1e5a8a]',
+    },
 };
 
 const AUTO_PENDING_VARIANT: ProviderColorVariant = {
@@ -66,7 +73,7 @@ export function getTaskChatProvider(task: any): ChatProvider | undefined {
         ?? task?.metadata?.provider
         ?? task?.metadata?.autoProviderRouting?.provider
         ?? task?.payload?.provider;
-    return provider === 'copilot' || provider === 'codex' || provider === 'claude'
+    return provider === 'copilot' || provider === 'codex' || provider === 'claude' || provider === 'opencode'
         ? provider
         : undefined;
 }
@@ -119,7 +126,9 @@ export function ProviderBadge({ provider, className }: ProviderBadgeProps) {
             ? 'Codex'
             : provider === 'claude'
                 ? 'Claude'
-                : 'Copilot';
+                : provider === 'opencode'
+                    ? 'OpenCode'
+                    : 'Copilot';
     const variant = provider === 'auto-pending'
         ? AUTO_PENDING_VARIANT
         : PROVIDER_VARIANTS[provider] ?? PROVIDER_VARIANTS.copilot;

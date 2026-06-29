@@ -28,7 +28,7 @@ export interface CLITaskExecutorOptions {
     followUpSuggestions?: { enabled: boolean; count: number };
     askUser?: { enabled: boolean };
     /** Default AI provider name recorded on new processes when the task has no provider override. */
-    provider?: 'copilot' | 'codex' | 'claude';
+    provider?: 'copilot' | 'codex' | 'claude' | 'opencode';
     /** Enables the gated multi-agent Ralph grilling prompt contract. */
     ralphMultiAgentGrillEnabled?: boolean;
     /**
@@ -590,7 +590,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (!proc?.pendingMessages?.length) return;
         if (!this.queueManager) return;
         const [nextMsg, ...rest] = proc.pendingMessages;
-        const sessionProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
+        const sessionProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot' || proc.metadata?.provider === 'opencode'
             ? proc.metadata.provider
             : 'copilot';
         const resolvedModel = resolveModelForProvider(sessionProvider, nextMsg.model);

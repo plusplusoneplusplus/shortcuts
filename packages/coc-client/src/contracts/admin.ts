@@ -1,7 +1,7 @@
 export type AdminOutputFormat = 'table' | 'json' | 'csv' | 'markdown';
 export type AdminImportMode = 'replace' | 'merge';
 export type AdminStorageBackend = 'file' | 'sqlite';
-export type AdminConcreteAgentProvider = 'copilot' | 'codex' | 'claude';
+export type AdminConcreteAgentProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 export type AdminDefaultProvider = AdminConcreteAgentProvider;
 
 export interface AdminAutoProviderRoutingRule {
@@ -100,6 +100,7 @@ export interface AdminResolvedConfig {
   excalidraw?: { enabled?: boolean };
   codex?: { enabled?: boolean };
   claude?: { enabled?: boolean };
+  opencode?: { enabled?: boolean };
   defaultProvider?: AdminDefaultProvider;
   agentProviderRouting?: {
     auto?: AdminAutoProviderRoutingConfig;
@@ -190,6 +191,7 @@ export interface AdminConfigUpdate {
   'mcpOauth.autoRefresh.enabled'?: boolean;
   'codex.enabled'?: boolean;
   'claude.enabled'?: boolean;
+  'opencode.enabled'?: boolean;
   defaultProvider?: AdminDefaultProvider;
   'agentProviderRouting.auto'?: AdminAutoProviderRoutingConfig;
   'workItems.hierarchy.enabled'?: boolean;
@@ -238,6 +240,7 @@ export interface RuntimeDashboardConfig {
     containerDefaultAgentEnabled: boolean;
     codexEnabled: boolean;
     claudeEnabled: boolean;
+    opencodeEnabled: boolean;
     defaultProvider: AdminDefaultProvider;
     autoAgentProviderRoutingEnabled: boolean;
     ralphMultiAgentGrillEnabled: boolean;
@@ -377,7 +380,7 @@ export interface AdminStorageCancelMigrationResponse {
 // ── Agent Providers types ──────────────────────────────────────────
 
 /** Wire-format identifier for an AI agent provider. */
-export type AgentProviderId = 'copilot' | 'codex' | 'claude';
+export type AgentProviderId = 'copilot' | 'codex' | 'claude' | 'opencode';
 
 /** SDK package install status for optional providers (Codex, Claude). */
 export type ProviderInstallStatus = 'not-installed' | 'installing' | 'installed' | 'install-failed';

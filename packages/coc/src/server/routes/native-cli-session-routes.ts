@@ -61,7 +61,7 @@ function queryNumber(value: unknown): number | undefined {
 
 function parseProvider(value: unknown): NativeCliSessionProviderId | undefined {
     const raw = queryString(value) ?? 'copilot';
-    return raw === 'copilot' || raw === 'codex' || raw === 'claude' ? raw : undefined;
+    return raw === 'copilot' || raw === 'codex' || raw === 'claude' || raw === 'opencode' ? raw : undefined;
 }
 
 export function registerNativeCliSessionRoutes(ctx: NativeCliSessionRouteContext): void {

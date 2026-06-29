@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
@@ -251,6 +251,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             ?? opts.resolvedConfig?.defaultProvider;
         if (defaultProvider === 'codex') return 'codex';
         if (defaultProvider === 'claude') return 'claude';
+        if (defaultProvider === 'opencode') return 'opencode';
         return 'copilot';
     };
     const concreteDefaultProviderResolution = (provider: ChatProvider = concreteDefaultProvider()): AutoProviderResolutionResult => ({
@@ -284,6 +285,16 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             availability.claude = svc
                 ? { enabled: true, ...(await svc.isAvailable()) }
                 : { enabled: true, available: false, reason: 'Claude SDK service is not registered.' };
+        }
+
+        const opencodeEnabled = config?.opencode?.enabled ?? false;
+        if (!opencodeEnabled) {
+            availability.opencode = { enabled: false, available: false, reason: 'OpenCode provider is disabled.' };
+        } else {
+            const svc = sdkServiceRegistry.get(SDK_PROVIDER_OPENCODE);
+            availability.opencode = svc
+                ? { enabled: true, ...(await svc.isAvailable()) }
+                : { enabled: true, available: false, reason: 'OpenCode SDK service is not registered.' };
         }
 
         return availability;
@@ -588,6 +599,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 if (!svc) return { available: false, error: 'Claude SDK service not registered. Restart the server to enable Claude.' };
                 return svc.isAvailable();
             },
+            getOpenCodeAvailability: async () => {
+                const svc = sdkServiceRegistry.get(SDK_PROVIDER_OPENCODE);
+                if (!svc) return { available: false, error: 'OpenCode SDK service not registered. Restart the server to enable OpenCode.' };
+                return svc.isAvailable();
+            },
             getCopilotSdkService: () => CopilotSDKService.getInstance(),
             getCodexSdkService: () => {
                 const svc = sdkServiceRegistry.get(SDK_PROVIDER_CODEX);
@@ -597,6 +613,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 const svc = sdkServiceRegistry.get(SDK_PROVIDER_CLAUDE);
                 return svc instanceof ClaudeSDKService ? svc : undefined;
             },
+            getOpenCodeSdkService: () => sdkServiceRegistry.get(SDK_PROVIDER_OPENCODE) ?? undefined,
             configPath,
             loadConfigFile,
             writeConfigFile,

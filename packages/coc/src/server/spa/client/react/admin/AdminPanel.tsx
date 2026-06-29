@@ -107,6 +107,7 @@ type DefaultProviderSnapshot = {
     provider: AdminDefaultProvider;
     codexEnabled: boolean;
     claudeEnabled: boolean;
+    opencodeEnabled: boolean;
     autoAgentProviderRouting: boolean;
     autoRoutingConfig: NormalizedAutoProviderRoutingConfig;
 };
@@ -381,6 +382,7 @@ export function AdminPanel() {
     const [autoAgentProviderRoutingEnabled, setAutoAgentProviderRoutingEnabled] = useState(false);
     const [codexEnabled, setCodexEnabled] = useState(false);
     const [claudeEnabled, setClaudeEnabled] = useState(false);
+    const [opencodeEnabled, setOpencodeEnabled] = useState(false);
     const [defaultProvider, setDefaultProvider] = useState<AdminDefaultProvider>('copilot');
     const [autoRoutingConfig, setAutoRoutingConfig] = useState<NormalizedAutoProviderRoutingConfig>(() => normalizeAutoProviderRoutingConfig(undefined));
     const [providerAvailability, setProviderAvailability] = useState<Record<string, { available: boolean; error?: string }>>({});
@@ -425,6 +427,7 @@ export function AdminPanel() {
         provider: 'copilot',
         codexEnabled: false,
         claudeEnabled: false,
+        opencodeEnabled: false,
         autoAgentProviderRouting: false,
         autoRoutingConfig: normalizeAutoProviderRoutingConfig(undefined),
     });
@@ -538,12 +541,14 @@ export function AdminPanel() {
             setCodexEnabled(cxe);
             const cle = resolved.claude?.enabled ?? false;
             setClaudeEnabled(cle);
-            const dp = (resolved.defaultProvider === 'codex' ? 'codex' : resolved.defaultProvider === 'claude' ? 'claude' : 'copilot') as AdminDefaultProvider;
+            const oce = resolved.opencode?.enabled ?? false;
+            setOpencodeEnabled(oce);
+            const dp = (resolved.defaultProvider === 'codex' ? 'codex' : resolved.defaultProvider === 'claude' ? 'claude' : resolved.defaultProvider === 'opencode' ? 'opencode' : 'copilot') as AdminDefaultProvider;
             const arc = normalizeAutoProviderRoutingConfig(resolved.agentProviderRouting?.auto);
             setDefaultProvider(dp);
             setAutoRoutingConfig(arc);
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
-            setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle, autoAgentProviderRouting: aapre, autoRoutingConfig: arc });
+            setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle, opencodeEnabled: oce, autoAgentProviderRouting: aapre, autoRoutingConfig: arc });
             const sgr = resolved.sync?.gitRemote ?? '';
             const sim = String(resolved.sync?.intervalMinutes ?? 5);
             setSyncGitRemote(sgr);
@@ -623,6 +628,7 @@ export function AdminPanel() {
     const defaultProviderDirty = defaultProvider !== defaultProviderSnapshot.provider ||
         codexEnabled !== defaultProviderSnapshot.codexEnabled ||
         claudeEnabled !== defaultProviderSnapshot.claudeEnabled ||
+        opencodeEnabled !== defaultProviderSnapshot.opencodeEnabled ||
         autoAgentProviderRoutingEnabled !== defaultProviderSnapshot.autoAgentProviderRouting ||
         !autoRoutingConfigsEqual(autoRoutingConfig, defaultProviderSnapshot.autoRoutingConfig);
 
@@ -696,6 +702,7 @@ export function AdminPanel() {
                 defaultProvider,
                 'codex.enabled': codexEnabled,
                 'claude.enabled': claudeEnabled,
+                'opencode.enabled': opencodeEnabled,
                 'features.autoAgentProviderRouting': autoAgentProviderRoutingEnabled,
             };
             if (autoAgentProviderRoutingEnabled) {
@@ -704,18 +711,19 @@ export function AdminPanel() {
             await getSpaCocClient().admin.updateConfig(payload);
             addToast('AI provider settings saved — restart required to apply changes', 'success');
             setAutoRoutingConfig(normalizedAutoRouting);
-            setDefaultProviderSnapshot({ provider: defaultProvider, codexEnabled, claudeEnabled, autoAgentProviderRouting: autoAgentProviderRoutingEnabled, autoRoutingConfig: normalizedAutoRouting });
+            setDefaultProviderSnapshot({ provider: defaultProvider, codexEnabled, claudeEnabled, opencodeEnabled, autoAgentProviderRouting: autoAgentProviderRoutingEnabled, autoRoutingConfig: normalizedAutoRouting });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setDefaultProviderSaving(false);
         }
-    }, [defaultProvider, autoAgentProviderRoutingEnabled, codexEnabled, claudeEnabled, autoRoutingConfig, addToast]);
+    }, [defaultProvider, autoAgentProviderRoutingEnabled, codexEnabled, claudeEnabled, opencodeEnabled, autoRoutingConfig, addToast]);
 
     const handleCancelDefaultProvider = useCallback(() => {
         setDefaultProvider(defaultProviderSnapshot.provider);
         setCodexEnabled(defaultProviderSnapshot.codexEnabled);
         setClaudeEnabled(defaultProviderSnapshot.claudeEnabled);
+        setOpencodeEnabled(defaultProviderSnapshot.opencodeEnabled);
         setAutoAgentProviderRoutingEnabled(defaultProviderSnapshot.autoAgentProviderRouting);
         setAutoRoutingConfig(defaultProviderSnapshot.autoRoutingConfig);
     }, [defaultProviderSnapshot]);
@@ -2051,6 +2059,8 @@ export function AdminPanel() {
                                     setCodexEnabled={setCodexEnabled}
                                     claudeEnabled={claudeEnabled}
                                     setClaudeEnabled={setClaudeEnabled}
+                                    opencodeEnabled={opencodeEnabled}
+                                    setOpencodeEnabled={setOpencodeEnabled}
                                     autoAgentProviderRoutingEnabled={autoAgentProviderRoutingEnabled}
                                     setAutoAgentProviderRoutingEnabled={setAutoAgentProviderRoutingEnabled}
                                     autoRoutingConfig={autoRoutingConfig}

@@ -1009,6 +1009,8 @@ timeout: 300
                 '  enabled: true',
                 'claude:',
                 '  enabled: true',
+                'opencode:',
+                '  enabled: true',
                 'defaultProvider: codex',
                 'features:',
                 '  autoMemoryPromotion: true',
@@ -1302,6 +1304,9 @@ timeout: 300
                   "notes": {
                     "enabled": false,
                   },
+                  "opencode": {
+                    "enabled": false,
+                  },
                   "output": "markdown",
                   "parallel": 12,
                   "persist": false,
@@ -1426,6 +1431,7 @@ timeout: 300
                   "myLife.enabled": "file",
                   "myWork.enabled": "file",
                   "notes.enabled": "file",
+                  "opencode.enabled": "default",
                   "output": "file",
                   "parallel": "file",
                   "persist": "file",

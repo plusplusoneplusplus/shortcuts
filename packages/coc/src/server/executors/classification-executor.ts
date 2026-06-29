@@ -150,10 +150,10 @@ function resolveClassificationContext(payload: Record<string, unknown>): {
     return {};
 }
 
-function readProvider(payload: unknown, fallback: 'copilot' | 'codex' | 'claude'): 'copilot' | 'codex' | 'claude' {
+function readProvider(payload: unknown, fallback: 'copilot' | 'codex' | 'claude' | 'opencode'): 'copilot' | 'codex' | 'claude' | 'opencode' {
     if (payload && typeof payload === 'object') {
         const provider = (payload as { provider?: unknown }).provider;
-        if (provider === 'copilot' || provider === 'codex' || provider === 'claude') {
+        if (provider === 'copilot' || provider === 'codex' || provider === 'claude' || provider === 'opencode') {
             return provider;
         }
     }

@@ -99,7 +99,7 @@ function buildProviderOptions(rawProviders: ReturnType<typeof useAgentProviders>
             .map(provider => [provider.id, provider] as const),
     );
 
-    return (['copilot', 'codex', 'claude'] as const).map((id) => {
+    return (['copilot', 'codex', 'claude', 'opencode'] as const).map((id) => {
         const provider = byId.get(id);
         const disabled = id !== 'copilot' && (provider?.enabled !== true || provider?.available !== true);
         return {

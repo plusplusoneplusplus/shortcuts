@@ -11,7 +11,7 @@ import type { AdminConcreteAgentProvider } from '@plusplusoneplusplus/coc-client
 
 export type Provider = AdminConcreteAgentProvider;
 
-export const PROVIDER_LABELS: Record<Provider, string> = { copilot: 'Copilot', codex: 'Codex', claude: 'Claude' };
+export const PROVIDER_LABELS: Record<Provider, string> = { copilot: 'Copilot', codex: 'Codex', claude: 'Claude', opencode: 'OpenCode' };
 
 function CopilotIcon() {
     return (
@@ -37,10 +37,24 @@ function ClaudeIcon() {
     );
 }
 
+function OpenCodeIcon() {
+    // Official OpenCode logomark (their favicon): a blocky "o" — a white
+    // rounded outline with a gray inner block. Two-tone by design, so it uses
+    // explicit brand fills rather than `currentColor`; the dark backdrop comes
+    // from the `aip-avatar-opencode` CSS background.
+    return (
+        <svg viewBox="0 0 512 512" width="18" height="18" fill="none" aria-hidden="true">
+            <path d="M320 224V352H192V224H320Z" fill="#5A5858" />
+            <path fillRule="evenodd" clipRule="evenodd" d="M384 416H128V96H384V416ZM320 160H192V352H320V160Z" fill="#fff" />
+        </svg>
+    );
+}
+
 export const PROVIDER_ICONS: Record<Provider, () => JSX.Element> = {
     copilot: CopilotIcon,
     codex: OpenAIIcon,
     claude: ClaudeIcon,
+    opencode: OpenCodeIcon,
 };
 
 export function ProviderAvatar({ provider }: { provider: Provider }) {

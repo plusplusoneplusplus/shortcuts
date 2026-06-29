@@ -33,7 +33,7 @@ export interface ComposerMetaStripProps {
      * which provider is handling their chat. When `undefined` or `'copilot'`
      * no badge is shown (copilot is the default and the badge adds no value).
      */
-    activeProvider?: 'copilot' | 'codex' | 'claude';
+    activeProvider?: 'copilot' | 'codex' | 'claude' | 'opencode';
     className?: string;
     /** System-prompt token count when the provider reports a breakdown. */
     sessionSystemTokens?: number;

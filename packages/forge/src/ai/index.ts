@@ -99,6 +99,8 @@ export {
     SDK_PROVIDER_CODEX,
     CLAUDE_PROVIDER,
     SDK_PROVIDER_CLAUDE,
+    OPENCODE_PROVIDER,
+    SDK_PROVIDER_OPENCODE,
     // Codex SDK Service and auth
     registerCodexSDKService,
     CodexSDKService,
@@ -109,6 +111,11 @@ export {
     registerClaudeSDKService,
     mapClaudeRateLimitInfoToQuota,
     type ClaudeRateLimitInfo,
+    // OpenCode SDK Service
+    OpenCodeSDKService,
+    registerOpenCodeSDKService,
+    flattenOpenCodeProvidersToModelInfo,
+    parseOpenCodeModelRef,
     // Model Metadata Store
     modelMetadataStore,
     resolveReasoningEffort,

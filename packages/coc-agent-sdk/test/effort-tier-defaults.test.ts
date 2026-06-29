@@ -44,6 +44,16 @@ describe('getDefaultEffortTiers', () => {
         });
     });
 
+    it('returns the opencode defaults', () => {
+        const defaults = getDefaultEffortTiers('opencode');
+        expect(defaults).toEqual({
+            'very-low': { model: 'anthropic/claude-haiku',    reasoningEffort: null    },
+            low:    { model: 'anthropic/claude-sonnet',   reasoningEffort: null    },
+            medium: { model: 'anthropic/claude-sonnet',   reasoningEffort: 'high'  },
+            high:   { model: 'anthropic/claude-opus',     reasoningEffort: null    },
+        });
+    });
+
     it('returns null for unknown providers', () => {
         expect(getDefaultEffortTiers('unknown')).toBeNull();
         expect(getDefaultEffortTiers('')).toBeNull();

@@ -2,9 +2,10 @@ import {
     CLAUDE_PROVIDER,
     CODEX_PROVIDER,
     COPILOT_PROVIDER,
+    OPENCODE_PROVIDER,
 } from './sdk-service-registry';
 
-export type SupportedProvider = typeof COPILOT_PROVIDER | typeof CODEX_PROVIDER | typeof CLAUDE_PROVIDER;
+export type SupportedProvider = typeof COPILOT_PROVIDER | typeof CODEX_PROVIDER | typeof CLAUDE_PROVIDER | typeof OPENCODE_PROVIDER;
 
 export interface ProviderModelResolution {
     /** Model that is safe to send to the provider. Omitted means provider default. */
@@ -19,6 +20,7 @@ const PROVIDER_DEFAULT_MODELS: Readonly<Record<SupportedProvider, ReadonlySet<st
     [COPILOT_PROVIDER]: new Set(['copilot-default', 'provider-default', 'default']),
     [CODEX_PROVIDER]: new Set(['codex-default', 'provider-default', 'default']),
     [CLAUDE_PROVIDER]: new Set(['claude-provider-default', 'provider-default', 'default']),
+    [OPENCODE_PROVIDER]: new Set(['opencode-default', 'provider-default', 'default']),
 };
 
 function isProviderDefault(provider: SupportedProvider, normalizedModel: string): boolean {
@@ -32,6 +34,10 @@ function isValidModelForProvider(provider: SupportedProvider, normalizedModel: s
             return normalizedModel.startsWith('gpt-');
         case CLAUDE_PROVIDER:
             return normalizedModel.startsWith('claude-') || normalizedModel === 'opus' || normalizedModel === 'sonnet' || normalizedModel === 'haiku';
+        case OPENCODE_PROVIDER:
+            // OpenCode accepts provider/model composite IDs (e.g. anthropic/claude-3-5-sonnet)
+            // as well as bare model names. Accept anything — the server resolves.
+            return true;
         case COPILOT_PROVIDER:
             return !normalizedModel.startsWith('codex-') && !normalizedModel.startsWith('claude-provider-');
     }

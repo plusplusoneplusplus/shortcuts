@@ -1,6 +1,6 @@
 # CoC Agent SDK (`coc-agent-sdk`)
 
-Provider-agnostic AI agent SDK for CoC. Manages AI session lifecycle, MCP server configuration, model registry and metadata, reasoning-effort resolution, folder trust, and provider quota snapshots where the backend exposes them. Supports **Copilot** (via `@github/copilot-sdk`), **Codex** (via the optional `@openai/codex-sdk` plus the bundled `@openai/codex` CLI for quota/model catalog RPCs), and **Claude** (via the optional `@anthropic-ai/claude-agent-sdk`) backends through a common `ISDKService` interface.
+Provider-agnostic AI agent SDK for CoC. Manages AI session lifecycle, MCP server configuration, model registry and metadata, reasoning-effort resolution, folder trust, and provider quota snapshots where the backend exposes them. Supports **Copilot** (via `@github/copilot-sdk`), **Codex** (via the optional `@openai/codex-sdk` plus the bundled `@openai/codex` CLI for quota/model catalog RPCs), **Claude** (via the optional `@anthropic-ai/claude-agent-sdk`), and **OpenCode** (via the optional `@opencode-ai/sdk`) backends through a common `ISDKService` interface.
 
 Package: `@plusplusoneplusplus/coc-agent-sdk`  
 Location: `packages/coc-agent-sdk/src/`
@@ -14,6 +14,7 @@ Location: `packages/coc-agent-sdk/src/`
 | `copilot-sdk-service.ts` | `CopilotSDKService` facade singleton — Copilot backend |
 | `codex-sdk-service.ts` | `CodexSDKService` — optional Codex backend (`@openai/codex-sdk`) |
 | `claude-sdk-service.ts` | `ClaudeSDKService` — optional Claude backend (`@anthropic-ai/claude-agent-sdk`) |
+| `opencode-sdk-service.ts` | `OpenCodeSDKService` — optional OpenCode backend (`@opencode-ai/sdk`). Server-backed adapter: starts/connects to a local opencode HTTP server. No warm client (per-turn server requests). `softAbortSession` delegates to `abortSession`; `steerSession` returns false. |
 | `sdk-service-interface.ts` | `ISDKService` provider-agnostic contract |
 | `sdk-service-registry.ts` | `SDKServiceRegistry` — named-provider registry |
 | `testing/` | Shared vitest-free `ISDKService` mock (`createMockSDKService` + presets); exposed via `./testing` subpath export |
@@ -57,12 +58,16 @@ Replaces the `CopilotSDKService.getInstance()` singleton pattern. Providers regi
 
 ```ts
 // Well-known keys:
-COPILOT_PROVIDER / SDK_PROVIDER_COPILOT = 'copilot'
-CODEX_PROVIDER   / SDK_PROVIDER_CODEX   = 'codex'
+COPILOT_PROVIDER  / SDK_PROVIDER_COPILOT  = 'copilot'
+CODEX_PROVIDER    / SDK_PROVIDER_CODEX    = 'codex'
+CLAUDE_PROVIDER   / SDK_PROVIDER_CLAUDE   = 'claude'
+OPENCODE_PROVIDER / SDK_PROVIDER_OPENCODE = 'opencode'
 
 // Registration (done once during provider init):
-sdkServiceRegistry.register(SDK_PROVIDER_COPILOT, new CopilotSDKService());
-sdkServiceRegistry.register(SDK_PROVIDER_CODEX,   new CodexSDKService());
+sdkServiceRegistry.register(SDK_PROVIDER_COPILOT,  new CopilotSDKService());
+sdkServiceRegistry.register(SDK_PROVIDER_CODEX,    new CodexSDKService());
+registerClaudeSDKService();
+registerOpenCodeSDKService();
 
 // Lookup:
 const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);

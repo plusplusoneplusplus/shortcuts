@@ -15,7 +15,7 @@ import { ADMIN_SETTING_DEFINITIONS, type AdminSettingValueSpec } from './admin-s
 // Hand-written sub-schemas (non-admin-editable structures)
 // ============================================================================
 
-const concreteAgentProviderEnum = z.enum(['copilot', 'codex', 'claude']);
+const concreteAgentProviderEnum = z.enum(['copilot', 'codex', 'claude', 'opencode']);
 const percentSchema = z.number().int().min(0).max(100);
 
 const loggingLevelEnum = z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
