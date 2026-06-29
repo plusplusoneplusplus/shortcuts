@@ -80,6 +80,11 @@ all have their own `references/*.md`.
   `Remaining:` progress as complete autonomous work: do not queue another
   implementation iteration; enqueue final-check and preserve the manual
   verification-needed terminal status.
+- **Ralph signal recovery** falls back to the journal when the response carries
+  no inline `RALPH_*` token: `decideRalphIterationActions` recovers the signal
+  from the current iteration's `progress.md` section (via `recentProgressSections`,
+  which must include `iteration`). The inline token stays authoritative when
+  present; `NO_SIGNAL` is terminal only when neither source carries a signal.
 - **Loop ticks** must route completion through
   `ProcessLifecycleRunner → onLoopTickComplete → LoopExecutor.onTickComplete`;
   bookkeeping errors must never mask the follow-up's actual result.
@@ -133,6 +138,16 @@ all have their own `references/*.md`.
   `retry-task-button`, gated by `ChatDetail.canRetryFailedTask`) that re-runs the
   original task payload as a brand-new conversation via `client.queue.retry` —
   distinct from resuming the dead session.
+- **Follow-up delivery decisions** (steer vs buffer vs enqueue) live in
+  `src/server/processes/process-message-delivery-service.ts`, not the
+  `POST /api/processes/:id/message` route. The route resolves the process,
+  parses the body, processes attachments, normalizes scalar fields via
+  `normalizeFollowUpInput(...)`, then calls `ProcessMessageDeliveryService.deliver`
+  and emits the returned event intents exactly once. Buffered messages append
+  through the store's atomic `ProcessStore.appendPendingMessage(...)` (read-append
+  -persist under the store write lock) — never read-modify-write `pendingMessages`
+  via `updateProcess`, which loses concurrent updates. Buffered delivery must not
+  append a conversation turn (it is deferred to `drainPendingMessages`).
 - **Process metadata field updates** from dashboard/server callers should use
   `client.processes.patchMetadata(...)` or API `metadataPatch` unless a full
   metadata replacement is intentional; full `metadata` on

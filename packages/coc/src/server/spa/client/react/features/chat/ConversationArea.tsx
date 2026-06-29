@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Spinner } from '../../ui';
 import { ConversationTurnBubble } from './conversation/ConversationTurnBubble';
+import { CompactionBubble } from './CompactionBubble';
+import { shouldInjectStreamingPlaceholder } from './streaming-placeholder';
 import { useMessageNavigation } from './hooks/useMessageNavigation';
 import { PendingTaskInfoPanel } from '../../queue/PendingTaskInfoPanel';
 import { cn } from '../../ui/cn';
@@ -126,6 +128,17 @@ export interface ConversationAreaProps {
     provider?: ChatProvider;
     /** Additional cards that should remain reachable via the main conversation scroll area. */
     postConversationContent?: ReactNode;
+    /**
+     * True while a `/compact` action is running for this conversation (AC-02).
+     * Renders a synthetic, user-message-style "Compacting context…" bubble near
+     * the bottom and suppresses the normal empty assistant streaming placeholder
+     * that a `running` status would otherwise trigger. The bubble is a pure
+     * client render — never persisted as a turn, never replayed into model
+     * history.
+     */
+    isCompacting?: boolean;
+    /** Custom instructions typed after the `/compact` token, surfaced in the compacting bubble. */
+    compactInstructions?: string;
 }
 
 export function ConversationArea({
@@ -174,6 +187,8 @@ export function ConversationArea({
     processError,
     provider,
     postConversationContent,
+    isCompacting,
+    compactInstructions,
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -286,8 +301,12 @@ export function ConversationArea({
                         {(() => {
                             const hasStreaming = turns.some(t => t.streaming);
                             const nextTurnIndex = Math.max(0, ...turns.map(t => t.turnIndex ?? -1)) + 1;
+                            // While compacting, the process is marked `running` (AC-01) but
+                            // there is no live assistant generation — suppress the empty
+                            // streaming placeholder so the synthetic compaction bubble is the
+                            // only in-progress indicator.
                             const renderTurns =
-                                task?.status === 'running' && !hasStreaming && turns.length > 0
+                                shouldInjectStreamingPlaceholder({ status: task?.status, hasStreaming, turnCount: turns.length, isCompacting: !!isCompacting })
                                     ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [], turnIndex: nextTurnIndex }]
                                     : turns;
                             const sortedTurns = [...renderTurns]
@@ -411,6 +430,9 @@ export function ConversationArea({
                                 );
                             });
                         })()}
+                        {isCompacting && (
+                            <CompactionBubble instructions={compactInstructions} />
+                        )}
                         {pendingAskUserBatch && (
                             <AskUserInline
                                 key={pendingAskUserBatch.batchId}

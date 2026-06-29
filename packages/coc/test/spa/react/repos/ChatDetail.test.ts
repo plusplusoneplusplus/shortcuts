@@ -238,6 +238,16 @@ describe('ChatDetail', () => {
             expect(source).toContain('useSlashCommands(augmentedSkills)');
         });
 
+        it('passes augmentedSkills (not raw skills) to FollowUpInputArea so meta-commands appear in the slash menu', () => {
+            // Regression: the follow-up input previously received the raw `skills` list,
+            // which excludes meta-commands (compact/model/loop). The menu render must use
+            // the same augmentedSkills list that drives parsing/selection, otherwise
+            // `/compact` & co. never autocomplete in existing chats and the displayed rows
+            // drift out of sync with slashCommands.highlightIndex.
+            expect(source).toContain('skills={augmentedSkills}');
+            expect(source).not.toContain('skills={skills}');
+        });
+
         it('renders SlashCommandMenu with correct props', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<SlashCommandMenu');
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('skills={skills}');
@@ -747,9 +757,13 @@ describe('ChatDetail', () => {
         });
 
         it('inputDisabled includes cancelled so input is disabled when cancelled', () => {
+            // Window spans the inputDisabled expression plus the adjacent
+            // noSessionForFollowUp line that carries the `'cancelled'` literal;
+            // sized with headroom so additions to inputDisabled (e.g.
+            // isCompacting) don't push the literal out of frame.
             const expr = source.substring(
                 source.indexOf('const inputDisabled'),
-                source.indexOf('const inputDisabled') + 200,
+                source.indexOf('const inputDisabled') + 256,
             );
             expect(expr).toContain("'cancelled'");
         });

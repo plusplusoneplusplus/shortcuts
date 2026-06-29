@@ -42,6 +42,36 @@ export type AIProcessType = 'clarification' | 'code-review' | 'discovery' | 'cod
 export type SessionCategory = 'generating-code' | 'resolve-plan-comments' | 'resolve-commit-comments';
 
 /**
+ * Persisted lifecycle of a `/compact` action, stored on the process metadata
+ * (`GenericProcessMetadata.compaction`).
+ *
+ * `/compact` summarizes the live provider session in place to shrink the model's
+ * context-window usage on the next turn. While it runs, the process is marked
+ * with a non-terminal status so the dashboard, other tabs, and reloads all show
+ * the conversation as in progress. This record carries the metadata the SPA
+ * needs to render a synthetic compaction bubble and, on settle, to restore the
+ * prior terminal conversation state. It is NOT a real conversation turn.
+ */
+export interface ProcessCompactionState {
+    /** Lifecycle of the most recent compaction action. */
+    state: 'running' | 'completed' | 'failed';
+    /** Terminal status to restore once compaction settles (success or failure). */
+    priorStatus: AIProcessStatus;
+    /** ISO timestamp compaction started. */
+    startedAt: string;
+    /** ISO timestamp compaction settled. Absent while `state === 'running'`. */
+    completedAt?: string;
+    /** Custom instructions typed after the `/compact` token, if any. */
+    customInstructions?: string;
+    /** Messages removed by the summary (success only). */
+    messagesRemoved?: number;
+    /** Tokens freed by the summary (success only). */
+    tokensRemoved?: number;
+    /** Error message (failure only). */
+    error?: string;
+}
+
+/**
  * Generic metadata interface that feature modules can extend.
  * This allows ai-service to remain decoupled from specific feature implementations.
  */
@@ -54,6 +84,12 @@ export interface GenericProcessMetadata {
     workspaceName?: string;
     /** Purpose of the session (e.g. code generation vs comment resolution). */
     sessionCategory?: SessionCategory;
+    /**
+     * In-progress / completed state of the most recent `/compact` action. Set
+     * by the compact route so the SPA can render a synthetic compaction bubble
+     * and restore terminal status across reloads and other tabs.
+     */
+    compaction?: ProcessCompactionState;
     /** Feature-specific data stored as key-value pairs */
     [key: string]: unknown;
 }
@@ -163,6 +199,13 @@ export interface ConversationTurn {
     tokenUsage?: TokenUsage;
     /** True when the user's large pasted content was externalized to a temp file reference */
     pasteExternalized?: boolean;
+    /**
+     * True for turns synthesized for display only (e.g. the `/compact` result
+     * notice). Rendered in the transcript but deliberately excluded from the
+     * provider model's prompt history on future follow-ups — see
+     * `buildConversationHistoryContext`.
+     */
+    displayOnly?: boolean;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */
@@ -213,6 +256,8 @@ export interface SerializedConversationTurn {
     tokenUsage?: TokenUsage;
     /** True when the user's large pasted content was externalized to a temp file reference */
     pasteExternalized?: boolean;
+    /** True for display-only turns (e.g. the `/compact` result notice) excluded from model prompt history. */
+    displayOnly?: boolean;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */

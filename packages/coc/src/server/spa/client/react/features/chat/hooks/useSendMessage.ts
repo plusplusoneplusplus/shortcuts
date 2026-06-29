@@ -12,6 +12,7 @@ import { CocApiError, type ProcessMessageRequest } from '@plusplusoneplusplus/co
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop';
+import type { MetaCommand } from '../slash-command-parser';
 import type { RalphGrillSetup } from '../../../../../../ralph/grill-planning';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
@@ -38,7 +39,7 @@ export interface UseSendMessageOptions {
     refreshConversation: (pid: string) => Promise<void>;
     queueDispatch: (action: any) => void;
     slashCommands: {
-        parseAndExtract: (input: string) => { skills: string[]; prompt: string };
+        parseAndExtract: (input: string) => { skills: string[]; prompt: string; metaCommands: MetaCommand[] };
         dismissMenu: () => void;
     };
     followUpInputRef: React.MutableRefObject<string>;
@@ -83,6 +84,20 @@ export interface UseSendMessageOptions {
      * recomputation once the chat gains a ralph context.
      */
     onPromotedToRalph?: () => void;
+    /**
+     * Surface the result of a `/compact` meta-command as a transient
+     * notification (toast). Success reports messages/tokens removed; failures
+     * (unsupported provider, active turn) report the error. CoC's displayed
+     * transcript is NOT rewritten, so this is the only user-visible signal.
+     */
+    notifyCompact?: (message: string, type: 'success' | 'error') => void;
+    /**
+     * Marks the conversation as compacting (AC-02) so the chat can render a
+     * synthetic in-progress bubble from process state and block duplicate sends.
+     * Called with `true` and the typed custom instructions when `/compact`
+     * starts, and `false` when it settles (success or failure).
+     */
+    setCompacting?: (running: boolean, customInstructions?: string) => void;
 }
 
 export function useSendMessage({
@@ -120,6 +135,8 @@ export function useSendMessage({
     conversationRetrievalAvailable,
     ralphGrillSetup,
     onPromotedToRalph,
+    notifyCompact,
+    setCompacting,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode, options?: SendFollowUpOptions) => Promise<void>;
     closeFollowUpStream: () => void;
@@ -128,6 +145,11 @@ export function useSendMessage({
     const { archivedChatIds, unarchiveChat } = useChatPrefs();
     const followUpEventSourceRef = useRef<EventSource | null>(null);
     const resolveCurrentSendRef = useRef<(() => void) | null>(null);
+    // Synchronous re-entry guard: the `/compact` POST is blocking and the
+    // conversation is not idle while it runs, so any concurrent send (a second
+    // `/compact` or a normal follow-up) must be dropped. A ref closes the
+    // double-click race that a React state flag would lose between renders.
+    const compactingRef = useRef(false);
 
     const buildMessageRequest = useCallback((content: string, deliveryMode: DeliveryMode, skillNames: string[], options: SendFollowUpOptions = {}): ProcessMessageRequest => ({
         content,
@@ -183,6 +205,51 @@ export function useSendMessage({
         });
     }, [refreshConversation]);
 
+    /**
+     * Run the `/compact` client-side action: call the workspace-routed compact
+     * endpoint and surface the outcome. Success reports the messages/tokens
+     * removed; unsupported-provider (422) and active-turn (409) failures report
+     * the backend error. The server appends a display-only result turn to the
+     * transcript (AC-03), so on success we refresh the conversation to surface it
+     * — the toast is no longer the only visible completion signal.
+     */
+    const compactConversation = useCallback(async (pid: string, customInstructions: string | undefined) => {
+        // Mark in-progress BEFORE the (blocking) POST so the chat renders the
+        // synthetic compaction bubble and suppresses the empty assistant
+        // placeholder while compaction runs (AC-02).
+        compactingRef.current = true;
+        setCompacting?.(true, customInstructions);
+        try {
+            const result = await getCocClientForWorkspace(workspaceId).processes.compact(
+                pid,
+                customInstructions,
+                workspaceId ? { workspace: workspaceId } : undefined,
+            );
+            const removed = result.messagesRemoved ?? 0;
+            const freed = result.tokensRemoved ?? 0;
+            notifyCompact?.(
+                `Context compacted — removed ${removed} message${removed === 1 ? '' : 's'}, freed ~${freed} tokens`,
+                'success',
+            );
+            // Pull in the server-appended display-only result turn so it shows
+            // without a reload. Best-effort: a refresh failure must not mask the
+            // successful compaction.
+            try {
+                await refreshConversation(pid);
+            } catch {
+                // ignore — the turn is persisted and will appear on next load
+            }
+        } catch (err: any) {
+            notifyCompact?.(getSpaCocClientErrorMessage(err, 'Failed to compact the conversation.'), 'error');
+        } finally {
+            // Clear the in-progress state on both paths. On success the refresh
+            // above has already landed the persisted result turn, so there is no
+            // gap where neither the bubble nor the result turn is visible.
+            compactingRef.current = false;
+            setCompacting?.(false);
+        }
+    }, [workspaceId, notifyCompact, refreshConversation, setCompacting]);
+
     const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue', options: SendFollowUpOptions = {}) => {
         const includeComposerContext = options.includeComposerContext !== false;
         const messageMode = options.modeOverride ?? selectedMode;
@@ -207,6 +274,31 @@ export function useSendMessage({
         const rawContent = contextPrefix ? contextPrefix + baseContent : baseContent;
         if (!processId || inputDisabled) return;
         if (sending && !isActiveGeneration) return;
+        // Block every send — a second `/compact` or a normal follow-up — while a
+        // compaction is still in flight (AC-02). The conversation is not idle
+        // until the blocking POST settles.
+        if (compactingRef.current) return;
+
+        // ── /compact meta-command branch ──
+        // `/compact` is a client-side action (like `/model`), not a message.
+        // Compaction shrinks the model context used on the next turn; CoC's
+        // displayed transcript is NOT rewritten — the result is surfaced as a
+        // transient toast (see compactConversation). The text after the
+        // `/compact` token becomes customInstructions (empty when none typed).
+        const compactParse = slashCommands.parseAndExtract(userText);
+        // Optional chaining guards against a parseAndExtract that omits
+        // metaCommands (the real hook always returns it; test stubs may not).
+        if (compactParse.metaCommands?.includes('compact')) {
+            setSuggestions([]);
+            if (includeComposerContext) {
+                setFollowUpInput('');
+                clearDraft(taskId);
+            }
+            slashCommands.dismissMenu();
+            setError(null);
+            await compactConversation(processId, compactParse.prompt || undefined);
+            return;
+        }
 
         // ── Ralph promotion branch ──
         // When the follow-up mode pill is set to Ralph, "Send" promotes the
@@ -348,7 +440,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, compactConversation]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

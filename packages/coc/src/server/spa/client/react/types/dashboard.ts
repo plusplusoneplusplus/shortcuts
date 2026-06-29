@@ -116,6 +116,8 @@ export interface ClientConversationTurn {
     tokenUsage?: ClientTokenUsage;
     /** True when the user's large pasted content was externalized to a temp file reference */
     pasteExternalized?: boolean;
+    /** True for display-only turns (e.g. the `/compact` result notice) excluded from model prompt history. */
+    displayOnly?: boolean;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (set on user turns when mode override was active) */

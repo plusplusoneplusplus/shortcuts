@@ -377,6 +377,27 @@ export class WarmClientRegistry {
         return this.entries.get(key)?.handle !== undefined;
     }
 
+    /**
+     * Borrow a parked, idle warm handle for a one-off out-of-band operation
+     * (e.g. history compaction) without taking a turn ref or disturbing the idle
+     * TTL — the pool is left exactly as it was. Returns the first ready handle
+     * whose key has no in-flight turn (`activeCount === 0`), or `undefined` when
+     * nothing is parked.
+     *
+     * Out-of-band callers (such as `compactSession`) receive a session id but no
+     * warm scope key, so this scans rather than taking a key: a warm client is a
+     * generic live process that can resume any session, and only idle entries are
+     * returned so a borrow never collides with an in-flight turn. The caller MUST
+     * NOT call `stop()` on the returned handle — it stays owned by the registry
+     * and parked for its normal next {@link acquire}.
+     */
+    peekIdleWarmHandle(): WarmClientHandle | undefined {
+        for (const entry of this.entries.values()) {
+            if (entry.handle && entry.activeCount === 0) return entry.handle;
+        }
+        return undefined;
+    }
+
     /** Whether one or more turns are currently in flight on the key. */
     isActive(key: string): boolean {
         return (this.entries.get(key)?.activeCount ?? 0) > 0;

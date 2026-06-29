@@ -116,6 +116,7 @@ export {
     AIProcessStatus,
     AIProcessType,
     SessionCategory,
+    ProcessCompactionState,
     GenericProcessMetadata,
     GenericGroupMetadata,
     TypedProcessOptions,
@@ -173,6 +174,9 @@ export {
     RewindResult,
     RewindUnsupportedError,
     isRewindUnsupportedError,
+    CompactResult,
+    CompactUnsupportedError,
+    isCompactUnsupportedError,
     // SDK Service Registry
     SDKServiceRegistry,
     sdkServiceRegistry,

@@ -2,6 +2,7 @@ import type {
   AIProcess,
   AskUserResponseRequest,
   AskUserResponseResponse,
+  CompactResult,
   CreateProcessRequest,
   ProcessDetailResponse,
   CreatePendingProcessMessageResponse,
@@ -245,6 +246,27 @@ export class ProcessesClient {
       method: 'POST',
       query,
       body: {},
+    });
+  }
+
+  /**
+   * Compact (summarize) a conversation's live SDK session history to free model
+   * context for the next turn. Optional `customInstructions` steer the summary;
+   * an empty/omitted value sends a bare `{}` body. CoC's displayed transcript is
+   * NOT rewritten — the caller surfaces the `CompactResult` as a transient info
+   * message. Rejects (typed error) for unsupported providers (422) or a
+   * non-idle conversation (409).
+   */
+  compact(
+    processId: string,
+    customInstructions?: string,
+    query?: Pick<ProcessListQuery, 'workspace'>,
+  ): Promise<CompactResult> {
+    const trimmed = customInstructions?.trim();
+    return this.transport.request<CompactResult>(`/processes/${encodePathSegment(processId)}/compact`, {
+      method: 'POST',
+      query,
+      body: trimmed ? { customInstructions: trimmed } : {},
     });
   }
 

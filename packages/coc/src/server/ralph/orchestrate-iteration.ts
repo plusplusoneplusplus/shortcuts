@@ -118,6 +118,7 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
         dataDir: deps.dataDir,
         workspaceId,
         sessionId,
+        currentIteration,
         logger,
     });
 
@@ -205,6 +206,9 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
             }
 
             case 'surfaceTerminalReason':
+                if (action.signalSource === 'journal') {
+                    logger.info(LogCategory.AI, `[Ralph] Recovered signal '${action.signal}' from journal for iteration ${action.iteration} of ${processId} (response carried no inline token)`);
+                }
                 logger.debug(LogCategory.AI, `[Ralph] Terminal reason for ${processId}: ${action.terminalReason} (${action.completionReason})`);
                 break;
 
@@ -378,9 +382,10 @@ async function readRecentProgressSections(input: {
     dataDir?: string;
     workspaceId?: string;
     sessionId?: string;
+    currentIteration?: number;
     logger: ReturnType<typeof getLogger>;
-}): Promise<Pick<ParsedProgressSection, 'signal' | 'body'>[] | undefined> {
-    const { dataDir, workspaceId, sessionId, logger } = input;
+}): Promise<Pick<ParsedProgressSection, 'iteration' | 'signal' | 'body'>[] | undefined> {
+    const { dataDir, workspaceId, sessionId, currentIteration, logger } = input;
     if (!dataDir || !workspaceId || !sessionId) {
         return undefined;
     }
@@ -388,9 +393,23 @@ async function readRecentProgressSections(input: {
     try {
         const store = new RalphSessionStore({ dataDir });
         const progress = await store.readProgress(workspaceId, sessionId);
-        return RalphSessionStore.parseProgressSections(progress)
-            .slice(-3)
-            .map(section => ({ signal: section.signal, body: section.body }));
+        const sections = RalphSessionStore.parseProgressSections(progress);
+        const recent = sections.slice(-3);
+        // Signal recovery keys off the current iteration's section. Make sure it's
+        // available even when more than three later sections push it out of the
+        // trailing window.
+        if (currentIteration !== undefined) {
+            for (const section of sections) {
+                if (section.iteration === currentIteration && !recent.includes(section)) {
+                    recent.push(section);
+                }
+            }
+        }
+        return recent.map(section => ({
+            iteration: section.iteration,
+            signal: section.signal,
+            body: section.body,
+        }));
     } catch (err) {
         logger.debug(LogCategory.AI, `[Ralph] Could not read recent progress sections for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
         return undefined;

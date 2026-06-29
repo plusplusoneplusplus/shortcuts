@@ -253,6 +253,22 @@ export interface ProcessForkResponse {
 }
 
 /**
+ * Response from `POST /processes/:id/compact`.
+ *
+ * Compaction summarizes the live SDK session history to shrink the model
+ * context used on the *next* turn; CoC's displayed transcript is NOT rewritten.
+ * Mirrors the provider SDK's history-compact result. `tokensRemoved` /
+ * `messagesRemoved` are how much context the summary replaced; `summaryContent`
+ * is the generated summary text when the provider returns it.
+ */
+export interface CompactResult {
+  success: boolean;
+  tokensRemoved: number;
+  messagesRemoved: number;
+  summaryContent?: string;
+}
+
+/**
  * Response from `POST /processes/:id/prewarm`.
  *
  * `warming` is `true` when the provider client was warmed (or was already

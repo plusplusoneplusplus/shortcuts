@@ -100,6 +100,15 @@ export function createStubStore(): ProcessStore {
             changeCallback?.({ type: 'process-updated', process: merged });
             return { turn, allTurns };
         },
+        appendPendingMessage: async (processId, message) => {
+            const existing = processes.get(processId);
+            if (!existing) return undefined;
+            const pendingMessages = [...(existing.pendingMessages ?? []), message];
+            const merged = { ...existing, pendingMessages };
+            processes.set(processId, merged);
+            changeCallback?.({ type: 'process-updated', process: merged });
+            return pendingMessages;
+        },
         upsertStreamingTurn: async (processId, content, streaming, timeline) => {
             const existing = processes.get(processId);
             if (!existing) return;

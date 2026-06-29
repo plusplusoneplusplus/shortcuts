@@ -213,6 +213,212 @@ describe('decideRalphIterationActions', () => {
         });
     });
 
+    it('recovers RALPH_COMPLETE from the journal when the response lacks an inline token', () => {
+        const decision = decideRalphIterationActions({
+            ...baseInput,
+            currentIteration: 3,
+            maxIterations: 5,
+            responseText: 'All three ACs are implemented and committed.',
+            recentProgressSections: [
+                { iteration: 2, signal: 'RALPH_NEXT', body: 'Files: a.ts' },
+                { iteration: 3, signal: 'RALPH_COMPLETE', body: 'Files: a.ts, b.ts' },
+            ],
+        });
+
+        expect(decision).toMatchObject({
+            signal: 'RALPH_COMPLETE',
+            shouldContinue: false,
+            terminalReason: 'RALPH_COMPLETE',
+            completionReason: 'signal',
+        });
+        expect(decision.actions.map(item => item.type)).toEqual([
+            'recordIteration',
+            'surfaceTerminalReason',
+            'enqueueFinalCheck',
+        ]);
+        expect(action(decision.actions, 'recordIteration')).toMatchObject({
+            iteration: 3,
+            signal: 'RALPH_COMPLETE',
+            shouldContinue: false,
+            terminalReason: 'RALPH_COMPLETE',
+            signalSource: 'journal',
+        });
+        expect(action(decision.actions, 'surfaceTerminalReason')).toMatchObject({
+            signal: 'RALPH_COMPLETE',
+            signalSource: 'journal',
+        });
+        expect(action(decision.actions, 'enqueueFinalCheck')).toMatchObject({
+            sourceIteration: 3,
+            terminalReason: 'RALPH_COMPLETE',
+            completionReason: 'signal',
+        });
+    });
+
+    it('recovers RALPH_NEXT from the journal and continues the loop', () => {
+        const decision = decideRalphIterationActions({
+            ...baseInput,
+            currentIteration: 1,
+            maxIterations: 3,
+            responseText: 'Made progress but forgot the token.',
+            recentProgressSections: [
+                { iteration: 1, signal: 'RALPH_NEXT', body: 'Files: a.ts\nRemaining: more' },
+            ],
+        });
+
+        expect(decision).toMatchObject({
+            signal: 'RALPH_NEXT',
+            shouldContinue: true,
+        });
+        expect(decision.actions.map(item => item.type)).toEqual([
+            'recordIteration',
+            'enqueueNextIteration',
+        ]);
+        expect(action(decision.actions, 'recordIteration')).toMatchObject({
+            signal: 'RALPH_NEXT',
+            shouldContinue: true,
+            signalSource: 'journal',
+        });
+        expect(action(decision.actions, 'enqueueNextIteration')).toMatchObject({
+            iteration: 2,
+        });
+    });
+
+    it('keeps NO_SIGNAL terminal when neither the response nor the journal carries a signal', () => {
+        const decision = decideRalphIterationActions({
+            ...baseInput,
+            currentIteration: 3,
+            responseText: 'No signal here at all.',
+            recentProgressSections: [
+                { iteration: 2, signal: 'RALPH_NEXT', body: 'Files: a.ts' },
+                { iteration: 3, signal: 'NONE', body: 'Files: b.ts' },
+            ],
+        });
+
+        expect(decision).toMatchObject({
+            signal: 'NONE',
+            shouldContinue: false,
+            terminalReason: 'NO_SIGNAL',
+        });
+        expect(decision.actions.map(item => item.type)).toEqual([
+            'recordIteration',
+            'surfaceTerminalReason',
+            'completeSession',
+        ]);
+        expect(action(decision.actions, 'recordIteration')).toMatchObject({
+            signal: 'NONE',
+            signalSource: 'response',
+        });
+        expect(action(decision.actions, 'completeSession')).toMatchObject({
+            terminalReason: 'NO_SIGNAL',
+        });
+    });
+
+    it('ignores the journal when an inline signal is present (inline wins)', () => {
+        const decision = decideRalphIterationActions({
+            ...baseInput,
+            currentIteration: 2,
+            maxIterations: 5,
+            responseText: 'Done.\n\nRALPH_PROGRESS:\nRemaining: none\nRALPH_COMPLETE',
+            recentProgressSections: [
+                { iteration: 2, signal: 'RALPH_NEXT', body: 'Files: a.ts' },
+            ],
+        });
+
+        expect(decision).toMatchObject({
+            signal: 'RALPH_COMPLETE',
+            terminalReason: 'RALPH_COMPLETE',
+        });
+        expect(decision.actions.map(item => item.type)).toEqual([
+            'recordIteration',
+            'surfaceTerminalReason',
+            'enqueueFinalCheck',
+        ]);
+        expect(action(decision.actions, 'recordIteration')).toMatchObject({
+            signal: 'RALPH_COMPLETE',
+            signalSource: 'response',
+        });
+    });
+
+    it('prefers the last decisive journal section when duplicate iteration sections exist', () => {
+        const decision = decideRalphIterationActions({
+            ...baseInput,
+            currentIteration: 3,
+            maxIterations: 5,
+            responseText: 'Finished, token dropped.',
+            recentProgressSections: [
+                { iteration: 3, signal: 'NONE', body: 'server-written placeholder' },
+                { iteration: 3, signal: 'RALPH_COMPLETE', body: 'agent-written header' },
+            ],
+        });
+
+        expect(decision.signal).toBe('RALPH_COMPLETE');
+        expect(action(decision.actions, 'recordIteration')).toMatchObject({
+            signal: 'RALPH_COMPLETE',
+            signalSource: 'journal',
+        });
+    });
+
+    it('recovers RALPH_NEXT from the journal and still flags manual-verification-only stagnation', () => {
+        // The response carries the progress block (so the body is stagnation-classified)
+        // but drops the trailing token; the journal supplies the RALPH_NEXT signal.
+        const decision = decideRalphIterationActions({
+            ...baseInput,
+            currentIteration: 2,
+            maxIterations: 5,
+            responseText: [
+                'Autonomous work is done.',
+                '',
+                'RALPH_PROGRESS:',
+                'Files: src/a.ts, test/a.test.ts',
+                'Decisions: implementation, tests, and build are complete.',
+                'Remaining: manual verification only - user should run the product demo.',
+            ].join('\n'),
+            recentProgressSections: [
+                {
+                    iteration: 2,
+                    signal: 'RALPH_NEXT',
+                    body: [
+                        'Files: src/a.ts, test/a.test.ts',
+                        'Decisions: implementation, tests, and build are complete.',
+                        'Remaining: manual verification only - user should run the product demo.',
+                    ].join('\n'),
+                },
+            ],
+        });
+
+        expect(decision).toMatchObject({
+            signal: 'RALPH_NEXT',
+            shouldContinue: false,
+            terminalReason: 'MANUAL_VERIFICATION_ONLY',
+            completionReason: 'manual-verification-only',
+            progressClassification: 'manualVerificationOnly',
+        });
+        expect(decision.actions.map(item => item.type)).toEqual([
+            'recordIteration',
+            'surfaceTerminalReason',
+            'enqueueFinalCheck',
+        ]);
+    });
+
+    it('stays NO_SIGNAL when the journal section belongs to a different iteration', () => {
+        const decision = decideRalphIterationActions({
+            ...baseInput,
+            currentIteration: 3,
+            responseText: 'No inline token.',
+            recentProgressSections: [
+                { iteration: 2, signal: 'RALPH_COMPLETE', body: 'earlier iteration' },
+            ],
+        });
+
+        expect(decision).toMatchObject({
+            signal: 'NONE',
+            terminalReason: 'NO_SIGNAL',
+        });
+        expect(action(decision.actions, 'completeSession')).toMatchObject({
+            terminalReason: 'NO_SIGNAL',
+        });
+    });
+
     it('falls back to processId for continuation when no sessionId is present', () => {
         const decision = decideRalphIterationActions({
             responseText: 'Next.\nRALPH_NEXT',

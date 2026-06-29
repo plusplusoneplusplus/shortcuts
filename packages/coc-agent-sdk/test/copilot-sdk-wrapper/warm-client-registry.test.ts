@@ -638,3 +638,43 @@ describe('WarmClientRegistry — getStatus', () => {
         expect(registry.getStatus(KEY)).toBe('cold');
     });
 });
+
+// ── peekIdleWarmHandle (out-of-band borrow for compaction) ───────────────────
+
+describe('WarmClientRegistry.peekIdleWarmHandle', () => {
+    function makeRegistry(ttlMs = TTL) {
+        return new WarmClientRegistry({ ttlMs });
+    }
+
+    it('returns undefined when nothing is parked', () => {
+        const registry = makeRegistry();
+        expect(registry.peekIdleWarmHandle()).toBeUndefined();
+    });
+
+    it('returns a parked, idle handle without taking a turn ref or stopping it', async () => {
+        const registry = makeRegistry();
+        const handle = makeHandle();
+        await registry.acquire(KEY, () => Promise.resolve(handle));
+        await registry.release(KEY, { keep: true }); // park it (idle)
+
+        const borrowed = registry.peekIdleWarmHandle();
+
+        expect(borrowed).toBe(handle);
+        // Borrowing must not flip the key to active or tear it down.
+        expect(registry.isActive(KEY)).toBe(false);
+        expect(registry.isWarm(KEY)).toBe(true);
+        expect(handle.stop).not.toHaveBeenCalled();
+    });
+
+    it('skips a key with an in-flight turn (only idle handles are borrowable)', async () => {
+        const registry = makeRegistry();
+        const handle = makeHandle();
+        await registry.acquire(KEY, () => Promise.resolve(handle)); // active, not released
+
+        // activeCount > 0 → not borrowable even though a handle exists.
+        expect(registry.peekIdleWarmHandle()).toBeUndefined();
+
+        await registry.release(KEY, { keep: true });
+        expect(registry.peekIdleWarmHandle()).toBe(handle);
+    });
+});

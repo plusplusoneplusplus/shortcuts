@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 24;
+export const SCHEMA_VERSION = 25;
 
 /**
  * Read the current schema version from the database.
@@ -94,6 +94,7 @@ export function initializeDatabase(db: Database.Database): void {
                 model             TEXT,
                 mode              TEXT,
                 sdk_event_id      TEXT,
+                display_only      INTEGER DEFAULT 0,
                 UNIQUE(process_id, turn_index)
             )
         `);
@@ -478,6 +479,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 24) {
             migrateV23toV24(db);
         }
+        if (versionBefore < 25) {
+            migrateV24toV25(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -791,6 +795,15 @@ function migrateV22toV23(db: Database.Database): void {
  */
 function migrateV23toV24(db: Database.Database): void {
     ensureColumn(db, 'conversation_turns', 'sdk_event_id', 'TEXT');
+}
+
+/**
+ * V24 -> V25: add `display_only` to `conversation_turns` — marks turns
+ * synthesized for display only (e.g. the `/compact` result notice) that are
+ * shown in the transcript but excluded from the model's prompt history.
+ */
+function migrateV24toV25(db: Database.Database): void {
+    ensureColumn(db, 'conversation_turns', 'display_only', 'INTEGER DEFAULT 0');
 }
 
 /**

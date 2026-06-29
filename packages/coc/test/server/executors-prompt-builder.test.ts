@@ -589,6 +589,27 @@ describe('buildConversationHistoryContext', () => {
         expect(result).toContain('[User]: Continue');
         expect(result).not.toContain('Partial output that timed out');
     });
+
+    it('skips display-only turns (e.g. the /compact result notice) so they are not replayed', () => {
+        const turns = [
+            { role: 'user' as const, content: 'Original question', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            { role: 'assistant' as const, content: 'Real answer', timestamp: new Date(), turnIndex: 1, timeline: [] },
+            {
+                role: 'assistant' as const,
+                content: 'Context compacted — removed 7 messages, freed ~4200 tokens',
+                timestamp: new Date(),
+                turnIndex: 2,
+                timeline: [],
+                displayOnly: true,
+            },
+            { role: 'user' as const, content: 'Continue', timestamp: new Date(), turnIndex: 3, timeline: [] },
+        ];
+        const result = buildConversationHistoryContext(turns);
+        expect(result).toContain('[User]: Original question');
+        expect(result).toContain('[Assistant]: Real answer');
+        expect(result).toContain('[User]: Continue');
+        expect(result).not.toContain('Context compacted');
+    });
 });
 
 // ============================================================================

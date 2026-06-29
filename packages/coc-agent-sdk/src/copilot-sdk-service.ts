@@ -32,7 +32,7 @@ export type { StreamingResult, IStreamableSession, StreamingState, StreamingSess
 import { SessionManager } from './session-manager';
 import { StreamErrorGuard, isStreamDestroyedError } from './stream-error-guard';
 import { RequestRunner } from './request-runner';
-import type { ISDKService, TransformOptions, TransformResult, PrewarmOptions, RewindResult } from './sdk-service-interface';
+import type { ISDKService, TransformOptions, TransformResult, PrewarmOptions, RewindResult, CompactResult } from './sdk-service-interface';
 import { sdkServiceRegistry, COPILOT_PROVIDER } from './sdk-service-registry';
 import { WarmClientRegistry, makeWarmKey, WarmClientFactory } from './warm-client-registry';
 import type { WarmStateChangeListener, WarmStatus } from './warm-client-registry';
@@ -214,6 +214,80 @@ export class CopilotSDKService implements ISDKService {
         } finally {
             await client.stop();
         }
+    }
+
+    /**
+     * Compact (summarize) a Copilot SDK session's live history to reclaim model
+     * context for the next turn (AC-02). Resumes the session and calls
+     * `rpc.history.compact({ customInstructions })`, mapping the outcome to a
+     * provider-agnostic {@link CompactResult}.
+     *
+     * Client lifecycle is warm-first, cold-fallback:
+     *   - Warm hit: borrow a parked, idle warm client, resume → compact →
+     *     disconnect the session, and LEAVE the client warm — it is owned by the
+     *     registry, so {@link CopilotClient.stop} is never called on it.
+     *   - Cold miss: cold-start a throwaway client, start → resume → compact →
+     *     disconnect → `stop()` it, and do NOT insert it into the warm pool.
+     *
+     * Like {@link rewindSession}, resume runs with all permissions denied
+     * (compaction invokes no tools) and never falls back to `createSession`: an
+     * unresumable session surfaces as a thrown error. The `rpc.history.compact`
+     * RPC is `@experimental`; if it is unavailable the call rejects and the
+     * backend (AC-04) maps it to a clear failure.
+     */
+    public async compactSession(sdkSessionId: string, customInstructions?: string): Promise<CompactResult> {
+        if (this.disposed) throw new Error('CopilotSDKService has been disposed');
+        const availability = await this.isAvailable();
+        if (!availability.available) throw new Error(availability.error ?? 'Copilot SDK is not available');
+
+        // Warm-first: reuse a parked, idle live process when one exists. The
+        // handle is owned by the registry — resume/compact/disconnect the
+        // per-op session but never stop the client.
+        const warmHandle = this.warmRegistry.peekIdleWarmHandle();
+        if (warmHandle) {
+            const client = warmHandle.client as CopilotClient;
+            const session = await client.resumeSession(sdkSessionId, {
+                onPermissionRequest: denyAllPermissions,
+            });
+            try {
+                return await this.runHistoryCompact(session, customInstructions);
+            } finally {
+                await session.disconnect();
+            }
+        }
+
+        // Cold fallback: a throwaway client, stopped after use and never pooled.
+        const client = await this.createClient();
+        try {
+            await client.start();
+            const session = await client.resumeSession(sdkSessionId, {
+                onPermissionRequest: denyAllPermissions,
+            });
+            try {
+                return await this.runHistoryCompact(session, customInstructions);
+            } finally {
+                await session.disconnect();
+            }
+        } finally {
+            await client.stop();
+        }
+    }
+
+    /**
+     * Invoke the resumed session's `rpc.history.compact` and map the
+     * `@experimental` `HistoryCompactResult` to {@link CompactResult}. Sends
+     * `customInstructions` only when non-empty so a blank/omitted instruction
+     * sends `{}`.
+     */
+    private async runHistoryCompact(session: unknown, customInstructions?: string): Promise<CompactResult> {
+        const request = customInstructions ? { customInstructions } : {};
+        const result = await (session as any).rpc.history.compact(request);
+        return {
+            success: result?.success ?? false,
+            tokensRemoved: result?.tokensRemoved ?? 0,
+            messagesRemoved: result?.messagesRemoved ?? 0,
+            summaryContent: result?.summaryContent,
+        };
     }
 
     public async listModels(): Promise<ModelInfo[]> {

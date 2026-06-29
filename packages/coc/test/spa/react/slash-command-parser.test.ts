@@ -253,6 +253,53 @@ describe('META_COMMANDS constant', () => {
     it('contains loop', () => {
         expect(META_COMMANDS).toContain('loop');
     });
+
+    it('contains compact', () => {
+        expect(META_COMMANDS).toContain('compact');
+    });
+});
+
+// ============================================================================
+// /compact meta-command
+// ============================================================================
+
+describe('parseSlashCommands — /compact meta-command', () => {
+    it('detects /compact as a meta-command with empty prompt', () => {
+        const result = parseSlashCommands('/compact', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toContain('compact');
+        expect(result.skills).toEqual([]);
+        expect(result.prompt).toBe('');
+    });
+
+    it('treats text after /compact as the (instructions) prompt', () => {
+        const result = parseSlashCommands('/compact focus on the auth refactor', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toContain('compact');
+        expect(result.prompt).toBe('focus on the auth refactor');
+    });
+
+    it('is case-insensitive for /compact', () => {
+        const result = parseSlashCommands('/COMPACT keep the test plan', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toContain('compact');
+        expect(result.prompt).toBe('keep the test plan');
+    });
+
+    it('does not add compact to skills (client-side action, not a skill)', () => {
+        const result = parseSlashCommands('/compact drop old context', AVAILABLE_SKILLS);
+        expect(result.skills).toEqual([]);
+    });
+
+    it('recognizes /compact via isMetaCommand', () => {
+        expect(isMetaCommand('compact')).toBe(true);
+        expect(isMetaCommand('COMPACT')).toBe(true);
+    });
+});
+
+describe('getActiveMetaCommands — compact always active', () => {
+    it('includes "compact" regardless of the loops feature flag', async () => {
+        const { getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
+        expect(getActiveMetaCommands(true)).toContain('compact');
+        expect(getActiveMetaCommands(false)).toContain('compact');
+    });
 });
 
 // ============================================================================

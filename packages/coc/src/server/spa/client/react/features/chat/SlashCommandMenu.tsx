@@ -19,6 +19,7 @@ export interface SkillItem {
 export const META_SKILL_ITEMS: SkillItem[] = [
     { name: 'model', description: 'Switch AI model' },
     { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+    { name: 'compact', description: 'Compact the conversation to free context', args: '[instructions]' },
 ];
 
 /**

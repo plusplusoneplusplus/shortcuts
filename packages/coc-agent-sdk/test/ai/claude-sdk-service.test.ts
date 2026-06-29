@@ -35,7 +35,7 @@ import {
     SDK_PROVIDER_CLAUDE,
     sdkServiceRegistry,
 } from '../../src/sdk-service-registry';
-import { RewindUnsupportedError, isRewindUnsupportedError } from '../../src/sdk-service-interface';
+import { RewindUnsupportedError, isRewindUnsupportedError, CompactUnsupportedError, isCompactUnsupportedError } from '../../src/sdk-service-interface';
 import { initSDKLogger, resetSDKLogger } from '../../src/logger';
 
 // ============================================================================
@@ -2973,6 +2973,16 @@ describe('ClaudeSDKService session operations', () => {
         });
         const err = await svc.rewindSession('any-id', 'evt-1').catch((e) => e);
         expect(isRewindUnsupportedError(err)).toBe(true);
+    });
+
+    it('compactSession throws the typed CompactUnsupportedError (AC-03)', async () => {
+        await expect(svc.compactSession('any-id')).rejects.toBeInstanceOf(CompactUnsupportedError);
+        await expect(svc.compactSession('any-id', 'focus on auth')).rejects.toMatchObject({
+            code: 'COMPACT_UNSUPPORTED',
+            provider: CLAUDE_PROVIDER,
+        });
+        const err = await svc.compactSession('any-id').catch((e) => e);
+        expect(isCompactUnsupportedError(err)).toBe(true);
     });
 
     it('steerSession returns false (unsupported, not silent success)', async () => {

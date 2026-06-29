@@ -125,6 +125,13 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             processes.set(processId, { ...existing, ...extraUpdates, conversationTurns: allTurns });
             return { turn, allTurns };
         }),
+        appendPendingMessage: vi.fn(async (processId: string, message: any) => {
+            const existing = processes.get(processId);
+            if (!existing) return undefined;
+            const pendingMessages = [...(existing.pendingMessages ?? []), message];
+            processes.set(processId, { ...existing, pendingMessages });
+            return pendingMessages;
+        }),
         upsertStreamingTurn: vi.fn(async (processId: string, content: string, streaming: boolean, timeline?: TimelineItem[]) => {
             const existing = processes.get(processId);
             if (!existing) return;

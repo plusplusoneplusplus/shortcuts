@@ -37,6 +37,7 @@ import {
     ToolCallPermissionResult,
     ProcessEvent,
 } from './ai/process-types';
+import type { PendingMessage } from './ai/process-interfaces';
 import type { AIBackendType } from './ai/types';
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import { initializeDatabase } from './sqlite-schema';
@@ -139,6 +140,7 @@ interface TurnRow {
     pinned_at: string | null;
     archived: number;
     sdk_event_id: string | null;
+    display_only: number;
 }
 
 interface PromptAutocompleteHistoryRow {
@@ -471,6 +473,7 @@ function turnToRow(turn: ConversationTurn, processId: string): Record<string, un
         model: turn.model ?? null,
         mode: turn.mode ?? null,
         sdk_event_id: turn.sdkEventId ?? null,
+        display_only: boolToInt(turn.displayOnly),
         deleted_at: dateToIso(turn.deletedAt),
         pinned_at: dateToIso(turn.pinnedAt),
         archived: boolToInt(turn.archived),
@@ -522,6 +525,7 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         suggestions: jsonParse<string[]>(row.suggestions),
         tokenUsage: jsonParse<TokenUsage>(row.token_usage),
         pasteExternalized: intToBool(row.paste_externalized),
+        displayOnly: intToBool(row.display_only),
         ...(row.model ? { model: row.model } : {}),
         ...(row.mode ? { mode: row.mode } : {}),
         ...(row.sdk_event_id ? { sdkEventId: row.sdk_event_id } : {}),
@@ -654,11 +658,11 @@ export class SqliteProcessStore implements ProcessStore {
             INSERT INTO conversation_turns (
                 process_id, turn_index, role, content, timestamp, streaming,
                 interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
-                token_usage, paste_externalized, model, mode, sdk_event_id
+                token_usage, paste_externalized, model, mode, sdk_event_id, display_only
             ) VALUES (
                 @process_id, @turn_index, @role, @content, @timestamp, @streaming,
                 @interrupted, @interruption_reason, @tool_calls, @timeline, @images, @historical, @suggestions,
-                @token_usage, @paste_externalized, @model, @mode, @sdk_event_id
+                @token_usage, @paste_externalized, @model, @mode, @sdk_event_id, @display_only
             )
         `);
 
@@ -818,11 +822,11 @@ export class SqliteProcessStore implements ProcessStore {
                 INSERT INTO conversation_turns
                   (process_id, turn_index, role, content, timestamp, streaming,
                    interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
-                   token_usage, paste_externalized, model, mode)
+                   token_usage, paste_externalized, model, mode, display_only)
                 SELECT
                   ?, turn_index, role, content, timestamp, 0,
                   interrupted, interruption_reason, tool_calls, timeline, images, 1, suggestions,
-                  token_usage, paste_externalized, model, mode
+                  token_usage, paste_externalized, model, mode, display_only
                 FROM conversation_turns
                 WHERE process_id = ?
                   AND deleted_at IS NULL
@@ -1277,6 +1281,7 @@ export class SqliteProcessStore implements ProcessStore {
                     model: null,
                     mode: null,
                     sdk_event_id: null,
+                    display_only: 0,
                 });
             }
         });
@@ -1378,6 +1383,36 @@ export class SqliteProcessStore implements ProcessStore {
         }
 
         return appendResult;
+    }
+
+    async appendPendingMessage(
+        processId: string,
+        message: PendingMessage,
+    ): Promise<PendingMessage[] | undefined> {
+        let result: PendingMessage[] | undefined;
+
+        const appendTxn = this.db.transaction(() => {
+            const processRow = this.getProcessStmt.get(processId) as ProcessRow | undefined;
+            if (!processRow) return;
+
+            const currentProcess = rowToProcess(processRow);
+            const pendingMessages = [...(currentProcess.pendingMessages ?? []), message];
+
+            // Read-append-persist runs inside the same SQLite transaction, so two
+            // concurrent follow-ups cannot lose each other's pending messages.
+            this.applyProcessUpdatesInline(processId, { pendingMessages }, processRow);
+
+            result = pendingMessages;
+        });
+
+        appendTxn();
+
+        if (result) {
+            const updated = await this.getProcess(processId);
+            this.onProcessChange?.({ type: 'process-updated', process: updated ?? undefined });
+        }
+
+        return result;
     }
 
     async updateTurnContent(

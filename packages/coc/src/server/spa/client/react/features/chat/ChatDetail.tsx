@@ -168,6 +168,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const turnsRef = useRef<ClientConversationTurn[]>([]);
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
+    // Optimistic `/compact` in-progress state for the triggering tab (AC-02).
+    // The compact POST is blocking, so `processDetails.metadata.compaction`
+    // won't reflect 'running' here until it settles — this local flag drives the
+    // synthetic bubble live; reloads / other tabs derive it from process state.
+    const [compacting, setCompacting] = useState(false);
+    const [localCompactInstructions, setLocalCompactInstructions] = useState<string | undefined>(undefined);
     const [error, setError] = useState<string | null>(null);
     const [sessionExpired, setSessionExpired] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
@@ -251,6 +257,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const mapReduceGeneration = metadataProcess?.metadata?.mapReduce?.kind === 'generation'
         ? metadataProcess.metadata.mapReduce as MapReduceGenerationMetadata
         : null;
+    // `/compact` in-progress state (AC-02). The triggering tab uses the optimistic
+    // local flag (the compact POST is blocking); reloads and other tabs derive it
+    // from the persisted process metadata fetched via processes.get.
+    const persistedCompaction = metadataProcess?.metadata?.compaction as
+        { state?: string; customInstructions?: string } | undefined;
+    const isCompacting = compacting || persistedCompaction?.state === 'running';
+    const compactInstructions = compacting ? localCompactInstructions : persistedCompaction?.customInstructions;
     const sessionModel = metadataProcess?.metadata?.model as string | undefined;
     const rawReasoningEffort = metadataProcess?.metadata?.reasoningEffort;
     const sessionReasoningEffort = rawReasoningEffort === 'low'
@@ -446,7 +459,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const nonRetryableFollowUpError = stoppedChatResumeUnavailableError ?? (cancelledWithoutResumeSession
         ? 'This stopped chat cannot be continued because no SDK session was saved. Start a new chat manually.'
         : null);
-    const inputDisabled = loading || isPending || isCancelling || sessionExpired || !!nonRetryableFollowUpError;
+    const inputDisabled = loading || isPending || isCancelling || sessionExpired || isCompacting || !!nonRetryableFollowUpError;
     const noSessionForFollowUp = isTerminal
         && effectiveStatus !== 'cancelled'
         && processDetails !== null
@@ -661,6 +674,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         modelOverrideMountedRef.current = false;
         setEffortOverride(null);
         setInvalidScratchpadPaths(new Set());
+        setCompacting(false);
+        setLocalCompactInstructions(undefined);
     }, [taskId]);
 
     // Reset the Agents view when switching chats, but honor a deep-linked view
@@ -937,6 +952,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         });
     }, [setTurnsAndRef]);
 
+    // Toggle the optimistic `/compact` in-progress state for this tab (AC-02).
+    // useSendMessage calls this `true` (with typed instructions) when compaction
+    // starts and `false` when it settles.
+    const handleCompactingChange = useCallback((running: boolean, instructions?: string) => {
+        setCompacting(running);
+        setLocalCompactInstructions(running ? instructions : undefined);
+    }, []);
+
     const refreshConversation = useCallback(async (pid: string) => {
         try {
             const data = await client.processes.get(pid);
@@ -1035,6 +1058,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         // disappears; reset the selector to a value that still exists so we
         // don't show a "selected pill that no longer exists" UI glitch.
         onPromotedToRalph: () => setSelectedMode('ask'),
+        // `/compact` surfaces its result (or error) as a transient toast; the
+        // displayed transcript is never rewritten.
+        notifyCompact: addToast,
+        // Drive the synthetic in-progress compaction bubble + duplicate-send
+        // block from the compaction lifecycle (AC-02).
+        setCompacting: handleCompactingChange,
     });
 
     const sendFollowUpWithPrefix = useCallback(async (overrideContent?: string, deliveryMode?: any) => {
@@ -2117,6 +2146,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         processError={processDetails?.error ?? null}
                         provider={sessionProvider}
                         postConversationContent={planReviewCards}
+                        isCompacting={isCompacting}
+                        compactInstructions={compactInstructions}
                     />
                     {variant !== 'floating' && !isMobile && (
                         <ConversationMiniMap
@@ -2234,7 +2265,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             onSend={sendFollowUpWithPrefix}
                             onRetry={retryLastMessage}
                             onStop={handleStop}
-                            skills={skills}
+                            skills={augmentedSkills}
                             attachments={attachments}
                             onAttachmentPaste={addFromPaste}
                             onAttachmentRemove={removeAttachment}
@@ -2377,7 +2408,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     onSend={sendFollowUpWithPrefix}
                     onRetry={retryLastMessage}
                     onStop={handleStop}
-                    skills={skills}
+                    skills={augmentedSkills}
                     attachments={attachments}
                     onAttachmentPaste={addFromPaste}
                     onAttachmentRemove={removeAttachment}
