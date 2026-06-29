@@ -59,6 +59,11 @@ const PROVIDER_META: Record<NativeCliSessionProviderId, { label: string; externa
         externalLabel: 'Native Copilot CLI session',
         store: '~/.copilot/session-store.db',
     },
+    opencode: {
+        label: 'OpenCode',
+        externalLabel: 'Native OpenCode CLI session',
+        store: '~/.opencode/session-store.db',
+    },
 };
 
 function readOnlyTooltip(provider: NativeCliSessionProviderId, storePath?: string | null): string {
