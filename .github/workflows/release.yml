@@ -131,8 +131,27 @@ jobs:
           fi
           echo "Attaching ${#files[@]} file(s) to the release:"
           printf '  %s\n' "${files[@]}"
+          # Install/troubleshooting notes. The builds are not yet code-signed or
+          # notarized, so macOS Gatekeeper reports the downloaded app as
+          # "damaged" — document the quarantine workaround so testers aren't blocked.
+          VERSION="${TAG#v}"
+          notes_file="$(mktemp)"
+          cat > "$notes_file" <<EOF
+          ## Install
+
+          ### macOS (Apple Silicon)
+          1. Open \`CoC-${VERSION}-arm64.dmg\` and drag **CoC** into your Applications folder.
+          2. On first launch macOS may say **"CoC is damaged and can't be opened."** This build is **not yet code-signed or notarized**, so Gatekeeper blocks the downloaded file — it is **not** actually corrupt. Clear the download quarantine flag, then open it normally:
+             \`\`\`
+             xattr -dr com.apple.quarantine /Applications/CoC.app
+             \`\`\`
+             (Adjust the path if you installed CoC elsewhere.)
+
+          ### Windows
+          Run \`CoC.Setup.${VERSION}.exe\`. SmartScreen may warn about an unknown publisher — choose **More info → Run anyway**. This installer is also unsigned for now.
+          EOF
           gh release create "$TAG" \
             --draft \
             --title "CoC $TAG" \
-            --notes "Release notes go here" \
+            --notes-file "$notes_file" \
             "${files[@]}"
