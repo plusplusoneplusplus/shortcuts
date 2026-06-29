@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  # AC-03 — macOS binaries (.dmg + .zip).
+  # AC-03 — macOS binary (.dmg).
   build-mac:
     runs-on: macos-latest
     steps:
@@ -57,9 +57,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coc-mac
-          path: |
-            packages/coc-desktop/release/*.dmg
-            packages/coc-desktop/release/*.zip
+          path: packages/coc-desktop/release/*.dmg
           if-no-files-found: error
           retention-days: 7
 
