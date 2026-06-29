@@ -32,8 +32,11 @@ describe('ConversationArea: compacting bubble wiring', () => {
     it('suppresses the empty assistant streaming placeholder while compacting', () => {
         // The placeholder is injected when a running task has no live streaming
         // turn; during compaction the status is `running` with no generation, so
-        // the condition must also require !isCompacting.
-        expect(CONVERSATION_AREA_SOURCE).toMatch(/!hasStreaming && turns\.length > 0 && !isCompacting/);
+        // the decision must also require !isCompacting. The decision is delegated
+        // to shouldInjectStreamingPlaceholder, which is behaviorally covered in
+        // streaming-placeholder.test.ts — assert the wiring here.
+        expect(CONVERSATION_AREA_SOURCE).toContain("import { shouldInjectStreamingPlaceholder } from './streaming-placeholder'");
+        expect(CONVERSATION_AREA_SOURCE).toMatch(/shouldInjectStreamingPlaceholder\(\{[^}]*isCompacting/);
     });
 });
 

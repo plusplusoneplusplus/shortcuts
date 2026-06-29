@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Spinner } from '../../ui';
 import { ConversationTurnBubble } from './conversation/ConversationTurnBubble';
 import { CompactionBubble } from './CompactionBubble';
+import { shouldInjectStreamingPlaceholder } from './streaming-placeholder';
 import { useMessageNavigation } from './hooks/useMessageNavigation';
 import { PendingTaskInfoPanel } from '../../queue/PendingTaskInfoPanel';
 import { cn } from '../../ui/cn';
@@ -305,7 +306,7 @@ export function ConversationArea({
                             // streaming placeholder so the synthetic compaction bubble is the
                             // only in-progress indicator.
                             const renderTurns =
-                                task?.status === 'running' && !hasStreaming && turns.length > 0 && !isCompacting
+                                shouldInjectStreamingPlaceholder({ status: task?.status, hasStreaming, turnCount: turns.length, isCompacting: !!isCompacting })
                                     ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [], turnIndex: nextTurnIndex }]
                                     : turns;
                             const sortedTurns = [...renderTurns]
