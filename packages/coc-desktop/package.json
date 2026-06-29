@@ -1,7 +1,7 @@
 {
   "name": "@plusplusoneplusplus/coc-desktop",
   "productName": "CoC",
-  "version": "0.1.0",
+  "version": "3.4.2",
   "private": true,
   "description": "CoC desktop app (Electron) — boots the CoC server in a forked child and points a native window at the served SPA",
   "main": "dist/main.js",
