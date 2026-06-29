@@ -100,4 +100,23 @@ describe('SideBySideDiffViewer — column-scoped selection', () => {
         expect(after.left.some(isLocked)).toBe(false);
         expect(after.right.some(isLocked)).toBe(false);
     });
+
+    it('collapses a cross-column selection on mouse up so the highlight does not bleed', () => {
+        const { container } = render(<SideBySideDiffViewer diff={TWO_HUNK_DIFF} enableComments />);
+        const { left, right } = columns(container);
+        const removeAllRanges = vi.fn();
+
+        // Native range that starts in the left column and ends in the right column.
+        vi.spyOn(window, 'getSelection').mockReturnValue({
+            isCollapsed: false,
+            rangeCount: 1,
+            removeAllRanges,
+            getRangeAt: () => ({ startContainer: left[0], endContainer: right[0], startOffset: 0, endOffset: 0 }),
+            toString: () => 'cross column',
+        } as unknown as Selection);
+
+        fireEvent.mouseUp(left[0], { button: 0 });
+
+        expect(removeAllRanges).toHaveBeenCalled();
+    });
 });

@@ -189,7 +189,6 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             // Selection (if any) is finalized on mouse up — release the column lock so both
             // columns are selectable again for the next gesture (and for select-all).
             setSelectSide(null);
-            if (!enableComments) return;
             const clear = () => {
                 pendingSelectionRef.current = null;
                 setToolbar(t => ({ ...t, visible: false, selection: null, selectedText: '' }));
@@ -201,11 +200,17 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
 
             const startEl = findLineElement(range.startContainer, boundary);
             const endEl   = findLineElement(range.endContainer,   boundary);
-            if (!startEl || !endEl) { clear(); return; }
 
-            // reject cross-column selections
-            const startSide = startEl.closest('[data-split-side]')?.getAttribute('data-split-side');
-            const endSide   = endEl.closest('[data-split-side]')?.getAttribute('data-split-side');
+            // Reject cross-column selections. Left/right cells are interleaved per row, so a
+            // native range that spans both columns paints across both panels once the column
+            // lock is released. Collapse it so the stray highlight disappears. This must run
+            // regardless of enableComments, since the bleed affects plain split views too.
+            const startSide = startEl?.closest('[data-split-side]')?.getAttribute('data-split-side');
+            const endSide   = endEl?.closest('[data-split-side]')?.getAttribute('data-split-side');
+            if (startSide && endSide && startSide !== endSide) { sel.removeAllRanges(); }
+
+            if (!enableComments) return;
+            if (!startEl || !endEl) { clear(); return; }
             if (!startSide || startSide !== endSide) { clear(); return; }
 
             const startIdx = parseInt(startEl.getAttribute('data-diff-line-index') ?? '-1', 10);
