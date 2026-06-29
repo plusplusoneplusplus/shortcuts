@@ -38,6 +38,7 @@ import type { ToolCall } from './tool-call';
 import type { ClaudeImageSource, ClaudeImageSkip } from './image-converter';
 import { sdkServiceRegistry, CLAUDE_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
+import { preferUnpackedPath } from './asar-path';
 import { getSDKLogger } from './logger';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
@@ -334,6 +335,13 @@ interface ClaudeQueryOptions {
         resume?: string;
         /** Use a stable UUID for a newly-created Claude Code transcript session. */
         sessionId?: string;
+        /**
+         * Absolute path to the Claude Code native binary. Set in packaged
+         * desktop builds so the SDK spawns the unpacked binary instead of its
+         * own `require.resolve` result, which points inside `app.asar` and
+         * fails to spawn (`ENOTDIR`).
+         */
+        pathToClaudeCodeExecutable?: string;
     };
 }
 
@@ -670,7 +678,15 @@ export class ClaudeSDKService implements ISDKService {
         });
     }
 
-    private resolveClaudeCliCommand(): { command: string; args: string[] } {
+    /**
+     * Absolute path to the bundled Claude Code native binary, or `undefined`
+     * when it can't be located (then callers fall back to PATH / the SDK's own
+     * resolution). In a packaged desktop build `require.resolve` returns an
+     * `app.asar` path that `fs.existsSync` accepts but `spawn` cannot execute
+     * (`ENOTDIR`); {@link preferUnpackedPath} rewrites it to the real
+     * `app.asar.unpacked` file. A no-op for a normal CLI install.
+     */
+    private resolveClaudeExecutablePath(): string | undefined {
         const binaryName = process.platform === 'win32' ? 'claude.exe' : 'claude';
         const nativePackageName = `${CLAUDE_AGENT_SDK_PACKAGE}-${process.platform}-${process.arch}`;
         try {
@@ -681,13 +697,21 @@ export class ClaudeSDKService implements ISDKService {
                 path.join(packageDir, 'bin', binaryName),
             ]) {
                 if (fs.existsSync(candidate)) {
-                    return { command: candidate, args: [] };
+                    return preferUnpackedPath(candidate);
                 }
             }
         } catch {
-            // Fall through to PATH lookup below.
+            // Fall through — caller handles the undefined case.
         }
+        return undefined;
+    }
 
+    private resolveClaudeCliCommand(): { command: string; args: string[] } {
+        const executable = this.resolveClaudeExecutablePath();
+        if (executable) {
+            return { command: executable, args: [] };
+        }
+        // Fall back to PATH lookup.
         return { command: 'claude', args: [] };
     }
 
@@ -907,10 +931,15 @@ export class ClaudeSDKService implements ISDKService {
             };
 
             inputGate = new ClaudeInputGate(this.buildClaudeInitialMessages(options));
+            // In a packaged desktop build the SDK's own `require.resolve` of the
+            // native binary yields an unspawnable `app.asar` path; pass the
+            // unpacked path explicitly so sessions launch.
+            const claudeExecutable = this.resolveClaudeExecutablePath();
             const queryOptions: ClaudeQueryOptions = {
                 prompt: inputGate.stream(),
                 abortController,
                 options: {
+                    ...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {}),
                     ...(options.workingDirectory ? { cwd: options.workingDirectory } : {}),
                     additionalDirectories: this.resolveAdditionalDirectories(options),
                     ...(model ? { model } : {}),
