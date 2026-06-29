@@ -50,16 +50,22 @@
       "**/*",
       "!**/*.map",
       "node_modules/@plusplusoneplusplus/coc/dist/**/*",
-      "node_modules/@plusplusoneplusplus/coc/dist/server/spa/client/dist/**/*"
+      "node_modules/@plusplusoneplusplus/coc/dist/server/spa/client/dist/**/*",
+      "!release/**",
+      "!**/@github/copilot/**/{linux,linuxmusl}-*/**",
+      "!**/@github/copilot/mxc-bin/**"
     ],
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ],
       "category": "public.app-category.developer-tools",
       "icon": "../../media/coc-icon.png",
-      "darkModeSupport": true
+      "darkModeSupport": true,
+      "files": [
+        "!**/@github/copilot/**/win32-*/**",
+        "!**/@github/copilot/**/darwin-x64/**"
+      ]
     },
     "dmg": {
       "title": "CoC ${version}"
@@ -68,7 +74,10 @@
       "target": [
         "nsis"
       ],
-      "icon": "../../media/coc-icon.png"
+      "icon": "../../media/coc-icon.png",
+      "files": [
+        "!**/@github/copilot/**/darwin-*/**"
+      ]
     },
     "nsis": {
       "oneClick": false,
