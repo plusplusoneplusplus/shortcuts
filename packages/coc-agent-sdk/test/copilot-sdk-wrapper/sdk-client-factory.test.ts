@@ -8,7 +8,8 @@
  * CLI process is spawned.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as path from 'path';
 
 // Suppress logger output during tests
 
@@ -48,15 +49,23 @@ class MockCopilotClient {
     }
 }
 
+const mockRuntimeConnection = {
+    forStdio: vi.fn((opts?: { path?: string; args?: readonly string[] }) => ({
+        kind: 'stdio' as const,
+        path: opts?.path,
+        args: opts?.args,
+    })),
+};
+
 vi.mock('../../src/sdk-esm-loader', () => ({
-    getCachedCopilotSdk: () => ({ CopilotClient: MockCopilotClient }),
+    getCachedCopilotSdk: () => ({ CopilotClient: MockCopilotClient, RuntimeConnection: mockRuntimeConnection }),
 }));
 
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import { createSdkClient } from '../../src/sdk-client-factory';
+import { createSdkClient, resetSystemNodePathCache } from '../../src/sdk-client-factory';
 import * as trustedFolder from '../../src/trusted-folder';
 import * as fs from 'fs';
 import * as workspaceExecution from '../../src/internal/workspace-execution';
@@ -180,5 +189,65 @@ describe('createSdkClient', () => {
         expect(capturedOptions[0].workingDirectory).toBe(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
         expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
         expect(fs.existsSync).toHaveBeenCalledWith(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
+    });
+});
+
+describe('createSdkClient — Electron connection override', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        capturedOptions.length = 0;
+        vi.mocked(fs.existsSync).mockReturnValue(true);
+        mockRuntimeConnection.forStdio.mockClear();
+        resetSystemNodePathCache();
+    });
+
+    afterEach(() => {
+        delete (process.versions as Record<string, string | undefined>).electron;
+        resetSystemNodePathCache();
+    });
+
+    it('sets connection to use system node + copilot CLI when running under Electron', () => {
+        (process.versions as Record<string, string | undefined>).electron = '30.0.0';
+
+        createSdkClient({ workingDirectory: '/project' });
+
+        expect(capturedOptions).toHaveLength(1);
+        const conn = capturedOptions[0].connection;
+        expect(conn).toBeDefined();
+        expect(conn.kind).toBe('stdio');
+        // The path must be an absolute path to the system node binary
+        expect(path.isAbsolute(conn.path)).toBe(true);
+        expect(conn.args).toHaveLength(1);
+        expect(conn.args[0]).toContain(path.join('@github', 'copilot', 'index.js'));
+        // Must set env without ELECTRON_RUN_AS_NODE
+        expect(capturedOptions[0].env).toBeDefined();
+        expect(capturedOptions[0].env.ELECTRON_RUN_AS_NODE).toBeUndefined();
+    });
+
+    it('does NOT set connection when not running under Electron', () => {
+        createSdkClient({ workingDirectory: '/project' });
+
+        expect(capturedOptions[0].connection).toBeUndefined();
+        expect(capturedOptions[0].env).toBeUndefined();
+    });
+
+    it('does NOT override an explicitly provided connection even under Electron', () => {
+        (process.versions as Record<string, string | undefined>).electron = '30.0.0';
+        const callerConnection = { kind: 'tcp' as const, port: 9001 };
+
+        createSdkClient({ connection: callerConnection as any });
+
+        expect(capturedOptions[0].connection).toBe(callerConnection);
+        expect(mockRuntimeConnection.forStdio).not.toHaveBeenCalled();
+    });
+
+    it('does NOT set connection when copilot CLI cannot be found even under Electron', () => {
+        (process.versions as Record<string, string | undefined>).electron = '30.0.0';
+        vi.mocked(fs.existsSync).mockReturnValue(false);
+
+        createSdkClient();
+
+        expect(capturedOptions[0].connection).toBeUndefined();
+        expect(mockRuntimeConnection.forStdio).not.toHaveBeenCalled();
     });
 });

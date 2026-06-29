@@ -494,9 +494,49 @@ jobs:
           kill $SERVER_PID 2>/dev/null || true
           exit 1
 
+  coc-desktop-test:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: [24.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            packages/*/node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Build coc-desktop package
+        run: npm run build
+        working-directory: packages/coc-desktop
+
+      - name: Run coc-desktop tests
+        run: npm run test:run
+        working-directory: packages/coc-desktop
+
   ci:
     runs-on: ubuntu-latest
-    needs: [lint, forge-test, coc-test, coc-coverage, deep-wiki-test, e2e, coc-serve-smoke, coccontainer-serve-smoke]
+    needs: [lint, forge-test, coc-test, coc-coverage, deep-wiki-test, e2e, coc-serve-smoke, coccontainer-serve-smoke, coc-desktop-test]
     if: always()
     steps:
       - name: Verify all required jobs succeeded
@@ -510,6 +550,7 @@ jobs:
             [e2e]="${{ needs.e2e.result }}"
             [coc-serve-smoke]="${{ needs.coc-serve-smoke.result }}"
             [coccontainer-serve-smoke]="${{ needs.coccontainer-serve-smoke.result }}"
+            [coc-desktop-test]="${{ needs.coc-desktop-test.result }}"
           )
           failed=0
           for job in "${!results[@]}"; do

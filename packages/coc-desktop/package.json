@@ -1,0 +1,80 @@
+{
+  "name": "@plusplusoneplusplus/coc-desktop",
+  "productName": "CoC",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CoC desktop app (Electron) — boots the CoC server in a forked child and points a native window at the served SPA",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "electron .",
+    "icon": "node scripts/generate-icon.mjs",
+    "rebuild:native": "node scripts/ensure-native-abi.mjs --force",
+    "ensure:native": "node scripts/ensure-native-abi.mjs",
+    "prebuild:sqlite:win": "node scripts/fetch-win-sqlite.mjs",
+    "pack": "electron-builder --dir",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "npm run prebuild:sqlite:win && electron-builder --win nsis --x64 -c.npmRebuild=false",
+    "dist": "npm run dist:mac && npm run dist:win",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "dependencies": {
+    "@plusplusoneplusplus/coc": "^1.2.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.6",
+    "@types/node": "^20.0.0",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "build": {
+    "appId": "com.plusplusoneplusplus.coc",
+    "productName": "CoC",
+    "copyright": "Copyright © plusplusoneplusplus",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "files": [
+      "**/*",
+      "!**/*.map",
+      "node_modules/@plusplusoneplusplus/coc/dist/**/*",
+      "node_modules/@plusplusoneplusplus/coc/dist/server/spa/client/dist/**/*"
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "../../media/coc-icon.png",
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "CoC ${version}"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "../../media/coc-icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "CoC"
+    }
+  }
+}
