@@ -69,6 +69,15 @@ export interface CreateConversationToolOptions {
     workspaceId?: string;
     /** Bound in-process enqueue capability. */
     enqueueChat: EnqueueChatFn;
+    /**
+     * The parent chat's processId — the conversation in which this tool was
+     * built/invoked. The handler reads the parent process record's resolved
+     * `provider` / `model` / `reasoningEffort` from its `metadata` and inherits
+     * them onto the spawned conversation (per-field overridable by the explicit
+     * `provider` / `model` params; `reasoningEffort` is always inherited).
+     * Mirrors the `search_conversations` addon's `processId` threading.
+     */
+    parentProcessId?: string;
 }
 
 export interface CreateConversationSuccess {
@@ -109,7 +118,7 @@ const DEFAULT_PRIORITY = 'normal';
  * @param options Tool options (store + caller workspace + enqueue capability).
  */
 export function createCreateConversationTool(options: CreateConversationToolOptions) {
-    const { store, workspaceId: callerWorkspaceId, enqueueChat } = options;
+    const { store, workspaceId: callerWorkspaceId, enqueueChat, parentProcessId } = options;
 
     const tool = defineTool<CreateConversationArgs>('create_conversation', {
         description:
@@ -219,8 +228,49 @@ export function createCreateConversationTool(options: CreateConversationToolOpti
                 };
             }
 
+            // --- inherit provider/model/reasoningEffort from the parent chat --
+            // The tool is built per chat turn, so `parentProcessId` identifies
+            // the conversation in which this tool was invoked. Read the parent's
+            // resolved values from its process metadata (the same authoritative
+            // fields the follow-up executor reads — see follow-up-executor.ts).
+            // Resolution is per-field: an explicit `provider`/`model` param wins
+            // for that field only; everything else inherits from the parent.
+            // `reasoningEffort` has no param and is always inherited.
+            const parent = parentProcessId ? await store.getProcess(parentProcessId) : undefined;
+            const parentProvider =
+                typeof parent?.metadata?.provider === 'string' ? parent.metadata.provider : undefined;
+            const parentModel =
+                typeof parent?.metadata?.model === 'string' ? parent.metadata.model : undefined;
+            const parentEffort =
+                typeof parent?.metadata?.reasoningEffort === 'string' ? parent.metadata.reasoningEffort : undefined;
+
+            // Per-field override: explicit param wins; otherwise inherit parent.
+            const resolvedProvider = args.provider ?? parentProvider;
+            const resolvedModel = model ?? parentModel;
+            const resolvedEffort = parentEffort;
+
+            // Only a missing provider is fatal. A resolvable parent whose model /
+            // reasoningEffort are absent falls back to provider defaults below.
+            if (!resolvedProvider) {
+                return {
+                    error:
+                        'Cannot determine a provider for the new conversation: no parent chat ' +
+                        'context was available to inherit from, and no explicit `provider` was supplied.',
+                };
+            }
+
             // --- build + validate the task spec, then enqueue in-process ------
+            // Setting `payload.provider` makes the enqueue path treat the
+            // provider as explicit, so the inherited provider also suppresses
+            // global default-provider auto-routing. Resolved model goes onto
+            // `config.model` (with the existing `payload.model` mirror) and the
+            // inherited effort onto `config.reasoningEffort`; `config.effortTier`
+            // is intentionally never set (resolved values are equivalent).
             const title = typeof args.title === 'string' && args.title.trim() ? args.title.trim() : undefined;
+            const config: Record<string, unknown> = {
+                ...(resolvedModel ? { model: resolvedModel } : {}),
+                ...(resolvedEffort ? { reasoningEffort: resolvedEffort } : {}),
+            };
             const taskSpec: Record<string, unknown> = {
                 type: 'chat',
                 priority,
@@ -231,10 +281,10 @@ export function createCreateConversationTool(options: CreateConversationToolOpti
                     mode,
                     prompt,
                     workspaceId: requestedWorkspaceId,
-                    ...(args.provider ? { provider: args.provider } : {}),
-                    ...(model ? { model } : {}),
+                    provider: resolvedProvider,
+                    ...(resolvedModel ? { model: resolvedModel } : {}),
                 },
-                ...(model ? { config: { model } } : {}),
+                ...(Object.keys(config).length > 0 ? { config } : {}),
             };
 
             // Reuse the canonical enqueue validation/normalization (config shape,

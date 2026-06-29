@@ -48,17 +48,30 @@ function freshState(): QueueGlobalState {
     };
 }
 
+const PARENT_PID = 'queue_parent';
+
 function setup(state: QueueGlobalState = freshState()) {
     const registry = new RepoQueueRegistry();
     const store = createMockProcessStore();
     (store.getWorkspaces as any).mockResolvedValue([{ id: WS_ID, rootPath: ROOT }]);
+    // Seed the parent chat the spawned conversation inherits provider/model/effort
+    // from. Without a resolvable parent (or explicit provider) the handler errors.
+    void store.addProcess({
+        id: PARENT_PID,
+        metadata: { type: 'chat', provider: 'copilot' },
+    } as any);
     // autoStart:false → enqueued tasks stay queued (no SDK execution in the test).
     const bridge = new MultiRepoQueueRouter(registry, store, { autoStart: false });
 
     const enqueueChat = (input: CreateTaskInput): Promise<string> =>
         enqueueViaBridge(input, bridge, state, ROOT, store);
 
-    const { tool } = createCreateConversationTool({ store: store as any, workspaceId: WS_ID, enqueueChat });
+    const { tool } = createCreateConversationTool({
+        store: store as any,
+        workspaceId: WS_ID,
+        enqueueChat,
+        parentProcessId: PARENT_PID,
+    });
     return { bridge, store, tool };
 }
 
