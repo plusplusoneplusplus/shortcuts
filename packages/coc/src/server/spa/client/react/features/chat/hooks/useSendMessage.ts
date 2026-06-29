@@ -194,10 +194,11 @@ export function useSendMessage({
 
     /**
      * Run the `/compact` client-side action: call the workspace-routed compact
-     * endpoint and surface the outcome as a transient toast. Success reports the
-     * messages/tokens removed; unsupported-provider (422) and active-turn (409)
-     * failures report the backend error. CoC's displayed transcript is never
-     * rewritten, so the toast is the only user-visible signal.
+     * endpoint and surface the outcome. Success reports the messages/tokens
+     * removed; unsupported-provider (422) and active-turn (409) failures report
+     * the backend error. The server appends a display-only result turn to the
+     * transcript (AC-03), so on success we refresh the conversation to surface it
+     * — the toast is no longer the only visible completion signal.
      */
     const compactConversation = useCallback(async (pid: string, customInstructions: string | undefined) => {
         try {
@@ -212,10 +213,18 @@ export function useSendMessage({
                 `Context compacted — removed ${removed} message${removed === 1 ? '' : 's'}, freed ~${freed} tokens`,
                 'success',
             );
+            // Pull in the server-appended display-only result turn so it shows
+            // without a reload. Best-effort: a refresh failure must not mask the
+            // successful compaction.
+            try {
+                await refreshConversation(pid);
+            } catch {
+                // ignore — the turn is persisted and will appear on next load
+            }
         } catch (err: any) {
             notifyCompact?.(getSpaCocClientErrorMessage(err, 'Failed to compact the conversation.'), 'error');
         }
-    }, [workspaceId, notifyCompact]);
+    }, [workspaceId, notifyCompact, refreshConversation]);
 
     const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue', options: SendFollowUpOptions = {}) => {
         const includeComposerContext = options.includeComposerContext !== false;

@@ -286,6 +286,28 @@ describe('FileProcessStore.appendConversationTurn', () => {
         expect(result!.allTurns.map(t => t.turnIndex)).toEqual([0, 1, 2, 3]);
     });
 
+    it('round-trips the displayOnly flag through serialization (AC-03)', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p-display-only'));
+
+        await store.appendConversationTurn('p-display-only', (idx) => ({
+            role: 'assistant',
+            content: 'Context compacted — removed 3 messages, freed ~120 tokens',
+            timestamp: new Date(),
+            turnIndex: idx,
+            timeline: [],
+            displayOnly: true,
+        }));
+
+        // Fresh store instance forces a deserialize-from-disk read, exercising
+        // both serializeProcess (on write) and deserializeProcess (on read).
+        const reloaded = new FileProcessStore({ dataDir: tmpDir });
+        const updated = await reloaded.getProcess('p-display-only');
+        expect(updated!.conversationTurns).toHaveLength(1);
+        expect(updated!.conversationTurns![0].displayOnly).toBe(true);
+        expect(updated!.conversationTurns![0].content).toContain('Context compacted');
+    });
+
     describe('lastEventAt tracking', () => {
         it('addProcess sets lastEventAt to startTime', async () => {
             const store = new FileProcessStore({ dataDir: tmpDir });

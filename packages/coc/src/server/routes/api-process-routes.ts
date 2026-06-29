@@ -686,18 +686,34 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             try {
                 const sdkService = sdkServiceRegistry.getOrThrow(provider);
                 const result = await sdkService.compactSession(proc.sdkSessionId, customInstructions);
+                const messagesRemoved = result?.messagesRemoved ?? 0;
+                const tokensRemoved = result?.tokensRemoved ?? 0;
                 // Restore the prior terminal status and record the completed
-                // result so the UI can drop the in-progress bubble and (AC-03)
-                // render a display-only result turn.
+                // result so the UI can drop the in-progress bubble.
                 await writeCompaction(priorStatus, {
                     state: 'completed',
                     priorStatus,
                     startedAt,
                     completedAt: new Date().toISOString(),
                     ...(customInstructions ? { customInstructions } : {}),
-                    messagesRemoved: result?.messagesRemoved ?? 0,
-                    tokensRemoved: result?.tokensRemoved ?? 0,
+                    messagesRemoved,
+                    tokensRemoved,
                 });
+                // ── Persist a display-only result turn (AC-03) ──
+                // Append (never rewrite/remove) a visible assistant-style turn so
+                // completion is recorded in the transcript itself, not only as a
+                // transient toast. `displayOnly` keeps it out of the provider
+                // model's prompt history on future follow-ups (see
+                // buildConversationHistoryContext); appendConversationTurn
+                // broadcasts the change via the store's process-updated path.
+                await store.appendConversationTurn(id, (turnIndex) => ({
+                    role: 'assistant' as const,
+                    content: `Context compacted — removed ${messagesRemoved} message${messagesRemoved === 1 ? '' : 's'}, freed ~${tokensRemoved} tokens`,
+                    timestamp: new Date(),
+                    turnIndex,
+                    timeline: [],
+                    displayOnly: true,
+                }));
                 return result;
             } catch (err: any) {
                 // Failure also restores the prior terminal status and clears the

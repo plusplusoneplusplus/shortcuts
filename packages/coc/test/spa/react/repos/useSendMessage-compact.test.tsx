@@ -91,11 +91,14 @@ describe('useSendMessage — /compact interception', () => {
         compactSpy.mockResolvedValue({ success: true, tokensRemoved: 1234, messagesRemoved: 5 });
         const notifyCompact = vi.fn();
         const setFollowUpInput = vi.fn();
-        // setTurnsAndRef is how a normal send appends optimistic turns; the
-        // /compact action must never touch it (transcript stays unchanged).
+        // setTurnsAndRef is how a normal send appends OPTIMISTIC turns; the
+        // /compact action must never touch it (no client-side optimistic turn).
         const setTurnsAndRef = vi.fn();
+        // refreshConversation pulls in the server-appended display-only result
+        // turn (AC-03) so it shows without a reload.
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
         const { result } = renderHook(
-            () => useSendMessage(makeOptions({ notifyCompact, setFollowUpInput, setTurnsAndRef })),
+            () => useSendMessage(makeOptions({ notifyCompact, setFollowUpInput, setTurnsAndRef, refreshConversation })),
             { wrapper },
         );
 
@@ -112,6 +115,9 @@ describe('useSendMessage — /compact interception', () => {
             'Context compacted — removed 5 messages, freed ~1234 tokens',
             'success',
         );
+        // On success, the conversation is refreshed to surface the persisted
+        // display-only result turn (AC-03) — the toast is not the only signal.
+        expect(refreshConversation).toHaveBeenCalledWith(PROCESS);
     });
 
     it('passes trailing text after /compact as customInstructions', async () => {
@@ -142,7 +148,8 @@ describe('useSendMessage — /compact interception', () => {
             body: { error: 'Compaction is not supported for provider "claude".' },
         }));
         const notifyCompact = vi.fn();
-        const { result } = renderHook(() => useSendMessage(makeOptions({ notifyCompact })), { wrapper });
+        const refreshConversation = vi.fn().mockResolvedValue(undefined);
+        const { result } = renderHook(() => useSendMessage(makeOptions({ notifyCompact, refreshConversation })), { wrapper });
 
         await act(async () => {
             await result.current.sendFollowUp('/compact');
@@ -153,6 +160,9 @@ describe('useSendMessage — /compact interception', () => {
             'error',
         );
         expect(sendSpy).not.toHaveBeenCalled();
+        // A failed compaction appends no result turn, so there is nothing to
+        // refresh for — leave the transcript untouched.
+        expect(refreshConversation).not.toHaveBeenCalled();
     });
 
     it('surfaces an error toast when a turn is active (409) and still intercepts the send', async () => {

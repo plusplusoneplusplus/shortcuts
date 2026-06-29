@@ -422,7 +422,9 @@ export function prependSelectedSkillsDirective(
 export function buildConversationHistoryContext(turns?: ConversationTurn[]): string | undefined {
     if (!turns || turns.length === 0) return undefined;
 
-    const replayableTurns = turns.filter(turn => !turn.interrupted);
+    // Skip interrupted (partial) turns and display-only turns (e.g. the
+    // `/compact` result notice) — neither should be replayed into the model.
+    const replayableTurns = turns.filter(turn => !turn.interrupted && !turn.displayOnly);
     if (replayableTurns.length === 0) return undefined;
 
     const lines: string[] = ['<conversation_history>'];

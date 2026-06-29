@@ -199,6 +199,13 @@ export interface ConversationTurn {
     tokenUsage?: TokenUsage;
     /** True when the user's large pasted content was externalized to a temp file reference */
     pasteExternalized?: boolean;
+    /**
+     * True for turns synthesized for display only (e.g. the `/compact` result
+     * notice). Rendered in the transcript but deliberately excluded from the
+     * provider model's prompt history on future follow-ups — see
+     * `buildConversationHistoryContext`.
+     */
+    displayOnly?: boolean;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */
@@ -249,6 +256,8 @@ export interface SerializedConversationTurn {
     tokenUsage?: TokenUsage;
     /** True when the user's large pasted content was externalized to a temp file reference */
     pasteExternalized?: boolean;
+    /** True for display-only turns (e.g. the `/compact` result notice) excluded from model prompt history. */
+    displayOnly?: boolean;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */

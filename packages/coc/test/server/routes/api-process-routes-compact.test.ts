@@ -268,6 +268,42 @@ describe('POST /api/processes/:id/compact', () => {
             tokensRemoved: 4200,
         });
         expect(typeof (after?.metadata as any)?.compaction?.completedAt).toBe('string');
+
+        // AC-03: a display-only assistant result turn is appended to the
+        // transcript (not rewriting prior turns) so completion is visible beyond
+        // the toast. It must be flagged display-only so prompt-history builders
+        // exclude it from the model's replayed history.
+        const resultTurns = after?.conversationTurns ?? [];
+        expect(resultTurns).toHaveLength(1);
+        const resultTurn = resultTurns[resultTurns.length - 1];
+        expect(resultTurn.role).toBe('assistant');
+        expect(resultTurn.displayOnly).toBe(true);
+        expect(resultTurn.content).toBe('Context compacted — removed 7 messages, freed ~4200 tokens');
+    });
+
+    it('does not append a result turn when compaction fails', async () => {
+        await store.addProcess({
+            id: 'proc-fail-noturn',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'hello',
+            sdkSessionId: 'sdk-fail-noturn',
+            metadata: { type: 'chat', provider: 'copilot', workspaceId: 'ws-test' },
+        });
+
+        mockCompactSession.mockRejectedValue(new Error('rpc.history.compact unavailable'));
+
+        const res = await request(baseUrl, '/api/processes/proc-fail-noturn/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+
+        expect(res.status).toBe(500);
+        // The transcript is left untouched on failure — only the toast + failed
+        // compaction metadata signal the error.
+        const after = store.processes.get('proc-fail-noturn');
+        expect(after?.conversationTurns ?? []).toHaveLength(0);
     });
 
     it('forwards a non-empty customInstructions body to compactSession', async () => {
