@@ -8,7 +8,8 @@
  * CLI process is spawned.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as path from 'path';
 
 // Suppress logger output during tests
 
@@ -48,8 +49,16 @@ class MockCopilotClient {
     }
 }
 
+const mockRuntimeConnection = {
+    forStdio: vi.fn((opts?: { path?: string; args?: readonly string[] }) => ({
+        kind: 'stdio' as const,
+        path: opts?.path,
+        args: opts?.args,
+    })),
+};
+
 vi.mock('../../src/sdk-esm-loader', () => ({
-    getCachedCopilotSdk: () => ({ CopilotClient: MockCopilotClient }),
+    getCachedCopilotSdk: () => ({ CopilotClient: MockCopilotClient, RuntimeConnection: mockRuntimeConnection }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -180,5 +189,61 @@ describe('createSdkClient', () => {
         expect(capturedOptions[0].workingDirectory).toBe(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
         expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
         expect(fs.existsSync).toHaveBeenCalledWith(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
+    });
+});
+
+describe('createSdkClient — Electron connection override', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        capturedOptions.length = 0;
+        vi.mocked(fs.existsSync).mockReturnValue(true);
+        mockRuntimeConnection.forStdio.mockClear();
+    });
+
+    afterEach(() => {
+        // Restore process.versions.electron after each test
+        delete (process.versions as Record<string, string | undefined>).electron;
+    });
+
+    it('sets connection to use system node + copilot CLI when running under Electron', () => {
+        (process.versions as Record<string, string | undefined>).electron = '30.0.0';
+
+        createSdkClient({ workingDirectory: '/project' });
+
+        expect(capturedOptions).toHaveLength(1);
+        const conn = capturedOptions[0].connection;
+        expect(conn).toBeDefined();
+        expect(conn.kind).toBe('stdio');
+        expect(conn.path).toBe('node');
+        expect(conn.args).toHaveLength(1);
+        // The resolved path must end with the platform-appropriate copilot CLI entry point
+        expect(conn.args[0]).toContain(path.join('@github', 'copilot', 'index.js'));
+    });
+
+    it('does NOT set connection when not running under Electron', () => {
+        // process.versions.electron is undefined (non-Electron environment)
+        createSdkClient({ workingDirectory: '/project' });
+
+        expect(capturedOptions[0].connection).toBeUndefined();
+    });
+
+    it('does NOT override an explicitly provided connection even under Electron', () => {
+        (process.versions as Record<string, string | undefined>).electron = '30.0.0';
+        const callerConnection = { kind: 'tcp' as const, port: 9001 };
+
+        createSdkClient({ connection: callerConnection as any });
+
+        expect(capturedOptions[0].connection).toBe(callerConnection);
+        expect(mockRuntimeConnection.forStdio).not.toHaveBeenCalled();
+    });
+
+    it('does NOT set connection when copilot CLI cannot be found even under Electron', () => {
+        (process.versions as Record<string, string | undefined>).electron = '30.0.0';
+        vi.mocked(fs.existsSync).mockReturnValue(false);
+
+        createSdkClient();
+
+        expect(capturedOptions[0].connection).toBeUndefined();
+        expect(mockRuntimeConnection.forStdio).not.toHaveBeenCalled();
     });
 });
