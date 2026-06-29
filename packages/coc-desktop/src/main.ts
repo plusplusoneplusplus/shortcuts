@@ -17,6 +17,7 @@ import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell } from 'elec
 import { attachOrStart, defaultDataDir, ServerHandle } from './server-controller';
 import { splashDataUrl } from './splash';
 import { detectAgentClis, missingAgentClis, runFirstRunPreflight } from './agent-preflight';
+import { augmentPathWithBundledAgents } from './agent-bin-path';
 import { shutdownServer, shouldOpenExternally } from './lifecycle';
 import { resolveIconPath } from './app-icon';
 import { APP_NAME, buildAboutPanelOptions, readDesktopVersion } from './app-identity';
@@ -156,15 +157,22 @@ async function showServedSpa(url: string): Promise<void> {
 
 /**
  * AC-06: agent-CLI preflight. On first run, detect whether the Copilot / Codex /
- * Claude CLIs are on PATH and surface non-blocking install guidance for any that
- * are missing. The CLIs are NOT bundled — we only require them to be installed.
+ * Claude CLIs are reachable and surface non-blocking install guidance for any
+ * that are missing.
+ *
+ * Detection runs against the SAME augmented PATH the forked server gets — the
+ * bundled CLI directories prepended to the host PATH — so a provider whose
+ * binary the app ships is reported as present (no spurious nag), and the check
+ * matches what the server can actually spawn. This also sidesteps the
+ * launchd-minimal PATH a Finder/Dock-launched macOS app would otherwise see.
  *
  * This must never block startup: it runs after the window is already shown, the
  * dialog is unparented and fire-and-forget, and any failure is swallowed.
  */
 function runAgentPreflight(): void {
     try {
-        const guidance = runFirstRunPreflight(defaultDataDir());
+        const pathEnv = augmentPathWithBundledAgents();
+        const guidance = runFirstRunPreflight(defaultDataDir(), { pathEnv });
         if (!guidance) {
             return;
         }
@@ -183,7 +191,7 @@ function runAgentPreflight(): void {
             .then((result) => {
                 if (result.response === 1) {
                     // Open the docs for each still-missing CLI in the system browser.
-                    for (const { cli } of missingAgentClis(detectAgentClis())) {
+                    for (const { cli } of missingAgentClis(detectAgentClis({ pathEnv }))) {
                         void shell.openExternal(cli.docsUrl);
                     }
                 }

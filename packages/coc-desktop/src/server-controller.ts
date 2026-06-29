@@ -22,6 +22,7 @@ import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import { fork, ChildProcess } from 'child_process';
+import { augmentPathWithBundledAgents } from './agent-bin-path';
 
 /** Default loopback bind address — the server is never exposed off-box. */
 export const DEFAULT_HOST = '127.0.0.1';
@@ -121,8 +122,13 @@ export function findFreePort(host: string = DEFAULT_HOST): Promise<number> {
 
 /** Default fork: spawn `server-entry.js` as Electron's Node (`ELECTRON_RUN_AS_NODE`). */
 function defaultFork(modulePath: string, env: NodeJS.ProcessEnv): ChildProcess {
+    const merged: NodeJS.ProcessEnv = { ...process.env, ...env };
+    // Prepend the bundled agent-CLI directories so the server resolves the
+    // shipped `copilot`/`codex`/`claude` even when the host PATH lacks them
+    // (best-effort; leaves PATH unchanged when nothing bundled resolves).
+    merged.PATH = augmentPathWithBundledAgents({}, merged.PATH);
     return fork(modulePath, [], {
-        env: { ...process.env, ...env },
+        env: merged,
         stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     });
 }
