@@ -10,7 +10,9 @@
  *  - invalidate: on unknown workspace → still triggers a fetch
  *  - concurrent getOrFetch calls on same cold workspace → single fetch
  *  - fetchFn error → clears inflight so next call retries
- *  - background refresh → calls fetchFn for all workspaces
+ *  - background refresh → calls fetchFn only for the active workspaces
+ *  - background refresh → empty active set triggers zero fetches
+ *  - getOrFetch on an inactive workspace → still lazily fetches
  *  - dispose → clears timer and entries
  */
 
@@ -23,13 +25,24 @@ import type { GitInfoResult } from '../../src/server/git/git-info-cache';
 const RESULT_A: GitInfoResult = { branch: 'main', dirty: false, isGitRepo: true, remoteUrl: null, ahead: 0, behind: 0 };
 const RESULT_B: GitInfoResult = { branch: 'feat/x', dirty: true, isGitRepo: true, remoteUrl: 'https://github.com/x/y.git', ahead: 1, behind: 0 };
 
-function makeStore(ids: string[] = ['ws-a']) {
-    return {
-        getWorkspaces: vi.fn().mockResolvedValue(ids.map(id => ({ id, name: id, rootPath: `/repos/${id}` }))),
-    } as any;
+/** Build a `getActiveWorkspaceIds` callback that always reports the given active ids. */
+function activeIds(ids: string[] = ['ws-a']) {
+    return vi.fn(() => ids);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+describe('GitInfoCacheService constants', () => {
+    it('uses a 5-minute proactive refresh period', () => {
+        expect(REFRESH_PERIOD_MS).toBe(300_000);
+    });
+
+    it('keeps the stale threshold above the refresh period', () => {
+        // Reads served between background cycles must hit cached data, not force a
+        // synchronous git status. Requires STALE_THRESHOLD_MS > REFRESH_PERIOD_MS.
+        expect(STALE_THRESHOLD_MS).toBeGreaterThan(REFRESH_PERIOD_MS);
+    });
+});
 
 describe('GitInfoCacheService', () => {
     let cache: GitInfoCacheService;
@@ -49,7 +62,7 @@ describe('GitInfoCacheService', () => {
     // ── Cold miss ─────────────────────────────────────────────────────────────
 
     it('fetches when no entry exists (cold miss)', async () => {
-        cache.start(makeStore(['ws-a']), fetchFn);
+        cache.start(fetchFn, activeIds(['ws-a']));
         const result = await cache.getOrFetch('ws-a');
         expect(result).toEqual(RESULT_A);
         expect(fetchFn).toHaveBeenCalledTimes(1);
@@ -59,7 +72,7 @@ describe('GitInfoCacheService', () => {
     // ── Fresh hit ─────────────────────────────────────────────────────────────
 
     it('returns cached data immediately for fresh entry (no re-fetch)', async () => {
-        cache.start(makeStore(['ws-a']), fetchFn);
+        cache.start(fetchFn, activeIds(['ws-a']));
         await cache.getOrFetch('ws-a');  // warm up
         fetchFn.mockClear();
 
@@ -71,7 +84,8 @@ describe('GitInfoCacheService', () => {
     // ── Stale hit ─────────────────────────────────────────────────────────────
 
     it('re-fetches when entry is stale (age > STALE_THRESHOLD_MS)', async () => {
-        cache.start(makeStore(['ws-a']), fetchFn);
+        // Empty active set: isolate getOrFetch staleness from any background tick.
+        cache.start(fetchFn, activeIds([]));
         await cache.getOrFetch('ws-a');  // warm up
         fetchFn.mockResolvedValue(RESULT_B);
         fetchFn.mockClear();
@@ -87,7 +101,8 @@ describe('GitInfoCacheService', () => {
     // ── Entry just inside fresh window ────────────────────────────────────────
 
     it('does not re-fetch when entry age equals STALE_THRESHOLD_MS exactly', async () => {
-        cache.start(makeStore(['ws-a']), fetchFn);
+        // Empty active set: isolate getOrFetch staleness from any background tick.
+        cache.start(fetchFn, activeIds([]));
         await cache.getOrFetch('ws-a');  // warm up
         fetchFn.mockClear();
 
@@ -103,7 +118,7 @@ describe('GitInfoCacheService', () => {
     it('concurrent getOrFetch calls on the same cold workspace share one in-flight fetch', async () => {
         let resolveA!: (v: GitInfoResult) => void;
         fetchFn.mockImplementation(() => new Promise<GitInfoResult>(r => { resolveA = r; }));
-        cache.start(makeStore(['ws-a']), fetchFn);
+        cache.start(fetchFn, activeIds(['ws-a']));
 
         const p1 = cache.getOrFetch('ws-a');
         const p2 = cache.getOrFetch('ws-a');
@@ -118,7 +133,8 @@ describe('GitInfoCacheService', () => {
     // ── Stale entry with in-flight ────────────────────────────────────────────
 
     it('reuses the in-flight promise when entry is stale but fetch already in flight', async () => {
-        cache.start(makeStore(['ws-a']), fetchFn);
+        // Empty active set: isolate getOrFetch staleness from any background tick.
+        cache.start(fetchFn, activeIds([]));
         await cache.getOrFetch('ws-a');  // warm up
 
         // Force stale
@@ -141,7 +157,7 @@ describe('GitInfoCacheService', () => {
     // ── Invalidation ─────────────────────────────────────────────────────────
 
     it('invalidate marks entry stale and triggers a fresh fetch', async () => {
-        cache.start(makeStore(['ws-a']), fetchFn);
+        cache.start(fetchFn, activeIds(['ws-a']));
         await cache.getOrFetch('ws-a');  // warm up
 
         fetchFn.mockResolvedValue(RESULT_B);
@@ -161,7 +177,7 @@ describe('GitInfoCacheService', () => {
     });
 
     it('invalidate on unknown workspace triggers a fetch', async () => {
-        cache.start(makeStore(['ws-a']), fetchFn);
+        cache.start(fetchFn, activeIds(['ws-a']));
 
         cache.invalidate('ws-a');  // no prior entry
 
@@ -177,7 +193,7 @@ describe('GitInfoCacheService', () => {
     it('clears inflight on fetchFn error so next call retries', async () => {
         fetchFn.mockRejectedValueOnce(new Error('git error'));
         fetchFn.mockResolvedValue(RESULT_A);
-        cache.start(makeStore(['ws-a']), fetchFn);
+        cache.start(fetchFn, activeIds(['ws-a']));
 
         await expect(cache.getOrFetch('ws-a')).rejects.toThrow('git error');
 
@@ -188,9 +204,8 @@ describe('GitInfoCacheService', () => {
 
     // ── Background refresh ────────────────────────────────────────────────────
 
-    it('background refresh re-fetches all workspaces after REFRESH_PERIOD_MS', async () => {
-        const store = makeStore(['ws-a', 'ws-b']);
-        cache.start(store, fetchFn);
+    it('background refresh re-fetches the active workspaces after REFRESH_PERIOD_MS', async () => {
+        cache.start(fetchFn, activeIds(['ws-a', 'ws-b']));
 
         // Advance past the refresh interval
         await vi.advanceTimersByTimeAsync(REFRESH_PERIOD_MS + 100);
@@ -199,9 +214,45 @@ describe('GitInfoCacheService', () => {
         expect(fetchFn).toHaveBeenCalledWith('ws-b');
     });
 
+    it('background refresh fetches only active workspaces, not every registered one', async () => {
+        // Active set is just 'ws-a'; 'ws-b'/'ws-c' are registered but inactive.
+        cache.start(fetchFn, activeIds(['ws-a']));
+
+        await vi.advanceTimersByTimeAsync(REFRESH_PERIOD_MS + 100);
+
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+        expect(fetchFn).toHaveBeenCalledWith('ws-a');
+        expect(fetchFn).not.toHaveBeenCalledWith('ws-b');
+        expect(fetchFn).not.toHaveBeenCalledWith('ws-c');
+    });
+
+    it('background refresh does no git work when the active set is empty', async () => {
+        cache.start(fetchFn, activeIds([]));
+
+        await vi.advanceTimersByTimeAsync(REFRESH_PERIOD_MS + 100);
+
+        expect(fetchFn).not.toHaveBeenCalled();
+    });
+
+    it('getOrFetch lazily fetches an inactive workspace and caches it', async () => {
+        // Active set never includes 'ws-b', yet a direct read must still fetch it.
+        cache.start(fetchFn, activeIds(['ws-a']));
+        fetchFn.mockResolvedValue(RESULT_B);
+
+        const result = await cache.getOrFetch('ws-b');
+        expect(result).toEqual(RESULT_B);
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+        expect(fetchFn).toHaveBeenCalledWith('ws-b');
+
+        // Cached: a second read within the fresh window does not re-fetch.
+        fetchFn.mockClear();
+        const cached = await cache.getOrFetch('ws-b');
+        expect(cached).toEqual(RESULT_B);
+        expect(fetchFn).not.toHaveBeenCalled();
+    });
+
     it('background refresh respects CONCURRENCY (only 4 at a time)', async () => {
         const ids = Array.from({ length: 8 }, (_, i) => `ws-${i}`);
-        const store = makeStore(ids);
 
         const concurrentCalls: number[] = [];
         let running = 0;
@@ -213,7 +264,7 @@ describe('GitInfoCacheService', () => {
             return RESULT_A;
         });
 
-        cache.start(store, fetchFn);
+        cache.start(fetchFn, activeIds(ids));
         await vi.advanceTimersByTimeAsync(REFRESH_PERIOD_MS + 100);
 
         expect(Math.max(...concurrentCalls)).toBeLessThanOrEqual(4);
@@ -222,7 +273,7 @@ describe('GitInfoCacheService', () => {
     // ── Dispose ───────────────────────────────────────────────────────────────
 
     it('dispose stops background refresh and clears entries', async () => {
-        cache.start(makeStore(['ws-a']), fetchFn);
+        cache.start(fetchFn, activeIds(['ws-a']));
         await cache.getOrFetch('ws-a');
 
         cache.dispose();

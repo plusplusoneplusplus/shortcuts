@@ -226,8 +226,13 @@ async function fetchOneGitInfo(workspaceId: string, store: ProcessStore): Promis
 export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
     const { routes, store } = ctx;
 
-    // Start the git-info cache background refresh for this server instance
-    gitInfoCache.start(store, (wsId) => fetchOneGitInfo(wsId, store));
+    // Start the git-info cache background refresh for this server instance.
+    // Only workspaces a dashboard client currently has open are proactively
+    // refreshed; everything else is served lazily on demand.
+    gitInfoCache.start(
+        (wsId) => fetchOneGitInfo(wsId, store),
+        () => ctx.activeWorkspaceTracker?.getSnapshot().activeWorkspaceIds ?? [],
+    );
 
     // POST /api/workspaces — Register a workspace
     routes.push({

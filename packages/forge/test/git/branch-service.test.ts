@@ -2048,8 +2048,7 @@ describe('BranchService.dropCommit', () => {
                 .mockResolvedValueOnce({ stdout: 'refs/heads/main\n', stderr: '' }) // isDetachedHead
                 .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })            // getCurrentBranchName
                 .mockResolvedValueOnce({ stdout: 'origin/main\n', stderr: '' })     // upstream lookup
-                .mockResolvedValueOnce({ stdout: '3\n', stderr: '' })               // ahead
-                .mockResolvedValueOnce({ stdout: '1\n', stderr: '' });              // behind
+                .mockResolvedValueOnce({ stdout: '1\t3\n', stderr: '' });           // rev-list --left-right --count (behind\tahead)
 
             const result = await service.getBranchStatus('/repo', false);
 
@@ -2106,29 +2105,65 @@ describe('BranchService.dropCommit', () => {
             });
         });
 
-        it('runs ahead/behind counts in parallel', async () => {
-            const callOrder: string[] = [];
+        it('spawns a single rev-list process and parses combined "behind\\tahead" output', async () => {
             mockedExecAsync
                 .mockResolvedValueOnce({ stdout: 'abc1234\n', stderr: '' })       // getHeadHash
                 .mockResolvedValueOnce({ stdout: 'refs/heads/main\n', stderr: '' }) // isDetachedHead
                 .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })            // getCurrentBranchName
                 .mockResolvedValueOnce({ stdout: 'origin/main\n', stderr: '' })     // upstream lookup
-                .mockImplementationOnce(async () => {                               // ahead
-                    callOrder.push('ahead');
-                    return { stdout: '2\n', stderr: '' };
-                })
-                .mockImplementationOnce(async () => {                               // behind
-                    callOrder.push('behind');
-                    return { stdout: '5\n', stderr: '' };
-                });
+                .mockResolvedValueOnce({ stdout: '5\t2\n', stderr: '' });           // rev-list --left-right --count (behind\tahead)
 
             const result = await service.getBranchStatus('/repo', false);
 
             expect(result?.ahead).toBe(2);
             expect(result?.behind).toBe(5);
-            // Both calls were made (parallel via Promise.all)
-            expect(callOrder).toContain('ahead');
-            expect(callOrder).toContain('behind');
+
+            // Exactly one rev-list process is spawned (the two separate count calls were collapsed).
+            const revListCalls = mockedExecAsync.mock.calls.filter(call => String(call[0]).includes('git rev-list'));
+            expect(revListCalls).toHaveLength(1);
+            expect(revListCalls[0][0]).toBe('git rev-list --left-right --count "origin/main...main"');
+        });
+
+        it('parses "0\\t0" combined output as ahead: 0, behind: 0', async () => {
+            mockedExecAsync
+                .mockResolvedValueOnce({ stdout: 'abc1234\n', stderr: '' })       // getHeadHash
+                .mockResolvedValueOnce({ stdout: 'refs/heads/main\n', stderr: '' }) // isDetachedHead
+                .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })            // getCurrentBranchName
+                .mockResolvedValueOnce({ stdout: 'origin/main\n', stderr: '' })     // upstream lookup
+                .mockResolvedValueOnce({ stdout: '0\t0\n', stderr: '' });           // rev-list (behind\tahead)
+
+            const result = await service.getBranchStatus('/repo', false);
+
+            expect(result?.ahead).toBe(0);
+            expect(result?.behind).toBe(0);
+        });
+
+        it('parses ahead-only combined output (behind 0, ahead > 0)', async () => {
+            mockedExecAsync
+                .mockResolvedValueOnce({ stdout: 'abc1234\n', stderr: '' })       // getHeadHash
+                .mockResolvedValueOnce({ stdout: 'refs/heads/main\n', stderr: '' }) // isDetachedHead
+                .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })            // getCurrentBranchName
+                .mockResolvedValueOnce({ stdout: 'origin/main\n', stderr: '' })     // upstream lookup
+                .mockResolvedValueOnce({ stdout: '0\t4\n', stderr: '' });           // rev-list (behind\tahead)
+
+            const result = await service.getBranchStatus('/repo', false);
+
+            expect(result?.ahead).toBe(4);
+            expect(result?.behind).toBe(0);
+        });
+
+        it('parses behind-only combined output (ahead 0, behind > 0)', async () => {
+            mockedExecAsync
+                .mockResolvedValueOnce({ stdout: 'abc1234\n', stderr: '' })       // getHeadHash
+                .mockResolvedValueOnce({ stdout: 'refs/heads/main\n', stderr: '' }) // isDetachedHead
+                .mockResolvedValueOnce({ stdout: 'main\n', stderr: '' })            // getCurrentBranchName
+                .mockResolvedValueOnce({ stdout: 'origin/main\n', stderr: '' })     // upstream lookup
+                .mockResolvedValueOnce({ stdout: '7\t0\n', stderr: '' });           // rev-list (behind\tahead)
+
+            const result = await service.getBranchStatus('/repo', false);
+
+            expect(result?.ahead).toBe(0);
+            expect(result?.behind).toBe(7);
         });
     });
 });
