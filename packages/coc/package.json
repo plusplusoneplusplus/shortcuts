@@ -30,6 +30,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@octokit/rest": "^22.0.1",
     "@openai/codex-sdk": "^0.133.0",
+    "@opencode-ai/sdk": "^1.17.11",
     "@plusplusoneplusplus/coc-agent-sdk": "^0.1.0",
     "@plusplusoneplusplus/coc-client": "^0.1.0",
     "@plusplusoneplusplus/coc-memory": "^0.1.0",
