@@ -91,6 +91,13 @@ export interface UseSendMessageOptions {
      * transcript is NOT rewritten, so this is the only user-visible signal.
      */
     notifyCompact?: (message: string, type: 'success' | 'error') => void;
+    /**
+     * Marks the conversation as compacting (AC-02) so the chat can render a
+     * synthetic in-progress bubble from process state and block duplicate sends.
+     * Called with `true` and the typed custom instructions when `/compact`
+     * starts, and `false` when it settles (success or failure).
+     */
+    setCompacting?: (running: boolean, customInstructions?: string) => void;
 }
 
 export function useSendMessage({
@@ -129,6 +136,7 @@ export function useSendMessage({
     ralphGrillSetup,
     onPromotedToRalph,
     notifyCompact,
+    setCompacting,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode, options?: SendFollowUpOptions) => Promise<void>;
     closeFollowUpStream: () => void;
@@ -137,6 +145,11 @@ export function useSendMessage({
     const { archivedChatIds, unarchiveChat } = useChatPrefs();
     const followUpEventSourceRef = useRef<EventSource | null>(null);
     const resolveCurrentSendRef = useRef<(() => void) | null>(null);
+    // Synchronous re-entry guard: the `/compact` POST is blocking and the
+    // conversation is not idle while it runs, so any concurrent send (a second
+    // `/compact` or a normal follow-up) must be dropped. A ref closes the
+    // double-click race that a React state flag would lose between renders.
+    const compactingRef = useRef(false);
 
     const buildMessageRequest = useCallback((content: string, deliveryMode: DeliveryMode, skillNames: string[], options: SendFollowUpOptions = {}): ProcessMessageRequest => ({
         content,
@@ -201,6 +214,11 @@ export function useSendMessage({
      * — the toast is no longer the only visible completion signal.
      */
     const compactConversation = useCallback(async (pid: string, customInstructions: string | undefined) => {
+        // Mark in-progress BEFORE the (blocking) POST so the chat renders the
+        // synthetic compaction bubble and suppresses the empty assistant
+        // placeholder while compaction runs (AC-02).
+        compactingRef.current = true;
+        setCompacting?.(true, customInstructions);
         try {
             const result = await getCocClientForWorkspace(workspaceId).processes.compact(
                 pid,
@@ -223,8 +241,14 @@ export function useSendMessage({
             }
         } catch (err: any) {
             notifyCompact?.(getSpaCocClientErrorMessage(err, 'Failed to compact the conversation.'), 'error');
+        } finally {
+            // Clear the in-progress state on both paths. On success the refresh
+            // above has already landed the persisted result turn, so there is no
+            // gap where neither the bubble nor the result turn is visible.
+            compactingRef.current = false;
+            setCompacting?.(false);
         }
-    }, [workspaceId, notifyCompact, refreshConversation]);
+    }, [workspaceId, notifyCompact, refreshConversation, setCompacting]);
 
     const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue', options: SendFollowUpOptions = {}) => {
         const includeComposerContext = options.includeComposerContext !== false;
@@ -250,6 +274,10 @@ export function useSendMessage({
         const rawContent = contextPrefix ? contextPrefix + baseContent : baseContent;
         if (!processId || inputDisabled) return;
         if (sending && !isActiveGeneration) return;
+        // Block every send — a second `/compact` or a normal follow-up — while a
+        // compaction is still in flight (AC-02). The conversation is not idle
+        // until the blocking POST settles.
+        if (compactingRef.current) return;
 
         // ── /compact meta-command branch ──
         // `/compact` is a client-side action (like `/model`), not a message.

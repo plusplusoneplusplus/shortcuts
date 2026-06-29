@@ -223,4 +223,73 @@ describe('useSendMessage — /compact interception', () => {
         expect(compactSpy).not.toHaveBeenCalled();
         expect(notifyCompact).not.toHaveBeenCalled();
     });
+
+    // ── AC-02: in-progress lifecycle + duplicate-send block ──
+    it('marks compacting true (with instructions) at start and false on success', async () => {
+        compactSpy.mockResolvedValue({ success: true, messagesRemoved: 2, tokensRemoved: 99 });
+        const setCompacting = vi.fn();
+        const { result } = renderHook(() => useSendMessage(makeOptions({ setCompacting })), { wrapper });
+
+        await act(async () => {
+            await result.current.sendFollowUp('/compact drop the boring bits');
+        });
+
+        // Started with the typed custom instructions, settled back to idle.
+        expect(setCompacting).toHaveBeenNthCalledWith(1, true, 'drop the boring bits');
+        expect(setCompacting).toHaveBeenLastCalledWith(false);
+    });
+
+    it('clears compacting state even when compaction fails', async () => {
+        compactSpy.mockRejectedValue(new CocApiError({
+            status: 422,
+            statusText: 'Unprocessable Entity',
+            url: `/api/processes/${PROCESS}/compact`,
+            message: 'request failed',
+            code: 'COMPACT_UNSUPPORTED',
+            body: { error: 'Compaction is not supported for provider "claude".' },
+        }));
+        const setCompacting = vi.fn();
+        const { result } = renderHook(() => useSendMessage(makeOptions({ setCompacting })), { wrapper });
+
+        await act(async () => {
+            await result.current.sendFollowUp('/compact');
+        });
+
+        expect(setCompacting).toHaveBeenNthCalledWith(1, true, undefined);
+        expect(setCompacting).toHaveBeenLastCalledWith(false);
+    });
+
+    it('blocks a second /compact (and normal sends) while one is in flight', async () => {
+        // Hold the first compaction open with a deferred promise so we can fire a
+        // second send while it is still running.
+        let resolveCompact!: (v: any) => void;
+        compactSpy.mockReturnValue(new Promise(r => { resolveCompact = r; }));
+        const setCompacting = vi.fn();
+        const { result } = renderHook(() => useSendMessage(makeOptions({ setCompacting })), { wrapper });
+
+        let firstSend!: Promise<void>;
+        await act(async () => {
+            firstSend = result.current.sendFollowUp('/compact');
+            // The compact branch sets the in-flight ref synchronously before the
+            // (blocking) POST, so by now a re-entry must be rejected.
+            await result.current.sendFollowUp('/compact');
+            await result.current.sendFollowUp('a normal follow-up');
+        });
+
+        expect(compactSpy).toHaveBeenCalledTimes(1);
+        expect(sendSpy).not.toHaveBeenCalled();
+
+        // Resolve the first compaction; the guard lifts afterwards.
+        await act(async () => {
+            resolveCompact({ success: true, messagesRemoved: 1, tokensRemoved: 1 });
+            await firstSend;
+        });
+        expect(setCompacting).toHaveBeenLastCalledWith(false);
+
+        // A fresh send now goes through normally.
+        await act(async () => {
+            await result.current.sendFollowUp('a normal follow-up');
+        });
+        expect(sendSpy).toHaveBeenCalledTimes(1);
+    });
 });

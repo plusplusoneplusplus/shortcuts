@@ -757,9 +757,13 @@ describe('ChatDetail', () => {
         });
 
         it('inputDisabled includes cancelled so input is disabled when cancelled', () => {
+            // Window spans the inputDisabled expression plus the adjacent
+            // noSessionForFollowUp line that carries the `'cancelled'` literal;
+            // sized with headroom so additions to inputDisabled (e.g.
+            // isCompacting) don't push the literal out of frame.
             const expr = source.substring(
                 source.indexOf('const inputDisabled'),
-                source.indexOf('const inputDisabled') + 200,
+                source.indexOf('const inputDisabled') + 256,
             );
             expect(expr).toContain("'cancelled'");
         });
