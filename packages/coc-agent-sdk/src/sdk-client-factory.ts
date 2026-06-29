@@ -12,6 +12,7 @@ import type { CopilotClient, CopilotClientOptions } from '@github/copilot-sdk';
 import { ensureFolderTrusted } from './trusted-folder';
 import { getAIServiceLogger } from './logger';
 import { getCachedCopilotSdk } from './sdk-esm-loader';
+import { preferUnpackedPath } from './asar-path';
 import {
     resolveWorkspaceExecutionContext,
     translatePathForHostFilesystem,
@@ -135,7 +136,11 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
         (process.versions as Record<string, string | undefined>).electron &&
         !clientOptions.connection
     ) {
-        const copilotCliPath = findCopilotCliPath();
+        // The copilot CLI is launched by the *system* node, which has no asar
+        // support — so an `app.asar` path fails to load. Rewrite it to the
+        // unpacked copy on disk (no-op for a normal CLI install).
+        const rawCopilotCliPath = findCopilotCliPath();
+        const copilotCliPath = rawCopilotCliPath ? preferUnpackedPath(rawCopilotCliPath) : undefined;
         const systemNode = resolveSystemNodePath();
         if (copilotCliPath && systemNode) {
             clientOptions.connection = sdk.RuntimeConnection.forStdio({
