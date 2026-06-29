@@ -33,6 +33,15 @@ all have their own `references/*.md`.
 
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
+- **In-memory caching** uses the one shared primitive at
+  `src/server/cache/` (`createCache<T>({ namespace, ttlMs?, maxSize=500,
+  immutable? })` → a handle with `get`/`set`/`getOrCompute`/`delete`/
+  `invalidateWorkspace`/`clear`). It is a passive store — no background
+  timers; stale-while-revalidate domains keep their own timer and call into a
+  handle. `getOrCompute` is single-flight; entries can carry a `workspaceId`
+  tag, and `invalidateWorkspaceForAll` clears one workspace across every
+  namespace. Do NOT hand-roll a new `Map`-based TTL cache and do NOT add an
+  npm cache dependency.
 - **Codex skill mirroring** runs once at server startup (when
   `resolvedConfig.codex?.enabled === true`), not per-install. The
   `syncInstalledSkillsToCodex` function copies all globally installed bundled

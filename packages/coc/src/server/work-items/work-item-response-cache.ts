@@ -1,3 +1,4 @@
+import { createCache } from '../cache';
 import type {
     WorkItemFilter,
     WorkItemPriority,
@@ -43,7 +44,14 @@ interface NormalizedWorkItemFilter {
     limit?: number;
 }
 
-const workItemResponseCache = new Map<string, WorkItemResponseCacheEntry<unknown>>();
+// Unified-cache handle (namespace `work-item-response`, 60min TTL). Entries are
+// tagged with their workspaceId so workspace-scoped clears are O(matching) via
+// the handle's per-workspace index. Default LRU cap (500) applies; the previous
+// hand-rolled Map was unbounded (see progress.md AC-02).
+const workItemResponseCache = createCache<WorkItemResponseCacheEntry<unknown>>({
+    namespace: 'work-item-response',
+    ttlMs: WORK_ITEM_RESPONSE_CACHE_TTL_MS,
+});
 
 function sortStrings<T extends string>(values: readonly T[] | undefined): T[] | undefined {
     return values && values.length > 0 ? [...values].sort((a, b) => a.localeCompare(b)) : undefined;
@@ -147,7 +155,7 @@ export async function refreshWorkItemResponseCacheEntry<T>(
         data,
         fetchedAt,
         expiresAt: fetchedAt + WORK_ITEM_RESPONSE_CACHE_TTL_MS,
-    });
+    }, { workspaceId });
     return data;
 }
 
@@ -174,10 +182,8 @@ export function clearWorkItemResponseCacheForWorkspaces(workspaceIds: Iterable<s
             .filter(Boolean),
     );
     if (ids.size === 0) return;
-    for (const [key, entry] of workItemResponseCache) {
-        if (ids.has(entry.workspaceId)) {
-            workItemResponseCache.delete(key);
-        }
+    for (const id of ids) {
+        workItemResponseCache.invalidateWorkspace(id);
     }
 }
 

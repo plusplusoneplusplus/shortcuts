@@ -157,4 +157,37 @@ describe('TaskCacheService', () => {
             expect(defaultCache.get('k')).toBeUndefined();
         });
     });
+
+    // ========================================================================
+    // Unified-cache backing: LRU cap + workspace-tagged invalidation
+    // ========================================================================
+
+    describe('unified-cache backing', () => {
+        // Behavior change logged in progress.md (AC-06): the cache was
+        // previously unbounded; it now applies the default 500-entry LRU cap.
+        it('evicts the least-recently-used entry past the default 500-entry cap', () => {
+            for (let i = 0; i < 500; i++) {
+                cache.set(`ws:/task-${i}`, i);
+            }
+            expect(cache.size).toBe(500);
+
+            // One more entry evicts the oldest (task-0); newest survives.
+            cache.set('ws:/task-500', 500);
+            expect(cache.size).toBe(500);
+            expect(cache.get('ws:/task-0')).toBeUndefined();
+            expect(cache.get('ws:/task-500')).toBe(500);
+        });
+
+        it('invalidateWorkspace keys off the workspace prefix of the cache key', () => {
+            cache.set(TaskCacheService.key('wsA', '/repo/tasks'), 'a');
+            cache.set(TaskCacheService.key('wsA', '/repo/other'), 'b');
+            cache.set(TaskCacheService.key('wsB', '/repo/tasks'), 'c');
+
+            cache.invalidateWorkspace('wsA');
+
+            expect(cache.get(TaskCacheService.key('wsA', '/repo/tasks'))).toBeUndefined();
+            expect(cache.get(TaskCacheService.key('wsA', '/repo/other'))).toBeUndefined();
+            expect(cache.get(TaskCacheService.key('wsB', '/repo/tasks'))).toBe('c');
+        });
+    });
 });
