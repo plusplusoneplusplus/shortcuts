@@ -27,6 +27,7 @@ import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { PauseDurationHours } from '@plusplusoneplusplus/forge';
 import { finalizeOrphanedProcess } from '../processes/finalize-orphaned-turn';
+import { collectDescendantProcessIds } from './process-subtree';
 import type { Route } from '../types';
 import * as url from 'url';
 import {
@@ -417,9 +418,12 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
                     try {
                         const proc = await store.getProcess(pid);
                         if (proc) {
-                            const children = await store.getAllProcesses({ parentProcessId: pid });
-                            for (const child of children) {
-                                await store.removeProcess(child.id);
+                            // Recursively remove the entire spawned subtree (all
+                            // descendants), then the root, so no grandchild is
+                            // orphaned pointing at a deleted parent.
+                            const descendants = await collectDescendantProcessIds(store, pid);
+                            for (const id of descendants) {
+                                await store.removeProcess(id);
                             }
                             await store.removeProcess(pid);
                             found = true;

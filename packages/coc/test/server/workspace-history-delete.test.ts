@@ -163,6 +163,23 @@ describe('Workspace History Delete API', () => {
         expect(await store.getProcess('child_1b')).toBeUndefined();
     });
 
+    it('DELETE single — recursively cascades the entire spawned subtree', async () => {
+        // Build a 3-level tree: root → child → grandchild (+ a sibling child).
+        await addProcess('tree_root', { status: 'completed' });
+        await addProcess('tree_child', { status: 'completed', parentProcessId: 'tree_root' });
+        await addProcess('tree_child_sib', { status: 'completed', parentProcessId: 'tree_root' });
+        await addProcess('tree_grandchild', { status: 'completed', parentProcessId: 'tree_child' });
+
+        const res = await request(deleteUrl('tree_root'), { method: 'DELETE' });
+        expect(res.status).toBe(204);
+
+        // Every node in the subtree must be gone — no orphaned grandchild.
+        expect(await store.getProcess('tree_root')).toBeUndefined();
+        expect(await store.getProcess('tree_child')).toBeUndefined();
+        expect(await store.getProcess('tree_child_sib')).toBeUndefined();
+        expect(await store.getProcess('tree_grandchild')).toBeUndefined();
+    });
+
     // ========================================================================
     // Single delete — queue process (via enqueue/cancel flow)
     // ========================================================================
