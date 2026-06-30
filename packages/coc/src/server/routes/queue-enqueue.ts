@@ -642,6 +642,13 @@ export function resolveEffortTierConfig(input: CreateTaskInput, ctx: Pick<QueueR
 
     if (typeof rawTier !== 'string' || !EFFORT_TIER_KEYS.has(rawTier)) return;
 
+    // Preserve the launched tier on the task config so process creation can seed
+    // it onto the conversation record as `metadata.afterEffortTier` (AC-01).
+    // `effortTier` itself is consumed/deleted above (resolved into model +
+    // reasoningEffort for execution), so this dedicated field is what survives to
+    // the lifecycle runner for per-chat after-tier read-back.
+    config.afterEffortTier = rawTier;
+
     const payload = input.payload as { provider?: unknown } | undefined;
     const provider = isChatProvider(payload?.provider)
         ? payload.provider
