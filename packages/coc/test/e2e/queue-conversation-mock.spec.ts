@@ -1,11 +1,12 @@
 /**
  * Queue Conversation Mock AI E2E Tests
  *
- * Focused Playwright spec exercising 4 conversation scenarios using Mock AI:
+ * Focused Playwright spec exercising 5 conversation scenarios using Mock AI:
  * 1. Basic conversation rendering (user/assistant bubbles, timestamps)
  * 2. Tool call rendering (single card, nested explore sub-tasks)
  * 3. Streaming content (indicator visibility, progressive content)
  * 4. Complete multi-turn conversation (follow-up flow)
+ * 5. ask_user interactive flow (widget appears, answer unblocks task)
  */
 
 import * as fs from 'fs';
@@ -14,6 +15,7 @@ import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedQueueTask, seedWorkspace, request } from './fixtures/seed';
 import type { Page } from '@playwright/test';
+import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -555,6 +557,104 @@ test.describe('Mock AI: Complete Multi-Turn Conversation', () => {
             );
             await expect(page.locator('[data-testid="activity-chat-send-btn"]')).toBeEnabled();
             expect(abortedMainStreams).toBeGreaterThan(0);
+        } finally {
+            cleanup();
+        }
+    });
+});
+
+// ── Group 5: ask_user Tool — Interactive Question/Answer ──────────────────────
+//
+// Strategy: the mock sendMessage calls the real ask_user tool handler
+// (found in opts.tools) so the SSE/widget flow runs through the real server
+// code. The task stays "running" until the user submits an answer.
+
+test.describe('Mock AI: ask_user Interactive Flow', () => {
+    test('ask_user: widget appears, answer unblocks task, final reply contains answer', async ({
+        serverUrl,
+        mockAI,
+        page,
+    }) => {
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'mock-ask-user');
+        try {
+            const QUESTION_TEXT = 'What is your preferred language?';
+            const USER_ANSWER = 'TypeScript';
+
+            mockAI.mockSendMessage.mockImplementation(async (opts: { tools?: Tool<unknown>[] }) => {
+                const askUserTool = opts.tools?.find(t => t.name === 'ask_user');
+
+                if (!askUserTool?.handler) {
+                    // ask_user not available — should not happen for mode='ask'
+                    return { success: false, error: 'ask_user tool not found', sessionId: 'sess-ask' };
+                }
+
+                // This emits the SSE ask_user event and awaits the UI response.
+                const responses = await askUserTool.handler(
+                    { questions: [{ question: QUESTION_TEXT, type: 'text' }] },
+                    { sessionId: 'sess-ask', toolCallId: 'tc-ask-1', toolName: 'ask_user', arguments: {} },
+                ) as Array<{ answer: unknown; skipped: boolean }>;
+
+                const answer = responses[0]?.answer ?? '(no answer)';
+
+                return {
+                    success: true,
+                    response: `You answered: ${answer}`,
+                    sessionId: 'sess-ask',
+                };
+            });
+
+            const task = await seedQueueTask(serverUrl, {
+                type: 'chat',
+                repoId: wsId,
+                payload: {
+                    kind: 'chat',
+                    workspaceId: wsId,
+                    prompt: 'I need your input.',
+                    mode: 'ask',
+                },
+            });
+            const taskId = task.id as string;
+
+            await gotoConversation(page, serverUrl, wsId, taskId);
+
+            const inlineWidget = page.locator('[data-testid="ask-user-inline"]');
+            await expect(inlineWidget).toBeVisible({ timeout: 12_000 });
+            await expect(inlineWidget).toContainText(QUESTION_TEXT, { timeout: 5_000 });
+
+            await page.fill('[data-testid="ask-user-text-input"]', USER_ANSWER);
+            await page.click('[data-testid="ask-user-submit-all-btn"]');
+
+            await expect(inlineWidget).toBeHidden({ timeout: 10_000 });
+
+            const completed = await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed'], 15_000);
+            expect(completed.status).toBe('completed');
+
+            await page.goto(`${serverUrl}/`);
+            await page.waitForLoadState('domcontentloaded');
+            await gotoConversation(page, serverUrl, wsId, taskId);
+            await waitForBubbles(page, 2);
+
+            const lastAssistant = page.locator('.chat-message.assistant').last();
+            await expect(lastAssistant.locator('.chat-message-content')).toContainText(
+                USER_ANSWER,
+                { timeout: 6_000 },
+            );
+
+            // Process record must no longer carry pendingAskUser
+            const processId = `queue_${taskId}`;
+            const procRes = await request(`${serverUrl}/api/processes/${processId}`);
+            expect(procRes.status).toBe(200);
+            const proc = JSON.parse(procRes.body).process as {
+                pendingAskUser?: unknown;
+                conversationTurns?: Array<{ role: string; content: unknown }>;
+            };
+            expect(proc.pendingAskUser).toBeUndefined();
+
+            expect(Array.isArray(proc.conversationTurns)).toBe(true);
+            const assistantTurns = proc.conversationTurns!.filter(t => t.role === 'assistant');
+            expect(assistantTurns.length).toBeGreaterThan(0);
+            const lastTurnContent = JSON.stringify(assistantTurns[assistantTurns.length - 1].content);
+            expect(lastTurnContent).toContain(USER_ANSWER);
         } finally {
             cleanup();
         }
