@@ -40,6 +40,36 @@ export interface WhisperFileDiffContext {
     workspaceId?: string;
 }
 
+/**
+ * Context emitted when a user opens the *combined* whole-group diff from the
+ * files popover footer (AC-02). Unlike the per-file context, it carries the
+ * group's full ordered file list; the panel reconstructs every reconstructable
+ * file synchronously via `buildWhisperCombinedDiff`. It rides the same window
+ * CustomEvent bridge and single docked panel slot as the per-file flow.
+ */
+export interface WhisperCombinedDiffContext {
+    /** Discriminator: this is the whole-group combined diff, not a single file. */
+    combined: true;
+    /** Every file in the group, in popover / group order (deleted ones included). */
+    files: FileEdit[];
+    /** Reconstructable edit/create/apply_patch calls captured in this group. */
+    toolCalls: WhisperDiffToolCall[];
+    /** Commits detected in this group; carried for parity (unused in the combined path). */
+    commits: DetectedCommit[];
+    /** Workspace/clone routing id, carried unchanged from the single-file flow. */
+    workspaceId?: string;
+}
+
+/** Either a single clicked file or the whole-group combined diff. */
+export type WhisperDiffOpenContext = WhisperFileDiffContext | WhisperCombinedDiffContext;
+
+/** Type guard: true when the open context is the whole-group combined diff. */
+export function isCombinedWhisperDiffContext(
+    ctx: WhisperDiffOpenContext,
+): ctx is WhisperCombinedDiffContext {
+    return (ctx as WhisperCombinedDiffContext).combined === true;
+}
+
 interface ToolLike {
     toolName: string;
     status?: string;
@@ -70,10 +100,11 @@ export interface WhisperCollapsedGroupProps {
     workspaceId?: string;
     renderToolTree: (toolId: string, depth: number) => React.ReactNode;
     /**
-     * Opens the transient read-only diff panel for a clicked changed file. When
-     * omitted, file popover rows stay non-interactive (hover-only) as before.
+     * Opens the transient read-only diff panel for a clicked changed file, or
+     * — from the multi-file popover footer — the whole-group combined diff. When
+     * omitted, file popover rows and the footer stay non-interactive (hover-only).
      */
-    onOpenFileDiff?: (ctx: WhisperFileDiffContext) => void;
+    onOpenFileDiff?: (ctx: WhisperDiffOpenContext) => void;
 }
 
 function formatDuration(startTime?: number, endTime?: number): string {
@@ -625,9 +656,11 @@ interface FileHoverPopoverProps {
     onMouseLeave: () => void;
     /** When provided, active (non-deleted) rows open the file's diff on click/Enter/Space. */
     onFileClick?: (file: FileEdit) => void;
+    /** When provided, the multi-file summary footer opens the combined diff on click/Enter/Space. */
+    onOpenCombined?: () => void;
 }
 
-function FileHoverPopover({ files, anchorRef, popoverRef, onMouseEnter, onMouseLeave, onFileClick }: FileHoverPopoverProps) {
+function FileHoverPopover({ files, anchorRef, popoverRef, onMouseEnter, onMouseLeave, onFileClick, onOpenCombined }: FileHoverPopoverProps) {
     if (!anchorRef.current) return null;
     const rect = anchorRef.current.getBoundingClientRect();
     const rowHeight = 28;
@@ -706,8 +739,23 @@ function FileHoverPopover({ files, anchorRef, popoverRef, onMouseEnter, onMouseL
             })}
             {files.length > 1 && (
                 <div
-                    className="flex items-center gap-2 px-2.5 py-1.5 text-xs border-t border-[#e0e0e0] dark:border-[#3c3c3c] font-medium"
+                    className={cn(
+                        'flex items-center gap-2 px-2.5 py-1.5 text-xs border-t border-[#e0e0e0] dark:border-[#3c3c3c] font-medium',
+                        // Becomes the "view all changes" control when a handler is wired.
+                        onOpenCombined && 'cursor-pointer hover:bg-[#e1effe] dark:hover:bg-[#1f2d42]',
+                    )}
                     data-testid="file-popover-footer"
+                    role={onOpenCombined ? 'button' : undefined}
+                    tabIndex={onOpenCombined ? 0 : undefined}
+                    aria-label={onOpenCombined ? 'Open combined diff for all files' : undefined}
+                    onClick={onOpenCombined ? (e) => { e.stopPropagation(); onOpenCombined(); } : undefined}
+                    onKeyDown={onOpenCombined ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onOpenCombined();
+                        }
+                    } : undefined}
                 >
                     <span className="text-[#848484] flex-1">
                         {files.length} file{files.length !== 1 ? 's' : ''}
@@ -737,9 +785,11 @@ interface FileHoverSpanProps {
     showInlineTotals?: boolean;
     /** When provided, active file rows open the file's diff on click/Enter/Space. */
     onFileClick?: (file: FileEdit) => void;
+    /** When provided, the multi-file footer opens the combined diff on click/Enter/Space. */
+    onOpenCombined?: () => void;
 }
 
-function FileHoverSpan({ text, files, testId, showInlineTotals = true, onFileClick }: FileHoverSpanProps) {
+function FileHoverSpan({ text, files, testId, showInlineTotals = true, onFileClick, onOpenCombined }: FileHoverSpanProps) {
     const [hovered, setHovered] = useState(false);
     const anchorRef = useRef<HTMLSpanElement | null>(null);
     const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -792,6 +842,7 @@ function FileHoverSpan({ text, files, testId, showInlineTotals = true, onFileCli
                     onMouseEnter={showPopover}
                     onMouseLeave={hidePopover}
                     onFileClick={onFileClick}
+                    onOpenCombined={onOpenCombined}
                 />
             )}
         </span>
@@ -1023,6 +1074,22 @@ export function WhisperCollapsedGroup({
     );
     const onFileClick = onOpenFileDiff ? handleFileClick : undefined;
 
+    // Opens the whole-group combined diff (every reconstructable file in one
+    // scroll). Built from the same captured tool calls + ordered fileEdits the
+    // popover shows; deleted/non-reconstructable files are surfaced by the
+    // builder downstream, so the full list is carried through unchanged.
+    const handleOpenCombined = useCallback(() => {
+        if (!onOpenFileDiff) return;
+        onOpenFileDiff({
+            combined: true,
+            files: summary.fileEdits ?? [],
+            toolCalls: groupToolCalls,
+            commits: summary.commits ?? [],
+            workspaceId,
+        });
+    }, [onOpenFileDiff, summary.fileEdits, groupToolCalls, summary.commits, workspaceId]);
+    const onOpenCombined = onOpenFileDiff ? handleOpenCombined : undefined;
+
     const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'pr' | 'file' | 'removed-file' | 'skill' | 'memory' }> = [];
     if (summary.toolCallCount > 0) {
         headerParts.push({ text: `${summary.toolCallCount} tool call${summary.toolCallCount !== 1 ? 's' : ''}` });
@@ -1080,11 +1147,11 @@ export function WhisperCollapsedGroup({
             );
         } else if (part.kind === 'file' && summary.fileEdits && summary.fileEdits.length > 0) {
             headerElements.push(
-                <FileHoverSpan key={`part-${idx}`} text={part.text} files={summary.fileEdits} testId="whisper-file-hover" onFileClick={onFileClick} />,
+                <FileHoverSpan key={`part-${idx}`} text={part.text} files={summary.fileEdits} testId="whisper-file-hover" onFileClick={onFileClick} onOpenCombined={onOpenCombined} />,
             );
         } else if (part.kind === 'removed-file' && summary.fileEdits && summary.fileEdits.length > 0) {
             headerElements.push(
-                <FileHoverSpan key={`part-${idx}`} text={part.text} files={summary.fileEdits} testId="whisper-removed-hover" showInlineTotals={false} onFileClick={onFileClick} />,
+                <FileHoverSpan key={`part-${idx}`} text={part.text} files={summary.fileEdits} testId="whisper-removed-hover" showInlineTotals={false} onFileClick={onFileClick} onOpenCombined={onOpenCombined} />,
             );
         } else if (part.kind === 'skill' && summary.skillNames && summary.skillNames.length > 0) {
             headerElements.push(
