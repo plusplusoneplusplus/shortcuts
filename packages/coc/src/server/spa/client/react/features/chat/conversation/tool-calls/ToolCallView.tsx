@@ -74,6 +74,11 @@ function truncateSummary(value: string, maxLength = 80): string {
     return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
 }
 
+/** Insert thousands separators without depending on the host locale (deterministic across platforms/tests). */
+function formatCount(value: number): string {
+    return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
 function getAskUserQuestionSummary(args: Record<string, any>): string {
     if (typeof args.question === 'string' && args.question.trim()) {
         return truncateSummary(args.question.trim());
@@ -524,7 +529,9 @@ export function ToolCallView({
     const startTimeLabel = formatStartTime(normalizedToolCall.startTime);
     const resultText = typeof normalizedToolCall.result === 'string' ? normalizedToolCall.result : '';
     const isResultTruncated = resultText.length > MAX_RESULT_LENGTH;
-    const visibleResult = isResultTruncated ? `${resultText.slice(0, TRUNCATED_RESULT_LENGTH)}\n... (output truncated)` : resultText;
+    const visibleResult = isResultTruncated
+        ? `${resultText.slice(0, TRUNCATED_RESULT_LENGTH)}\n... (output truncated — showing ${formatCount(TRUNCATED_RESULT_LENGTH)} of ${formatCount(resultText.length)} chars)`
+        : resultText;
     const popoverResultText = name === 'apply_patch' && applyPatchText ? applyPatchText : resultText;
 
     const isShellLike = name === 'bash' || name === 'shell' || name === 'powershell';
