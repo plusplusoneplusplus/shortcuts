@@ -1544,6 +1544,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             setTurnsAndRef(turns);
                             setProcessDetails(loadedProcess);
                             seedSessionTokensFromProcess(loadedProcess);
+                            // Re-hydrate the queued follow-ups from the server.
+                            // The cache-hit path paints turns from cache and
+                            // returns early, so without this a still-running chat
+                            // with pending follow-ups would show an empty
+                            // "Queued · N" section after a switch-away/return.
+                            const serverPending: any[] = loadedProcess.pendingMessages ?? [];
+                            setPendingQueue(serverPending.map((m: any) => ({
+                                id: m.id,
+                                content: m.content,
+                                status: 'queued' as const,
+                            })));
                         }).catch(() => { /* best-effort revalidation */ });
                         return;
                     }
@@ -1569,6 +1580,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         setTurnsAndRef(turns);
                         setProcessDetails(loadedProcess);
                         seedSessionTokensFromProcess(loadedProcess);
+                        // Re-hydrate the queued follow-ups so a cold processId
+                        // load of a still-running chat keeps its "Queued · N"
+                        // section instead of clearing it.
+                        const serverPending: any[] = loadedProcess.pendingMessages ?? [];
+                        setPendingQueue(serverPending.map((m: any) => ({
+                            id: m.id,
+                            content: m.content,
+                            status: 'queued' as const,
+                        })));
                         setLoading(false);
                         return;
                     }

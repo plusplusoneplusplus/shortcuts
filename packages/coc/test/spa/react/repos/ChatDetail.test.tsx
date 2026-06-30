@@ -1940,6 +1940,81 @@ describe('ChatDetail', () => {
                 expect(screen.getByText('Bot reply')).toBeTruthy();
             });
         });
+
+        // Regression: queued-message-survives-chat-switch.
+        // A still-running chat's submitted follow-ups ("Queued · N") must survive
+        // switching to another chat and returning. The cache-hit processId load
+        // path painted turns from cache but never re-hydrated `pendingQueue`, so
+        // the queued section blanked out on return even though the server still
+        // held the pending messages in `process.pendingMessages`.
+        it('re-hydrates the queued follow-ups from server pendingMessages on a cache-hit return', async () => {
+            const runningProc = makeProcess({
+                id: 'queue_running-1',
+                status: 'running',
+                metadata: { mode: 'autopilot', sessionId: 'sess-running' },
+                pendingMessages: [
+                    { id: 'pm-1', content: 'first queued follow-up' },
+                    { id: 'pm-2', content: 'second queued follow-up' },
+                ],
+            });
+            const otherProc = makeProcess({
+                id: 'queue_other-1',
+                status: 'running',
+                metadata: { mode: 'autopilot', sessionId: 'sess-other' },
+                pendingMessages: [],
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_running-1': { body: { process: runningProc } },
+                '/processes/queue_other-1': { body: { process: otherProc } },
+                '/models': { body: [] },
+            });
+
+            const { rerender } = render(<Wrap><ChatDetail key="queue_running-1" taskId="queue_running-1" /></Wrap>);
+
+            // Cold (cache-miss) processId load hydrates the queue from the server.
+            await waitFor(() => {
+                expect(screen.getByTestId('queued-followups').getAttribute('data-count')).toBe('2');
+            });
+
+            // Switch away to another still-running chat with no pending follow-ups.
+            rerender(<Wrap><ChatDetail key="queue_other-1" taskId="queue_other-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.queryByTestId('queued-followups')).toBeNull();
+            });
+
+            // Switch back — now a cache hit. The queued section must re-appear,
+            // sourced from the server's pendingMessages (the regression: the
+            // cache-hit branch used to return early without re-syncing the queue).
+            rerender(<Wrap><ChatDetail key="queue_running-1" taskId="queue_running-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('queued-followups').getAttribute('data-count')).toBe('2');
+            });
+        });
+
+        it('leaves the queued section empty when the server has no pending messages', async () => {
+            const proc = makeProcess({
+                id: 'queue_empty-1',
+                status: 'running',
+                metadata: { mode: 'autopilot', sessionId: 'sess-empty' },
+                pendingMessages: [],
+                conversationTurns: [
+                    { role: 'user', content: 'Running task', turnIndex: 0, timeline: [] },
+                ],
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_empty-1': { body: { process: proc } },
+                '/models': { body: [] },
+            });
+
+            render(<Wrap><ChatDetail taskId="queue_empty-1" /></Wrap>);
+
+            await waitFor(() => {
+                expect(screen.getByText('Running task')).toBeTruthy();
+            });
+            expect(screen.queryByTestId('queued-followups')).toBeNull();
+        });
     });
 
     describe('reactive title updates', () => {
