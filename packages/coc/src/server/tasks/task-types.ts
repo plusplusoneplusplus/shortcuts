@@ -273,6 +273,13 @@ export interface ChatContext {
      * the relationship.
      */
     taskGroup?: TaskGroupRef;
+    /**
+     * The originating chat's processId for a conversation spawned via the
+     * `create_conversation` tool. Persisted onto the spawned process's
+     * top-level `AIProcess.parentProcessId` (NOT a TaskGroupRef) so spawned
+     * conversations form a parent→child tree in the chat list.
+     */
+    spawnedFromProcessId?: string;
     /** Auto provider selection details captured before execution. */
     autoProviderRouting?: {
         requested?: boolean;

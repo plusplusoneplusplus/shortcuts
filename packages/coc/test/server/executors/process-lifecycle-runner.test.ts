@@ -731,6 +731,83 @@ describe('ProcessLifecycleRunner — metadata.planFilePath from context.files', 
 });
 
 // ============================================================================
+// parentProcessId from payload.context.spawnedFromProcessId (AC-01)
+// ============================================================================
+
+describe('ProcessLifecycleRunner — parentProcessId from context.spawnedFromProcessId', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('sets top-level parentProcessId from a create_conversation spawn link', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Spawned work',
+                workspaceId: 'ws-abc',
+                context: { spawnedFromProcessId: 'queue_caller' },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.parentProcessId).toBe('queue_caller');
+        // The link must live at the top level, not buried in metadata.
+        expect((proc?.metadata as any)?.spawnedFromProcessId).toBeUndefined();
+        expect((proc?.metadata as any)?.parentProcessId).toBeUndefined();
+    });
+
+    it('getAllProcesses({ parentProcessId }) returns the spawned child', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Spawned work',
+                workspaceId: 'ws-abc',
+                context: { spawnedFromProcessId: 'queue_caller' },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const children = await store.getAllProcesses({ parentProcessId: 'queue_caller' });
+        expect(children.map(p => p.id)).toContain(`queue_${task.id}`);
+    });
+
+    it('leaves parentProcessId undefined when there is no spawn link', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Top-level chat',
+                workspaceId: 'ws-abc',
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.parentProcessId).toBeUndefined();
+    });
+
+    it('does not set parentProcessId for non-chat task types', async () => {
+        const task = makeTask({
+            type: 'run-workflow',
+            payload: {
+                kind: 'run-workflow',
+                workflowPath: '/wf.yaml',
+                workingDirectory: '/tmp',
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.parentProcessId).toBeUndefined();
+    });
+});
+
+// ============================================================================
 // metadata.notePath / noteTitle from payload.context.noteChat
 // ============================================================================
 

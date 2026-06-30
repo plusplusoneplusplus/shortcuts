@@ -343,6 +343,22 @@ describe('createCreateConversationTool', () => {
         expect(captured.input!.config?.reasoningEffort).toBe('high');
     });
 
+    // ---- spawn link (AC-01) ----------------------------------------------
+
+    it('persists the parent link as payload.context.spawnedFromProcessId', async () => {
+        const { tool, captured } = makeTool({ parentProcessId: 'queue_caller' });
+        await tool.handler({ prompt: 'spawn me' }, invocationStub);
+        const context = payloadOf(captured.input!).context as { spawnedFromProcessId?: string } | undefined;
+        expect(context?.spawnedFromProcessId).toBe('queue_caller');
+    });
+
+    it('omits the spawn link when there is no resolvable parent', async () => {
+        const { tool, captured } = makeTool({ parentProcessId: null });
+        await tool.handler({ prompt: 'hi', provider: 'claude', model: 'claude-opus-4-8' }, invocationStub);
+        const context = payloadOf(captured.input!).context as { spawnedFromProcessId?: string } | undefined;
+        expect(context?.spawnedFromProcessId).toBeUndefined();
+    });
+
     it('mode defaults to ask and is never read from the parent', async () => {
         const { tool, captured } = makeTool({
             // A parent "mode" must not leak into the spawned conversation.

@@ -283,6 +283,10 @@ export function createCreateConversationTool(options: CreateConversationToolOpti
                     workspaceId: requestedWorkspaceId,
                     provider: resolvedProvider,
                     ...(resolvedModel ? { model: resolvedModel } : {}),
+                    // Spawn link: persist the calling chat's processId onto the
+                    // spawned process's top-level `parentProcessId` so the chat
+                    // list can nest spawned descendants under their root (AC-01).
+                    ...(parentProcessId ? { context: { spawnedFromProcessId: parentProcessId } } : {}),
                 },
                 ...(Object.keys(config).length > 0 ? { config } : {}),
             };
