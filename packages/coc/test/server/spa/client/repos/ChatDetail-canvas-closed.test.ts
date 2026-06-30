@@ -53,13 +53,17 @@ describe('ChatDetail — persisted canvas closed wiring', () => {
         expect(clears).toBeGreaterThanOrEqual(2);
     });
 
-    it('reads the persisted flag in the canvas discovery effect', () => {
-        expect(src).toContain('setCanvasPanelClosed(readCanvasClosed(workspaceId, canvasPid))');
+    it('reads the persisted flag into canvasPanelClosed on chat switch', () => {
+        // The restore refactor reads the flag into a local `closed` then applies
+        // it (replacing the old inline `setCanvasPanelClosed(readCanvasClosed(...))`).
+        expect(src).toContain('const closed = readCanvasClosed(workspaceId, canvasPid)');
+        expect(src).toContain('setCanvasPanelClosed(closed)');
     });
 
-    it('the taskId-keyed reset effect no longer force-opens the panel', () => {
-        const resetEffect = block('setActiveCanvasId(null);', '[taskId]); // eslint-disable-line');
-        expect(resetEffect).not.toContain('setCanvasPanelClosed');
+    it('the canvas-switch effect honors the close flag over the restore (no force-open)', () => {
+        // The deliberate-close flag wins: the remembered-canvas restore only runs
+        // when NOT closed, so a deliberately-closed chat stays collapsed.
+        expect(src).toContain('if (!closed && remembered)');
     });
 
     it('the source-canvas onOpen collapse is transient (does NOT persist)', () => {

@@ -36,6 +36,7 @@ import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/use
 import { CanvasPanel } from '../canvas/CanvasPanel';
 import { SourceCanvasDock, useSourceCanvasState, useSourceCanvasContent, useSourceCanvasDirectory } from './source-canvas';
 import { readCanvasClosed, writeCanvasClosed } from './canvasClosedPreference';
+import { deriveOpenCanvasMemory, type OpenCanvasMemory } from './openCanvasMemory';
 import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER_DIFF_EVENT } from './whisper-diff';
 import { isCombinedWhisperDiffContext } from './conversation/tool-calls/WhisperCollapsedGroup';
 import type { WhisperDiffOpenContext } from './conversation/tool-calls/WhisperCollapsedGroup';
@@ -206,6 +207,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [activeCanvasId, setActiveCanvasId] = useState<string | null>(null);
     const [canvasLiveEvent, setCanvasLiveEvent] = useState<CanvasUpdatedEvent | null>(null);
     const [canvasPanelClosed, setCanvasPanelClosed] = useState(false);
+    // Session-scoped, per-conversation memory of which canvas surface is open in
+    // each chat (restore-open-canvas-on-chat-switch). Held in memory only — keyed
+    // by `pid = processId ?? bareTaskId`, NEVER persisted to localStorage/disk, so
+    // it is intentionally forgotten on a full reload. `openCanvasDescriptorRef`
+    // tracks the CURRENT chat's open surface continuously; the map is written only
+    // on switch-away (effect cleanup) so the new chat's record can't be clobbered
+    // before its restore runs.
+    const openCanvasMemoryRef = useRef<Map<string, OpenCanvasMemory>>(new Map());
+    const openCanvasDescriptorRef = useRef<OpenCanvasMemory>(null);
     // Thread vs. Agents (spatial sub-agent run tree) view. In the main inline
     // context the view is deep-linked via a `?view=agents` hash param, so a
     // shared/bookmarked URL reopens straight into the canvas.
@@ -1155,28 +1165,83 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setRalphGrillPlanningProgress(null);
     }, [taskId]);
 
-    // Canvas side panel: reset on chat switch, then discover canvases linked
-    // to this process (live `canvas-updated` SSE events take over from there).
-    // Note: this no longer force-opens the panel — the persisted per-chat
-    // "closed" flag is applied by the discovery effect below, so a deliberately
-    // closed canvas stays collapsed when the user switches away and back.
+    // Keep the live open-canvas descriptor for the CURRENT chat continuously up
+    // to date (restore-open-canvas-on-chat-switch, AC-01). The snapshot effect
+    // below reads this ref on switch-away so the remembered surface survives the
+    // reset. Surfaces are mutually exclusive, so this collapses to one descriptor.
     useEffect(() => {
-        setActiveCanvasId(null);
+        openCanvasDescriptorRef.current = deriveOpenCanvasMemory({
+            activeCanvasId,
+            canvasPanelClosed,
+            sourceFileRef: sourceCanvas.fileRef,
+            whisperDiffCtx: whisperDiff.ctx,
+        });
+    }, [activeCanvasId, canvasPanelClosed, sourceCanvas.fileRef, whisperDiff.ctx]);
+
+    // Snapshot the current chat's open canvas into the session memory map on
+    // switch-AWAY (effect cleanup), keyed by the OLD pid captured in closure. The
+    // cleanup runs in React's destroy phase — before the switch effect below
+    // resets canvas state in its create phase — so the old chat's descriptor is
+    // captured intact and the new chat's record is never clobbered.
+    useEffect(() => {
+        const pid = canvasPid;
+        if (!pid) return;
+        return () => {
+            openCanvasMemoryRef.current.set(pid, openCanvasDescriptorRef.current);
+        };
+    }, [canvasPid]);
+
+    // Canvas side panel on chat switch (restore-open-canvas-on-chat-switch,
+    // AC-02): reset the previous chat's surfaces, then restore THIS chat's
+    // remembered open canvas. Restore priority — (1) the persisted deliberate-
+    // close flag wins → stay collapsed; (2) a remembered open canvas of ANY type
+    // → reopen it exactly; (3) no record → today's default (auto-open the first
+    // linked AI agent canvas). Replaces the old unconditional reset that force-
+    // closed every source/note/folder/diff canvas with no restore path.
+    useEffect(() => {
+        // Clear the previous chat's transient surfaces first; the branches below
+        // reopen the remembered one (if any) in the SAME synchronous commit, so a
+        // restored canvas never flashes closed/empty.
         setCanvasLiveEvent(null);
+        setActiveCanvasId(null);
         sourceCanvas.close();
         whisperDiff.close();
-    }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    useEffect(() => {
-        if (!isCanvasEnabled() || !workspaceId || !canvasPid) return;
-        // Apply the persisted deliberate-close preference synchronously, before
-        // the async discovery resolves `activeCanvasId`, so a closed chat settles
+        if (!isCanvasEnabled() || !workspaceId || !canvasPid) {
+            setCanvasPanelClosed(false);
+            return;
+        }
+
+        // (1) Persisted deliberate-close flag — applied synchronously, before the
+        // async discovery resolves `activeCanvasId`, so a closed chat settles
         // straight into the collapsed rail without flashing the expanded panel.
-        setCanvasPanelClosed(readCanvasClosed(workspaceId, canvasPid));
+        const closed = readCanvasClosed(workspaceId, canvasPid);
+        setCanvasPanelClosed(closed);
+
+        // (2) Restore the remembered open canvas for this chat from session memory.
+        const hasRecord = openCanvasMemoryRef.current.has(canvasPid);
+        const remembered = openCanvasMemoryRef.current.get(canvasPid) ?? null;
+        if (!closed && remembered) {
+            if (remembered.kind === 'source') {
+                sourceCanvas.open(remembered.fileRef); // onOpen collapses the agent panel
+            } else if (remembered.kind === 'whisper-diff') {
+                whisperDiff.open(remembered.ctx); // onOpen collapses the agent panel
+            } else if (remembered.kind === 'agent') {
+                setActiveCanvasId(remembered.canvasId);
+                setCanvasPanelClosed(false);
+            }
+        } else if (!closed && hasRecord) {
+            // Remembered "nothing open" (the user closed a source/note/folder/diff
+            // canvas): keep every surface collapsed instead of auto-opening.
+            setCanvasPanelClosed(true);
+        }
+
         let cancelled = false;
-        // Canvas discovery is non-critical: defer the round-trip to browser idle
-        // so the conversation messages paint first (AC-03). The persisted close
-        // flag above still applies synchronously; only the network probe waits.
+        // Discovery is non-critical: defer the round-trip to browser idle so the
+        // conversation paints first. It always populates the linked agent canvas
+        // id (for the collapsed rail / a remembered agent canvas), but only
+        // AUTO-EXPANDS it for a chat with no session record — `canvasPanelClosed`
+        // set above keeps a remembered "nothing open" / non-agent surface intact.
         const cancelIdle = runWhenIdle(() => {
             if (cancelled) return;
             client.canvases.list(workspaceId, { processId: canvasPid })
@@ -1188,7 +1253,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 .catch(() => { /* canvas discovery is best-effort */ });
         });
         return () => { cancelled = true; cancelIdle(); };
-    }, [workspaceId, canvasPid]);
+    }, [taskId, workspaceId, canvasPid]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const canvasResize = useResizablePanel({
         initialWidth: 520,

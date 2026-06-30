@@ -12,8 +12,10 @@
  * and a fetch handler that serves `client.canvases.list` per conversation pid.
  */
 
+/* @vitest-environment jsdom */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act, cleanup } from '@testing-library/react';
 import React, { useEffect, type ReactNode } from 'react';
 import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/QueueContext';
@@ -55,6 +57,17 @@ const { mockState } = vi.hoisted(() => ({
 }));
 
 // ── Module mocks (hoisted before imports) ──────────────────────────────────
+
+// @excalidraw/excalidraw imports `roughjs/bin/rough` without a file extension,
+// which Node's ESM loader cannot resolve (roughjs ships no `exports` map). The
+// global setup stub is not applied to ChatDetail's transitive import graph under
+// vitest 4.x, so stub it file-locally — these tests never render an Excalidraw
+// canvas (CanvasPanel / source-canvas / whisper-diff are all mocked below).
+vi.mock('@excalidraw/excalidraw', () => ({
+    Excalidraw: () => null,
+    restoreElements: (elements: unknown) => (Array.isArray(elements) ? elements : []),
+    convertToExcalidrawElements: (elements: unknown) => (Array.isArray(elements) ? elements : []),
+}));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
@@ -267,19 +280,26 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
     ConversationMetadataPopover: () => React.createElement('div', { 'data-testid': 'metadata-popover' }),
 }));
 
-// CanvasPanel — stub exposing the close affordance the persistence wiring calls.
+// CanvasPanel — stub exposing the close affordance the persistence wiring calls
+// and the active canvas id (so restore tests can assert WHICH agent canvas shows).
 vi.mock('../../../../src/server/spa/client/react/features/canvas/CanvasPanel', () => ({
-    CanvasPanel: (props: any) => React.createElement('div', { 'data-testid': 'canvas-panel-mock' },
+    CanvasPanel: (props: any) => React.createElement('div', { 'data-testid': 'canvas-panel-mock', 'data-canvas-id': props.canvasId },
         React.createElement('button', { 'data-testid': 'canvas-close', onClick: props.onClose }, 'Close'),
     ),
 }));
 
 // source-canvas — controllable hook so a test can open the docked source canvas
-// (which collapses the agent canvas transiently) without rendering the real dock.
+// (which collapses the agent canvas transiently). The dock stub surfaces the
+// open file's kind + path and a close affordance so restore/clear tests can
+// assert the SAME canvas comes back and that closing clears the memory.
 vi.mock('../../../../src/server/spa/client/react/features/chat/source-canvas', async () => {
     const R = await import('react');
     return {
-        SourceCanvasDock: () => R.createElement('div', { 'data-testid': 'source-canvas-dock' }),
+        SourceCanvasDock: (props: any) => R.createElement('div', {
+            'data-testid': 'source-canvas-dock',
+            'data-kind': props.fileRef?.kind ?? 'code',
+            'data-path': props.fileRef?.fullPath ?? '',
+        }, R.createElement('button', { 'data-testid': 'source-canvas-close', onClick: props.onClose }, 'Close')),
         useSourceCanvasState: (opts: any) => {
             const [fileRef, setFileRef] = R.useState<any>(null);
             const onOpenRef = R.useRef(opts?.onOpen);
@@ -293,6 +313,31 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/source-canvas', a
         },
         useSourceCanvasContent: () => null,
         useSourceCanvasDirectory: () => null,
+    };
+});
+
+// whisper-diff — controllable hook + dock stub mirroring source-canvas, so a
+// test can open + restore the transient whisper-diff panel.
+vi.mock('../../../../src/server/spa/client/react/features/chat/whisper-diff', async () => {
+    const R = await import('react');
+    return {
+        WHISPER_DIFF_EVENT: 'coc-open-whisper-diff',
+        WhisperDiffDock: (props: any) => R.createElement('div', {
+            'data-testid': 'whisper-diff-dock',
+            'data-path': props.file?.path ?? '',
+        }, R.createElement('button', { 'data-testid': 'whisper-diff-close', onClick: props.onClose }, 'Close')),
+        useWhisperDiffPanelState: (opts: any) => {
+            const [ctx, setCtx] = R.useState<any>(null);
+            const onOpenRef = R.useRef(opts?.onOpen);
+            onOpenRef.current = opts?.onOpen;
+            const open = R.useCallback((next: any) => {
+                onOpenRef.current?.();
+                setCtx(next);
+            }, []);
+            const close = R.useCallback(() => setCtx(null), []);
+            return { open, close, isOpen: !!ctx, ctx };
+        },
+        useWhisperDiffState: () => null,
     };
 });
 
@@ -347,6 +392,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    // Unmount mounted trees between tests. @testing-library/react's auto-cleanup
+    // is not registered under this vitest version, so without this each test's
+    // ChatDetail lingers in the DOM and `getByTestId` matches stale duplicates.
+    cleanup();
     vi.restoreAllMocks();
     delete (globalThis as any).__useSendMessage_opts;
 });
@@ -452,11 +501,13 @@ describe('ChatDetail — persisted canvas closed state (AC-02)', () => {
         await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
         expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(false);
 
-        // Switch away and back — the agent canvas auto-opens again (no persisted close).
+        // Switch away and back — the SAME source canvas is RESTORED (the open
+        // canvas is now remembered per-chat) and the close flag was never persisted.
         rerenderChat(rerender, 'task-B');
-        await waitFor(() => expect(screen.queryByTestId('canvas-panel-mock')).toBeNull());
+        await waitFor(() => expect(screen.queryByTestId('source-canvas-dock')).toBeNull());
         rerenderChat(rerender, 'task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(false);
     });
 
     it('keeps a closed chat collapsed across a full reload (fresh mount)', async () => {
@@ -471,5 +522,155 @@ describe('ChatDetail — persisted canvas closed state (AC-02)', () => {
         renderChat('task-A');
         await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
         expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
+    });
+});
+
+describe('ChatDetail — restore open canvas on chat switch', () => {
+    function openSourceCanvas(detail: Record<string, unknown>) {
+        act(() => {
+            window.dispatchEvent(new CustomEvent('coc-open-source-canvas', { detail }));
+        });
+    }
+
+    function openWhisperDiff(path: string) {
+        act(() => {
+            window.dispatchEvent(new CustomEvent('coc-open-whisper-diff', {
+                detail: { file: { path }, toolCalls: [], commits: [] },
+            }));
+        });
+    }
+
+    // (a) Each canvas surface returns exactly as it was after switching away and
+    // back — the core restore behaviour for source / note / folder canvases.
+    it.each([
+        { kind: 'code', path: '/x.ts', label: 'source-file' },
+        { kind: 'note', path: '/notes/n.md', label: 'note' },
+        { kind: 'dir', path: '/src', label: 'folder' },
+    ])('restores a $label canvas on switch-away-and-back', async ({ kind, path }) => {
+        mockState.canvasesByPid[pidFor('task-A')] = [];
+        mockState.canvasesByPid[pidFor('task-B')] = [];
+        const { rerender } = renderChat('task-A');
+
+        openSourceCanvas({ filePath: path, kind });
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+
+        rerenderChat(rerender, 'task-B');
+        await waitFor(() => expect(screen.queryByTestId('source-canvas-dock')).toBeNull());
+
+        rerenderChat(rerender, 'task-A');
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+        const dock = screen.getByTestId('source-canvas-dock');
+        expect(dock.getAttribute('data-path')).toBe(path);
+        expect(dock.getAttribute('data-kind')).toBe(kind);
+        // Session-only memory must never touch the deliberate-close localStorage flag.
+        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(false);
+    });
+
+    // (a) A whisper-diff canvas returns as it was.
+    it('restores a whisper-diff canvas on switch-away-and-back', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [];
+        mockState.canvasesByPid[pidFor('task-B')] = [];
+        const { rerender } = renderChat('task-A');
+
+        openWhisperDiff('a.ts');
+        await waitFor(() => expect(screen.getByTestId('whisper-diff-dock')).toBeTruthy());
+
+        rerenderChat(rerender, 'task-B');
+        await waitFor(() => expect(screen.queryByTestId('whisper-diff-dock')).toBeNull());
+
+        rerenderChat(rerender, 'task-A');
+        await waitFor(() => expect(screen.getByTestId('whisper-diff-dock')).toBeTruthy());
+        expect(screen.getByTestId('whisper-diff-dock').getAttribute('data-path')).toBe('a.ts');
+    });
+
+    // (a) With multiple agent canvases, the EXACT open one (the second) returns —
+    // not the first one discovery would otherwise auto-open.
+    it('restores the exact open agent canvas (not the first linked one)', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A1' }, { id: 'canvas-A2' }];
+        mockState.canvasesByPid[pidFor('task-B')] = [];
+        const { rerender } = renderChat('task-A');
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+
+        // Switch to the second agent canvas (a fresh AI edit targets canvas-A2).
+        act(() => {
+            mockState.sseOpts.onCanvasUpdated({ canvasId: 'canvas-A2', title: 'A2', revision: 1, editor: 'ai' });
+        });
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A2'));
+
+        rerenderChat(rerender, 'task-B');
+        await waitFor(() => expect(screen.queryByTestId('canvas-panel-mock')).toBeNull());
+
+        rerenderChat(rerender, 'task-A');
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+        expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A2');
+    });
+
+    // (b) Closing the open canvas clears the chat's memory → switch-back shows
+    // nothing (no source dock, no agent panel) for a chat with no linked canvas.
+    it('clears memory when the open canvas is closed → switch-back shows nothing', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [];
+        mockState.canvasesByPid[pidFor('task-B')] = [];
+        const { rerender } = renderChat('task-A');
+
+        openSourceCanvas({ filePath: '/x.ts' });
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+
+        // Deliberate close clears the per-chat open-canvas memory.
+        fireEvent.click(screen.getByTestId('source-canvas-close'));
+        await waitFor(() => expect(screen.queryByTestId('source-canvas-dock')).toBeNull());
+
+        rerenderChat(rerender, 'task-B');
+        rerenderChat(rerender, 'task-A');
+        // Nothing is restored — the chat remembers "nothing open".
+        await waitFor(() => expect(screen.queryByTestId('canvas-panel-mock')).toBeNull());
+        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+        expect(screen.queryByTestId('whisper-diff-dock')).toBeNull();
+    });
+
+    // (c) The deliberate-close localStorage flag still beats the restore: a chat
+    // whose agent canvas was closed stays collapsed even though memory exists.
+    it('keeps the deliberate-close flag winning over the remembered canvas', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
+        mockState.canvasesByPid[pidFor('task-B')] = [];
+        const { rerender } = renderChat('task-A');
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+
+        // Deliberately close the agent canvas (persists the close flag).
+        fireEvent.click(screen.getByTestId('canvas-close'));
+        await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
+        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(true);
+
+        rerenderChat(rerender, 'task-B');
+        await waitFor(() => expect(screen.queryByTestId('canvas-panel-mock')).toBeNull());
+        rerenderChat(rerender, 'task-A');
+
+        // Flag wins → collapsed rail, never the expanded panel.
+        await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
+        expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
+    });
+
+    // (d) The open-canvas memory is held in memory only — opening + restoring a
+    // source canvas must write NOTHING that encodes it to localStorage.
+    it('does not persist the open-canvas memory to localStorage', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
+        mockState.canvasesByPid[pidFor('task-B')] = [];
+        const { rerender } = renderChat('task-A');
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+
+        openSourceCanvas({ filePath: '/secret-canvas-path.ts' });
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+
+        // Round-trip to force a memory snapshot + restore.
+        rerenderChat(rerender, 'task-B');
+        rerenderChat(rerender, 'task-A');
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+
+        // No localStorage value encodes the remembered canvas, and no deliberate-
+        // close flag was set by a mere open/restore.
+        const dump = Object.keys(localStorage)
+            .map(k => `${k}=${localStorage.getItem(k)}`)
+            .join(';');
+        expect(dump).not.toContain('/secret-canvas-path.ts');
+        expect(localStorage.getItem(canvasClosedStorageKey(WS_ID, pidFor('task-A'))!)).toBeNull();
     });
 });
