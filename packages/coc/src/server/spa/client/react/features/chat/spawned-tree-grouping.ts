@@ -181,6 +181,15 @@ function getNodePrimaryId(node: SpawnedTreeNode): string | undefined {
     return getTaskIds(node.task)[0];
 }
 
+/**
+ * Stable id for a tree node, used as the per-node collapse key. Matches the
+ * `rootProcessId` an entry exposes (both resolve via {@link getTaskIds}), so a
+ * collapsed root id round-trips against its entry.
+ */
+export function getSpawnedNodeId(node: SpawnedTreeNode): string {
+    return getNodePrimaryId(node) ?? '';
+}
+
 /** Effective ordering timestamp for a grouped entry. */
 export function getSpawnedEntryTimestamp(entry: SpawnedTreeHistoryEntry): number {
     if (isSpawnedTreeEntry(entry)) {return entry.latestTimestamp;}
