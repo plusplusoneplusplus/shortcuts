@@ -27,6 +27,7 @@ import {
     setSkippedVersion,
     UpdatePrompt,
 } from './update-check';
+import { buildAppMenuTemplate, buildTrayMenuTemplate } from './app-menu';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
 // In dev (electron launched against this package) this fixes the menu-bar name,
@@ -332,24 +333,41 @@ function createTray(): void {
     }
     tray = new Tray(icon);
     tray.setToolTip('CoC');
-    const menu = Menu.buildFromTemplate([
-        { label: 'Show CoC', click: () => focusMainWindow() },
-        {
-            label: 'Hide CoC',
-            click: () => {
+    // "Check for Updates…" lives in the application menu now (see
+    // setupApplicationMenu); the tray keeps only show/hide/quit.
+    const menu = Menu.buildFromTemplate(
+        buildTrayMenuTemplate({
+            onShow: () => focusMainWindow(),
+            onHide: () => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.hide();
                 }
             },
-        },
-        { type: 'separator' },
-        { label: 'Check for Updates…', click: () => void runUpdateCheck(false) },
-        { type: 'separator' },
-        { label: 'Quit CoC', click: () => app.quit() },
-    ]);
+            onQuit: () => app.quit(),
+        }),
+    );
     tray.setContextMenu(menu);
     // A left-click on the tray toggles the window into view.
     tray.on('click', () => focusMainWindow());
+}
+
+/**
+ * AC-01/AC-02: install the native application menu (the macOS app-menu bar and
+ * the Windows menu bar) with a "Check for Updates…" item directly after
+ * "About CoC". Clicking it runs `runUpdateCheck(false)` — the same always-report,
+ * ignore-skip-marker behaviour the tray item used to have.
+ *
+ * Linux is intentionally left on Electron's default menu (the action stays
+ * tray-only there), so we only override the menu on macOS and Windows.
+ */
+function setupApplicationMenu(): void {
+    if (process.platform !== 'darwin' && process.platform !== 'win32') {
+        return;
+    }
+    const template = buildAppMenuTemplate(process.platform, app.name, {
+        onCheckForUpdates: () => void runUpdateCheck(false),
+    });
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 async function bootstrap(): Promise<void> {
@@ -362,6 +380,10 @@ async function bootstrap(): Promise<void> {
             electronVersion: process.versions.electron,
         }),
     );
+
+    // AC-01: install the native application menu (with "Check for Updates…")
+    // before any window paints, so the menu bar is correct from first show.
+    setupApplicationMenu();
 
     // macOS: set the dock icon early (BrowserWindow `icon` is ignored by macOS).
     // Only override when the real icon file resolves — otherwise leave the dock
