@@ -503,6 +503,14 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             ? modelMetadataStore.getContextWindow(processModel)
             : undefined;
 
+        // Per-chat "after tier": the effort tier this conversation was launched
+        // with, carried on the task config by resolveEffortTierConfig (the
+        // original `effortTier` is consumed at enqueue). Seed it onto the process
+        // record so the follow-up after-tier selector can read it back per
+        // conversation instead of from a workspace-global localStorage key.
+        const rawAfterEffortTier = (task.config as { afterEffortTier?: unknown }).afterEffortTier;
+        const afterEffortTier = typeof rawAfterEffortTier === 'string' ? rawAfterEffortTier : undefined;
+
         const process: AIProcess = {
             id: processId,
             type: task.type,
@@ -518,6 +526,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 priority: task.priority,
                 model: processModel,
                 reasoningEffort: task.config.reasoningEffort,
+                afterEffortTier,
                 mode: normalizedPayloadMode,
                 workspaceId: payload?.workspaceId || task.repoId,
                 // Use per-task provider from payload when available; fall back to

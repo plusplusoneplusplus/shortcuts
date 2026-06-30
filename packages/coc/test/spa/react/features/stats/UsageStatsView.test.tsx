@@ -84,6 +84,20 @@ describe('UsageStatsView', () => {
         expect(screen.getByText(/No token usage data found/)).toBeTruthy();
     });
 
+    it('does not crash when the response is malformed (missing entries)', () => {
+        // Regression: a `{}` payload (truthy `data`, no `entries`) — produced by a
+        // blanket fetch mock and observed flakily in CI — used to throw
+        // "Cannot read properties of undefined (reading 'reduce')" in sumUsage,
+        // crashing the whole embedded AdminPanel render. The view must tolerate it.
+        (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
+            makeHookResult({ data: {} as ClientTokenUsageStatsResponse })
+        );
+        expect(() => render(<UsageStatsView />)).not.toThrow();
+        // Controls still render; a malformed payload is neither the empty state nor a table.
+        expect(screen.getByText('↻ Refresh')).toBeTruthy();
+        expect(screen.queryByText(/No token usage data found/)).toBeNull();
+    });
+
     it('renders error state with retry button', () => {
         (useTokenUsageStats as ReturnType<typeof vi.fn>).mockReturnValue(
             makeHookResult({ error: 'Network error' })

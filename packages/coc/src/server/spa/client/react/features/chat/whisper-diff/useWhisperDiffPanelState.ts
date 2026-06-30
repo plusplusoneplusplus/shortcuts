@@ -2,7 +2,7 @@
  * useWhisperDiffPanelState — open/close state for the transient read-only
  * whisper diff panel (AC-03).
  *
- * Holds the single active `WhisperFileDiffContext` (a new `open()` *replaces*
+ * Holds the single active `WhisperDiffOpenContext` (a new `open()` *replaces*
  * the previous one — single document, no tabs/history). `onOpen` fires
  * synchronously whenever the panel opens so the host can close the other
  * mutually-exclusive right-side panels (scratchpad / source canvas / agent
@@ -13,7 +13,7 @@
  * derived from the held context by `useWhisperDiffState`.
  */
 import { useCallback, useRef, useState } from 'react';
-import type { WhisperFileDiffContext } from '../conversation/tool-calls/WhisperCollapsedGroup';
+import type { WhisperDiffOpenContext } from '../conversation/tool-calls/WhisperCollapsedGroup';
 
 export interface UseWhisperDiffPanelStateOptions {
     /**
@@ -27,9 +27,9 @@ export interface UseWhisperDiffPanelStateReturn {
     /** Whether the panel currently has a file diff to show. */
     isOpen: boolean;
     /** The active clicked-file context, or `null` when closed. */
-    ctx: WhisperFileDiffContext | null;
+    ctx: WhisperDiffOpenContext | null;
     /** Open (or replace the content of) the panel with a new clicked-file context. */
-    open: (ctx: WhisperFileDiffContext) => void;
+    open: (ctx: WhisperDiffOpenContext) => void;
     /** Close the panel and clear its content. */
     close: () => void;
 }
@@ -37,12 +37,12 @@ export interface UseWhisperDiffPanelStateReturn {
 export function useWhisperDiffPanelState(
     options: UseWhisperDiffPanelStateOptions = {},
 ): UseWhisperDiffPanelStateReturn {
-    const [ctx, setCtx] = useState<WhisperFileDiffContext | null>(null);
+    const [ctx, setCtx] = useState<WhisperDiffOpenContext | null>(null);
     // Ref so a changing `onOpen` identity never re-creates the stable `open`.
     const onOpenRef = useRef(options.onOpen);
     onOpenRef.current = options.onOpen;
 
-    const open = useCallback((next: WhisperFileDiffContext) => {
+    const open = useCallback((next: WhisperDiffOpenContext) => {
         setCtx(next);
         onOpenRef.current?.();
     }, []);

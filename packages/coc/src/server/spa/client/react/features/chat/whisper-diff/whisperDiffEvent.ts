@@ -13,12 +13,16 @@
  * tool calls + detected commits), so dispatch must be synchronous within the
  * same window — no structured clone is involved.
  */
-import type { WhisperFileDiffContext } from '../conversation/tool-calls/WhisperCollapsedGroup';
+import type { WhisperDiffOpenContext } from '../conversation/tool-calls/WhisperCollapsedGroup';
 
 export const WHISPER_DIFF_EVENT = 'coc-open-whisper-diff';
 
-/** Dispatch a request to open the whisper diff panel for a clicked file. */
-export function dispatchOpenWhisperDiff(ctx: WhisperFileDiffContext): void {
+/**
+ * Dispatch a request to open the whisper diff panel — either for a single
+ * clicked file or for the whole-group combined diff (AC-02). Both ride the same
+ * event + docked slot; opening one replaces whatever the dock currently shows.
+ */
+export function dispatchOpenWhisperDiff(ctx: WhisperDiffOpenContext): void {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(new CustomEvent(WHISPER_DIFF_EVENT, { detail: ctx }));
 }

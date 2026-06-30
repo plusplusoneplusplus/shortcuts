@@ -21,7 +21,10 @@ vi.mock('../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewe
 }));
 
 import { WhisperDiffPanel } from '../../../src/server/spa/client/react/features/chat/whisper-diff/WhisperDiffPanel';
-import type { WhisperDiffState } from '../../../src/server/spa/client/react/features/chat/whisper-diff/useWhisperDiffState';
+import type {
+    CombinedWhisperDiffView,
+    WhisperDiffState,
+} from '../../../src/server/spa/client/react/features/chat/whisper-diff/useWhisperDiffState';
 import type { FileEdit } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 
 const file: FileEdit = {
@@ -36,6 +39,42 @@ const file: FileEdit = {
 
 function state(partial: Partial<WhisperDiffState>): WhisperDiffState {
     return { status: 'idle', diffText: '', file, error: '', ...partial };
+}
+
+function fileEdit(path: string, over: Partial<FileEdit> = {}): FileEdit {
+    return {
+        path,
+        insertions: 1,
+        deletions: 0,
+        netInsertions: 1,
+        netDeletions: 0,
+        isCreate: false,
+        isDeleted: false,
+        ...over,
+    };
+}
+
+function combinedView(over: Partial<CombinedWhisperDiffView> = {}): CombinedWhisperDiffView {
+    return {
+        sections: [],
+        deletedFiles: [],
+        nonReconstructableFiles: [],
+        fileCount: 0,
+        totalInsertions: 0,
+        totalDeletions: 0,
+        ...over,
+    };
+}
+
+function combinedState(view: CombinedWhisperDiffView): WhisperDiffState {
+    const hasDiff = view.sections.length > 0;
+    return {
+        status: hasDiff ? 'success' : 'empty',
+        diffText: view.sections.map((s) => s.diff).join('\n'),
+        file: null,
+        error: hasDiff ? '' : 'No diff is available for these files.',
+        combined: view,
+    };
 }
 
 describe('WhisperDiffPanel', () => {
@@ -131,5 +170,119 @@ describe('WhisperDiffPanel', () => {
         // The only button in the panel chrome is Close.
         const panel = screen.getByTestId('whisper-diff-panel');
         expect(panel.querySelectorAll('button')).toHaveLength(1);
+    });
+});
+
+describe('WhisperDiffPanel — combined "All changes" mode (AC-03)', () => {
+    const sections = [
+        { file: fileEdit('/home/u/proj/src/a.ts'), diff: 'diff --git a/src/a.ts b/src/a.ts\n+A' },
+        { file: fileEdit('/home/u/proj/src/sub/b.ts'), diff: 'diff --git a/src/sub/b.ts b/src/sub/b.ts\n+B' },
+    ];
+
+    it('shows the "All changes" header with the N-files totals instead of a filename', () => {
+        render(
+            <WhisperDiffPanel
+                state={combinedState(combinedView({
+                    sections,
+                    fileCount: 2,
+                    totalInsertions: 7,
+                    totalDeletions: 3,
+                }))}
+                workspaceRootPath="/home/u/proj"
+                onClose={() => {}}
+            />,
+        );
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('All changes');
+        expect(screen.getByTestId('whisper-diff-totals')).toHaveTextContent('2 files (+7 −3)');
+        // No single-file path subtitle in combined mode.
+        expect(screen.queryByTestId('whisper-diff-path')).toBeNull();
+    });
+
+    it('renders a filename divider before each file section, in order', () => {
+        render(
+            <WhisperDiffPanel
+                state={combinedState(combinedView({ sections, fileCount: 2 }))}
+                workspaceRootPath="/home/u/proj"
+                onClose={() => {}}
+            />,
+        );
+        const dividers = screen.getAllByTestId('whisper-diff-file-divider');
+        expect(dividers.map((d) => d.textContent)).toEqual(['src/a.ts', 'src/sub/b.ts']);
+        // One diff viewer per section, with the section's diff content.
+        const viewers = screen.getAllByTestId('whisper-diff-section-viewer');
+        expect(viewers).toHaveLength(2);
+        expect(viewers[0]).toHaveTextContent('+A');
+        expect(viewers[1]).toHaveTextContent('+B');
+        // No empty message when there are reconstructable sections.
+        expect(screen.queryByTestId('whisper-diff-empty')).toBeNull();
+    });
+
+    it('lists deleted and non-reconstructable files in the "not shown" section', () => {
+        render(
+            <WhisperDiffPanel
+                state={combinedState(combinedView({
+                    sections: [sections[0]],
+                    fileCount: 3,
+                    deletedFiles: [fileEdit('/home/u/proj/src/gone.ts', { isDeleted: true })],
+                    nonReconstructableFiles: [fileEdit('/home/u/proj/src/codex.ts')],
+                }))}
+                workspaceRootPath="/home/u/proj"
+                onClose={() => {}}
+            />,
+        );
+        const notShown = screen.getByTestId('whisper-diff-not-shown');
+        expect(notShown).toHaveTextContent('Not shown');
+        const items = screen.getAllByTestId('whisper-diff-not-shown-item');
+        expect(items.map((i) => i.getAttribute('data-path'))).toEqual([
+            '/home/u/proj/src/gone.ts',
+            '/home/u/proj/src/codex.ts',
+        ]);
+        expect(notShown).toHaveTextContent('src/gone.ts — deleted');
+        expect(notShown).toHaveTextContent('src/codex.ts — no diff available');
+    });
+
+    it('shows the no-diff message (not a blank body) when nothing is reconstructable', () => {
+        render(
+            <WhisperDiffPanel
+                state={combinedState(combinedView({
+                    sections: [],
+                    fileCount: 1,
+                    nonReconstructableFiles: [fileEdit('/home/u/proj/src/codex.ts')],
+                }))}
+                workspaceRootPath="/home/u/proj"
+                onClose={() => {}}
+            />,
+        );
+        expect(screen.getByTestId('whisper-diff-empty')).toHaveTextContent('No diff is available for these files.');
+        expect(screen.queryByTestId('whisper-diff-section-viewer')).toBeNull();
+        // The non-reconstructable file is still listed so the body is not blank.
+        expect(screen.getByTestId('whisper-diff-not-shown')).toHaveTextContent('src/codex.ts');
+    });
+
+    it('omits the "not shown" section when every file reconstructed', () => {
+        render(
+            <WhisperDiffPanel
+                state={combinedState(combinedView({ sections, fileCount: 2 }))}
+                onClose={() => {}}
+            />,
+        );
+        expect(screen.queryByTestId('whisper-diff-not-shown')).toBeNull();
+    });
+
+    it('stays read-only in combined mode — Close is the only button', () => {
+        render(
+            <WhisperDiffPanel
+                state={combinedState(combinedView({
+                    sections,
+                    fileCount: 2,
+                    deletedFiles: [fileEdit('/home/u/proj/src/gone.ts', { isDeleted: true })],
+                }))}
+                onClose={() => {}}
+            />,
+        );
+        const panel = screen.getByTestId('whisper-diff-panel');
+        expect(panel.querySelectorAll('button')).toHaveLength(1);
+        expect(screen.queryByTestId('source-canvas-copy-btn')).toBeNull();
+        expect(screen.queryByTestId('source-canvas-reveal-btn')).toBeNull();
     });
 });

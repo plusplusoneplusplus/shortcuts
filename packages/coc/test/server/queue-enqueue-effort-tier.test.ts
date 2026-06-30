@@ -39,6 +39,9 @@ describe('resolveEffortTierConfig', () => {
         expect(input.config.model).toBe('claude-configured-high');
         expect(input.config.reasoningEffort).toBe('xhigh');
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
+        // The launched tier is preserved as `afterEffortTier` so process
+        // creation can seed it onto the conversation record (AC-01).
+        expect((input.config as Record<string, unknown>).afterEffortTier).toBe('high');
     });
 
     it('falls back to provider defaults when no stored tiers exist', () => {
@@ -127,6 +130,55 @@ describe('resolveEffortTierConfig', () => {
 
         expect(input.config.model).toBe('auto-effort-model');
         expect(input.config.reasoningEffort).toBeUndefined();
+        expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
+    });
+});
+
+describe('resolveEffortTierConfig — afterEffortTier carrier (AC-01)', () => {
+    it('preserves the launched very-low tier as afterEffortTier', () => {
+        const input = makeInput({
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', provider: 'claude' },
+            config: { effortTier: 'very-low' } as CreateTaskInput['config'] & { effortTier: string },
+        });
+
+        resolveEffortTierConfig(input, makeContext());
+
+        expect((input.config as Record<string, unknown>).afterEffortTier).toBe('very-low');
+        expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
+    });
+
+    it('records the tier even when no tier entry resolves to a model', () => {
+        // The user picked the tier, so the choice must be recorded for read-back
+        // even if the provider has no matching tier mapping (model/effort stay
+        // unresolved, but afterEffortTier still reflects intent).
+        const input = makeInput({
+            config: { effortTier: 'medium' } as CreateTaskInput['config'] & { effortTier: string },
+        });
+
+        resolveEffortTierConfig(input, makeContext({
+            getDefaultProvider: () => 'copilot',
+            getEffortTiersForProvider: () => ({}),
+        }));
+
+        expect((input.config as Record<string, unknown>).afterEffortTier).toBe('medium');
+    });
+
+    it('does not set afterEffortTier when no tier was submitted', () => {
+        const input = makeInput({ config: {} });
+
+        resolveEffortTierConfig(input, makeContext());
+
+        expect((input.config as Record<string, unknown>).afterEffortTier).toBeUndefined();
+    });
+
+    it('does not set afterEffortTier for an invalid tier value', () => {
+        const input = makeInput({
+            config: { effortTier: 'bogus' } as CreateTaskInput['config'] & { effortTier: string },
+        });
+
+        resolveEffortTierConfig(input, makeContext());
+
+        expect((input.config as Record<string, unknown>).afterEffortTier).toBeUndefined();
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 });

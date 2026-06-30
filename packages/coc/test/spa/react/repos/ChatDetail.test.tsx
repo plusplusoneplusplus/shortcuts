@@ -10,6 +10,7 @@
  * sub-component wiring (FollowUpInputArea, ChatHeader, ConversationArea)
  * is verified via prop-forwarding and data-testid assertions.
  */
+/* @vitest-environment jsdom */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
@@ -45,6 +46,10 @@ const { mockState } = vi.hoisted(() => ({
         clearAttachments: vi.fn(),
         richTextValue: '',
         richTextSetValueCalls: [] as Array<[string, number?]>,
+        // Per-test toggles for the follow-up effort-tier selector (AC-02/AC-03).
+        // Default off / empty so existing tests keep the legacy model+effort UI.
+        effortLevelsEnabled: false,
+        effortTiers: {} as Record<string, { model: string; reasoningEffort: string }>,
     },
 }));
 
@@ -60,7 +65,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isForEachEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     getActiveProvider: () => 'copilot' as const,
-    isEffortLevelsEnabled: () => false,
+    isEffortLevelsEnabled: () => mockState.effortLevelsEnabled,
     isSessionContextAttachmentsEnabled: () => false,
     getPrewarmDebounceMs: () => 500,
     getWarmClientTtlMs: () => 300000,
@@ -169,7 +174,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
 // useProviderEffortTiers — return empty tier map so ChatDetail renders without a real API
 vi.mock('../../../../src/server/spa/client/react/hooks/useProviderEffortTiers', () => ({
     useProviderEffortTiers: () => ({
-        tiers: {},
+        tiers: mockState.effortTiers,
         loading: false,
         error: null,
         saveError: null,
@@ -453,6 +458,9 @@ beforeEach(() => {
     mockState.clearAttachments.mockReset();
     mockState.richTextValue = '';
     mockState.richTextSetValueCalls = [];
+    mockState.effortLevelsEnabled = false;
+    mockState.effortTiers = {};
+    localStorage.clear();
     // JSDOM polyfills
     Element.prototype.scrollIntoView = vi.fn();
     // navigator.clipboard
@@ -1932,6 +1940,81 @@ describe('ChatDetail', () => {
                 expect(screen.getByText('Bot reply')).toBeTruthy();
             });
         });
+
+        // Regression: queued-message-survives-chat-switch.
+        // A still-running chat's submitted follow-ups ("Queued · N") must survive
+        // switching to another chat and returning. The cache-hit processId load
+        // path painted turns from cache but never re-hydrated `pendingQueue`, so
+        // the queued section blanked out on return even though the server still
+        // held the pending messages in `process.pendingMessages`.
+        it('re-hydrates the queued follow-ups from server pendingMessages on a cache-hit return', async () => {
+            const runningProc = makeProcess({
+                id: 'queue_running-1',
+                status: 'running',
+                metadata: { mode: 'autopilot', sessionId: 'sess-running' },
+                pendingMessages: [
+                    { id: 'pm-1', content: 'first queued follow-up' },
+                    { id: 'pm-2', content: 'second queued follow-up' },
+                ],
+            });
+            const otherProc = makeProcess({
+                id: 'queue_other-1',
+                status: 'running',
+                metadata: { mode: 'autopilot', sessionId: 'sess-other' },
+                pendingMessages: [],
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_running-1': { body: { process: runningProc } },
+                '/processes/queue_other-1': { body: { process: otherProc } },
+                '/models': { body: [] },
+            });
+
+            const { rerender } = render(<Wrap><ChatDetail key="queue_running-1" taskId="queue_running-1" /></Wrap>);
+
+            // Cold (cache-miss) processId load hydrates the queue from the server.
+            await waitFor(() => {
+                expect(screen.getByTestId('queued-followups').getAttribute('data-count')).toBe('2');
+            });
+
+            // Switch away to another still-running chat with no pending follow-ups.
+            rerender(<Wrap><ChatDetail key="queue_other-1" taskId="queue_other-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.queryByTestId('queued-followups')).toBeNull();
+            });
+
+            // Switch back — now a cache hit. The queued section must re-appear,
+            // sourced from the server's pendingMessages (the regression: the
+            // cache-hit branch used to return early without re-syncing the queue).
+            rerender(<Wrap><ChatDetail key="queue_running-1" taskId="queue_running-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.getByTestId('queued-followups').getAttribute('data-count')).toBe('2');
+            });
+        });
+
+        it('leaves the queued section empty when the server has no pending messages', async () => {
+            const proc = makeProcess({
+                id: 'queue_empty-1',
+                status: 'running',
+                metadata: { mode: 'autopilot', sessionId: 'sess-empty' },
+                pendingMessages: [],
+                conversationTurns: [
+                    { role: 'user', content: 'Running task', turnIndex: 0, timeline: [] },
+                ],
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_empty-1': { body: { process: proc } },
+                '/models': { body: [] },
+            });
+
+            render(<Wrap><ChatDetail taskId="queue_empty-1" /></Wrap>);
+
+            await waitFor(() => {
+                expect(screen.getByText('Running task')).toBeTruthy();
+            });
+            expect(screen.queryByTestId('queued-followups')).toBeNull();
+        });
     });
 
     describe('reactive title updates', () => {
@@ -2103,5 +2186,96 @@ describe('ChatDetail', () => {
             expect(screen.getByTestId('composer-ctx-fill')).toBeTruthy();
             expect(screen.queryByTestId('composer-ctx-segment-system')).toBeNull();
         });
+    });
+});
+
+// ── Per-conversation follow-up effort tier (AC-02 read-back, AC-03 persist) ──
+//
+// The follow-up after-tier is remembered per conversation in
+// `process.metadata.afterEffortTier` (not the workspace-global localStorage key).
+// These tests drive the real EffortTierSelector inside the real FollowUpInputArea,
+// so they exercise the init read-back + the PATCH-on-change end-to-end through the
+// fetch mock and localStorage.
+describe('ChatDetail — per-conversation after effort tier', () => {
+    // All three tiers configured so a seeded selection is never coerced to the
+    // first configured tier by the resolveEffectiveTier effect.
+    const CONFIGURED_TIERS = {
+        low: { model: 'model-low', reasoningEffort: 'low' },
+        medium: { model: 'model-medium', reasoningEffort: '' },
+        high: { model: 'model-high', reasoningEffort: 'high' },
+    };
+
+    function enableTierMode() {
+        mockState.effortLevelsEnabled = true;
+        mockState.effortTiers = { ...CONFIGURED_TIERS };
+    }
+
+    function selectorTier(): string | null {
+        return screen.getByTestId('follow-up-effort-tier-selector').getAttribute('data-tier-value');
+    }
+
+    it('AC-02: initializes the selector from the conversation\'s metadata.afterEffortTier', async () => {
+        enableTierMode();
+        const task = makeTask({ status: 'completed', processId: 'proc-1' });
+        const proc = makeProcess({ metadata: { sessionId: 'sess-1', afterEffortTier: 'high' } });
+        setupStandardFetch(task, proc);
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(selectorTier()).toBe('high'));
+    });
+
+    it('AC-02: falls back to the workspace-global localStorage value when no per-conversation seed exists', async () => {
+        enableTierMode();
+        localStorage.setItem('coc:effort-tier:ws-1', 'low');
+        const task = makeTask({ status: 'completed', processId: 'proc-1' });
+        const proc = makeProcess({ metadata: { sessionId: 'sess-1' } }); // no afterEffortTier
+        setupStandardFetch(task, proc);
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(selectorTier()).toBe('low'));
+    });
+
+    it('AC-02: falls back to medium when neither a seed nor a localStorage value exists', async () => {
+        enableTierMode();
+        const task = makeTask({ status: 'completed', processId: 'proc-1' });
+        const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
+        setupStandardFetch(task, proc);
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(screen.getByTestId('follow-up-effort-tier-selector')).toBeTruthy());
+        expect(selectorTier()).toBe('medium');
+    });
+
+    it('AC-03: persists a tier change via PATCH metadataPatch.set.afterEffortTier and does NOT write the workspace localStorage key', async () => {
+        enableTierMode();
+        const task = makeTask({ status: 'completed', processId: 'proc-1' });
+        const proc = makeProcess({ metadata: { sessionId: 'sess-1', afterEffortTier: 'high' } });
+        setupStandardFetch(task, proc);
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+        await waitFor(() => expect(selectorTier()).toBe('high'));
+
+        // Open the tier dropdown and pick "low".
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-option-low'));
+
+        // UI updates immediately (optimistic).
+        await waitFor(() => expect(selectorTier()).toBe('low'));
+
+        // Persisted per conversation via PATCH /api/processes/proc-1.
+        await waitFor(() => {
+            const patchCall = fetchMock.mock.calls.find(([url, init]: any) =>
+                typeof url === 'string' && url.includes('/processes/proc-1') && init?.method === 'PATCH');
+            expect(patchCall).toBeTruthy();
+            const body = JSON.parse((patchCall as any[])[1].body);
+            expect(body.metadataPatch.set.afterEffortTier).toBe('low');
+        });
+
+        // The workspace-global key is NOT written from ChatDetail anymore — the
+        // change must not leak into other chats in the workspace.
+        expect(localStorage.getItem('coc:effort-tier:ws-1')).toBeNull();
     });
 });

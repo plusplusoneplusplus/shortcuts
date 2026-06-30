@@ -108,4 +108,32 @@ describe('WhisperDiffDock', () => {
         expect(screen.getAllByText('foo.ts').length).toBeGreaterThanOrEqual(2);
         expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('foo.ts');
     });
+
+    it('hosts the combined "All changes" view with no single file', () => {
+        const combinedState: WhisperDiffState = {
+            status: 'success',
+            diffText: 'diff --git a/foo b/foo\n+x',
+            file: null,
+            error: '',
+            combined: {
+                sections: [{ file, diff: 'diff --git a/foo b/foo\n+x' }],
+                deletedFiles: [],
+                nonReconstructableFiles: [],
+                fileCount: 1,
+                totalInsertions: 1,
+                totalDeletions: 0,
+            },
+        };
+        render(
+            <WhisperDiffDock
+                state={combinedState}
+                isMobile
+                onClose={() => {}}
+                resize={resize}
+            />,
+        );
+        // The sheet title and header both read "All changes" even with no `file` prop.
+        expect(screen.getAllByText('All changes').length).toBeGreaterThanOrEqual(2);
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('All changes');
+    });
 });

@@ -29,7 +29,11 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
 }));
 
 import { useWhisperDiffState } from '../../../src/server/spa/client/react/features/chat/whisper-diff/useWhisperDiffState';
-import type { WhisperFileDiffContext } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup';
+import type {
+    WhisperCombinedDiffContext,
+    WhisperFileDiffContext,
+} from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup';
+import type { WhisperDiffToolCall } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/buildWhisperFileDiff';
 import type { FileEdit } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 import type { DetectedCommit } from '../../../src/server/spa/client/react/features/chat/conversation/commitDetection';
 import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../src/server/spa/client/react/repos/cloneRegistry';
@@ -232,5 +236,117 @@ describe('useWhisperDiffState', () => {
         expect(getCocClientForMock).toHaveBeenCalledWith(REMOTE_BASE_URL);
         expect(remoteGetCommitFileDiffMock).toHaveBeenCalledWith('remote-ws', 'aaaaaaa', 'x');
         expect(getCommitFileDiffMock).not.toHaveBeenCalled();
+    });
+});
+
+// ── Combined "All changes" mode (AC-03) ──────────────────────────────────────
+
+function combinedCtx(
+    files: FileEdit[],
+    toolCalls: WhisperDiffToolCall[],
+    over: Partial<WhisperCombinedDiffContext> = {},
+): WhisperCombinedDiffContext {
+    return {
+        combined: true,
+        files,
+        toolCalls,
+        commits: [],
+        workspaceId: 'ws1',
+        ...over,
+    };
+}
+
+describe('useWhisperDiffState — combined mode', () => {
+    it('builds the whole-group diff synchronously from the captured tool calls (no fetch)', async () => {
+        const { result } = renderHook(() =>
+            useWhisperDiffState(combinedCtx(
+                [fileEdit('src/a.ts'), fileEdit('src/b.ts')],
+                [
+                    { toolName: 'edit', args: { path: 'src/a.ts', old_str: 'a1', new_str: 'A1' } },
+                    { toolName: 'edit', args: { path: 'src/b.ts', old_str: 'b1', new_str: 'B1' } },
+                ],
+            )),
+        );
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        const combined = result.current.combined!;
+        expect(combined).toBeTruthy();
+        expect(combined.sections.map((s) => s.file.path)).toEqual(['src/a.ts', 'src/b.ts']);
+        expect(result.current.diffText).toContain('diff --git a/src/a.ts b/src/a.ts');
+        expect(result.current.diffText).toContain('diff --git a/src/b.ts b/src/b.ts');
+        // Combined mode is single-file-`file`-less and never falls back to a fetch.
+        expect(result.current.file).toBeNull();
+        expect(getCommitFileDiffMock).not.toHaveBeenCalled();
+    });
+
+    it('reports the header totals over every file in the group', async () => {
+        const { result } = renderHook(() =>
+            useWhisperDiffState(combinedCtx(
+                [
+                    fileEdit('src/a.ts', { netInsertions: 3, netDeletions: 1 }),
+                    fileEdit('src/b.ts', { netInsertions: 2, netDeletions: 4 }),
+                ],
+                [
+                    { toolName: 'edit', args: { path: 'src/a.ts', old_str: 'a', new_str: 'A' } },
+                    { toolName: 'edit', args: { path: 'src/b.ts', old_str: 'b', new_str: 'B' } },
+                ],
+            )),
+        );
+        await waitFor(() => expect(result.current.combined).toBeTruthy());
+        const combined = result.current.combined!;
+        expect(combined.fileCount).toBe(2);
+        expect(combined.totalInsertions).toBe(5);
+        expect(combined.totalDeletions).toBe(5);
+    });
+
+    it('splits deleted and non-reconstructable files into the "not shown" lists', async () => {
+        const { result } = renderHook(() =>
+            useWhisperDiffState(combinedCtx(
+                [
+                    fileEdit('src/a.ts'),
+                    fileEdit('src/codex.ts'),
+                    fileEdit('src/gone.ts', { isDeleted: true }),
+                ],
+                [
+                    { toolName: 'edit', args: { path: 'src/a.ts', old_str: 'a', new_str: 'A' } },
+                    { toolName: 'file_change', args: { changes: [{ path: 'src/codex.ts', kind: 'update' }] } },
+                ],
+            )),
+        );
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        const combined = result.current.combined!;
+        expect(combined.sections.map((s) => s.file.path)).toEqual(['src/a.ts']);
+        expect(combined.nonReconstructableFiles.map((f) => f.path)).toEqual(['src/codex.ts']);
+        expect(combined.deletedFiles.map((f) => f.path)).toEqual(['src/gone.ts']);
+    });
+
+    it('is empty (with the combined payload) when nothing in the group is reconstructable', async () => {
+        const { result } = renderHook(() =>
+            useWhisperDiffState(combinedCtx(
+                [fileEdit('src/codex.ts'), fileEdit('src/gone.ts', { isDeleted: true })],
+                [
+                    { toolName: 'file_change', args: { changes: [{ path: 'src/codex.ts', kind: 'update' }] } },
+                ],
+            )),
+        );
+        await waitFor(() => expect(result.current.status).toBe('empty'));
+        expect(result.current.error).toMatch(/no diff/i);
+        // The combined payload is still present so the panel can list "not shown".
+        const combined = result.current.combined!;
+        expect(combined.sections).toEqual([]);
+        expect(combined.nonReconstructableFiles.map((f) => f.path)).toEqual(['src/codex.ts']);
+        expect(combined.deletedFiles.map((f) => f.path)).toEqual(['src/gone.ts']);
+    });
+
+    it('never fetches a commit fallback in combined mode even when commits exist', async () => {
+        const { result } = renderHook(() =>
+            useWhisperDiffState(combinedCtx(
+                [fileEdit('src/codex.ts')],
+                [{ toolName: 'file_change', args: { changes: [{ path: 'src/codex.ts', kind: 'update' }] } }],
+                { commits: [commit('aaaaaaa')] },
+            )),
+        );
+        await waitFor(() => expect(result.current.status).toBe('empty'));
+        expect(getCommitFileDiffMock).not.toHaveBeenCalled();
+        expect(remoteGetCommitFileDiffMock).not.toHaveBeenCalled();
     });
 });

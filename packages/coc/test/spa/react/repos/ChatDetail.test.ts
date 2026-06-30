@@ -1531,9 +1531,11 @@ describe('ChatDetail', () => {
             const listIdx = source.indexOf('client.canvases.list(workspaceId, { processId: canvasPid })');
             expect(idleIdx).toBeGreaterThan(-1);
             expect(listIdx).toBeGreaterThan(idleIdx);
-            // The persisted close flag still applies synchronously, before the
+            // The persisted close flag is still read synchronously, before the
             // deferred probe — guards against regressing the no-flash behaviour.
-            const closeFlagIdx = source.indexOf('setCanvasPanelClosed(readCanvasClosed(workspaceId, canvasPid))');
+            // The restore refactor reads it into a local `closed` (then applies +
+            // reuses it), replacing the old inline `setCanvasPanelClosed(readCanvasClosed(...))`.
+            const closeFlagIdx = source.indexOf('const closed = readCanvasClosed(workspaceId, canvasPid)');
             expect(closeFlagIdx).toBeGreaterThan(-1);
             expect(closeFlagIdx).toBeLessThan(idleIdx);
         });

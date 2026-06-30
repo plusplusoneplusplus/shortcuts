@@ -36,8 +36,10 @@ import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/use
 import { CanvasPanel } from '../canvas/CanvasPanel';
 import { SourceCanvasDock, useSourceCanvasState, useSourceCanvasContent, useSourceCanvasDirectory } from './source-canvas';
 import { readCanvasClosed, writeCanvasClosed } from './canvasClosedPreference';
+import { deriveOpenCanvasMemory, type OpenCanvasMemory } from './openCanvasMemory';
 import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER_DIFF_EVENT } from './whisper-diff';
-import type { WhisperFileDiffContext } from './conversation/tool-calls/WhisperCollapsedGroup';
+import { isCombinedWhisperDiffContext } from './conversation/tool-calls/WhisperCollapsedGroup';
+import type { WhisperDiffOpenContext } from './conversation/tool-calls/WhisperCollapsedGroup';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
@@ -205,6 +207,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [activeCanvasId, setActiveCanvasId] = useState<string | null>(null);
     const [canvasLiveEvent, setCanvasLiveEvent] = useState<CanvasUpdatedEvent | null>(null);
     const [canvasPanelClosed, setCanvasPanelClosed] = useState(false);
+    // Session-scoped, per-conversation memory of which canvas surface is open in
+    // each chat (restore-open-canvas-on-chat-switch). Held in memory only — keyed
+    // by `pid = processId ?? bareTaskId`, NEVER persisted to localStorage/disk, so
+    // it is intentionally forgotten on a full reload. `openCanvasDescriptorRef`
+    // tracks the CURRENT chat's open surface continuously; the map is written only
+    // on switch-away (effect cleanup) so the new chat's record can't be clobbered
+    // before its restore runs.
+    const openCanvasMemoryRef = useRef<Map<string, OpenCanvasMemory>>(new Map());
+    const openCanvasDescriptorRef = useRef<OpenCanvasMemory>(null);
     // Thread vs. Agents (spatial sub-agent run tree) view. In the main inline
     // context the view is deep-linked via a `?view=agents` hash param, so a
     // shared/bookmarked URL reopens straight into the canvas.
@@ -231,6 +242,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     /** Set to true the first time we initialise effortOverride from processDetails.config.
      *  Reset to false on taskId change so every new conversation gets a fresh init. */
     const effortInitializedRef = useRef(false);
+    /** Set to true the first time we initialise the follow-up effort tier from the
+     *  conversation's `metadata.afterEffortTier` (per-conversation read-back, AC-02),
+     *  or when the user explicitly picks a tier. Prevents the init fallback from
+     *  clobbering a seeded value or an in-flight pick. Reset on taskId change. */
+    const afterTierInitializedRef = useRef(false);
     /** Tracks first mount of the model-override effect so we don't re-derive on initial render. */
     const modelOverrideMountedRef = useRef(false);
     const previousSessionProviderRef = useRef<string | null>(null);
@@ -394,8 +410,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const openWhisperDiff = whisperDiff.open;
     useEffect(() => {
         const handler = (event: Event) => {
-            const detail = (event as CustomEvent).detail as WhisperFileDiffContext | undefined;
-            if (!detail || !detail.file) return;
+            const detail = (event as CustomEvent).detail as WhisperDiffOpenContext | undefined;
+            if (!detail) return;
+            // Combined contexts carry `files[]` (no `.file`); single-file contexts
+            // must carry a `.file`. Reject anything that is neither.
+            if (!isCombinedWhisperDiffContext(detail) && !detail.file) return;
             openWhisperDiff(detail);
         };
         window.addEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
@@ -686,6 +705,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         planPatchedRef.current = false;
         goalPatchedRef.current = false;
         effortInitializedRef.current = false;
+        afterTierInitializedRef.current = false;
         modelOverrideMountedRef.current = false;
         setEffortOverride(null);
         setInvalidScratchpadPaths(new Set());
@@ -923,16 +943,25 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setEffortOverride(effort);
     }, []);
 
-    // Restore last-picked effort tier from localStorage on workspace switch.
+    // Restore the follow-up effort tier per conversation (AC-02). Prefer the
+    // per-conversation seed persisted on the process record
+    // (`metadata.afterEffortTier`); fall back to the workspace-global last choice,
+    // then `medium`. Runs once per chat and is finalised only once the process
+    // record loads, so a later PATCH (AC-03) or an in-flight pick is not reverted.
     useEffect(() => {
-        const key = `coc:effort-tier:${workspaceId ?? 'default'}`;
-        const stored = localStorage.getItem(key);
-        if (stored === 'low' || stored === 'medium' || stored === 'high') {
-            setSelectedFollowUpEffortTier(stored);
-        } else {
-            setSelectedFollowUpEffortTier('medium');
+        if (afterTierInitializedRef.current) return;
+        const seeded = (processDetails as any)?.metadata?.afterEffortTier;
+        if (seeded === 'very-low' || seeded === 'low' || seeded === 'medium' || seeded === 'high') {
+            afterTierInitializedRef.current = true;
+            setSelectedFollowUpEffortTier(seeded);
+            return;
         }
-    }, [workspaceId]);
+        const stored = localStorage.getItem(`coc:effort-tier:${workspaceId ?? 'default'}`);
+        setSelectedFollowUpEffortTier(stored === 'low' || stored === 'medium' || stored === 'high' ? stored : 'medium');
+        // Only lock in the fallback once the process record has actually loaded;
+        // until then a later-arriving seeded value can still take precedence.
+        if (processDetails) afterTierInitializedRef.current = true;
+    }, [processDetails, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // When the selected tier becomes unconfigured, fall back to the first configured tier.
     useEffect(() => {
@@ -944,9 +973,25 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [useFollowUpEffortTierMode, followUpEffortTierMap]);
 
+    // Persist the follow-up effort tier per conversation (AC-03). Apply the change
+    // optimistically, then PATCH `metadata.afterEffortTier` in the background
+    // (best-effort — keep the UI value and log on failure). This no longer writes
+    // the workspace-global `coc:effort-tier` key, so one chat's tier can't leak
+    // into another. `afterTierInitializedRef` marks the pick so the read-back
+    // init can't overwrite it if the process record loads afterwards.
     function handleFollowUpEffortTierChange(tier: EffortTierKey) {
+        afterTierInitializedRef.current = true;
         setSelectedFollowUpEffortTier(tier);
-        localStorage.setItem(`coc:effort-tier:${workspaceId ?? 'default'}`, tier);
+        if (!processId) return;
+        client.processes.patchMetadata(processId, { set: { afterEffortTier: tier } })
+            .then((data: any) => {
+                if (data?.process) {
+                    setProcessDetails((prev: any) => (prev ? { ...prev, metadata: data.process.metadata } : prev));
+                }
+            })
+            .catch((err: unknown) => {
+                console.warn('[coc-after-effort-tier] failed to persist tier', err);
+            });
     }
 
     const pinnedFile = createdFiles.at(-1);
@@ -1151,40 +1196,109 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setRalphGrillPlanningProgress(null);
     }, [taskId]);
 
-    // Canvas side panel: reset on chat switch, then discover canvases linked
-    // to this process (live `canvas-updated` SSE events take over from there).
-    // Note: this no longer force-opens the panel — the persisted per-chat
-    // "closed" flag is applied by the discovery effect below, so a deliberately
-    // closed canvas stays collapsed when the user switches away and back.
+    // Keep the live open-canvas descriptor for the CURRENT chat continuously up
+    // to date (restore-open-canvas-on-chat-switch, AC-01). The snapshot effect
+    // below reads this ref on switch-away so the remembered surface survives the
+    // reset. Surfaces are mutually exclusive, so this collapses to one descriptor.
     useEffect(() => {
-        setActiveCanvasId(null);
+        openCanvasDescriptorRef.current = deriveOpenCanvasMemory({
+            activeCanvasId,
+            canvasPanelClosed,
+            sourceFileRef: sourceCanvas.fileRef,
+            whisperDiffCtx: whisperDiff.ctx,
+        });
+    }, [activeCanvasId, canvasPanelClosed, sourceCanvas.fileRef, whisperDiff.ctx]);
+
+    // Snapshot the current chat's open canvas into the session memory map on
+    // switch-AWAY (effect cleanup), keyed by the OLD pid captured in closure. The
+    // cleanup runs in React's destroy phase — before the switch effect below
+    // resets canvas state in its create phase — so the old chat's descriptor is
+    // captured intact and the new chat's record is never clobbered.
+    useEffect(() => {
+        const pid = canvasPid;
+        if (!pid) return;
+        return () => {
+            openCanvasMemoryRef.current.set(pid, openCanvasDescriptorRef.current);
+        };
+    }, [canvasPid]);
+
+    // Canvas side panel on chat switch (restore-open-canvas-on-chat-switch,
+    // AC-02): reset the previous chat's surfaces, then restore THIS chat's
+    // remembered open canvas. Restore priority — (1) the persisted deliberate-
+    // close flag wins → stay collapsed; (2) a remembered open canvas of ANY type
+    // → reopen it exactly; (3) no record → today's default (auto-open the first
+    // linked AI agent canvas). Replaces the old unconditional reset that force-
+    // closed every source/note/folder/diff canvas with no restore path.
+    useEffect(() => {
+        // Clear the previous chat's transient surfaces first; the branches below
+        // reopen the remembered one (if any) in the SAME synchronous commit, so a
+        // restored canvas never flashes closed/empty.
         setCanvasLiveEvent(null);
+        setActiveCanvasId(null);
         sourceCanvas.close();
         whisperDiff.close();
-    }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    useEffect(() => {
-        if (!isCanvasEnabled() || !workspaceId || !canvasPid) return;
-        // Apply the persisted deliberate-close preference synchronously, before
-        // the async discovery resolves `activeCanvasId`, so a closed chat settles
+        if (!isCanvasEnabled() || !workspaceId || !canvasPid) {
+            setCanvasPanelClosed(false);
+            return;
+        }
+
+        // (1) Persisted deliberate-close flag — applied synchronously, before the
+        // async discovery resolves `activeCanvasId`, so a closed chat settles
         // straight into the collapsed rail without flashing the expanded panel.
-        setCanvasPanelClosed(readCanvasClosed(workspaceId, canvasPid));
+        const closed = readCanvasClosed(workspaceId, canvasPid);
+        setCanvasPanelClosed(closed);
+
+        // (2) Restore the remembered open canvas for this chat from session memory.
+        const hasRecord = openCanvasMemoryRef.current.has(canvasPid);
+        const remembered = openCanvasMemoryRef.current.get(canvasPid) ?? null;
+        if (!closed && remembered) {
+            if (remembered.kind === 'source') {
+                sourceCanvas.open(remembered.fileRef); // onOpen collapses the agent panel
+            } else if (remembered.kind === 'whisper-diff') {
+                whisperDiff.open(remembered.ctx); // onOpen collapses the agent panel
+            } else if (remembered.kind === 'agent') {
+                // The id is validated + applied by discovery below so a DELETED
+                // canvas silently falls back instead of surfacing CanvasPanel's
+                // load error; here we only pre-expand the panel for its arrival.
+                setCanvasPanelClosed(false);
+            }
+        } else if (!closed && hasRecord) {
+            // Remembered "nothing open" (the user closed a source/note/folder/diff
+            // canvas): keep every surface collapsed instead of auto-opening.
+            setCanvasPanelClosed(true);
+        }
+
         let cancelled = false;
-        // Canvas discovery is non-critical: defer the round-trip to browser idle
-        // so the conversation messages paint first (AC-03). The persisted close
-        // flag above still applies synchronously; only the network probe waits.
+        // Discovery is non-critical: defer the round-trip to browser idle so the
+        // conversation paints first. It populates the linked agent canvas id for
+        // the collapsed rail / auto-open, and validates a remembered agent canvas.
         const cancelIdle = runWhenIdle(() => {
             if (cancelled) return;
             client.canvases.list(workspaceId, { processId: canvasPid })
                 .then(canvases => {
-                    if (!cancelled && canvases.length > 0) {
+                    if (cancelled) return;
+                    // Restore a remembered agent canvas ONLY if it still exists — a
+                    // deleted one silently falls back to the first linked canvas
+                    // (or nothing), never CanvasPanel's "Failed to load" error.
+                    if (!closed && remembered?.kind === 'agent') {
+                        const ids = new Set(canvases.map(c => c.id));
+                        setActiveCanvasId(ids.has(remembered.canvasId)
+                            ? remembered.canvasId
+                            : (canvases[0]?.id ?? null));
+                        return;
+                    }
+                    // Otherwise populate the linked agent canvas id: auto-opens a
+                    // fresh chat (no record), or backs the collapsed rail behind a
+                    // remembered source/whisper/"nothing open" (kept collapsed above).
+                    if (canvases.length > 0) {
                         setActiveCanvasId(prev => prev ?? canvases[0].id);
                     }
                 })
                 .catch(() => { /* canvas discovery is best-effort */ });
         });
         return () => { cancelled = true; cancelIdle(); };
-    }, [workspaceId, canvasPid]);
+    }, [taskId, workspaceId, canvasPid]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const canvasResize = useResizablePanel({
         initialWidth: 520,
@@ -1299,7 +1413,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // canvas + source canvas above (only one right column is non-null at once).
     const whisperDiffColumn = (whisperDiff.isOpen && whisperDiff.ctx) ? (
         <WhisperDiffDock
-            file={whisperDiff.ctx.file}
+            file={isCombinedWhisperDiffContext(whisperDiff.ctx) ? undefined : whisperDiff.ctx.file}
             state={whisperDiffState}
             workspaceRootPath={workspaceRootPath}
             isMobile={isMobile}
@@ -1430,6 +1544,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             setTurnsAndRef(turns);
                             setProcessDetails(loadedProcess);
                             seedSessionTokensFromProcess(loadedProcess);
+                            // Re-hydrate the queued follow-ups from the server.
+                            // The cache-hit path paints turns from cache and
+                            // returns early, so without this a still-running chat
+                            // with pending follow-ups would show an empty
+                            // "Queued · N" section after a switch-away/return.
+                            const serverPending: any[] = loadedProcess.pendingMessages ?? [];
+                            setPendingQueue(serverPending.map((m: any) => ({
+                                id: m.id,
+                                content: m.content,
+                                status: 'queued' as const,
+                            })));
                         }).catch(() => { /* best-effort revalidation */ });
                         return;
                     }
@@ -1455,6 +1580,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         setTurnsAndRef(turns);
                         setProcessDetails(loadedProcess);
                         seedSessionTokensFromProcess(loadedProcess);
+                        // Re-hydrate the queued follow-ups so a cold processId
+                        // load of a still-running chat keeps its "Queued · N"
+                        // section instead of clearing it.
+                        const serverPending: any[] = loadedProcess.pendingMessages ?? [];
+                        setPendingQueue(serverPending.map((m: any) => ({
+                            id: m.id,
+                            content: m.content,
+                            status: 'queued' as const,
+                        })));
                         setLoading(false);
                         return;
                     }
