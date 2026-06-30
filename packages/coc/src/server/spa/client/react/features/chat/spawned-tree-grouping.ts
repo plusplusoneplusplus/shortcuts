@@ -217,3 +217,62 @@ export function collectSpawnedDescendantIds(entry: SpawnedTreeEntry): Set<string
     walk(entry.root);
     return ids;
 }
+
+/** Collect every task (root + all descendants) under a spawned-tree entry. */
+export function collectSpawnedEntryTasks(entry: SpawnedTreeEntry): any[] {
+    const tasks: any[] = [];
+    const walk = (node: SpawnedTreeNode) => {
+        tasks.push(node.task);
+        for (const child of node.children) {walk(child);}
+    };
+    walk(entry.root);
+    return tasks;
+}
+
+/** The result of wiring the spawned-tree grouping into the flat chat list. */
+export interface SpawnedTreeChatView {
+    /**
+     * The grouped entries: roots with descendants become {@link SpawnedTreeEntry}s,
+     * everything else stays a plain task. When the view is disabled, this is the
+     * original `items` array reference (flat rendering, unchanged).
+     */
+    entries: SpawnedTreeHistoryEntry[];
+    /** Just the spawned-tree entries (roots that have at least one descendant). */
+    groups: SpawnedTreeEntry[];
+    /**
+     * Every id (root + descendants) that should be removed from the flat list,
+     * because those chats now render inside a {@link SpawnedTreeRow}. Empty when
+     * the view is disabled.
+     */
+    hiddenIds: Set<string>;
+}
+
+/**
+ * Build the spawned-tree view for the chat list (the wiring AC-03 consumes).
+ *
+ * When `enabled` is false, returns the items untouched with no hidden ids — the
+ * toggle-off path restores flat rendering. When enabled, groups the items into
+ * spawn trees (skipping any whose identity id is in `excludeIds`, so chats
+ * already owned by a for-each / map-reduce / ralph group keep their existing
+ * grouping) and reports the root + descendant ids to hide from the flat list.
+ */
+export function buildSpawnedTreeChatView(
+    items: any[],
+    options: { enabled: boolean; unseenIds?: Set<string>; excludeIds?: Set<string> },
+): SpawnedTreeChatView {
+    if (!options.enabled) {
+        return { entries: items, groups: [], hiddenIds: new Set() };
+    }
+    const exclude = options.excludeIds;
+    const source = exclude && exclude.size
+        ? items.filter(item => !getTaskIds(item).some(id => exclude.has(id)))
+        : items;
+    const entries = groupBySpawnedTree(source, options.unseenIds);
+    const groups = entries.filter(isSpawnedTreeEntry);
+    const hiddenIds = new Set<string>();
+    for (const group of groups) {
+        for (const id of getTaskIds(group.root.task)) {hiddenIds.add(id);}
+        for (const id of collectSpawnedDescendantIds(group)) {hiddenIds.add(id);}
+    }
+    return { entries, groups, hiddenIds };
+}

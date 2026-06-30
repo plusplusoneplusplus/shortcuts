@@ -2931,3 +2931,97 @@ describe('Mobile single-tap navigation', () => {
         expect(screen.queryByTestId('selection-count-pill')).toBeNull();
     });
 });
+
+// ════════════════════════════════════════════════════════════════════════
+// AC-03: spawned-conversation tree rendering in the chat list
+// ════════════════════════════════════════════════════════════════════════
+describe('ChatListPane spawned-conversation tree (AC-03)', () => {
+    const SPAWNED_TOGGLE_KEY = 'coc-spawned-tree-enabled';
+    const SPAWNED_COLLAPSED_KEY = 'coc-spawned-tree-collapsed';
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockPinnedChatIds = new Set();
+        mockArchivedChatIds = new Set();
+        globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+        try {
+            window.localStorage.removeItem(SPAWNED_TOGGLE_KEY);
+            window.localStorage.removeItem(SPAWNED_COLLAPSED_KEY);
+        } catch { /* ignore */ }
+    });
+
+    /** A root chat that spawned `child`, which in turn spawned `grand`. */
+    function spawnTreeHistory(now: number) {
+        const stamp = (offsetMs: number) => ({
+            completedAt: new Date(now - offsetMs).toISOString(),
+            lastActivityAt: now - offsetMs,
+            startTime: now - offsetMs,
+        });
+        return [
+            makeHistoryTask({ id: 'root', displayName: 'Root Chat', ...stamp(3000) }),
+            makeHistoryTask({ id: 'child', displayName: 'Child Chat', parentProcessId: 'root', ...stamp(2000) }),
+            makeHistoryTask({ id: 'grand', displayName: 'Grandchild Chat', parentProcessId: 'child', ...stamp(1000) }),
+            makeHistoryTask({ id: 'lonely', displayName: 'Lonely Chat', ...stamp(500) }),
+        ];
+    }
+
+    it('renders the root as a spawned-tree with a recursive sub-job count and nests descendants', () => {
+        const now = Date.now();
+        renderPane({ activeTab: 'chats', now, history: spawnTreeHistory(now) });
+
+        // Root is rendered inside a spawned-tree row.
+        const treeRow = document.querySelector('[data-testid="spawned-tree-row"][data-root-id="root"]') as HTMLElement;
+        expect(treeRow).toBeTruthy();
+        expect(treeRow.querySelector('[data-task-id="root"]')).toBeTruthy();
+
+        // Sub-job count = ALL descendants (child + grandchild) = 2.
+        const countChip = treeRow.querySelector('[data-testid="spawned-tree-child-count"]');
+        expect(countChip?.textContent).toBe('2');
+
+        // Descendants nest under the tree (default expanded) and do NOT appear
+        // as separate flat top-level rows: each id resolves to exactly one row.
+        expect(document.querySelectorAll('[data-task-id="child"]')).toHaveLength(1);
+        expect(document.querySelectorAll('[data-task-id="grand"]')).toHaveLength(1);
+        const childInTree = treeRow.querySelector('[data-testid="spawned-tree-children"] [data-task-id="child"]');
+        expect(childInTree).toBeTruthy();
+
+        // The unrelated chat stays a normal flat row (not in any tree).
+        const lonely = document.querySelector('[data-task-id="lonely"]');
+        expect(lonely).toBeTruthy();
+        expect(lonely!.closest('[data-testid="spawned-tree-row"]')).toBeNull();
+    });
+
+    it('collapsing a root hides its descendants and persists the collapsed id', () => {
+        const now = Date.now();
+        renderPane({ activeTab: 'chats', now, history: spawnTreeHistory(now) });
+
+        const rootNode = document.querySelector('[data-testid="spawned-tree-node"][data-node-id="root"]') as HTMLElement;
+        const chevron = rootNode.querySelector('[data-testid="spawned-tree-chevron"]') as HTMLElement;
+        expect(chevron).toBeTruthy();
+
+        // Default expanded: descendants visible.
+        expect(document.querySelector('[data-task-id="child"]')).toBeTruthy();
+
+        fireEvent.click(chevron);
+
+        // Collapsed: descendants gone, root still visible.
+        expect(document.querySelector('[data-task-id="child"]')).toBeNull();
+        expect(document.querySelector('[data-task-id="root"]')).toBeTruthy();
+
+        // Persisted so the collapse survives a reload.
+        const persisted = JSON.parse(window.localStorage.getItem(SPAWNED_COLLAPSED_KEY) || '[]');
+        expect(persisted).toContain('root');
+    });
+
+    it('toggle OFF (persisted) flattens the tree back to standard rows', () => {
+        window.localStorage.setItem(SPAWNED_TOGGLE_KEY, 'false');
+        const now = Date.now();
+        renderPane({ activeTab: 'chats', now, history: spawnTreeHistory(now) });
+
+        // No tree wrapper; every chat renders as a flat row.
+        expect(document.querySelector('[data-testid="spawned-tree-row"]')).toBeNull();
+        expect(document.querySelector('[data-task-id="root"]')).toBeTruthy();
+        expect(document.querySelector('[data-task-id="child"]')).toBeTruthy();
+        expect(document.querySelector('[data-task-id="grand"]')).toBeTruthy();
+    });
+});

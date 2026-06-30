@@ -5,6 +5,8 @@ import {
     isSpawnedTreeEntry,
     getSpawnedEntryTimestamp,
     collectSpawnedDescendantIds,
+    collectSpawnedEntryTasks,
+    buildSpawnedTreeChatView,
     type SpawnedTreeEntry,
 } from '../../../../src/server/spa/client/react/features/chat/spawned-tree-grouping';
 
@@ -129,5 +131,72 @@ describe('groupBySpawnedTree', () => {
         expect(ids.has('child')).toBe(true);
         expect(ids.has('grand')).toBe(true);
         expect(ids.has('root')).toBe(false);
+    });
+
+    it('collectSpawnedEntryTasks returns the root and every descendant task', () => {
+        const root = chat('root');
+        const child = chat('child', { parentProcessId: 'root' });
+        const grand = chat('grand', { parentProcessId: 'child' });
+        const entry = treeEntry(groupBySpawnedTree([root, child, grand]), 'root');
+        const tasks = collectSpawnedEntryTasks(entry).map(t => t.id);
+        expect(tasks).toContain('root');
+        expect(tasks).toContain('child');
+        expect(tasks).toContain('grand');
+        expect(tasks).toHaveLength(3);
+    });
+});
+
+describe('buildSpawnedTreeChatView', () => {
+    it('returns the items untouched with no hidden ids when disabled (toggle off restores flat)', () => {
+        const items = [chat('root'), chat('child', { parentProcessId: 'root' })];
+        const view = buildSpawnedTreeChatView(items, { enabled: false });
+        // Same array reference, no grouping, nothing hidden → flat rendering.
+        expect(view.entries).toBe(items);
+        expect(view.groups).toHaveLength(0);
+        expect(view.hiddenIds.size).toBe(0);
+    });
+
+    it('hides the root AND every descendant id from the flat list when enabled', () => {
+        const items = [
+            chat('root'),
+            chat('child', { parentProcessId: 'root' }),
+            chat('grand', { parentProcessId: 'child' }),
+            chat('lonely'),
+        ];
+        const view = buildSpawnedTreeChatView(items, { enabled: true });
+        expect(view.groups).toHaveLength(1);
+        expect(view.groups[0].rootProcessId).toBe('root');
+        // root + all descendants leave the flat list; the unrelated chat does not.
+        expect(view.hiddenIds.has('root')).toBe(true);
+        expect(view.hiddenIds.has('child')).toBe(true);
+        expect(view.hiddenIds.has('grand')).toBe(true);
+        expect(view.hiddenIds.has('lonely')).toBe(false);
+    });
+
+    it('keeps a childless root in the flat list (no group, nothing hidden)', () => {
+        const items = [chat('a'), chat('b')];
+        const view = buildSpawnedTreeChatView(items, { enabled: true });
+        expect(view.groups).toHaveLength(0);
+        expect(view.hiddenIds.size).toBe(0);
+    });
+
+    it('skips chats already owned by another group via excludeIds', () => {
+        const items = [
+            chat('root'),
+            chat('child', { parentProcessId: 'root' }),
+        ];
+        // 'root' is already a for-each/map-reduce child → do not re-group its subtree.
+        const view = buildSpawnedTreeChatView(items, { enabled: true, excludeIds: new Set(['root']) });
+        expect(view.groups).toHaveLength(0);
+        expect(view.hiddenIds.size).toBe(0);
+    });
+
+    it('matches excludeIds on either id or processId', () => {
+        const items = [
+            { id: 'task-1', processId: 'proc-1', lastActivityAt: 1_000 },
+            { id: 'task-2', processId: 'proc-2', parentProcessId: 'proc-1', lastActivityAt: 2_000 },
+        ];
+        const view = buildSpawnedTreeChatView(items, { enabled: true, excludeIds: new Set(['proc-1']) });
+        expect(view.groups).toHaveLength(0);
     });
 });
