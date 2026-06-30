@@ -556,6 +556,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         () => createdFiles.find(f => f.filePath.endsWith('.plan.md'))?.filePath ?? '',
         [createdFiles],
     );
+    // Detect ALL .plan.md files (AC-01), preserving conversation scan order. The
+    // first equals `detectedPlanFile` (default effective plan); the rest power the
+    // Implement banner's plan-file selector when 2+ plans exist.
+    const detectedPlanFiles = useMemo(
+        () => createdFiles.filter(f => f.filePath.endsWith('.plan.md')).map(f => f.filePath),
+        [createdFiles],
+    );
     // Detect a canvas written with purpose 'plan' as an alternative plan source
     // when no .plan.md file was created (file-based plans take precedence).
     const detectedPlanCanvas = useMemo(
@@ -572,6 +579,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const effectivePlanCanvasId = detectedPlanFile || (planPath && !persistedPlanCanvasId)
         ? undefined
         : (detectedPlanCanvas?.canvasId ?? persistedPlanCanvasId);
+    // Switchable plan set for the Implement banner selector: only the
+    // auto-detected multi-file case. An explicit task-provided plan path or a
+    // canvas-backed plan keeps the banner single-file (no selector) — see the
+    // multi-plan-file-switcher constraints.
+    const switchablePlanFiles = useMemo(
+        () => (planPath || effectivePlanCanvasId ? [] : detectedPlanFiles),
+        [planPath, effectivePlanCanvasId, detectedPlanFiles],
+    );
 
     // Detect goal.md or *.goal.md created mid-conversation for direct Ralph launch
     const detectedGoalFile = useMemo(
@@ -2207,6 +2222,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     {effectiveView === 'thread' && !showSubAgentDetail && isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
                         <ImplementPlanCard
                             planFilePath={effectivePlanPath}
+                            planFiles={switchablePlanFiles}
                             planCanvasId={effectivePlanCanvasId}
                             workspaceId={workspaceId}
                             workingDirectory={workingDirectory}

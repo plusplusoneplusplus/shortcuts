@@ -1229,6 +1229,37 @@ describe('ChatDetail', () => {
             expect(detectBlock).not.toContain('findLast');
         });
 
+        // ── Multi-plan-file switcher (AC-01/AC-02) ──────────────────────
+        it('detects ALL .plan.md files in scan order via detectedPlanFiles', () => {
+            expect(source).toContain('const detectedPlanFiles');
+            const block = source.substring(
+                source.indexOf('const detectedPlanFiles'),
+                source.indexOf('const detectedPlanFiles') + 200,
+            );
+            // .filter() collects every match (not just the first), .map() to paths.
+            expect(block).toContain('createdFiles.filter');
+            expect(block).toContain(".endsWith('.plan.md')");
+            expect(block).toContain('.map(');
+        });
+
+        it('builds switchablePlanFiles, gating out explicit-path and canvas-backed plans', () => {
+            expect(source).toContain('const switchablePlanFiles');
+            const block = source.substring(
+                source.indexOf('const switchablePlanFiles'),
+                source.indexOf('const switchablePlanFiles') + 200,
+            );
+            // Single-file when an explicit plan path or a canvas-backed plan exists.
+            expect(block).toContain('planPath');
+            expect(block).toContain('effectivePlanCanvasId');
+            expect(block).toContain('detectedPlanFiles');
+        });
+
+        it('passes planFiles={switchablePlanFiles} to ImplementPlanCard', () => {
+            const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
+            expect(cardBlock).not.toBeNull();
+            expect(cardBlock![0]).toContain('planFiles={switchablePlanFiles}');
+        });
+
         it('builds scratchpad candidates from linked, known, created, and plan paths', () => {
             expect(source).toContain('buildScratchpadCandidates');
             expect(source).toContain('linkedNotePath: scratchpad.linkedNotePath');
