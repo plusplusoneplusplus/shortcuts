@@ -211,7 +211,11 @@ export function UsageStatsView() {
     const [days, setDays] = useState<number | undefined>(30);
     const { data, loading, error, reload } = useTokenUsageStats(days);
 
-    const grandTotal = data ? sumUsage(data.entries) : null;
+    // A malformed/empty response (e.g. `{}` with no `entries`) must not crash the
+    // render — normalise to a nullable array and gate every entries-dependent
+    // branch on it instead of on `data` truthiness.
+    const entries = data?.entries ?? null;
+    const grandTotal = entries ? sumUsage(entries) : null;
 
     return (
         <div className="flex flex-col h-full overflow-hidden bg-[var(--vscode-editor-background)] text-[var(--vscode-foreground)]">
@@ -261,13 +265,13 @@ export function UsageStatsView() {
                     </div>
                 )}
 
-                {!loading && !error && data && data.entries.length === 0 && (
+                {!loading && !error && entries && entries.length === 0 && (
                     <p className="p-6 text-sm text-[var(--vscode-descriptionForeground)]">
                         No token usage data found. Run some AI tasks to see stats here.
                     </p>
                 )}
 
-                {!loading && !error && data && data.entries.length > 0 && grandTotal && (
+                {!loading && !error && entries && entries.length > 0 && grandTotal && (
                     <table className="w-full text-xs border-collapse">
                         <thead className="sticky top-0 bg-[var(--vscode-editor-background)] z-10">
                             <tr>
@@ -277,7 +281,7 @@ export function UsageStatsView() {
                             </tr>
                         </thead>
                         <tbody>
-                            {data.entries.map((entry, i) => (
+                            {entries.map((entry, i) => (
                                 <DateGroupRow
                                     key={entry.date}
                                     entry={entry}
@@ -300,7 +304,7 @@ export function UsageStatsView() {
                                 </td>
                             </tr>
                             {data.models.map(model => {
-                                const total = sumByModel(data.entries, model);
+                                const total = sumByModel(entries, model);
                                 return (
                                     <tr key={model} className="border-b border-[var(--vscode-panel-border)] font-semibold bg-[var(--vscode-editor-background)]">
                                         <td className={`${tdClass} text-[var(--vscode-descriptionForeground)] truncate max-w-[200px]`} title={model}>
