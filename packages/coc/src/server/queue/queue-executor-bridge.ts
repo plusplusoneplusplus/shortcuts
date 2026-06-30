@@ -55,6 +55,12 @@ export interface CLITaskExecutorOptions {
      * `send_to_conversation` tool so an agent can spawn a brand-new chat.
      */
     getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
+    /**
+     * Late-bound in-process follow-up delivery capability supplied by the route
+     * layer. Powers the post mode of `send_to_conversation` (posting into an
+     * existing conversation).
+     */
+    getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     dreamRunExecutor?: DreamRunExecutor;
@@ -165,6 +171,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             getWsServer: options.getWsServer,
             getLoopInfra: options.getLoopInfra,
             getEnqueueChat: options.getEnqueueChat,
+            getSendMessage: options.getSendMessage,
             getMcpOauthManager: options.getMcpOauthManager,
             getDreamRunExecutor: () => this.dreamRunExecutor,
             cancelledTasks: this.cancelledTasks,

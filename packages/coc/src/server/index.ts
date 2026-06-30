@@ -230,6 +230,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // queue infra (and its executors) are created. The late-bound getter passed
     // to createQueueInfrastructure reads this once routes finish registering.
     let enqueueChatCapability: import('./llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
+    // Forward declaration — the in-process follow-up delivery capability for the
+    // post mode of `send_to_conversation`. Bound at the route layer (where the
+    // store + queue bridge live) after the queue infra is created; the late-bound
+    // getter passed to createQueueInfrastructure reads this once routes register.
+    let sendMessageCapability: import('./llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
 
     // MCP OAuth infra — enabled by default when any MCP server may be configured.
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
@@ -361,6 +366,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // Late-bound enqueue capability for the `send_to_conversation` tool;
         // bound at the route layer below, read here once routes register.
         () => enqueueChatCapability,
+        // Late-bound follow-up delivery capability for the post mode of
+        // `send_to_conversation`; bound at the route layer below.
+        () => sendMessageCapability,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -638,6 +646,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         nativeCopilotSessionDbPath: options.nativeCopilotSessionDbPath,
         nativeCopilotSessionStateDir: options.nativeCopilotSessionStateDir,
         setEnqueueChat: (fn) => { enqueueChatCapability = fn; },
+        setSendMessage: (fn) => { sendMessageCapability = fn; },
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });

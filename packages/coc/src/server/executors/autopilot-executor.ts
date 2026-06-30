@@ -70,6 +70,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
                 ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                 : undefined,
             enqueueChat: this.getEnqueueChat?.(),
+            sendMessage: this.getSendMessage?.(),
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
             includeMemoryV2: false,

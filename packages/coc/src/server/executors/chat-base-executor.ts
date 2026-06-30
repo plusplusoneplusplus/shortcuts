@@ -172,6 +172,13 @@ export interface ChatModeExecutorOptions {
      * `send_to_conversation` tool; absent → the tool is not offered.
      */
     getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
+    /**
+     * Late-bound in-process follow-up delivery capability (getter; bound at the
+     * route layer). Powers the post mode of `send_to_conversation` — posting
+     * `content` into an existing conversation. Absent → post mode reports the
+     * capability is unavailable.
+     */
+    getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
     /** Late-bound MCP OAuth manager (getter to allow optional/feature-flagged wiring). */
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider. Used to detect provider mismatches on follow-up resume. */
@@ -244,6 +251,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
     protected readonly getLoopInfra?: () => LoopInfraDeps | undefined;
     protected readonly getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
+    protected readonly getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
     protected readonly getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider — used to guard against provider mismatches on follow-up resume. */
     protected readonly provider: 'copilot' | 'codex' | 'claude' | 'opencode';
@@ -272,6 +280,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
         this.getLoopInfra = options.getLoopInfra;
         this.getEnqueueChat = options.getEnqueueChat;
+        this.getSendMessage = options.getSendMessage;
         this.getMcpOauthManager = options.getMcpOauthManager;
         this.provider = options.provider ?? 'copilot';
         this.ralphMultiAgentGrillEnabled = options.ralphMultiAgentGrillEnabled === true;
@@ -480,6 +489,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             followUpSuggestions: this.followUpSuggestions,
             broadcastWorkItem,
             enqueueChat: this.getEnqueueChat?.(),
+            sendMessage: this.getSendMessage?.(),
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
             askUser: {

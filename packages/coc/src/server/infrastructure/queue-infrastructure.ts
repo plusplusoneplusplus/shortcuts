@@ -67,6 +67,7 @@ export function createQueueInfrastructure(
     getGlobalSystemPrompt?: () => string | undefined,
     getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined,
     getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined,
+    getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: Database.Database;
@@ -101,6 +102,7 @@ export function createQueueInfrastructure(
         getLoopInfra,
         getTriggerInfra,
         getEnqueueChat,
+        getSendMessage,
         getMcpOauthManager,
     });
 
