@@ -10,6 +10,7 @@
  * sub-component wiring (FollowUpInputArea, ChatHeader, ConversationArea)
  * is verified via prop-forwarding and data-testid assertions.
  */
+/* @vitest-environment jsdom */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
