@@ -155,6 +155,35 @@ describe('PATCH /api/processes/:id — customTitle', () => {
         expect(loaded?.metadata?.goalFilePath).toBeUndefined();
     });
 
+    it('round-trips the per-conversation afterEffortTier (PATCH set → GET read-back)', async () => {
+        // Contract behind the per-chat after-tier feature: the client persists the
+        // follow-up effort tier with metadataPatch.set.afterEffortTier (AC-03) and
+        // reads it back from GET detail metadata on open (AC-02).
+        await addProcess('p-after-effort-tier-1', {
+            metadata: { type: 'chat', workspaceId: wsId, mode: 'ask', afterEffortTier: 'medium' },
+        });
+
+        const patchRes = await patchJSON(`${baseUrl}/api/processes/p-after-effort-tier-1`, {
+            metadataPatch: { set: { afterEffortTier: 'high' } },
+        });
+        expect(patchRes.status).toBe(200);
+        expect(JSON.parse(patchRes.body).process?.metadata?.afterEffortTier).toBe('high');
+
+        // Other metadata is preserved by the merge.
+        const loaded = await store.getProcess('p-after-effort-tier-1');
+        expect(loaded?.metadata).toMatchObject({
+            type: 'chat',
+            workspaceId: wsId,
+            mode: 'ask',
+            afterEffortTier: 'high',
+        });
+
+        // GET detail surfaces the seeded/updated tier for client read-back.
+        const getRes = await request(`${baseUrl}/api/processes/p-after-effort-tier-1`);
+        expect(getRes.status).toBe(200);
+        expect(JSON.parse(getRes.body).process?.metadata?.afterEffortTier).toBe('high');
+    });
+
     it('rejects malformed metadataPatch without mutating metadata', async () => {
         await addProcess('p-metadata-patch-3', {
             metadata: {

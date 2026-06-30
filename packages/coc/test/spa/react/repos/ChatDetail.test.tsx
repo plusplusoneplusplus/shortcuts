@@ -45,6 +45,10 @@ const { mockState } = vi.hoisted(() => ({
         clearAttachments: vi.fn(),
         richTextValue: '',
         richTextSetValueCalls: [] as Array<[string, number?]>,
+        // Per-test toggles for the follow-up effort-tier selector (AC-02/AC-03).
+        // Default off / empty so existing tests keep the legacy model+effort UI.
+        effortLevelsEnabled: false,
+        effortTiers: {} as Record<string, { model: string; reasoningEffort: string }>,
     },
 }));
 
@@ -60,7 +64,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isForEachEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     getActiveProvider: () => 'copilot' as const,
-    isEffortLevelsEnabled: () => false,
+    isEffortLevelsEnabled: () => mockState.effortLevelsEnabled,
     isSessionContextAttachmentsEnabled: () => false,
     getPrewarmDebounceMs: () => 500,
     getWarmClientTtlMs: () => 300000,
@@ -169,7 +173,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
 // useProviderEffortTiers — return empty tier map so ChatDetail renders without a real API
 vi.mock('../../../../src/server/spa/client/react/hooks/useProviderEffortTiers', () => ({
     useProviderEffortTiers: () => ({
-        tiers: {},
+        tiers: mockState.effortTiers,
         loading: false,
         error: null,
         saveError: null,
@@ -453,6 +457,9 @@ beforeEach(() => {
     mockState.clearAttachments.mockReset();
     mockState.richTextValue = '';
     mockState.richTextSetValueCalls = [];
+    mockState.effortLevelsEnabled = false;
+    mockState.effortTiers = {};
+    localStorage.clear();
     // JSDOM polyfills
     Element.prototype.scrollIntoView = vi.fn();
     // navigator.clipboard
@@ -2103,5 +2110,96 @@ describe('ChatDetail', () => {
             expect(screen.getByTestId('composer-ctx-fill')).toBeTruthy();
             expect(screen.queryByTestId('composer-ctx-segment-system')).toBeNull();
         });
+    });
+});
+
+// ── Per-conversation follow-up effort tier (AC-02 read-back, AC-03 persist) ──
+//
+// The follow-up after-tier is remembered per conversation in
+// `process.metadata.afterEffortTier` (not the workspace-global localStorage key).
+// These tests drive the real EffortTierSelector inside the real FollowUpInputArea,
+// so they exercise the init read-back + the PATCH-on-change end-to-end through the
+// fetch mock and localStorage.
+describe('ChatDetail — per-conversation after effort tier', () => {
+    // All three tiers configured so a seeded selection is never coerced to the
+    // first configured tier by the resolveEffectiveTier effect.
+    const CONFIGURED_TIERS = {
+        low: { model: 'model-low', reasoningEffort: 'low' },
+        medium: { model: 'model-medium', reasoningEffort: '' },
+        high: { model: 'model-high', reasoningEffort: 'high' },
+    };
+
+    function enableTierMode() {
+        mockState.effortLevelsEnabled = true;
+        mockState.effortTiers = { ...CONFIGURED_TIERS };
+    }
+
+    function selectorTier(): string | null {
+        return screen.getByTestId('follow-up-effort-tier-selector').getAttribute('data-tier-value');
+    }
+
+    it('AC-02: initializes the selector from the conversation\'s metadata.afterEffortTier', async () => {
+        enableTierMode();
+        const task = makeTask({ status: 'completed', processId: 'proc-1' });
+        const proc = makeProcess({ metadata: { sessionId: 'sess-1', afterEffortTier: 'high' } });
+        setupStandardFetch(task, proc);
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(selectorTier()).toBe('high'));
+    });
+
+    it('AC-02: falls back to the workspace-global localStorage value when no per-conversation seed exists', async () => {
+        enableTierMode();
+        localStorage.setItem('coc:effort-tier:ws-1', 'low');
+        const task = makeTask({ status: 'completed', processId: 'proc-1' });
+        const proc = makeProcess({ metadata: { sessionId: 'sess-1' } }); // no afterEffortTier
+        setupStandardFetch(task, proc);
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(selectorTier()).toBe('low'));
+    });
+
+    it('AC-02: falls back to medium when neither a seed nor a localStorage value exists', async () => {
+        enableTierMode();
+        const task = makeTask({ status: 'completed', processId: 'proc-1' });
+        const proc = makeProcess({ metadata: { sessionId: 'sess-1' } });
+        setupStandardFetch(task, proc);
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(screen.getByTestId('follow-up-effort-tier-selector')).toBeTruthy());
+        expect(selectorTier()).toBe('medium');
+    });
+
+    it('AC-03: persists a tier change via PATCH metadataPatch.set.afterEffortTier and does NOT write the workspace localStorage key', async () => {
+        enableTierMode();
+        const task = makeTask({ status: 'completed', processId: 'proc-1' });
+        const proc = makeProcess({ metadata: { sessionId: 'sess-1', afterEffortTier: 'high' } });
+        setupStandardFetch(task, proc);
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+        await waitFor(() => expect(selectorTier()).toBe('high'));
+
+        // Open the tier dropdown and pick "low".
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-option-low'));
+
+        // UI updates immediately (optimistic).
+        await waitFor(() => expect(selectorTier()).toBe('low'));
+
+        // Persisted per conversation via PATCH /api/processes/proc-1.
+        await waitFor(() => {
+            const patchCall = fetchMock.mock.calls.find(([url, init]: any) =>
+                typeof url === 'string' && url.includes('/processes/proc-1') && init?.method === 'PATCH');
+            expect(patchCall).toBeTruthy();
+            const body = JSON.parse((patchCall as any[])[1].body);
+            expect(body.metadataPatch.set.afterEffortTier).toBe('low');
+        });
+
+        // The workspace-global key is NOT written from ChatDetail anymore — the
+        // change must not leak into other chats in the workspace.
+        expect(localStorage.getItem('coc:effort-tier:ws-1')).toBeNull();
     });
 });

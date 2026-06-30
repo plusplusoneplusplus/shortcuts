@@ -242,6 +242,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     /** Set to true the first time we initialise effortOverride from processDetails.config.
      *  Reset to false on taskId change so every new conversation gets a fresh init. */
     const effortInitializedRef = useRef(false);
+    /** Set to true the first time we initialise the follow-up effort tier from the
+     *  conversation's `metadata.afterEffortTier` (per-conversation read-back, AC-02),
+     *  or when the user explicitly picks a tier. Prevents the init fallback from
+     *  clobbering a seeded value or an in-flight pick. Reset on taskId change. */
+    const afterTierInitializedRef = useRef(false);
     /** Tracks first mount of the model-override effect so we don't re-derive on initial render. */
     const modelOverrideMountedRef = useRef(false);
     const previousSessionProviderRef = useRef<string | null>(null);
@@ -700,6 +705,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         planPatchedRef.current = false;
         goalPatchedRef.current = false;
         effortInitializedRef.current = false;
+        afterTierInitializedRef.current = false;
         modelOverrideMountedRef.current = false;
         setEffortOverride(null);
         setInvalidScratchpadPaths(new Set());
@@ -937,16 +943,25 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setEffortOverride(effort);
     }, []);
 
-    // Restore last-picked effort tier from localStorage on workspace switch.
+    // Restore the follow-up effort tier per conversation (AC-02). Prefer the
+    // per-conversation seed persisted on the process record
+    // (`metadata.afterEffortTier`); fall back to the workspace-global last choice,
+    // then `medium`. Runs once per chat and is finalised only once the process
+    // record loads, so a later PATCH (AC-03) or an in-flight pick is not reverted.
     useEffect(() => {
-        const key = `coc:effort-tier:${workspaceId ?? 'default'}`;
-        const stored = localStorage.getItem(key);
-        if (stored === 'low' || stored === 'medium' || stored === 'high') {
-            setSelectedFollowUpEffortTier(stored);
-        } else {
-            setSelectedFollowUpEffortTier('medium');
+        if (afterTierInitializedRef.current) return;
+        const seeded = (processDetails as any)?.metadata?.afterEffortTier;
+        if (seeded === 'very-low' || seeded === 'low' || seeded === 'medium' || seeded === 'high') {
+            afterTierInitializedRef.current = true;
+            setSelectedFollowUpEffortTier(seeded);
+            return;
         }
-    }, [workspaceId]);
+        const stored = localStorage.getItem(`coc:effort-tier:${workspaceId ?? 'default'}`);
+        setSelectedFollowUpEffortTier(stored === 'low' || stored === 'medium' || stored === 'high' ? stored : 'medium');
+        // Only lock in the fallback once the process record has actually loaded;
+        // until then a later-arriving seeded value can still take precedence.
+        if (processDetails) afterTierInitializedRef.current = true;
+    }, [processDetails, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // When the selected tier becomes unconfigured, fall back to the first configured tier.
     useEffect(() => {
@@ -958,9 +973,25 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [useFollowUpEffortTierMode, followUpEffortTierMap]);
 
+    // Persist the follow-up effort tier per conversation (AC-03). Apply the change
+    // optimistically, then PATCH `metadata.afterEffortTier` in the background
+    // (best-effort — keep the UI value and log on failure). This no longer writes
+    // the workspace-global `coc:effort-tier` key, so one chat's tier can't leak
+    // into another. `afterTierInitializedRef` marks the pick so the read-back
+    // init can't overwrite it if the process record loads afterwards.
     function handleFollowUpEffortTierChange(tier: EffortTierKey) {
+        afterTierInitializedRef.current = true;
         setSelectedFollowUpEffortTier(tier);
-        localStorage.setItem(`coc:effort-tier:${workspaceId ?? 'default'}`, tier);
+        if (!processId) return;
+        client.processes.patchMetadata(processId, { set: { afterEffortTier: tier } })
+            .then((data: any) => {
+                if (data?.process) {
+                    setProcessDetails((prev: any) => (prev ? { ...prev, metadata: data.process.metadata } : prev));
+                }
+            })
+            .catch((err: unknown) => {
+                console.warn('[coc-after-effort-tier] failed to persist tier', err);
+            });
     }
 
     const pinnedFile = createdFiles.at(-1);
