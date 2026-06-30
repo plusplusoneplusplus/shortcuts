@@ -45,7 +45,6 @@ describe('buildChatToolBundle create_conversation wiring', () => {
     });
 
     it('includes create_conversation when the capability is provided AND the tool is enabled', () => {
-        // Explicit empty disabled list enables the otherwise opt-in tool.
         writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
 
         const result = buildChatToolBundle({
@@ -71,8 +70,8 @@ describe('buildChatToolBundle create_conversation wiring', () => {
         expect(result.tools.map(t => t.name)).not.toContain('create_conversation');
     });
 
-    it('excludes create_conversation by default (opt-in) even when the capability is present', () => {
-        // No repo preferences written → classic-mode defaults disable the opt-in tool.
+    it('includes create_conversation by default when the capability is present', () => {
+        // No repo preferences written → enabled-by-default tool is offered.
         const result = buildChatToolBundle({
             dataDir: tmpDir,
             store: makeStore(),
@@ -80,7 +79,7 @@ describe('buildChatToolBundle create_conversation wiring', () => {
             enqueueChat: vi.fn(),
         });
 
-        expect(result.tools.map(t => t.name)).not.toContain('create_conversation');
+        expect(result.tools.map(t => t.name)).toContain('create_conversation');
     });
 
     it('excludes create_conversation when explicitly disabled by repo preferences', () => {

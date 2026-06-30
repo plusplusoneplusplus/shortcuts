@@ -227,7 +227,7 @@ export interface RegisterRoutesOptions {
     /**
      * Publish the bound in-process enqueue capability back to the server layer so
      * the late-bound getter passed to the queue infrastructure (created before
-     * routes) can hand it to executors. Powers the opt-in `create_conversation`
+     * routes) can hand it to executors. Powers the `create_conversation`
      * tool. The callback runs the same machinery `POST /api/queue` uses
      * (`prepareTaskForEnqueue` + `enqueueViaBridge`) against the shared global
      * queue state.
@@ -383,7 +383,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     };
 
     // Publish the bound enqueue capability so executors (created before routes)
-    // can offer the opt-in `create_conversation` tool. Reuses the exact machinery
+    // can offer the `create_conversation` tool. Reuses the exact machinery
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
     opts.setEnqueueChat?.(async (input: CreateTaskInput): Promise<string> => {
