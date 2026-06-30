@@ -73,8 +73,8 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
     {
         name: 'create_conversation',
         label: 'Create Conversation',
-        description: 'Starts a brand-new, separate chat conversation (fire-and-forget) to delegate or spawn work. Opt-in.',
-        enabledByDefault: false,
+        description: 'Starts a brand-new, separate chat conversation (fire-and-forget) to delegate or spawn work.',
+        enabledByDefault: true,
     },
     {
         name: 'ask_user',

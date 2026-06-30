@@ -358,7 +358,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // triggerInfra is created after queue infra (like loopInfra), so read it
         // lazily through this closure.
         () => triggerInfra ? { manager: triggerInfra.triggerManager } : undefined,
-        // Late-bound enqueue capability for the opt-in `create_conversation` tool;
+        // Late-bound enqueue capability for the `create_conversation` tool;
         // bound at the route layer below, read here once routes register.
         () => enqueueChatCapability,
     );

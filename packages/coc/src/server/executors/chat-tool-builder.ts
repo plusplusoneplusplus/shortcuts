@@ -29,7 +29,7 @@ export interface ChatToolBundleOptions {
     workspaceId?: string;
     /**
      * Bound in-process enqueue capability. When present (and the tool is enabled
-     * by preferences), the opt-in `create_conversation` tool is included so an
+     * by preferences), the `create_conversation` tool is included so an
      * agent can spawn a brand-new chat. Absent → the addon no-ops.
      */
     enqueueChat?: EnqueueChatFn;
