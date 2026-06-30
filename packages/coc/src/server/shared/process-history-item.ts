@@ -42,7 +42,7 @@ export interface ProcessHistoryItem {
 
     /**
      * Originating chat's process id when this conversation was spawned via the
-     * `create_conversation` tool. Drives the spawned-conversation tree in the
+     * `send_to_conversation` tool. Drives the spawned-conversation tree in the
      * chat list (forwarded verbatim from the top-level AIProcess field).
      */
     parentProcessId?: string;

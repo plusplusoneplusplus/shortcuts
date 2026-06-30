@@ -1,8 +1,8 @@
 /**
  * spawned-tree-grouping — groups the flat chat list into recursive trees that
- * mirror `create_conversation` spawn relationships.
+ * mirror `send_to_conversation` spawn relationships.
  *
- * When a chat spawns another conversation via the `create_conversation` tool,
+ * When a chat spawns another conversation via the `send_to_conversation` tool,
  * the spawned process records `AIProcess.parentProcessId` = the originating
  * chat's process id (see AC-01). This builder turns the already-returned flat
  * running/queued/history lists into a recursive tree by following those links,

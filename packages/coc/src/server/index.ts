@@ -225,11 +225,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     let triggerInfra: TriggerInfrastructure | undefined;
 
     // Forward declaration — the in-process enqueue capability for the opt-in
-    // `create_conversation` tool is bound at the route layer (where the queue
+    // `send_to_conversation` tool is bound at the route layer (where the queue
     // global state + provider-default resolution live), which runs after the
     // queue infra (and its executors) are created. The late-bound getter passed
     // to createQueueInfrastructure reads this once routes finish registering.
-    let enqueueChatCapability: import('./llm-tools/create-conversation-tool').EnqueueChatFn | undefined;
+    let enqueueChatCapability: import('./llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
 
     // MCP OAuth infra — enabled by default when any MCP server may be configured.
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
@@ -358,7 +358,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // triggerInfra is created after queue infra (like loopInfra), so read it
         // lazily through this closure.
         () => triggerInfra ? { manager: triggerInfra.triggerManager } : undefined,
-        // Late-bound enqueue capability for the `create_conversation` tool;
+        // Late-bound enqueue capability for the `send_to_conversation` tool;
         // bound at the route layer below, read here once routes register.
         () => enqueueChatCapability,
     );

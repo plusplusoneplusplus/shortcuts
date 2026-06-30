@@ -21,7 +21,7 @@ import { registerQueueRoutes } from '../queue/queue-handler';
 import { prepareTaskForEnqueue } from './queue-enqueue';
 import { serializeTask, enqueueViaBridge } from './queue-shared';
 import type { QueueGlobalState } from './queue-shared';
-import type { EnqueueChatFn } from '../llm-tools/create-conversation-tool';
+import type { EnqueueChatFn } from '../llm-tools/send-to-conversation-tool';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
 import { registerPromptRoutes } from '../prompts/prompt-handler';
@@ -227,7 +227,7 @@ export interface RegisterRoutesOptions {
     /**
      * Publish the bound in-process enqueue capability back to the server layer so
      * the late-bound getter passed to the queue infrastructure (created before
-     * routes) can hand it to executors. Powers the `create_conversation`
+     * routes) can hand it to executors. Powers the `send_to_conversation`
      * tool. The callback runs the same machinery `POST /api/queue` uses
      * (`prepareTaskForEnqueue` + `enqueueViaBridge`) against the shared global
      * queue state.
@@ -371,7 +371,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     bridge.setResolveDefaultProvider(resolveDefaultProvider);
 
     // Shared global queue state — passed to both the HTTP queue routes and the
-    // in-process `create_conversation` enqueue capability so they observe the
+    // in-process `send_to_conversation` enqueue capability so they observe the
     // same global pause flags. Created here (rather than inside
     // `registerQueueRoutes`) so the tool path can reuse it.
     const queueGlobalState: QueueGlobalState = {
@@ -383,7 +383,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     };
 
     // Publish the bound enqueue capability so executors (created before routes)
-    // can offer the `create_conversation` tool. Reuses the exact machinery
+    // can offer the `send_to_conversation` tool. Reuses the exact machinery
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
     opts.setEnqueueChat?.(async (input: CreateTaskInput): Promise<string> => {

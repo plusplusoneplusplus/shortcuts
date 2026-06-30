@@ -174,7 +174,7 @@ export interface ProcessHistoryItem {
     workItemId?: string;
     turnCount: number;
     lastActivityAt?: number;
-    /** Originating chat's process id when spawned via `create_conversation`. */
+    /** Originating chat's process id when spawned via `send_to_conversation`. */
     parentProcessId?: string;
     seenAt?: string;
 }

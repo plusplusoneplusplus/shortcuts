@@ -7,7 +7,7 @@ import {
 } from './spawned-tree-grouping';
 
 /**
- * SpawnedTreeRow — renders a `create_conversation` spawn tree in the chat list
+ * SpawnedTreeRow — renders a `send_to_conversation` spawn tree in the chat list
  * (AC-03). Unlike the for-each / map-reduce group rows (whose parent is a
  * synthetic run header), every node here is a real chat: the root row is the
  * originating chat itself, and its spawned descendants nest recursively beneath

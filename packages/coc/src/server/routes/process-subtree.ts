@@ -1,7 +1,7 @@
 /**
  * Process subtree helpers.
  *
- * Spawned conversations (via the `create_conversation` tool) link to their
+ * Spawned conversations (via the `send_to_conversation` tool) link to their
  * originating chat through `AIProcess.parentProcessId`. Deleting a chat from
  * history must cascade through the *entire* spawned subtree, not just direct
  * children, so an active grandchild is never left orphaned pointing at a

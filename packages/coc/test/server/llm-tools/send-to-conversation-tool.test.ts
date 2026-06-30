@@ -1,28 +1,38 @@
 /**
- * Create Conversation Tool Tests
+ * Send To Conversation Tool Tests
  *
- * Unit tests for createCreateConversationTool: defaults, explicit mode/provider,
- * validation error paths (unknown workspace, bad provider, rejected modes,
- * bad model, missing prompt), workspace defaulting, and the rich result shape.
+ * Unit tests for createSendToConversationTool — the dual-mode tool selected by
+ * whether a `processId` is supplied:
+ *   - create mode (no processId): defaults, explicit mode, validation errors,
+ *     workspace defaulting, parent provider/model/effort inheritance, spawn link,
+ *     and the `{ processId, openLink }` result shape.
+ *   - post mode (processId): delivers `content` into the existing conversation
+ *     via the injected `sendMessage` capability, returns `turnIndex`, and ignores
+ *     create-only fields.
+ *   - description disambiguates the two modes.
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { createCreateConversationTool } from '../../../src/server/llm-tools/create-conversation-tool';
-import type { CreateConversationResult, CreateConversationSuccess } from '../../../src/server/llm-tools/create-conversation-tool';
+import { createSendToConversationTool } from '../../../src/server/llm-tools/send-to-conversation-tool';
+import type {
+    SendToConversationResult,
+    SendToConversationSuccess,
+    SendMessageFn,
+} from '../../../src/server/llm-tools/send-to-conversation-tool';
 import type { CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
 
 // Minimal invocation stub for handler calls (matches the SDK invocation arg).
 const invocationStub = {
     sessionId: 'session-1',
     toolCallId: 'call-1',
-    toolName: 'create_conversation',
+    toolName: 'send_to_conversation',
     arguments: {},
 };
 
 /** Parent process metadata the handler inherits provider/model/reasoningEffort from. */
 type ParentMeta = { provider?: string; model?: string; reasoningEffort?: string };
 
-/** Default parent so the common success path has a provider to inherit. */
+/** Default parent so the common create-mode success path has a provider to inherit. */
 const DEFAULT_PARENT_ID = 'queue_parent';
 const DEFAULT_PARENT_META: ParentMeta = { provider: 'copilot' };
 
@@ -47,6 +57,8 @@ interface MakeToolOpts {
     parentProcessId?: string | null;
     /** Parent process metadata; omit a field to model an absent inherited value. */
     parentMeta?: ParentMeta;
+    /** Post-mode delivery capability. Omit to model an unwired post mode. */
+    sendMessage?: SendMessageFn;
 }
 
 /** Build a tool wired to a stub enqueue that captures the CreateTaskInput it receives. */
@@ -63,10 +75,11 @@ function makeTool(opts?: MakeToolOpts) {
         ? { [parentProcessId]: { id: parentProcessId, metadata: parentMeta } }
         : {};
 
-    const { tool } = createCreateConversationTool({
+    const { tool } = createSendToConversationTool({
         store: makeStore(opts?.storeWorkspaces, processes),
         workspaceId: opts?.workspaceId ?? 'ws-1',
         enqueueChat,
+        sendMessage: opts?.sendMessage,
         parentProcessId: parentProcessId ?? undefined,
     });
     return { tool, enqueueChat, captured };
@@ -76,28 +89,50 @@ function payloadOf(input: CreateTaskInput): Record<string, unknown> {
     return input.payload as Record<string, unknown>;
 }
 
-function asSuccess(result: CreateConversationResult): CreateConversationSuccess {
+function asSuccess(result: SendToConversationResult): SendToConversationSuccess {
     if ('error' in result) {
         throw new Error(`Expected success but got error: ${result.error}`);
     }
     return result;
 }
 
-describe('createCreateConversationTool', () => {
-    it('returns a valid Tool shape with prompt required', () => {
+describe('createSendToConversationTool — shape & description', () => {
+    it('returns a valid Tool shape named send_to_conversation with content required', () => {
         const { tool } = makeTool();
-        expect(tool.name).toBe('create_conversation');
+        expect(tool.name).toBe('send_to_conversation');
         expect(typeof tool.handler).toBe('function');
         expect(tool.parameters).toMatchObject({
             type: 'object',
-            required: ['prompt'],
+            required: ['content'],
         });
     });
 
-    it('applies defaults (ask mode, normal priority, caller workspace) for { prompt } only', async () => {
+    it('declares the dual-mode parameter set (processId switch, no provider param)', () => {
+        const { tool } = makeTool();
+        const props = (tool.parameters as { properties: Record<string, unknown> }).properties;
+        expect(Object.keys(props).sort()).toEqual(
+            ['content', 'deliveryMode', 'mode', 'model', 'priority', 'processId', 'title', 'workspaceId'].sort(),
+        );
+        // `provider` was intentionally dropped from the parameter set.
+        expect(props.provider).toBeUndefined();
+    });
+
+    // AC-05: description leads with the processId branch and notes create-only-ignored.
+    it('description disambiguates modes (processId branch first, create-only ignored)', () => {
+        const { tool } = makeTool();
+        const desc = tool.description ?? '';
+        expect(desc).toMatch(/processId/);
+        // The processId branch is described before the "omitted → create" branch.
+        expect(desc.indexOf('processId')).toBeLessThan(desc.indexOf('omitted'));
+        expect(desc).toMatch(/ignored/i);
+    });
+});
+
+describe('createSendToConversationTool — create mode (no processId)', () => {
+    it('applies defaults (ask mode, normal priority, caller workspace) for { content } only', async () => {
         const { tool, enqueueChat, captured } = makeTool({ workspaceId: 'ws-1' });
 
-        const result = asSuccess(await tool.handler({ prompt: 'hello' }, invocationStub));
+        const result = asSuccess(await tool.handler({ content: 'hello' }, invocationStub));
 
         expect(enqueueChat).toHaveBeenCalledTimes(1);
         const input = captured.input!;
@@ -109,127 +144,107 @@ describe('createCreateConversationTool', () => {
         expect(payload.prompt).toBe('hello');
         expect(payload.workspaceId).toBe('ws-1');
 
+        // Uniform return shape: { processId, openLink }; no turnIndex in create mode.
         expect(result.processId).toBe('queue_task-123');
-        expect(result.status).toBe('queued');
         expect(result.openLink).toBe('#/process/queue_task-123');
-        expect(result.title).toContain('hello');
+        expect(result.turnIndex).toBeUndefined();
     });
 
     it('honors explicit mode:autopilot', async () => {
         const { tool, captured } = makeTool();
-        await tool.handler({ prompt: 'do work', mode: 'autopilot' }, invocationStub);
+        await tool.handler({ content: 'do work', mode: 'autopilot' }, invocationStub);
         const payload = captured.input!.payload as Record<string, unknown>;
         expect(payload.mode).toBe('autopilot');
     });
 
     it('uses an explicit title as the display name', async () => {
         const { tool, captured } = makeTool();
-        const result = asSuccess(await tool.handler({ prompt: 'hello', title: 'My Spawned Chat' }, invocationStub));
+        await tool.handler({ content: 'hello', title: 'My Spawned Chat' }, invocationStub);
         expect(captured.input!.displayName).toBe('My Spawned Chat');
-        expect(result.title).toBe('My Spawned Chat');
     });
 
-    it('passes provider and model through to the task', async () => {
+    it('passes an explicit model through to the task config', async () => {
         const { tool, captured } = makeTool();
-        await tool.handler({ prompt: 'hi', provider: 'claude', model: 'claude-opus-4-8' }, invocationStub);
-        const payload = captured.input!.payload as Record<string, unknown>;
-        expect(payload.provider).toBe('claude');
+        await tool.handler({ content: 'hi', model: 'claude-opus-4-8' }, invocationStub);
         expect(captured.input!.config?.model).toBe('claude-opus-4-8');
     });
 
     it('targets a different registered workspace when workspaceId is provided', async () => {
         const { tool, captured } = makeTool({ workspaceId: 'ws-1', storeWorkspaces: ['ws-1', 'ws-2'] });
-        await tool.handler({ prompt: 'hi', workspaceId: 'ws-2' }, invocationStub);
+        await tool.handler({ content: 'hi', workspaceId: 'ws-2' }, invocationStub);
         const payload = captured.input!.payload as Record<string, unknown>;
         expect(payload.workspaceId).toBe('ws-2');
     });
 
     it('honors a high priority', async () => {
         const { tool, captured } = makeTool();
-        await tool.handler({ prompt: 'urgent', priority: 'high' }, invocationStub);
+        await tool.handler({ content: 'urgent', priority: 'high' }, invocationStub);
         expect(captured.input!.priority).toBe('high');
     });
 
     // ---- error paths ------------------------------------------------------
 
-    it('errors on missing/blank prompt', async () => {
+    it('errors on missing/blank content', async () => {
         const { tool, enqueueChat } = makeTool();
-        const result = await tool.handler({ prompt: '   ' }, invocationStub);
-        expect('error' in result && result.error).toMatch(/prompt/i);
+        const result = await tool.handler({ content: '   ' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/content/i);
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
     it('errors on an unknown workspaceId', async () => {
         const { tool, enqueueChat } = makeTool({ workspaceId: 'ws-1', storeWorkspaces: ['ws-1'] });
-        const result = await tool.handler({ prompt: 'hi', workspaceId: 'ws-missing' }, invocationStub);
+        const result = await tool.handler({ content: 'hi', workspaceId: 'ws-missing' }, invocationStub);
         expect('error' in result && result.error).toMatch(/unknown workspaceid/i);
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
     it('errors when no workspace can be resolved', async () => {
-        const captured: { input?: CreateTaskInput } = {};
-        const enqueueChat = vi.fn(async (input: CreateTaskInput) => {
-            captured.input = input;
-            return 'task-x';
-        });
-        const { tool } = createCreateConversationTool({
+        const enqueueChat = vi.fn(async () => 'task-x');
+        const { tool } = createSendToConversationTool({
             store: makeStore(['ws-1']),
             workspaceId: undefined,
             enqueueChat,
         });
-        const result = await tool.handler({ prompt: 'hi' }, invocationStub);
+        const result = await tool.handler({ content: 'hi' }, invocationStub);
         expect('error' in result && result.error).toMatch(/no target workspace/i);
-        expect(enqueueChat).not.toHaveBeenCalled();
-    });
-
-    it('errors on an invalid provider', async () => {
-        const { tool, enqueueChat } = makeTool();
-        const result = await tool.handler(
-            { prompt: 'hi', provider: 'gemini' as never },
-            invocationStub,
-        );
-        expect('error' in result && result.error).toMatch(/invalid provider/i);
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
     it('rejects mode:plan', async () => {
         const { tool, enqueueChat } = makeTool();
-        const result = await tool.handler({ prompt: 'hi', mode: 'plan' as never }, invocationStub);
+        const result = await tool.handler({ content: 'hi', mode: 'plan' as never }, invocationStub);
         expect('error' in result && result.error).toMatch(/invalid mode/i);
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
     it('rejects mode:ralph', async () => {
         const { tool, enqueueChat } = makeTool();
-        const result = await tool.handler({ prompt: 'hi', mode: 'ralph' as never }, invocationStub);
+        const result = await tool.handler({ content: 'hi', mode: 'ralph' as never }, invocationStub);
         expect('error' in result && result.error).toMatch(/invalid mode/i);
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
     it('errors on an empty model string', async () => {
         const { tool, enqueueChat } = makeTool();
-        const result = await tool.handler({ prompt: 'hi', model: '   ' }, invocationStub);
+        const result = await tool.handler({ content: 'hi', model: '   ' }, invocationStub);
         expect('error' in result && result.error).toMatch(/invalid model/i);
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
     it('errors on an invalid priority', async () => {
         const { tool, enqueueChat } = makeTool();
-        const result = await tool.handler(
-            { prompt: 'hi', priority: 'urgent' as never },
-            invocationStub,
-        );
+        const result = await tool.handler({ content: 'hi', priority: 'urgent' as never }, invocationStub);
         expect('error' in result && result.error).toMatch(/invalid priority/i);
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
-    // ---- parent inheritance (AC-01 / AC-02) -------------------------------
+    // ---- parent inheritance ----------------------------------------------
 
-    it('inherits provider/model/reasoningEffort from the parent for { prompt } only', async () => {
+    it('inherits provider/model/reasoningEffort from the parent for { content } only', async () => {
         const { tool, captured } = makeTool({
             parentMeta: { provider: 'claude', model: 'claude-sonnet-4-6', reasoningEffort: 'high' },
         });
-        await tool.handler({ prompt: 'spawned' }, invocationStub);
+        await tool.handler({ content: 'spawned' }, invocationStub);
         const payload = payloadOf(captured.input!);
         expect(payload.provider).toBe('claude');
         expect(captured.input!.config?.model).toBe('claude-sonnet-4-6');
@@ -246,13 +261,13 @@ describe('createCreateConversationTool', () => {
             getProcess,
         } as unknown as ProcessStore;
         const captured: { input?: CreateTaskInput } = {};
-        const { tool } = createCreateConversationTool({
+        const { tool } = createSendToConversationTool({
             store,
             workspaceId: 'ws-1',
             enqueueChat: async input => { captured.input = input; return 'task-1'; },
             parentProcessId: 'queue_p1',
         });
-        await tool.handler({ prompt: 'hi' }, invocationStub);
+        await tool.handler({ content: 'hi' }, invocationStub);
         expect(getProcess).toHaveBeenCalledWith('queue_p1');
         expect(payloadOf(captured.input!).provider).toBe('claude');
     });
@@ -261,72 +276,44 @@ describe('createCreateConversationTool', () => {
         const { tool, captured } = makeTool({
             parentMeta: { provider: 'claude', model: 'claude-sonnet-4-6', reasoningEffort: 'high' },
         });
-        await tool.handler({ prompt: 'hi', model: 'claude-opus-4-8' }, invocationStub);
+        await tool.handler({ content: 'hi', model: 'claude-opus-4-8' }, invocationStub);
         const payload = payloadOf(captured.input!);
         expect(payload.provider).toBe('claude');
         expect(captured.input!.config?.model).toBe('claude-opus-4-8');
         expect(captured.input!.config?.reasoningEffort).toBe('high');
     });
 
-    it('explicit provider overrides parent provider; model + effort still inherited', async () => {
-        const { tool, captured } = makeTool({
-            parentMeta: { provider: 'copilot', model: 'gpt-5', reasoningEffort: 'low' },
-        });
-        await tool.handler({ prompt: 'hi', provider: 'claude' }, invocationStub);
-        const payload = payloadOf(captured.input!);
-        expect(payload.provider).toBe('claude');
-        // model 'gpt-5' is inherited but coerced to the claude provider default downstream.
-        expect(captured.input!.config?.reasoningEffort).toBe('low');
-    });
-
-    it('reasoningEffort is always inherited and exposes no schema param', async () => {
+    it('reasoningEffort and provider are always inherited and expose no schema param', async () => {
         const { tool, captured } = makeTool({
             parentMeta: { provider: 'claude', model: 'claude-opus-4-8', reasoningEffort: 'xhigh' },
         });
-        await tool.handler({ prompt: 'hi' }, invocationStub);
+        await tool.handler({ content: 'hi' }, invocationStub);
         expect(captured.input!.config?.reasoningEffort).toBe('xhigh');
 
         const props = (tool.parameters as { properties: Record<string, unknown> }).properties;
         expect(props.reasoningEffort).toBeUndefined();
+        expect(props.provider).toBeUndefined();
     });
 
     it('falls back to provider default (no error) when parent has provider but no model', async () => {
-        const { tool, enqueueChat, captured } = makeTool({
-            parentMeta: { provider: 'claude' },
-        });
-        const result = await tool.handler({ prompt: 'hi' }, invocationStub);
+        const { tool, enqueueChat, captured } = makeTool({ parentMeta: { provider: 'claude' } });
+        const result = await tool.handler({ content: 'hi' }, invocationStub);
         expect('error' in result).toBe(false);
         expect(enqueueChat).toHaveBeenCalledTimes(1);
         expect(payloadOf(captured.input!).provider).toBe('claude');
-        // No inherited model → config.model stays undefined; the executor resolves
-        // the provider's default later. The key point is no error is returned.
         expect(captured.input!.config?.model).toBeUndefined();
     });
 
-    it('errors (and does NOT enqueue) with no resolvable parent and no explicit provider', async () => {
+    it('errors (and does NOT enqueue) with no resolvable parent to inherit a provider from', async () => {
         const { tool, enqueueChat } = makeTool({ parentProcessId: null });
-        const result = await tool.handler({ prompt: 'hi' }, invocationStub);
+        const result = await tool.handler({ content: 'hi' }, invocationStub);
         expect('error' in result && result.error).toMatch(/provider/i);
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
-    it('spawns with explicit provider+model even when no parent is resolvable', async () => {
-        const { tool, enqueueChat, captured } = makeTool({ parentProcessId: null });
-        const result = await tool.handler(
-            { prompt: 'hi', provider: 'claude', model: 'claude-opus-4-8' },
-            invocationStub,
-        );
-        expect('error' in result).toBe(false);
-        expect(enqueueChat).toHaveBeenCalledTimes(1);
-        expect(payloadOf(captured.input!).provider).toBe('claude');
-        expect(captured.input!.config?.model).toBe('claude-opus-4-8');
-    });
-
     it('inherited provider is set on payload (suppresses default-provider auto-routing)', async () => {
-        // Setting payload.provider makes the enqueue path treat the provider as
-        // explicit, so resolveDefaultProviderForTask skips auto-routing.
         const { tool, captured } = makeTool({ parentMeta: { provider: 'claude' } });
-        await tool.handler({ prompt: 'hi' }, invocationStub);
+        await tool.handler({ content: 'hi' }, invocationStub);
         expect(payloadOf(captured.input!).provider).toBe('claude');
     });
 
@@ -336,35 +323,126 @@ describe('createCreateConversationTool', () => {
             storeWorkspaces: ['ws-1', 'ws-2'],
             parentMeta: { provider: 'claude', model: 'claude-opus-4-8', reasoningEffort: 'high' },
         });
-        await tool.handler({ prompt: 'hi', workspaceId: 'ws-2' }, invocationStub);
+        await tool.handler({ content: 'hi', workspaceId: 'ws-2' }, invocationStub);
         const payload = payloadOf(captured.input!);
         expect(payload.workspaceId).toBe('ws-2');
         expect(payload.provider).toBe('claude');
         expect(captured.input!.config?.reasoningEffort).toBe('high');
     });
 
-    // ---- spawn link (AC-01) ----------------------------------------------
+    // ---- spawn link -------------------------------------------------------
 
     it('persists the parent link as payload.context.spawnedFromProcessId', async () => {
         const { tool, captured } = makeTool({ parentProcessId: 'queue_caller' });
-        await tool.handler({ prompt: 'spawn me' }, invocationStub);
+        await tool.handler({ content: 'spawn me' }, invocationStub);
         const context = payloadOf(captured.input!).context as { spawnedFromProcessId?: string } | undefined;
         expect(context?.spawnedFromProcessId).toBe('queue_caller');
     });
 
-    it('omits the spawn link when there is no resolvable parent', async () => {
-        const { tool, captured } = makeTool({ parentProcessId: null });
-        await tool.handler({ prompt: 'hi', provider: 'claude', model: 'claude-opus-4-8' }, invocationStub);
-        const context = payloadOf(captured.input!).context as { spawnedFromProcessId?: string } | undefined;
-        expect(context?.spawnedFromProcessId).toBeUndefined();
-    });
-
     it('mode defaults to ask and is never read from the parent', async () => {
         const { tool, captured } = makeTool({
-            // A parent "mode" must not leak into the spawned conversation.
             parentMeta: { provider: 'claude', model: 'claude-opus-4-8' } as ParentMeta & { mode?: string },
         });
-        await tool.handler({ prompt: 'hi' }, invocationStub);
+        await tool.handler({ content: 'hi' }, invocationStub);
         expect(payloadOf(captured.input!).mode).toBe('ask');
+    });
+});
+
+describe('createSendToConversationTool — post mode (processId provided)', () => {
+    // AC-04: posts into the existing conversation via sendMessage, returns turnIndex.
+    it('delivers content via sendMessage and returns { processId, openLink, turnIndex }', async () => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 7 }));
+        const { tool, enqueueChat } = makeTool({ sendMessage });
+
+        const result = asSuccess(
+            await tool.handler({ processId: 'queue_existing', content: 'follow up please' }, invocationStub),
+        );
+
+        expect(sendMessage).toHaveBeenCalledTimes(1);
+        expect(sendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ processId: 'queue_existing', content: 'follow up please' }),
+        );
+        // Post mode must NOT enqueue a new conversation.
+        expect(enqueueChat).not.toHaveBeenCalled();
+        expect(result.processId).toBe('queue_existing');
+        expect(result.openLink).toBe('#/process/queue_existing');
+        expect(result.turnIndex).toBe(7);
+    });
+
+    it('forwards mode, model, and deliveryMode to sendMessage', async () => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 1 }));
+        const { tool } = makeTool({ sendMessage });
+        await tool.handler(
+            {
+                processId: 'queue_existing',
+                content: 'go',
+                mode: 'autopilot',
+                model: 'claude-opus-4-8',
+                deliveryMode: 'steer',
+            },
+            invocationStub,
+        );
+        expect(sendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                processId: 'queue_existing',
+                content: 'go',
+                mode: 'autopilot',
+                model: 'claude-opus-4-8',
+                deliveryMode: 'steer',
+            }),
+        );
+    });
+
+    it('ignores create-only fields (workspaceId, title, priority) without error', async () => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 2 }));
+        const { tool, enqueueChat } = makeTool({ sendMessage });
+        const result = await tool.handler(
+            {
+                processId: 'queue_existing',
+                content: 'hi',
+                workspaceId: 'ws-2',
+                title: 'ignored',
+                priority: 'high',
+            },
+            invocationStub,
+        );
+        expect('error' in result).toBe(false);
+        expect(enqueueChat).not.toHaveBeenCalled();
+        const arg = sendMessage.mock.calls[0][0];
+        expect(arg).not.toHaveProperty('workspaceId');
+        expect(arg).not.toHaveProperty('title');
+        expect(arg).not.toHaveProperty('priority');
+    });
+
+    it('errors on a blank content even in post mode', async () => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 0 }));
+        const { tool } = makeTool({ sendMessage });
+        const result = await tool.handler({ processId: 'queue_existing', content: '  ' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/content/i);
+        expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('errors on an invalid deliveryMode', async () => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 0 }));
+        const { tool } = makeTool({ sendMessage });
+        const result = await tool.handler(
+            { processId: 'queue_existing', content: 'hi', deliveryMode: 'whenever' as never },
+            invocationStub,
+        );
+        expect('error' in result && result.error).toMatch(/invalid deliverymode/i);
+        expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('errors gracefully when no sendMessage capability is wired', async () => {
+        const { tool } = makeTool({ sendMessage: undefined });
+        const result = await tool.handler({ processId: 'queue_existing', content: 'hi' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/not available/i);
+    });
+
+    it('surfaces a delivery failure as a tool error', async () => {
+        const sendMessage = vi.fn(async () => { throw new Error('process not found'); });
+        const { tool } = makeTool({ sendMessage });
+        const result = await tool.handler({ processId: 'queue_missing', content: 'hi' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/process not found/i);
     });
 });

@@ -34,7 +34,7 @@ export function registerQueueRoutes(
         /**
          * Shared global queue state. When supplied (by the route layer), the HTTP
          * enqueue path and any in-process enqueue capability (e.g. the
-         * `create_conversation` tool) observe the same global pause flags. When
+         * `send_to_conversation` tool) observe the same global pause flags. When
          * omitted, a fresh state is created (default for tests / standalone use).
          */
         state?: QueueGlobalState;

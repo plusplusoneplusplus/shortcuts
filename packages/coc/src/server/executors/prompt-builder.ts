@@ -32,7 +32,7 @@ import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '..
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn, type CreateUpdateWorkItemToolDeps } from '../llm-tools/create-update-work-item-tool';
-import { createCreateConversationTool, type EnqueueChatFn } from '../llm-tools/create-conversation-tool';
+import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn } from '../llm-tools/send-to-conversation-tool';
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { createGetWorkItemTool } from '../llm-tools/get-work-item-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
@@ -502,13 +502,15 @@ export function buildSearchConversationsAddon(
 }
 
 // ============================================================================
-// Create Conversation
+// Send To Conversation
 // ============================================================================
 
 /**
- * Builds the tools array for the `create_conversation` tool, which lets an agent
- * spawn a brand-new chat (fire-and-forget) through the same in-process queue path
- * `POST /api/queue` uses.
+ * Builds the tools array for the dual-mode `send_to_conversation` tool, which
+ * lets an agent either spawn a brand-new chat (fire-and-forget, through the same
+ * in-process queue path `POST /api/queue` uses) or post a message into an
+ * existing conversation (through the same delivery path
+ * `POST /api/processes/:id/message` uses).
  *
  * No-ops (returns no tools) when the in-process enqueue capability is absent —
  * the same defensive pattern {@link buildSearchConversationsAddon} uses when the
@@ -517,24 +519,26 @@ export function buildSearchConversationsAddon(
  * {@link applyLlmToolPreferences}).
  *
  * @param store        ProcessStore — used to validate the target workspace exists.
- * @param workspaceId  The caller's current workspace; the default enqueue target.
+ * @param workspaceId  The caller's current workspace; the default create-mode target.
  * @param enqueueChat  Bound in-process enqueue capability; when omitted, no tool.
  * @param parentProcessId The current chat's processId; the spawned conversation
  *                        inherits its resolved provider/model/reasoningEffort.
+ * @param sendMessage  Bound in-process follow-up delivery capability (post mode).
  */
-export function buildCreateConversationAddon(
+export function buildSendToConversationAddon(
     store: ProcessStore | undefined,
     workspaceId: string | undefined,
     enqueueChat: EnqueueChatFn | undefined,
     parentProcessId?: string,
+    sendMessage?: SendMessageFn,
 ): { tools: Tool<any>[]; suffix: string } {
     if (!store || !enqueueChat) {
         return { tools: [], suffix: '' };
     }
 
-    const { tool } = createCreateConversationTool({ store, workspaceId, enqueueChat, parentProcessId });
+    const { tool } = createSendToConversationTool({ store, workspaceId, enqueueChat, sendMessage, parentProcessId });
 
-    // No prose suffix — the create_conversation tool description carries its own guidance.
+    // No prose suffix — the send_to_conversation tool description carries its own guidance.
     return { tools: [tool], suffix: '' };
 }
 

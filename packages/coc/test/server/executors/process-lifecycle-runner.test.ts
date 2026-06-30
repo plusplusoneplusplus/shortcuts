@@ -744,7 +744,7 @@ describe('ProcessLifecycleRunner — parentProcessId from context.spawnedFromPro
         runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
     });
 
-    it('sets top-level parentProcessId from a create_conversation spawn link', async () => {
+    it('sets top-level parentProcessId from a send_to_conversation spawn link', async () => {
         const task = makeTask({
             payload: {
                 kind: 'chat',

@@ -1129,7 +1129,7 @@ export function ChatListPane({
         return ids;
     }, [forEachGroupedTaskIds, mapReduceRunGroups]);
 
-    // AC-03: group chats that spawned others (via `create_conversation`) into
+    // AC-03: group chats that spawned others (via `send_to_conversation`) into
     // recursive trees by `parentProcessId`, behind a default-ON toggle. Built
     // from the same flat running/queued/history list the for-each grouping uses,
     // skipping chats already owned by a for-each / map-reduce group so existing

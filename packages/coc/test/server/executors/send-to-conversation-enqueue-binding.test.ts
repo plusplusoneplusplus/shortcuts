@@ -1,12 +1,12 @@
 /**
- * Integration test for the create_conversation enqueue binding (AC-02 Part 2).
+ * Integration test for the send_to_conversation create-mode enqueue binding.
  *
  * Proves the tool is functional end-to-end against the *real* enqueue machinery
- * that `POST /api/queue` uses: `createCreateConversationTool` wired to an
+ * that `POST /api/queue` uses: `createSendToConversationTool` wired to an
  * `enqueueChat` callback that runs `enqueueViaBridge` against a real
- * `MultiRepoQueueRouter`. Calling the handler with `{ prompt }` routes a
- * `type:'chat'` task into the per-repo queue (so it appears in the chat list) and
- * returns the queued task's identity.
+ * `MultiRepoQueueRouter`. Calling the handler with `{ content }` (no processId)
+ * routes a `type:'chat'` task into the per-repo queue (so it appears in the chat
+ * list) and returns the queued conversation's identity.
  *
  * Mirrors the binding built at the route layer in `registerAllRoutes`:
  *   enqueueChat = (input) => enqueueViaBridge(input, bridge, state, root, store)
@@ -32,7 +32,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 });
 
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
-import { createCreateConversationTool } from '../../../src/server/llm-tools/create-conversation-tool';
+import { createSendToConversationTool } from '../../../src/server/llm-tools/send-to-conversation-tool';
 import { enqueueViaBridge, type QueueGlobalState } from '../../../src/server/routes/queue-shared';
 
 const WS_ID = 'ws-spawn';
@@ -55,7 +55,7 @@ function setup(state: QueueGlobalState = freshState()) {
     const store = createMockProcessStore();
     (store.getWorkspaces as any).mockResolvedValue([{ id: WS_ID, rootPath: ROOT }]);
     // Seed the parent chat the spawned conversation inherits provider/model/effort
-    // from. Without a resolvable parent (or explicit provider) the handler errors.
+    // from. Without a resolvable parent the create-mode handler errors.
     void store.addProcess({
         id: PARENT_PID,
         metadata: { type: 'chat', provider: 'copilot' },
@@ -66,7 +66,7 @@ function setup(state: QueueGlobalState = freshState()) {
     const enqueueChat = (input: CreateTaskInput): Promise<string> =>
         enqueueViaBridge(input, bridge, state, ROOT, store);
 
-    const { tool } = createCreateConversationTool({
+    const { tool } = createSendToConversationTool({
         store: store as any,
         workspaceId: WS_ID,
         enqueueChat,
@@ -75,7 +75,7 @@ function setup(state: QueueGlobalState = freshState()) {
     return { bridge, store, tool };
 }
 
-describe('create_conversation enqueue binding (real enqueueViaBridge path)', () => {
+describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridge path)', () => {
     beforeEach(() => {
         sdkMocks.resetAll();
     });
@@ -83,12 +83,14 @@ describe('create_conversation enqueue binding (real enqueueViaBridge path)', () 
     it('enqueues a type:chat task that appears in the queue and returns its identity', async () => {
         const { bridge, tool } = setup();
 
-        const result = await tool.handler({ prompt: 'spawn me a helper chat' }) as any;
+        const result = await tool.handler({ content: 'spawn me a helper chat' }) as any;
 
         // Returned identity is queue_<taskId> with an openable deep link.
-        expect(result.status).toBe('queued');
+        expect(result.error).toBeUndefined();
         expect(result.processId).toMatch(/^queue_/);
         expect(result.openLink).toBe(`#/process/${result.processId}`);
+        // Create mode has no turnIndex.
+        expect(result.turnIndex).toBeUndefined();
 
         // The conversation is actually in the queue (chat-list visible).
         const taskId = result.processId.slice('queue_'.length);
@@ -103,13 +105,12 @@ describe('create_conversation enqueue binding (real enqueueViaBridge path)', () 
         const { bridge, tool } = setup();
 
         const result = await tool.handler({
-            prompt: 'do the thing',
+            content: 'do the thing',
             mode: 'autopilot',
             title: 'Helper task',
         }) as any;
 
-        expect(result.status).toBe('queued');
-        expect(result.title).toBe('Helper task');
+        expect(result.error).toBeUndefined();
 
         const task = bridge.getTask(result.processId.slice('queue_'.length));
         expect((task!.payload as any).mode).toBe('autopilot');
@@ -119,7 +120,7 @@ describe('create_conversation enqueue binding (real enqueueViaBridge path)', () 
     it('does not enqueue when validation fails (unknown workspace)', async () => {
         const { bridge, tool } = setup();
 
-        const result = await tool.handler({ prompt: 'x', workspaceId: 'nope' }) as any;
+        const result = await tool.handler({ content: 'x', workspaceId: 'nope' }) as any;
 
         expect(result.error).toMatch(/Unknown workspaceId/);
         expect(bridge.createAggregateQueueFacade().getQueued()).toHaveLength(0);

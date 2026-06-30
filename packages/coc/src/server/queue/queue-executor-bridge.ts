@@ -52,9 +52,9 @@ export interface CLITaskExecutorOptions {
     /**
      * Late-bound in-process enqueue capability supplied by the server/route layer
      * (where the queue router + global state live). Powers the opt-in
-     * `create_conversation` tool so an agent can spawn a brand-new chat.
+     * `send_to_conversation` tool so an agent can spawn a brand-new chat.
      */
-    getEnqueueChat?: () => import('../llm-tools/create-conversation-tool').EnqueueChatFn | undefined;
+    getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     dreamRunExecutor?: DreamRunExecutor;

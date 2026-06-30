@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  *
  * Tests for SpawnedTreeRow — the recursive chat-list row that nests
- * `create_conversation`-spawned descendants under their root chat.
+ * `send_to_conversation`-spawned descendants under their root chat.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';

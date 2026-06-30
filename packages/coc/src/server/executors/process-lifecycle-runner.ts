@@ -511,7 +511,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const rawAfterEffortTier = (task.config as { afterEffortTier?: unknown }).afterEffortTier;
         const afterEffortTier = typeof rawAfterEffortTier === 'string' ? rawAfterEffortTier : undefined;
 
-        // Spawn link (AC-01): a conversation started via the `create_conversation`
+        // Spawn link (AC-01): a conversation started via the `send_to_conversation`
         // tool carries its originating chat's processId in
         // `payload.context.spawnedFromProcessId`. Persist it on the TOP-LEVEL
         // `parentProcessId` (not metadata) so the parent_process_id column is

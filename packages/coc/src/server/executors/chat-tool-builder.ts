@@ -1,7 +1,7 @@
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
-import type { EnqueueChatFn } from '../llm-tools/create-conversation-tool';
+import type { EnqueueChatFn, SendMessageFn } from '../llm-tools/send-to-conversation-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
@@ -11,7 +11,7 @@ import {
     applyLlmToolPreferences,
     buildAskUserAddon,
     buildCanvasToolsAddon,
-    buildCreateConversationAddon,
+    buildSendToConversationAddon,
     buildCreateWorkItemAddon,
     buildFollowUpSuggestionsAddon,
     buildLoopToolsAddon,
@@ -29,10 +29,15 @@ export interface ChatToolBundleOptions {
     workspaceId?: string;
     /**
      * Bound in-process enqueue capability. When present (and the tool is enabled
-     * by preferences), the `create_conversation` tool is included so an
+     * by preferences), the `send_to_conversation` tool is included so an
      * agent can spawn a brand-new chat. Absent → the addon no-ops.
      */
     enqueueChat?: EnqueueChatFn;
+    /**
+     * Bound in-process follow-up delivery capability. Enables the post mode of
+     * `send_to_conversation` (posting into an existing conversation). Optional.
+     */
+    sendMessage?: SendMessageFn;
     processId?: string;
     followUpSuggestions?: { enabled: boolean; count: number };
     askUser?: {
@@ -96,11 +101,12 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
     }
 
     if (options.enqueueChat) {
-        addons.push(buildCreateConversationAddon(
+        addons.push(buildSendToConversationAddon(
             options.store,
             options.workspaceId,
             options.enqueueChat,
             options.processId,
+            options.sendMessage,
         ));
     }
 

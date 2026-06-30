@@ -53,8 +53,8 @@ export interface ExecutorRegistryOptions {
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('./chat-base-executor').LoopInfraDeps | undefined;
-    /** Late-bound in-process enqueue capability for the `create_conversation` tool. */
-    getEnqueueChat?: () => import('../llm-tools/create-conversation-tool').EnqueueChatFn | undefined;
+    /** Late-bound in-process enqueue capability for the `send_to_conversation` tool. */
+    getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     getDreamRunExecutor?: () => import('../dreams/dream-runner').DreamRunExecutor | undefined;
     cancelledTasks?: Set<string>;
