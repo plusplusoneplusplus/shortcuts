@@ -7,6 +7,20 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+
+// Mock os.homedir to prevent real OneDrive skill directories from polluting tests.
+// eslint-disable-next-line no-var
+var _realHomedir: string;
+
+vi.mock('os', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('os')>();
+    _realHomedir = actual.homedir();
+    return {
+        ...actual,
+        homedir: vi.fn(() => _realHomedir),
+    };
+});
+
 import { registerSkillRoutes, sortSkillsByUsage, skillCache, SKILL_CACHE_TTL_MS, loadSkillsForWorkspace, readConfiguredGlobalExtraFolders } from '../../src/server/skills/skill-handler';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../../src/server/types';
@@ -102,6 +116,8 @@ describe('registerSkillRoutes', () => {
         skillCache.clear();
         routes = [];
         workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-api-'));
+        // Point homedir to a temp dir so OneDrive skill scanning doesn't pick up real user skills.
+        vi.mocked(os.homedir).mockReturnValue(workspaceDir);
         store = createMockProcessStore({
             initialWorkspaces: [{
                 id: workspaceId,
