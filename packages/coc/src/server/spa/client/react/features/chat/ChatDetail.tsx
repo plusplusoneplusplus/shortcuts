@@ -37,7 +37,8 @@ import { CanvasPanel } from '../canvas/CanvasPanel';
 import { SourceCanvasDock, useSourceCanvasState, useSourceCanvasContent, useSourceCanvasDirectory } from './source-canvas';
 import { readCanvasClosed, writeCanvasClosed } from './canvasClosedPreference';
 import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER_DIFF_EVENT } from './whisper-diff';
-import type { WhisperFileDiffContext } from './conversation/tool-calls/WhisperCollapsedGroup';
+import { isCombinedWhisperDiffContext } from './conversation/tool-calls/WhisperCollapsedGroup';
+import type { WhisperDiffOpenContext } from './conversation/tool-calls/WhisperCollapsedGroup';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
@@ -394,8 +395,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const openWhisperDiff = whisperDiff.open;
     useEffect(() => {
         const handler = (event: Event) => {
-            const detail = (event as CustomEvent).detail as WhisperFileDiffContext | undefined;
-            if (!detail || !detail.file) return;
+            const detail = (event as CustomEvent).detail as WhisperDiffOpenContext | undefined;
+            if (!detail) return;
+            // Combined contexts carry `files[]` (no `.file`); single-file contexts
+            // must carry a `.file`. Reject anything that is neither.
+            if (!isCombinedWhisperDiffContext(detail) && !detail.file) return;
             openWhisperDiff(detail);
         };
         window.addEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
@@ -1299,7 +1303,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // canvas + source canvas above (only one right column is non-null at once).
     const whisperDiffColumn = (whisperDiff.isOpen && whisperDiff.ctx) ? (
         <WhisperDiffDock
-            file={whisperDiff.ctx.file}
+            file={isCombinedWhisperDiffContext(whisperDiff.ctx) ? undefined : whisperDiff.ctx.file}
             state={whisperDiffState}
             workspaceRootPath={workspaceRootPath}
             isMobile={isMobile}

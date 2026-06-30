@@ -24,27 +24,91 @@ import { useEffect, useMemo, useState } from 'react';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { buildWhisperFileDiff } from '../conversation/tool-calls/buildWhisperFileDiff';
-import type { WhisperFileDiffContext } from '../conversation/tool-calls/WhisperCollapsedGroup';
-import type { FileEdit } from '../conversation/tool-calls/toolGroupUtils';
+import {
+    buildWhisperCombinedDiff,
+    type CombinedWhisperDiffSection,
+} from '../conversation/tool-calls/buildWhisperCombinedDiff';
+import {
+    isCombinedWhisperDiffContext,
+    type WhisperDiffOpenContext,
+} from '../conversation/tool-calls/WhisperCollapsedGroup';
+import { computeFileEditTotals, type FileEdit } from '../conversation/tool-calls/toolGroupUtils';
 
 export type WhisperDiffStatus = 'idle' | 'loading' | 'success' | 'empty' | 'error';
+
+/**
+ * Combined-mode payload — present only when the panel was opened from the
+ * files-popover footer (the whole-group "All changes" view, AC-03). It carries
+ * everything the panel needs to render the header totals, the per-file dividers,
+ * and the trailing "not shown" list, all built synchronously by
+ * `buildWhisperCombinedDiff`.
+ */
+export interface CombinedWhisperDiffView {
+    /** Per-file reconstructed sections in group order (a divider + diff each). */
+    sections: CombinedWhisperDiffSection[];
+    /** Deleted files (no diff body) — listed under "not shown". */
+    deletedFiles: FileEdit[];
+    /** Non-reconstructable files (no line content) — listed under "not shown". */
+    nonReconstructableFiles: FileEdit[];
+    /** Total file count in the group, for the "N files" header. */
+    fileCount: number;
+    /** Combined insertions across the whole group (header totals). */
+    totalInsertions: number;
+    /** Combined deletions across the whole group (header totals). */
+    totalDeletions: number;
+}
 
 export interface WhisperDiffState {
     status: WhisperDiffStatus;
     /** The reconstructed or fetched unified diff text (success only). */
     diffText: string;
-    /** The clicked file's summary, for the panel header (null when idle). */
+    /** The clicked file's summary, for the panel header (null when idle/combined). */
     file: FileEdit | null;
     /** Failure / empty explanation, shown in the error/empty state. */
     error: string;
+    /** Combined-mode payload — present only when opened in combined mode. */
+    combined?: CombinedWhisperDiffView;
 }
 
 const IDLE: WhisperDiffState = { status: 'idle', diffText: '', file: null, error: '' };
 
 export function useWhisperDiffState(
-    ctx: WhisperFileDiffContext | null,
+    ctx: WhisperDiffOpenContext | null,
 ): WhisperDiffState {
+    // Combined mode (the whole-group "All changes" view) is fully synchronous and
+    // has no commit/network fallback, so it is built in render rather than driven
+    // through the async single-file state machine below. The single-file machine
+    // must never see a combined context — it reads `.file`, which a combined
+    // context does not carry — so split the union here.
+    const combinedCtx = ctx && isCombinedWhisperDiffContext(ctx) ? ctx : null;
+    const singleCtx = ctx && !isCombinedWhisperDiffContext(ctx) ? ctx : null;
+
     const [state, setState] = useState<WhisperDiffState>(IDLE);
+
+    // Combined: reuse the AC-01 builder; pure + synchronous. `combinedCtx` is
+    // held in panel state (stable identity) in the app, and nothing in this
+    // branch calls setState, so recomputing on a fresh ctx cannot loop.
+    const combined = useMemo<WhisperDiffState | null>(() => {
+        if (!combinedCtx) return null;
+        const built = buildWhisperCombinedDiff(combinedCtx.toolCalls, combinedCtx.files);
+        const { totalInsertions, totalDeletions } = computeFileEditTotals(combinedCtx.files);
+        const view: CombinedWhisperDiffView = {
+            sections: built.sections,
+            deletedFiles: built.deletedFiles,
+            nonReconstructableFiles: built.nonReconstructableFiles,
+            fileCount: combinedCtx.files.length,
+            totalInsertions,
+            totalDeletions,
+        };
+        const hasDiff = built.sections.length > 0;
+        return {
+            status: hasDiff ? 'success' : 'empty',
+            diffText: built.diffText,
+            file: null,
+            error: hasDiff ? '' : 'No diff is available for these files.',
+            combined: view,
+        };
+    }, [combinedCtx]);
 
     // The effect must NOT depend on the `ctx` object reference: callers (and
     // tests) may pass a freshly-constructed context on every render, which would
@@ -56,23 +120,23 @@ export function useWhisperDiffState(
     // 1. Primary reconstruction is pure + synchronous; compute it in render. Its
     //    string (or null) result is value-stable, so it is safe as an effect dep.
     const reconstructed = useMemo(
-        () => (ctx ? buildWhisperFileDiff(ctx.toolCalls, ctx.file.path) : null),
-        [ctx],
+        () => (singleCtx ? buildWhisperFileDiff(singleCtx.toolCalls, singleCtx.file.path) : null),
+        [singleCtx],
     );
     // Stable identity for the commit fallback set.
     const commitKey = useMemo(
-        () => (ctx?.commits ?? []).map((c) => c.fullHash || c.shortHash || '').join(','),
-        [ctx],
+        () => (singleCtx?.commits ?? []).map((c) => c.fullHash || c.shortHash || '').join(','),
+        [singleCtx],
     );
-    const filePath = ctx?.file.path;
-    const wsId = ctx?.workspaceId;
+    const filePath = singleCtx?.file.path;
+    const wsId = singleCtx?.workspaceId;
 
     useEffect(() => {
-        if (!ctx) {
+        if (!singleCtx) {
             setState(IDLE);
             return;
         }
-        const file = ctx.file;
+        const file = singleCtx.file;
 
         // 1. Primary: reconstruct the diff from the group's captured tool calls.
         if (reconstructed) {
@@ -82,7 +146,7 @@ export function useWhisperDiffState(
 
         // 2. Fallback: commit-backed single-file diff. Requires both a workspace
         //    to route through and at least one detected commit.
-        const commits = ctx.commits ?? [];
+        const commits = singleCtx.commits ?? [];
         if (!wsId || commits.length === 0) {
             setState({
                 status: 'empty',
@@ -139,5 +203,7 @@ export function useWhisperDiffState(
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filePath, wsId, commitKey, reconstructed]);
 
-    return state;
+    // Combined mode short-circuits the single-file machine (whose effect parks at
+    // IDLE while a combined context is held).
+    return combined ?? state;
 }

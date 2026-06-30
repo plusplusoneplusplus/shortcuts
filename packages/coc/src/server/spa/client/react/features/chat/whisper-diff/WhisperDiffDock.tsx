@@ -17,13 +17,15 @@ import type { FileEdit } from '../conversation/tool-calls/toolGroupUtils';
 import type { WhisperDiffState } from './useWhisperDiffState';
 import type { UseResizablePanelReturn } from '../../../hooks/ui/useResizablePanel';
 
-function sheetTitle(file: FileEdit): string {
-    return file.path.replace(/\\/g, '/').split('/').pop() || 'Diff';
+function sheetTitle(file: FileEdit | null | undefined, state: WhisperDiffState): string {
+    // Combined ("All changes") mode has no single file — title the whole-group view.
+    if (state.combined) return 'All changes';
+    return file ? file.path.replace(/\\/g, '/').split('/').pop() || 'Diff' : 'Diff';
 }
 
 export interface WhisperDiffDockProps {
-    /** The clicked file's edit summary — drives the header (always present). */
-    file: FileEdit;
+    /** The clicked file's edit summary — drives the single-file header. Absent in combined mode. */
+    file?: FileEdit | null;
     /** Renderable diff state from `useWhisperDiffState`. */
     state: WhisperDiffState;
     /** Current workspace root, used to show a project-relative path in the header. */
@@ -49,7 +51,7 @@ export function WhisperDiffDock({
             <BottomSheet
                 isOpen
                 onClose={onClose}
-                title={sheetTitle(file)}
+                title={sheetTitle(file, state)}
                 height={90}
             >
                 <WhisperDiffPanel
