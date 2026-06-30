@@ -5,6 +5,7 @@
 import type { DetectedCommit } from '../commitDetection';
 import { detectCommitsInToolGroup } from '../commitDetection';
 import { detectPullRequestsInToolGroup, type DetectedPullRequest } from '../pullRequestDetection';
+import { detectPushesInToolGroup, type DetectedPush } from '../pushDetection';
 import { getApplyPatchText, parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
 import { getCodexFileChanges, normalizeToolName } from './toolNormalization';
 
@@ -515,6 +516,10 @@ export interface WhisperSummary {
     prCount?: number;
     /** Pull requests detected across all collapsed tool calls. */
     pullRequests?: DetectedPullRequest[];
+    /** Number of successful git pushes detected across all collapsed tool calls. */
+    pushCount?: number;
+    /** Successful git pushes detected across all collapsed tool calls. */
+    pushes?: DetectedPush[];
     /** Number of unique skill invocations. */
     skillCount?: number;
     /** Names of unique skills invoked. */
@@ -682,6 +687,8 @@ export function filterWhisperChunks(
     const fixupCommitCount = fixupCommits.length;
     const pullRequests = detectPullRequestsInToolGroup(allToolCalls);
     const prCount = pullRequests.length;
+    const pushes = detectPushesInToolGroup(allToolCalls);
+    const pushCount = pushes.length;
 
     // Count unique skill invocations
     const skillNameSet = new Set<string>();
@@ -810,6 +817,7 @@ export function filterWhisperChunks(
         ...(commitCount > 0 ? { commitCount, commits: regularCommits } : {}),
         ...(fixupCommitCount > 0 ? { fixupCommitCount, fixupCommits } : {}),
         ...(prCount > 0 ? { prCount, pullRequests } : {}),
+        ...(pushCount > 0 ? { pushCount, pushes } : {}),
         ...(skillNameSet.size > 0 ? { skillCount: skillNameSet.size, skillNames: [...skillNameSet].sort() } : {}),
         ...(memoryActions.length > 0 ? { memoryCount: memoryActions.length, memoryActions } : {}),
         ...(fileEdits.length > 0 ? { fileEditCount: fileEdits.length, fileEdits } : {}),
