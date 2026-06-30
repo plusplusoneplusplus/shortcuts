@@ -18,7 +18,9 @@
  *   completed grilling-phase process).
  */
 import { useState, useEffect } from 'react';
+import type { RalphSessionRecord } from '@plusplusoneplusplus/coc-client';
 import { cloneApiBase } from '../../repos/cloneRegistry';
+import { useCocClient } from '../../repos/cloneRouting';
 import { cn } from '../../ui/cn';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import { ModalJobAiControls, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
@@ -28,6 +30,23 @@ import {
     RalphExecutionRepoSelector,
     useRalphExecutionRepoTargets,
 } from '../../shared/RalphExecutionRepoSelector';
+import { useRalphSessionView } from './useRalphSessionView';
+
+/**
+ * Pointer persisted onto the **source** chat's process metadata
+ * (`metadata.ralphLaunchedSession`) after a direct goal.md launch. It lets the
+ * banner recover and re-render the launched session's live state when the
+ * source chat is reopened — including after a reload and when the run targets a
+ * different/remote repo than the source chat.
+ */
+export interface RalphLaunchedSession {
+    sessionId: string;
+    /** Execution target workspace (where the Ralph session record lives). */
+    workspaceId: string;
+    /** The running execution process id the status link opens. */
+    executionProcessId: string;
+    launchedAt: string;
+}
 
 export interface RalphStartPanelProps {
     processId: string;
@@ -46,6 +65,26 @@ export interface RalphStartPanelProps {
      * (continues the referenced grilling-phase process). Default: false.
      */
     useLaunchEndpoint?: boolean;
+    /**
+     * Pointer (from the source chat's `metadata.ralphLaunchedSession`) to the
+     * most recently launched session. When present and readable, the banner
+     * shows that session's live state alongside Start Ralph. Path 2 only.
+     */
+    launchedSession?: RalphLaunchedSession;
+}
+
+/**
+ * Map a launched session's record to the slim banner status. Executing shows
+ * the iteration count; terminal collapses the various terminal reasons into the
+ * three outcome buckets named in the spec (complete / failed / cancelled).
+ */
+function deriveLaunchedStatus(record: RalphSessionRecord): { label: string; iteration?: string } {
+    if (record.phase !== 'complete') {
+        return { label: 'Ralph executing', iteration: `${record.currentIteration}/${record.maxIterations}` };
+    }
+    if (record.terminalReason === 'RALPH_COMPLETE') return { label: 'Ralph complete' };
+    if (record.terminalReason === 'CANCELLED') return { label: 'Ralph cancelled' };
+    return { label: 'Ralph failed' };
 }
 
 /** Extract goal spec from last assistant turn: find block starting with ## Goal, or use full content. */
@@ -74,7 +113,7 @@ function renderRalphGlyph() {
     );
 }
 
-export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goalFilePath, useLaunchEndpoint }: RalphStartPanelProps) {
+export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goalFilePath, useLaunchEndpoint, launchedSession }: RalphStartPanelProps) {
     const [open, setOpen] = useState(false);
     const repoSelection = useRalphExecutionRepoTargets({ open, sourceWorkspaceId: workspaceId });
     const selectedWorkspaceId = repoSelection.selectedTarget?.workspaceId ?? workspaceId;
@@ -83,6 +122,21 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
     const [starting, setStarting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [loadingFile, setLoadingFile] = useState(false);
+
+    // Remote-safe client for the SOURCE chat's own server — where the launched
+    // pointer is persisted (the same pattern as ImplementPlanCard).
+    const sourceClient = useCocClient(workspaceId);
+    // Reflect the just-launched session immediately (local-state wins over the
+    // persisted prop so the banner is correct even before metadata round-trips
+    // and regardless of whether navigation later happens). Latest launch only.
+    const [localLaunched, setLocalLaunched] = useState<RalphLaunchedSession | undefined>(undefined);
+    const effectiveLaunched = localLaunched ?? launchedSession;
+    // Read the launched session's live state from the TARGET repo's server,
+    // routed remote-safely inside the hook via getCocClientForWorkspace.
+    const { view: launchedView } = useRalphSessionView(
+        effectiveLaunched?.workspaceId ?? '',
+        effectiveLaunched?.sessionId ?? null,
+    );
 
     async function handleOpen() {
         setError(null);
@@ -150,6 +204,27 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
                 throw new Error(msg || `HTTP ${resp.status}`);
             }
             const result = await resp.json();
+            // Path 2 (direct launch) mints a fresh session and returns its id.
+            // Persist a pointer onto the SOURCE chat's process metadata so the
+            // banner can recover/track this session on reopen + reload, then
+            // reflect it locally right away (latest-only). Best-effort: a failed
+            // patch must not block navigation.
+            if (useLaunchEndpoint && result?.sessionId) {
+                const pointer: RalphLaunchedSession = {
+                    sessionId: result.sessionId,
+                    workspaceId: selectedTarget.workspaceId,
+                    executionProcessId: result.processId,
+                    launchedAt: new Date().toISOString(),
+                };
+                try {
+                    await sourceClient.processes.patchMetadata(processId, {
+                        set: { ralphLaunchedSession: pointer },
+                    });
+                } catch (persistErr) {
+                    console.warn('Failed to persist ralphLaunchedSession pointer:', persistErr);
+                }
+                setLocalLaunched(pointer);
+            }
             onStarted(result.processId, selectedTarget.workspaceId);
             setOpen(false);
         } catch (err) {
@@ -167,6 +242,41 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
         const bannerText = goalFileName
             ? `Goal spec: ${goalFileName}`
             : 'Goal spec ready for execution';
+
+        // Status variant: a launched session exists AND its record is readable.
+        // If the record is missing/unreadable (deleted, target unreachable,
+        // clone not registered → view is null/undefined) we fall through to the
+        // plain "Ralph ready" banner — no error spew, Start Ralph still shown.
+        if (effectiveLaunched && launchedView?.record) {
+            const status = deriveLaunchedStatus(launchedView.record);
+            return (
+                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-4 py-2" data-testid="ralph-start-banner">
+                    <div className="flex items-center gap-2 text-xs text-[#1f2328] dark:text-[#c9d1d9]">
+                        {renderRalphGlyph()}
+                        <button
+                            type="button"
+                            data-testid="ralph-launched-link"
+                            onClick={() => onStarted(effectiveLaunched.executionProcessId, effectiveLaunched.workspaceId)}
+                            className="min-w-0 flex-1 truncate text-left font-medium text-purple-700 hover:underline dark:text-purple-300"
+                            title="Open the running Ralph execution"
+                        >
+                            <span data-testid="ralph-launched-status">
+                                {status.label}
+                                {status.iteration ? ` — iteration ${status.iteration}` : ''}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            data-testid="ralph-start-btn"
+                            onClick={handleOpen}
+                            className="shrink-0 inline-flex h-[22px] items-center rounded-md bg-purple-600 px-2 text-[11px] font-medium text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/40"
+                        >
+                            Start Ralph
+                        </button>
+                    </div>
+                </div>
+            );
+        }
 
         return (
             <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-4 py-2" data-testid="ralph-start-banner">

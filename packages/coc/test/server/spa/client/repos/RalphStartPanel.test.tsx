@@ -24,6 +24,24 @@ const { mockUseRepos } = vi.hoisted(() => ({
     mockUseRepos: vi.fn(),
 }));
 
+const { mockPatchMetadata, mockUseRalphSessionView } = vi.hoisted(() => ({
+    mockPatchMetadata: vi.fn(async () => ({ process: {} })),
+    // Default: no launched session in view → existing tests get the plain banner.
+    mockUseRalphSessionView: vi.fn(() => ({ view: undefined, refresh: vi.fn() })),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/repos/cloneRouting', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../../../src/server/spa/client/react/repos/cloneRouting')>();
+    return {
+        ...actual,
+        useCocClient: () => ({ processes: { patchMetadata: mockPatchMetadata } }),
+    };
+});
+
+vi.mock('../../../../../src/server/spa/client/react/features/chat/useRalphSessionView', () => ({
+    useRalphSessionView: (...args: unknown[]) => mockUseRalphSessionView(...args),
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/shared/ModalJobAiControls', () => ({
     useModalJobAiSelection: (options: unknown) => mockModalSelection(options),
     ModalJobAiControls: ({ testIdPrefix = 'modal-job' }: { testIdPrefix?: string }) => (
@@ -71,6 +89,10 @@ describe('RalphStartPanel', () => {
         mockOnStarted.mockClear();
         mockModalSelection.mockReset();
         mockModalSelection.mockReturnValue({ resolved: { provider: 'copilot' } });
+        mockPatchMetadata.mockClear();
+        mockPatchMetadata.mockResolvedValue({ process: {} });
+        mockUseRalphSessionView.mockReset();
+        mockUseRalphSessionView.mockReturnValue({ view: undefined, refresh: vi.fn() });
         mockUseRepos.mockReset();
         mockUseRepos.mockReturnValue({
             repos: [
@@ -790,5 +812,247 @@ describe('RalphStartPanel', () => {
         const optionValues = [...select.options].map(o => o.value);
         expect(optionValues).not.toContain('srv-offline:offline-ws');
         expect(optionValues).toContain('local:ws-1');
+    });
+
+    // -----------------------------------------------------------------------
+    // AC-01: persist a launched-session pointer on the source chat
+    // -----------------------------------------------------------------------
+
+    it('AC-01 — persists ralphLaunchedSession on the source chat via patchMetadata after a launch', async () => {
+        const mockFetch = vi.fn()
+            // First call: fs/blob (goal file content)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ content: '## Goal\nDo something', encoding: 'utf-8' }),
+            })
+            // Second call: ralph-launch → { processId, sessionId }
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ processId: 'queue_launched', sessionId: 'ralph-abc' }),
+            });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(
+            <RalphStartPanel
+                processId="queue_source-chat"
+                workspaceId="ws-1"
+                turns={[]}
+                goalFilePath="/repos/myrepo/goal.md"
+                useLaunchEndpoint
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+        await waitForRepoSelector();
+        await waitFor(() => {
+            const textarea = screen.getByTestId('ralph-goal-spec-input') as HTMLTextAreaElement;
+            expect(textarea.value).toContain('Do something');
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+        });
+
+        await waitFor(() => expect(mockPatchMetadata).toHaveBeenCalled());
+        // Patch targets the SOURCE chat's process id, on the source workspace's client.
+        const [patchedProcessId, patchBody] = mockPatchMetadata.mock.calls[0];
+        expect(patchedProcessId).toBe('queue_source-chat');
+        expect(patchBody).toEqual({
+            set: {
+                ralphLaunchedSession: {
+                    sessionId: 'ralph-abc',
+                    workspaceId: 'ws-1',
+                    executionProcessId: 'queue_launched',
+                    launchedAt: expect.any(String),
+                },
+            },
+        });
+    });
+
+    it('AC-01 — does NOT persist a pointer for the grilling-phase (ralph-start) path', async () => {
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ processId: 'queue_started' }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(
+            <RalphStartPanel
+                processId="queue_grill"
+                workspaceId="ws-1"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitForRepoSelector();
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+        });
+
+        await waitFor(() => expect(mockOnStarted).toHaveBeenCalledWith('queue_started', 'ws-1'));
+        expect(mockPatchMetadata).not.toHaveBeenCalled();
+    });
+
+    // -----------------------------------------------------------------------
+    // AC-02: render the launched session's live state in the banner
+    // -----------------------------------------------------------------------
+
+    const LAUNCHED = {
+        sessionId: 'ralph-123',
+        workspaceId: 'ws-2',
+        executionProcessId: 'queue_exec',
+        launchedAt: '2026-06-30T00:00:00.000Z',
+    };
+
+    function viewWith(record: Record<string, unknown>) {
+        return {
+            view: {
+                record: {
+                    sessionId: 'ralph-123',
+                    workspaceId: 'ws-2',
+                    originalGoal: '',
+                    maxIterations: 10,
+                    currentIteration: 1,
+                    phase: 'executing',
+                    startedAt: '',
+                    iterations: [],
+                    ...record,
+                },
+                sections: [],
+            },
+            refresh: vi.fn(),
+        };
+    }
+
+    it('AC-02 — shows executing status with iteration N/max and routes the read to the stored workspace', () => {
+        mockUseRalphSessionView.mockReturnValue(viewWith({ phase: 'executing', currentIteration: 3, maxIterations: 10 }));
+
+        render(
+            <RalphStartPanel
+                processId="queue_source"
+                workspaceId="ws-1"
+                turns={[]}
+                goalFilePath="/repos/myrepo/goal.md"
+                useLaunchEndpoint
+                launchedSession={LAUNCHED}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        // Read routes via the stored (target) workspace + session id.
+        expect(mockUseRalphSessionView).toHaveBeenCalledWith('ws-2', 'ralph-123');
+        const status = screen.getByTestId('ralph-launched-status');
+        expect(status.textContent).toContain('Ralph executing');
+        expect(status.textContent).toContain('iteration 3/10');
+    });
+
+    it('AC-02 — clicking the status link opens the running execution process on the stored workspace', () => {
+        mockUseRalphSessionView.mockReturnValue(viewWith({ phase: 'executing' }));
+
+        render(
+            <RalphStartPanel
+                processId="queue_source"
+                workspaceId="ws-1"
+                turns={[]}
+                goalFilePath="/repos/myrepo/goal.md"
+                useLaunchEndpoint
+                launchedSession={LAUNCHED}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-launched-link'));
+        expect(mockOnStarted).toHaveBeenCalledWith('queue_exec', 'ws-2');
+    });
+
+    it('AC-02 — shows terminal "Ralph complete" for a completed session', () => {
+        mockUseRalphSessionView.mockReturnValue(viewWith({ phase: 'complete', terminalReason: 'RALPH_COMPLETE' }));
+        render(
+            <RalphStartPanel processId="queue_source" workspaceId="ws-1" turns={[]} goalFilePath="/g.md" useLaunchEndpoint launchedSession={LAUNCHED} onStarted={mockOnStarted} />,
+        );
+        const status = screen.getByTestId('ralph-launched-status');
+        expect(status.textContent).toContain('Ralph complete');
+        expect(status.textContent).not.toContain('iteration');
+        expect(screen.getByTestId('ralph-launched-link')).toBeTruthy();
+    });
+
+    it('AC-02 — shows terminal "Ralph cancelled" and "Ralph failed" for terminal reasons', () => {
+        mockUseRalphSessionView.mockReturnValue(viewWith({ phase: 'complete', terminalReason: 'CANCELLED' }));
+        const { rerender } = render(
+            <RalphStartPanel processId="queue_source" workspaceId="ws-1" turns={[]} goalFilePath="/g.md" useLaunchEndpoint launchedSession={LAUNCHED} onStarted={mockOnStarted} />,
+        );
+        expect(screen.getByTestId('ralph-launched-status').textContent).toContain('Ralph cancelled');
+
+        mockUseRalphSessionView.mockReturnValue(viewWith({ phase: 'complete', terminalReason: 'CAP_REACHED' }));
+        rerender(
+            <RalphStartPanel processId="queue_source" workspaceId="ws-1" turns={[]} goalFilePath="/g.md" useLaunchEndpoint launchedSession={LAUNCHED} onStarted={mockOnStarted} />,
+        );
+        expect(screen.getByTestId('ralph-launched-status').textContent).toContain('Ralph failed');
+    });
+
+    it('AC-02 — falls back to the plain banner when the session record is unreadable', () => {
+        // view === null → deleted / target unreachable / clone not registered.
+        mockUseRalphSessionView.mockReturnValue({ view: null, refresh: vi.fn() });
+        render(
+            <RalphStartPanel processId="queue_source" workspaceId="ws-1" turns={[]} goalFilePath="/repos/myrepo/fallback.goal.md" useLaunchEndpoint launchedSession={LAUNCHED} onStarted={mockOnStarted} />,
+        );
+        expect(screen.queryByTestId('ralph-launched-status')).toBeNull();
+        // Plain banner is still shown (with Start Ralph), no error spew.
+        expect(screen.getByTestId('ralph-start-description')).toBeTruthy();
+        expect(screen.getByTestId('ralph-start-btn')).toBeTruthy();
+    });
+
+    // -----------------------------------------------------------------------
+    // AC-03: Start Ralph stays available; relaunch tracks latest
+    // -----------------------------------------------------------------------
+
+    it('AC-03 — Start Ralph stays rendered and enabled while a session is executing', () => {
+        mockUseRalphSessionView.mockReturnValue(viewWith({ phase: 'executing' }));
+        render(
+            <RalphStartPanel processId="queue_source" workspaceId="ws-1" turns={[]} goalFilePath="/g.md" useLaunchEndpoint launchedSession={LAUNCHED} onStarted={mockOnStarted} />,
+        );
+        const startBtn = screen.getByTestId('ralph-start-btn') as HTMLButtonElement;
+        expect(startBtn).toBeTruthy();
+        expect(startBtn.disabled).toBe(false);
+        // Coexists with the live status row.
+        expect(screen.getByTestId('ralph-launched-status')).toBeTruthy();
+    });
+
+    it('AC-03 — relaunch overwrites the pointer with the newest session', async () => {
+        mockUseRalphSessionView.mockReturnValue(viewWith({ phase: 'executing' }));
+        const mockFetch = vi.fn()
+            // fs/blob
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ content: '## Goal\nx', encoding: 'utf-8' }) })
+            // ralph-launch → a NEW session id
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ processId: 'queue_launched2', sessionId: 'ralph-NEW' }) });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(
+            <RalphStartPanel processId="queue_source" workspaceId="ws-1" turns={[]} goalFilePath="/repos/myrepo/goal.md" useLaunchEndpoint launchedSession={LAUNCHED} onStarted={mockOnStarted} />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+        await waitForRepoSelector();
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+        });
+
+        await waitFor(() => expect(mockPatchMetadata).toHaveBeenCalled());
+        const [, patchBody] = mockPatchMetadata.mock.calls[0];
+        expect((patchBody as any).set.ralphLaunchedSession.sessionId).toBe('ralph-NEW');
+    });
+
+    it('AC-03 — a chat with no prior launch shows the plain banner (no status row)', () => {
+        render(
+            <RalphStartPanel processId="queue_source" workspaceId="ws-1" turns={[]} goalFilePath="/repos/myrepo/x.goal.md" useLaunchEndpoint onStarted={mockOnStarted} />,
+        );
+        expect(screen.queryByTestId('ralph-launched-status')).toBeNull();
+        expect(screen.getByTestId('ralph-start-description')).toBeTruthy();
+        expect(screen.getByTestId('ralph-start-btn')).toBeTruthy();
     });
 });
