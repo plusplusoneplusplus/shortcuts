@@ -605,6 +605,29 @@ describe('ChatDetail — restore open canvas on chat switch', () => {
         expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A2');
     });
 
+    // AC-03 silent fallback: a remembered agent canvas that was deleted while
+    // away falls back to the first linked canvas (never a load error).
+    it('silently falls back to the first linked canvas when the remembered one was deleted', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A1' }, { id: 'canvas-A2' }];
+        mockState.canvasesByPid[pidFor('task-B')] = [];
+        const { rerender } = renderChat('task-A');
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+
+        act(() => {
+            mockState.sseOpts.onCanvasUpdated({ canvasId: 'canvas-A2', title: 'A2', revision: 1, editor: 'ai' });
+        });
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A2'));
+
+        // canvas-A2 is deleted while we are away.
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A1' }];
+        rerenderChat(rerender, 'task-B');
+        await waitFor(() => expect(screen.queryByTestId('canvas-panel-mock')).toBeNull());
+
+        rerenderChat(rerender, 'task-A');
+        // Falls back to the surviving first canvas — not the deleted canvas-A2.
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A1'));
+    });
+
     // (b) Closing the open canvas clears the chat's memory → switch-back shows
     // nothing (no source dock, no agent panel) for a chat with no linked canvas.
     it('clears memory when the open canvas is closed → switch-back shows nothing', async () => {

@@ -1227,7 +1227,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             } else if (remembered.kind === 'whisper-diff') {
                 whisperDiff.open(remembered.ctx); // onOpen collapses the agent panel
             } else if (remembered.kind === 'agent') {
-                setActiveCanvasId(remembered.canvasId);
+                // The id is validated + applied by discovery below so a DELETED
+                // canvas silently falls back instead of surfacing CanvasPanel's
+                // load error; here we only pre-expand the panel for its arrival.
                 setCanvasPanelClosed(false);
             }
         } else if (!closed && hasRecord) {
@@ -1238,15 +1240,27 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
         let cancelled = false;
         // Discovery is non-critical: defer the round-trip to browser idle so the
-        // conversation paints first. It always populates the linked agent canvas
-        // id (for the collapsed rail / a remembered agent canvas), but only
-        // AUTO-EXPANDS it for a chat with no session record — `canvasPanelClosed`
-        // set above keeps a remembered "nothing open" / non-agent surface intact.
+        // conversation paints first. It populates the linked agent canvas id for
+        // the collapsed rail / auto-open, and validates a remembered agent canvas.
         const cancelIdle = runWhenIdle(() => {
             if (cancelled) return;
             client.canvases.list(workspaceId, { processId: canvasPid })
                 .then(canvases => {
-                    if (!cancelled && canvases.length > 0) {
+                    if (cancelled) return;
+                    // Restore a remembered agent canvas ONLY if it still exists — a
+                    // deleted one silently falls back to the first linked canvas
+                    // (or nothing), never CanvasPanel's "Failed to load" error.
+                    if (!closed && remembered?.kind === 'agent') {
+                        const ids = new Set(canvases.map(c => c.id));
+                        setActiveCanvasId(ids.has(remembered.canvasId)
+                            ? remembered.canvasId
+                            : (canvases[0]?.id ?? null));
+                        return;
+                    }
+                    // Otherwise populate the linked agent canvas id: auto-opens a
+                    // fresh chat (no record), or backs the collapsed rail behind a
+                    // remembered source/whisper/"nothing open" (kept collapsed above).
+                    if (canvases.length > 0) {
                         setActiveCanvasId(prev => prev ?? canvases[0].id);
                     }
                 })

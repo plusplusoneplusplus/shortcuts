@@ -38,7 +38,15 @@ describe('ChatDetail — open-canvas restore wiring', () => {
     it('restores a remembered source / whisper / agent canvas on chat switch', () => {
         expect(src).toContain('sourceCanvas.open(remembered.fileRef)');
         expect(src).toContain('whisperDiff.open(remembered.ctx)');
-        expect(src).toContain('setActiveCanvasId(remembered.canvasId)');
+        // The agent canvas is restored by id through the discovery callback.
+        expect(src).toContain('remembered.canvasId');
+    });
+
+    it('silently falls back when a remembered agent canvas was deleted', () => {
+        // Discovery validates the remembered id against the linked-canvas list and
+        // only restores it when present — a deleted one falls back instead of
+        // surfacing CanvasPanel's load error (AC-03 silent fallback).
+        expect(src).toContain('ids.has(remembered.canvasId)');
     });
 
     it('the reset closes source/folder/note/diff canvases only WITH a restore path', () => {
