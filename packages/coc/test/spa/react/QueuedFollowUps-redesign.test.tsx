@@ -152,6 +152,50 @@ describe('QueuedFollowUps — redesign', () => {
     });
 });
 
+describe('QueuedFollowUps — queued image attachments', () => {
+    const IMG_A = 'data:image/png;base64,AAA';
+    const IMG_B = 'data:image/jpeg;base64,BBB';
+
+    it('renders an ImageGallery of thumbnails when the queued message has images', () => {
+        const { getByTestId, getAllByTestId } = render(
+            <QueuedFollowUps queue={[makeMsg({ images: [IMG_A, IMG_B] })]} />,
+        );
+        expect(getByTestId('image-gallery')).toBeTruthy();
+        const items = getAllByTestId('image-gallery-item');
+        expect(items.length).toBe(2);
+        const imgs = getByTestId('queued-item').querySelectorAll('img');
+        expect(imgs[0].getAttribute('src')).toBe(IMG_A);
+        expect(imgs[1].getAttribute('src')).toBe(IMG_B);
+    });
+
+    it('renders no gallery when the queued message has no images', () => {
+        const { container } = render(<QueuedFollowUps queue={[makeMsg()]} />);
+        expect(container.querySelector('[data-testid="image-gallery"]')).toBeNull();
+    });
+
+    it('renders no gallery when images is an empty array (no layout shift)', () => {
+        const { container } = render(<QueuedFollowUps queue={[makeMsg({ images: [] })]} />);
+        expect(container.querySelector('[data-testid="image-gallery"]')).toBeNull();
+    });
+
+    it('lays the item out as a column so the gallery sits below the text/✕ row', () => {
+        const { getByTestId } = render(<QueuedFollowUps queue={[makeMsg({ images: [IMG_A] })]} />);
+        const item = getByTestId('queued-item');
+        expect(item.className).toContain('flex-col');
+    });
+
+    it('keeps the ✕ cancel working when images are present', () => {
+        const onCancel = vi.fn();
+        const { container } = render(
+            <QueuedFollowUps queue={[makeMsg({ id: 'img-msg', images: [IMG_A] })]} onCancel={onCancel} />,
+        );
+        const btn = container.querySelector<HTMLButtonElement>('[data-testid="queued-item-cancel"]');
+        expect(btn).not.toBeNull();
+        fireEvent.click(btn!);
+        expect(onCancel).toHaveBeenCalledWith('img-msg');
+    });
+});
+
 describe('QueuedBubble — deprecated wrapper', () => {
     it('still renders a single queued item with no clock emoji', () => {
         const { container } = render(<QueuedBubble msg={makeMsg({ content: 'legacy single' })} />);

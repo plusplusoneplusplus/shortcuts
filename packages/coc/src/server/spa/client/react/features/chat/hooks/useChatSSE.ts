@@ -287,6 +287,9 @@ export function useChatSSE({
                             id: pendingMessage.id,
                             content: pendingMessage.content,
                             status: 'queued' as const,
+                            ...(Array.isArray(pendingMessage.images) && pendingMessage.images.length > 0
+                                ? { images: pendingMessage.images }
+                                : {}),
                         }];
                     });
                 }

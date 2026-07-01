@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { cn } from '../../ui/cn';
+import { ImageGallery } from '../../ui/ImageGallery';
 import type { QueuedMessage } from '../../utils/chatUtils';
 
 interface QueuedItemProps {
@@ -13,10 +14,12 @@ function QueuedItem({ msg, onCancel }: QueuedItemProps) {
         onCancel?.(msg.id);
     }, [msg.id, onCancel]);
 
+    const hasImages = !!msg.images && msg.images.length > 0;
+
     return (
         <div
             className={cn(
-                'queued-item flex items-center gap-2.5',
+                'queued-item flex flex-col',
                 'px-2.5 py-1.5 mb-1 last:mb-0',
                 'rounded border border-dashed',
                 'border-[#e5e7eb] dark:border-[#3c3c3c]',
@@ -26,31 +29,36 @@ function QueuedItem({ msg, onCancel }: QueuedItemProps) {
             data-testid="queued-item"
             data-status={msg.status}
         >
-            <span
-                className="text flex-1 min-w-0 truncate"
-                data-testid="queued-item-text"
-                title={msg.content}
-            >
-                {msg.content}
-            </span>
-            {onCancel && (
-                <button
-                    type="button"
-                    className={cn(
-                        'queued-item-cancel shrink-0 inline-flex items-center justify-center',
-                        'w-5 h-5 rounded-sm text-[11px] leading-none',
-                        'text-[#6b7280] dark:text-[#9aa0a6]',
-                        'hover:bg-[#ffebe9] hover:text-[#cf222e]',
-                        'dark:hover:bg-[#3a1a1a] dark:hover:text-[#f87171]',
-                        'transition-colors',
-                    )}
-                    title="Cancel queued message"
-                    aria-label="Cancel queued message"
-                    onClick={handleCancel}
-                    data-testid="queued-item-cancel"
+            <div className="flex items-center gap-2.5">
+                <span
+                    className="text flex-1 min-w-0 truncate"
+                    data-testid="queued-item-text"
+                    title={msg.content}
                 >
-                    ✕
-                </button>
+                    {msg.content}
+                </span>
+                {onCancel && (
+                    <button
+                        type="button"
+                        className={cn(
+                            'queued-item-cancel shrink-0 inline-flex items-center justify-center',
+                            'w-5 h-5 rounded-sm text-[11px] leading-none',
+                            'text-[#6b7280] dark:text-[#9aa0a6]',
+                            'hover:bg-[#ffebe9] hover:text-[#cf222e]',
+                            'dark:hover:bg-[#3a1a1a] dark:hover:text-[#f87171]',
+                            'transition-colors',
+                        )}
+                        title="Cancel queued message"
+                        aria-label="Cancel queued message"
+                        onClick={handleCancel}
+                        data-testid="queued-item-cancel"
+                    >
+                        ✕
+                    </button>
+                )}
+            </div>
+            {hasImages && (
+                <ImageGallery images={msg.images!} />
             )}
         </div>
     );

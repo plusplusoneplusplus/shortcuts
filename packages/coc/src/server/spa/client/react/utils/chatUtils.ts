@@ -3,6 +3,8 @@ export interface QueuedMessage {
     id: string;           // server-assigned UUID — used as React key and identifier
     content: string;
     status: 'queued' | 'steering';
+    /** Base64 image data-URLs attached when the follow-up was queued (rendered as thumbnails). */
+    images?: string[];
 }
 
 export function buildMetadataProcess(task: any, processDetails: any, processId: string | null): any {

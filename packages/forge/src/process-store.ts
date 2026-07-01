@@ -151,7 +151,7 @@ export interface ProcessOutputEvent {
     /** Whether the session is waiting for background tasks to drain (for 'background-tasks' events). */
     backgroundWaitingForDrain?: boolean;
     /** The pending message that was added (for 'pending-message-added' events). */
-    pendingMessage?: { id: string; content: string; mode?: string; createdAt: string };
+    pendingMessage?: { id: string; content: string; mode?: string; createdAt: string; images?: string[] };
     /** Note file edit event data (for 'note-file-edit' events). */
     noteFileEdit?: {
         toolCallId: string;
