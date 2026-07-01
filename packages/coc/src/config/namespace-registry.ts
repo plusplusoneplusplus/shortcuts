@@ -294,6 +294,8 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                 skills: {
                     autoUpdate: override?.skills?.autoUpdate ?? base.skills?.autoUpdate ?? true,
                     defaultSkills: override?.skills?.defaultSkills ?? base.skills?.defaultSkills ?? [...defaultBundledSkills],
+                    globalExtraFolders: override?.skills?.globalExtraFolders ?? base.skills?.globalExtraFolders ?? [],
+                    autoDetectDefaultFolders: override?.skills?.autoDetectDefaultFolders ?? base.skills?.autoDetectDefaultFolders ?? true,
                 },
             }),
         },

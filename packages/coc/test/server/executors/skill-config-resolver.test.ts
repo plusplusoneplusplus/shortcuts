@@ -21,7 +21,7 @@ vi.mock('os', async (importOriginal) => {
     };
 });
 
-import { resolveSkillConfig, resolveDefaultOneDriveSkillDirs } from '../../../src/server/executors/skill-config-resolver';
+import { resolveSkillConfig, resolveDefaultOneDriveSkillDirs, expandHomePath } from '../../../src/server/executors/skill-config-resolver';
 import { getBundledSkillsPath } from '@plusplusoneplusplus/forge';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 
@@ -288,6 +288,156 @@ describe('resolveSkillConfig', () => {
             const dirs = await resolveDefaultOneDriveSkillDirs(fakeHome);
 
             expect(dirs).toHaveLength(2);
+        });
+    });
+
+    describe('autoDetectDefaultFolders option', () => {
+        it('skips OneDrive detection when autoDetectDefaultFolders is false', async () => {
+            const fakeHome = path.join(tmpDir, 'home');
+            const oneDriveSkillsDir = path.join(fakeHome, 'OneDrive', '.github', 'skills');
+            fs.mkdirSync(oneDriveSkillsDir, { recursive: true });
+            vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+            const result = await resolveSkillConfig(store, undefined, undefined, undefined, {
+                autoDetectDefaultFolders: false,
+            });
+
+            const dirs = result.skillDirectories ?? [];
+            expect(dirs).not.toContain(oneDriveSkillsDir);
+        });
+
+        it('detects OneDrive folders when autoDetectDefaultFolders is true', async () => {
+            const fakeHome = path.join(tmpDir, 'home');
+            const oneDriveSkillsDir = path.join(fakeHome, 'OneDrive', '.github', 'skills');
+            fs.mkdirSync(oneDriveSkillsDir, { recursive: true });
+            vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+            const result = await resolveSkillConfig(store, undefined, undefined, undefined, {
+                autoDetectDefaultFolders: true,
+            });
+
+            expect(result.skillDirectories).toContain(oneDriveSkillsDir);
+        });
+
+        it('detects OneDrive folders when options are omitted (default on)', async () => {
+            const fakeHome = path.join(tmpDir, 'home');
+            const oneDriveSkillsDir = path.join(fakeHome, 'OneDrive', '.github', 'skills');
+            fs.mkdirSync(oneDriveSkillsDir, { recursive: true });
+            vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+            const result = await resolveSkillConfig(store, undefined, undefined, undefined);
+
+            expect(result.skillDirectories).toContain(oneDriveSkillsDir);
+        });
+    });
+
+    describe('globalExtraFolders option', () => {
+        it('includes a configured absolute global extra folder when it exists', async () => {
+            const extraDir = path.join(tmpDir, 'shared-skills');
+            fs.mkdirSync(extraDir, { recursive: true });
+
+            const result = await resolveSkillConfig(store, undefined, undefined, undefined, {
+                globalExtraFolders: [extraDir],
+            });
+
+            expect(result.skillDirectories).toBeDefined();
+            expect(result.skillDirectories).toContain(extraDir);
+        });
+
+        it('expands a ~-prefixed global extra folder against the home directory', async () => {
+            const fakeHome = path.join(tmpDir, 'home');
+            const extraDir = path.join(fakeHome, 'team-skills');
+            fs.mkdirSync(extraDir, { recursive: true });
+            vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+            const result = await resolveSkillConfig(store, undefined, undefined, undefined, {
+                globalExtraFolders: ['~/team-skills'],
+            });
+
+            expect(result.skillDirectories).toBeDefined();
+            expect(result.skillDirectories).toContain(extraDir);
+        });
+
+        it('skips a configured global extra folder that does not exist', async () => {
+            const missingDir = path.join(tmpDir, 'does-not-exist');
+
+            const result = await resolveSkillConfig(store, undefined, undefined, undefined, {
+                globalExtraFolders: [missingDir],
+            });
+
+            const dirs = result.skillDirectories ?? [];
+            expect(dirs).not.toContain(missingDir);
+        });
+
+        it('skips relative global extra folders (must be absolute)', async () => {
+            const result = await resolveSkillConfig(store, undefined, undefined, undefined, {
+                globalExtraFolders: ['relative/skills'],
+            });
+
+            const dirs = result.skillDirectories ?? [];
+            expect(dirs).not.toContain('relative/skills');
+        });
+
+        it('ignores empty and non-string entries without throwing', async () => {
+            const extraDir = path.join(tmpDir, 'shared-skills');
+            fs.mkdirSync(extraDir, { recursive: true });
+
+            const result = await resolveSkillConfig(store, undefined, undefined, undefined, {
+                // Invalid config shape: empty string, whitespace, and non-string entries.
+                globalExtraFolders: ['', '   ', 42 as unknown as string, extraDir],
+            });
+
+            expect(result.skillDirectories).toContain(extraDir);
+        });
+
+        it('tolerates a non-array globalExtraFolders payload', async () => {
+            const result = await resolveSkillConfig(store, undefined, undefined, undefined, {
+                globalExtraFolders: 'not-an-array' as unknown as string[],
+            });
+
+            // Should not throw; simply contributes no extra folders.
+            expect(result).toBeDefined();
+        });
+
+        it('orders configured global extra folders after global and before bundled', async () => {
+            const dataDir = path.join(tmpDir, 'data');
+            const globalSkillsDir = path.join(dataDir, 'skills');
+            fs.mkdirSync(globalSkillsDir, { recursive: true });
+
+            const extraDir = path.join(tmpDir, 'shared-skills');
+            fs.mkdirSync(extraDir, { recursive: true });
+
+            // Avoid picking up any real OneDrive folders on the host.
+            const fakeHome = path.join(tmpDir, 'home');
+            fs.mkdirSync(fakeHome, { recursive: true });
+            vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+            const result = await resolveSkillConfig(store, dataDir, undefined, undefined, {
+                globalExtraFolders: [extraDir],
+            });
+
+            const bundledDir = getBundledSkillsPath();
+            const dirs = result.skillDirectories!;
+            const globalIdx = dirs.indexOf(globalSkillsDir);
+            const extraIdx = dirs.indexOf(extraDir);
+            expect(globalIdx).toBeLessThan(extraIdx);
+            if (fs.existsSync(bundledDir)) {
+                expect(extraIdx).toBeLessThan(dirs.indexOf(bundledDir));
+            }
+        });
+    });
+
+    describe('expandHomePath helper', () => {
+        it('maps a bare ~ to the home directory', () => {
+            expect(expandHomePath('~', '/home/alice')).toBe('/home/alice');
+        });
+
+        it('joins ~/x beneath the home directory', () => {
+            expect(expandHomePath('~/skills', '/home/alice')).toBe(path.join('/home/alice', 'skills'));
+        });
+
+        it('leaves absolute paths untouched', () => {
+            expect(expandHomePath('/opt/skills', '/home/alice')).toBe('/opt/skills');
         });
     });
 });

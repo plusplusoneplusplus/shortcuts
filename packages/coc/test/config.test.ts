@@ -1342,11 +1342,13 @@ timeout: 300
                   },
                   "showReportIntent": true,
                   "skills": {
+                    "autoDetectDefaultFolders": true,
                     "autoUpdate": false,
                     "defaultSkills": [
                       "rethink",
                       "terse-replies",
                     ],
+                    "globalExtraFolders": [],
                   },
                   "store": {
                     "backend": "file",

@@ -33,6 +33,39 @@ import { getEffectiveEnDevExtraSkillFolders } from '../endev/endev-detector';
  *  - macOS CloudStorage roots: `~/Library/CloudStorage/OneDrive-*`
  *    (dynamically named, e.g. `OneDrive-Personal`, `OneDrive-Microsoft`)
  */
+/**
+ * Options controlling default and globally-configured skill folder sources.
+ * Sourced from the `skills` config namespace and plumbed in at the call site
+ * (queue-executor-bridge). Kept optional so the resolver stays testable in
+ * isolation and backward-compatible for callers that don't supply config.
+ */
+export interface SkillFolderOptions {
+    /**
+     * Configured global extra skill folders applied across all workspaces.
+     * Read-only sources (never installed/deleted into). Absolute paths or
+     * `~`-prefixed home paths; relative and malformed entries are skipped.
+     */
+    globalExtraFolders?: string[];
+    /**
+     * Auto-detect default skill folders (OneDrive/CloudStorage). Defaults to
+     * true when undefined; pass `false` to skip all default auto-detection.
+     */
+    autoDetectDefaultFolders?: boolean;
+}
+
+/**
+ * Expand a leading `~` (home directory) in a folder path. `~` alone maps to the
+ * home directory; `~/x` and `~\x` map beneath it. Any other value is returned
+ * unchanged so absolute paths pass through untouched.
+ */
+export function expandHomePath(folder: string, homedir: string): string {
+    if (folder === '~') return homedir;
+    if (folder.startsWith('~/') || folder.startsWith('~\\')) {
+        return path.join(homedir, folder.slice(2));
+    }
+    return folder;
+}
+
 export async function resolveDefaultOneDriveSkillDirs(homedir: string): Promise<string[]> {
     const candidates: string[] = [];
 
@@ -62,6 +95,7 @@ export async function resolveSkillConfig(
     dataDir: string | undefined,
     workspaceId: string | undefined,
     workingDirectory: string | undefined,
+    options?: SkillFolderOptions,
 ): Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }> {
     let disabledSkills: string[] | undefined;
     let extraSkillFolders: string[] | undefined;
@@ -137,10 +171,37 @@ export async function resolveSkillConfig(
         await tryAddSkillDirectory(globalSkillsDir, globalSkillsDir);
     }
 
-    // Check default OneDrive skill directories (Windows-style roots + macOS CloudStorage).
     const homedir = os.homedir();
-    for (const oneDriveSkillsDir of await resolveDefaultOneDriveSkillDirs(homedir)) {
-        await tryAddSkillDirectory(oneDriveSkillsDir, oneDriveSkillsDir);
+
+    // Check default OneDrive skill directories (Windows-style roots + macOS
+    // CloudStorage), unless auto-detection is explicitly disabled.
+    if (options?.autoDetectDefaultFolders !== false) {
+        for (const oneDriveSkillsDir of await resolveDefaultOneDriveSkillDirs(homedir)) {
+            await tryAddSkillDirectory(oneDriveSkillsDir, oneDriveSkillsDir);
+        }
+    }
+
+    // Configured global extra skill folders (read-only, apply across all
+    // workspaces). Ordered after auto-detected folders and before per-workspace
+    // extra folders. Absolute or `~`-prefixed; relative/malformed entries skip.
+    if (Array.isArray(options?.globalExtraFolders)) {
+        for (const folder of options.globalExtraFolders) {
+            if (typeof folder !== 'string' || folder.trim().length === 0) {
+                continue;
+            }
+            try {
+                const expanded = expandHomePath(folder, homedir);
+                const isAbsoluteOrWsl = path.isAbsolute(expanded)
+                    || resolveWorkspaceExecutionContext(expanded).kind === 'wsl';
+                if (!isAbsoluteOrWsl) {
+                    continue; // global folders must be absolute (no repo root to anchor to)
+                }
+                const hostPath = resolvePathForHostFilesystem(expanded);
+                await tryAddSkillDirectory(expanded, hostPath);
+            } catch {
+                // Non-fatal: skip global extra folders when path translation fails
+            }
+        }
     }
 
     if (extraSkillFolders) {

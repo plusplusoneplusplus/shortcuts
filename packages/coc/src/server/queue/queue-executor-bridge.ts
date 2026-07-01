@@ -12,6 +12,7 @@ import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { orchestrateRalphIteration } from '../ralph/orchestrate-iteration';
 import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
 import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
+import type { CLIConfig } from '../../config';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 import { ASK_USER_RESUME_FAILED_MESSAGE, buildAskUserResumeMessage, buildPendingAskUserAnswerRecord } from '../llm-tools/ask-user-resume';
@@ -152,7 +153,21 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             aiService: this.aiService,
             defaultWorkingDirectory: this.defaultWorkingDirectory,
         });
-        const skillCfg = (wsId: string | undefined, workDir?: string) => resolveSkillConfig(store, this.dataDir, wsId, workDir);
+        const skillCfg = (wsId: string | undefined, workDir?: string) => {
+            // Live-read the configured global skill-folder settings so the
+            // resolver honors `skills.globalExtraFolders` and
+            // `skills.autoDetectDefaultFolders` at execution time.
+            let skillsCfg: CLIConfig['skills'] | undefined;
+            try {
+                skillsCfg = loadConfigFile()?.skills;
+            } catch {
+                // Non-fatal: fall back to default folder resolution
+            }
+            return resolveSkillConfig(store, this.dataDir, wsId, workDir, {
+                globalExtraFolders: skillsCfg?.globalExtraFolders,
+                autoDetectDefaultFolders: skillsCfg?.autoDetectDefaultFolders,
+            });
+        };
         this.executors = new ExecutorRegistry(store, {
             approvePermissions: this.approvePermissions,
             defaultWorkingDirectory: this.defaultWorkingDirectory,
