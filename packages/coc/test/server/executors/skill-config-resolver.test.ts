@@ -427,6 +427,87 @@ describe('resolveSkillConfig', () => {
         });
     });
 
+    describe('multi-workspace isolation (AC #3)', () => {
+        // Two workspaces, each with its own per-repo extra skill folder. Runtime
+        // resolution must include only the *selected* workspace's extra folders,
+        // proving per-repo extraSkillFolders never leak between workspaces.
+        // dataDir is omitted so getEffectiveEnDevExtraSkillFolders returns the
+        // workspace's extraSkillFolders verbatim (no EnDev detection side effects).
+        function makeIsolationStore(wsAExtra: string, wsBExtra: string) {
+            return createMockProcessStore({
+                initialWorkspaces: [
+                    { id: 'ws-a', name: 'Repo A', rootPath: path.join(tmpDir, 'repo-a'), extraSkillFolders: [wsAExtra] },
+                    { id: 'ws-b', name: 'Repo B', rootPath: path.join(tmpDir, 'repo-b'), extraSkillFolders: [wsBExtra] },
+                ] as any,
+            });
+        }
+
+        // Empty fake home so no host OneDrive/CloudStorage folders enter results.
+        function useEmptyHome(): void {
+            const fakeHome = path.join(tmpDir, 'home');
+            fs.mkdirSync(fakeHome, { recursive: true });
+            vi.mocked(os.homedir).mockReturnValue(fakeHome);
+        }
+
+        it("includes only the selected workspace's extra skill folders (no leak between workspaces)", async () => {
+            const wsAExtra = path.join(tmpDir, 'ws-a-extra');
+            const wsBExtra = path.join(tmpDir, 'ws-b-extra');
+            fs.mkdirSync(wsAExtra, { recursive: true });
+            fs.mkdirSync(wsBExtra, { recursive: true });
+            useEmptyHome();
+
+            const isoStore = makeIsolationStore(wsAExtra, wsBExtra);
+
+            // Resolving for workspace A includes A's extra folder but not B's.
+            const resultA = await resolveSkillConfig(isoStore, undefined, 'ws-a', undefined);
+            expect(resultA.skillDirectories ?? []).toContain(wsAExtra);
+            expect(resultA.skillDirectories ?? []).not.toContain(wsBExtra);
+
+            // Resolving for workspace B includes B's extra folder but not A's.
+            const resultB = await resolveSkillConfig(isoStore, undefined, 'ws-b', undefined);
+            expect(resultB.skillDirectories ?? []).toContain(wsBExtra);
+            expect(resultB.skillDirectories ?? []).not.toContain(wsAExtra);
+        });
+
+        it('applies configured global extra folders to every workspace while keeping per-repo extras scoped', async () => {
+            const globalExtra = path.join(tmpDir, 'global-extra');
+            const wsAExtra = path.join(tmpDir, 'ws-a-extra');
+            const wsBExtra = path.join(tmpDir, 'ws-b-extra');
+            [globalExtra, wsAExtra, wsBExtra].forEach(d => fs.mkdirSync(d, { recursive: true }));
+            useEmptyHome();
+
+            const isoStore = makeIsolationStore(wsAExtra, wsBExtra);
+            const options = { globalExtraFolders: [globalExtra], autoDetectDefaultFolders: false };
+
+            const resultA = await resolveSkillConfig(isoStore, undefined, 'ws-a', undefined, options);
+            expect(resultA.skillDirectories ?? []).toContain(globalExtra); // global applies to A
+            expect(resultA.skillDirectories ?? []).toContain(wsAExtra);     // A's own per-repo extra
+            expect(resultA.skillDirectories ?? []).not.toContain(wsBExtra); // B's extra must not leak into A
+
+            const resultB = await resolveSkillConfig(isoStore, undefined, 'ws-b', undefined, options);
+            expect(resultB.skillDirectories ?? []).toContain(globalExtra); // same global folder applies to B too
+            expect(resultB.skillDirectories ?? []).toContain(wsBExtra);
+            expect(resultB.skillDirectories ?? []).not.toContain(wsAExtra);
+        });
+
+        it("applies only the selected workspace's disabled skills", async () => {
+            const isoStore = createMockProcessStore({
+                initialWorkspaces: [
+                    { id: 'ws-a', name: 'Repo A', rootPath: path.join(tmpDir, 'repo-a'), disabledSkills: ['skill-a'] },
+                    { id: 'ws-b', name: 'Repo B', rootPath: path.join(tmpDir, 'repo-b'), disabledSkills: ['skill-b'] },
+                ] as any,
+            });
+
+            const resultA = await resolveSkillConfig(isoStore, undefined, 'ws-a', undefined);
+            expect(resultA.disabledSkills).toContain('skill-a');
+            expect(resultA.disabledSkills ?? []).not.toContain('skill-b');
+
+            const resultB = await resolveSkillConfig(isoStore, undefined, 'ws-b', undefined);
+            expect(resultB.disabledSkills).toContain('skill-b');
+            expect(resultB.disabledSkills ?? []).not.toContain('skill-a');
+        });
+    });
+
     describe('expandHomePath helper', () => {
         it('maps a bare ~ to the home directory', () => {
             expect(expandHomePath('~', '/home/alice')).toBe('/home/alice');
