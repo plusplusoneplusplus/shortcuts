@@ -353,19 +353,38 @@ export async function resolveEffectiveSkillPaths(
         entries.push(await describeSkillDir(hostPath, 'managed-global', 'global'));
     }
 
-    // 3. Auto-detected OneDrive/CloudStorage — surface only those that exist.
+    // 3. Auto-detected OneDrive/CloudStorage. Surface existing `.github/skills`
+    // folders, and add a `skipped` diagnostic when a OneDrive root exists but has
+    // no `.github/skills` beneath it (so the UI can explain why a known root was
+    // passed over). Roots that don't exist at all stay silent, keeping the
+    // diagnostic view from being flooded with missing default paths (AC #7).
     if (args.autoDetectDefaultFolders !== false) {
         for (const candidate of await resolveDefaultOneDriveSkillDirs(homedir)) {
             const exists = await fs.promises.access(candidate).then(() => true).catch(() => false);
-            if (!exists) continue;
-            const skillCount = await countInstalledSkills(candidate);
-            entries.push({
-                source: 'auto-detected',
-                scope: 'global',
-                status: skillCount > 0 ? 'available' : 'no-skills',
-                path: candidate,
-                skillCount,
-            });
+            if (exists) {
+                const skillCount = await countInstalledSkills(candidate);
+                entries.push({
+                    source: 'auto-detected',
+                    scope: 'global',
+                    status: skillCount > 0 ? 'available' : 'no-skills',
+                    path: candidate,
+                    skillCount,
+                });
+                continue;
+            }
+            // `<root>/.github/skills` is missing. If the OneDrive root itself
+            // exists, note it as skipped; otherwise stay silent.
+            const root = path.dirname(path.dirname(candidate));
+            const rootExists = await fs.promises.access(root).then(() => true).catch(() => false);
+            if (rootExists) {
+                entries.push({
+                    source: 'auto-detected',
+                    scope: 'global',
+                    status: 'skipped',
+                    path: candidate,
+                    note: 'OneDrive root exists but has no .github/skills folder',
+                });
+            }
         }
     }
 

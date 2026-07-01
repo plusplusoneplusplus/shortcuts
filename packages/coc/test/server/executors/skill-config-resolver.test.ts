@@ -601,6 +601,51 @@ describe('resolveEffectiveSkillPaths', () => {
         expect(entries.some(e => e.source === 'auto-detected')).toBe(false);
     });
 
+    it('emits a skipped auto-detected entry when a OneDrive root exists but lacks .github/skills', async () => {
+        // Root present, but no .github/skills beneath it (AC #7 diagnostics case).
+        const oneDriveRoot = path.join(fakeHome, 'OneDrive');
+        fs.mkdirSync(oneDriveRoot, { recursive: true });
+
+        const entries = await resolveEffectiveSkillPaths({ homedir: fakeHome });
+
+        const autoDetected = entries.filter(e => e.source === 'auto-detected');
+        // Only the existing root is surfaced; the absent 'OneDrive - Microsoft'
+        // root stays silent — so exactly one skipped diagnostic.
+        expect(autoDetected).toHaveLength(1);
+        const skipped = autoDetected[0];
+        expect(skipped.status).toBe('skipped');
+        expect(skipped.path).toBe(path.join(oneDriveRoot, '.github', 'skills'));
+        expect(skipped.scope).toBe('global');
+        expect(skipped.note).toBeTruthy();
+        expect(skipped.skillCount).toBeUndefined();
+    });
+
+    it('emits a skipped auto-detected entry for a CloudStorage OneDrive root without .github/skills', async () => {
+        const cloudRoot = path.join(fakeHome, 'Library', 'CloudStorage', 'OneDrive-Personal');
+        fs.mkdirSync(cloudRoot, { recursive: true });
+
+        const entries = await resolveEffectiveSkillPaths({ homedir: fakeHome });
+
+        const skipped = entries.find(e => e.source === 'auto-detected' && e.status === 'skipped');
+        expect(skipped).toBeTruthy();
+        expect(skipped!.path).toBe(path.join(cloudRoot, '.github', 'skills'));
+        expect(skipped!.note).toBeTruthy();
+    });
+
+    it('stays silent for an absent OneDrive root (no auto-detected entry)', async () => {
+        // fakeHome is empty — no OneDrive root exists at all.
+        const entries = await resolveEffectiveSkillPaths({ homedir: fakeHome });
+        expect(entries.some(e => e.source === 'auto-detected')).toBe(false);
+    });
+
+    it('does not emit skipped auto-detected diagnostics when auto-detection is disabled', async () => {
+        const oneDriveRoot = path.join(fakeHome, 'OneDrive');
+        fs.mkdirSync(oneDriveRoot, { recursive: true });
+
+        const entries = await resolveEffectiveSkillPaths({ homedir: fakeHome, autoDetectDefaultFolders: false });
+        expect(entries.some(e => e.source === 'auto-detected')).toBe(false);
+    });
+
     it('includes the bundled skills directory last as a global source', async () => {
         const dataDir = path.join(tmpDir, 'data');
         fs.mkdirSync(path.join(dataDir, 'skills'), { recursive: true });
