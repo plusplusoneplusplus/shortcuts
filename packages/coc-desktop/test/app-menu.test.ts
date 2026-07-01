@@ -14,6 +14,7 @@ import {
     buildAppMenuTemplate,
     buildTrayMenuTemplate,
     CHECK_FOR_UPDATES_LABEL,
+    UPDATE_CHANNEL_LABEL,
 } from '../src/app-menu';
 
 type Item = MenuItemConstructorOptions;
@@ -49,12 +50,18 @@ describe('buildAppMenuTemplate — macOS', () => {
         expect(appSubmenu[aboutIdx].role).toBe('about');
     });
 
-    it('separates "Check for Updates…" from the hide/quit cluster with a separator', () => {
+    it('places "Update Channel" directly after "Check for Updates…"', () => {
         const checkIdx = labelIdx(appSubmenu, CHECK_FOR_UPDATES_LABEL);
-        expect(isSeparator(appSubmenu[checkIdx + 1])).toBe(true);
+        const channelIdx = labelIdx(appSubmenu, UPDATE_CHANNEL_LABEL);
+        expect(channelIdx).toBe(checkIdx + 1);
+    });
+
+    it('separates the update items from the hide/quit cluster with a separator', () => {
+        const channelIdx = labelIdx(appSubmenu, UPDATE_CHANNEL_LABEL);
+        expect(isSeparator(appSubmenu[channelIdx + 1])).toBe(true);
         const hideIdx = roleIdx(appSubmenu, 'hide');
         const quitIdx = roleIdx(appSubmenu, 'quit');
-        expect(hideIdx).toBeGreaterThan(checkIdx);
+        expect(hideIdx).toBeGreaterThan(channelIdx);
         expect(quitIdx).toBeGreaterThan(hideIdx);
     });
 
@@ -76,6 +83,79 @@ describe('buildAppMenuTemplate — macOS', () => {
         expect(typeof check.click).toBe('function');
         (check.click as () => void)();
         expect(handlers.onCheckForUpdates).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('buildAppMenuTemplate — Update Channel submenu', () => {
+    it('shows "Stable" checked and "Prerelease" unchecked when channel is stable', () => {
+        const onSetUpdateChannel = vi.fn();
+        const template = buildAppMenuTemplate('darwin', 'CoC', {
+            onCheckForUpdates: vi.fn(),
+            currentChannel: 'stable',
+            onSetUpdateChannel,
+        });
+        const appSubmenu = submenuOf(template[0]);
+        const channelItem = appSubmenu.find((i) => i.label === UPDATE_CHANNEL_LABEL)!;
+        const sub = submenuOf(channelItem);
+        const stableItem = sub.find((i) => i.label === 'Stable')!;
+        const preItem = sub.find((i) => i.label === 'Prerelease')!;
+        expect(stableItem.checked).toBe(true);
+        expect(preItem.checked).toBe(false);
+        expect(stableItem.type).toBe('radio');
+        expect(preItem.type).toBe('radio');
+    });
+
+    it('shows "Prerelease" checked when channel is prerelease', () => {
+        const template = buildAppMenuTemplate('darwin', 'CoC', {
+            onCheckForUpdates: vi.fn(),
+            currentChannel: 'prerelease',
+            onSetUpdateChannel: vi.fn(),
+        });
+        const appSubmenu = submenuOf(template[0]);
+        const channelItem = appSubmenu.find((i) => i.label === UPDATE_CHANNEL_LABEL)!;
+        const sub = submenuOf(channelItem);
+        expect(sub.find((i) => i.label === 'Stable')!.checked).toBe(false);
+        expect(sub.find((i) => i.label === 'Prerelease')!.checked).toBe(true);
+    });
+
+    it('calls onSetUpdateChannel with the correct channel when clicked', () => {
+        const onSetUpdateChannel = vi.fn();
+        const template = buildAppMenuTemplate('darwin', 'CoC', {
+            onCheckForUpdates: vi.fn(),
+            currentChannel: 'stable',
+            onSetUpdateChannel,
+        });
+        const appSubmenu = submenuOf(template[0]);
+        const channelItem = appSubmenu.find((i) => i.label === UPDATE_CHANNEL_LABEL)!;
+        const sub = submenuOf(channelItem);
+        (sub.find((i) => i.label === 'Prerelease')!.click as () => void)();
+        expect(onSetUpdateChannel).toHaveBeenCalledWith('prerelease');
+        (sub.find((i) => i.label === 'Stable')!.click as () => void)();
+        expect(onSetUpdateChannel).toHaveBeenCalledWith('stable');
+    });
+
+    it('defaults to stable checkmark when currentChannel is not provided', () => {
+        const template = buildAppMenuTemplate('darwin', 'CoC', {
+            onCheckForUpdates: vi.fn(),
+        });
+        const appSubmenu = submenuOf(template[0]);
+        const channelItem = appSubmenu.find((i) => i.label === UPDATE_CHANNEL_LABEL)!;
+        const sub = submenuOf(channelItem);
+        expect(sub.find((i) => i.label === 'Stable')!.checked).toBe(true);
+    });
+
+    it('also appears in the Windows Help menu', () => {
+        const template = buildAppMenuTemplate('win32', 'CoC', {
+            onCheckForUpdates: vi.fn(),
+            currentChannel: 'prerelease',
+            onSetUpdateChannel: vi.fn(),
+        });
+        const help = template.find((i) => i.label === 'Help')!;
+        const items = submenuOf(help);
+        const channelItem = items.find((i) => i.label === UPDATE_CHANNEL_LABEL)!;
+        expect(channelItem).toBeDefined();
+        const sub = submenuOf(channelItem);
+        expect(sub.find((i) => i.label === 'Prerelease')!.checked).toBe(true);
     });
 });
 

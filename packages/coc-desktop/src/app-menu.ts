@@ -16,6 +16,7 @@
  */
 
 import type { MenuItemConstructorOptions } from 'electron';
+import type { UpdateChannel } from './update-check';
 
 /** Click handlers the application menu needs wired from `main.ts`. */
 export interface AppMenuHandlers {
@@ -25,24 +26,31 @@ export interface AppMenuHandlers {
      * marker.
      */
     onCheckForUpdates: () => void;
+    /** The currently active update channel, used to render the channel checkmarks. */
+    currentChannel?: UpdateChannel;
+    /** Invoked when the user selects a new update channel from the menu. */
+    onSetUpdateChannel?: (channel: UpdateChannel) => void;
 }
 
 /** The "Check for Updates…" label — shared so tests and both platforms agree. */
 export const CHECK_FOR_UPDATES_LABEL = 'Check for Updates…';
 
+/** The "Update Channel" submenu label. */
+export const UPDATE_CHANNEL_LABEL = 'Update Channel';
+
 /**
  * Build the full application-menu template for the given platform.
  *
  * On both macOS and Windows the menu carries a "Check for Updates…" item placed
- * directly after "About <app>" (across the separator that follows it) and
- * separated from the rest of the menu by a separator. The template is a complete
- * custom menubar — it reconstructs the standard Edit/View/Window items (via
- * roles) so setting it does not strip the default editing/window commands.
+ * directly after "About <app>" (across the separator that follows it), followed
+ * by an "Update Channel" submenu (Stable / Prerelease). The template is a
+ * complete custom menubar — it reconstructs the standard Edit/View/Window items
+ * (via roles) so setting it does not strip the default editing/window commands.
  *
- *   - macOS: a custom app submenu (About, Check for Updates…, Services, the
- *     Hide/Quit cluster) plus the standard Edit/View/Window menus.
+ *   - macOS: a custom app submenu (About, Check for Updates…, Update Channel,
+ *     Services, the Hide/Quit cluster) plus the standard Edit/View/Window menus.
  *   - Windows: the standard File/Edit/View/Window menus plus a Help menu holding
- *     "About <app>" then "Check for Updates…".
+ *     "About <app>" then "Check for Updates…" and "Update Channel".
  *
  * Linux is out of scope (the app keeps Electron's default menu there); callers
  * should not invoke this for Linux, but the non-darwin branch is used if they do.
@@ -52,9 +60,8 @@ export function buildAppMenuTemplate(
     appName: string,
     handlers: AppMenuHandlers,
 ): MenuItemConstructorOptions[] {
-    // "About <app>" — explicit label (with the `about` role for the branded
-    // About panel) so the item reads "About CoC" on every platform and the
-    // ordering relative to "Check for Updates…" is self-describing in tests.
+    const channel = handlers.currentChannel ?? 'stable';
+
     const aboutItem: MenuItemConstructorOptions = {
         label: `About ${appName}`,
         role: 'about',
@@ -62,6 +69,23 @@ export function buildAppMenuTemplate(
     const checkForUpdatesItem: MenuItemConstructorOptions = {
         label: CHECK_FOR_UPDATES_LABEL,
         click: handlers.onCheckForUpdates,
+    };
+    const updateChannelItem: MenuItemConstructorOptions = {
+        label: UPDATE_CHANNEL_LABEL,
+        submenu: [
+            {
+                label: 'Stable',
+                type: 'radio',
+                checked: channel === 'stable',
+                click: () => handlers.onSetUpdateChannel?.('stable'),
+            },
+            {
+                label: 'Prerelease',
+                type: 'radio',
+                checked: channel === 'prerelease',
+                click: () => handlers.onSetUpdateChannel?.('prerelease'),
+            },
+        ],
     };
 
     if (platform === 'darwin') {
@@ -72,6 +96,7 @@ export function buildAppMenuTemplate(
                     aboutItem,
                     { type: 'separator' },
                     checkForUpdatesItem,
+                    updateChannelItem,
                     { type: 'separator' },
                     { role: 'services' },
                     { type: 'separator' },
@@ -90,7 +115,7 @@ export function buildAppMenuTemplate(
 
     // Windows (and any other non-darwin platform a caller passes): the default
     // menu has no "About", so a Help submenu hosts "About <app>" followed
-    // directly (across a separator) by "Check for Updates…".
+    // directly (across a separator) by "Check for Updates…" and "Update Channel".
     return [
         { role: 'fileMenu' },
         { role: 'editMenu' },
@@ -98,7 +123,7 @@ export function buildAppMenuTemplate(
         { role: 'windowMenu' },
         {
             label: 'Help',
-            submenu: [aboutItem, { type: 'separator' }, checkForUpdatesItem],
+            submenu: [aboutItem, { type: 'separator' }, checkForUpdatesItem, updateChannelItem],
         },
     ];
 }
