@@ -772,6 +772,10 @@
     cursor: pointer;
 }
 
+.markdown-body a.md-link {
+    text-decoration: none;
+}
+
 .markdown-body .md-strike {
     text-decoration: line-through;
     opacity: 0.85;
