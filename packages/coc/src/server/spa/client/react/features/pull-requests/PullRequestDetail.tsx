@@ -95,6 +95,10 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
     const [commits, setCommits] = useState<PullRequestCommit[]>([]);
     const [commitsError, setCommitsError] = useState<string | null>(null);
     const [diff, setDiff] = useState<FileChange[]>(EMPTY_FILES);
+    // Raw combined unified diff text — retained (alongside the parsed file
+    // list) so the Files tab can slice per-file hunks for the inline diff
+    // panel without a second fetch.
+    const [rawDiff, setRawDiff] = useState<string>('');
     const [diffError, setDiffError] = useState<string | null>(null);
     const [checks, setChecks] = useState<PullRequestCheck[]>([]);
     const [checksError, setChecksError] = useState<string | null>(null);
@@ -152,7 +156,9 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
         if (!assistantOpen) toggleAssistant();
     }, [assistantOpen, toggleAssistant]);
 
-    const handleFileClick = useCallback((filePath: string) => {
+    // Explicit pop-out action for the Files tab. Inline (right-panel) diff is
+    // now the default click path; this opens the separate review window.
+    const handlePopOut = useCallback((_filePath: string) => {
         const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId), originId, lookupCloneBaseUrl(workspaceId));
         const win = window.open(url, `coc-git-review-pr-${prId}`, 'width=1200,height=800');
         if (win) {
@@ -174,6 +180,7 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
         if (!force) setLoading(true);
         setError(null);
         setDiff(EMPTY_FILES);
+        setRawDiff('');
         setDiffError(null);
         setCommits([]);
         setCommitsError(null);
@@ -193,7 +200,7 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
                 .catch(() => [] as CommentThread[]),
             cloneClient.pullRequests
                 .getDiffForOrigin(originId, prIdStr, providerOptions)
-                .then(text => ({ kind: 'ok' as const, parsed: parseDiffFileList(text) }))
+                .then(text => ({ kind: 'ok' as const, parsed: parseDiffFileList(text), raw: text }))
                 .catch((err: unknown) => ({
                     kind: 'err' as const,
                     message: getSpaCocClientErrorMessage(err, 'Failed to load diff'),
@@ -218,6 +225,7 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
                 setThreads(threadsData);
                 if (diffResult.kind === 'ok') {
                     setDiff(diffResult.parsed);
+                    setRawDiff(diffResult.raw);
                 } else {
                     setDiffError(diffResult.message);
                 }
@@ -612,10 +620,11 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
                         <div className="min-h-0 flex-1">
                             <PrFilesPanel
                                 files={diff}
+                                diffText={rawDiff}
                                 isMobile={isMobile}
                                 workspaceId={workspaceId}
                                 classificationKey={classificationKey}
-                                onFileClick={handleFileClick}
+                                onPopOut={handlePopOut}
                             />
                         </div>
                     </div>

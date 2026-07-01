@@ -433,14 +433,19 @@ describe('tabs', () => {
         expect(screen.getByTestId('tab-files').textContent).toContain('2');
     });
 
-    it('opens PR review pop-out URLs with the resolved origin ID', async () => {
+    it('opens PR review pop-out URLs with the resolved origin ID from the explicit pop-out action', async () => {
         const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
         mockFetchDetail(makePr(), [], SAMPLE_DIFF);
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());
         fireEvent.click(screen.getByTestId('tab-files'));
-        fireEvent.click(screen.getAllByTestId('pr-file-row')[0]);
 
+        // Clicking a file row selects it inline and must NOT open the pop-out window.
+        fireEvent.click(screen.getAllByTestId('pr-file-row')[0]);
+        expect(openSpy).not.toHaveBeenCalled();
+
+        // The pop-out remains reachable via its explicit button.
+        fireEvent.click(screen.getByTestId('pr-diff-popout'));
         expect(openSpy).toHaveBeenCalledWith(
             '/?workspace=repo-1&repo=repo-1&origin=gh_octo_repo#popout/git-review/pr/142',
             'coc-git-review-pr-142',
@@ -449,7 +454,7 @@ describe('tabs', () => {
         openSpy.mockRestore();
     });
 
-    it('renders the minimal file list without inline diff in the Files tab', async () => {
+    it('renders a split layout with the changed-files list and an inline diff panel in the Files tab', async () => {
         mockFetchDetail(makePr(), makeThreads([{
             id: 'thread-actual',
             threadContext: { filePath: '/src/foo.ts', line: 2, side: 'right' },
@@ -465,10 +470,38 @@ describe('tabs', () => {
         await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());
         fireEvent.click(screen.getByTestId('tab-files'));
 
-        // Minimal file list renders file rows but no inline diff
+        // Left rail: changed-files list. Right rail: inline diff panel.
         expect(screen.getAllByTestId('pr-file-row').length).toBeGreaterThan(0);
+        expect(screen.getByTestId('pr-diff-panel')).toBeInTheDocument();
+        // The first file (src/foo.ts) is selected by default and its diff renders inline.
+        expect(screen.getByTestId('pr-inline-diff')).toBeInTheDocument();
+        // Legacy inline-comment / diff-card surfaces are not part of this panel.
         expect(screen.queryByTestId('pr-file-inline-comments')).not.toBeInTheDocument();
         expect(screen.queryByTestId('pr-file-diff-card')).not.toBeInTheDocument();
+    });
+
+    it('renders the selected file diff inline and swaps it (and only it) when another file is selected', async () => {
+        mockFetchDetail(makePr(), [], SAMPLE_DIFF);
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-files'));
+
+        // Default selection is the first file (src/foo.ts): its added lines show,
+        // and the OTHER file's removed line is not rendered (lazy per-file slice).
+        const fooDiff = screen.getByTestId('pr-inline-diff');
+        expect(fooDiff.textContent).toContain('added one');
+        expect(fooDiff.textContent).toContain('added two');
+        expect(fooDiff.textContent).not.toContain('removed one');
+
+        // Select the second file → the panel swaps to that file's diff only.
+        const barRow = screen.getAllByTestId('pr-file-row')
+            .find(r => r.getAttribute('data-file-path') === 'src/bar.ts');
+        expect(barRow).toBeDefined();
+        fireEvent.click(barRow!);
+
+        const barDiff = screen.getByTestId('pr-inline-diff');
+        expect(barDiff.textContent).toContain('removed one');
+        expect(barDiff.textContent).not.toContain('added one');
     });
 
     it('switches to the Commits tab and renders real commits from the /commits endpoint', async () => {

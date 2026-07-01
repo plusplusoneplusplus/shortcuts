@@ -1,9 +1,13 @@
 /**
- * Files Changed tab — minimal read-only file list with AI action triggers.
+ * Files Changed tab — split layout: changed-files tree/list on the left,
+ * inline side-by-side diff panel on the right.
  *
- * No inline diff rendering. Clicking a file opens the pop-out window
- * (#popout/git-review/pr/<prId>) with all PR files loaded into the
- * file-list rail for full diff review.
+ * Clicking a file selects it and renders that file's diff inline in the
+ * right panel (the new default path). The per-file diff is sliced lazily
+ * from the already-fetched combined unified `diffText` for the selected
+ * file only — no per-file fetch and no up-front rendering of every file's
+ * hunks. The separate pop-out window (#popout/git-review/pr/<prId>) remains
+ * reachable via an explicit "Pop out" button in the diff panel header.
  *
  * Display rules for the file list:
  *  - Tree mode (default): folders are collapsible and single-child
@@ -17,6 +21,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { cn } from '../../ui';
 import type { FileChange } from '../git/diff/FileTree';
+import { SideBySideDiffViewer } from '../git/diff/SideBySideDiffViewer';
+import { extractFileDiffFromCombined } from '../git/diff/diffSource';
 import {
     buildFileTree,
     collectFolderPaths,
@@ -34,14 +40,20 @@ import { ClassifyDiffAiControls } from '../git/diff/ClassifyDiffAiControls';
 
 export interface PrFilesPanelProps {
     files: FileChange[];
-    /** When true (small viewports), the file list stacks vertically. */
+    /**
+     * Combined unified diff text for the whole PR. Sliced per-file (lazily,
+     * for the selected file only) to drive the inline diff panel. When
+     * omitted/empty the panel shows a prompt instead of a diff.
+     */
+    diffText?: string;
+    /** When true (small viewports), the split stacks vertically. */
     isMobile?: boolean;
     /** Workspace ID — enables classification and scoped AI provider preference. */
     workspaceId?: string;
     /** Classification key — enables focused-diff filter bar when provided. */
     classificationKey?: ClassificationKey;
-    /** Called when user clicks a file — opens pop-out for diff review. */
-    onFileClick?: (filePath: string) => void;
+    /** Explicit pop-out action — opens the separate review window for the file. */
+    onPopOut?: (filePath: string) => void;
 }
 
 type ViewMode = 'tree' | 'flat';
@@ -270,7 +282,7 @@ function ClassificationFilterBar({ classification, aiSelection }: Classification
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function PrFilesPanel({ files, isMobile = false, workspaceId, classificationKey, onFileClick }: PrFilesPanelProps) {
+export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, classificationKey, onPopOut }: PrFilesPanelProps) {
     const [search, setSearch] = useState('');
     const [viewMode, setViewMode] = useState<ViewMode>('tree');
 
@@ -317,19 +329,28 @@ export function PrFilesPanel({ files, isMobile = false, workspaceId, classificat
 
     function handleFileSelect(path: string) {
         setActivePath(path);
-        onFileClick?.(path);
     }
+
+    // Lazy per-file slice: compute the diff for the SELECTED file only, from
+    // the already-fetched combined diff. No other file's hunks are rendered.
+    const activeDiff = useMemo(
+        () => (diffText && activePath ? extractFileDiffFromCombined(diffText, activePath) : null),
+        [diffText, activePath],
+    );
 
     return (
         <div
             className={cn(
-                'flex h-full min-h-0',
-                isMobile ? 'flex-col' : 'flex-col',
+                'flex h-full min-h-0 gap-2',
+                isMobile ? 'flex-col' : 'flex-row',
             )}
             data-testid="pr-files-panel"
         >
             <div
-                className="flex min-h-0 w-full flex-col overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+                className={cn(
+                    'flex min-h-0 flex-col overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900',
+                    isMobile ? 'max-h-[45%] w-full shrink-0' : 'w-full max-w-[380px] shrink-0',
+                )}
                 data-testid="pr-file-list-panel"
             >
                 <header className="flex min-h-[30px] shrink-0 flex-wrap items-center justify-between gap-x-1.5 gap-y-1 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
@@ -416,6 +437,82 @@ export function PrFilesPanel({ files, isMobile = false, workspaceId, classificat
                         />
                     )}
                 </div>
+            </div>
+
+            <PrInlineDiffPanel
+                filePath={activePath}
+                diff={activeDiff}
+                hasFiles={files.length > 0}
+                onPopOut={onPopOut}
+            />
+        </div>
+    );
+}
+
+// ── Inline diff panel ────────────────────────────────────────────────
+
+interface PrInlineDiffPanelProps {
+    /** Path of the currently selected file (drives the diff shown). */
+    filePath: string;
+    /** Per-file diff slice for the selected file, or null when unavailable. */
+    diff: string | null;
+    /** Whether the PR has any changed files (drives the empty-state copy). */
+    hasFiles: boolean;
+    onPopOut?: (filePath: string) => void;
+}
+
+/**
+ * Right-hand panel of the Files tab. Renders the selected file's diff with
+ * the shared {@link SideBySideDiffViewer}. Only the selected file is ever
+ * rendered, so large PRs never build every file's hunks up front.
+ */
+function PrInlineDiffPanel({ filePath, diff, hasFiles, onPopOut }: PrInlineDiffPanelProps) {
+    return (
+        <div
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+            data-testid="pr-diff-panel"
+        >
+            <header className="flex min-h-[30px] shrink-0 items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
+                <span
+                    className="min-w-0 truncate font-mono text-[12px] text-gray-700 dark:text-gray-300"
+                    title={filePath || undefined}
+                    data-testid="pr-diff-panel-path"
+                >
+                    {filePath || 'Diff'}
+                </span>
+                {onPopOut && filePath && (
+                    <button
+                        type="button"
+                        onClick={() => onPopOut(filePath)}
+                        title="Open this file in the pop-out review window"
+                        className="inline-flex h-5 shrink-0 items-center gap-1 rounded border border-gray-300 bg-white px-1.5 text-[10px] font-semibold uppercase leading-none text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                        data-testid="pr-diff-popout"
+                    >
+                        ⧉ Pop out
+                    </button>
+                )}
+            </header>
+            <div
+                className="min-h-0 min-w-0 flex-1 overflow-auto p-1.5"
+                data-testid="pr-diff-panel-scroll"
+            >
+                {diff ? (
+                    <SideBySideDiffViewer
+                        diff={diff}
+                        fileName={filePath}
+                        showLineNumbers
+                        data-testid="pr-inline-diff"
+                    />
+                ) : (
+                    <div
+                        className="flex h-full items-center justify-center px-3 py-6 text-center text-[12px] text-gray-500 dark:text-gray-400"
+                        data-testid="pr-diff-panel-empty"
+                    >
+                        {hasFiles
+                            ? 'Select a file to view its diff.'
+                            : 'No file changes in this pull request.'}
+                    </div>
+                )}
             </div>
         </div>
     );
