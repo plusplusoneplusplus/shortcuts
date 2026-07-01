@@ -24,7 +24,7 @@ describe('LLM_TOOL_REGISTRY', () => {
         expect(names).toContain('ask_user');
         expect(names).toContain('get_work_item');
         expect(names).toContain('create_update_work_item');
-        expect(names).toContain('create_conversation');
+        expect(names).toContain('send_to_conversation');
         expect(names).not.toContain('create_work_item');
         expect(names).not.toContain('update_work_item');
         expect(names).not.toContain('create_bug');
@@ -52,12 +52,12 @@ describe('LLM_TOOL_REGISTRY', () => {
         expect(tavily!.enabledByDefault).toBe(false);
     });
 
-    it('create_conversation is enabled by default', () => {
-        const entry = LLM_TOOL_REGISTRY.find(t => t.name === 'create_conversation');
+    it('send_to_conversation is enabled by default', () => {
+        const entry = LLM_TOOL_REGISTRY.find(t => t.name === 'send_to_conversation');
         expect(entry).toBeDefined();
         expect(entry!.enabledByDefault).toBe(true);
-        // Exactly one registry entry named create_conversation.
-        expect(LLM_TOOL_REGISTRY.filter(t => t.name === 'create_conversation')).toHaveLength(1);
+        // Exactly one registry entry named send_to_conversation.
+        expect(LLM_TOOL_REGISTRY.filter(t => t.name === 'send_to_conversation')).toHaveLength(1);
     });
 
     it('all other tools are enabled by default', () => {
@@ -74,8 +74,8 @@ describe('DEFAULT_DISABLED_LLM_TOOLS', () => {
         expect(DEFAULT_DISABLED_LLM_TOOLS).toContain('tavily_web_search');
     });
 
-    it('does not contain the enabled-by-default create_conversation tool', () => {
-        expect(DEFAULT_DISABLED_LLM_TOOLS).not.toContain('create_conversation');
+    it('does not contain the enabled-by-default send_to_conversation tool', () => {
+        expect(DEFAULT_DISABLED_LLM_TOOLS).not.toContain('send_to_conversation');
     });
 
     it('does not contain enabled-by-default tools', () => {
@@ -125,12 +125,12 @@ describe('isLlmToolEnabled', () => {
         expect(isLlmToolEnabled('tavily_web_search', undefined)).toBe(false);
     });
 
-    it('returns true for create_conversation when disabledList is undefined (default)', () => {
-        expect(isLlmToolEnabled('create_conversation', undefined)).toBe(true);
+    it('returns true for send_to_conversation when disabledList is undefined (default)', () => {
+        expect(isLlmToolEnabled('send_to_conversation', undefined)).toBe(true);
     });
 
-    it('returns false for create_conversation when explicitly disabled', () => {
-        expect(isLlmToolEnabled('create_conversation', ['create_conversation'])).toBe(false);
+    it('returns false for send_to_conversation when explicitly disabled', () => {
+        expect(isLlmToolEnabled('send_to_conversation', ['send_to_conversation'])).toBe(false);
     });
 
     it('returns true for tavily_web_search when explicitly enabled (empty disabled list)', () => {

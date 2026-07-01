@@ -314,4 +314,16 @@ describe('toProcessHistoryItem', () => {
         const item = toProcessHistoryItem(proc);
         expect(item.ralph).toBeUndefined();
     });
+
+    it('forwards the top-level parentProcessId for spawned conversations', () => {
+        const proc = makeProcess({ parentProcessId: 'spawning-chat-1' } as any);
+        const item = toProcessHistoryItem(proc);
+        expect(item.parentProcessId).toBe('spawning-chat-1');
+    });
+
+    it('omits parentProcessId when the process has no parent link', () => {
+        const proc = makeProcess();
+        const item = toProcessHistoryItem(proc);
+        expect(item.parentProcessId).toBeUndefined();
+    });
 });

@@ -16,6 +16,7 @@ import type { Route } from '../types';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
+import { collectDescendantProcessIds } from './process-subtree';
 
 type DeleteOutcome = 'deleted' | 'notFound' | 'conflict';
 
@@ -54,9 +55,12 @@ async function tryDeleteHistoryEntry(
     try {
         const proc = await store.getProcess(processId);
         if (proc) {
-            const children = await store.getAllProcesses({ parentProcessId: processId });
-            for (const child of children) {
-                await store.removeProcess(child.id);
+            // Recursively remove the entire spawned subtree (all descendants),
+            // then the parent, so no grandchild is orphaned pointing at a
+            // deleted parent.
+            const descendants = await collectDescendantProcessIds(store, processId);
+            for (const id of descendants) {
+                await store.removeProcess(id);
             }
             await store.removeProcess(processId);
             removedAnything = true;

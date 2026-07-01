@@ -33,6 +33,9 @@ import { groupByForEachRun, getForEachEntryTimestamp, getForEachRunId, type ForE
 import { ForEachRunRow } from './ForEachRunRow';
 import { groupByMapReduceRun, getMapReduceEntryTimestamp, getMapReduceRunId, type MapReduceRunGroup, type MapReduceRunHistoryEntry } from './map-reduce-run-grouping';
 import { MapReduceRunRow } from './MapReduceRunRow';
+import { buildSpawnedTreeChatView, collectSpawnedEntryTasks, getSpawnedEntryTimestamp, isSpawnedTreeEntry, type SpawnedTreeEntry } from './spawned-tree-grouping';
+import { SpawnedTreeRow } from './SpawnedTreeRow';
+import { isSpawnedTreeViewEnabled, loadCollapsedSpawnedRootIds, toggleCollapsedSpawnedRoot } from './spawned-tree-view-state';
 import { getGroupPinKey, isPinnedGroupEntry, mergePinnedEntries, partitionPinnedGroups, type PinnedGroupEntry, type PinnedListEntry } from './group-pinning';
 import { isRalphEnabled, isLoopsEnabled, isSessionContextAttachmentsEnabled, isForEachEnabled, isMapReduceEnabled, isCommitChatLensEnabled } from '../../utils/config';
 import { getListModeConfig } from './list-mode-config';
@@ -526,6 +529,7 @@ export function resolveHistoryRangeSelection(
 function resolveListEntryTimestamp(entry: any): number {
     if (entry.kind === 'for-each-run') return getForEachEntryTimestamp(entry);
     if (entry.kind === 'map-reduce-run') return getMapReduceEntryTimestamp(entry);
+    if (entry.kind === 'spawned-tree') return getSpawnedEntryTimestamp(entry);
     if (entry.kind === 'group' || entry.kind === 'ralph-session') return entry.latestTimestamp;
     const ts = entry.lastActivityAt ?? entry.endTime ?? entry.completedAt ?? entry.startTime ?? entry.startedAt ?? entry.createdAt ?? 0;
     return typeof ts === 'number' ? ts : +new Date(ts);
@@ -544,6 +548,9 @@ function getEntryChildTasks(entry: any): any[] {
     if (entry?.kind === 'group') {
         return entry.children;
     }
+    if (entry?.kind === 'spawned-tree') {
+        return collectSpawnedEntryTasks(entry);
+    }
     return [entry];
 }
 
@@ -552,7 +559,7 @@ function entryHasUnseen(entry: any, unseenProcessIds?: Set<string>): boolean {
     if (entry?.kind === 'group') {
         return entry.children.some((child: any) => unseenProcessIds.has(child.id));
     }
-    if (entry?.kind === 'ralph-session' || entry?.kind === 'for-each-run' || entry?.kind === 'map-reduce-run') {
+    if (entry?.kind === 'ralph-session' || entry?.kind === 'for-each-run' || entry?.kind === 'map-reduce-run' || entry?.kind === 'spawned-tree') {
         return !!entry.hasUnseen;
     }
     return unseenProcessIds.has(entry.id);
@@ -1111,7 +1118,7 @@ export function ChatListPane({
         }
         return ids;
     }, [forEachRunGroups]);
-    const groupedTaskIds = useMemo(() => {
+    const workflowGroupedTaskIds = useMemo(() => {
         const ids = new Set(forEachGroupedTaskIds);
         for (const group of mapReduceRunGroups) {
             for (const child of group.children) {
@@ -1121,6 +1128,31 @@ export function ChatListPane({
         }
         return ids;
     }, [forEachGroupedTaskIds, mapReduceRunGroups]);
+
+    // AC-03: group chats that spawned others (via `send_to_conversation`) into
+    // recursive trees by `parentProcessId`, behind a default-ON toggle. Built
+    // from the same flat running/queued/history list the for-each grouping uses,
+    // skipping chats already owned by a for-each / map-reduce group so existing
+    // grouping wins. The root + descendants are hidden from the flat list and
+    // re-rendered inside a <SpawnedTreeRow>. When the toggle is off, the view is
+    // a no-op and chats render flat. The backend parent link (AC-01) is applied
+    // regardless of this toggle.
+    const spawnedTreeEnabled = isSpawnedTreeViewEnabled();
+    const spawnedTreeView = useMemo(() => {
+        const queueTasks = tabFilteredQueued.filter((task: any) => task.kind !== 'pause-marker');
+        return buildSpawnedTreeChatView(
+            [...tabFilteredRunning, ...queueTasks, ...tabFilteredHistory],
+            { enabled: spawnedTreeEnabled, unseenIds: unseenProcessIds, excludeIds: workflowGroupedTaskIds },
+        );
+    }, [spawnedTreeEnabled, tabFilteredRunning, tabFilteredQueued, tabFilteredHistory, unseenProcessIds, workflowGroupedTaskIds]);
+    const spawnedTreeGroups = spawnedTreeView.groups;
+
+    const groupedTaskIds = useMemo(() => {
+        if (spawnedTreeView.hiddenIds.size === 0) return workflowGroupedTaskIds;
+        const ids = new Set(workflowGroupedTaskIds);
+        for (const id of spawnedTreeView.hiddenIds) ids.add(id);
+        return ids;
+    }, [workflowGroupedTaskIds, spawnedTreeView]);
 
     const visibleTabFilteredRunning = useMemo(
         () => tabFilteredRunning.filter(task => !taskIdentityMatches(task, groupedTaskIds)),
@@ -1139,7 +1171,7 @@ export function ChatListPane({
         const liveQueue = queued.filter((t: any) => t.kind !== 'pause-marker');
         const allRaw = [...running, ...liveQueue, ...history];
         const all = allRaw.filter((task: any) => !taskIdentityMatches(task, groupedTaskIds));
-        let chat = forEachRunGroups.length + mapReduceRunGroups.length;
+        let chat = forEachRunGroups.length + mapReduceRunGroups.length + spawnedTreeGroups.length;
         let auto = 0;
         for (const t of all) {
             // Scheduled runs are pulled out of Chats/Automations and shown under
@@ -1157,8 +1189,8 @@ export function ChatListPane({
             if (scheduled) hasScheduledRuns = true;
             if (scheduled || processIdsWithLoops.has(t.id) || processIdsWithLoops.has(t.processId)) loops++;
         }
-        return { chat, auto, loops, all: all.length + forEachRunGroups.length + mapReduceRunGroups.length, hasScheduledRuns };
-    }, [running, queued, history, processIdsWithLoops, groupedTaskIds, forEachRunGroups.length, mapReduceRunGroups.length]);
+        return { chat, auto, loops, all: all.length + forEachRunGroups.length + mapReduceRunGroups.length + spawnedTreeGroups.length, hasScheduledRuns };
+    }, [running, queued, history, processIdsWithLoops, groupedTaskIds, forEachRunGroups.length, mapReduceRunGroups.length, spawnedTreeGroups.length]);
 
     // Separate archived from non-archived history (uses tab-filtered history for proper exclusions)
     const { activeHistory, filteredArchived } = useMemo(() => {
@@ -1318,11 +1350,11 @@ export function ChatListPane({
             // resolved timestamp descending. Without this sort, ralph sessions
             // would always cluster at the top regardless of recency, even
             // after lastActivityAt drift was fixed in ralph-session-grouping.
-            entries = [...unpinnedForEachRunGroups, ...unpinnedMapReduceRunGroups, ...activityRalphGrouping.unpinnedRalphGroups, ...planned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
+            entries = [...unpinnedForEachRunGroups, ...unpinnedMapReduceRunGroups, ...spawnedTreeGroups, ...activityRalphGrouping.unpinnedRalphGroups, ...planned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
         } else if (groupedUnpinned) {
-            entries = [...unpinnedForEachRunGroups, ...unpinnedMapReduceRunGroups, ...groupedUnpinned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
+            entries = [...unpinnedForEachRunGroups, ...unpinnedMapReduceRunGroups, ...spawnedTreeGroups, ...groupedUnpinned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
         } else {
-            entries = [...unpinnedForEachRunGroups, ...unpinnedMapReduceRunGroups, ...visibleFilteredUnpinned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
+            entries = [...unpinnedForEachRunGroups, ...unpinnedMapReduceRunGroups, ...spawnedTreeGroups, ...visibleFilteredUnpinned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
         }
         const today: typeof entries = [];
         const week: typeof entries = [];
@@ -1336,7 +1368,7 @@ export function ChatListPane({
             else older.push(entry);
         }
         return { today, week, older };
-    }, [groupedUnpinned, visibleFilteredUnpinned, unpinnedForEachRunGroups, unpinnedMapReduceRunGroups, listModeConfig, historyGrouping, unseenProcessIds, activityRalphGrouping]);
+    }, [groupedUnpinned, visibleFilteredUnpinned, unpinnedForEachRunGroups, unpinnedMapReduceRunGroups, spawnedTreeGroups, listModeConfig, historyGrouping, unseenProcessIds, activityRalphGrouping]);
 
     const activityCompletedEntries = useMemo(
         () => [
@@ -1470,11 +1502,11 @@ export function ChatListPane({
             ...pinnedNonRunningMapReduceGroups,
         ]);
 
-        const today: Array<any | RalphSession | ForEachRunGroup | MapReduceRunGroup> = [];
-        const week: Array<any | RalphSession | ForEachRunGroup | MapReduceRunGroup> = [];
-        const older: Array<any | RalphSession | ForEachRunGroup | MapReduceRunGroup> = [];
+        const today: Array<any | RalphSession | ForEachRunGroup | MapReduceRunGroup | SpawnedTreeEntry> = [];
+        const week: Array<any | RalphSession | ForEachRunGroup | MapReduceRunGroup | SpawnedTreeEntry> = [];
+        const older: Array<any | RalphSession | ForEachRunGroup | MapReduceRunGroup | SpawnedTreeEntry> = [];
         const nowMs = Date.now();
-        for (const t of [...recentNonRalph, ...unpinnedRalphGroups, ...unpinnedNonRunningForEachGroups, ...unpinnedNonRunningMapReduceGroups]) {
+        for (const t of [...recentNonRalph, ...unpinnedRalphGroups, ...unpinnedNonRunningForEachGroups, ...unpinnedNonRunningMapReduceGroups, ...spawnedTreeGroups]) {
             const time = resolveListEntryTimestamp(t);
             const ageH = time ? (nowMs - time) / 3600000 : Infinity;
             if (ageH < 24) today.push(t);
@@ -1483,7 +1515,7 @@ export function ChatListPane({
         }
 
         const counts = {
-            all: allActive.length + forEachRunGroups.length + mapReduceRunGroups.length,
+            all: allActive.length + forEachRunGroups.length + mapReduceRunGroups.length + spawnedTreeGroups.length,
             running: allActive.filter(isRunningTask).length
                 + forEachRunGroups.filter(group => isRunningForEachRunGroup(group, runningIdSet)).length
                 + mapReduceRunGroups.filter(group => isRunningMapReduceRunGroup(group, runningIdSet)).length,
@@ -1505,14 +1537,15 @@ export function ChatListPane({
             counts,
             flatVisible,
         };
-    }, [activeTab, running, chatAllItems, chatFilter, forEachRunGroups, mapReduceRunGroups, groupPins, unseenProcessIds]);
+    }, [activeTab, running, chatAllItems, chatFilter, forEachRunGroups, mapReduceRunGroups, spawnedTreeGroups, groupPins, unseenProcessIds]);
 
-    const applyRalphGrouping = useCallback((items: any[]): Array<RalphHistoryEntry | ForEachRunGroup | MapReduceRunGroup> => {
+    const applyRalphGrouping = useCallback((items: any[]): Array<RalphHistoryEntry | ForEachRunGroup | MapReduceRunGroup | SpawnedTreeEntry> => {
         const forEachEntries = items.filter((entry): entry is ForEachRunGroup => entry.kind === 'for-each-run');
         const mapReduceEntries = items.filter((entry): entry is MapReduceRunGroup => entry.kind === 'map-reduce-run');
-        const nonWorkflowGroups = items.filter(entry => entry.kind !== 'for-each-run' && entry.kind !== 'map-reduce-run');
+        const spawnedTreeEntries = items.filter(isSpawnedTreeEntry);
+        const nonWorkflowGroups = items.filter(entry => entry.kind !== 'for-each-run' && entry.kind !== 'map-reduce-run' && entry.kind !== 'spawned-tree');
         const grouped = isRalphEnabled() ? groupByRalphSession(nonWorkflowGroups, unseenProcessIds) : nonWorkflowGroups;
-        return [...grouped, ...forEachEntries, ...mapReduceEntries].sort((a, b) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a));
+        return [...grouped, ...forEachEntries, ...mapReduceEntries, ...spawnedTreeEntries].sort((a, b) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a));
     }, [unseenProcessIds]);
 
     const todayGrouped = useMemo(
@@ -1588,6 +1621,16 @@ export function ChatListPane({
             return { workspaceId, runs: new Set() };
         });
     }, [workspaceId]);
+
+    // Per-root collapse state for spawned-conversation trees (AC-03). Seeded
+    // from localStorage so a collapsed root survives reload; default expanded
+    // for roots the user has never touched. Persistence happens inside
+    // toggleCollapsedSpawnedRoot. Keyed globally by root process id (unique), so
+    // unlike the workflow-group expand state it is not reset per workspace.
+    const [collapsedSpawnedIds, setCollapsedSpawnedIds] = useState<Set<string>>(() => loadCollapsedSpawnedRootIds());
+    const toggleSpawnedCollapsed = useCallback((nodeId: string) => {
+        setCollapsedSpawnedIds(prev => toggleCollapsedSpawnedRoot(prev, nodeId));
+    }, []);
 
     const activityRunningEntries = useMemo<Array<any | ForEachRunGroup | MapReduceRunGroup>>(
         () => [...visibleTabFilteredRunning, ...activityRunningForEachRunGroups, ...activityRunningMapReduceRunGroups],
@@ -2716,6 +2759,21 @@ export function ChatListPane({
         workspaceId,
     ]);
 
+    const renderSpawnedTreeEntry = useCallback((entry: SpawnedTreeEntry, listForRange: HistoryRangeInput[]) => {
+        return (
+            <SpawnedTreeRow
+                key={`${workspaceId ?? '__all'}:spawned-tree:${entry.rootProcessId}`}
+                entry={entry}
+                collapsedIds={collapsedSpawnedIds}
+                onToggleCollapsed={toggleSpawnedCollapsed}
+                renderTaskCard={(task, opts) => renderChatListRow(task, listForRange, {
+                    taskStatus: getGroupedChildTaskStatus(task),
+                    isGroupChild: opts.isGroupChild,
+                })}
+            />
+        );
+    }, [collapsedSpawnedIds, toggleSpawnedCollapsed, renderChatListRow, getGroupedChildTaskStatus, workspaceId]);
+
     const renderPinnedActivityEntry = useCallback((entry: PinnedListEntry) => {
         if (isPinnedGroupEntry(entry) && entry.kind === 'for-each-run') {
             return renderForEachRunGroup(entry, activityRangeRows);
@@ -2969,12 +3027,15 @@ export function ChatListPane({
                                                         section.variant === 'running' ? 'text-[#0078d4] dark:text-[#3794ff] font-semibold' : 'text-[#848484] dark:text-[#a0a0a0]',
                                                     )}>{section.items.length}</span>
                                                  </div>
-                                                 {section.items.map((entry: RalphHistoryEntry | ForEachRunGroup | MapReduceRunGroup) => {
+                                                 {section.items.map((entry: RalphHistoryEntry | ForEachRunGroup | MapReduceRunGroup | SpawnedTreeEntry) => {
                                                        if (entry.kind === 'for-each-run') {
                                                            return renderForEachRunGroup(entry, chatRangeRows);
                                                        }
                                                        if (entry.kind === 'map-reduce-run') {
                                                            return renderMapReduceRunGroup(entry, chatRangeRows);
+                                                       }
+                                                       if (isSpawnedTreeEntry(entry)) {
+                                                           return renderSpawnedTreeEntry(entry, chatRangeRows);
                                                        }
                                                        if (entry.kind === 'ralph-session') {
                                                            return renderRalphSessionGroup(entry as RalphSession, chatRangeRows);
@@ -3363,6 +3424,7 @@ export function ChatListPane({
                                 {activityRunningEntries.map(entry => {
                                     if (entry.kind === 'for-each-run') return renderForEachRunGroup(entry, activityRangeRows);
                                     if (entry.kind === 'map-reduce-run') return renderMapReduceRunGroup(entry, activityRangeRows);
+                                    if (isSpawnedTreeEntry(entry)) return renderSpawnedTreeEntry(entry, activityRangeRows);
                                     return renderChatListRow(entry, activityRangeRows, { taskStatus: 'running' });
                                 })}
                             </div>
@@ -3586,6 +3648,9 @@ export function ChatListPane({
                                         }
                                         if (entry.kind === 'map-reduce-run') {
                                             return renderMapReduceRunGroup(entry, activityRangeRows);
+                                        }
+                                        if (isSpawnedTreeEntry(entry)) {
+                                            return renderSpawnedTreeEntry(entry, activityRangeRows);
                                         }
                                         if (entry.kind === 'ralph-session') {
                                             return renderRalphSessionGroup(entry as RalphSession, activityRangeRows);

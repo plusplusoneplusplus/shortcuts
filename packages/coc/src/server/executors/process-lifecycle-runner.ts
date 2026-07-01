@@ -511,6 +511,15 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const rawAfterEffortTier = (task.config as { afterEffortTier?: unknown }).afterEffortTier;
         const afterEffortTier = typeof rawAfterEffortTier === 'string' ? rawAfterEffortTier : undefined;
 
+        // Spawn link (AC-01): a conversation started via the `send_to_conversation`
+        // tool carries its originating chat's processId in
+        // `payload.context.spawnedFromProcessId`. Persist it on the TOP-LEVEL
+        // `parentProcessId` (not metadata) so the parent_process_id column is
+        // populated for ProcessFilter.parentProcessId queries and cascade-delete.
+        const spawnedFromProcessId = isChatPayload(task.payload)
+            ? task.payload.context?.spawnedFromProcessId
+            : undefined;
+
         const process: AIProcess = {
             id: processId,
             type: task.type,
@@ -520,6 +529,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             startTime: new Date(),
             workingDirectory,
             tokenLimit: seededTokenLimit,
+            ...(spawnedFromProcessId ? { parentProcessId: spawnedFromProcessId } : {}),
             metadata: {
                 type: task.type,
                 queueTaskId: task.id,

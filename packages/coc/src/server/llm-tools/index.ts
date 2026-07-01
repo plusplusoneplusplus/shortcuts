@@ -11,15 +11,17 @@ export {
 } from './get-conversation-tool';
 export { createSuggestFollowUpsTool, type FollowUpSuggestion } from './suggest-follow-ups-tool';
 export {
-    createCreateConversationTool,
-    type CreateConversationArgs,
-    type CreateConversationMode,
-    type CreateConversationToolOptions,
-    type CreateConversationResult,
-    type CreateConversationSuccess,
-    type CreateConversationError,
+    createSendToConversationTool,
+    type SendToConversationArgs,
+    type SendToConversationMode,
+    type SendToConversationDeliveryMode,
+    type SendToConversationToolOptions,
+    type SendToConversationResult,
+    type SendToConversationSuccess,
+    type SendToConversationError,
     type EnqueueChatFn,
-} from './create-conversation-tool';
+    type SendMessageFn,
+} from './send-to-conversation-tool';
 export {
     createGetWorkItemTool,
     type GetWorkItemArgs,

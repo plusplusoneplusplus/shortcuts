@@ -13,7 +13,7 @@ import { enqueueViaBridge, type QueueGlobalState } from '../routes/queue-shared'
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { DefaultProviderResolver } from '../providers/default-provider-resolver';
 import type { DefaultProviderResolverOptions } from '../providers/default-provider-resolver';
-import type { EnqueueChatFn } from '../llm-tools/create-conversation-tool';
+import type { EnqueueChatFn } from '../llm-tools/send-to-conversation-tool';
 import type { AgentProvidersQuotaCache } from '../agent-providers/quota-cache';
 
 export interface QueueStartupOptions extends DefaultProviderResolverOptions {
@@ -43,7 +43,7 @@ export interface QueueStartupResult {
  *
  * Creates shared mutable state (pause flags, resume tracking) and wires up
  * provider resolution so tasks are prepared consistently whether enqueued via
- * HTTP routes or the in-process `create_conversation` tool.
+ * HTTP routes or the in-process `send_to_conversation` tool.
  *
  * Also publishes the enqueue-chat capability to executors so they can offer
  * the opt-in task-creation tool.

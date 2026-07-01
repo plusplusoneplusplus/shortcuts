@@ -20,7 +20,7 @@ import { LLM_TOOL_REGISTRY, type LlmToolMeta } from '../../src/server/llm-tools/
 import { createSuggestFollowUpsTool } from '../../src/server/llm-tools/suggest-follow-ups-tool';
 import { createSearchConversationsTool } from '../../src/server/llm-tools/search-conversations-tool';
 import { createGetConversationTool } from '../../src/server/llm-tools/get-conversation-tool';
-import { createCreateConversationTool } from '../../src/server/llm-tools/create-conversation-tool';
+import { createSendToConversationTool } from '../../src/server/llm-tools/send-to-conversation-tool';
 import { createScheduleWakeupTool } from '../../src/server/llm-tools/loop-tools';
 import { createAskUserTool } from '../../src/server/llm-tools/ask-user-tool';
 import { createMemoryStoreFactTool, createMemoryRecallTool } from '../../src/server/llm-tools/memory-v2-tools';
@@ -111,7 +111,7 @@ describe('schema mirror drift guard', () => {
         { name: 'suggest_follow_ups', parameters: createSuggestFollowUpsTool().parameters },
         { name: 'search_conversations', parameters: createSearchConversationsTool({} as any).tool.parameters },
         { name: 'get_conversation', parameters: createGetConversationTool({} as any).tool.parameters },
-        { name: 'create_conversation', parameters: createCreateConversationTool({} as any).tool.parameters },
+        { name: 'send_to_conversation', parameters: createSendToConversationTool({} as any).tool.parameters },
         { name: 'scheduleWakeup', parameters: createScheduleWakeupTool({} as any).tool.parameters },
         { name: 'ask_user', parameters: createAskUserTool({} as any).tool.parameters },
         { name: 'save_memory', parameters: createMemoryStoreFactTool({} as any).tool.parameters },

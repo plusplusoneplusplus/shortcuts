@@ -66,18 +66,19 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: ['processId'],
     },
-    create_conversation: {
+    send_to_conversation: {
         type: 'object',
         properties: {
-            prompt: { type: 'string' },
+            content: { type: 'string' },
+            processId: { type: 'string' },
             workspaceId: { type: 'string' },
             mode: { type: 'string' },
+            deliveryMode: { type: 'string' },
             title: { type: 'string' },
             model: { type: 'string' },
-            provider: { type: 'string' },
             priority: { type: 'string' },
         },
-        required: ['prompt'],
+        required: ['content'],
     },
     ask_user: {
         type: 'object',

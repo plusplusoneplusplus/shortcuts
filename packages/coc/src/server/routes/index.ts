@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
@@ -21,7 +21,8 @@ import { registerQueueRoutes } from '../queue/queue-handler';
 import { prepareTaskForEnqueue } from './queue-enqueue';
 import { serializeTask, enqueueViaBridge } from './queue-shared';
 import type { QueueGlobalState } from './queue-shared';
-import type { EnqueueChatFn } from '../llm-tools/create-conversation-tool';
+import type { EnqueueChatFn, SendMessageFn } from '../llm-tools/send-to-conversation-tool';
+import { ProcessMessageDeliveryService, type FollowUpMessageInput } from '../processes/process-message-delivery-service';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
 import { registerPromptRoutes } from '../prompts/prompt-handler';
@@ -227,12 +228,21 @@ export interface RegisterRoutesOptions {
     /**
      * Publish the bound in-process enqueue capability back to the server layer so
      * the late-bound getter passed to the queue infrastructure (created before
-     * routes) can hand it to executors. Powers the `create_conversation`
+     * routes) can hand it to executors. Powers the `send_to_conversation`
      * tool. The callback runs the same machinery `POST /api/queue` uses
      * (`prepareTaskForEnqueue` + `enqueueViaBridge`) against the shared global
      * queue state.
      */
     setEnqueueChat?: (fn: EnqueueChatFn) => void;
+    /**
+     * Publish the bound in-process follow-up delivery capability back to the
+     * server layer so the late-bound getter passed to the queue infrastructure
+     * can hand it to executors. Powers the post mode of `send_to_conversation`
+     * (posting `content` into an existing conversation). The callback wraps the
+     * same `ProcessMessageDeliveryService.deliver` path `POST /api/processes/:id/message`
+     * uses against the shared store + queue bridge.
+     */
+    setSendMessage?: (fn: SendMessageFn) => void;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
@@ -371,7 +381,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     bridge.setResolveDefaultProvider(resolveDefaultProvider);
 
     // Shared global queue state — passed to both the HTTP queue routes and the
-    // in-process `create_conversation` enqueue capability so they observe the
+    // in-process `send_to_conversation` enqueue capability so they observe the
     // same global pause flags. Created here (rather than inside
     // `registerQueueRoutes`) so the tool path can reuse it.
     const queueGlobalState: QueueGlobalState = {
@@ -383,12 +393,42 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     };
 
     // Publish the bound enqueue capability so executors (created before routes)
-    // can offer the `create_conversation` tool. Reuses the exact machinery
+    // can offer the `send_to_conversation` tool. Reuses the exact machinery
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
     opts.setEnqueueChat?.(async (input: CreateTaskInput): Promise<string> => {
         await prepareEnqueueTask(input);
         return enqueueViaBridge(input, bridge, queueGlobalState, globalWorkspaceRootPath, store);
+    });
+
+    // Publish the bound follow-up delivery capability so executors can offer the
+    // post mode of `send_to_conversation` (posting into an existing
+    // conversation). Wraps the exact `ProcessMessageDeliveryService.deliver`
+    // path `POST /api/processes/:id/message` uses, resolving the target process
+    // (with the same queue_-prefix fallback) and returning the appended
+    // user-turn index. The tool's `'steer'` delivery mode maps onto the
+    // service's `'immediate'` mode — the service auto-steers a running process.
+    opts.setSendMessage?.(async (input): Promise<{ turnIndex: number }> => {
+        const { processId, content, mode, model, deliveryMode } = input;
+        let proc = await store.getProcess(processId);
+        if (!proc && isQueueProcessId(processId)) {
+            proc = await store.getProcess(toTaskId(processId));
+        }
+        if (!proc) {
+            throw new Error(`Process '${processId}' not found.`);
+        }
+        const resolvedDeliveryMode: 'immediate' | 'enqueue' =
+            deliveryMode === 'immediate' || deliveryMode === 'steer' ? 'immediate' : 'enqueue';
+        const deliveryInput: FollowUpMessageInput = {
+            content,
+            displayContent: content,
+            deliveryMode: resolvedDeliveryMode,
+            pasteExternalized: false,
+            ...(mode ? { mode } : {}),
+            ...(model ? { model } : {}),
+        };
+        const result = await new ProcessMessageDeliveryService({ store, bridge }).deliver(proc, deliveryInput);
+        return { turnIndex: result.turnIndex };
     });
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin

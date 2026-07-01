@@ -329,7 +329,7 @@ describe('buildChatTurnContext', () => {
     });
 
     // -------------------------------------------------------------------------
-    // create_conversation enqueue capability passthrough (AC-02 Part 2)
+    // send_to_conversation enqueue capability passthrough (AC-02 Part 2)
     // -------------------------------------------------------------------------
 
     it('forwards the enqueueChat capability through to buildChatToolBundle', async () => {

@@ -18,7 +18,7 @@
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
-import type { EnqueueChatFn } from '../llm-tools/create-conversation-tool';
+import type { EnqueueChatFn, SendMessageFn } from '../llm-tools/send-to-conversation-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';
 import type { MemoryV2Addon } from './memory-v2-addon';
@@ -44,10 +44,16 @@ export interface ChatTurnContextInput {
     broadcastWorkItem?: BroadcastWorkItemFn;
     /**
      * Bound in-process enqueue capability. When present (and the opt-in
-     * `create_conversation` tool is enabled by preferences), an agent can spawn a
+     * `send_to_conversation` tool is enabled by preferences), an agent can spawn a
      * brand-new chat. Absent → the addon no-ops and the tool is not offered.
      */
     enqueueChat?: EnqueueChatFn;
+    /**
+     * Bound in-process follow-up delivery capability. Enables the post mode of
+     * `send_to_conversation` (posting `content` into an existing conversation).
+     * Absent → post mode reports the capability is unavailable.
+     */
+    sendMessage?: SendMessageFn;
     scheduleWakeup?: WakeupToolDeps;
     loopTools?: LoopToolDeps;
     askUser?: {
@@ -157,6 +163,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         followUpSuggestions: input.followUpSuggestions,
         broadcastWorkItem: input.broadcastWorkItem,
         enqueueChat: input.enqueueChat,
+        sendMessage: input.sendMessage,
         memoryV2: includeMemoryV2 ? memoryV2 : undefined,
         scheduleWakeup: input.scheduleWakeup,
         loopTools: input.loopTools,
