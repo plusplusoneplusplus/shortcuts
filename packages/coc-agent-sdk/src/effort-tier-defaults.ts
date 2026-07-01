@@ -28,7 +28,7 @@ export type DefaultedProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 
 const COPILOT_DEFAULTS: EffortTierDefaultsMap = {
     'very-low': { model: 'gpt-5.4-mini',      reasoningEffort: 'low'   },
-    low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'  },
+    low:    { model: 'claude-sonnet-5',   reasoningEffort: 'high'  },
     medium: { model: 'claude-opus-4.8',   reasoningEffort: null    },
     high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh' },
 };
