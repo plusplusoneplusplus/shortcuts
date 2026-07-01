@@ -534,9 +534,24 @@ jobs:
         run: npm run test:run
         working-directory: packages/coc-desktop
 
+  workflow-policy-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+
+      - name: Run workflow policy tests
+        run: node --test scripts/release-workflow.test.mjs
+
   ci:
     runs-on: ubuntu-latest
-    needs: [lint, forge-test, coc-test, coc-coverage, deep-wiki-test, e2e, coc-serve-smoke, coccontainer-serve-smoke, coc-desktop-test]
+    needs: [lint, forge-test, coc-test, coc-coverage, deep-wiki-test, e2e, coc-serve-smoke, coccontainer-serve-smoke, coc-desktop-test, workflow-policy-test]
     if: always()
     steps:
       - name: Verify all required jobs succeeded
@@ -551,6 +566,7 @@ jobs:
             [coc-serve-smoke]="${{ needs.coc-serve-smoke.result }}"
             [coccontainer-serve-smoke]="${{ needs.coccontainer-serve-smoke.result }}"
             [coc-desktop-test]="${{ needs.coc-desktop-test.result }}"
+            [workflow-policy-test]="${{ needs.workflow-policy-test.result }}"
           )
           failed=0
           for job in "${!results[@]}"; do
