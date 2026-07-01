@@ -76,7 +76,7 @@ import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { resolveEffortTier, resolveEffectiveTier } from '../../utils/resolveEffortTier';
 import { deriveEffort } from '../../utils/effortUtils';
-import { RalphStartPanel } from './RalphStartPanel';
+import { RalphStartPanel, type RalphLaunchedSession } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
 import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './ImplementPlanCard';
 import { buildImplementTargets } from './implementTargets';
@@ -2344,6 +2344,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                                     turns={turns}
                                     goalFilePath={goalPath}
                                     useLaunchEndpoint
+                                    launchedSession={task?.metadata?.ralphLaunchedSession as RalphLaunchedSession | undefined}
                                     onStarted={(newProcessId, executionWorkspaceId) => {
                                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: executionWorkspaceId ?? workspaceId });
                                     }}

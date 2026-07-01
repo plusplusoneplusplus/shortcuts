@@ -470,6 +470,21 @@ test.describe('Schedule Management - Edit, Delete & Run History', () => {
             );
         }
 
+        // Wait for all 21 runs to be persisted before navigating
+        let historyCount = 0;
+        let attempts = 0;
+        while (historyCount < 21 && attempts < 50) {
+            const histRes = await request(
+                `${serverUrl}/api/workspaces/ws-mgmt-ui-pag/schedules/${schedule.id}/history`,
+            );
+            const histData = JSON.parse(histRes.body) as { history: unknown[] };
+            historyCount = histData.history?.length ?? 0;
+            if (historyCount < 21) {
+                await new Promise(r => setTimeout(r, 100));
+            }
+            attempts++;
+        }
+
         await navigateToSchedules(page, serverUrl);
         await clickScheduleItem(page, 'Pagination Test');
 

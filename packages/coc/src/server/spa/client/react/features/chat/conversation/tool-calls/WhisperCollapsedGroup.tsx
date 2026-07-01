@@ -15,6 +15,7 @@ import { MarkdownView } from '../../../../shared/MarkdownView';
 import { detectCommitsInToolGroup } from '../commitDetection';
 import type { DetectedCommit } from '../commitDetection';
 import type { DetectedPullRequest } from '../pullRequestDetection';
+import type { DetectedPush } from '../pushDetection';
 import { CommitStrip } from '../CommitStrip';
 import { buildGitReviewPopOutUrl } from '../../../../layout/Router';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../../contexts/GitReviewPopOutContext';
@@ -1026,6 +1027,146 @@ function PullRequestHoverSpan({ text, pullRequests, testId }: PullRequestHoverSp
     );
 }
 
+// ---------------------------------------------------------------------------
+// PushHoverPopover — shown when hovering over "N pushed"
+// ---------------------------------------------------------------------------
+
+interface PushHoverPopoverProps {
+    pushes: DetectedPush[];
+    anchorRef: React.RefObject<HTMLSpanElement | null>;
+    popoverRef: React.RefObject<HTMLDivElement | null>;
+    onMouseEnter: () => void;
+    onMouseLeave: () => void;
+}
+
+/** "remote → branch" label for a detected push (branch falls back to summary). */
+function formatPushLabel(push: DetectedPush): string {
+    const target = push.branch || push.summary || '';
+    return target ? `${push.remote} → ${target}` : push.remote;
+}
+
+function PushHoverPopover({ pushes, anchorRef, popoverRef, onMouseEnter, onMouseLeave }: PushHoverPopoverProps) {
+    if (!anchorRef.current) return null;
+    const rect = anchorRef.current.getBoundingClientRect();
+    const pos = clampPopoverPosition(rect, 460, pushes.length * 32 + 8);
+
+    return ReactDOM.createPortal(
+        <div
+            ref={popoverRef}
+            className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[240px] max-w-[460px]"
+            style={{ top: pos.top, left: pos.left }}
+            data-testid="push-hover-popover"
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
+        >
+            {pushes.map((push, idx) => {
+                const label = formatPushLabel(push);
+                const rowClass = 'flex items-center gap-2 px-2.5 py-1.5 text-xs';
+                const inner = (
+                    <>
+                        <span className="shrink-0" aria-hidden="true">⬆️</span>
+                        <span
+                            className={cn(
+                                'font-mono shrink-0 truncate min-w-0 flex-1',
+                                push.url ? 'text-[#0969da] dark:text-[#58a6ff]' : 'text-[#1e1e1e] dark:text-[#ccc]',
+                            )}
+                        >
+                            {label}
+                        </span>
+                        {push.forced && (
+                            <span className="shrink-0 text-[#bb2222] dark:text-[#f87171]" data-testid={`push-popover-force-${idx}`}>
+                                (force)
+                            </span>
+                        )}
+                        {push.url && <span className="shrink-0 text-[#848484]" aria-hidden="true">↗</span>}
+                    </>
+                );
+                return push.url ? (
+                    <a
+                        key={`${push.toolCallId}-${idx}`}
+                        href={push.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(rowClass, 'cursor-pointer hover:bg-[#e1effe] dark:hover:bg-[#1f2d42] no-underline')}
+                        data-testid={`push-popover-row-${idx}`}
+                        onClick={e => e.stopPropagation()}
+                        title={push.url}
+                        aria-label={`Open pushed branch ${label}`}
+                    >
+                        {inner}
+                    </a>
+                ) : (
+                    <div
+                        key={`${push.toolCallId}-${idx}`}
+                        className={rowClass}
+                        data-testid={`push-popover-row-${idx}`}
+                        title={label}
+                    >
+                        {inner}
+                    </div>
+                );
+            })}
+        </div>,
+        document.body,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// PushHoverSpan — a span that shows a push popover on hover
+// ---------------------------------------------------------------------------
+
+interface PushHoverSpanProps {
+    text: string;
+    pushes: DetectedPush[];
+    testId?: string;
+}
+
+function PushHoverSpan({ text, pushes, testId }: PushHoverSpanProps) {
+    const [hovered, setHovered] = useState(false);
+    const anchorRef = useRef<HTMLSpanElement | null>(null);
+    const popoverRef = useRef<HTMLDivElement | null>(null);
+    const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const showPopover = useCallback(() => {
+        if (graceTimer.current) { clearTimeout(graceTimer.current); graceTimer.current = null; }
+        setHovered(true);
+    }, []);
+
+    const hidePopover = useCallback(() => {
+        graceTimer.current = setTimeout(() => setHovered(false), 150);
+    }, []);
+    const dismissPopover = useCallback(() => {
+        if (graceTimer.current) {
+            clearTimeout(graceTimer.current);
+            graceTimer.current = null;
+        }
+        setHovered(false);
+    }, []);
+
+    useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
+
+    return (
+        <span
+            ref={anchorRef}
+            onMouseEnter={showPopover}
+            onMouseLeave={hidePopover}
+            className="underline decoration-dotted cursor-default"
+            data-testid={testId}
+        >
+            {text}
+            {hovered && pushes.length > 0 && (
+                <PushHoverPopover
+                    pushes={pushes}
+                    anchorRef={anchorRef}
+                    popoverRef={popoverRef}
+                    onMouseEnter={showPopover}
+                    onMouseLeave={hidePopover}
+                />
+            )}
+        </span>
+    );
+}
+
 export function WhisperCollapsedGroup({
     precedingChunks,
     summary,
@@ -1090,7 +1231,7 @@ export function WhisperCollapsedGroup({
     }, [onOpenFileDiff, summary.fileEdits, groupToolCalls, summary.commits, workspaceId]);
     const onOpenCombined = onOpenFileDiff ? handleOpenCombined : undefined;
 
-    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'pr' | 'file' | 'removed-file' | 'skill' | 'memory' }> = [];
+    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'pr' | 'push' | 'file' | 'removed-file' | 'skill' | 'memory' }> = [];
     if (summary.toolCallCount > 0) {
         headerParts.push({ text: `${summary.toolCallCount} tool call${summary.toolCallCount !== 1 ? 's' : ''}` });
     }
@@ -1114,6 +1255,9 @@ export function WhisperCollapsedGroup({
     }
     if (summary.prCount && summary.prCount > 0) {
         headerParts.push({ text: `${summary.prCount} PR${summary.prCount !== 1 ? 's' : ''}`, kind: 'pr' });
+    }
+    if (summary.pushCount && summary.pushCount > 0) {
+        headerParts.push({ text: `${summary.pushCount} pushed`, kind: 'push' });
     }
     if (summary.skillCount && summary.skillCount > 0) {
         headerParts.push({
@@ -1144,6 +1288,10 @@ export function WhisperCollapsedGroup({
         } else if (part.kind === 'pr' && summary.pullRequests && summary.pullRequests.length > 0) {
             headerElements.push(
                 <PullRequestHoverSpan key={`part-${idx}`} text={part.text} pullRequests={summary.pullRequests} testId="whisper-pr-hover" />,
+            );
+        } else if (part.kind === 'push' && summary.pushes && summary.pushes.length > 0) {
+            headerElements.push(
+                <PushHoverSpan key={`part-${idx}`} text={part.text} pushes={summary.pushes} testId="whisper-push-hover" />,
             );
         } else if (part.kind === 'file' && summary.fileEdits && summary.fileEdits.length > 0) {
             headerElements.push(

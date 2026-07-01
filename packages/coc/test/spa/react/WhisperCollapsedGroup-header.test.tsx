@@ -1089,3 +1089,215 @@ describe('WhisperCollapsedGroup — actionable file rows', () => {
         expect(toggle.getAttribute('aria-expanded')).toBe('true');
     });
 });
+
+// ── Push count header tests ────────────────────────────────────────────────
+
+describe('WhisperCollapsedGroup — push count in header', () => {
+    const githubPush = {
+        remote: 'https://github.com/org/repo.git',
+        branch: 'feature',
+        localRef: 'feature',
+        summary: 'abc1234..def5678',
+        forced: false,
+        url: 'https://github.com/org/repo/tree/feature',
+        provider: 'github' as const,
+        toolCallId: 'tool-1',
+    };
+    const originPush = {
+        remote: 'origin',
+        branch: 'main',
+        localRef: 'main',
+        summary: '[new branch]',
+        forced: false,
+        isNewRef: true,
+        provider: 'unknown' as const,
+        toolCallId: 'tool-2',
+    };
+    const forcedPush = {
+        remote: 'https://github.com/org/repo.git',
+        branch: 'wip',
+        localRef: 'wip',
+        summary: 'abc1234...def5678',
+        forced: true,
+        url: 'https://github.com/org/repo/tree/wip',
+        provider: 'github' as const,
+        toolCallId: 'tool-3',
+    };
+
+    it('shows "1 pushed" when pushCount === 1', () => {
+        const { container } = renderHeader({
+            toolCallCount: 2,
+            messageCount: 0,
+            pushCount: 1,
+            pushes: [githubPush],
+        });
+        expect(getHeaderText(container)).toContain('1 pushed');
+    });
+
+    it('shows "N pushed" (no plural suffix) when pushCount > 1', () => {
+        const { container } = renderHeader({
+            toolCallCount: 4,
+            messageCount: 0,
+            pushCount: 2,
+            pushes: [githubPush, originPush],
+        });
+        const text = getHeaderText(container);
+        expect(text).toContain('2 pushed');
+        expect(text).not.toContain('pusheds');
+    });
+
+    it('omits push segment when pushCount is 0 or undefined', () => {
+        const zero = renderHeader({ toolCallCount: 1, messageCount: 0, pushCount: 0 });
+        expect(getHeaderText(zero.container)).not.toContain('pushed');
+        const undef = renderHeader({ toolCallCount: 1, messageCount: 0 });
+        expect(getHeaderText(undef.container)).not.toContain('pushed');
+    });
+
+    it('dot-separates pushed after PRs and before duration', () => {
+        const { container } = renderHeader({
+            toolCallCount: 4,
+            messageCount: 2,
+            commitCount: 1,
+            prCount: 1,
+            pushCount: 1,
+            pushes: [githubPush],
+            startTime: 1000,
+            endTime: 2000,
+        });
+        expect(getHeaderText(container)).toMatch(/1 commit\s*·\s*1 PR\s*·\s*1 pushed\s*\(1\.0s\)/);
+    });
+
+    it('renders push hover span with data-testid when push metadata is available', () => {
+        const { container } = renderHeader({
+            toolCallCount: 2,
+            messageCount: 0,
+            pushCount: 1,
+            pushes: [githubPush],
+        });
+        const span = container.querySelector('[data-testid="whisper-push-hover"]');
+        expect(span).not.toBeNull();
+        expect(span?.textContent).toContain('1 pushed');
+    });
+});
+
+describe('WhisperCollapsedGroup — PushHoverPopover', () => {
+    function renderAndHoverPushes(pushes: WhisperSummary['pushes']) {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 0,
+            pushCount: pushes?.length ?? 0,
+            pushes,
+        });
+        const span = container.querySelector('[data-testid="whisper-push-hover"]') as HTMLElement;
+        if (span) fireEvent.mouseEnter(span);
+        return { container, body: document.body, span };
+    }
+
+    const linkedPush = {
+        remote: 'https://github.com/org/repo.git',
+        branch: 'feature',
+        localRef: 'feature',
+        summary: 'abc1234..def5678',
+        forced: false,
+        url: 'https://github.com/org/repo/tree/feature',
+        provider: 'github' as const,
+        toolCallId: 'tool-1',
+    };
+    const namedRemotePush = {
+        remote: 'origin',
+        branch: 'main',
+        localRef: 'main',
+        summary: 'abc1234..def5678',
+        forced: false,
+        provider: 'unknown' as const,
+        toolCallId: 'tool-2',
+    };
+    const forcePush = {
+        remote: 'https://github.com/org/repo.git',
+        branch: 'wip',
+        localRef: 'wip',
+        summary: 'abc1234...def5678',
+        forced: true,
+        url: 'https://github.com/org/repo/tree/wip',
+        provider: 'github' as const,
+        toolCallId: 'tool-3',
+    };
+
+    it('popover lists each push as "remote → branch"', () => {
+        const { body } = renderAndHoverPushes([linkedPush, namedRemotePush]);
+        const popover = body.querySelector('[data-testid="push-hover-popover"]');
+        expect(popover).not.toBeNull();
+        const rows = body.querySelectorAll('[data-testid^="push-popover-row-"]');
+        expect(rows).toHaveLength(2);
+        expect(rows[0].textContent).toContain('https://github.com/org/repo.git → feature');
+        expect(rows[1].textContent).toContain('origin → main');
+    });
+
+    it('renders a link row when a push URL is derivable', () => {
+        const { body } = renderAndHoverPushes([linkedPush]);
+        const row = body.querySelector('[data-testid="push-popover-row-0"]') as HTMLAnchorElement;
+        expect(row.tagName).toBe('A');
+        expect(row.href).toBe('https://github.com/org/repo/tree/feature');
+        expect(row.target).toBe('_blank');
+        expect(row.rel).toContain('noopener');
+        expect(row.rel).toContain('noreferrer');
+    });
+
+    it('renders plain (non-link) text when no push URL is available', () => {
+        const { body } = renderAndHoverPushes([namedRemotePush]);
+        const row = body.querySelector('[data-testid="push-popover-row-0"]') as HTMLElement;
+        expect(row.tagName).not.toBe('A');
+        expect(row.querySelector('a')).toBeNull();
+    });
+
+    it('flags forced pushes in the popover', () => {
+        const { body } = renderAndHoverPushes([forcePush]);
+        const force = body.querySelector('[data-testid="push-popover-force-0"]');
+        expect(force).not.toBeNull();
+        expect(force?.textContent).toContain('force');
+    });
+
+    it('does not flag non-forced pushes', () => {
+        const { body } = renderAndHoverPushes([linkedPush]);
+        expect(body.querySelector('[data-testid="push-popover-force-0"]')).toBeNull();
+    });
+
+    it('popover disappears on mouse leave', () => {
+        vi.useFakeTimers();
+        const { body, span } = renderAndHoverPushes([linkedPush]);
+        expect(body.querySelector('[data-testid="push-hover-popover"]')).not.toBeNull();
+        fireEvent.mouseLeave(span);
+        act(() => { vi.advanceTimersByTime(200); });
+        expect(body.querySelector('[data-testid="push-hover-popover"]')).toBeNull();
+        vi.useRealTimers();
+    });
+
+    it('renders the push popover in a document.body portal at viewport coordinates', () => {
+        const { container } = renderHeader({
+            toolCallCount: 1,
+            messageCount: 0,
+            pushCount: 1,
+            pushes: [linkedPush],
+        });
+        const span = container.querySelector('[data-testid="whisper-push-hover"]') as HTMLElement;
+        vi.spyOn(span, 'getBoundingClientRect').mockReturnValue({
+            top: 70,
+            bottom: 92,
+            left: 44,
+            right: 88,
+            width: 44,
+            height: 22,
+            x: 44,
+            y: 70,
+            toJSON: () => ({}),
+        } as DOMRect);
+
+        fireEvent.mouseEnter(span);
+
+        const popover = document.body.querySelector('[data-testid="push-hover-popover"]') as HTMLElement;
+        expect(popover).not.toBeNull();
+        expect(container.querySelector('[data-testid="push-hover-popover"]')).toBeNull();
+        expect(popover.style.top).toBe('96px');
+        expect(popover.style.left).toBe('44px');
+    });
+});
