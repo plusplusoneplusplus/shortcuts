@@ -136,15 +136,17 @@ input card) for chats that created pull requests — there is no top-of-thread P
 card. The
 `usePrChatStatusItems` hook unions PRs detected in the loaded turns
 (`pullRequestDetection.ts`, no new regex) with persisted bindings looked up by
-`task_id`. Detection requires PR-creation evidence per shell tool call: a
-`gh pr create` / `az repos pr create` command, a result carrying the
+`task_id`. Detection requires PR-creation evidence from the GitHub connector's
+create-pull-request tool, or per shell tool call: a `gh pr create` /
+`az repos pr create` command, a result carrying the
 `submit_commits_as_pr.py` wrapper's structured success line (a line-start
 `JSON: {... "pr_url": "...", "status": "done"}` — recognized even when surfaced
 by a later `grep`/`tail` of the wrapper's persisted stdout, since the original
 command output is often truncated under a large git dump), a known wrapper
 command whose untruncated result echoes a creating command, or output with no
-command metadata; read-only PR commands are ignored. The hook looks up bindings
-by `task_id` (`listChatBindingsForOrigin(originId, { taskId })`), resolves each
+command metadata; read-only PR commands and connector lookups are ignored. The
+hook looks up bindings by `task_id`
+(`listChatBindingsForOrigin(originId, { taskId })`), resolves each
 PR's canonical origin through `resolveCanonicalOriginId`, upserts a binding
 (`createChatBindingForOrigin`) for any freshly-detected PR so it survives reload
 with the creating turn collapsed, and fetches PR detail per row
