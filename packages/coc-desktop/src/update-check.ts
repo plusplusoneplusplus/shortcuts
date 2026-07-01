@@ -23,12 +23,20 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-/** GitHub "latest published release" endpoint for this repo. */
+/** GitHub "latest published release" endpoint (stable only — ignores prereleases). */
 export const LATEST_RELEASE_API =
     'https://api.github.com/repos/plusplusoneplusplus/shortcuts/releases/latest';
 
+/** GitHub "list releases" endpoint — includes both stable and prerelease builds. */
+export const RELEASES_LIST_API =
+    'https://api.github.com/repos/plusplusoneplusplus/shortcuts/releases?per_page=20';
+
 /** The one-line command that clears macOS download quarantine for an unsigned build. */
 export const MAC_QUARANTINE_FIX = 'xattr -dr com.apple.quarantine /Applications/CoC.app';
+
+/** Update channel preference. Stable considers only published non-prerelease releases;
+ *  Prerelease considers both prerelease and stable releases. */
+export type UpdateChannel = 'stable' | 'prerelease';
 
 /** A single downloadable file attached to a release. */
 export interface ReleaseAsset {
@@ -48,6 +56,8 @@ export interface ReleaseInfo {
     notes: string;
     /** Downloadable installer assets. */
     assets: ReleaseAsset[];
+    /** True when GitHub marked this release as a prerelease. */
+    isPrerelease: boolean;
 }
 
 /**
@@ -83,7 +93,44 @@ export function parseLatestRelease(json: unknown): ReleaseInfo | null {
         htmlUrl: typeof obj.html_url === 'string' ? obj.html_url : '',
         notes: typeof obj.body === 'string' ? obj.body : '',
         assets,
+        isPrerelease: typeof obj.prerelease === 'boolean' ? obj.prerelease : false,
     };
+}
+
+/**
+ * Parse a GitHub `/releases` list response into an array of {@link ReleaseInfo}.
+ * Returns an empty array when the payload is not a JSON array or all entries fail
+ * to parse, so the caller can treat "no usable releases" uniformly.
+ */
+export function parseReleaseList(json: unknown): ReleaseInfo[] {
+    if (!Array.isArray(json)) {
+        return [];
+    }
+    return json
+        .map((item) => parseLatestRelease(item))
+        .filter((r): r is ReleaseInfo => r !== null);
+}
+
+/**
+ * Select the best candidate release from a list for the given channel.
+ *
+ * - Stable channel: only non-prerelease releases are eligible.
+ * - Prerelease channel: all releases are eligible (prerelease and stable).
+ *
+ * Among eligible releases, the one with the highest semver is returned.
+ * Returns `null` when no eligible release exists.
+ */
+export function selectCandidate(
+    releases: ReleaseInfo[],
+    channel: UpdateChannel,
+): ReleaseInfo | null {
+    const candidates = releases.filter((r) => channel === 'prerelease' || !r.isPrerelease);
+    if (candidates.length === 0) {
+        return null;
+    }
+    return candidates.reduce((best, r) =>
+        compareVersions(r.version, best.version) > 0 ? r : best,
+    );
 }
 
 /** Strip a leading "v"/"V" and surrounding whitespace from a version/tag string. */
@@ -91,22 +138,38 @@ export function normalizeVersion(v: string): string {
     return v.trim().replace(/^v/i, '');
 }
 
+/** True when `version` contains a prerelease suffix (e.g. "-alpha.1", "-rc.2"). */
+export function isPrerelease(version: string): boolean {
+    return normalizeVersion(version).includes('-');
+}
+
+/** Infer the default update channel from the installed version string. */
+export function inferChannel(version: string): UpdateChannel {
+    return isPrerelease(version) ? 'prerelease' : 'stable';
+}
+
 /**
- * Compare two dotted numeric versions. Returns 1 if `a > b`, -1 if `a < b`, 0 if
- * equal. Leading "v" is tolerated. Numeric segments are compared left-to-right;
- * a missing segment counts as 0 (so "3.4" === "3.4.0"). Any non-numeric
- * pre-release tail (e.g. "-beta.1") is ignored for ordering — a pragmatic choice
- * that keeps the common release case correct without a full semver parser.
+ * Compare two semver strings. Returns 1 if `a > b`, -1 if `a < b`, 0 if equal.
+ * Leading "v" is tolerated. Numeric base segments are compared left-to-right; a
+ * missing segment counts as 0 (so "3.4" === "3.4.0"). When the base segments are
+ * equal, prerelease ordering follows the semver spec: a version without a
+ * prerelease suffix is higher than one with (so "3.4.8" > "3.4.8-alpha.1"), and
+ * when both have a prerelease suffix the suffixes are compared lexicographically.
  */
 export function compareVersions(a: string, b: string): number {
-    const segs = (v: string): number[] =>
-        normalizeVersion(v)
-            .split('-')[0]
-            .split('.')
-            .map((s) => parseInt(s, 10))
-            .map((n) => (Number.isFinite(n) ? n : 0));
-    const av = segs(a);
-    const bv = segs(b);
+    const parse = (v: string): { nums: number[]; pre: string } => {
+        const normalized = normalizeVersion(v);
+        const dashIdx = normalized.indexOf('-');
+        const numPart = dashIdx >= 0 ? normalized.slice(0, dashIdx) : normalized;
+        const pre = dashIdx >= 0 ? normalized.slice(dashIdx + 1) : '';
+        const nums = numPart.split('.').map((s) => {
+            const n = parseInt(s, 10);
+            return Number.isFinite(n) ? n : 0;
+        });
+        return { nums, pre };
+    };
+    const { nums: av, pre: aPre } = parse(a);
+    const { nums: bv, pre: bPre } = parse(b);
     const len = Math.max(av.length, bv.length);
     for (let i = 0; i < len; i++) {
         const diff = (av[i] ?? 0) - (bv[i] ?? 0);
@@ -114,7 +177,11 @@ export function compareVersions(a: string, b: string): number {
             return diff > 0 ? 1 : -1;
         }
     }
-    return 0;
+    // Base versions are equal — apply semver prerelease ordering.
+    if (!aPre && !bPre) return 0;
+    if (!aPre) return 1;  // stable beats prerelease of same base
+    if (!bPre) return -1; // prerelease loses to stable of same base
+    return aPre < bPre ? -1 : aPre > bPre ? 1 : 0;
 }
 
 /** True iff `latest` is strictly newer than `current`. */
@@ -214,15 +281,14 @@ export function formatUpdatePrompt(
 }
 
 // ---------------------------------------------------------------------------
-// "Skip this version" persistence
+// Persistent settings: skip-version and update-channel
 //
-// Mirrors agent-preflight's marker pattern: a small JSON file in the shared data
-// dir, namespaced to the desktop app so it never collides with the CLI's files.
-// A skipped version suppresses the *automatic* launch prompt for that exact
-// version only; an explicit "Check for Updates…" always re-checks.
+// Both are stored as fields in a shared desktop-update.json in the app data
+// dir. Writes always merge with existing content so neither field clobbers
+// the other.
 // ---------------------------------------------------------------------------
 
-/** Injectable filesystem seams for the skipped-version marker. */
+/** Injectable filesystem seams for the settings store. */
 export interface UpdateStore {
     readText?: (filePath: string) => string;
     writeText?: (filePath: string, data: string) => void;
@@ -235,15 +301,36 @@ function markerPath(dataDir: string): string {
     return path.join(dataDir, MARKER_FILENAME);
 }
 
-/** The version the user chose to skip, or `null` if none/unreadable. */
-export function getSkippedVersion(dataDir: string, store: UpdateStore = {}): string | null {
+/** Read existing marker data, returning an empty object on any error. */
+function readMarker(
+    dataDir: string,
+    store: UpdateStore,
+): Record<string, unknown> {
     const readText = store.readText ?? ((p) => fs.readFileSync(p, 'utf8'));
     try {
-        const parsed = JSON.parse(readText(markerPath(dataDir))) as { skipVersion?: string };
-        return typeof parsed?.skipVersion === 'string' ? parsed.skipVersion : null;
+        return JSON.parse(readText(markerPath(dataDir))) as Record<string, unknown>;
     } catch {
-        return null;
+        return {};
     }
+}
+
+/** Write `data` to the marker file, merging with existing content. */
+function writeMarker(
+    dataDir: string,
+    data: Record<string, unknown>,
+    store: UpdateStore,
+): void {
+    const ensureDir = store.ensureDir ?? ((d) => { fs.mkdirSync(d, { recursive: true }); });
+    const writeText = store.writeText ?? ((p, text) => fs.writeFileSync(p, text));
+    ensureDir(dataDir);
+    const existing = readMarker(dataDir, store);
+    writeText(markerPath(dataDir), JSON.stringify({ ...existing, ...data }));
+}
+
+/** The version the user chose to skip, or `null` if none/unreadable. */
+export function getSkippedVersion(dataDir: string, store: UpdateStore = {}): string | null {
+    const parsed = readMarker(dataDir, store);
+    return typeof parsed?.skipVersion === 'string' ? parsed.skipVersion : null;
 }
 
 /** Record a version the user wants to skip in the automatic launch prompt. */
@@ -252,13 +339,39 @@ export function setSkippedVersion(
     version: string,
     store: UpdateStore = {},
 ): void {
-    const ensureDir = store.ensureDir ?? ((d) => { fs.mkdirSync(d, { recursive: true }); });
-    const writeText = store.writeText ?? ((p, data) => fs.writeFileSync(p, data));
     try {
-        ensureDir(dataDir);
-        writeText(markerPath(dataDir), JSON.stringify({ skipVersion: normalizeVersion(version) }));
+        writeMarker(dataDir, { skipVersion: normalizeVersion(version) }, store);
     } catch {
         // Best-effort: a failed write only means we may re-prompt next launch.
+    }
+}
+
+/**
+ * Read the persisted update channel. Falls back to the channel inferred from
+ * `currentVersion` when no preference has been saved yet.
+ */
+export function getUpdateChannel(
+    dataDir: string,
+    currentVersion: string,
+    store: UpdateStore = {},
+): UpdateChannel {
+    const parsed = readMarker(dataDir, store);
+    if (parsed?.updateChannel === 'stable' || parsed?.updateChannel === 'prerelease') {
+        return parsed.updateChannel as UpdateChannel;
+    }
+    return inferChannel(currentVersion);
+}
+
+/** Persist the user's update channel preference. */
+export function setUpdateChannel(
+    dataDir: string,
+    channel: UpdateChannel,
+    store: UpdateStore = {},
+): void {
+    try {
+        writeMarker(dataDir, { updateChannel: channel }, store);
+    } catch {
+        // Best-effort.
     }
 }
 
@@ -274,8 +387,10 @@ export interface UpdateCheckOptions {
     platform?: NodeJS.Platform;
     /** Fetch implementation; defaults to global `fetch`. */
     fetchFn?: typeof fetch;
-    /** Releases endpoint; defaults to {@link LATEST_RELEASE_API}. */
+    /** Releases list endpoint; defaults to {@link RELEASES_LIST_API}. */
     apiUrl?: string;
+    /** Update channel; defaults to the channel inferred from `currentVersion`. */
+    channel?: UpdateChannel;
 }
 
 /** Why no prompt was produced, for logging / "Check for Updates…" feedback. */
@@ -289,14 +404,18 @@ export interface UpdateCheckResult {
 }
 
 /**
- * Fetch the latest release and decide whether to prompt. Never throws — a
- * network or parse failure resolves to `{ reason: 'error' }` so the caller (a
- * fire-and-forget launch check) can simply do nothing.
+ * Fetch the release list and decide whether to prompt. Replaces the former
+ * single `/releases/latest` call with a `/releases?per_page=20` list fetch so
+ * the active channel (stable or prerelease) can select the appropriate candidate.
+ *
+ * Never throws — a network or parse failure resolves to `{ reason: 'error' }` so
+ * the caller (a fire-and-forget launch check) can simply do nothing.
  */
 export async function checkForUpdate(opts: UpdateCheckOptions): Promise<UpdateCheckResult> {
     const platform = opts.platform ?? process.platform;
     const fetchFn = opts.fetchFn ?? globalThis.fetch;
-    const apiUrl = opts.apiUrl ?? LATEST_RELEASE_API;
+    const apiUrl = opts.apiUrl ?? RELEASES_LIST_API;
+    const channel = opts.channel ?? inferChannel(opts.currentVersion);
     const miss = (reason: UpdateCheckReason): UpdateCheckResult => ({
         reason,
         release: null,
@@ -312,7 +431,11 @@ export async function checkForUpdate(opts: UpdateCheckOptions): Promise<UpdateCh
         if (!res.ok) {
             return miss('error');
         }
-        const release = parseLatestRelease(await res.json());
+        const releases = parseReleaseList(await res.json());
+        if (releases.length === 0) {
+            return miss('error');
+        }
+        const release = selectCandidate(releases, channel);
         if (!release) {
             return miss('error');
         }

@@ -25,6 +25,9 @@ import {
     checkForUpdate,
     getSkippedVersion,
     setSkippedVersion,
+    getUpdateChannel,
+    setUpdateChannel,
+    UpdateChannel,
     UpdatePrompt,
 } from './update-check';
 import { buildAppMenuTemplate, buildTrayMenuTemplate } from './app-menu';
@@ -226,7 +229,8 @@ function runAgentPreflight(): void {
  */
 async function runUpdateCheck(auto: boolean): Promise<void> {
     try {
-        const result = await checkForUpdate({ currentVersion: app.getVersion() });
+        const channel = getUpdateChannel(defaultDataDir(), app.getVersion());
+        const result = await checkForUpdate({ currentVersion: app.getVersion(), channel });
         if (result.reason !== 'newer' || !result.prompt || !result.release) {
             if (!auto) {
                 // Manual check: give explicit feedback even when nothing is new.
@@ -360,12 +364,18 @@ function createTray(): void {
  * Linux is intentionally left on Electron's default menu (the action stays
  * tray-only there), so we only override the menu on macOS and Windows.
  */
-function setupApplicationMenu(): void {
+function setupApplicationMenu(currentChannel?: UpdateChannel): void {
     if (process.platform !== 'darwin' && process.platform !== 'win32') {
         return;
     }
+    const channel = currentChannel ?? getUpdateChannel(defaultDataDir(), app.getVersion());
     const template = buildAppMenuTemplate(process.platform, app.name, {
         onCheckForUpdates: () => void runUpdateCheck(false),
+        currentChannel: channel,
+        onSetUpdateChannel: (ch) => {
+            setUpdateChannel(defaultDataDir(), ch);
+            setupApplicationMenu(ch);
+        },
     });
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
