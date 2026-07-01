@@ -159,13 +159,13 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         // All four tiers populated from defaults, source: 'default'.
         expect(data.effortTiers).toEqual({
             'very-low': { model: 'gpt-5.4-mini',     reasoningEffort: 'low',   source: 'default' },
-            low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high',  source: 'default' },
+            low:    { model: 'claude-sonnet-5',   reasoningEffort: 'high',  source: 'default' },
             medium: { model: 'claude-opus-4.8',   reasoningEffort: null,    source: 'default' },
             high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh', source: 'default' },
         });
         expect(data.defaults).toEqual({
             'very-low': { model: 'gpt-5.4-mini',     reasoningEffort: 'low'   },
-            low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'  },
+            low:    { model: 'claude-sonnet-5',   reasoningEffort: 'high'  },
             medium: { model: 'claude-opus-4.8',   reasoningEffort: null    },
             high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh' },
         });
@@ -251,7 +251,7 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         expect(data.effortTiers.low.source).toBe('default');
         expect(data.effortTiers.high.source).toBe('default');
         expect(data.effortTiers['very-low'].model).toBe('gpt-5.4-mini');
-        expect(data.effortTiers.low.model).toBe('claude-sonnet-4.6');
+        expect(data.effortTiers.low.model).toBe('claude-sonnet-5');
     });
 
     it('returns 400 for invalid provider', async () => {
@@ -514,7 +514,7 @@ describe('PUT /api/agent-providers/:provider/effort-tiers — full-map replace',
         expect(data.effortTiers['very-low'].source).toBe('default');
         expect(data.effortTiers['very-low'].model).toBe('gpt-5.4-mini');
         expect(data.effortTiers.low.source).toBe('default');
-        expect(data.effortTiers.low.model).toBe('claude-sonnet-4.6');
+        expect(data.effortTiers.low.model).toBe('claude-sonnet-5');
         expect(data.effortTiers.medium).toEqual({ model: 'new-mid', reasoningEffort: null, source: 'config' });
         expect(data.effortTiers.high).toEqual({ model: 'new-high', reasoningEffort: null, source: 'config' });
         // Stored config carries only the sent tiers — no default leakage.
