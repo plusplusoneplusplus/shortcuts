@@ -162,6 +162,7 @@ describe('Work Item AI Routes', () => {
 
     afterEach(async () => {
         await stopServer();
+        await store.drainWrites();
         await fs.rm(tmpDir, { recursive: true, force: true });
     });
 

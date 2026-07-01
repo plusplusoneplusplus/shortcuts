@@ -170,6 +170,11 @@ export class FileWorkItemStore implements WorkItemStore {
         this.scopeResolver = options.scopeResolver;
     }
 
+    /** Wait for all queued writes to settle. Useful in tests before cleaning up temp dirs. */
+    async drainWrites(): Promise<void> {
+        await this.writeQueue;
+    }
+
     // ── Path helpers ────────────────────────────────────────────
 
     private workItemsDir(repoId: string): string {
