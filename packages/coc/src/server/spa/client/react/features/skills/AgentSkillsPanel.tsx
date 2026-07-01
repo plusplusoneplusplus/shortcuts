@@ -159,7 +159,7 @@ export interface SkillFolderGroup {
     key: string;
     label: string;
     folderPath: string;
-    source: 'global' | 'repo' | 'linked-repo' | 'extra-folder';
+    source: 'global' | 'repo' | 'linked-repo' | 'extra-folder' | 'global-extra-folder';
     skills: Skill[];
     repoId?: string;
     isRemovable: boolean;
@@ -193,6 +193,27 @@ export function groupSkillsByFolder(
             folderPath: repoSkills[0].folderPath ?? '',
             source: 'repo',
             skills: repoSkills,
+            isRemovable: false,
+        });
+    }
+
+    // Configured global extra folders (read-only, config-managed). Grouped per
+    // folderPath and placed after global/repo but before per-repo extra folders.
+    // Not removable here — they are managed in the Skills > Config tab, not per-repo.
+    const globalExtraSkills = skills.filter(s => s.source === 'global-extra-folder');
+    const seenGlobalExtra = new Set<string>();
+    for (const skill of globalExtraSkills) {
+        const folder = skill.folderPath ?? '';
+        if (seenGlobalExtra.has(folder)) continue;
+        seenGlobalExtra.add(folder);
+
+        const groupSkills = globalExtraSkills.filter(s => (s.folderPath ?? '') === folder);
+        groups.push({
+            key: `global-extra:${folder}`,
+            label: `🌐 ${folder}`,
+            folderPath: folder,
+            source: 'global-extra-folder',
+            skills: groupSkills,
             isRemovable: false,
         });
     }
@@ -295,6 +316,17 @@ function buildSources(
                 repoId: group.repoId,
                 folderPath: group.folderPath,
             });
+        } else if (group.source === 'global-extra-folder') {
+            // Config-managed global source — surfaced but not removable per-repo.
+            items.push({
+                id: `group:${group.key}`,
+                kind: 'extra',
+                name: group.folderPath.split(/[\\/]/).filter(Boolean).pop() || group.folderPath,
+                path: group.folderPath,
+                count: group.skills.length,
+                removable: false,
+                folderPath: group.folderPath,
+            });
         } else {
             items.push({
                 id: `group:${group.key}`,
@@ -315,7 +347,7 @@ function getSkillKind(skill: Skill): SourceKind {
     const s = skill.source;
     if (s === 'global') return 'global';
     if (s === 'linked-repo') return 'linked';
-    if (s === 'extra-folder') return 'extra';
+    if (s === 'extra-folder' || s === 'global-extra-folder') return 'extra';
     return 'repo';
 }
 

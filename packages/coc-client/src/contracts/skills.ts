@@ -1,4 +1,11 @@
-export type SkillSource = 'global' | 'repo' | 'bundled' | 'linked-repo' | 'extra-folder';
+export type SkillSource =
+  | 'global'
+  | 'repo'
+  | 'bundled'
+  | 'linked-repo'
+  | 'extra-folder'
+  /** Skill loaded from a configured global extra folder (`skills.globalExtraFolders`). */
+  | 'global-extra-folder';
 
 export interface SkillInfo {
   name: string;

@@ -363,7 +363,8 @@ export function registerGlobalSkillRoutes(
                 return handleAPIError(res, notFound('Workspace'));
             }
 
-            const allSkills = await loadSkillsForWorkspace(ws, dataDir, store);
+            const { globalExtraFolders } = readGlobalSkillFolderConfig(configAccess);
+            const allSkills = await loadSkillsForWorkspace(ws, dataDir, store, { globalExtraFolders });
             const visibleSkills = await filterVisibleSkillsForWorkspace(allSkills, ws, dataDir);
             const globalSkills = visibleSkills.filter(s => s.source === 'global');
             const repoSkills = visibleSkills.filter(s => s.source === 'repo');

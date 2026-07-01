@@ -108,4 +108,40 @@ describe('groupSkillsByFolder', () => {
         expect(groups).toHaveLength(1);
         expect(groups[0].skills).toHaveLength(2);
     });
+
+    // ----- configured global extra folders (AC #2) -----
+
+    it('groups global-extra-folder skills into a non-removable group by folderPath', () => {
+        const skills: Skill[] = [
+            { name: 'ge-a', source: 'global-extra-folder', folderPath: '/opt/shared-skills' },
+            { name: 'ge-b', source: 'global-extra-folder', folderPath: '/opt/shared-skills' },
+        ];
+        const groups = groupSkillsByFolder(skills, emptyRepos);
+        expect(groups).toHaveLength(1);
+        expect(groups[0].source).toBe('global-extra-folder');
+        expect(groups[0].label).toBe('🌐 /opt/shared-skills');
+        expect(groups[0].isRemovable).toBe(false);
+        expect(groups[0].skills).toHaveLength(2);
+    });
+
+    it('orders global-extra groups after global/repo and before per-repo extra folders', () => {
+        const skills: Skill[] = [
+            { name: 'extra', source: 'extra-folder', folderPath: '/custom/path' },
+            { name: 'ge', source: 'global-extra-folder', folderPath: '/opt/shared' },
+            { name: 'local', source: 'repo', folderPath: '/repo/.github/skills' },
+            { name: 'global-one', source: 'global', folderPath: '/data/skills' },
+        ];
+        const groups = groupSkillsByFolder(skills, emptyRepos);
+        expect(groups.map(g => g.source)).toEqual(['global', 'repo', 'global-extra-folder', 'extra-folder']);
+    });
+
+    it('multiple global-extra folders create separate groups', () => {
+        const skills: Skill[] = [
+            { name: 'a', source: 'global-extra-folder', folderPath: '/opt/one' },
+            { name: 'b', source: 'global-extra-folder', folderPath: '/opt/two' },
+        ];
+        const groups = groupSkillsByFolder(skills, emptyRepos);
+        expect(groups).toHaveLength(2);
+        expect(groups.map(g => g.folderPath).sort()).toEqual(['/opt/one', '/opt/two']);
+    });
 });
