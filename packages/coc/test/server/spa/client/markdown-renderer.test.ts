@@ -103,11 +103,48 @@ describe('renderMarkdownToHtml', () => {
             expect(html).toContain('console.log()');
         });
 
-        it('renders links', () => {
+        it('renders external https link as <a> tag with target=_blank', () => {
             const html = renderMarkdownToHtml('[Google](https://google.com)');
-            expect(html).toContain('md-link');
-            expect(html).toContain('Google');
-            expect(html).toContain('https://google.com');
+            expect(html).toContain('<a class="md-link"');
+            expect(html).toContain('href="https://google.com"');
+            expect(html).toContain('target="_blank"');
+            expect(html).toContain('rel="noopener noreferrer"');
+            expect(html).toContain('>Google</a>');
+        });
+
+        it('renders external http link as <a> tag', () => {
+            const html = renderMarkdownToHtml('[Site](http://example.com)');
+            expect(html).toContain('<a class="md-link"');
+            expect(html).toContain('href="http://example.com"');
+            expect(html).toContain('target="_blank"');
+        });
+
+        it('renders mailto link as <a> tag', () => {
+            const html = renderMarkdownToHtml('[Email](mailto:user@example.com)');
+            expect(html).toContain('<a class="md-link"');
+            expect(html).toContain('href="mailto:user@example.com"');
+            expect(html).toContain('target="_blank"');
+        });
+
+        it('renders external link with title attribute', () => {
+            const html = renderMarkdownToHtml('[Google](https://google.com "Search engine")');
+            expect(html).toContain('<a class="md-link"');
+            expect(html).toContain('title="Search engine"');
+            expect(html).toContain('>Google</a>');
+        });
+
+        it('renders local/file path link as span with data-href', () => {
+            const html = renderMarkdownToHtml('[readme](./README.md)');
+            expect(html).toContain('<span class="md-link"');
+            expect(html).toContain('data-href="./README.md"');
+            expect(html).not.toContain('<a ');
+        });
+
+        it('renders anchor link as span with data-anchor', () => {
+            const html = renderMarkdownToHtml('[Section](#heading)');
+            expect(html).toContain('md-anchor-link');
+            expect(html).toContain('data-anchor="heading"');
+            expect(html).not.toContain('<a ');
         });
     });
 

@@ -282,7 +282,8 @@ export function applyInlineMarkdown(text: string, options?: MarkdownRenderInline
     });
     
     // Links [text](url "optional title")
-    // Add special class for anchor links (starting with #) to enable ToC navigation
+    // Add special class for anchor links (starting with #) to enable ToC navigation.
+    // External URLs (https/http/mailto) render as real <a> tags for native browser behavior.
     html = html.replace(/\[([^\]]+)\]\((\S+?)(?:\s+(?:"([^"]*)"|'([^']*)'|&quot;([^&]*)&quot;|&#039;([^&]*)&#039;))?\)/g, (
         _match,
         text,
@@ -294,11 +295,20 @@ export function applyInlineMarkdown(text: string, options?: MarkdownRenderInline
     ) => {
         const title = doubleTitle ?? singleTitle ?? escapedDoubleTitle ?? escapedSingleTitle;
         const isAnchorLink = url.startsWith('#');
-        const linkClass = isAnchorLink ? 'md-link md-anchor-link' : 'md-link';
-        const dataAttr = isAnchorLink ? ` data-anchor="${escapeHtml(url.substring(1))}"` : '';
-        const hrefAttr = isAnchorLink ? '' : ` data-href="${escapeHtml(url)}"`;
+        const isExternalUrl = /^https?:\/\/|^mailto:/i.test(url);
+
+        if (isAnchorLink) {
+            const titleText = title ? ` &quot;${escapeHtml(title)}&quot;` : '';
+            return `<span class="md-link md-anchor-link" data-anchor="${escapeHtml(url.substring(1))}"><span class="md-link-text">[${text}]</span><span class="md-link-url">(${url}${titleText})</span></span>`;
+        }
+
+        if (isExternalUrl) {
+            const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+            return `<a class="md-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
+        }
+
         const titleText = title ? ` &quot;${escapeHtml(title)}&quot;` : '';
-        const linkHtml = `<span class="${linkClass}"${dataAttr}${hrefAttr}><span class="md-link-text">[${text}]</span><span class="md-link-url">(${url}${titleText})</span></span>`;
+        const linkHtml = `<span class="md-link" data-href="${escapeHtml(url)}"><span class="md-link-text">[${text}]</span><span class="md-link-url">(${url}${titleText})</span></span>`;
         const embed = options?.htmlEmbedEnabled ? parseHtmlEmbedTitle(title) : null;
         if (!embed || !isEmbeddableHtmlPath(url)) {
             return linkHtml;

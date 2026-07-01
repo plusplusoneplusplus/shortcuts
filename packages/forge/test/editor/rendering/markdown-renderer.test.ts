@@ -155,9 +155,27 @@ describe('applyInlineMarkdown', () => {
         expect(html).toContain('http://example.com');
     });
 
-    it('renders links with data-href attribute', () => {
+    it('renders external http link as <a> tag with target=_blank', () => {
         const html = applyInlineMarkdown('[text](http://example.com)');
-        expect(html).toContain('data-href="http://example.com"');
+        expect(html).toContain('<a class="md-link"');
+        expect(html).toContain('href="http://example.com"');
+        expect(html).toContain('target="_blank"');
+        expect(html).toContain('rel="noopener noreferrer"');
+        expect(html).toContain('>text</a>');
+    });
+
+    it('renders external https link as <a> tag with target=_blank', () => {
+        const html = applyInlineMarkdown('[text](https://example.com)');
+        expect(html).toContain('<a class="md-link"');
+        expect(html).toContain('href="https://example.com"');
+        expect(html).toContain('target="_blank"');
+    });
+
+    it('renders mailto link as <a> tag', () => {
+        const html = applyInlineMarkdown('[email](mailto:user@example.com)');
+        expect(html).toContain('<a class="md-link"');
+        expect(html).toContain('href="mailto:user@example.com"');
+        expect(html).toContain('target="_blank"');
     });
 
     it('renders relative links with data-href attribute', () => {
