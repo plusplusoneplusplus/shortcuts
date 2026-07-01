@@ -35,7 +35,7 @@ Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memo
 2. Version packages: `npm run version-packages` (applies changesets, updates `package.json` versions and changelogs)
 3. Publish: `npm run publish-packages` (builds all packages then runs `changeset publish`)
 
-**CI release:** `.github/workflows/release.yml` runs on pushes to `main`. When pending changesets exist, `changesets/action` opens a "Version Packages" PR. When the PR is merged (no pending changesets), it publishes changed packages to npm.
+**CI desktop release:** `.github/workflows/release.yml` fires on `v*.*.*` tags (stable) and `v*.*.*-*` tags (pre-release, e.g. `-alpha.1`, `-beta.1`, `-rc.1`). It builds macOS (DMG) and Windows (NSIS) desktop binaries in parallel, then creates a draft GitHub Release with all artifacts attached. Pre-release tags produce a release marked as pre-release on GitHub. npm package publishing is done manually via `npm run publish-packages`.
 
 **Changesets config:** `.changeset/config.json` — independent versioning, public access, `main` as base branch, `updateInternalDependencies: "patch"`.
 
