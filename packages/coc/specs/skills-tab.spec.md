@@ -3,7 +3,7 @@
 **Document type:** Formal UX Specification  
 **Scope:** CoC Dashboard → Skills (embedded in Admin Shell · Knowledge Group)  
 **Purpose:** Authoritative reference for validating any future UI/UX changes to the Skills tab.  
-**Version:** 2.0.0
+**Version:** 2.1.0
 
 ---
 
@@ -15,7 +15,7 @@ The view exposes three sub-tabs in a left rail:
 
 - **Installed** — list, expand, toggle, and uninstall installed global skills
 - **Gallery** — install skills from Built-in / GitHub URL / ClawHub / Local Path (formerly named "Bundled"; the legacy `#skills/bundled` URL is back-compat redirected to `#skills/gallery`)
-- **Config** — configure the global skills directory and globally disabled skills
+- **Config** — configure skill folder sources (managed global directory, global extra folders, detected folders), view the effective search order, and manage globally disabled skills
 
 Skills installed here live under `~/.coc/skills/` and are available globally across all repositories. At server startup they are also mirrored for Codex (`~/.codex/skills`) and Claude (`~/.claude/commands/<name>.md`) when the corresponding `codex.enabled` / `claude.enabled` flags are true; the mirroring is invisible to the SPA.
 
@@ -133,12 +133,51 @@ Skills installed here live under `~/.coc/skills/` and are available globally acr
 
 ### 3.3 Config Sub-Tab
 
+The Config sub-tab renders five sections in this order: **Global Skills Directory**, **Global Extra Skill Folders**, **Detected Skill Folders**, **Effective Search Order**, **Globally Disabled Skills**.
+
 **US-09 — View global skills directory**
 > As an administrator, I want to see where global skills are stored on disk.
 
 - **Given** the Config sub-tab is active
 - **When** config is loaded via `skills.getGlobalConfig()`
-- **Then** the global skills directory is shown in a monospace read-only field; falls back to `~/.coc/skills/` when the server response has no `globalSkillsDir`
+- **Then** the **Global Skills Directory** section shows the managed install directory in a monospace read-only field; falls back to `~/.coc/skills/` when the server response has no `globalSkillsDir`
+- **And** it is presented as a single read-only managed location — never a multi-value field — and does not imply CoC writes into OneDrive, extra, bundled, or repo-local folders
+
+---
+
+**US-11 — Manage global extra skill folders**
+> As an administrator, I want to add read-only skill-source folders that apply across all workspaces.
+
+- **Given** the Config sub-tab is active
+- **Then** the **Global Extra Skill Folders** section shows configured folders (from `globalExtraFolders`) as chips with a `✕` to remove
+- **When** the user types a folder path (absolute or `~`-prefixed) and clicks **Add** (or presses Enter)
+- **Then** the panel persists via `skills.updateGlobalConfig({ globalDisabledSkills, globalExtraFolders: [...current, folder] })` (deduped against the current list), then reloads effective paths
+- **When** the user clicks `✕` on a chip
+- **Then** it persists `globalExtraFolders` without that folder and reloads effective paths
+- **And** the section explains these are read-only sources CoC never installs into
+
+---
+
+**US-12 — Toggle default folder auto-detection**
+> As an administrator, I want to enable or disable OneDrive/CloudStorage skill-folder auto-detection.
+
+- **Given** the Config sub-tab is active
+- **Then** the **Detected Skill Folders** section shows an auto-detect checkbox reflecting `autoDetectDefaultFolders` (defaults to on when the field is omitted) and lists the auto-detected folders from `skills.getEffectivePaths()`
+- **When** no OneDrive skill folder exists
+- **Then** the section shows a compact "No OneDrive skill folders detected." state rather than every possible default path
+- **When** a OneDrive root exists but lacks `.github/skills`
+- **Then** that root appears only inside a collapsed `<details>` diagnostics row, not the main list
+- **When** the user toggles the checkbox
+- **Then** the panel persists `skills.updateGlobalConfig({ globalDisabledSkills, autoDetectDefaultFolders })` and reloads effective paths
+
+---
+
+**US-13 — View the effective search order**
+> As an administrator, I want to see the folders the agent will actually search, in order.
+
+- **Given** the Config sub-tab is active
+- **Then** the **Effective Search Order** section renders a read-only ordered list from `skills.getEffectivePaths()` (called global-only, with no workspaceId), each row showing a source badge, a status badge, the path, and an optional skill count
+- **And** a "Showing global paths only" note clarifies that repo-local and per-repo paths are not claimed to apply globally
 
 ---
 
@@ -193,13 +232,20 @@ Skills installed here live under `~/.coc/skills/` and are available globally acr
 
 ### 4.4 Config Sub-Tab
 
+Sections render in order: Global Skills Directory → Global Extra Skill Folders → Detected Skill Folders → Effective Search Order → Globally Disabled Skills.
+
 | Feature | Acceptance Criteria |
 |---|---|
-| Skills directory | Read-only monospace; fallback `~/.coc/skills/` |
+| Global Skills Directory | Single read-only monospace managed location; fallback `~/.coc/skills/`; never multi-value |
+| Global Extra Skill Folders | Chips with `✕`; input + Add button (Enter also adds); absolute or `~`-prefixed; deduped; persists `globalExtraFolders` |
+| Detected Skill Folders | Auto-detect checkbox bound to `autoDetectDefaultFolders` (default on); lists auto-detected entries from `getEffectivePaths`; compact "No OneDrive skill folders detected." empty state; skipped roots in a collapsed `<details>` diagnostics row |
+| Effective Search Order | Read-only ordered list from `getEffectivePaths()` (global-only, no workspaceId); source badge + status badge + path + optional skill count per row; "Showing global paths only" note |
 | Disabled chips | Red chips with `✕` to remove |
 | Add disabled | Input + Disable button; Enter key also adds; deduped against current list |
-| Save | `skills.updateGlobalConfig` on every add/remove (no batch) |
+| Save | `skills.updateGlobalConfig` on every add/remove/toggle (no batch); disabled-skill writes send only `{ globalDisabledSkills }`; folder/toggle writes add their field alongside the required disabled list |
 | Note | "Per-repo disabled skills are managed in each repo's Copilot settings" |
+
+**Source badges:** `managed-global → Managed`, `configured → Configured`, `auto-detected → Auto-detected`, `repo`/`repo-extra → Repo`, `bundled → Bundled`. **Status badges:** `available → Available`, `missing → Missing`, `no-skills → No skills`, `skipped → Skipped`. Skill listings additionally use the `global-extra-folder` source for skills loaded from configured global extra folders (see Repo Settings → Agent Skills grouping).
 
 ### 4.5 Server-Side Mirroring (background, no UI surface)
 
@@ -281,7 +327,8 @@ All routes are rooted at `/api/skills/*` and surfaced through `getSpaCocClient()
 | `skills.getGlobalConfig()` (`GET /api/skills/config`) | Config tab + installed enable state | US-03, US-09, US-10 |
 | `skills.detailGlobal(name)` (`GET /api/skills/<name>`) | Skill detail expand | US-02 |
 | `skills.deleteGlobal(name)` (`DELETE /api/skills/<name>`) | Uninstall | US-04 |
-| `skills.updateGlobalConfig({ globalDisabledSkills })` (`PUT /api/skills/config`) | Toggle / disable | US-03, US-10 |
+| `skills.updateGlobalConfig({ globalDisabledSkills, globalExtraFolders?, autoDetectDefaultFolders? })` (`PUT /api/skills/config`) | Toggle / disable / folder sources / auto-detect | US-03, US-10, US-11, US-12 |
+| `skills.getEffectivePaths()` (`GET /api/skills/effective-paths`) | Detected folders + effective search order | US-12, US-13 |
 | `skills.listBundledGlobal()` (`GET /api/skills/bundled`) | Built-in gallery list | US-05 |
 | `skills.scanGlobal({ url })` (`POST /api/skills/scan`) | Scan remote/local | US-06, US-07, US-08 |
 | `skills.installGlobal({ source\|url, skills\|skillsToInstall, replace })` (`POST /api/skills/install`) | Install | US-05, US-06, US-07, US-08 |
@@ -294,3 +341,4 @@ All routes are rooted at `/api/skills/*` and surfaced through `getSpaCocClient()
 |---|---|---|
 | 1.0.0 | 2026-03-25 | Initial specification (top-level Skills tab; sub-tabs Installed / Bundled / Config) |
 | 2.0.0 | 2026-05-29 | Embedded inside Admin shell's Knowledge group; sub-tab `bundled` renamed to `gallery` (with back-compat redirect from `#skills/bundled`); 4-source Gallery toggle (Built-in / GitHub / ClawHub / Local Path); documented Codex/Claude server-side skill mirroring as background context. |
+| 2.1.0 | 2026-07-01 | Config sub-tab expanded to five ordered sections (Global Skills Directory / Global Extra Skill Folders / Detected Skill Folders / Effective Search Order / Globally Disabled Skills); added global extra folders (`skills.globalExtraFolders`) and OneDrive/CloudStorage auto-detection toggle (`skills.autoDetectDefaultFolders`); added the effective-search-order diagnostic (`GET /api/skills/effective-paths`) with source/status badge vocab; documented the `global-extra-folder` skill source (US-11/12/13). |

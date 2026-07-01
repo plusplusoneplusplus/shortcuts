@@ -283,12 +283,19 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/workspaces/:id/skills` | List skills |
+| GET | `/api/workspaces/:id/skills` | List skills merged for the workspace. In priority order: repo-local `.github/skills` → managed global `~/.coc/skills` → configured global extra folders (`source: 'global-extra-folder'`, tagged with `folderPath`) → per-repo extra/linked-repo folders. Name collisions resolve to the earlier (higher-priority) source. |
 | POST | `/api/workspaces/:id/skills/install` | Install skill |
 | GET | `/api/workspaces/:id/skills/:name/file?path=<rel>` | Read a file inside a skill folder |
 | DELETE | `/api/workspaces/:id/skills/:name` | Delete skill |
 | GET | `/api/skills` | Global skills |
 | POST | `/api/skills/install` | Install global skill |
+| GET | `/api/skills/config` | Global skills config: `{ globalDisabledSkills, globalSkillsDir, globalExtraFolders, autoDetectDefaultFolders }`. `globalDisabledSkills` comes from `preferences.json`; `globalSkillsDir` is the managed install dir (`dataDir/skills`, normally `~/.coc/skills`); `globalExtraFolders` and `autoDetectDefaultFolders` are read from the config file's `skills` namespace (defaulting to `[]` / `true` when absent or malformed). |
+| PUT | `/api/skills/config` | Update global skills config. Body `{ globalDisabledSkills, globalExtraFolders?, autoDetectDefaultFolders? }`. `globalDisabledSkills` persists to `preferences.json`; when present, `globalExtraFolders` (validated as an array of strings) and `autoDetectDefaultFolders` (validated as a boolean) are merged into the config file's `skills` namespace via a whole-file load-merge-write. Returns the same shape as GET. |
+| GET | `/api/skills/effective-paths` | Read-only diagnostic of the agent's effective skill search order. Global-only by default; `?workspaceId=<id>` adds workspace-scoped paths (repo-local + per-repo extra folders) and echoes the resolved `workspaceId` (unknown ids fall back to global-only, no echo). Returns `{ workspaceId?, paths: EffectiveSkillPath[] }`, each entry `{ source, scope, status, path, skillCount?, note? }`. Declared-but-missing sources are retained so the UI can explain them; auto-detected OneDrive/CloudStorage folders appear only when their root exists (surfaced as `skipped` when the root exists but lacks `.github/skills`, silent when the root is absent). |
+
+`/api/skills/config` and `/api/skills/effective-paths` are registered before the catch-all `/api/skills/:name` route and reserved in `RESERVED_GLOBAL_SKILL_NAMES` so the skill-detail route never swallows them. CoC only installs/deletes into the managed `globalSkillsDir`; configured global extra folders, auto-detected OneDrive/CloudStorage folders, and per-repo extra folders are read-only skill sources. Resolution order and the three consumers (execution, diagnostic, UI listing) are documented in [admin-config.md](admin-config.md).
+
+`EffectiveSkillPath.source` ∈ `repo` \| `managed-global` \| `auto-detected` \| `configured` \| `repo-extra` \| `bundled`; `status` ∈ `available` \| `no-skills` \| `missing` \| `skipped`; `scope` ∈ `global` \| `workspace`.
 
 ## Memory
 
