@@ -269,7 +269,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                 title={t.shortcut}
                 onClick={() => onTab(t.key)}
                 className={
-                    'relative inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded-md text-[13px] whitespace-nowrap shrink-0 transition-colors ' +
+                    'relative inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-md text-[13px] whitespace-nowrap shrink-0 transition-colors ' +
                     (isActive
                         ? 'font-bold text-[#0969da] dark:text-[#79c0ff] shadow-[inset_0_-2px_0_#0969da] dark:shadow-[inset_0_-2px_0_#3794ff]'
                         : 'font-semibold text-[#656d76] dark:text-[#999] hover:text-[#1f2328] dark:hover:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2a2a]')
@@ -283,7 +283,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
 
     return (
         <div
-            className="relative flex items-center gap-0.5 h-[42px] flex-shrink-0 px-3 border-b border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]"
+            className="relative flex items-center gap-0.5 h-[32px] flex-shrink-0 px-3 border-b border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]"
             data-testid="remote-sub-bar"
         >
             {/* Hidden width-measurement mirror of every clone tab (drives overflow). */}
@@ -292,7 +292,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                     <span
                         key={t.key}
                         data-measure-key={t.key}
-                        className={'inline-flex items-center gap-1.5 h-[30px] px-2.5 text-[13px] whitespace-nowrap ' + (activeTab === t.key ? 'font-bold' : 'font-semibold')}
+                        className={'inline-flex items-center gap-1.5 h-[26px] px-2.5 text-[13px] whitespace-nowrap ' + (activeTab === t.key ? 'font-bold' : 'font-semibold')}
                     >
                         {t.label}
                         {badge(t.key, true)}
@@ -305,7 +305,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
             {remoteTabs.map(t => renderTab(t, 'remote-scope-tab'))}
 
             {/* divider */}
-            <span className="w-px h-[22px] bg-[#d8dee4] dark:bg-[#3c3c3c] mx-2 flex-shrink-0" aria-hidden />
+            <span className="w-px h-[18px] bg-[#d8dee4] dark:bg-[#3c3c3c] mx-2 flex-shrink-0" aria-hidden />
 
             {/* ── Clone scope ── */}
             <div className="relative flex-shrink-0" ref={cloneRef}>
@@ -315,7 +315,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                     aria-haspopup="menu"
                     aria-expanded={cloneOpen}
                     title={ws.name}
-                    className="relative inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:border-[#0078d4] dark:hover:border-[#0078d4] transition-colors"
+                    className="relative inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:border-[#0078d4] dark:hover:border-[#0078d4] transition-colors"
                 >
                     <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: cloneStatusColor(cloneStatus[cloneId], remoteColor) }} aria-hidden />
                     <span className="max-w-[160px] truncate">{ws.name}</span>
@@ -453,7 +453,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                         title="More"
                         onClick={() => setOvOpen(o => !o)}
                         className={
-                            'inline-flex items-center justify-center h-[30px] px-2 rounded-md text-[15px] leading-none transition-colors ' +
+                            'inline-flex items-center justify-center h-[26px] px-2 rounded-md text-[15px] leading-none transition-colors ' +
                             (overflowActive
                                 ? 'font-bold text-[#0969da] dark:text-[#79c0ff] shadow-[inset_0_-2px_0_#0969da] dark:shadow-[inset_0_-2px_0_#3794ff]'
                                 : 'text-[#656d76] dark:text-[#999] hover:text-[#1f2328] dark:hover:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2a2a]')
@@ -498,7 +498,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                 data-testid="subbar-ask"
                 title={`Ask AI about ${ws.name} (read-only)`}
                 onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: cloneId, mode: 'ask' })}
-                className="inline-flex items-center gap-1 h-[28px] px-2.5 rounded-md text-[12px] font-semibold bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-400 dark:hover:bg-yellow-300 text-[#1e1e1e] transition-colors flex-shrink-0 ml-1"
+                className="inline-flex items-center gap-1 h-[24px] px-2.5 rounded-md text-[12px] font-semibold bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-400 dark:hover:bg-yellow-300 text-[#1e1e1e] transition-colors flex-shrink-0 ml-1"
             >
                 Ask
             </button>
@@ -506,7 +506,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                 data-testid="subbar-queue"
                 title={`Queue a task on ${ws.name}${branch ? ' (' + branch + ')' : ''}`}
                 onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: cloneId })}
-                className="inline-flex items-center gap-1 h-[28px] px-2.5 rounded-md text-[12px] font-semibold bg-[#1f883d] hover:bg-[#1a7f37] dark:bg-[#238636] dark:hover:bg-[#2ea043] text-white transition-colors flex-shrink-0"
+                className="inline-flex items-center gap-1 h-[24px] px-2.5 rounded-md text-[12px] font-semibold bg-[#1f883d] hover:bg-[#1a7f37] dark:bg-[#238636] dark:hover:bg-[#2ea043] text-white transition-colors flex-shrink-0"
             >
                 <span className="text-[14px] leading-none">+</span>
                 Queue

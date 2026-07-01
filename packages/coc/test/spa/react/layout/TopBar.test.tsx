@@ -252,3 +252,60 @@ describe('TopBar — My Work icon button', () => {
         expect(btn.textContent).toContain('💼');
     });
 });
+
+// ── Compact header row (see "Compact Header Rows" spec) ─────────────────
+// Row 1 shrinks on desktop (md:h-12 → md:h-10) while mobile stays h-10, and
+// the icon buttons drop their md: up-size (md:h-8 → h-7) so the whole bar is a
+// uniform 28px-control row inside a 40px chrome.
+describe('TopBar compact header row', () => {
+    let viewportCleanup: (() => void) | undefined;
+
+    afterEach(() => {
+        viewportCleanup?.();
+        viewportCleanup = undefined;
+    });
+
+    it('header is 40px on desktop (md:h-10) and no longer md:h-12', () => {
+        viewportCleanup = mockViewport(1024);
+        render(<TopBar />);
+        const header = document.querySelector('header')!;
+        expect(header.className).toContain('md:h-10');
+        expect(header.className).not.toContain('md:h-12');
+    });
+
+    it('keeps mobile header height at h-10 (mobile layout unchanged)', () => {
+        viewportCleanup = mockViewport(375);
+        render(<TopBar />);
+        const header = document.querySelector('header')!;
+        expect(header.className).toContain('h-10');
+    });
+
+    it('icon buttons are a uniform h-7 w-7 without the md: up-size', () => {
+        mockMyWorkEnabled = true;
+        mockMyLifeEnabled = true;
+        viewportCleanup = mockViewport(1024);
+        render(<TopBar />);
+        for (const id of ['hamburger-btn', 'admin-toggle', 'theme-toggle', 'my-work-toggle', 'my-life-toggle']) {
+            const btn = document.getElementById(id)!;
+            expect(btn.className, `${id} should be h-7 w-7`).toContain('h-7 w-7');
+            expect(btn.className, `${id} should drop md:h-8`).not.toContain('md:h-8');
+            expect(btn.className, `${id} should drop md:w-8`).not.toContain('md:w-8');
+        }
+    });
+
+    it('interactive icon buttons keep their touch-target class after shrinking', () => {
+        viewportCleanup = mockViewport(375);
+        render(<TopBar />);
+        for (const id of ['hamburger-btn', 'admin-toggle', 'theme-toggle']) {
+            expect(document.getElementById(id)!.className).toContain('touch-target');
+        }
+    });
+
+    it('desktop brand link shrinks to h-7 (no h-8)', () => {
+        viewportCleanup = mockViewport(1024);
+        render(<TopBar />);
+        const brand = document.querySelector('[data-tab="repos"]')!;
+        expect(brand.className).toContain('h-7');
+        expect(brand.className).not.toContain('h-8');
+    });
+});

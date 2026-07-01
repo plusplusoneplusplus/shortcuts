@@ -446,7 +446,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
             {!isMobile && !chromeless && (
             <div
                 className="repo-detail-header px-3 border-b border-[#d0d7de] dark:border-[#3c3c3c] flex flex-row items-center bg-white dark:bg-[#1e1e1e] gap-2"
-                style={{ minHeight: 44 }}
+                style={{ minHeight: 32 }}
             >
                 <>
                     {/* Title — original styling: color dot + bold name */}
@@ -493,7 +493,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                         title={t.shortcut}
                                         aria-current={isActive ? 'page' : undefined}
                                         className={cn(
-                                            'repo-sub-tab relative inline-flex items-center gap-1.5 min-h-[32px] px-2.5 rounded-md text-[13px] whitespace-nowrap shrink-0 transition-colors',
+                                            'repo-sub-tab relative inline-flex items-center gap-1.5 min-h-[26px] px-2.5 rounded-md text-[13px] whitespace-nowrap shrink-0 transition-colors',
                                             isActive
                                                 ? 'active bg-[#ddf4ff] dark:bg-[#3794ff]/20 text-[#0969da] dark:text-[#79c0ff] font-bold ring-1 ring-inset ring-[#0969da]/30 dark:ring-[#3794ff]/40'
                                                 : 'font-semibold text-[#656d76] dark:text-[#999] hover:text-[#1f2328] dark:hover:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2a2a]'
@@ -536,7 +536,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             />
                                         )}
                                         {isActive && (
-                                            <span className="absolute left-1.5 right-1.5 -bottom-[5px] h-[3px] rounded-sm bg-[#0969da] dark:bg-[#3794ff]" />
+                                            <span className="absolute left-1.5 right-1.5 -bottom-[2px] h-[3px] rounded-sm bg-[#0969da] dark:bg-[#3794ff]" />
                                         )}
                                     </button>
                                 </Fragment>
@@ -565,7 +565,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id })}
                                             title="Queue a new AI task (Alt+Q). Drop CoC context here to attach it first."
                                             data-testid="repo-queue-task-btn"
-                                            className="!h-[30px] !rounded-md !px-2.5 !text-[13px] !font-semibold !min-h-0 !shadow-[0_1px_0_rgba(31,35,40,0.1)]"
+                                            className="!h-[26px] !rounded-md !px-2.5 !text-[13px] !font-semibold !min-h-0 !shadow-[0_1px_0_rgba(31,35,40,0.1)]"
                                         >
                                             Queue Task
                                         </Button>
@@ -584,7 +584,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
                                             title="Ask AI a question (read-only). Drop CoC context here to attach it first."
                                             data-testid="repo-ask-btn"
-                                            className="!h-[30px] !rounded-md !px-2.5 !text-[13px] !font-semibold !min-h-0 !bg-yellow-500 hover:!bg-yellow-600 dark:!bg-yellow-400 dark:hover:!bg-yellow-300 !text-[#1e1e1e] !border-transparent !shadow-[0_1px_0_rgba(31,35,40,0.1)]"
+                                            className="!h-[26px] !rounded-md !px-2.5 !text-[13px] !font-semibold !min-h-0 !bg-yellow-500 hover:!bg-yellow-600 dark:!bg-yellow-400 dark:hover:!bg-yellow-300 !text-[#1e1e1e] !border-transparent !shadow-[0_1px_0_rgba(31,35,40,0.1)]"
                                         >
                                             Ask
                                         </Button>
@@ -620,10 +620,10 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     : 'flex items-center gap-1';
                                 const secondaryItemCls = isOverflow
                                     ? '!font-semibold !w-full !justify-start !min-h-[34px] !h-[34px] !px-2 !rounded-md !bg-transparent !border-transparent !text-[#1f2328] dark:!text-[#cccccc] hover:!bg-[#f6f8fa] dark:hover:!bg-[#2d2d2d]'
-                                    : '!font-semibold !h-[30px] !rounded-md !px-2.5 !text-[13px] !min-h-0 !bg-[#f6f8fa] dark:!bg-[#2a2a2a] !border-[#d0d7de] dark:!border-[#3c3c3c] !text-[#1f2328] dark:!text-[#cccccc] hover:!bg-[#eaeef2] dark:hover:!bg-[#333]';
+                                    : '!font-semibold !h-[26px] !rounded-md !px-2.5 !text-[13px] !min-h-0 !bg-[#f6f8fa] dark:!bg-[#2a2a2a] !border-[#d0d7de] dark:!border-[#3c3c3c] !text-[#1f2328] dark:!text-[#cccccc] hover:!bg-[#eaeef2] dark:hover:!bg-[#333]';
                                 const primaryItemCls = isOverflow
                                     ? secondaryItemCls
-                                    : '!font-semibold !h-[30px] !rounded-md !px-2.5 !text-[13px] !min-h-0 !bg-[#1f883d] hover:!bg-[#1a7f37] dark:!bg-[#238636] dark:hover:!bg-[#2ea043] !text-white !border-transparent !shadow-[0_1px_0_rgba(31,35,40,0.1)]';
+                                    : '!font-semibold !h-[26px] !rounded-md !px-2.5 !text-[13px] !min-h-0 !bg-[#1f883d] hover:!bg-[#1a7f37] dark:!bg-[#238636] dark:hover:!bg-[#2ea043] !text-white !border-transparent !shadow-[0_1px_0_rgba(31,35,40,0.1)]';
                                 return (
                                 <div
                                     className={containerCls}
@@ -677,7 +677,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     aria-haspopup="menu"
                                     title="More actions"
                                     data-testid="repo-overflow-toggle-btn"
-                                    className="inline-flex items-center justify-center h-[30px] w-[31px] rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[#656d76] dark:text-[#999] hover:bg-[#eaeef2] dark:hover:bg-[#333] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da]"
+                                    className="inline-flex items-center justify-center h-[26px] w-[31px] rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[#656d76] dark:text-[#999] hover:bg-[#eaeef2] dark:hover:bg-[#333] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da]"
                                 >
                                     <span className="text-[15px] leading-none -mt-1" aria-hidden>…</span>
                                 </button>
