@@ -37,7 +37,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
-import { seedProcess, seedWorkspace, request } from './fixtures/seed';
+import { seedProcess, seedWorkspace, seedQueueTask, request } from './fixtures/seed';
 import type { Page } from '@playwright/test';
 
 // ---------------------------------------------------------------------------
@@ -91,6 +91,59 @@ async function fetchHistory(serverUrl: string, wsId: string): Promise<Array<Reco
     }
     const json = JSON.parse(res.body);
     return (json.history ?? []) as Array<Record<string, any>>;
+}
+
+/** Poll GET /api/queue/:id until the task reaches one of `targetStatuses`. */
+async function waitForTaskStatus(
+    serverUrl: string,
+    taskId: string,
+    targetStatuses: string[],
+    timeoutMs = 15_000,
+    intervalMs = 200,
+): Promise<Record<string, any>> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const res = await request(`${serverUrl}/api/queue/${encodeURIComponent(taskId)}`);
+        if (res.status === 200) {
+            const json = JSON.parse(res.body);
+            const task = json.task ?? json;
+            if (targetStatuses.includes(task.status as string)) {
+                return task;
+            }
+        }
+        await new Promise(r => setTimeout(r, intervalMs));
+    }
+    throw new Error(`Task ${taskId} did not reach ${targetStatuses.join('|')} within ${timeoutMs}ms`);
+}
+
+/**
+ * Faithful reproduction of the `send_to_conversation` create-mode enqueue: POST
+ * a `type:'chat'` queue task carrying `payload.context.spawnedFromProcessId`, the
+ * identical shape the tool builds before `enqueueChat` (see
+ * send-to-conversation-tool.ts createNewConversation). The lifecycle runner reads
+ * `spawnedFromProcessId` and persists it on the child's top-level `parentProcessId`.
+ * Returns the queued task id and its derived process id (`queue_<taskId>`).
+ */
+async function spawnChatFromParent(
+    serverUrl: string,
+    wsId: string,
+    parentProcessId: string,
+    prompt: string,
+): Promise<{ taskId: string; childProcessId: string }> {
+    const task = await seedQueueTask(serverUrl, {
+        type: 'chat',
+        repoId: wsId,
+        payload: {
+            kind: 'chat',
+            mode: 'ask',
+            workspaceId: wsId,
+            provider: 'copilot',
+            prompt,
+            context: { spawnedFromProcessId: parentProcessId },
+        },
+    });
+    const taskId = task.id as string;
+    return { taskId, childProcessId: `queue_${taskId}` };
 }
 
 /** Navigate to the per-repo Activity sub-tab and wait for the split panel. */
@@ -317,6 +370,113 @@ test.describe('Nested spawn tree — Tier A (seed-driven)', () => {
             // No row / node references the absent root.
             await expect(page.locator('[data-testid="spawned-tree-row"][data-root-id="root"]')).toHaveCount(0);
             await expect(treeNode(page, 'root')).toHaveCount(0);
+        } finally {
+            cleanup();
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Tier B — real spawn plumbing through the queue
+//
+// Instead of seeding `parentProcessId` directly, Tier B drives the identical
+// server path a real `send_to_conversation` create-mode call takes: POST
+// /api/queue a `type:'chat'` task with `payload.context.spawnedFromProcessId`.
+// The mock-AI-backed executor runs the child to completion, and the
+// process-lifecycle-runner persists `parentProcessId = spawnedFromProcessId`
+// (process-lifecycle-runner.ts ~L519-532). The child then nests under its
+// parent in the same Completed Tasks tree the Tier A tests assert.
+// ---------------------------------------------------------------------------
+
+test.describe('Nested spawn tree — Tier B (real spawn via queue)', () => {
+    // AC-09 — real spawn plumbing: a queued chat carrying spawnedFromProcessId
+    // persists parentProcessId and renders nested under the parent.
+    test('AC-09 queued spawn persists parentProcessId and renders nested', async ({ page, serverUrl, mockAI }) => {
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'ac09');
+        try {
+            // Seed the completed parent chat the child will spawn from.
+            await seedChat(serverUrl, wsId, 'parent');
+
+            // The mock AI returns a short response for the spawned child's prompt.
+            mockAI.mockSendMessage.mockResolvedValueOnce({
+                success: true,
+                response: 'Spawned child reply',
+                sessionId: 'sess-ac09',
+            });
+
+            const { taskId, childProcessId } = await spawnChatFromParent(
+                serverUrl,
+                wsId,
+                'parent',
+                'Spawned from parent',
+            );
+
+            await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed']);
+
+            // DoD (a): the history API reports the child's parentProcessId === 'parent'.
+            const history = await fetchHistory(serverUrl, wsId);
+            const byId = Object.fromEntries(history.map(h => [h.id, h]));
+            expect(byId[childProcessId]?.parentProcessId).toBe('parent');
+
+            // DoD (b): the DOM nests the child at depth 1 under the parent root.
+            await gotoActivity(page, serverUrl, wsId);
+            const row = treeRow(page, 'parent');
+            await expect(row).toBeVisible({ timeout: 10_000 });
+            await expect(
+                row.locator('[data-testid="spawned-tree-node"][data-node-id="parent"]'),
+            ).toHaveAttribute('data-depth', '0');
+            await expect(
+                row.locator(`[data-testid="spawned-tree-node"][data-node-id="${childProcessId}"]`),
+            ).toHaveAttribute('data-depth', '1');
+
+            // The child's own descendant badge is absent (leaf); the parent shows 1.
+            await expect(nodeBadge(page, 'parent')).toHaveText('1');
+            await expect(nodeBadge(page, childProcessId)).toHaveCount(0);
+        } finally {
+            cleanup();
+        }
+    });
+
+    // AC-10 — live nesting without reload: the spawned child appears nested in the
+    // already-open chat list. Running/queued WS broadcasts strip parentProcessId,
+    // so the child renders flat while running; the running→completed departure
+    // triggers RepoChatTab's automatic history refetch (history carries
+    // parentProcessId), converting the parent's flat row into a spawned tree.
+    test('AC-10 spawned child nests live without a page reload', async ({ page, serverUrl, mockAI }) => {
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'ac10');
+        try {
+            await seedChat(serverUrl, wsId, 'parent');
+
+            // Open the activity view BEFORE spawning: a childless root renders as a
+            // flat row, not a tree.
+            await gotoActivity(page, serverUrl, wsId);
+            await expect(page.locator('[data-task-id="parent"]')).toBeVisible({ timeout: 10_000 });
+            await expect(page.locator('[data-testid="spawned-tree-row"]')).toHaveCount(0);
+
+            // Hold the child in a 'running' state briefly so the SPA observes it
+            // active before it completes — the departure on completion is what
+            // triggers the history refetch that carries parentProcessId.
+            mockAI.mockSendMessage.mockImplementationOnce(async () => {
+                await new Promise(r => setTimeout(r, 1500));
+                return { success: true, response: 'Live spawned reply', sessionId: 'sess-ac10' };
+            });
+
+            const { childProcessId } = await spawnChatFromParent(
+                serverUrl,
+                wsId,
+                'parent',
+                'Live spawn from parent',
+            );
+
+            // No page.reload(): auto-wait for the WS-driven refetch to nest the child
+            // at depth 1 under the parent root, converting the flat row into a tree.
+            const row = treeRow(page, 'parent');
+            await expect(row).toBeVisible({ timeout: 15_000 });
+            const childNode = row.locator(
+                `[data-testid="spawned-tree-node"][data-node-id="${childProcessId}"]`,
+            );
+            await expect(childNode).toBeVisible({ timeout: 15_000 });
+            await expect(childNode).toHaveAttribute('data-depth', '1');
         } finally {
             cleanup();
         }
