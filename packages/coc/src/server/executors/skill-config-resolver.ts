@@ -22,6 +22,41 @@ import {
 } from '@plusplusoneplusplus/forge';
 import { getEffectiveEnDevExtraSkillFolders } from '../endev/endev-detector';
 
+/**
+ * Enumerate default OneDrive/CloudStorage skill-folder candidates for a home
+ * directory. Returns candidate `<root>/.github/skills` paths to probe; callers
+ * are responsible for filtering to those that actually exist (existence is not
+ * checked here so the result stays deterministic and cheap to test).
+ *
+ * Covers:
+ *  - Windows-style OneDrive roots: `~/OneDrive`, `~/OneDrive - Microsoft`
+ *  - macOS CloudStorage roots: `~/Library/CloudStorage/OneDrive-*`
+ *    (dynamically named, e.g. `OneDrive-Personal`, `OneDrive-Microsoft`)
+ */
+export async function resolveDefaultOneDriveSkillDirs(homedir: string): Promise<string[]> {
+    const candidates: string[] = [];
+
+    // Windows-style fixed OneDrive roots.
+    for (const variant of ['OneDrive', 'OneDrive - Microsoft']) {
+        candidates.push(path.join(homedir, variant, '.github', 'skills'));
+    }
+
+    // macOS CloudStorage OneDrive roots (dynamically named under Library/CloudStorage).
+    const cloudStorageDir = path.join(homedir, 'Library', 'CloudStorage');
+    try {
+        const entries = await fs.promises.readdir(cloudStorageDir, { withFileTypes: true });
+        for (const entry of entries) {
+            if ((entry.isDirectory() || entry.isSymbolicLink()) && entry.name.startsWith('OneDrive')) {
+                candidates.push(path.join(cloudStorageDir, entry.name, '.github', 'skills'));
+            }
+        }
+    } catch {
+        // Non-fatal: no CloudStorage directory (non-macOS host or OneDrive not installed).
+    }
+
+    return candidates;
+}
+
 export async function resolveSkillConfig(
     store: ProcessStore,
     dataDir: string | undefined,
@@ -102,10 +137,9 @@ export async function resolveSkillConfig(
         await tryAddSkillDirectory(globalSkillsDir, globalSkillsDir);
     }
 
-    // Check OneDrive-based default skill directories (Windows)
+    // Check default OneDrive skill directories (Windows-style roots + macOS CloudStorage).
     const homedir = os.homedir();
-    for (const variant of ['OneDrive', 'OneDrive - Microsoft']) {
-        const oneDriveSkillsDir = path.join(homedir, variant, '.github', 'skills');
+    for (const oneDriveSkillsDir of await resolveDefaultOneDriveSkillDirs(homedir)) {
         await tryAddSkillDirectory(oneDriveSkillsDir, oneDriveSkillsDir);
     }
 
