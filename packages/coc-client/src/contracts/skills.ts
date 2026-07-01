@@ -70,10 +70,25 @@ export interface InstallSkillsResponse {
 export interface GlobalSkillsConfig {
   globalDisabledSkills: string[];
   globalSkillsDir: string;
+  /**
+   * Configured global extra skill-source folders (`skills.globalExtraFolders`).
+   * Read-only sources applied across all workspaces; CoC never installs/deletes
+   * into them. Absolute paths or `~`-prefixed home paths.
+   */
+  globalExtraFolders: string[];
+  /**
+   * Whether default skill-folder auto-detection (OneDrive/CloudStorage) is
+   * enabled (`skills.autoDetectDefaultFolders`). Defaults to true.
+   */
+  autoDetectDefaultFolders: boolean;
 }
 
 export interface UpdateGlobalSkillsConfigRequest {
   globalDisabledSkills: string[];
+  /** When provided, replaces the configured global extra skill folders. */
+  globalExtraFolders?: string[];
+  /** When provided, toggles default skill-folder auto-detection. */
+  autoDetectDefaultFolders?: boolean;
 }
 
 export interface MergedSkillsResponse {

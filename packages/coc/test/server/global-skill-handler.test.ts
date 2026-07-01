@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { registerGlobalSkillRoutes } from '../../src/server/skills/global-skill-handler';
+import { loadConfigFile, writeConfigFile } from '../../src/config';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../../src/server/types';
 import { getRepoDataPath, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
@@ -92,6 +93,7 @@ describe('registerGlobalSkillRoutes', () => {
     let store: ReturnType<typeof createMockProcessStore>;
     let dataDir: string;
     let globalSkillsDir: string;
+    let configPath: string;
     const workspaceId = 'ws-test-global';
     let workspaceDir: string;
 
@@ -101,6 +103,8 @@ describe('registerGlobalSkillRoutes', () => {
         globalSkillsDir = path.join(dataDir, 'skills');
         fs.mkdirSync(globalSkillsDir, { recursive: true });
         workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'global-skill-ws-'));
+        // Point config-file reads/writes at a hermetic temp path (not ~/.coc/config.yaml).
+        configPath = path.join(dataDir, 'config.yaml');
         store = createMockProcessStore({
             initialWorkspaces: [{
                 id: workspaceId,
@@ -113,7 +117,11 @@ describe('registerGlobalSkillRoutes', () => {
             name: 'Test Workspace',
             rootPath: workspaceDir,
         } as WorkspaceInfo]);
-        registerGlobalSkillRoutes(routes, store, dataDir);
+        registerGlobalSkillRoutes(routes, store, dataDir, {
+            loadConfigFile,
+            writeConfigFile,
+            getConfigFilePath: () => configPath,
+        });
     });
 
     afterEach(() => {
@@ -243,6 +251,33 @@ describe('registerGlobalSkillRoutes', () => {
             expect(statusCode).toBe(200);
             expect(body.globalDisabledSkills).toEqual(['skill-a', 'skill-b']);
         });
+
+        it('defaults folder-source fields when no config file exists', async () => {
+            const { statusCode, body } = await dispatchRoute(routes, 'GET', '/api/skills/config');
+            expect(statusCode).toBe(200);
+            expect(body.globalExtraFolders).toEqual([]);
+            expect(body.autoDetectDefaultFolders).toBe(true);
+        });
+
+        it('returns configured globalExtraFolders and autoDetectDefaultFolders from the config file', async () => {
+            writeConfigFile(configPath, {
+                skills: { globalExtraFolders: ['/team/skills', '~/my-skills'], autoDetectDefaultFolders: false },
+            } as any);
+
+            const { statusCode, body } = await dispatchRoute(routes, 'GET', '/api/skills/config');
+            expect(statusCode).toBe(200);
+            expect(body.globalExtraFolders).toEqual(['/team/skills', '~/my-skills']);
+            expect(body.autoDetectDefaultFolders).toBe(false);
+        });
+
+        it('falls back to safe defaults when the config file is malformed', async () => {
+            fs.writeFileSync(configPath, ':\n  not: [valid: yaml');
+
+            const { statusCode, body } = await dispatchRoute(routes, 'GET', '/api/skills/config');
+            expect(statusCode).toBe(200);
+            expect(body.globalExtraFolders).toEqual([]);
+            expect(body.autoDetectDefaultFolders).toBe(true);
+        });
     });
 
     // -----------------------------------------------------------------------
@@ -275,6 +310,76 @@ describe('registerGlobalSkillRoutes', () => {
             const { statusCode } = await dispatchRoute(
                 routes, 'PUT', '/api/skills/config',
                 { something: 'else' }
+            );
+            expect(statusCode).toBe(400);
+        });
+
+        it('persists globalExtraFolders to the config file and echoes them back', async () => {
+            const { statusCode, body } = await dispatchRoute(
+                routes, 'PUT', '/api/skills/config',
+                { globalDisabledSkills: [], globalExtraFolders: ['/team/skills', '~/extra'] }
+            );
+            expect(statusCode).toBe(200);
+            expect(body.globalExtraFolders).toEqual(['/team/skills', '~/extra']);
+
+            // Verify it round-trips through the config file.
+            const written = loadConfigFile(configPath);
+            expect(written?.skills?.globalExtraFolders).toEqual(['/team/skills', '~/extra']);
+        });
+
+        it('persists autoDetectDefaultFolders toggle to the config file', async () => {
+            const { statusCode, body } = await dispatchRoute(
+                routes, 'PUT', '/api/skills/config',
+                { globalDisabledSkills: [], autoDetectDefaultFolders: false }
+            );
+            expect(statusCode).toBe(200);
+            expect(body.autoDetectDefaultFolders).toBe(false);
+            expect(loadConfigFile(configPath)?.skills?.autoDetectDefaultFolders).toBe(false);
+        });
+
+        it('preserves unrelated config fields when updating folder sources', async () => {
+            writeConfigFile(configPath, {
+                skills: { autoUpdate: false, globalExtraFolders: ['/old'] },
+            } as any);
+
+            await dispatchRoute(
+                routes, 'PUT', '/api/skills/config',
+                { globalDisabledSkills: [], globalExtraFolders: ['/new'] }
+            );
+
+            const written = loadConfigFile(configPath);
+            expect(written?.skills?.autoUpdate).toBe(false);
+            expect(written?.skills?.globalExtraFolders).toEqual(['/new']);
+        });
+
+        it('does not write the config file when no folder fields are provided', async () => {
+            await dispatchRoute(
+                routes, 'PUT', '/api/skills/config',
+                { globalDisabledSkills: ['skill-x'] }
+            );
+            expect(fs.existsSync(configPath)).toBe(false);
+        });
+
+        it('rejects non-array globalExtraFolders', async () => {
+            const { statusCode } = await dispatchRoute(
+                routes, 'PUT', '/api/skills/config',
+                { globalDisabledSkills: [], globalExtraFolders: '/single' }
+            );
+            expect(statusCode).toBe(400);
+        });
+
+        it('rejects globalExtraFolders with non-string items', async () => {
+            const { statusCode } = await dispatchRoute(
+                routes, 'PUT', '/api/skills/config',
+                { globalDisabledSkills: [], globalExtraFolders: ['/ok', 42] }
+            );
+            expect(statusCode).toBe(400);
+        });
+
+        it('rejects non-boolean autoDetectDefaultFolders', async () => {
+            const { statusCode } = await dispatchRoute(
+                routes, 'PUT', '/api/skills/config',
+                { globalDisabledSkills: [], autoDetectDefaultFolders: 'yes' }
             );
             expect(statusCode).toBe(400);
         });
