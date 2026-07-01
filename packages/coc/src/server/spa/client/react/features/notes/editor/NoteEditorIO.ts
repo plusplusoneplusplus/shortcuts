@@ -1,27 +1,17 @@
 /**
- * NoteEditorIO — injectable content I/O contract for NoteEditor.
+ * NoteEditorIO — notes-era compatibility alias for MarkdownDocumentIO.
  *
  * Decouples loading/saving markdown, uploading images, and resolving image
- * URLs from the notes-specific REST API so the editor shell can be reused
- * by other backends (e.g. MarkdownReviewEditor).
+ * URLs from the notes-specific REST API. New markdown editor surfaces should
+ * depend on the generic shared MarkdownDocumentIO contract directly.
  */
 
 import { notesApi } from '../notesApi';
+import type { MarkdownDocumentIO } from '../../../shared/markdown-document/MarkdownDocumentIO';
 
 // ── Contract ────────────────────────────────────────────────────────────────
 
-export interface NoteEditorIO {
-    /** Fetch the markdown content for a given path. */
-    loadContent(workspaceId: string, path: string, root?: string): Promise<{ content: string; path: string; mtime: number }>;
-    /** Persist markdown content at the given path. */
-    saveContent(workspaceId: string, path: string, markdown: string, expectedMtime?: number, root?: string): Promise<{ path: string; updated: boolean; mtime: number }>;
-    /** Upload an image (base64 data-URL) and return the relative path to reference it. */
-    uploadImage(workspaceId: string, fileName: string, dataUrl: string, root?: string): Promise<{ path: string }>;
-    /** Build a fully-qualified URL the browser can use to fetch an image by its relative path. */
-    imageApiUrl(workspaceId: string, relativePath: string, root?: string): string;
-    /** Build a URL to serve a local image file (absolute path) via the server proxy. */
-    localImageApiUrl(workspaceId: string, absolutePath: string): string;
-}
+export type NoteEditorIO = MarkdownDocumentIO;
 
 // ── Default (notes-backed) implementation ───────────────────────────────────
 

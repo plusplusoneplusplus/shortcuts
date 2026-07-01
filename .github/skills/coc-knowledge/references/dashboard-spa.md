@@ -41,7 +41,7 @@ spa/client/react/
 ├── processes/          # Process detail, DAG visualization
 ├── queue/              # Queue management (EnqueueDialog, QueueView)
 ├── repos/              # Repository views, clone/add dialogs, file explorer, Monaco editor
-├── shared/             # Feature-level shared (MarkdownView, RichTextInput, SourceEditor)
+├── shared/             # Feature-level shared (MarkdownView, RichTextInput, SourceEditor, markdown-document session helpers)
 ├── tasks/              # Task/plan management, inline comments
 ├── ui/                 # UI primitives (Button, Card, Dialog, Spinner, Badge, Toast)
 ├── welcome/            # Onboarding (WelcomeTour, FirstStepsCard, FeatureTip)
@@ -340,6 +340,7 @@ present.
 | `useApi` | HTTP client wrapper |
 | `useWebSocket` | WebSocket connection management |
 | `useMarkdownPreview` | Shared markdown rendering pipeline |
+| `useMarkdownDocumentSession` | Shared markdown document loading, dirty state, save/flush, refresh, conflict, beforeunload, and keyboard-save kernel used by Notes and MarkdownReviewEditor through injected I/O adapters |
 | `useDiffComments` | Inline diff comment state |
 | `useUnseenChat` | Read/unread tracking |
 
