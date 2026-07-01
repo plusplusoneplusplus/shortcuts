@@ -21,6 +21,8 @@ import { handleAPIError, notFound, badRequest } from '../errors';
 import { loadConfigFile, writeConfigFile, getConfigFilePath, type CLIConfig } from '../../config';
 import { sortSkillsByUsage, listInstalledSkills, getSkillDetail, skillCache, loadSkillsForWorkspace, filterVisibleSkillsForWorkspace } from './skill-handler';
 import { createSkillRouteHandlers } from './skill-route-handlers';
+import { resolveEffectiveSkillPaths } from '../executors/skill-config-resolver';
+import { getEffectiveEnDevExtraSkillFolders } from '../endev/endev-detector';
 import type { Route } from '../types';
 
 // ============================================================================
@@ -28,7 +30,7 @@ import type { Route } from '../types';
 // ============================================================================
 
 /** Skill names that collide with global sub-routes and must be rejected. */
-const RESERVED_GLOBAL_SKILL_NAMES = new Set(['bundled', 'scan', 'install', 'config']);
+const RESERVED_GLOBAL_SKILL_NAMES = new Set(['bundled', 'scan', 'install', 'config', 'effective-paths']);
 
 /** Remove duplicate skills by name, keeping the first occurrence. */
 function dedupByName<T extends { name: string }>(skills: T[]): T[] {
@@ -260,6 +262,49 @@ export function registerGlobalSkillRoutes(
                 globalExtraFolders: folderCfg.globalExtraFolders,
                 autoDetectDefaultFolders: folderCfg.autoDetectDefaultFolders,
             });
+        },
+    });
+
+    // GET /api/skills/effective-paths — Structured effective skill search order (read-only diagnostic)
+    //
+    // Global-only by default; pass `?workspaceId=<id>` to include workspace-scoped
+    // paths (repo-local + per-repo extra folders). Registered before /skills/:name
+    // so it is not swallowed by the catch-all skill-detail route.
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/skills\/effective-paths$/,
+        handler: async (req, res) => {
+            const url = new URL(req.url ?? '', 'http://localhost');
+            const requestedWorkspaceId = url.searchParams.get('workspaceId') ?? undefined;
+
+            const folderCfg = readGlobalSkillFolderConfig(configAccess);
+
+            let workspaceRootPath: string | undefined;
+            let extraSkillFolders: string[] | undefined;
+            let resolvedWorkspaceId: string | undefined;
+            if (requestedWorkspaceId) {
+                try {
+                    const workspaces = await store.getWorkspaces();
+                    const ws = workspaces.find(w => w.id === requestedWorkspaceId);
+                    if (ws) {
+                        resolvedWorkspaceId = ws.id;
+                        workspaceRootPath = ws.rootPath;
+                        extraSkillFolders = await getEffectiveEnDevExtraSkillFolders(dataDir, ws);
+                    }
+                } catch {
+                    // Non-fatal: fall back to a global-only diagnostic.
+                }
+            }
+
+            const paths = await resolveEffectiveSkillPaths({
+                dataDir,
+                workspaceRootPath,
+                extraSkillFolders,
+                globalExtraFolders: folderCfg.globalExtraFolders,
+                autoDetectDefaultFolders: folderCfg.autoDetectDefaultFolders,
+            });
+
+            sendJSON(res, 200, { workspaceId: resolvedWorkspaceId, paths });
         },
     });
 

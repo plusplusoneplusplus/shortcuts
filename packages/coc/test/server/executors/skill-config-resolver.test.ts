@@ -21,7 +21,7 @@ vi.mock('os', async (importOriginal) => {
     };
 });
 
-import { resolveSkillConfig, resolveDefaultOneDriveSkillDirs, expandHomePath } from '../../../src/server/executors/skill-config-resolver';
+import { resolveSkillConfig, resolveDefaultOneDriveSkillDirs, expandHomePath, resolveEffectiveSkillPaths } from '../../../src/server/executors/skill-config-resolver';
 import { getBundledSkillsPath } from '@plusplusoneplusplus/forge';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 
@@ -439,5 +439,208 @@ describe('resolveSkillConfig', () => {
         it('leaves absolute paths untouched', () => {
             expect(expandHomePath('/opt/skills', '/home/alice')).toBe('/opt/skills');
         });
+    });
+});
+
+describe('resolveEffectiveSkillPaths', () => {
+    let tmpDir: string;
+    let fakeHome: string;
+
+    beforeEach(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eff-paths-'));
+        // Empty fake home so no real OneDrive/CloudStorage folders are detected.
+        fakeHome = path.join(tmpDir, 'home');
+        fs.mkdirSync(fakeHome, { recursive: true });
+    });
+
+    afterEach(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    function makeSkill(dir: string, name: string): void {
+        const skillDir = path.join(dir, name);
+        fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), `# ${name}\nDesc`);
+    }
+
+    it('returns global-only entries when no workspace root is supplied', async () => {
+        const dataDir = path.join(tmpDir, 'data');
+        fs.mkdirSync(path.join(dataDir, 'skills'), { recursive: true });
+
+        const entries = await resolveEffectiveSkillPaths({ dataDir, homedir: fakeHome });
+
+        expect(entries.every(e => e.scope === 'global')).toBe(true);
+        expect(entries.some(e => e.source === 'repo')).toBe(false);
+        expect(entries.some(e => e.source === 'repo-extra')).toBe(false);
+        expect(entries.some(e => e.source === 'managed-global')).toBe(true);
+    });
+
+    it('marks a missing managed-global directory as missing', async () => {
+        const dataDir = path.join(tmpDir, 'data'); // no skills subdir created
+        const entries = await resolveEffectiveSkillPaths({ dataDir, homedir: fakeHome });
+        const managed = entries.find(e => e.source === 'managed-global')!;
+        expect(managed.status).toBe('missing');
+        expect(managed.skillCount).toBeUndefined();
+    });
+
+    it('marks an empty managed-global directory as no-skills', async () => {
+        const dataDir = path.join(tmpDir, 'data');
+        fs.mkdirSync(path.join(dataDir, 'skills'), { recursive: true });
+        const entries = await resolveEffectiveSkillPaths({ dataDir, homedir: fakeHome });
+        const managed = entries.find(e => e.source === 'managed-global')!;
+        expect(managed.status).toBe('no-skills');
+        expect(managed.skillCount).toBe(0);
+    });
+
+    it('counts skills in the managed-global directory', async () => {
+        const dataDir = path.join(tmpDir, 'data');
+        const skillsDir = path.join(dataDir, 'skills');
+        fs.mkdirSync(skillsDir, { recursive: true });
+        makeSkill(skillsDir, 'one');
+        makeSkill(skillsDir, 'two');
+        const entries = await resolveEffectiveSkillPaths({ dataDir, homedir: fakeHome });
+        const managed = entries.find(e => e.source === 'managed-global')!;
+        expect(managed.status).toBe('available');
+        expect(managed.skillCount).toBe(2);
+    });
+
+    it('includes a workspace-scoped repo path before managed-global when a workspace root is given', async () => {
+        const dataDir = path.join(tmpDir, 'data');
+        fs.mkdirSync(path.join(dataDir, 'skills'), { recursive: true });
+        const repoRoot = path.join(tmpDir, 'repo');
+        makeSkill(path.join(repoRoot, '.github', 'skills'), 'repo-one');
+
+        const entries = await resolveEffectiveSkillPaths({ dataDir, homedir: fakeHome, workspaceRootPath: repoRoot });
+
+        const repo = entries.find(e => e.source === 'repo')!;
+        expect(repo.scope).toBe('workspace');
+        expect(repo.status).toBe('available');
+        expect(repo.skillCount).toBe(1);
+        const repoIdx = entries.findIndex(e => e.source === 'repo');
+        const managedIdx = entries.findIndex(e => e.source === 'managed-global');
+        expect(repoIdx).toBeLessThan(managedIdx);
+    });
+
+    it('includes per-repo extra folders (workspace scope) after configured global folders', async () => {
+        const dataDir = path.join(tmpDir, 'data');
+        fs.mkdirSync(path.join(dataDir, 'skills'), { recursive: true });
+        const repoRoot = path.join(tmpDir, 'repo');
+        fs.mkdirSync(repoRoot, { recursive: true });
+        const globalExtra = path.join(tmpDir, 'global-extra');
+        fs.mkdirSync(globalExtra, { recursive: true });
+        const repoExtra = path.join(tmpDir, 'repo-extra');
+        fs.mkdirSync(repoExtra, { recursive: true });
+
+        const entries = await resolveEffectiveSkillPaths({
+            dataDir,
+            homedir: fakeHome,
+            workspaceRootPath: repoRoot,
+            extraSkillFolders: [repoExtra],
+            globalExtraFolders: [globalExtra],
+            autoDetectDefaultFolders: false,
+        });
+
+        const configuredIdx = entries.findIndex(e => e.source === 'configured');
+        const repoExtraIdx = entries.findIndex(e => e.source === 'repo-extra');
+        expect(configuredIdx).toBeGreaterThanOrEqual(0);
+        expect(repoExtraIdx).toBeGreaterThan(configuredIdx);
+        expect(entries[repoExtraIdx].scope).toBe('workspace');
+    });
+
+    it('classifies configured global extra folders as available, missing, or skipped', async () => {
+        const existing = path.join(tmpDir, 'existing-extra');
+        makeSkill(existing, 'x');
+        const missing = path.join(tmpDir, 'missing-extra');
+
+        const entries = await resolveEffectiveSkillPaths({
+            homedir: fakeHome,
+            globalExtraFolders: [existing, missing, 'relative/skills'],
+        });
+
+        const configured = entries.filter(e => e.source === 'configured');
+        expect(configured.find(e => e.path === existing)!.status).toBe('available');
+        expect(configured.find(e => e.path === missing)!.status).toBe('missing');
+        const rel = configured.find(e => e.path === 'relative/skills')!;
+        expect(rel.status).toBe('skipped');
+        expect(rel.note).toBeTruthy();
+    });
+
+    it('expands ~ in configured global extra folders', async () => {
+        const extra = path.join(fakeHome, 'team-skills');
+        makeSkill(extra, 'y');
+        const entries = await resolveEffectiveSkillPaths({
+            homedir: fakeHome,
+            globalExtraFolders: ['~/team-skills'],
+        });
+        const configured = entries.find(e => e.source === 'configured')!;
+        expect(configured.path).toBe(extra);
+        expect(configured.status).toBe('available');
+    });
+
+    it('skips auto-detected OneDrive folders when auto-detection is disabled', async () => {
+        const oneDrive = path.join(fakeHome, 'OneDrive', '.github', 'skills');
+        fs.mkdirSync(oneDrive, { recursive: true });
+        const entries = await resolveEffectiveSkillPaths({ homedir: fakeHome, autoDetectDefaultFolders: false });
+        expect(entries.some(e => e.source === 'auto-detected')).toBe(false);
+    });
+
+    it('surfaces an existing auto-detected OneDrive folder when detection is enabled', async () => {
+        const oneDrive = path.join(fakeHome, 'OneDrive', '.github', 'skills');
+        makeSkill(oneDrive, 'od-skill');
+        const entries = await resolveEffectiveSkillPaths({ homedir: fakeHome, autoDetectDefaultFolders: true });
+        const detected = entries.find(e => e.source === 'auto-detected');
+        expect(detected).toBeTruthy();
+        expect(detected!.path).toBe(oneDrive);
+        expect(detected!.scope).toBe('global');
+        expect(detected!.status).toBe('available');
+        expect(detected!.skillCount).toBe(1);
+    });
+
+    it('does not surface missing default OneDrive folders (concise diagnostics)', async () => {
+        const entries = await resolveEffectiveSkillPaths({ homedir: fakeHome });
+        expect(entries.some(e => e.source === 'auto-detected')).toBe(false);
+    });
+
+    it('includes the bundled skills directory last as a global source', async () => {
+        const dataDir = path.join(tmpDir, 'data');
+        fs.mkdirSync(path.join(dataDir, 'skills'), { recursive: true });
+        const entries = await resolveEffectiveSkillPaths({ dataDir, homedir: fakeHome });
+        const bundledDir = getBundledSkillsPath();
+        if (fs.existsSync(bundledDir)) {
+            const bundled = entries.find(e => e.source === 'bundled');
+            expect(bundled).toBeTruthy();
+            expect(bundled!.scope).toBe('global');
+            expect(entries[entries.length - 1].source).toBe('bundled');
+        }
+    });
+
+    it('preserves the full priority order: repo → managed → configured → repo-extra → bundled', async () => {
+        const dataDir = path.join(tmpDir, 'data');
+        fs.mkdirSync(path.join(dataDir, 'skills'), { recursive: true });
+        const repoRoot = path.join(tmpDir, 'repo');
+        makeSkill(path.join(repoRoot, '.github', 'skills'), 'r');
+        const globalExtra = path.join(tmpDir, 'global-extra');
+        fs.mkdirSync(globalExtra, { recursive: true });
+        const repoExtra = path.join(tmpDir, 'repo-extra');
+        fs.mkdirSync(repoExtra, { recursive: true });
+
+        const entries = await resolveEffectiveSkillPaths({
+            dataDir,
+            homedir: fakeHome,
+            workspaceRootPath: repoRoot,
+            extraSkillFolders: [repoExtra],
+            globalExtraFolders: [globalExtra],
+            autoDetectDefaultFolders: false,
+        });
+
+        const order = entries.map(e => e.source);
+        const idx = (s: string) => order.indexOf(s);
+        expect(idx('repo')).toBeLessThan(idx('managed-global'));
+        expect(idx('managed-global')).toBeLessThan(idx('configured'));
+        expect(idx('configured')).toBeLessThan(idx('repo-extra'));
+        const bundledDir = getBundledSkillsPath();
+        if (fs.existsSync(bundledDir)) {
+            expect(idx('repo-extra')).toBeLessThan(idx('bundled'));
+        }
     });
 });

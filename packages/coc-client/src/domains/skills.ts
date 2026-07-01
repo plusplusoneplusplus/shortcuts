@@ -1,5 +1,6 @@
 import type {
   DiscoveredSkill,
+  EffectiveSkillPathsResponse,
   GlobalSkillsConfig,
   InstallSkillsRequest,
   InstallSkillsResponse,
@@ -81,6 +82,17 @@ export class SkillsClient {
     return this.transport.request<GlobalSkillsConfig>(skillsPath('/config'), {
       method: 'PUT',
       body: { ...request },
+    });
+  }
+
+  /**
+   * Fetch the agent's effective skill search order as read-only diagnostic data.
+   * Pass a `workspaceId` to include workspace-scoped paths (repo-local + per-repo
+   * extra folders); omit it for a global-only view.
+   */
+  getEffectivePaths(workspaceId?: string): Promise<EffectiveSkillPathsResponse> {
+    return this.transport.request<EffectiveSkillPathsResponse>(skillsPath('/effective-paths'), {
+      query: workspaceId ? { workspaceId } : undefined,
     });
   }
 

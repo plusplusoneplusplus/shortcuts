@@ -97,6 +97,49 @@ export interface MergedSkillsResponse {
   merged: SkillInfo[];
 }
 
+/** Origin of an effective skill-search-order path; drives the UI source badge. */
+export type EffectiveSkillPathSource =
+  | 'repo'
+  | 'managed-global'
+  | 'auto-detected'
+  | 'configured'
+  | 'repo-extra'
+  | 'bundled';
+
+/** Availability of an effective skill-search-order path; drives the UI status badge. */
+export type EffectiveSkillPathStatus = 'available' | 'no-skills' | 'missing' | 'skipped';
+
+/** Whether an effective skill-search-order path applies globally or per-workspace. */
+export type EffectiveSkillPathScope = 'global' | 'workspace';
+
+/**
+ * A single directory in the agent's effective skill search order, annotated for
+ * read-only diagnostic display. Missing/skipped declared sources are retained so
+ * the UI can explain exactly what the agent will (and will not) use.
+ */
+export interface EffectiveSkillPath {
+  source: EffectiveSkillPathSource;
+  scope: EffectiveSkillPathScope;
+  status: EffectiveSkillPathStatus;
+  /** Absolute host-filesystem path (or the raw configured value when skipped). */
+  path: string;
+  /** Installed skill count found in the directory (present only when it exists). */
+  skillCount?: number;
+  /** Optional human-readable note (e.g. why a declared folder was skipped). */
+  note?: string;
+}
+
+/**
+ * Structured effective skill search order returned by `GET /api/skills/effective-paths`.
+ * When `workspaceId` is set the list includes workspace-scoped paths (repo-local
+ * and per-repo extra folders); otherwise it is global-only.
+ */
+export interface EffectiveSkillPathsResponse {
+  /** Echoed active workspace id when the diagnostic is workspace-scoped. */
+  workspaceId?: string;
+  paths: EffectiveSkillPath[];
+}
+
 export interface WorkspaceSkillsPathResponse {
   path: string;
   skillCount: number;

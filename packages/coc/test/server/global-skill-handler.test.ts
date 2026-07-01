@@ -64,15 +64,18 @@ async function dispatchRoute(
 ): Promise<{ statusCode: number; body: any }> {
     const { res, getStatusCode, getBody } = createMockResponse();
     const req = makeRequest(method, url, body);
+    // Real router matches on pathname (query stripped); mirror that here so the
+    // handler still sees the full url (with query) via req.url.
+    const pathname = url.split('?')[0];
 
     for (const route of routes) {
         const pattern = route.pattern;
         let match: RegExpMatchArray | null = null;
 
         if (typeof pattern === 'string') {
-            if (pattern === url) match = [url];
+            if (pattern === pathname) match = [pathname];
         } else {
-            match = url.match(pattern);
+            match = pathname.match(pattern);
         }
 
         if (match && route.method === method) {
@@ -382,6 +385,94 @@ describe('registerGlobalSkillRoutes', () => {
                 { globalDisabledSkills: [], autoDetectDefaultFolders: 'yes' }
             );
             expect(statusCode).toBe(400);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // GET /api/skills/effective-paths — structured effective search order
+    // -----------------------------------------------------------------------
+
+    describe('GET /api/skills/effective-paths', () => {
+        it('returns global-only paths when no workspace is given', async () => {
+            const { statusCode, body } = await dispatchRoute(routes, 'GET', '/api/skills/effective-paths');
+            expect(statusCode).toBe(200);
+            expect(body.workspaceId).toBeUndefined();
+            expect(Array.isArray(body.paths)).toBe(true);
+            // Managed global dir is present and every path is global-scoped.
+            const managed = body.paths.find((p: any) => p.source === 'managed-global');
+            expect(managed).toBeTruthy();
+            expect(managed.path).toBe(globalSkillsDir);
+            expect(body.paths.every((p: any) => p.scope === 'global')).toBe(true);
+            // No workspace-scoped repo path leaks into the global-only view.
+            expect(body.paths.some((p: any) => p.source === 'repo')).toBe(false);
+        });
+
+        it('reports managed-global status/skillCount from the filesystem', async () => {
+            const skillDir = path.join(globalSkillsDir, 'a-skill');
+            fs.mkdirSync(skillDir);
+            fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# a-skill\nDesc');
+
+            const { body } = await dispatchRoute(routes, 'GET', '/api/skills/effective-paths');
+            const managed = body.paths.find((p: any) => p.source === 'managed-global');
+            expect(managed.status).toBe('available');
+            expect(managed.skillCount).toBe(1);
+        });
+
+        it('includes workspace-scoped repo path when a valid workspace is given', async () => {
+            const repoSkillsDir = path.join(workspaceDir, '.github', 'skills', 'repo-skill');
+            fs.mkdirSync(repoSkillsDir, { recursive: true });
+            fs.writeFileSync(path.join(repoSkillsDir, 'SKILL.md'), '# repo-skill\nDesc');
+
+            const { statusCode, body } = await dispatchRoute(
+                routes, 'GET', `/api/skills/effective-paths?workspaceId=${workspaceId}`
+            );
+            expect(statusCode).toBe(200);
+            expect(body.workspaceId).toBe(workspaceId);
+            const repo = body.paths.find((p: any) => p.source === 'repo');
+            expect(repo).toBeTruthy();
+            expect(repo.scope).toBe('workspace');
+            expect(repo.status).toBe('available');
+            expect(repo.skillCount).toBe(1);
+            // Repo-local is ordered before managed-global.
+            const repoIdx = body.paths.findIndex((p: any) => p.source === 'repo');
+            const managedIdx = body.paths.findIndex((p: any) => p.source === 'managed-global');
+            expect(repoIdx).toBeLessThan(managedIdx);
+        });
+
+        it('falls back to global-only for an unknown workspace id', async () => {
+            const { statusCode, body } = await dispatchRoute(
+                routes, 'GET', '/api/skills/effective-paths?workspaceId=nonexistent'
+            );
+            expect(statusCode).toBe(200);
+            expect(body.workspaceId).toBeUndefined();
+            expect(body.paths.some((p: any) => p.source === 'repo')).toBe(false);
+        });
+
+        it('reflects configured globalExtraFolders with source/status from config', async () => {
+            const extraDir = fs.mkdtempSync(path.join(os.tmpdir(), 'global-extra-'));
+            try {
+                writeConfigFile(configPath, {
+                    skills: { globalExtraFolders: [extraDir, '/does/not/exist'], autoDetectDefaultFolders: false },
+                } as any);
+
+                const { body } = await dispatchRoute(routes, 'GET', '/api/skills/effective-paths');
+                const configured = body.paths.filter((p: any) => p.source === 'configured');
+                expect(configured).toHaveLength(2);
+                expect(configured.find((p: any) => p.path === extraDir).status).toBe('no-skills');
+                expect(configured.find((p: any) => p.path === '/does/not/exist').status).toBe('missing');
+                // auto-detect disabled → no auto-detected entries surface.
+                expect(body.paths.some((p: any) => p.source === 'auto-detected')).toBe(false);
+            } finally {
+                fs.rmSync(extraDir, { recursive: true, force: true });
+            }
+        });
+
+        it('is not swallowed by the /skills/:name catch-all route', async () => {
+            // Ensure a global skill literally named would-be-detail does not shadow the diagnostic.
+            const { statusCode, body } = await dispatchRoute(routes, 'GET', '/api/skills/effective-paths');
+            expect(statusCode).toBe(200);
+            expect(body).toHaveProperty('paths');
+            expect(body).not.toHaveProperty('skill');
         });
     });
 
