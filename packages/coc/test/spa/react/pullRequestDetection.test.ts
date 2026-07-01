@@ -70,6 +70,62 @@ describe('detectPullRequestsInToolGroup', () => {
         expect(pullRequests).toEqual([]);
     });
 
+    it('detects a GitHub pull request URL from the GitHub connector create tool', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                name: 'github_create_pull_request',
+                args: {
+                    server: 'codex_apps',
+                    arguments: {
+                        repository_full_name: 'plusplusoneplusplus/shortcuts',
+                        base: 'main',
+                        head: 'pr/5838993-show-result-size',
+                    },
+                },
+                result: JSON.stringify({
+                    url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/453',
+                    number: 453,
+                    state: 'open',
+                }),
+            },
+        ]);
+
+        expect(pullRequests).toEqual<DetectedPullRequest[]>([
+            {
+                number: 453,
+                url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/453',
+                provider: 'github',
+                owner: 'plusplusoneplusplus',
+                repo: 'shortcuts',
+                toolCallId: 'tool-1',
+            },
+        ]);
+    });
+
+    it('ignores read-only GitHub connector PR lookups', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                name: 'github_get_pr_info',
+                args: {
+                    server: 'codex_apps',
+                    arguments: {
+                        repository_full_name: 'plusplusoneplusplus/shortcuts',
+                        pr_number: 453,
+                    },
+                },
+                result: JSON.stringify({
+                    url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/453',
+                    number: 453,
+                    state: 'open',
+                }),
+            },
+        ]);
+
+        expect(pullRequests).toEqual([]);
+    });
+
     it('accepts "Bash" (capital B) tool name as used by Claude SDK', () => {
         // Claude SDK stores tool names with capital first letter (e.g. "Bash").
         // Regression: capitalized names were not matched against SHELL_TOOL_NAMES.

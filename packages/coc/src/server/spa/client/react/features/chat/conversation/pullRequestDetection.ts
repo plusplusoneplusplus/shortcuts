@@ -1,6 +1,6 @@
 /**
- * pullRequestDetection — scans shell tool call results for pull-request creation
- * output and extracts structured pull-request metadata.
+ * pullRequestDetection — scans PR-creation tool call results and extracts
+ * structured pull-request metadata.
  */
 
 export interface DetectedPullRequest {
@@ -18,7 +18,7 @@ export interface DetectedPullRequest {
 
 interface ToolCallLike {
     id: string;
-    toolName: string;
+    toolName?: string;
     name?: string;
     args?: unknown;
     result?: string;
@@ -26,6 +26,10 @@ interface ToolCallLike {
 }
 
 const SHELL_TOOL_NAMES = new Set(['powershell', 'shell', 'bash']);
+const GITHUB_PR_CREATION_TOOL_NAMES = new Set([
+    'github_create_pull_request',
+    'mcp__codex_apps__github___create_pull_request',
+]);
 
 const GITHUB_PR_URL_RE = /https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pull\/(\d+)/g;
 
@@ -126,6 +130,10 @@ function isReadOnlyPullRequestCommand(command: string): boolean {
     return READ_ONLY_PR_PATTERNS.some(re => re.test(command));
 }
 
+function isGitHubConnectorPullRequestCreation(toolName: string): boolean {
+    return GITHUB_PR_CREATION_TOOL_NAMES.has(toolName);
+}
+
 /**
  * True when any line is the wrapper's structured success status — a `JSON: {...}`
  * line (at line start) carrying a non-empty pr_url together with status: "done".
@@ -168,15 +176,8 @@ export function detectPullRequestsInToolGroup(toolCalls: ToolCallLike[]): Detect
     const results: DetectedPullRequest[] = [];
     const seenUrls = new Set<string>();
 
-    for (const tc of toolCalls) {
-        const toolName = (tc.toolName || tc.name || '').toLowerCase();
-        if (!SHELL_TOOL_NAMES.has(toolName)) continue;
-        if (!tc.result) continue;
-
-        const command = getCommandString(tc.args);
-        if (isReadOnlyPullRequestCommand(command)) continue;
-        if (!hasPullRequestCreationEvidence(command, tc.result)) continue;
-
+    const appendGitHubPullRequests = (tc: ToolCallLike): void => {
+        if (!tc.result) return;
         GITHUB_PR_URL_RE.lastIndex = 0;
         for (const match of tc.result.matchAll(GITHUB_PR_URL_RE)) {
             const [, owner, repo, numberText] = match;
@@ -192,6 +193,23 @@ export function detectPullRequestsInToolGroup(toolCalls: ToolCallLike[]): Detect
                 toolCallId: tc.id,
             });
         }
+    };
+
+    for (const tc of toolCalls) {
+        const toolName = (tc.toolName || tc.name || '').toLowerCase();
+        if (isGitHubConnectorPullRequestCreation(toolName)) {
+            appendGitHubPullRequests(tc);
+            continue;
+        }
+
+        if (!SHELL_TOOL_NAMES.has(toolName)) continue;
+        if (!tc.result) continue;
+
+        const command = getCommandString(tc.args);
+        if (isReadOnlyPullRequestCommand(command)) continue;
+        if (!hasPullRequestCreationEvidence(command, tc.result)) continue;
+
+        appendGitHubPullRequests(tc);
 
         ADO_DEV_AZURE_PR_URL_RE.lastIndex = 0;
         for (const match of tc.result.matchAll(ADO_DEV_AZURE_PR_URL_RE)) {
