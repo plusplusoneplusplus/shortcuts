@@ -4,7 +4,7 @@
  */
 
 import type { RepoData } from './repoGrouping';
-import { truncatePath, isRemoteRepo } from './repoGrouping';
+import { truncatePath, isRemoteRepo, getServerHashColor } from './repoGrouping';
 import { blendRemoteCloneStatus, cloneStatusColor } from '../features/remote-shell/shellModel';
 import { Card, cn } from '../ui';
 import { useRepoQueueStats } from '../queue/hooks/useRepoQueueStats';
@@ -85,11 +85,10 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
                         title={isOffline
                             ? `Remote · ${serverLabel} · offline (server unreachable)`
                             : `Remote · ${serverLabel}`}
+                        style={isOffline ? undefined : { color: getServerHashColor(serverLabel), backgroundColor: `${getServerHashColor(serverLabel)}1f` }}
                         className={cn(
                             'ml-auto inline-flex items-center gap-1 max-w-[96px] min-w-0 text-[9px] font-bold uppercase tracking-[0.04em] px-1 py-px rounded',
-                            isOffline
-                                ? 'bg-[#8c959f]/15 text-[#6e7781] dark:text-[#8c959f]'
-                                : 'bg-[#8250df]/12 text-[#8250df] dark:bg-[#a371f7]/15 dark:text-[#a371f7]'
+                            isOffline && 'bg-[#8c959f]/15 text-[#6e7781] dark:text-[#8c959f]'
                         )}
                     >
                         <span

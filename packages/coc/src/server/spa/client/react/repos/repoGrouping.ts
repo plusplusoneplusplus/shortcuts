@@ -257,6 +257,20 @@ export function getRepoHashColor(workspace: any, localServerName?: string): stri
     return REPO_COLOR_PALETTE[idx];
 }
 
+/**
+ * Derive a display-only accent color for a remote machine/server name, bounded to
+ * `REPO_COLOR_PALETTE`. Unlike {@link getRepoHashColor} this keys ONLY on the
+ * server name (not the repo path), so every clone from the same remote machine
+ * shares one stable color regardless of which repo it is. Used to tint the
+ * remote-machine badge so different machines are visually distinguishable.
+ */
+export function getServerHashColor(serverName: string | null | undefined): string {
+    const name = serverName && serverName.trim() ? serverName : 'remote';
+    const hash = hashString(name);
+    const idx = Math.abs(parseInt(hash, 36)) % REPO_COLOR_PALETTE.length;
+    return REPO_COLOR_PALETTE[idx];
+}
+
 /** Recursively count tasks from the server task tree response. */
 export function countTasks(node: any): number {
     if (!node) return 0;

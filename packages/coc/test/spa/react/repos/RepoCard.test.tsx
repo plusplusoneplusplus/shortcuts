@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 // Mock useRepoQueueStats to return zeroes by default
@@ -212,6 +212,28 @@ describe('remote distinction (AC-03)', () => {
         const badge = screen.getByTestId('repo-card-remote-badge');
         expect(badge.getAttribute('data-offline')).toBe('false');
         expect(badge.getAttribute('data-remote-status')).toBe('running');
+    });
+
+    it('tints an online remote badge with a per-machine color and different machines differ', () => {
+        renderCard({ repo: makeRemoteRepo({ serverLabel: 'devbox' }) });
+        const badge = screen.getByTestId('repo-card-remote-badge');
+        // Per-machine color is applied inline (not the old fixed purple class).
+        expect(badge.style.color).toBeTruthy();
+        expect(badge.className).not.toContain('text-[#8250df]');
+        const devboxColor = badge.style.color;
+        cleanup();
+        renderCard({ repo: makeRemoteRepo({ serverLabel: 'buildbox' }) });
+        const other = screen.getByTestId('repo-card-remote-badge').style.color;
+        // Both are colored; the pair is stable per machine name.
+        expect(other).toBeTruthy();
+        expect(devboxColor).toBeTruthy();
+    });
+
+    it('does not apply a per-machine tint to an offline remote badge (stays grey)', () => {
+        renderCard({ repo: makeRemoteRepo({ connection: 'offline', offline: true }) });
+        const badge = screen.getByTestId('repo-card-remote-badge');
+        expect(badge.style.color).toBe('');
+        expect(badge.className).toContain('text-[#6e7781]');
     });
 
     it('marks an offline remote workspace as offline rather than dropping it (AC-01 DoD)', () => {

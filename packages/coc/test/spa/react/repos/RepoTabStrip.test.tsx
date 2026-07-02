@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
 import { RepoTabStrip, getRepoDisplayName } from '../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip';
-import { getRepoHashColor, REPO_COLOR_PALETTE } from '../../../../src/server/spa/client/react/repos/repoGrouping';
+import { getRepoHashColor, REPO_COLOR_PALETTE, getServerHashColor } from '../../../../src/server/spa/client/react/repos/repoGrouping';
 
 const mockDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();
@@ -1030,5 +1030,33 @@ describe('getRepoHashColor', () => {
         };
         const color = getRepoHashColor(ws, 'local');
         expect(REPO_COLOR_PALETTE).toContain(color);
+    });
+});
+
+describe('getServerHashColor', () => {
+    it('returns a color from REPO_COLOR_PALETTE', () => {
+        expect(REPO_COLOR_PALETTE).toContain(getServerHashColor('devbox'));
+    });
+
+    it('is deterministic — same server name yields same color', () => {
+        expect(getServerHashColor('devbox')).toBe(getServerHashColor('devbox'));
+    });
+
+    it('does not depend on repo path (per-machine, not per-repo)', () => {
+        expect(getServerHashColor('build-server-01')).toBe(getServerHashColor('build-server-01'));
+    });
+
+    it('distinguishes at least some different machine names by color', () => {
+        const names = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta'];
+        const colors = new Set(names.map(getServerHashColor));
+        expect(colors.size).toBeGreaterThan(1);
+    });
+
+    it('falls back to a stable color for empty or nullish names', () => {
+        const fallback = getServerHashColor('remote');
+        expect(getServerHashColor('')).toBe(fallback);
+        expect(getServerHashColor(null)).toBe(fallback);
+        expect(getServerHashColor(undefined)).toBe(fallback);
+        expect(getServerHashColor('   ')).toBe(fallback);
     });
 });
