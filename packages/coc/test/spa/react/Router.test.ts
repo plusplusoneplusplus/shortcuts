@@ -287,12 +287,24 @@ describe('process deep-link parsing', () => {
         expect(parseProcessDeepLink('#process/proc-1')).toBe('proc-1');
     });
 
+    it('parses MarkdownView #/process/:id hrefs', () => {
+        expect(parseProcessDeepLink('#/process/proc-1')).toBe('proc-1');
+    });
+
     it('parses #session/:id', () => {
         expect(parseProcessDeepLink('#session/proc-2')).toBe('proc-2');
     });
 
+    it('parses MarkdownView #/session/:id hrefs', () => {
+        expect(parseProcessDeepLink('#/session/proc-2')).toBe('proc-2');
+    });
+
     it('parses #processes/:id', () => {
         expect(parseProcessDeepLink('#processes/proc-3')).toBe('proc-3');
+    });
+
+    it('parses MarkdownView #/processes/:id hrefs', () => {
+        expect(parseProcessDeepLink('#/processes/proc-3')).toBe('proc-3');
     });
 
     it('handles URL-encoded process ids', () => {

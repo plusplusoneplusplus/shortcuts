@@ -128,12 +128,24 @@ describe('parseProcessDeepLink', () => {
         expect(parseProcessDeepLink('#processes/abc123')).toBe('abc123');
     });
 
+    it('returns process id for #/processes/abc123', () => {
+        expect(parseProcessDeepLink('#/processes/abc123')).toBe('abc123');
+    });
+
     it('returns process id for #process/abc123 (legacy)', () => {
         expect(parseProcessDeepLink('#process/abc123')).toBe('abc123');
     });
 
+    it('returns process id for #/process/abc123', () => {
+        expect(parseProcessDeepLink('#/process/abc123')).toBe('abc123');
+    });
+
     it('returns process id for #session/abc123 (legacy)', () => {
         expect(parseProcessDeepLink('#session/abc123')).toBe('abc123');
+    });
+
+    it('returns process id for #/session/abc123', () => {
+        expect(parseProcessDeepLink('#/session/abc123')).toBe('abc123');
     });
 
     it('returns null for plain #processes (no id)', () => {

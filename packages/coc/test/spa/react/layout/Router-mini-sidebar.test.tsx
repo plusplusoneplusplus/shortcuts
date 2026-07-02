@@ -7,8 +7,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { Router } from '../../../../src/server/spa/client/react/layout/Router';
+import { MarkdownView } from '../../../../src/server/spa/client/react/shared/MarkdownView';
 import type { DashboardTab } from '../../../../src/server/spa/client/react/types/dashboard';
 
 // ── Minimal mocks ──────────────────────────────────────────────────────────
@@ -16,12 +17,14 @@ import type { DashboardTab } from '../../../../src/server/spa/client/react/types
 const mockDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();
 let mockActiveTab: DashboardTab = 'repos';
+let mockSelectedRepoId: string | null = null;
+let mockQueueState: any = {};
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
             activeTab: mockActiveTab,
-            selectedRepoId: null,
+            selectedRepoId: mockSelectedRepoId,
             reposSidebarCollapsed: false,
             wsStatus: 'open',
         },
@@ -30,7 +33,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
-    useQueue: () => ({ state: { repoQueueMap: {}, queued: [], running: [], history: [] }, dispatch: mockQueueDispatch }),
+    useQueue: () => ({ state: mockQueueState, dispatch: mockQueueDispatch }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
@@ -76,6 +79,16 @@ const NON_REPOS_TABS: DashboardTab[] = ['wiki', 'memory', 'skills', 'admin', 'lo
 
 beforeEach(() => {
     mockActiveTab = 'repos';
+    mockSelectedRepoId = null;
+    mockQueueState = {
+        repoQueueMap: {},
+        repoHistoryMap: {},
+        selectedTaskId: null,
+        selectedTaskIdByRepo: {},
+        queued: [],
+        running: [],
+        history: [],
+    };
     mockDispatch.mockReset();
     mockQueueDispatch.mockReset();
     window.location.hash = '';
@@ -184,5 +197,57 @@ describe('Router activity deep-link handling', () => {
         const queueActions = mockQueueDispatch.mock.calls.map(([action]) => action);
         expect(queueActions).toContainEqual({ type: 'SELECT_QUEUE_TASK', id: 'task-77', repoId: 'feature-repo' });
     });
-});
 
+    it.each([
+        ['#/process/queue_42', 'Process chat'],
+        ['#/session/queue_42', 'Session chat'],
+        ['#/processes/queue_42', 'Processes chat'],
+    ])('routes a MarkdownView %s click into the current repo queue selection', async (href, label) => {
+        mockSelectedRepoId = 'feature-repo';
+
+        const { getByText } = render(
+            <>
+                <Router />
+                <MarkdownView html={`<p><a href="${href}">${label}</a></p>`} />
+            </>,
+        );
+
+        fireEvent.click(getByText(label));
+
+        await waitFor(() => {
+            expect(mockQueueDispatch).toHaveBeenCalledWith({
+                type: 'SELECT_QUEUE_TASK',
+                id: 'queue_42',
+                repoId: 'feature-repo',
+            });
+        });
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: 'feature-repo' });
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+        expect(window.location.hash).toBe('#repos/feature-repo/activity/queue_42');
+    });
+
+    it('uses cached queue ownership instead of the current repo for shorthand process hashes', () => {
+        mockSelectedRepoId = 'current-repo';
+        mockQueueState = {
+            ...mockQueueState,
+            repoHistoryMap: {
+                'target-repo': {
+                    items: [{ id: 'queue_99' }],
+                    hasMore: false,
+                    updatedAt: 1,
+                },
+            },
+        };
+        window.location.hash = '#/process/queue_99';
+
+        render(<Router />);
+
+        const dispatchedActions = mockDispatch.mock.calls.map(([action]) => action);
+        const queueActions = mockQueueDispatch.mock.calls.map(([action]) => action);
+        expect(dispatchedActions).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'target-repo' });
+        expect(dispatchedActions).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+        expect(queueActions).toContainEqual({ type: 'SELECT_QUEUE_TASK', id: 'queue_99', repoId: 'target-repo' });
+        expect(window.location.hash).toBe('#repos/target-repo/activity/queue_99');
+    });
+});
