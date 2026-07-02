@@ -75,14 +75,18 @@ const MODEL_DEFINITIONS: readonly ModelDefinition[] = [
         label: 'GPT-5.4',
         description: '',
         tier: 'standard',
-        contextWindow: 128_000,
+        // Sourced from Codex's own model catalog (~/.codex/models_cache.json,
+        // context_window field) — the whole GPT-5.x Codex family reports 272k.
+        contextWindow: 272_000,
     },
     {
         id: 'gpt-5.3-codex',
         label: 'GPT-5.3 Codex',
         description: '',
         tier: 'premium',
-        contextWindow: 128_000,
+        // Same GPT-5.x Codex family context window as gpt-5.4 (272k). See the
+        // Codex model catalog note above.
+        contextWindow: 272_000,
     },
     {
         id: 'gemini-3-pro-preview',

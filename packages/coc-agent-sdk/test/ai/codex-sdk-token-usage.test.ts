@@ -136,7 +136,7 @@ describe('CodexSDKService token usage', () => {
     });
 
     it('AC-01: derives tokenLimit from the registry and currentTokens from the latest turn', async () => {
-        // gpt-5.4 has a registry contextWindow (128k). currentTokens is the
+        // gpt-5.4 has a registry contextWindow (272k). currentTokens is the
         // latest-turn occupancy snapshot: input_tokens + output_tokens. The
         // subset field cached_input_tokens is NOT added again, and reasoning
         // tokens are excluded.
@@ -155,7 +155,7 @@ describe('CodexSDKService token usage', () => {
         ], 'gpt-5.4');
 
         expect(result.success).toBe(true);
-        expect(result.tokenUsage?.tokenLimit).toBe(128_000);
+        expect(result.tokenUsage?.tokenLimit).toBe(272_000);
         // input + output only (cached is a subset of input; reasoning excluded).
         expect(result.tokenUsage?.currentTokens).toBe(1250);
         // No fabricated breakdown for Codex.
@@ -186,7 +186,7 @@ describe('CodexSDKService token usage', () => {
         expect(result.tokenUsage?.totalTokens).toBe(13_800);
         expect(result.tokenUsage?.turnCount).toBe(2);
         // currentTokens is a snapshot of the LATEST turn only, not cumulative.
-        expect(result.tokenUsage?.tokenLimit).toBe(128_000);
+        expect(result.tokenUsage?.tokenLimit).toBe(272_000);
         expect(result.tokenUsage?.currentTokens).toBe(8300);
     });
 
@@ -202,7 +202,7 @@ describe('CodexSDKService token usage', () => {
         ], 'gpt-5.3-codex');
 
         expect(result.success).toBe(true);
-        expect(result.tokenUsage?.tokenLimit).toBe(128_000);
+        expect(result.tokenUsage?.tokenLimit).toBe(272_000);
         // 2000 + 100, NOT 2000 + 1900 + 100.
         expect(result.tokenUsage?.currentTokens).toBe(2100);
     });
