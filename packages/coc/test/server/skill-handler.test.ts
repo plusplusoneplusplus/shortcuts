@@ -7,6 +7,20 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+
+// Mock os.homedir to prevent real OneDrive skill directories from polluting tests.
+// eslint-disable-next-line no-var
+var _realHomedir: string;
+
+vi.mock('os', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('os')>();
+    _realHomedir = actual.homedir();
+    return {
+        ...actual,
+        homedir: vi.fn(() => _realHomedir),
+    };
+});
+
 import { registerSkillRoutes, sortSkillsByUsage, skillCache, SKILL_CACHE_TTL_MS, loadSkillsForWorkspace, readConfiguredGlobalExtraFolders } from '../../src/server/skills/skill-handler';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../../src/server/types';
@@ -102,6 +116,8 @@ describe('registerSkillRoutes', () => {
         skillCache.clear();
         routes = [];
         workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-api-'));
+        // Point homedir to a temp dir so OneDrive skill scanning doesn't pick up real user skills.
+        vi.mocked(os.homedir).mockReturnValue(workspaceDir);
         store = createMockProcessStore({
             initialWorkspaces: [{
                 id: workspaceId,
@@ -1093,19 +1109,16 @@ describe('loadSkillsForWorkspace — configured global extra folders (AC #2)', (
     it('expands ~ in a configured global extra folder path', async () => {
         const home = mkTmp('ge-home-');
         mkSkill(path.join(home, 'my-skills'), 'tilde-skill', 'description: via tilde');
-        const prevHome = process.env.HOME;
-        const prevUserProfile = process.env.USERPROFILE;
-        // os.homedir() reads $HOME on POSIX and %USERPROFILE% on Windows.
-        process.env.HOME = home;
-        process.env.USERPROFILE = home;
+        // os.homedir is mocked at the module level, so point it at the temp home
+        // to drive `~` expansion instead of mutating process.env.
+        vi.mocked(os.homedir).mockReturnValue(home);
         try {
             const skills = await loadSkillsForWorkspace(ws(), undefined, store, { globalExtraFolders: ['~/my-skills'] });
             const s = skills.find(x => x.name === 'tilde-skill');
             expect(s).toBeDefined();
             expect(s!.source).toBe('global-extra-folder');
         } finally {
-            if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
-            if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
+            vi.mocked(os.homedir).mockReturnValue(_realHomedir);
         }
     });
 });

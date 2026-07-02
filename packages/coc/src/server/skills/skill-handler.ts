@@ -458,7 +458,25 @@ export async function loadSkillsForWorkspace(
         }
     }
 
-    let skills = dedupByName([...localSkills, ...globalSkills, ...globalExtraSkills, ...extraSkills]);
+    // OneDrive-based skill directories (Windows)
+    const oneDriveSkills: SkillInfo[] = [];
+    const seenNames = new Set([...localNames, ...globalNames, ...globalExtraSkills.map(s => s.name), ...extraSkills.map(s => s.name)]);
+    const homedir = os.homedir();
+    for (const variant of ['OneDrive', 'OneDrive - Microsoft']) {
+        const oneDriveSkillsDir = path.join(homedir, variant, '.github', 'skills');
+        if (fs.existsSync(oneDriveSkillsDir)) {
+            const odSkills = listInstalledSkills(oneDriveSkillsDir);
+            for (const skill of odSkills) {
+                if (seenNames.has(skill.name)) continue;
+                seenNames.add(skill.name);
+                skill.source = 'extra-folder';
+                skill.folderPath = oneDriveSkillsDir;
+                oneDriveSkills.push(skill);
+            }
+        }
+    }
+
+    let skills = dedupByName([...localSkills, ...globalSkills, ...globalExtraSkills, ...extraSkills, ...oneDriveSkills]);
     if (dataDir) {
         try {
             const repoPrefsPath = getRepoDataPath(dataDir, id, 'preferences.json');
