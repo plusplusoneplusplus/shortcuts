@@ -32,7 +32,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import type { Canvas, CanvasComment, CanvasVersion, CanvasVersionMeta } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
-import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
+import { MarkdownView } from '../../shared/MarkdownView';
+import { chatMarkdownToHtml } from '../chat/conversation/ConversationTurnBubble';
 import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/MonacoFileEditor';
 import { ExtensionCanvasView } from './ExtensionCanvasView';
 import { ExcalidrawSceneView, parseSceneContent } from '../diagrams';
@@ -181,7 +182,6 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         return () => window.removeEventListener('keydown', onKey);
     }, [isFullscreen, onFullscreenChange]);
 
-    const previewRef = useRef<HTMLDivElement>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const canvasRef = useRef<Canvas | null>(null);
     canvasRef.current = canvas;
@@ -461,11 +461,14 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         : isExtensionCanvas
         ? (viewingVersion ? fenceCode(displayedContent, 'json') : '')
         : isCodeCanvas ? fenceCode(displayedContent, canvas?.language) : displayedContent;
-    const { html } = useMarkdownPreview({
-        content: previewMarkdown,
-        containerRef: previewRef,
-        loading: loading || isExcalidrawCanvas || (isExtensionCanvas && !viewingVersion) || (!viewingVersion && mode !== 'preview'),
-    });
+    // Canvas Preview uses the chat's clean marked-based renderer so markdown
+    // source markers (###, **, backticks, >, list bullets, link URL syntax) are
+    // fully rendered instead of shown as faded hint spans. Diff/file/task
+    // previews keep the editor-style forge renderer (useMarkdownPreview).
+    const previewHtml = useMemo(
+        () => chatMarkdownToHtml(previewMarkdown, workspaceId),
+        [previewMarkdown, workspaceId],
+    );
 
     const handleExtensionCanvasSaved = useCallback((saved: Canvas) => {
         setCanvas(saved);
@@ -765,12 +768,14 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         />
                     ) : (
                         <div
-                            ref={previewRef}
-                            className="markdown-body canvas-mermaid-preview text-xs p-3"
+                            className="canvas-mermaid-preview text-xs p-3"
                             data-testid="canvas-panel-preview"
                             onMouseUp={handlePreviewMouseUp}
-                            dangerouslySetInnerHTML={{ __html: html || '<span class="italic text-[#848484]">Empty canvas.</span>' }}
-                        />
+                        >
+                            {previewMarkdown.trim()
+                                ? <MarkdownView html={previewHtml} />
+                                : <span className="italic text-[#848484]">Empty canvas.</span>}
+                        </div>
                     )}
                 </div>
             </div>
