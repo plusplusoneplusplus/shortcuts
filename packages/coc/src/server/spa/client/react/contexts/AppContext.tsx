@@ -5,6 +5,7 @@
 
 import { createContext, useContext, useReducer, useEffect, useRef, type ReactNode, type Dispatch } from 'react';
 import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, TasksPanelNavState } from '../types/dashboard';
+import { REPO_SUB_TAB_VALUES } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getSpaCocClient } from '../api/cocClient';
 import { isContainerMode, setCurrentAgentId } from '../utils/config';
@@ -20,6 +21,44 @@ export function getInitialSidebarCollapsed(): boolean {
     } catch {
         return false;
     }
+}
+
+// ── Per-repo sub-tab persistence ───────────────────────────────────────
+
+export const REPO_TAB_STATE_KEY = 'coc-repo-tab-state';
+
+/** Set of valid sub-tab ids, used to drop unknown/stale values on hydrate. */
+const VALID_REPO_SUB_TAB_SET: ReadonlySet<string> = new Set(REPO_SUB_TAB_VALUES);
+
+/**
+ * Read the persisted per-repo sub-tab map from localStorage. Values that are
+ * not a currently-known sub-tab (e.g. a removed/renamed tab id) are silently
+ * dropped so a stale entry can never wedge the UI. Any parse/access failure
+ * (SSR, disabled storage, corrupt JSON) yields an empty map.
+ */
+export function getInitialRepoTabState(): Record<string, RepoSubTab> {
+    try {
+        const raw = localStorage.getItem(REPO_TAB_STATE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+        const result: Record<string, RepoSubTab> = {};
+        for (const [repoId, tab] of Object.entries(parsed as Record<string, unknown>)) {
+            if (typeof tab === 'string' && VALID_REPO_SUB_TAB_SET.has(tab)) {
+                result[repoId] = tab as RepoSubTab;
+            }
+        }
+        return result;
+    } catch {
+        return {};
+    }
+}
+
+/** Persist the per-repo sub-tab map. Swallows failures (SSR / disabled storage). */
+function persistRepoTabState(repoTabState: Record<string, RepoSubTab>): void {
+    try {
+        localStorage.setItem(REPO_TAB_STATE_KEY, JSON.stringify(repoTabState));
+    } catch { /* SSR / test / quota */ }
 }
 
 // ── State ──────────────────────────────────────────────────────────────
@@ -161,7 +200,7 @@ const initialState: AppContextState = {
     adminDbPage: 1,
     adminDbSort: null,
     adminDbOrder: null,
-    repoTabState: {},
+    repoTabState: getInitialRepoTabState(),
     notePathState: {},
     wikiTabState: {},
     repoSubTabNavState: {},
@@ -340,6 +379,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 ? { ...state.notePathState, [state.selectedRepoId]: state.selectedNotePath }
                 : state.notePathState;
             const restoredNotePath = action.id ? (savedNoteState[action.id] ?? null) : null;
+            if (savedTabState !== state.repoTabState) persistRepoTabState(savedTabState);
             return { ...state, selectedRepoId: action.id, repoTabState: savedTabState, activeRepoSubTab: restoredTab, notePathState: savedNoteState, selectedNotePath: restoredNotePath, selectedWorkflowName: null, selectedWorkflowProcessId: null };
         }
         case 'SET_CURRENT_AGENT': {
@@ -350,6 +390,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             const updatedRepoTabState = state.selectedRepoId
                 ? { ...state.repoTabState, [state.selectedRepoId]: action.tab }
                 : state.repoTabState;
+            if (updatedRepoTabState !== state.repoTabState) persistRepoTabState(updatedRepoTabState);
             return { ...state, activeRepoSubTab: action.tab, repoTabState: updatedRepoTabState };
         }
         case 'TOGGLE_REPOS_SIDEBAR': {
