@@ -32,7 +32,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import type { Canvas, CanvasComment, CanvasVersion, CanvasVersionMeta } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
-import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
+import { MarkdownView } from '../../shared/MarkdownView';
+import { chatMarkdownToHtml } from '../chat/conversation/ConversationTurnBubble';
 import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/MonacoFileEditor';
 import { ExtensionCanvasView } from './ExtensionCanvasView';
 import { ExcalidrawSceneView, parseSceneContent } from '../diagrams';
@@ -181,7 +182,6 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         return () => window.removeEventListener('keydown', onKey);
     }, [isFullscreen, onFullscreenChange]);
 
-    const previewRef = useRef<HTMLDivElement>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const canvasRef = useRef<Canvas | null>(null);
     canvasRef.current = canvas;
@@ -461,11 +461,14 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         : isExtensionCanvas
         ? (viewingVersion ? fenceCode(displayedContent, 'json') : '')
         : isCodeCanvas ? fenceCode(displayedContent, canvas?.language) : displayedContent;
-    const { html } = useMarkdownPreview({
-        content: previewMarkdown,
-        containerRef: previewRef,
-        loading: loading || isExcalidrawCanvas || (isExtensionCanvas && !viewingVersion) || (!viewingVersion && mode !== 'preview'),
-    });
+    // Canvas Preview uses the chat's clean marked-based renderer so markdown
+    // source markers (###, **, backticks, >, list bullets, link URL syntax) are
+    // fully rendered instead of shown as faded hint spans. Diff/file/task
+    // previews keep the editor-style forge renderer (useMarkdownPreview).
+    const previewHtml = useMemo(
+        () => chatMarkdownToHtml(previewMarkdown, workspaceId),
+        [previewMarkdown, workspaceId],
+    );
 
     const handleExtensionCanvasSaved = useCallback((saved: Canvas) => {
         setCanvas(saved);
@@ -669,106 +672,112 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                 </div>
             )}
 
-            {/* Selection action bar */}
-            {!viewingVersion && selection && (
-                <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] border-b border-[#e0e0e0] dark:border-[#474749] bg-[#f0f0f0] dark:bg-[#28282a]" data-testid="canvas-panel-selection-bar">
-                    <span className="flex-1 truncate italic text-[#848484]">“{selection}”</span>
-                    {onAskAi && (
-                        <button type="button" className="underline font-semibold shrink-0" onClick={handleAskAi} data-testid="canvas-panel-ask-ai">
-                            Ask AI
-                        </button>
-                    )}
-                    <button type="button" className="underline font-semibold shrink-0" onClick={handleStartComment} data-testid="canvas-panel-add-comment">
-                        Comment
-                    </button>
-                </div>
-            )}
-
-            {/* Comment compose box */}
-            {commentAnchor && (
-                <div className="px-3 py-2 border-b border-[#e0e0e0] dark:border-[#474749] bg-[#f0f0f0] dark:bg-[#28282a]" data-testid="canvas-panel-comment-compose">
-                    <div className="text-[10px] italic text-[#848484] truncate mb-1">On: “{commentAnchor}”</div>
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="text"
-                            className="flex-1 text-[11px] px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] outline-none"
-                            placeholder="Comment for the AI…"
-                            value={commentDraft}
-                            onChange={e => setCommentDraft(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') void handleSubmitComment(); }}
-                            data-testid="canvas-panel-comment-input"
-                        />
-                        <button
-                            type="button"
-                            className="text-[11px] underline font-semibold disabled:opacity-40"
-                            disabled={!commentDraft.trim()}
-                            onClick={() => void handleSubmitComment()}
-                            data-testid="canvas-panel-comment-submit"
-                        >
-                            Add
-                        </button>
-                        <button
-                            type="button"
-                            className="text-[11px] underline text-[#848484]"
-                            onClick={() => { setCommentAnchor(null); setCommentDraft(''); }}
-                        >
-                            Cancel
+            {/* Body — relative wrapper so the selection/comment overlays float
+                above the content instead of pushing it and shifting the text. */}
+            <div className="relative flex-1 min-h-0">
+                {/* Selection action bar (absolute overlay — toggling it must not shift the text) */}
+                {!viewingVersion && selection && (
+                    <div className="absolute top-0 inset-x-0 z-10 flex items-center gap-2 px-3 py-1.5 text-[11px] border-b border-[#e0e0e0] dark:border-[#474749] bg-[#f0f0f0] dark:bg-[#28282a]" data-testid="canvas-panel-selection-bar">
+                        <span className="flex-1 truncate italic text-[#848484]">“{selection}”</span>
+                        {onAskAi && (
+                            <button type="button" className="underline font-semibold shrink-0" onClick={handleAskAi} data-testid="canvas-panel-ask-ai">
+                                Ask AI
+                            </button>
+                        )}
+                        <button type="button" className="underline font-semibold shrink-0" onClick={handleStartComment} data-testid="canvas-panel-add-comment">
+                            Comment
                         </button>
                     </div>
-                </div>
-            )}
+                )}
 
-            {/* Body */}
-            <div className="flex-1 min-h-0 overflow-y-auto">
-                {loading ? (
-                    <div className="text-xs text-[#848484] py-6 text-center">Loading canvas…</div>
-                ) : loadError ? (
-                    <div className="text-xs text-red-500 py-6 text-center" data-testid="canvas-panel-error">{loadError}</div>
-                ) : isExcalidrawCanvas && excalidrawScene ? (
-                    <ExcalidrawSceneView
-                        scene={excalidrawScene}
-                        className="h-full min-h-[200px]"
-                        data-testid="canvas-panel-excalidraw"
-                    />
-                ) : !viewingVersion && mode === 'preview' && isExtensionCanvas && canvas ? (
-                    <ExtensionCanvasView
-                        workspaceId={workspaceId}
-                        canvas={canvas}
-                        onCanvasSaved={handleExtensionCanvasSaved}
-                    />
-                ) : !viewingVersion && mode === 'edit' && isCodeCanvas ? (
-                    <div className="h-full min-h-[200px]" data-testid="canvas-panel-code-editor">
-                        <MonacoFileEditor
+                {/* Comment compose box (absolute overlay — toggling it must not shift the text) */}
+                {commentAnchor && (
+                    <div className="absolute top-0 inset-x-0 z-10 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#474749] bg-[#f0f0f0] dark:bg-[#28282a]" data-testid="canvas-panel-comment-compose">
+                        <div className="text-[10px] italic text-[#848484] truncate mb-1">On: “{commentAnchor}”</div>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                className="flex-1 text-[11px] px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] outline-none"
+                                placeholder="Comment for the AI…"
+                                value={commentDraft}
+                                onChange={e => setCommentDraft(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') void handleSubmitComment(); }}
+                                data-testid="canvas-panel-comment-input"
+                            />
+                            <button
+                                type="button"
+                                className="text-[11px] underline font-semibold disabled:opacity-40"
+                                disabled={!commentDraft.trim()}
+                                onClick={() => void handleSubmitComment()}
+                                data-testid="canvas-panel-comment-submit"
+                            >
+                                Add
+                            </button>
+                            <button
+                                type="button"
+                                className="text-[11px] underline text-[#848484]"
+                                onClick={() => { setCommentAnchor(null); setCommentDraft(''); }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Body content */}
+                <div className="h-full overflow-y-auto">
+                    {loading ? (
+                        <div className="text-xs text-[#848484] py-6 text-center">Loading canvas…</div>
+                    ) : loadError ? (
+                        <div className="text-xs text-red-500 py-6 text-center" data-testid="canvas-panel-error">{loadError}</div>
+                    ) : isExcalidrawCanvas && excalidrawScene ? (
+                        <ExcalidrawSceneView
+                            scene={excalidrawScene}
+                            className="h-full min-h-[200px]"
+                            data-testid="canvas-panel-excalidraw"
+                        />
+                    ) : !viewingVersion && mode === 'preview' && isExtensionCanvas && canvas ? (
+                        <ExtensionCanvasView
+                            workspaceId={workspaceId}
+                            canvas={canvas}
+                            onCanvasSaved={handleExtensionCanvasSaved}
+                        />
+                    ) : !viewingVersion && mode === 'edit' && isCodeCanvas ? (
+                        <div className="h-full min-h-[200px]" data-testid="canvas-panel-code-editor">
+                            <MonacoFileEditor
+                                value={draft}
+                                language={monacoLanguageFor(canvas?.language)}
+                                onChange={(next) => {
+                                    setDraft(next);
+                                    setDirty(true);
+                                    setSaveState('idle');
+                                }}
+                            />
+                        </div>
+                    ) : !viewingVersion && mode === 'edit' ? (
+                        <textarea
+                            className="w-full h-full min-h-[200px] text-xs p-3 bg-transparent resize-none font-mono outline-none"
                             value={draft}
-                            language={monacoLanguageFor(canvas?.language)}
-                            onChange={(next) => {
-                                setDraft(next);
+                            onChange={e => {
+                                setDraft(e.target.value);
                                 setDirty(true);
                                 setSaveState('idle');
                             }}
+                            onSelect={handleEditorSelect}
+                            data-testid="canvas-panel-editor"
                         />
-                    </div>
-                ) : !viewingVersion && mode === 'edit' ? (
-                    <textarea
-                        className="w-full h-full min-h-[200px] text-xs p-3 bg-transparent resize-none font-mono outline-none"
-                        value={draft}
-                        onChange={e => {
-                            setDraft(e.target.value);
-                            setDirty(true);
-                            setSaveState('idle');
-                        }}
-                        onSelect={handleEditorSelect}
-                        data-testid="canvas-panel-editor"
-                    />
-                ) : (
-                    <div
-                        ref={previewRef}
-                        className="markdown-body canvas-mermaid-preview text-xs p-3"
-                        data-testid="canvas-panel-preview"
-                        onMouseUp={handlePreviewMouseUp}
-                        dangerouslySetInnerHTML={{ __html: html || '<span class="italic text-[#848484]">Empty canvas.</span>' }}
-                    />
-                )}
+                    ) : (
+                        <div
+                            className="canvas-mermaid-preview text-xs p-3"
+                            data-testid="canvas-panel-preview"
+                            onMouseUp={handlePreviewMouseUp}
+                        >
+                            {previewMarkdown.trim()
+                                ? <MarkdownView html={previewHtml} />
+                                : <span className="italic text-[#848484]">Empty canvas.</span>}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Comments section */}

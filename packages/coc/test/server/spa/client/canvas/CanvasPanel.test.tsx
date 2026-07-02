@@ -49,11 +49,6 @@ vi.mock('../../../../../src/server/spa/client/react/features/canvas/ExtensionCan
     ),
 }));
 
-// The markdown pipeline pulls hljs/mermaid — render plain content instead.
-vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useMarkdownPreview', () => ({
-    useMarkdownPreview: ({ content }: { content: string }) => ({ html: content }),
-}));
-
 // @excalidraw/excalidraw can't load in Node; the global setup stubs it to
 // render nothing. Override locally so the excalidraw render branch is
 // observable: surface the element count handed to the viewer so the test can
@@ -119,8 +114,26 @@ describe('CanvasPanel', () => {
             expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan');
         });
         expect(screen.getByTestId('canvas-panel-revision').textContent).toBe('rev 1');
-        expect(screen.getByTestId('canvas-panel-preview').innerHTML).toContain('# Plan body');
+        // Clean render: the `#` heading marker is gone; the heading is semantic HTML.
+        const preview = screen.getByTestId('canvas-panel-preview');
+        expect(preview.querySelector('h1')?.textContent).toBe('Plan body');
+        expect(preview.innerHTML).not.toContain('# Plan body');
         expect(mocks.get).toHaveBeenCalledWith('ws-1', 'doc-abc123');
+    });
+
+    it('renders the preview as clean markdown with no source markers (AC-01)', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: '### Heading\n\nsome **bold** text' }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
+
+        const preview = screen.getByTestId('canvas-panel-preview');
+        // Headings and bold render as semantic HTML…
+        expect(preview.querySelector('h3')?.textContent).toBe('Heading');
+        expect(preview.querySelector('strong')?.textContent).toBe('bold');
+        // …with none of the raw markdown source characters left visible.
+        expect(preview.innerHTML).not.toContain('###');
+        expect(preview.innerHTML).not.toContain('**bold**');
     });
 
     it('marks the preview for canvas-specific Mermaid sizing', async () => {
@@ -331,6 +344,45 @@ describe('CanvasPanel', () => {
         });
     });
 
+    it('renders the selection bar and comment compose box as absolute overlays so toggling them never shifts the preview text (regression)', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onAskAi={vi.fn()} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
+
+        // Nothing selected yet: the action bar is absent.
+        expect(screen.queryByTestId('canvas-panel-selection-bar')).toBeNull();
+
+        // Double-clicking a word in the preview selects it and surfaces the bar.
+        const getSelectionSpy = vi.spyOn(window, 'getSelection').mockReturnValue({
+            toString: () => 'beta',
+        } as unknown as Selection);
+        try {
+            fireEvent.mouseUp(screen.getByTestId('canvas-panel-preview'));
+
+            const bar = await screen.findByTestId('canvas-panel-selection-bar');
+            // Out of normal flow (overlay) so it floats over the text instead of pushing it down.
+            expect(bar.className).toContain('absolute');
+            expect(bar.className).toContain('top-0');
+            // The bar must not wrap the preview — the text stays in its own sibling scroll container.
+            const preview = screen.getByTestId('canvas-panel-preview');
+            expect(bar.contains(preview)).toBe(false);
+            // Its offset parent is the relative body wrapper, which also holds the preview.
+            const wrapper = bar.parentElement as HTMLElement;
+            expect(wrapper.className).toContain('relative');
+            expect(wrapper.contains(preview)).toBe(true);
+
+            // The comment compose box replaces the bar and is likewise an overlay.
+            fireEvent.click(screen.getByTestId('canvas-panel-add-comment'));
+            const compose = await screen.findByTestId('canvas-panel-comment-compose');
+            expect(compose.className).toContain('absolute');
+            expect(compose.className).toContain('top-0');
+            expect(compose.contains(preview)).toBe(false);
+        } finally {
+            getSelectionSpy.mockRestore();
+        }
+    });
+
     it('sends open comments to the AI and marks them sent', async () => {
         mocks.get.mockResolvedValue(makeCanvas());
         const openComment = {
@@ -360,10 +412,13 @@ describe('CanvasPanel', () => {
         render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
         await waitFor(() => expect(screen.getByTestId('canvas-panel-language').textContent).toBe('typescript'));
 
-        // Preview content is wrapped in a fenced block for highlighting
+        // Code canvas content renders as a clean fenced code block (no literal
+        // backtick fence markers), still tagged with its language for highlighting.
         const preview = screen.getByTestId('canvas-panel-preview');
-        expect(preview.innerHTML).toContain('````typescript');
-        expect(preview.innerHTML).toContain('const x = 1;');
+        const code = preview.querySelector('code');
+        expect(code?.className).toContain('language-typescript');
+        expect(code?.textContent).toContain('const x = 1;');
+        expect(preview.innerHTML).not.toContain('````');
 
         fireEvent.click(screen.getByTestId('canvas-panel-mode-edit'));
         const monaco = screen.getByTestId('mock-monaco') as HTMLTextAreaElement;

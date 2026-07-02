@@ -36,6 +36,7 @@ import {
     sdkServiceRegistry,
 } from '../../src/sdk-service-registry';
 import { RewindUnsupportedError, isRewindUnsupportedError, CompactUnsupportedError, isCompactUnsupportedError } from '../../src/sdk-service-interface';
+import type { TokenUsage } from '../../src/types';
 import { initSDKLogger, resetSDKLogger } from '../../src/logger';
 
 // ============================================================================
@@ -142,6 +143,38 @@ function makeQueryHandle(
         handle.getContextUsage = contextUsageFn;
     }
     return handle;
+}
+
+/**
+ * Builds a query handle that faithfully models the real SDK teardown race for
+ * `getContextUsage()`: the control request only succeeds while the streaming
+ * input gate is still open (subprocess alive). Once the provider closes the gate
+ * (end-of-input), the fake iterator drains the input and marks the subprocess as
+ * torn down, so any later `getContextUsage()` rejects — exactly like the real SDK
+ * cleanup that rejects pending control responses. A correct provider therefore
+ * has to query context usage BEFORE it closes the gate.
+ */
+function makeTeardownAfterCloseQuery(messages: object[], contextPayload: object) {
+    return (queryOptions: { prompt: unknown }) => {
+        const input = queryOptions.prompt as AsyncIterable<unknown>;
+        let tornDown = false;
+        return {
+            async *[Symbol.asyncIterator]() {
+                for (const msg of messages) yield msg;
+                // Stay alive until the provider closes the input gate, then
+                // tear the "subprocess" down.
+                for await (const _ of input) { void _; }
+                tornDown = true;
+            },
+            accountInfo: async () => ({}),
+            supportedModels: async () => [],
+            getContextUsage: async () => {
+                if (tornDown) throw new Error('Query closed before response received');
+                return contextPayload;
+            },
+            return: async (value?: unknown) => ({ done: true as const, value }),
+        };
+    };
 }
 
 class MockClaudeCliChild extends EventEmitter {
@@ -885,7 +918,9 @@ describe('ClaudeSDKService.sendMessage', () => {
         });
     });
 
-    it('keeps Claude result usage when context usage lookup fails', async () => {
+    it('keeps Claude result usage when context usage lookup fails and logs a warning', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
         queryFn.mockReturnValueOnce(makeQueryHandle([
             {
                 type: 'result',
@@ -913,6 +948,116 @@ describe('ClaudeSDKService.sendMessage', () => {
             totalTokens: 12,
             turnCount: 1,
         });
+        const warning = capLogger.logs.find(log =>
+            log.level === 'warn' && log.fields.event === 'claude_context_usage_error');
+        expect(warning).toBeDefined();
+        expect(warning?.fields).toMatchObject({
+            provider: 'claude',
+            error: 'context unavailable',
+        });
+    });
+
+    it('captures context usage at turn end while the subprocess is still alive (teardown race)', async () => {
+        // Regression guard: the provider must query getContextUsage BEFORE it
+        // closes the input gate. This handle rejects the control request once the
+        // gate closes, so the previous "fetch after the message loop" behavior
+        // would drop the context-window fields entirely.
+        queryFn.mockImplementationOnce(makeTeardownAfterCloseQuery(
+            [
+                {
+                    type: 'result',
+                    subtype: 'success',
+                    result: 'done',
+                    usage: {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        cache_creation_input_tokens: 2,
+                        cache_read_input_tokens: 3,
+                    },
+                },
+            ],
+            {
+                totalTokens: 2400,
+                maxTokens: 200000,
+                rawMaxTokens: 1000000,
+                systemPromptSections: [{ name: 'core', tokens: 100 }, { name: 'policy', tokens: 25 }],
+                systemTools: [{ name: 'Read', tokens: 40 }],
+                mcpTools: [{ name: 'ask_user', tokens: 30 }],
+                deferredBuiltinTools: [{ name: 'Bash', tokens: 5 }],
+                messageBreakdown: {
+                    toolCallTokens: 11,
+                    toolResultTokens: 12,
+                    attachmentTokens: 13,
+                    assistantMessageTokens: 14,
+                    userMessageTokens: 15,
+                    redirectedContextTokens: 16,
+                    unattributedTokens: 17,
+                },
+            },
+        ));
+
+        const result = await svc.sendMessage({ prompt: 'test' });
+
+        expect(result.success).toBe(true);
+        expect(result.tokenUsage).toEqual({
+            inputTokens: 10,
+            outputTokens: 5,
+            cacheReadTokens: 3,
+            cacheWriteTokens: 2,
+            totalTokens: 15,
+            turnCount: 1,
+            // Populated because usage is fetched before the gate closes; maps
+            // maxTokens (not rawMaxTokens) to tokenLimit.
+            tokenLimit: 200000,
+            currentTokens: 2400,
+            systemTokens: 125,
+            toolDefinitionsTokens: 75,
+            conversationTokens: 98,
+        });
+    });
+
+    it('does not stall or fail the turn when getContextUsage never resolves, and logs a warning', async () => {
+        const previousTimeout = process.env.COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS;
+        process.env.COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS = '40';
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
+        try {
+            queryFn.mockReturnValueOnce(makeQueryHandle([
+                {
+                    type: 'result',
+                    subtype: 'success',
+                    result: 'done',
+                    usage: {
+                        input_tokens: 5,
+                        output_tokens: 7,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0,
+                    },
+                },
+            ], undefined, undefined, () => new Promise<object>(() => { /* never resolves */ })));
+
+            const result = await svc.sendMessage({ prompt: 'test' });
+
+            expect(result.success).toBe(true);
+            expect(result.tokenUsage).toEqual({
+                inputTokens: 5,
+                outputTokens: 7,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+                totalTokens: 12,
+                turnCount: 1,
+            });
+            const warning = capLogger.logs.find(log =>
+                log.level === 'warn' && log.fields.event === 'claude_context_usage_timeout');
+            expect(warning).toBeDefined();
+            expect(warning?.fields).toMatchObject({ provider: 'claude', timeoutMs: 40 });
+        } finally {
+            if (previousTimeout === undefined) {
+                delete process.env.COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS;
+            } else {
+                process.env.COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS = previousTimeout;
+            }
+        }
     });
 
     it('emits tool-start for tool_use blocks without fabricating argument JSON as the result', async () => {
@@ -2271,6 +2416,71 @@ describe('addClaudeContextUsage', () => {
         expect(usage?.outputTokens).toBe(200);
         expect(usage?.cacheReadTokens).toBe(80);
         expect(usage?.cacheWriteTokens).toBe(50);
+    });
+
+    it('preserves per-turn counters while overwriting snapshot fields with the latest values (AC-03)', () => {
+        // An existing per-turn usage already carrying counters, cost, and a
+        // STALE context snapshot from an earlier refresh.
+        const existing: TokenUsage = {
+            inputTokens: 100,
+            outputTokens: 40,
+            cacheReadTokens: 7,
+            cacheWriteTokens: 3,
+            totalTokens: 140,
+            turnCount: 2,
+            actualUsdCost: 0.5,
+            duration: 1234,
+            tokenLimit: 200000,
+            currentTokens: 1000,
+            systemTokens: 10,
+            toolDefinitionsTokens: 20,
+            conversationTokens: 30,
+        };
+
+        const merged = addClaudeContextUsage(existing, {
+            totalTokens: 2400,
+            maxTokens: 200000,
+            systemPromptSections: [{ tokens: 125 }],
+            systemTools: [{ tokens: 75 }],
+            messageBreakdown: { assistantMessageTokens: 60, userMessageTokens: 38 },
+        });
+
+        // Per-turn counters and cost/duration are preserved untouched.
+        expect(merged?.inputTokens).toBe(100);
+        expect(merged?.outputTokens).toBe(40);
+        expect(merged?.cacheReadTokens).toBe(7);
+        expect(merged?.cacheWriteTokens).toBe(3);
+        expect(merged?.totalTokens).toBe(140);
+        expect(merged?.turnCount).toBe(2);
+        expect(merged?.actualUsdCost).toBe(0.5);
+        expect(merged?.duration).toBe(1234);
+        // Snapshot fields reflect the LATEST getContextUsage response.
+        expect(merged?.tokenLimit).toBe(200000);
+        expect(merged?.currentTokens).toBe(2400);
+        expect(merged?.systemTokens).toBe(125);
+        expect(merged?.toolDefinitionsTokens).toBe(75);
+        expect(merged?.conversationTokens).toBe(98);
+    });
+
+    it('returns the current usage unchanged when the snapshot is undefined (AC-03)', () => {
+        const existing: TokenUsage = {
+            inputTokens: 12,
+            outputTokens: 8,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 20,
+            turnCount: 1,
+            tokenLimit: 100000,
+            currentTokens: 500,
+        };
+
+        const merged = addClaudeContextUsage(existing, undefined);
+
+        expect(merged).toEqual(existing);
+    });
+
+    it('returns undefined when both current usage and snapshot are missing (AC-03)', () => {
+        expect(addClaudeContextUsage(undefined, undefined)).toBeUndefined();
     });
 });
 
