@@ -63,12 +63,33 @@ by Ralph), `features/chat/task-group-descriptors.ts` registers per-type
 presentation/behavior descriptors (label, badge, accent, pin type,
 `matchesTask`, `groupable` — Dreams is `groupable: false` so its internals
 stay ungrouped), and `features/chat/TaskGroupRunRow.tsx` is the shared
-parent-row chrome that `ForEachRunRow`/`MapReduceRunRow` configure as thin
-wrappers. The per-feature grouping modules (`for-each-run-grouping.ts`,
-`map-reduce-run-grouping.ts`, `ralph-session-grouping.ts`) are adapters over
-the engine that keep their legacy matching (feature contexts,
-`generationProcessId`) in addition to the generic tag, so historical chats
-group without data migration.
+parent-row chrome that `ForEachRunRow`/`MapReduceRunRow`/`RalphSessionRow`
+configure as thin wrappers (Ralph supplies its phase dot, `R` badge,
+clarifying/iteration sub-label, and session-context drag payload through the
+row's optional display/behavior hooks). The per-feature grouping modules
+(`for-each-run-grouping.ts`, `map-reduce-run-grouping.ts`,
+`ralph-session-grouping.ts`) are adapters over the engine that keep their
+legacy matching (feature contexts, `generationProcessId`) in addition to the
+generic tag, so historical chats group without data migration.
+
+The task-group UI family shares the same wrapper-over-generic pattern beyond
+rows: `features/chat/TaskGroupRunPane.tsx` is the shared run-detail pane
+(load/refresh/busy-action state, header with run metadata and Start/Continue,
+Cancel remaining, Refresh actions, original-request/shared-instructions
+sections, items table with per-item Retry/Skip and child-chat links) that
+`ForEachRunPane`/`MapReduceRunPane` configure per kind — Map Reduce adds its
+reduce-step section and header metadata through config render slots.
+`features/chat/TaskGroupPlanReviewCard.tsx` is the shared plan-review card
+(transcript-vs-persisted scan merge, structured item editor, Advanced JSON
+editor, validation footer, approve flow) that
+`ForEachPlanReviewCard`/`MapReducePlanReviewCard` configure with per-kind
+scan/build/format/parse/validate adapters and an `approve` submission; Map
+Reduce contributes its max-parallel input, reduce-instructions editor, and
+header pill via render slots. `features/chat/task-group-expansion.ts` holds
+the workspace-scoped expand/collapse state for all group kinds behind
+`useTaskGroupExpansion` (pure, unit-tested helpers; state resets on workspace
+switch), and `features/chat/task-group-copy-info.ts` holds the pure "Copy
+run/session info" context-menu text builders.
 
 `features/chat/ChatListPane.tsx` keeps grouped chat-history expansion state
 local to the mounted view. Ralph session groups, For Each run groups, Map

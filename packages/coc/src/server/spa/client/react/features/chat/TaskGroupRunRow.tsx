@@ -21,6 +21,8 @@ export interface TaskGroupRunRowDisplay {
     badge: string;
     /** Noun used in tooltips/ARIA copy (e.g. 'For Each run'). */
     groupNoun: string;
+    /** Badge tooltip. Defaults to `groupNoun`. */
+    badgeTitle?: string;
     /** Accent classes for the badge chip. */
     badgeClassName: string;
     /** Ring classes applied when the row is selected. */
@@ -29,16 +31,31 @@ export interface TaskGroupRunRowDisplay {
     statusDotClassName: string;
     /** Human-readable status (for the dot's ARIA label). */
     statusLabel: string;
-    /** Raw status value (exposed as data-run-status). */
+    /** Full status-dot ARIA label. Defaults to `status: ${statusLabel}`. */
+    statusAriaLabel?: string;
+    /** Raw status value (exposed via `statusAttributeName`). */
     status: string;
-    /** Compact per-item status summary text. */
-    summary: string;
+    /** Body attribute carrying the raw status. Defaults to 'data-run-status'. */
+    statusAttributeName?: string;
+    /** Root attribute carrying the group id. Defaults to 'data-run-id'. */
+    groupIdAttributeName?: string;
+    /** Compact per-item status summary text. Omit to skip the summary span. */
+    summary?: string;
     /** Accent + sizing classes for the summary text. */
-    summaryClassName: string;
+    summaryClassName?: string;
     /** Title preview shown after the label. */
     title: string;
-    /** Copy shown when the group has no child chats. */
-    emptyChildrenText: string;
+    /** Optional test id for the title span. */
+    titleTestId?: string;
+    /** Optional tooltip for the title span. */
+    titleTooltip?: string;
+    /** Optional ARIA label for the title span. */
+    titleAriaLabel?: string;
+    /** Chevron ARIA labels. Default to `Collapse/Expand ${groupNoun}`. */
+    collapseAriaLabel?: string;
+    expandAriaLabel?: string;
+    /** Copy shown when the group has no child chats. Omit to render nothing. */
+    emptyChildrenText?: string;
 }
 
 export interface TaskGroupRunRowGroup {
@@ -65,6 +82,13 @@ export interface TaskGroupRunRowProps {
     isPinned?: boolean;
     onTogglePin?: () => void;
     onMoreActions?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+    /** Optional drag support for the row body (e.g. Ralph session-context drags). */
+    draggable?: boolean;
+    onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
+    /** Extra data attributes applied to the row body. */
+    bodyDataAttributes?: Record<string, string | undefined>;
+    /** Tooltip for the row body. */
+    bodyTitle?: string;
     renderTaskCard: (task: any) => React.ReactNode;
 }
 
@@ -84,6 +108,10 @@ export function TaskGroupRunRow({
     isPinned,
     onTogglePin,
     onMoreActions,
+    draggable,
+    onDragStart,
+    bodyDataAttributes,
+    bodyTitle,
     renderTaskCard,
 }: TaskGroupRunRowProps) {
     const [expanded, setExpanded] = useState(false);
@@ -102,10 +130,13 @@ export function TaskGroupRunRow({
         setExpanded(value => !value);
     };
 
+    const groupIdAttribute = { [display.groupIdAttributeName ?? 'data-run-id']: group.runId };
+    const statusAttribute = { [display.statusAttributeName ?? 'data-run-status']: display.status };
+
     return (
         <div
             data-testid={`${display.testIdPrefix}-row`}
-            data-run-id={group.runId}
+            {...groupIdAttribute}
             data-selected={isSelected ? 'true' : 'false'}
             className={cn(
                 isExpanded && 'bg-[#f7f7f8] dark:bg-[#1f1f20]/80',
@@ -131,15 +162,19 @@ export function TaskGroupRunRow({
                 onTouchStart={onTouchStart}
                 onTouchEnd={onTouchEnd}
                 onTouchMove={onTouchMove}
+                draggable={draggable}
+                onDragStart={onDragStart}
                 data-testid={`${display.testIdPrefix}-body`}
-                data-run-status={display.status}
+                {...statusAttribute}
+                {...bodyDataAttributes}
                 data-expanded={isExpanded ? 'true' : 'false'}
                 data-pinned={isPinned ? 'true' : undefined}
+                title={bodyTitle}
                 aria-expanded={isExpanded}
             >
                 <span
                     className={cn('w-2 h-2 rounded-full justify-self-center transition-shadow', display.statusDotClassName)}
-                    aria-label={`status: ${display.statusLabel}`}
+                    aria-label={display.statusAriaLabel ?? `status: ${display.statusLabel}`}
                 />
                 <span
                     className={cn(
@@ -147,7 +182,7 @@ export function TaskGroupRunRow({
                         'text-[9.5px] leading-none tracking-[0.06em] py-[4px] w-full',
                         display.badgeClassName,
                     )}
-                    title={display.groupNoun}
+                    title={display.badgeTitle ?? display.groupNoun}
                 >
                     {display.badge}
                 </span>
@@ -162,7 +197,9 @@ export function TaskGroupRunRow({
                         )}
                         onClick={e => { e.stopPropagation(); toggle(); }}
                         data-testid={`${display.testIdPrefix}-chevron`}
-                        aria-label={isExpanded ? `Collapse ${display.groupNoun}` : `Expand ${display.groupNoun}`}
+                        aria-label={isExpanded
+                            ? display.collapseAriaLabel ?? `Collapse ${display.groupNoun}`
+                            : display.expandAriaLabel ?? `Expand ${display.groupNoun}`}
                         aria-expanded={isExpanded}
                     >
                         <span className="text-[12px] leading-none" aria-hidden="true">›</span>
@@ -174,19 +211,26 @@ export function TaskGroupRunRow({
                             aria-label="Unseen activity"
                         />
                     )}
-                    <span className={cn('chat-title truncate text-[#1e1e1e] dark:text-[#cccccc]', group.hasUnseen && 'font-semibold')}>
+                    <span
+                        className={cn('chat-title truncate text-[#1e1e1e] dark:text-[#cccccc]', group.hasUnseen && 'font-semibold')}
+                        title={display.titleTooltip}
+                        aria-label={display.titleAriaLabel}
+                        data-testid={display.titleTestId}
+                    >
                         {display.label}
                         <span className="ml-1.5 font-normal text-[#848484] dark:text-[#9d9d9d]">
                             {display.title}
                         </span>
                     </span>
-                    <span
-                        className={display.summaryClassName}
-                        title={display.summary}
-                        data-testid={`${display.testIdPrefix}-status-summary`}
-                    >
-                        {display.summary}
-                    </span>
+                    {display.summary !== undefined && (
+                        <span
+                            className={display.summaryClassName}
+                            title={display.summary}
+                            data-testid={`${display.testIdPrefix}-status-summary`}
+                        >
+                            {display.summary}
+                        </span>
+                    )}
                     {childCount > 0 && (
                         <span
                             className="shrink-0 text-[10px] font-mono tabular-nums text-[#848484] dark:text-[#9d9d9d]"
@@ -243,11 +287,13 @@ export function TaskGroupRunRow({
                     data-testid={`${display.testIdPrefix}-children`}
                 >
                     {group.children.length === 0 ? (
-                        <div className="px-3 py-1.5 text-[11px] text-[#848484] dark:text-[#a0a0a0]" data-testid={`${display.testIdPrefix}-no-children`}>
-                            {display.emptyChildrenText}
-                        </div>
-                    ) : group.children.map((task: any) => (
-                        <div key={task.id}>
+                        display.emptyChildrenText !== undefined && (
+                            <div className="px-3 py-1.5 text-[11px] text-[#848484] dark:text-[#a0a0a0]" data-testid={`${display.testIdPrefix}-no-children`}>
+                                {display.emptyChildrenText}
+                            </div>
+                        )
+                    ) : group.children.map((task: any, index: number) => (
+                        <div key={task.id ?? index}>
                             {renderTaskCard(task)}
                         </div>
                     ))}

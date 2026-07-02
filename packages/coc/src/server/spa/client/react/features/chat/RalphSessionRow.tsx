@@ -1,21 +1,19 @@
 /**
  * RalphSessionRow — collapsible group row for a Ralph session.
  *
- * Visually mirrors `HistoryGroupHeader` (plan-file groups): a compact one-line
- * row in the same `[10px_30px_minmax(0,1fr)_auto]` grid with a status dot,
- * compact `R` mode pill, chevron toggle, title, child-count badge, and relative
- * time. Phase is signaled entirely via the status-dot color (no separate
- * phase badge). Children are rendered inline (no decorative wrapper) by
- * delegating to the caller's `renderTaskCard` with `{ isGroupChild: true }`.
+ * Thin wrapper over the shared `TaskGroupRunRow` chrome: it derives the
+ * Ralph-specific display (phase status dot, `R` badge, clarifying/iteration
+ * sub-label, session-context drag support) and delegates layout, expansion,
+ * pin/more affordances, and child rendering to the shared row. Children are
+ * rendered by delegating to the caller's `renderTaskCard` with
+ * `{ isGroupChild: true }`.
  */
 
 import type React from 'react';
-import { useState } from 'react';
-import { cn } from '../../ui/cn';
-import { formatRelativeTime } from '../../utils/format';
 import type { RalphSession } from './ralph-session-grouping';
 import { RALPH_MULTI_LOOP } from '../../featureFlags';
 import { type RalphSessionContextDragPayload, writeRalphSessionContextDragData } from './sessionContextDrag';
+import { TaskGroupRunRow } from './TaskGroupRunRow';
 
 interface RalphSessionRowProps {
     session: RalphSession;
@@ -77,9 +75,9 @@ export function RalphSessionRow({
     selectedTaskId: _selectedTaskId,
     selectedSessionId,
     isRangeSelected,
-    expanded: controlledExpanded,
+    expanded,
     onToggleExpanded,
-    now: _now,
+    now,
     unseenProcessIds: _unseenProcessIds,
     onSelectTask: _onSelectTask,
     onSelectSession,
@@ -93,12 +91,7 @@ export function RalphSessionRow({
     sessionContextPayload,
     renderTaskCard,
 }: RalphSessionRowProps) {
-    const [internalExpanded, setInternalExpanded] = useState(false);
-    const expanded = controlledExpanded ?? internalExpanded;
-    const isSelected = selectedSessionId === session.sessionId || !!isRangeSelected;
-
     const iterCount = session.iterations.length;
-    const subCount = (session.grillingProcess ? 1 : 0) + iterCount;
 
     // Short muted suffix that fits inside the truncating title cell.
     // When multi-loop is enabled and there are multiple loops, prefix with the loop count.
@@ -111,182 +104,62 @@ export function RalphSessionRow({
         subLabel = `${iterCount} iter`;
     }
 
-    const timestamp = session.latestTimestamp
-        ? formatRelativeTime(new Date(session.latestTimestamp).toISOString())
-        : '';
-
-    const dotClasses = PHASE_DOT_CLASSES[session.phase];
-
-    // RALPH mode pill — purple variant, same shape as HistoryGroupHeader's
-    // `modeBadgeClasses`, mirroring the ralph color from ChatListPane.
-    const modeBadgeClasses = cn(
-        'inline-flex items-center justify-center rounded-[3px] border font-mono font-bold uppercase select-none',
-        'text-[9.5px] leading-none tracking-[0.06em] py-[4px] w-full',
-        'text-purple-600 dark:text-purple-400',
-        'border-purple-500/70 dark:border-purple-500/60',
-        'bg-purple-50/60 dark:bg-purple-500/10',
-    );
-
-    const toggle = () => {
-        if (onToggleExpanded) {
-            onToggleExpanded();
-            return;
-        }
-        setInternalExpanded(e => !e);
-    };
+    const children = [
+        ...(session.grillingProcess ? [session.grillingProcess] : []),
+        ...session.iterations,
+    ];
 
     return (
-        <div
-            data-testid="ralph-session-row"
-            data-session-id={session.sessionId}
-            data-selected={isSelected ? 'true' : 'false'}
-            className={cn(
-                expanded && 'bg-[#f7f7f8] dark:bg-[#1f1f20]/80',
-                isSelected && 'ring-1 ring-[#0078d4]/40',
-            )}
-            data-pinned={isPinned ? 'true' : undefined}
-        >
-            <div
-                className={cn(
-                    'chat-row group relative cursor-pointer leading-none transition-colors',
-                    'grid items-center gap-2 px-3 py-1',
-                    'grid-cols-[10px_30px_minmax(0,1fr)_auto]',
-                    'text-[12.5px] h-[26px]',
-                    'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
-                    'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
-                    isPinned && 'border-l-2 border-l-amber-400 dark:border-l-amber-500',
-                )}
-                onClick={e => {
-                    if (onSelectSession) onSelectSession(session.sessionId, e);
-                    else toggle();
-                }}
-                onContextMenu={onContextMenu}
-                onTouchStart={onTouchStart}
-                onTouchEnd={onTouchEnd}
-                onTouchMove={onTouchMove}
-                draggable={!!sessionContextPayload}
-                onDragStart={sessionContextPayload ? (e) => writeRalphSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
-                data-testid="ralph-session-body"
-                data-session-phase={session.phase}
-                data-pinned={isPinned ? 'true' : undefined}
-                data-session-context-source={sessionContextPayload ? 'true' : undefined}
-                data-session-context-kind={sessionContextPayload ? 'ralph-session' : undefined}
-                data-session-context-status={sessionContextPayload?.status}
-                data-expanded={expanded ? 'true' : 'false'}
-                title={sessionContextPayload ? `${sessionContextPayload.displayLabel} - drag to attach as Ralph session context` : undefined}
-                aria-expanded={expanded}
-            >
-                <span
-                    className={cn('w-2 h-2 rounded-full justify-self-center transition-shadow', dotClasses)}
-                    aria-label={`phase: ${PHASE_DOT_LABEL[session.phase]}`}
-                />
-                <span className={modeBadgeClasses} title="Ralph · iterative goal-driven session">
-                    R
-                </span>
-                <span className="min-w-0 flex items-center gap-1 overflow-hidden">
-                    <button
-                        type="button"
-                        className={cn(
-                            'shrink-0 inline-flex items-center justify-center w-4 h-4 -ml-1 rounded',
-                            'text-[#848484] dark:text-[#a0a0a0] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]',
-                            'transition-transform',
-                            expanded && 'rotate-90',
-                        )}
-                        onClick={e => { e.stopPropagation(); toggle(); }}
-                        data-testid="ralph-session-chevron"
-                        aria-label={expanded ? 'Collapse session' : 'Expand session'}
-                        aria-expanded={expanded}
-                    >
-                        <span className="text-[12px] leading-none" aria-hidden="true">›</span>
-                    </button>
-                    {session.hasUnseen && (
-                        <span
-                            className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]"
-                            data-testid="ralph-session-unseen-dot"
-                            aria-label="Unseen activity"
-                        />
-                    )}
-                    <span
-                        className={cn(
-                            'chat-title truncate text-[#1e1e1e] dark:text-[#cccccc]',
-                            session.hasUnseen && 'font-semibold',
-                        )}
-                        title={`${session.title} · ${subLabel}`}
-                        aria-label={`Ralph session: ${session.title} · ${subLabel}`}
-                        data-testid="ralph-session-title"
-                    >
-                        {session.title}
-                        <span className="ml-1.5 font-normal text-[#848484] dark:text-[#9d9d9d]">
-                            {subLabel}
-                        </span>
-                    </span>
-                    {subCount > 0 && (
-                        <span
-                            className="shrink-0 text-[10px] font-mono tabular-nums text-[#848484] dark:text-[#9d9d9d]"
-                            data-testid="ralph-session-child-count"
-                        >
-                            {subCount}
-                        </span>
-                    )}
-                </span>
-                <span className="flex items-center gap-1 text-[#848484] dark:text-[#999]">
-                    <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap group-hover:hidden">
-                        {timestamp}
-                    </span>
-                    {(onTogglePin || onMoreActions) && (
-                        <span className="chat-row-actions hidden group-hover:flex items-center gap-0">
-                            {onTogglePin && (
-                                <button
-                                    type="button"
-                                    className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
-                                    title={isPinned ? 'Unpin' : 'Pin'}
-                                    aria-label={isPinned ? 'Unpin Ralph session group' : 'Pin Ralph session group'}
-                                    data-testid="ralph-session-pin"
-                                    onClick={e => { e.stopPropagation(); onTogglePin(); }}
-                                >
-                                    <svg width="12" height="12" viewBox="0 0 14 14" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
-                                        <path d="M9 1.5l3.5 3.5-2 1-1.5 4-2-2-3 3-.5-.5 3-3-2-2 4-1.5 1-1z"/>
-                                    </svg>
-                                </button>
-                            )}
-                            {onMoreActions && (
-                                <button
-                                    type="button"
-                                    className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
-                                    title="More"
-                                    aria-label="More Ralph session group actions"
-                                    data-testid="ralph-session-more"
-                                    onClick={e => { e.stopPropagation(); onMoreActions(e); }}
-                                >
-                                    <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
-                                        <circle cx="3.5" cy="7" r="1"/>
-                                        <circle cx="7" cy="7" r="1"/>
-                                        <circle cx="10.5" cy="7" r="1"/>
-                                    </svg>
-                                </button>
-                            )}
-                        </span>
-                    )}
-                </span>
-            </div>
-
-            {expanded && (
-                <div
-                    className="flex flex-col ml-3 pl-2 border-l border-[#e0e0e0] dark:border-[#3c3c3c]"
-                    data-testid="ralph-session-children"
-                >
-                    {session.grillingProcess && (
-                        <div key={session.grillingProcess.id ?? 'grilling'}>
-                            {renderTaskCard(session.grillingProcess, { isGroupChild: true })}
-                        </div>
-                    )}
-                    {session.iterations.map((iter, idx) => (
-                        <div key={iter.id ?? idx}>
-                            {renderTaskCard(iter, { isGroupChild: true })}
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
+        <TaskGroupRunRow
+            group={{
+                runId: session.sessionId,
+                children,
+                latestTimestamp: session.latestTimestamp,
+                hasUnseen: session.hasUnseen,
+            }}
+            display={{
+                testIdPrefix: 'ralph-session',
+                label: session.title,
+                title: subLabel,
+                badge: 'R',
+                badgeTitle: 'Ralph · iterative goal-driven session',
+                groupNoun: 'Ralph session',
+                badgeClassName: 'text-purple-600 dark:text-purple-400 border-purple-500/70 dark:border-purple-500/60 bg-purple-50/60 dark:bg-purple-500/10',
+                selectedRingClassName: 'ring-[#0078d4]/40',
+                statusDotClassName: PHASE_DOT_CLASSES[session.phase],
+                statusLabel: session.phase,
+                statusAriaLabel: `phase: ${PHASE_DOT_LABEL[session.phase]}`,
+                status: session.phase,
+                statusAttributeName: 'data-session-phase',
+                groupIdAttributeName: 'data-session-id',
+                titleTestId: 'ralph-session-title',
+                titleTooltip: `${session.title} · ${subLabel}`,
+                titleAriaLabel: `Ralph session: ${session.title} · ${subLabel}`,
+                collapseAriaLabel: 'Collapse session',
+                expandAriaLabel: 'Expand session',
+            }}
+            selectedRunId={selectedSessionId}
+            isRangeSelected={isRangeSelected}
+            expanded={expanded}
+            onToggleExpanded={onToggleExpanded}
+            now={now}
+            onSelectRun={onSelectSession ? (sessionId, event) => onSelectSession(sessionId, event) : undefined}
+            onContextMenu={onContextMenu}
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+            onTouchMove={onTouchMove}
+            isPinned={isPinned}
+            onTogglePin={onTogglePin}
+            onMoreActions={onMoreActions}
+            draggable={sessionContextPayload ? true : undefined}
+            onDragStart={sessionContextPayload ? (e) => writeRalphSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
+            bodyDataAttributes={{
+                'data-session-context-source': sessionContextPayload ? 'true' : undefined,
+                'data-session-context-kind': sessionContextPayload ? 'ralph-session' : undefined,
+                'data-session-context-status': sessionContextPayload?.status,
+            }}
+            bodyTitle={sessionContextPayload ? `${sessionContextPayload.displayLabel} - drag to attach as Ralph session context` : undefined}
+            renderTaskCard={(task) => renderTaskCard(task, { isGroupChild: true })}
+        />
     );
 }

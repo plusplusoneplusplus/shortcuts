@@ -32,6 +32,8 @@ import { RalphSessionRow } from './RalphSessionRow';
 import { groupByForEachRun, getForEachEntryTimestamp, getForEachRunId, type ForEachRunGroup, type ForEachRunHistoryEntry } from './for-each-run-grouping';
 import { ForEachRunRow } from './ForEachRunRow';
 import { groupByMapReduceRun, getMapReduceEntryTimestamp, getMapReduceRunId, type MapReduceRunGroup, type MapReduceRunHistoryEntry } from './map-reduce-run-grouping';
+import { useTaskGroupExpansion } from './task-group-expansion';
+import { buildForEachRunCopyInfo, buildMapReduceRunCopyInfo, buildRalphSessionCopyInfo } from './task-group-copy-info';
 import { MapReduceRunRow } from './MapReduceRunRow';
 import { buildSpawnedTreeChatView, collectSpawnedEntryTasks, getSpawnedEntryTimestamp, isSpawnedTreeEntry, partitionSpawnedTreesByArchived, type SpawnedTreeEntry } from './spawned-tree-grouping';
 import { SpawnedTreeRow } from './SpawnedTreeRow';
@@ -1588,66 +1590,16 @@ export function ChatListPane({
         [chatGroups, applyRalphGrouping],
     );
 
-    const [expandedRalphSessionState, setExpandedRalphSessionState] = useState<{ workspaceId?: string; sessions: Set<string> }>({
-        workspaceId,
-        sessions: new Set(),
-    });
-    const [expandedForEachRunState, setExpandedForEachRunState] = useState<{ workspaceId?: string; runs: Set<string> }>({
-        workspaceId,
-        runs: new Set(),
-    });
-    const [expandedMapReduceRunState, setExpandedMapReduceRunState] = useState<{ workspaceId?: string; runs: Set<string> }>({
-        workspaceId,
-        runs: new Set(),
-    });
-    const expandedRalphSessionIds = useMemo(
-        () => expandedRalphSessionState.workspaceId === workspaceId ? expandedRalphSessionState.sessions : new Set<string>(),
-        [expandedRalphSessionState, workspaceId],
-    );
-    const expandedForEachRunIds = useMemo(
-        () => expandedForEachRunState.workspaceId === workspaceId ? expandedForEachRunState.runs : new Set<string>(),
-        [expandedForEachRunState, workspaceId],
-    );
-    const expandedMapReduceRunIds = useMemo(
-        () => expandedMapReduceRunState.workspaceId === workspaceId ? expandedMapReduceRunState.runs : new Set<string>(),
-        [expandedMapReduceRunState, workspaceId],
-    );
-    const toggleRalphSession = useCallback((sessionId: string) => {
-        setExpandedRalphSessionState(prev => {
-            const sessions = new Set(prev.workspaceId === workspaceId ? prev.sessions : []);
-            sessions.has(sessionId) ? sessions.delete(sessionId) : sessions.add(sessionId);
-            return { workspaceId, sessions };
-        });
-    }, [workspaceId]);
-    const toggleForEachRun = useCallback((runId: string) => {
-        setExpandedForEachRunState(prev => {
-            const runs = new Set(prev.workspaceId === workspaceId ? prev.runs : []);
-            runs.has(runId) ? runs.delete(runId) : runs.add(runId);
-            return { workspaceId, runs };
-        });
-    }, [workspaceId]);
-    const toggleMapReduceRun = useCallback((runId: string) => {
-        setExpandedMapReduceRunState(prev => {
-            const runs = new Set(prev.workspaceId === workspaceId ? prev.runs : []);
-            runs.has(runId) ? runs.delete(runId) : runs.add(runId);
-            return { workspaceId, runs };
-        });
-    }, [workspaceId]);
-
-    useEffect(() => {
-        setExpandedRalphSessionState(prev => {
-            if (prev.workspaceId === workspaceId && prev.sessions.size === 0) return prev;
-            return { workspaceId, sessions: new Set() };
-        });
-        setExpandedForEachRunState(prev => {
-            if (prev.workspaceId === workspaceId && prev.runs.size === 0) return prev;
-            return { workspaceId, runs: new Set() };
-        });
-        setExpandedMapReduceRunState(prev => {
-            if (prev.workspaceId === workspaceId && prev.runs.size === 0) return prev;
-            return { workspaceId, runs: new Set() };
-        });
-    }, [workspaceId]);
+    // Workspace-scoped expand/collapse for all task-group kinds (Ralph
+    // sessions, For Each runs, Map Reduce runs) lives in one keyed state.
+    const taskGroupExpansion = useTaskGroupExpansion(workspaceId);
+    const expandedRalphSessionIds = taskGroupExpansion.expandedIds('ralph');
+    const expandedForEachRunIds = taskGroupExpansion.expandedIds('for-each');
+    const expandedMapReduceRunIds = taskGroupExpansion.expandedIds('map-reduce');
+    const toggleTaskGroup = taskGroupExpansion.toggle;
+    const toggleRalphSession = useCallback((sessionId: string) => toggleTaskGroup('ralph', sessionId), [toggleTaskGroup]);
+    const toggleForEachRun = useCallback((runId: string) => toggleTaskGroup('for-each', runId), [toggleTaskGroup]);
+    const toggleMapReduceRun = useCallback((runId: string) => toggleTaskGroup('map-reduce', runId), [toggleTaskGroup]);
 
     // Per-root collapse state for spawned-conversation trees (AC-03). Seeded
     // from localStorage so a collapsed root survives reload; default expanded
@@ -2036,16 +1988,7 @@ export function ChatListPane({
                     label: 'Copy run info',
                     icon: '📎',
                     onClick: () => {
-                        const group = contextMenu.forEachRun!;
-                        const lines = [
-                            `For Each run ${group.runId}`,
-                            `Status: ${group.run.status}`,
-                            `Items: ${group.run.itemCount}`,
-                            `Updated: ${group.run.updatedAt ?? group.run.completedAt ?? group.run.createdAt}`,
-                            'Processes:',
-                            ...ids.map(id => `  - ${id}`),
-                        ];
-                        void copyToClipboard(lines.join('\n'));
+                        void copyToClipboard(buildForEachRunCopyInfo(contextMenu.forEachRun!, ids));
                         closeContextMenu();
                     },
                 }] : []),
@@ -2053,17 +1996,7 @@ export function ChatListPane({
                     label: 'Copy run info',
                     icon: '📎',
                     onClick: () => {
-                        const group = contextMenu.mapReduceRun!;
-                        const lines = [
-                            `Map Reduce run ${group.runId}`,
-                            `Status: ${group.run.status}`,
-                            `Map items: ${group.run.itemCount}`,
-                            `Reduce: ${group.run.reduceStatus}`,
-                            `Updated: ${group.run.updatedAt ?? group.run.completedAt ?? group.run.createdAt}`,
-                            'Processes:',
-                            ...ids.map(id => `  - ${id}`),
-                        ];
-                        void copyToClipboard(lines.join('\n'));
+                        void copyToClipboard(buildMapReduceRunCopyInfo(contextMenu.mapReduceRun!, ids));
                         closeContextMenu();
                     },
                 }] : []),
@@ -2071,16 +2004,7 @@ export function ChatListPane({
                     label: 'Copy session info',
                     icon: '📎',
                     onClick: () => {
-                        const rs = contextMenu.ralphSession!;
-                        const lines = [
-                            `Ralph session ${rs.sessionId}`,
-                            `Phase: ${rs.phase}`,
-                            `Iterations: ${rs.iterations.length}`,
-                            `Updated: ${rs.latestTimestamp ? new Date(rs.latestTimestamp).toISOString() : 'unknown'}`,
-                            'Processes:',
-                            ...ids.map(id => `  - ${id}`),
-                        ];
-                        void copyToClipboard(lines.join('\n'));
+                        void copyToClipboard(buildRalphSessionCopyInfo(contextMenu.ralphSession!, ids));
                         closeContextMenu();
                     },
                 }] : []),
