@@ -1,56 +1,34 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import './mcp-servers-redesign.css';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type {
     McpServerDetail as ClientMcpServerDetail,
     McpConfigScope,
     McpServerAuthStatus,
     McpServerToolsResult,
+    McpServerCreateRequest,
+    McpServerUpdateRequest,
     McpDiscoveredTool,
 } from '@plusplusoneplusplus/coc-client';
+import { isMcpToolEnabled } from './mcpToolsAllowList';
 import {
-    isMcpToolEnabled,
-    applyMcpToolToggle,
-    enableAllMcpTools,
-    disableAllMcpTools,
-    normalizeEnabledMcpTools,
-    type EnabledMcpToolsMap,
-} from './mcpToolsAllowList';
+    buildMcpServerListModel,
+    type DiscoveryState,
+    type FilterTab,
+    type InspectorTab,
+    type McpAuthFlowState,
+    type McpServerEntry,
+    type McpServerSource,
+    type McpServerSources,
+} from './mcp-server-list-model';
+import { useMcpServerInspectorController } from './useMcpServerInspectorController';
 
-type DiscoveryState = 'idle' | 'loading' | 'loaded' | 'error';
-
-export type McpServerSource = 'global' | 'workspace';
-export type McpServerEntry = {
-    name: string;
-    type: string;
-    url?: string;
-    command?: string;
-    source?: McpServerSource;
-    effective?: boolean;
-    overriddenBy?: McpServerSource;
-    /** Derived status from the server response. */
-    status?: 'ok' | 'auth' | 'off' | 'err';
-    /** Auth state for remote servers (absent on stdio). */
-    authStatus?: McpServerAuthStatus;
-    /** Token expiry (epoch seconds), when known. */
-    authExpiresAt?: number;
-    /** User-provided description from config file. */
-    description?: string;
-};
-
-export type McpServerSourceSection = {
-    configPath: string;
-    fileExists: boolean;
-    success: boolean;
-    error?: string;
-    servers: McpServerEntry[];
-};
-
-export type McpServerSources = {
-    global: McpServerSourceSection;
-    workspace: McpServerSourceSection;
-};
+export type {
+    McpServerSource,
+    McpServerEntry,
+    McpServerSourceSection,
+    McpServerSources,
+} from './mcp-server-list-model';
 
 interface McpServersPanelProps {
     workspaceId?: string;
@@ -71,70 +49,6 @@ interface McpServersPanelProps {
     onRefresh?: () => void;
     /** Called after a server is added or deleted so the parent can refresh the list. */
     onMutate?: () => void;
-}
-
-type FilterTab = 'all' | 'active' | 'auth' | 'disabled';
-
-type InspectorTab = 'overview' | 'tools' | 'configuration' | 'source' | 'activity';
-
-/**
- * Local state for a server's OAuth flow. `starting` → `authorizing` → `completed`
- * (or `failed`). Stored only in the panel — server-side state lives in the
- * McpOauthManager and is fetched via `/api/mcp-oauth/pending/:id`.
- */
-type McpAuthFlowState =
-    | { phase: 'starting' }
-    | { phase: 'authorizing'; requestId: string; authorizationUrl?: string }
-    | { phase: 'completed'; requestId: string }
-    | { phase: 'failed'; requestId: string; error: string };
-
-const AUTH_POLL_INTERVAL_MS = 2_000;
-const AUTH_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
-
-/**
- * Resolve the dot color for a row.
- *
- * Trust the server-derived `status` field when present — it already accounts
- * for cached OAuth tokens. The legacy fallback (treat any HTTP/SSE server as
- * "auth") is kept for older responses that pre-date authStatus.
- */
-function getServerStatus(server: McpServerEntry, isEnabled: boolean): 'ok' | 'auth' | 'off' | 'err' {
-    if (!isEnabled) return 'off';
-    if (server.status) return server.status;
-    if (server.type === 'http' || server.type === 'sse') return 'auth';
-    return 'ok';
-}
-
-function needsAuth(server: McpServerEntry): boolean {
-    if (server.type !== 'http' && server.type !== 'sse') return false;
-    if (!server.authStatus) return true; // legacy response — assume needs auth
-    return server.authStatus === 'required' || server.authStatus === 'expired';
-}
-
-function isRemote(server: McpServerEntry): boolean {
-    return server.type === 'http' || server.type === 'sse';
-}
-
-function getServerDescription(server: McpServerEntry, isEnabled: boolean): string {
-    const base = server.description || server.url || server.command || '';
-    if (!isEnabled) return `Disabled · ${base.toLowerCase()}`;
-    return base;
-}
-
-function getTransportPillClass(type: string): string {
-    if (type === 'stdio') return 'accent';
-    if (type === 'http' || type === 'sse') return 'done';
-    return '';
-}
-
-function getSourcePillInfo(server: McpServerEntry): { label: string; cls: string } {
-    if (server.overriddenBy === 'workspace' || server.source === 'workspace') {
-        return server.overriddenBy === 'workspace'
-            ? { label: 'user override', cls: 'warn' }
-            : { label: 'repo config', cls: 'muted' };
-    }
-    if (server.source === 'global') return { label: 'global', cls: 'muted' };
-    return { label: 'repo config', cls: 'muted' };
 }
 
 function ChevronIcon() {
@@ -453,12 +367,13 @@ function InspectorToolsPane({
     );
 }
 
-function InspectorConfigPane({ server, detail, workspaceId, onSaved, onDeleted }: {
+function InspectorConfigPane({ server, detail, workspaceId, updateServer, migrateServer, deleteServer }: {
     server: McpServerEntry;
     detail: ClientMcpServerDetail | null | 'loading';
     workspaceId: string;
-    onSaved: () => void;
-    onDeleted: () => void;
+    updateServer: (serverName: string, request: McpServerUpdateRequest) => Promise<void>;
+    migrateServer: (serverName: string, targetScope: McpConfigScope) => Promise<void>;
+    deleteServer: (serverName: string) => Promise<void>;
 }) {
     const loaded = detail && detail !== 'loading' ? detail : null;
 
@@ -500,8 +415,7 @@ function InspectorConfigPane({ server, detail, workspaceId, onSaved, onDeleted }
         setArgsError('');
         try {
             const args = argsText.split('\n').map(s => s.trim()).filter(Boolean);
-            await getSpaCocClient().workspaces.updateMcpServer(workspaceId, server.name, { args });
-            onSaved();
+            await updateServer(server.name, { args });
         } catch (e) {
             setArgsError(getSpaCocClientErrorMessage(e, 'Failed to save args'));
         } finally {
@@ -514,8 +428,7 @@ function InspectorConfigPane({ server, detail, workspaceId, onSaved, onDeleted }
         setToolScope(scope);
         setScopeSaving(true);
         try {
-            await getSpaCocClient().workspaces.updateMcpServer(workspaceId, server.name, { toolScope: scope });
-            onSaved();
+            await updateServer(server.name, { toolScope: scope });
         } catch {
             // revert
             if (loaded) setToolScope(loaded.toolScope);
@@ -530,8 +443,7 @@ function InspectorConfigPane({ server, detail, workspaceId, onSaved, onDeleted }
         setConfigScope(targetScope);
         setMigrateSaving(true);
         try {
-            await getSpaCocClient().workspaces.migrateMcpServer(workspaceId, server.name, targetScope as McpConfigScope);
-            onSaved();
+            await migrateServer(server.name, targetScope);
         } catch {
             setConfigScope(prevScope);
         } finally {
@@ -544,12 +456,11 @@ function InspectorConfigPane({ server, detail, workspaceId, onSaved, onDeleted }
         setEnvSaving(true);
         setEnvError('');
         try {
-            await getSpaCocClient().workspaces.updateMcpServer(workspaceId, server.name, {
+            await updateServer(server.name, {
                 env: { [newEnvKey.trim()]: newEnvValue },
             });
             setNewEnvKey('');
             setNewEnvValue('');
-            onSaved();
         } catch (e) {
             setEnvError(getSpaCocClientErrorMessage(e, 'Failed to add env var'));
         } finally {
@@ -561,8 +472,7 @@ function InspectorConfigPane({ server, detail, workspaceId, onSaved, onDeleted }
         if (!workspaceId) return;
         setDeleteSaving(true);
         try {
-            await getSpaCocClient().workspaces.deleteMcpServer(workspaceId, server.name);
-            onDeleted();
+            await deleteServer(server.name);
         } catch {
             setDeleteConfirm(false);
         } finally {
@@ -781,14 +691,15 @@ function InspectorActivityPane() {
     );
 }
 
-function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, onSaved, onDeleted, tools }: {
+function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, updateServer, migrateServer, deleteServer, tools }: {
     server: McpServerEntry;
     activeTab: InspectorTab;
     onTabChange: (tab: InspectorTab) => void;
     detail: ClientMcpServerDetail | null | 'loading';
     workspaceId: string;
-    onSaved: () => void;
-    onDeleted: () => void;
+    updateServer: (serverName: string, request: McpServerUpdateRequest) => Promise<void>;
+    migrateServer: (serverName: string, targetScope: McpConfigScope) => Promise<void>;
+    deleteServer: (serverName: string) => Promise<void>;
     tools: {
         enabled: boolean;
         result: McpServerToolsResult | undefined;
@@ -845,8 +756,9 @@ function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, 
                         server={server}
                         detail={detail}
                         workspaceId={workspaceId}
-                        onSaved={onSaved}
-                        onDeleted={onDeleted}
+                        updateServer={updateServer}
+                        migrateServer={migrateServer}
+                        deleteServer={deleteServer}
                     />
                 )}
                 {activeTab === 'source' && <InspectorSourcePane server={server} detail={detail} />}
@@ -856,7 +768,7 @@ function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, 
     );
 }
 
-function AddServerCard({ workspaceId, onAdded }: { workspaceId?: string; onAdded?: () => void }) {
+function AddServerCard({ workspaceId, addServer }: { workspaceId?: string; addServer: (request: McpServerCreateRequest) => Promise<void> }) {
     const [transport, setTransport] = useState<'stdio' | 'http' | 'sse'>('stdio');
     const [name, setName] = useState('');
     const [desc, setDesc] = useState('');
@@ -884,7 +796,7 @@ function AddServerCard({ workspaceId, onAdded }: { workspaceId?: string; onAdded
             for (const row of envRows) {
                 if (row.key.trim()) envObj[row.key.trim()] = row.value;
             }
-            await getSpaCocClient().workspaces.addMcpServer(workspaceId, {
+            await addServer({
                 name: name.trim(),
                 type: transport,
                 command: transport === 'stdio' ? (command.trim() || undefined) : undefined,
@@ -898,7 +810,6 @@ function AddServerCard({ workspaceId, onAdded }: { workspaceId?: string; onAdded
             // Reset form
             setName(''); setDesc(''); setCommand('npx'); setArgsText(''); setUrl('');
             setEnvRows([{ key: '', value: '' }]); setToolScope('all'); setScope('workspace');
-            onAdded?.();
         } catch (e) {
             setError(getSpaCocClientErrorMessage(e, 'Failed to add server'));
         } finally {
@@ -1197,212 +1108,16 @@ export function McpServersPanel({
 }: McpServersPanelProps) {
     const [filterTab, setFilterTab] = useState<FilterTab>('all');
     const [searchQuery, setSearchQuery] = useState('');
-    const [expandedServer, setExpandedServer] = useState<string | null>(null);
-    const [inspectorTab, setInspectorTab] = useState<InspectorTab>('overview');
-    const [detailCache, setDetailCache] = useState<Record<string, ClientMcpServerDetail | null | 'loading'>>({});
 
-    // ── Live tool discovery (AC-02) ──────────────────────────────────────────
-    const [discovery, setDiscovery] = useState<Record<string, McpServerToolsResult>>({});
-    const [discoveryState, setDiscoveryState] = useState<DiscoveryState>('idle');
-    const [discoveryError, setDiscoveryError] = useState<string | null>(null);
-
-    // ── Per-tool allow-list (AC-03) ──────────────────────────────────────────
-    const [toolsAllowList, setToolsAllowList] = useState<EnabledMcpToolsMap>(() => ({ ...(enabledMcpTools ?? {}) }));
-    const [toolsSaving, setToolsSaving] = useState(false);
-    // Keep local allow-list in sync when the parent reloads the config.
-    useEffect(() => {
-        setToolsAllowList({ ...(enabledMcpTools ?? {}) });
-    }, [enabledMcpTools]);
-
-    const fetchTools = useCallback(async (forceReload = false) => {
-        if (!workspaceId) return;
-        setDiscoveryState('loading');
-        setDiscoveryError(null);
-        try {
-            const resp = await getSpaCocClient().workspaces.discoverMcpTools(
-                workspaceId,
-                forceReload ? { forceReload: true } : undefined,
-            );
-            setDiscovery(resp.servers ?? {});
-            setDiscoveryState('loaded');
-        } catch (e) {
-            setDiscoveryError(getSpaCocClientErrorMessage(e, 'Failed to discover tools'));
-            setDiscoveryState('error');
-        }
-    }, [workspaceId]);
-
-    // Eager discovery on mount / workspace change.
-    useEffect(() => { void fetchTools(); }, [fetchTools]);
-
-    const persistToolsAllowList = useCallback(async (nextMap: EnabledMcpToolsMap) => {
-        if (!workspaceId) return;
-        let prev: EnabledMcpToolsMap = {};
-        setToolsAllowList(curr => { prev = curr; return nextMap; }); // optimistic
-        setToolsSaving(true);
-        try {
-            await getSpaCocClient().workspaces.updateMcpConfig(workspaceId, {
-                enabledMcpServers: enabledMcpServers ?? null,
-                enabledMcpTools: normalizeEnabledMcpTools(nextMap),
-            });
-        } catch (e) {
-            setToolsAllowList(prev); // revert
-            setDiscoveryError(getSpaCocClientErrorMessage(e, 'Failed to save tool settings'));
-        } finally {
-            setToolsSaving(false);
-        }
-    }, [workspaceId, enabledMcpServers]);
-
-    const discoveredToolNames = useCallback((serverName: string): string[] => {
-        const r = discovery[serverName];
-        return r && r.status === 'ok' ? r.tools.map(t => t.name) : [];
-    }, [discovery]);
-
-    const handleToolToggle = useCallback((serverName: string, toolName: string, on: boolean) => {
-        void persistToolsAllowList(
-            applyMcpToolToggle(toolsAllowList, serverName, discoveredToolNames(serverName), toolName, on),
-        );
-    }, [persistToolsAllowList, toolsAllowList, discoveredToolNames]);
-
-    const handleEnableAllTools = useCallback((serverName: string) => {
-        void persistToolsAllowList(enableAllMcpTools(toolsAllowList, serverName));
-    }, [persistToolsAllowList, toolsAllowList]);
-
-    const handleDisableAllTools = useCallback((serverName: string) => {
-        void persistToolsAllowList(disableAllMcpTools(toolsAllowList, serverName));
-    }, [persistToolsAllowList, toolsAllowList]);
-
-    /** Row-level tool count label, e.g. "12", "8/12", "…", "!", or "—". */
-    const toolCountFor = useCallback((server: McpServerEntry): { text: string; title?: string } => {
-        if (!isEnabled(server.name) || server.effective === false) return { text: '—' };
-        const r = discovery[server.name];
-        if (!r) {
-            return discoveryState === 'loading' || discoveryState === 'idle'
-                ? { text: '…' }
-                : { text: '—' };
-        }
-        if (r.status === 'error') return { text: '!', title: r.error };
-        const total = r.tools.length;
-        const enabledCount = r.tools.filter(t => isMcpToolEnabled(toolsAllowList[server.name], t.name)).length;
-        return { text: enabledCount === total ? String(total) : `${enabledCount}/${total}`, title: `${enabledCount} of ${total} tools enabled` };
-    }, [discovery, discoveryState, isEnabled, toolsAllowList]);
-    /** Per-server OAuth flow state — drives the Authenticate button label and spinner. */
-    const [authFlow, setAuthFlow] = useState<Record<string, McpAuthFlowState>>({});
-    const authPollersRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
-
-    // Tear down any open pollers when the panel unmounts to avoid stray fetches.
-    useEffect(() => () => {
-        for (const t of Object.values(authPollersRef.current)) clearInterval(t);
-        authPollersRef.current = {};
-    }, []);
-
-    const setFlow = useCallback((serverName: string, next: McpAuthFlowState | null) => {
-        setAuthFlow(prev => {
-            if (next === null) {
-                if (!(serverName in prev)) return prev;
-                const copy = { ...prev };
-                delete copy[serverName];
-                return copy;
-            }
-            return { ...prev, [serverName]: next };
-        });
-    }, []);
-
-    const startPolling = useCallback((serverName: string, requestId: string) => {
-        // Replace any existing poller for this server
-        const existing = authPollersRef.current[serverName];
-        if (existing) clearInterval(existing);
-
-        const apiBase = getApiBase();
-        const url = `${apiBase}/mcp-oauth/pending/${encodeURIComponent(requestId)}`;
-        const startedAt = Date.now();
-
-        const tick = async () => {
-            try {
-                const r = await fetch(url);
-                if (r.ok) {
-                    const entry = await r.json() as { status?: string; error?: string };
-                    if (entry.status === 'completed') {
-                        clearInterval(authPollersRef.current[serverName]);
-                        delete authPollersRef.current[serverName];
-                        setFlow(serverName, { phase: 'completed', requestId });
-                        onRefresh?.();
-                        return;
-                    } else if (entry.status === 'failed') {
-                        clearInterval(authPollersRef.current[serverName]);
-                        delete authPollersRef.current[serverName];
-                        setFlow(serverName, { phase: 'failed', requestId, error: entry.error ?? 'Authorization failed' });
-                        return;
-                    }
-                }
-            } catch {
-                // transient network error — keep polling
-            }
-            // Always check timeout so a stuck/gone entry doesn't poll forever.
-            if (Date.now() - startedAt > AUTH_POLL_TIMEOUT_MS) {
-                clearInterval(authPollersRef.current[serverName]);
-                delete authPollersRef.current[serverName];
-                setFlow(serverName, { phase: 'failed', requestId, error: 'Authorization timed out' });
-            }
-        };
-
-        authPollersRef.current[serverName] = setInterval(tick, AUTH_POLL_INTERVAL_MS);
-    }, [onRefresh, setFlow]);
-
-    const handleAuthenticate = useCallback(async (serverName: string) => {
-        setFlow(serverName, { phase: 'starting' });
-        try {
-            const r = await fetch(`${getApiBase()}/mcp-oauth/start`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ serverName, workspaceId: workspaceId || undefined }),
-            });
-            if (!r.ok) {
-                const text = await r.text().catch(() => '');
-                throw new Error(text || `Failed to start OAuth flow (${r.status})`);
-            }
-            const result = await r.json() as {
-                requestId?: string;
-                authorizationUrl?: string;
-                alreadyAuthenticated?: boolean;
-            };
-
-            if (result.alreadyAuthenticated) {
-                setFlow(serverName, { phase: 'completed', requestId: '' });
-                onRefresh?.();
-                return;
-            }
-            if (!result.requestId) {
-                throw new Error('Server did not return a request id');
-            }
-
-            if (result.authorizationUrl) {
-                window.open(result.authorizationUrl, '_blank', 'noopener,noreferrer');
-            }
-            setFlow(serverName, {
-                phase: 'authorizing',
-                requestId: result.requestId,
-                authorizationUrl: result.authorizationUrl,
-            });
-            startPolling(serverName, result.requestId);
-        } catch (err) {
-            setFlow(serverName, {
-                phase: 'failed',
-                requestId: '',
-                error: err instanceof Error ? err.message : String(err),
-            });
-        }
-    }, [onRefresh, setFlow, startPolling, workspaceId]);
-
-    const fetchDetail = useCallback(async (name: string) => {
-        if (!workspaceId || detailCache[name] !== undefined) return;
-        setDetailCache(prev => ({ ...prev, [name]: 'loading' }));
-        try {
-            const detail = await getSpaCocClient().workspaces.getMcpServerDetail(workspaceId, name);
-            setDetailCache(prev => ({ ...prev, [name]: detail }));
-        } catch {
-            setDetailCache(prev => ({ ...prev, [name]: null }));
-        }
-    }, [workspaceId, detailCache]);
+    // Workspace-scoped state (detail cache, discovery, allow-list, OAuth flow,
+    // expanded row, inspector tab) plus mutation actions all live in the
+    // controller so switching workspaces never reuses another repo's state.
+    const controller = useMcpServerInspectorController(workspaceId, {
+        enabledMcpServers,
+        enabledMcpTools,
+        onRefresh,
+        onMutate,
+    });
 
     const legacySources: McpServerSources | undefined = sources ?? (availableServers.length > 0 ? {
         global: {
@@ -1419,61 +1134,18 @@ export function McpServersPanel({
         },
     } : undefined);
 
-    const allServers = availableServers;
-
-    const counts = useMemo(() => {
-        const active = allServers.filter(s => isEnabled(s.name) && s.effective !== false && getServerStatus(s, true) === 'ok').length;
-        const authCount = allServers.filter(s => getServerStatus(s, isEnabled(s.name)) === 'auth').length;
-        const disabled = allServers.filter(s => !isEnabled(s.name) || s.effective === false).length;
-        return { all: allServers.length, active, auth: authCount, disabled };
-    }, [allServers, isEnabled]);
-
-    const filteredServers = useMemo(() => {
-        let list = allServers;
-
-        if (filterTab === 'active') {
-            list = list.filter(s => isEnabled(s.name) && s.effective !== false && getServerStatus(s, true) === 'ok');
-        } else if (filterTab === 'auth') {
-            list = list.filter(s => getServerStatus(s, isEnabled(s.name)) === 'auth');
-        } else if (filterTab === 'disabled') {
-            list = list.filter(s => !isEnabled(s.name) || s.effective === false);
-        }
-
-        const q = searchQuery.trim().toLowerCase();
-        if (q) {
-            list = list.filter(s =>
-                s.name.toLowerCase().includes(q) ||
-                (s.description ?? '').toLowerCase().includes(q)
-            );
-        }
-
-        return list;
-    }, [allServers, filterTab, searchQuery, isEnabled]);
-
-    const handleToggleExpand = useCallback((name: string) => {
-        if (expandedServer === name) {
-            setExpandedServer(null);
-        } else {
-            setExpandedServer(name);
-            setInspectorTab('overview');
-            fetchDetail(name);
-        }
-    }, [expandedServer, fetchDetail]);
-
-    // After a detail-mutating save, invalidate the cached detail so it re-fetches on next open
-    const handleDetailSaved = useCallback((serverName: string) => {
-        setDetailCache(prev => {
-            const next = { ...prev };
-            delete next[serverName];
-            return next;
-        });
-    }, []);
-
-    const handleServerDeleted = useCallback(() => {
-        setExpandedServer(null);
-        onMutate?.();
-        onRefresh?.();
-    }, [onMutate, onRefresh]);
+    const { discovery, discoveryState, discoveryError, toolsAllowList, authFlow } = controller;
+    const model = useMemo(() => buildMcpServerListModel({
+        servers: availableServers,
+        isEnabled,
+        filterTab,
+        searchQuery,
+        discovery,
+        discoveryState,
+        toolsAllowList,
+        authFlow,
+    }), [availableServers, isEnabled, filterTab, searchQuery, discovery, discoveryState, toolsAllowList, authFlow]);
+    const { counts, rows } = model;
 
     if (loading) {
         return (
@@ -1540,7 +1212,7 @@ export function McpServersPanel({
                 {onRefresh && (
                     <button
                         className="mcp-btn"
-                        onClick={() => { onRefresh(); void fetchTools(true); }}
+                        onClick={() => { onRefresh(); controller.refetchTools(true); }}
                         disabled={loading}
                         type="button"
                     >
@@ -1554,22 +1226,14 @@ export function McpServersPanel({
 
             {/* Server list */}
             <div className="mcp-server-list" data-testid="mcp-server-list">
-                {filteredServers.length === 0 ? (
+                {rows.length === 0 ? (
                     <div className="mcp-empty-state">
                         {searchQuery ? `No servers matching "${searchQuery}"` : 'No MCP servers configured.'}
                     </div>
                 ) : (
-                    filteredServers.map(server => {
-                        const enabled = isEnabled(server.name);
-                        const isOverridden = server.effective === false;
-                        const status = getServerStatus(server, enabled);
-                        const description = getServerDescription(server, enabled);
-                        const transportCls = getTransportPillClass(server.type);
-                        const sourcePill = getSourcePillInfo(server);
-                        const isExpanded = expandedServer === server.name;
-                        const flow = authFlow[server.name];
-                        const showAuthBtn = isRemote(server) && enabled && (needsAuth(server) || (flow && flow.phase !== 'completed'));
-                        const toolCount = toolCountFor(server);
+                    rows.map(row => {
+                        const { server, enabled, isOverridden, status, description, transportCls, sourcePill, toolCount, flow, showAuthBtn } = row;
+                        const isExpanded = controller.expandedServer === server.name;
 
                         return (
                             <React.Fragment key={server.name}>
@@ -1579,7 +1243,7 @@ export function McpServersPanel({
                                 >
                                     <button
                                         className="mcp-chev"
-                                        onClick={() => handleToggleExpand(server.name)}
+                                        onClick={() => controller.toggleExpand(server.name)}
                                         type="button"
                                         aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${server.name}`}
                                     >
@@ -1596,7 +1260,7 @@ export function McpServersPanel({
                                                 serverName={server.name}
                                                 flow={flow}
                                                 authStatus={server.authStatus}
-                                                onClick={() => handleAuthenticate(server.name)}
+                                                onClick={() => controller.authenticate(server.name)}
                                             />
                                         )}
                                     </div>
@@ -1613,23 +1277,24 @@ export function McpServersPanel({
                                 {isExpanded && (
                                     <ServerInspector
                                         server={server}
-                                        activeTab={inspectorTab}
-                                        onTabChange={setInspectorTab}
-                                        detail={detailCache[server.name] ?? null}
+                                        activeTab={controller.inspectorTab}
+                                        onTabChange={controller.setInspectorTab}
+                                        detail={controller.getDetail(server.name)}
                                         workspaceId={workspaceId}
-                                        onSaved={() => handleDetailSaved(server.name)}
-                                        onDeleted={handleServerDeleted}
+                                        updateServer={controller.updateServer}
+                                        migrateServer={controller.migrateServer}
+                                        deleteServer={controller.deleteServer}
                                         tools={{
                                             enabled: enabled && !isOverridden,
                                             result: discovery[server.name],
                                             discoveryState,
                                             discoveryError,
                                             allowEntry: toolsAllowList[server.name],
-                                            saving: toolsSaving,
-                                            onToggleTool: (toolName, on) => handleToolToggle(server.name, toolName, on),
-                                            onEnableAll: () => handleEnableAllTools(server.name),
-                                            onDisableAll: () => handleDisableAllTools(server.name),
-                                            onRefresh: () => void fetchTools(true),
+                                            saving: controller.toolsSaving,
+                                            onToggleTool: (toolName, on) => controller.toggleTool(server.name, toolName, on),
+                                            onEnableAll: () => controller.enableAllTools(server.name),
+                                            onDisableAll: () => controller.disableAllTools(server.name),
+                                            onRefresh: () => controller.refetchTools(true),
                                         }}
                                     />
                                 )}
@@ -1642,10 +1307,7 @@ export function McpServersPanel({
             {/* Add server card */}
             <AddServerCard
                 workspaceId={workspaceId}
-                onAdded={() => {
-                    onMutate?.();
-                    onRefresh?.();
-                }}
+                addServer={controller.addServer}
             />
 
             {/* Footer */}

@@ -217,7 +217,7 @@ describe('PrChecksTable + PrMergeReadiness', () => {
 });
 
 describe('PrFilesPanel', () => {
-    const realDiff = parseDiffFileList([
+    const rawFilesDiff = [
         'diff --git a/src/foo.ts b/src/foo.ts',
         '--- a/src/foo.ts',
         '+++ b/src/foo.ts',
@@ -237,7 +237,8 @@ describe('PrFilesPanel', () => {
         '@@ -0,0 +1,1 @@',
         '+ok',
         '',
-    ].join('\n'));
+    ].join('\n');
+    const realDiff = parseDiffFileList(rawFilesDiff);
 
     it('renders a row per parsed file', () => {
         render(<PrFilesPanel files={realDiff} />);
@@ -266,15 +267,41 @@ describe('PrFilesPanel', () => {
 
     it('renders an empty placeholder when there are no files', () => {
         render(<PrFilesPanel files={[]} />);
-        expect(screen.getByText(/No file changes/i)).toBeTruthy();
+        // Split layout: both the file list and the diff panel report the empty state.
+        expect(screen.getAllByText(/No file changes/i).length).toBeGreaterThan(0);
     });
 
-    it('calls onFileClick when a file row is clicked', () => {
-        const onFileClick = vi.fn();
-        render(<PrFilesPanel files={realDiff} onFileClick={onFileClick} />);
+    it('selects a file inline on row click without triggering the pop-out', () => {
+        const onPopOut = vi.fn();
+        render(<PrFilesPanel files={realDiff} onPopOut={onPopOut} />);
         const rows = screen.getAllByTestId('pr-file-row');
         fireEvent.click(rows[0]);
-        expect(onFileClick).toHaveBeenCalledWith(rows[0].getAttribute('data-file-path'));
+        expect(onPopOut).not.toHaveBeenCalled();
+    });
+
+    it('calls onPopOut with the active file from the explicit pop-out button', () => {
+        const onPopOut = vi.fn();
+        render(<PrFilesPanel files={realDiff} diffText={rawFilesDiff} onPopOut={onPopOut} />);
+        const target = screen.getAllByTestId('pr-file-row')
+            .find(row => row.getAttribute('data-file-path') === 'test/worker.ts');
+        fireEvent.click(target!);
+        fireEvent.click(screen.getByTestId('pr-diff-popout'));
+        expect(onPopOut).toHaveBeenCalledWith('test/worker.ts');
+    });
+
+    it('renders the selected file diff inline and swaps to another file lazily', () => {
+        render(<PrFilesPanel files={realDiff} diffText={rawFilesDiff} />);
+        // Default selection (src/foo.ts) renders inline; other files are not rendered.
+        const fooDiff = screen.getByTestId('pr-inline-diff');
+        expect(fooDiff.textContent).toContain('added');
+        expect(fooDiff.textContent).not.toContain('old');
+
+        const readmeRow = screen.getAllByTestId('pr-file-row')
+            .find(row => row.getAttribute('data-file-path') === 'docs/readme.md');
+        fireEvent.click(readmeRow!);
+        const readmeDiff = screen.getByTestId('pr-inline-diff');
+        expect(readmeDiff.textContent).toContain('old');
+        expect(readmeDiff.textContent).toContain('new');
     });
 
     it('shows file rows by basename (not full path) inside their parent folder', () => {

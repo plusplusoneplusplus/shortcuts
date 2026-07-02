@@ -33,7 +33,7 @@ import { groupByForEachRun, getForEachEntryTimestamp, getForEachRunId, type ForE
 import { ForEachRunRow } from './ForEachRunRow';
 import { groupByMapReduceRun, getMapReduceEntryTimestamp, getMapReduceRunId, type MapReduceRunGroup, type MapReduceRunHistoryEntry } from './map-reduce-run-grouping';
 import { MapReduceRunRow } from './MapReduceRunRow';
-import { buildSpawnedTreeChatView, collectSpawnedEntryTasks, getSpawnedEntryTimestamp, isSpawnedTreeEntry, type SpawnedTreeEntry } from './spawned-tree-grouping';
+import { buildSpawnedTreeChatView, collectSpawnedEntryTasks, getSpawnedEntryTimestamp, isSpawnedTreeEntry, partitionSpawnedTreesByArchived, type SpawnedTreeEntry } from './spawned-tree-grouping';
 import { SpawnedTreeRow } from './SpawnedTreeRow';
 import { isSpawnedTreeViewEnabled, loadCollapsedSpawnedRootIds, toggleCollapsedSpawnedRoot } from './spawned-tree-view-state';
 import { getGroupPinKey, isPinnedGroupEntry, mergePinnedEntries, partitionPinnedGroups, type PinnedGroupEntry, type PinnedListEntry } from './group-pinning';
@@ -1147,12 +1147,38 @@ export function ChatListPane({
     }, [spawnedTreeEnabled, tabFilteredRunning, tabFilteredQueued, tabFilteredHistory, unseenProcessIds, workflowGroupedTaskIds]);
     const spawnedTreeGroups = spawnedTreeView.groups;
 
+    // AC-01/AC-02: when a chat that is a spawned-tree node is archived, its whole
+    // subtree must leave COMPLETED and render as a nested tree under ARCHIVED.
+    // Split each tree at the shallowest explicitly-archived node (display-only,
+    // recomputed from `archivedChatIds` each render — no cascade write): the
+    // active remainder stays in COMPLETED, the archived subtree(s) move to
+    // ARCHIVED, and a root/leaf pruned to a childless node demotes to a flat row.
+    // When the flag is off `spawnedTreeGroups` is empty, so the partition is inert.
+    const spawnedArchivePartition = useMemo(
+        () => partitionSpawnedTreesByArchived(spawnedTreeGroups, archivedChatIds, unseenProcessIds),
+        [spawnedTreeGroups, archivedChatIds, unseenProcessIds],
+    );
+    const activeSpawnedTreeGroups = spawnedArchivePartition.activeGroups;
+    const archivedSpawnedTreeGroups = spawnedArchivePartition.archivedGroups;
+
     const groupedTaskIds = useMemo(() => {
         if (spawnedTreeView.hiddenIds.size === 0) return workflowGroupedTaskIds;
         const ids = new Set(workflowGroupedTaskIds);
         for (const id of spawnedTreeView.hiddenIds) ids.add(id);
+        // Roots/leaves demoted to a childless node by archiving no longer render
+        // inside a tree — surface them back into the flat lists so an active
+        // demoted root lands in COMPLETED and an archived demoted node lands in
+        // ARCHIVED, each keyed on its own per-chat state.
+        for (const task of spawnedArchivePartition.activeTasks) {
+            ids.delete(task.id);
+            if (typeof task.processId === 'string') ids.delete(task.processId);
+        }
+        for (const task of spawnedArchivePartition.archivedTasks) {
+            ids.delete(task.id);
+            if (typeof task.processId === 'string') ids.delete(task.processId);
+        }
         return ids;
-    }, [workflowGroupedTaskIds, spawnedTreeView]);
+    }, [workflowGroupedTaskIds, spawnedTreeView, spawnedArchivePartition]);
 
     const visibleTabFilteredRunning = useMemo(
         () => tabFilteredRunning.filter(task => !taskIdentityMatches(task, groupedTaskIds)),
@@ -1171,7 +1197,7 @@ export function ChatListPane({
         const liveQueue = queued.filter((t: any) => t.kind !== 'pause-marker');
         const allRaw = [...running, ...liveQueue, ...history];
         const all = allRaw.filter((task: any) => !taskIdentityMatches(task, groupedTaskIds));
-        let chat = forEachRunGroups.length + mapReduceRunGroups.length + spawnedTreeGroups.length;
+        let chat = forEachRunGroups.length + mapReduceRunGroups.length + activeSpawnedTreeGroups.length + archivedSpawnedTreeGroups.length;
         let auto = 0;
         for (const t of all) {
             // Scheduled runs are pulled out of Chats/Automations and shown under
@@ -1189,8 +1215,8 @@ export function ChatListPane({
             if (scheduled) hasScheduledRuns = true;
             if (scheduled || processIdsWithLoops.has(t.id) || processIdsWithLoops.has(t.processId)) loops++;
         }
-        return { chat, auto, loops, all: all.length + forEachRunGroups.length + mapReduceRunGroups.length + spawnedTreeGroups.length, hasScheduledRuns };
-    }, [running, queued, history, processIdsWithLoops, groupedTaskIds, forEachRunGroups.length, mapReduceRunGroups.length, spawnedTreeGroups.length]);
+        return { chat, auto, loops, all: all.length + forEachRunGroups.length + mapReduceRunGroups.length + activeSpawnedTreeGroups.length + archivedSpawnedTreeGroups.length, hasScheduledRuns };
+    }, [running, queued, history, processIdsWithLoops, groupedTaskIds, forEachRunGroups.length, mapReduceRunGroups.length, activeSpawnedTreeGroups.length, archivedSpawnedTreeGroups.length]);
 
     // Separate archived from non-archived history (uses tab-filtered history for proper exclusions)
     const { activeHistory, filteredArchived } = useMemo(() => {
@@ -1350,11 +1376,11 @@ export function ChatListPane({
             // resolved timestamp descending. Without this sort, ralph sessions
             // would always cluster at the top regardless of recency, even
             // after lastActivityAt drift was fixed in ralph-session-grouping.
-            entries = [...unpinnedForEachRunGroups, ...unpinnedMapReduceRunGroups, ...spawnedTreeGroups, ...activityRalphGrouping.unpinnedRalphGroups, ...planned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
+            entries = [...unpinnedForEachRunGroups, ...unpinnedMapReduceRunGroups, ...activeSpawnedTreeGroups, ...activityRalphGrouping.unpinnedRalphGroups, ...planned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
         } else if (groupedUnpinned) {
-            entries = [...unpinnedForEachRunGroups, ...unpinnedMapReduceRunGroups, ...spawnedTreeGroups, ...groupedUnpinned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
+            entries = [...unpinnedForEachRunGroups, ...unpinnedMapReduceRunGroups, ...activeSpawnedTreeGroups, ...groupedUnpinned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
         } else {
-            entries = [...unpinnedForEachRunGroups, ...unpinnedMapReduceRunGroups, ...spawnedTreeGroups, ...visibleFilteredUnpinned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
+            entries = [...unpinnedForEachRunGroups, ...unpinnedMapReduceRunGroups, ...activeSpawnedTreeGroups, ...visibleFilteredUnpinned].sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a)) as any;
         }
         const today: typeof entries = [];
         const week: typeof entries = [];
@@ -1368,7 +1394,7 @@ export function ChatListPane({
             else older.push(entry);
         }
         return { today, week, older };
-    }, [groupedUnpinned, visibleFilteredUnpinned, unpinnedForEachRunGroups, unpinnedMapReduceRunGroups, spawnedTreeGroups, listModeConfig, historyGrouping, unseenProcessIds, activityRalphGrouping]);
+    }, [groupedUnpinned, visibleFilteredUnpinned, unpinnedForEachRunGroups, unpinnedMapReduceRunGroups, activeSpawnedTreeGroups, listModeConfig, historyGrouping, unseenProcessIds, activityRalphGrouping]);
 
     const activityCompletedEntries = useMemo(
         () => [
@@ -1506,7 +1532,7 @@ export function ChatListPane({
         const week: Array<any | RalphSession | ForEachRunGroup | MapReduceRunGroup | SpawnedTreeEntry> = [];
         const older: Array<any | RalphSession | ForEachRunGroup | MapReduceRunGroup | SpawnedTreeEntry> = [];
         const nowMs = Date.now();
-        for (const t of [...recentNonRalph, ...unpinnedRalphGroups, ...unpinnedNonRunningForEachGroups, ...unpinnedNonRunningMapReduceGroups, ...spawnedTreeGroups]) {
+        for (const t of [...recentNonRalph, ...unpinnedRalphGroups, ...unpinnedNonRunningForEachGroups, ...unpinnedNonRunningMapReduceGroups, ...activeSpawnedTreeGroups]) {
             const time = resolveListEntryTimestamp(t);
             const ageH = time ? (nowMs - time) / 3600000 : Infinity;
             if (ageH < 24) today.push(t);
@@ -1515,7 +1541,7 @@ export function ChatListPane({
         }
 
         const counts = {
-            all: allActive.length + forEachRunGroups.length + mapReduceRunGroups.length + spawnedTreeGroups.length,
+            all: allActive.length + forEachRunGroups.length + mapReduceRunGroups.length + activeSpawnedTreeGroups.length,
             running: allActive.filter(isRunningTask).length
                 + forEachRunGroups.filter(group => isRunningForEachRunGroup(group, runningIdSet)).length
                 + mapReduceRunGroups.filter(group => isRunningMapReduceRunGroup(group, runningIdSet)).length,
@@ -1534,10 +1560,11 @@ export function ChatListPane({
             week,
             older,
             archivedChats,
+            archivedSpawnedTrees: archivedSpawnedTreeGroups,
             counts,
             flatVisible,
         };
-    }, [activeTab, running, chatAllItems, chatFilter, forEachRunGroups, mapReduceRunGroups, spawnedTreeGroups, groupPins, unseenProcessIds]);
+    }, [activeTab, running, chatAllItems, chatFilter, forEachRunGroups, mapReduceRunGroups, activeSpawnedTreeGroups, archivedSpawnedTreeGroups, groupPins, unseenProcessIds]);
 
     const applyRalphGrouping = useCallback((items: any[]): Array<RalphHistoryEntry | ForEachRunGroup | MapReduceRunGroup | SpawnedTreeEntry> => {
         const forEachEntries = items.filter((entry): entry is ForEachRunGroup => entry.kind === 'for-each-run');
@@ -3057,7 +3084,7 @@ export function ChatListPane({
                                     </div>
                                 )}
 
-                                {chatGroups.archivedChats.length > 0 && (
+                                {(chatGroups.archivedChats.length > 0 || chatGroups.archivedSpawnedTrees.length > 0) && (
                                     <div data-section="archived">
                                         <button
                                             className="sticky top-0 z-[2] w-full flex items-center justify-between px-3 py-1 border-b bg-white/[0.94] dark:bg-[#1e1e1e]/[0.94] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80 hover:bg-[#f5f5f5] dark:hover:bg-[#252526] transition-colors backdrop-blur-md backdrop-saturate-150"
@@ -3068,10 +3095,11 @@ export function ChatListPane({
                                                 <span className="text-[10px]">{showArchived ? '▼' : '▶'}</span>
                                                 Archived
                                             </span>
-                                            <span className="text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{chatGroups.archivedChats.length}</span>
+                                            <span className="text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{chatGroups.archivedChats.length + chatGroups.archivedSpawnedTrees.length}</span>
                                         </button>
                                         {showArchived && (
                                             <div className="opacity-70">
+                                                {chatGroups.archivedSpawnedTrees.map(entry => renderSpawnedTreeEntry(entry, chatRangeRows))}
                                                 {chatGroups.archivedChats.map(task => renderChatListRow(task, chatGroups.archivedChats))}
                                             </div>
                                         )}
@@ -3390,6 +3418,7 @@ export function ChatListPane({
                                         + pinnedActivityEntries.length
                                         + activityCompletedEntries.length
                                         + visibleFilteredArchived.length
+                                        + archivedSpawnedTreeGroups.length
                                 }
                             </span>
                             <button
@@ -3713,7 +3742,7 @@ export function ChatListPane({
                         )}
                     </div>
                 )}
-            {visibleFilteredArchived.length > 0 && (
+            {(visibleFilteredArchived.length > 0 || archivedSpawnedTreeGroups.length > 0) && (
                 <div data-section="archived" className="-mx-2 md:-mx-4">
                     <div className="sticky top-0 z-[2] flex flex-wrap items-center gap-1.5 px-3 py-1 border-b backdrop-blur-md backdrop-saturate-150 bg-white/[0.94] dark:bg-[#1e1e1e]/[0.94] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80">
                         <button
@@ -3732,7 +3761,7 @@ export function ChatListPane({
                                 ) : null;
                             })()}
                         </button>
-                        <span className="ml-auto text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{visibleFilteredArchived.length}</span>
+                        <span className="ml-auto text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{visibleFilteredArchived.length + archivedSpawnedTreeGroups.length}</span>
                         {onMarkAllRead && unseenProcessIds && visibleFilteredArchived.some(t => unseenProcessIds.has(t.id)) && (
                             <button
                                 className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
@@ -3745,6 +3774,7 @@ export function ChatListPane({
                     </div>
                         {showArchived && (
                             <div className="flex flex-col">
+                                {archivedSpawnedTreeGroups.map(entry => renderSpawnedTreeEntry(entry, activityRangeRows))}
                                 {visibleFilteredArchived.map(task => renderChatListRow(task, visibleFilteredArchived, { taskStatus: 'completed' }))}
                             </div>
                         )}

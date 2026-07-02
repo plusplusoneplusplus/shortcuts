@@ -248,4 +248,59 @@ describe('Skills Config API endpoints', () => {
             expect(res.status).toBe(400);
         });
     });
+
+    // ========================================================================
+    // Multi-workspace isolation (AC #3)
+    //
+    // With two workspaces registered, the per-repo skills-config endpoint must
+    // return (and update) only the requested workspace's config, proving
+    // extraSkillFolders / disabledSkills never leak between workspaces.
+    // ========================================================================
+
+    describe('multi-workspace isolation (AC #3)', () => {
+        const WS_A = 'ws-iso-a';
+        const WS_B = 'ws-iso-b';
+
+        beforeEach(() => {
+            // Override the single-workspace default set by the outer beforeEach.
+            (mockStore.getWorkspaces as any).mockResolvedValue([
+                { id: WS_A, name: 'Repo A', rootPath: '/projects/a', extraSkillFolders: ['/a/skills'], disabledSkills: ['skill-a'] },
+                { id: WS_B, name: 'Repo B', rootPath: '/projects/b', extraSkillFolders: ['/b/skills'], disabledSkills: ['skill-b'] },
+            ]);
+        });
+
+        it('GET returns only workspace A config, without workspace B folders leaking', async () => {
+            const res = await request(`${base()}/api/workspaces/${WS_A}/skills-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.extraSkillFolders).toEqual(['/a/skills']);
+            expect(data.disabledSkills).toEqual(['skill-a']);
+            expect(data.extraSkillFolders).not.toContain('/b/skills');
+            expect(data.disabledSkills).not.toContain('skill-b');
+        });
+
+        it('GET returns only workspace B config, without workspace A folders leaking', async () => {
+            const res = await request(`${base()}/api/workspaces/${WS_B}/skills-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.extraSkillFolders).toEqual(['/b/skills']);
+            expect(data.disabledSkills).toEqual(['skill-b']);
+            expect(data.extraSkillFolders).not.toContain('/a/skills');
+            expect(data.disabledSkills).not.toContain('skill-a');
+        });
+
+        it('PUT updates only the targeted workspace and never the other one', async () => {
+            const res = await request(`${base()}/api/workspaces/${WS_A}/skills-config`, {
+                method: 'PUT',
+                body: JSON.stringify({ disabledSkills: [], extraSkillFolders: ['/a/new'] }),
+            });
+            expect(res.status).toBe(200);
+            expect(mockStore.updateWorkspace).toHaveBeenCalledWith(WS_A, {
+                disabledSkills: [],
+                extraSkillFolders: ['/a/new'],
+            });
+            // Workspace B is never mutated by an update targeting workspace A.
+            expect(mockStore.updateWorkspace).not.toHaveBeenCalledWith(WS_B, expect.anything());
+        });
+    });
 });

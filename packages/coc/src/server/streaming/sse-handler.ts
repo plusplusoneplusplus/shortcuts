@@ -48,6 +48,13 @@ export interface PendingMessageAddedPayload {
     content: string;
     mode?: string;
     createdAt: string;
+    /**
+     * Validated base64 image data-URLs attached to the queued follow-up. Broadcast
+     * so every connected client can render thumbnails in the QUEUED bubble in real
+     * time, without waiting for a page refresh. Omitted when the follow-up carries
+     * no images.
+     */
+    images?: string[];
 }
 
 /** Fired when a canvas linked to this process is created or updated by the AI. */
@@ -101,6 +108,7 @@ export function emitPendingMessageAdded(store: ProcessStore, processId: string, 
             content: payload.content,
             mode: payload.mode,
             createdAt: payload.createdAt,
+            ...(payload.images && payload.images.length > 0 ? { images: payload.images } : {}),
         },
     } as ProcessOutputEvent);
 }

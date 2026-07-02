@@ -41,7 +41,7 @@ spa/client/react/
 ├── processes/          # Process detail, DAG visualization
 ├── queue/              # Queue management (EnqueueDialog, QueueView)
 ├── repos/              # Repository views, clone/add dialogs, file explorer, Monaco editor
-├── shared/             # Feature-level shared (MarkdownView, RichTextInput, SourceEditor)
+├── shared/             # Feature-level shared (MarkdownView, RichTextInput, SourceEditor, markdown-document session helpers)
 ├── tasks/              # Task/plan management, inline comments
 ├── ui/                 # UI primitives (Button, Card, Dialog, Spinner, Badge, Toast)
 ├── welcome/            # Onboarding (WelcomeTour, FirstStepsCard, FeatureTip)
@@ -340,6 +340,7 @@ present.
 | `useApi` | HTTP client wrapper |
 | `useWebSocket` | WebSocket connection management |
 | `useMarkdownPreview` | Shared markdown rendering pipeline |
+| `useMarkdownDocumentSession` | Shared markdown document loading, dirty state, save/flush, refresh, conflict, beforeunload, and keyboard-save kernel used by Notes and MarkdownReviewEditor through injected I/O adapters |
 | `useDiffComments` | Inline diff comment state |
 | `useUnseenChat` | Read/unread tracking |
 
@@ -921,6 +922,36 @@ Clicking an admin/settings row resets the dashboard tab back to `'admin'`,
 unmounts the embed, and renders the standard admin card content.
 Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 `#logs?sessionId=…`) is unchanged.
+
+### Skills Config panel & folder-source grouping
+
+The Skills route's **Config** sub-tab (`features/skills/SkillsConfigPanel.tsx`)
+renders five ordered sections: **Global Skills Directory** (read-only managed
+install dir, falls back to `~/.coc/skills/` when the server omits
+`globalSkillsDir`), **Global Extra Skill Folders** (chips with add/remove/Enter +
+dedupe guard; persists `globalExtraFolders` via `skills.updateGlobalConfig`),
+**Detected Skill Folders** (an auto-detect checkbox toggling
+`autoDetectDefaultFolders`, the auto-detected entries from
+`skills.getEffectivePaths()`, a concise "No OneDrive skill folders detected."
+empty state, and skipped roots hidden in a collapsed `<details>` diagnostics
+row), **Effective Search Order** (a read-only `<ol>` from
+`getEffectivePaths()` called with NO workspaceId — global-only, with a "Showing
+global paths only" note so repo-local/per-repo paths aren't claimed to apply
+globally), and **Globally Disabled Skills** (unchanged; writes send only
+`{ globalDisabledSkills }` so existing tests pass). Source badges: `managed-global
+→ Managed`, `configured → Configured`, `auto-detected → Auto-detected`,
+`repo`/`repo-extra → Repo`, `bundled → Bundled`. Status badges:
+`available → Available`, `missing → Missing`, `no-skills → No skills`,
+`skipped → Skipped`.
+
+The skill-source taxonomy is duplicated across four shapes that must stay in
+sync: server `SkillInfo.source` (`skill-handler.ts`), coc-client `SkillSource`
+(`contracts/skills.ts`), SPA shared `SkillInfo.source` (`shared/SkillDetailPanel.tsx`),
+and `SkillFolderGroup.source` + grouping logic in the Repo Settings → Agent
+Skills tab (`features/skills/AgentSkillsPanel.tsx`). The `global-extra-folder`
+source forms its own NON-removable group (`🌐 <folderPath>`) placed after
+global/repo and before per-repo extras, since those folders are managed globally
+in the Config tab, not per-repo.
 
 ### Remote-first shell (experimental)
 

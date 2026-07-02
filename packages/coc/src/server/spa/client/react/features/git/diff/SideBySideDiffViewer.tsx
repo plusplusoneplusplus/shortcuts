@@ -207,7 +207,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             // regardless of enableComments, since the bleed affects plain split views too.
             const startSide = startEl?.closest('[data-split-side]')?.getAttribute('data-split-side');
             const endSide   = endEl?.closest('[data-split-side]')?.getAttribute('data-split-side');
-            if (startSide && endSide && startSide !== endSide) { sel.removeAllRanges(); }
+            if (startSide && endSide && startSide !== endSide && typeof sel.removeAllRanges === 'function') { sel.removeAllRanges(); }
 
             if (!enableComments) return;
             if (!startEl || !endEl) { clear(); return; }

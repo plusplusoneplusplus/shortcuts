@@ -301,6 +301,17 @@ export interface CLIConfig {
         autoUpdate?: boolean;
         /** Bundled skills to auto-install on first serve startup if not already present */
         defaultSkills?: string[];
+        /**
+         * Additional global skill-source folders applied across all workspaces.
+         * Read-only sources (CoC never installs/deletes into them). Absolute
+         * paths or `~`-prefixed home paths.
+         */
+        globalExtraFolders?: string[];
+        /**
+         * Auto-detect default skill folders (OneDrive/CloudStorage). Default true.
+         * Set false to disable all default folder auto-detection.
+         */
+        autoDetectDefaultFolders?: boolean;
     };
     /** Work Items configuration */
     workItems?: {
@@ -603,6 +614,14 @@ export interface ResolvedCLIConfig {
         autoUpdate: boolean;
         /** Bundled skills to auto-install on first serve startup if not already present */
         defaultSkills: string[];
+        /**
+         * Additional global skill-source folders applied across all workspaces.
+         * Read-only sources (CoC never installs/deletes into them). Absolute
+         * paths or `~`-prefixed home paths.
+         */
+        globalExtraFolders: string[];
+        /** Auto-detect default skill folders (OneDrive/CloudStorage). */
+        autoDetectDefaultFolders: boolean;
     };
     /** Work Items configuration */
     workItems: {
@@ -838,6 +857,8 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     skills: {
         autoUpdate: true,
         defaultSkills: [...DEFAULT_BUNDLED_SKILLS],
+        globalExtraFolders: [],
+        autoDetectDefaultFolders: true,
     },
     workItems: {
         hierarchy: {

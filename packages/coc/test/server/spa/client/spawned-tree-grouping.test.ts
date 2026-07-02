@@ -7,6 +7,7 @@ import {
     collectSpawnedDescendantIds,
     collectSpawnedEntryTasks,
     buildSpawnedTreeChatView,
+    partitionSpawnedTreesByArchived,
     type SpawnedTreeEntry,
 } from '../../../../src/server/spa/client/react/features/chat/spawned-tree-grouping';
 
@@ -198,5 +199,181 @@ describe('buildSpawnedTreeChatView', () => {
         ];
         const view = buildSpawnedTreeChatView(items, { enabled: true, excludeIds: new Set(['proc-1']) });
         expect(view.groups).toHaveLength(0);
+    });
+});
+
+/** Build the spawned-tree groups from a flat chat list, the way ChatListPane does. */
+function groupsOf(items: any[], unseen?: Set<string>): SpawnedTreeEntry[] {
+    return groupBySpawnedTree(items, unseen).filter(isSpawnedTreeEntry);
+}
+
+describe('partitionSpawnedTreesByArchived', () => {
+    it('passes groups through untouched when nothing is archived (same reference)', () => {
+        const groups = groupsOf([chat('root'), chat('child', { parentProcessId: 'root' })]);
+        const part = partitionSpawnedTreesByArchived(groups, new Set());
+        expect(part.activeGroups).toBe(groups);
+        expect(part.activeTasks).toEqual([]);
+        expect(part.archivedGroups).toEqual([]);
+        expect(part.archivedTasks).toEqual([]);
+        expect(part.effectiveArchivedIds.size).toBe(0);
+    });
+
+    it('treats a null/undefined archived set as no-op', () => {
+        const groups = groupsOf([chat('root'), chat('child', { parentProcessId: 'root' })]);
+        expect(partitionSpawnedTreesByArchived(groups, null).activeGroups).toBe(groups);
+        expect(partitionSpawnedTreesByArchived(groups, undefined).activeGroups).toBe(groups);
+    });
+
+    it('AC-01/AC-02: archiving the ROOT moves the whole subtree out of active into archived', () => {
+        const groups = groupsOf([
+            chat('root'),
+            chat('child', { parentProcessId: 'root' }),
+            chat('grand', { parentProcessId: 'child' }),
+        ]);
+        const part = partitionSpawnedTreesByArchived(groups, new Set(['root']));
+
+        expect(part.activeGroups).toHaveLength(0);
+        expect(part.activeTasks).toHaveLength(0);
+        expect(part.archivedGroups).toHaveLength(1);
+        expect(part.archivedGroups[0].rootProcessId).toBe('root');
+        expect(part.archivedGroups[0].descendantCount).toBe(2);
+        // root + every descendant is effectively archived
+        expect([...part.effectiveArchivedIds].sort()).toEqual(['child', 'grand', 'root']);
+    });
+
+    it('AC-01: an archived MIDDLE node splits off; the active root keeps its non-archived branch', () => {
+        const groups = groupsOf([
+            chat('root', { lastActivityAt: 1_000 }),
+            chat('childA', { parentProcessId: 'root', lastActivityAt: 2_000 }),
+            chat('grandA', { parentProcessId: 'childA', lastActivityAt: 3_000 }),
+            chat('childB', { parentProcessId: 'root', lastActivityAt: 8_000 }),
+            chat('grandB', { parentProcessId: 'childB', lastActivityAt: 9_000 }),
+        ]);
+        const part = partitionSpawnedTreesByArchived(groups, new Set(['childB']));
+
+        // Active root keeps only the childA branch, re-finalized.
+        expect(part.activeGroups).toHaveLength(1);
+        const activeRoot = part.activeGroups[0];
+        expect(activeRoot.rootProcessId).toBe('root');
+        expect(activeRoot.root.children.map(c => c.task.id)).toEqual(['childA']);
+        expect(activeRoot.descendantCount).toBe(2); // childA + grandA
+        // The archived childB branch carried the latest activity; pruning it drops
+        // the active root's subtree-latest back to grandA's 3_000.
+        expect(activeRoot.latestTimestamp).toBe(3_000);
+
+        // Archived subtree is rooted at childB (the shallowest archived node).
+        expect(part.archivedGroups).toHaveLength(1);
+        expect(part.archivedGroups[0].rootProcessId).toBe('childB');
+        expect(part.archivedGroups[0].descendantCount).toBe(1); // grandB
+        expect([...part.effectiveArchivedIds].sort()).toEqual(['childB', 'grandB']);
+    });
+
+    it('AC-02: an archived LEAF (no descendants) becomes a flat archived task', () => {
+        const groups = groupsOf([
+            chat('root'),
+            chat('childA', { parentProcessId: 'root' }),
+            chat('childB', { parentProcessId: 'root' }),
+        ]);
+        const part = partitionSpawnedTreesByArchived(groups, new Set(['childB']));
+
+        expect(part.activeGroups).toHaveLength(1);
+        expect(part.activeGroups[0].root.children.map(c => c.task.id)).toEqual(['childA']);
+        // childB has no descendants → flat archived task, not a tree.
+        expect(part.archivedGroups).toHaveLength(0);
+        expect(part.archivedTasks.map(t => t.id)).toEqual(['childB']);
+        expect([...part.effectiveArchivedIds]).toEqual(['childB']);
+    });
+
+    it('demotes an active root to a flat task when ALL its children are archived', () => {
+        const groups = groupsOf([
+            chat('root'),
+            chat('childA', { parentProcessId: 'root' }),
+            chat('childB', { parentProcessId: 'root' }),
+        ]);
+        const part = partitionSpawnedTreesByArchived(groups, new Set(['childA', 'childB']));
+
+        // Root survives (not archived) but is childless → flat active task.
+        expect(part.activeGroups).toHaveLength(0);
+        expect(part.activeTasks.map(t => t.id)).toEqual(['root']);
+        expect(part.archivedTasks.map(t => t.id).sort()).toEqual(['childA', 'childB']);
+    });
+
+    it('AC-03: a deeper archived node inside an archived subtree does NOT re-root', () => {
+        const groups = groupsOf([
+            chat('root'),
+            chat('mid', { parentProcessId: 'root' }),
+            chat('grand', { parentProcessId: 'mid' }),
+        ]);
+        // Both mid and grand are explicitly archived; mid is the shallowest.
+        const part = partitionSpawnedTreesByArchived(groups, new Set(['mid', 'grand']));
+
+        expect(part.archivedGroups).toHaveLength(1);
+        expect(part.archivedGroups[0].rootProcessId).toBe('mid');
+        expect(part.archivedGroups[0].descendantCount).toBe(1); // grand travels with mid
+        expect(part.activeGroups).toHaveLength(0); // root left childless
+        expect(part.activeTasks.map(t => t.id)).toEqual(['root']);
+    });
+
+    it('AC-03: unarchiving the ancestor re-roots the independently-archived descendant (recompute)', () => {
+        const items = [
+            chat('root'),
+            chat('mid', { parentProcessId: 'root' }),
+            chat('grand', { parentProcessId: 'mid' }),
+        ];
+        // While both archived, mid owns the subtree (grand does not re-root)…
+        const bothArchived = partitionSpawnedTreesByArchived(groupsOf(items), new Set(['mid', 'grand']));
+        expect(bothArchived.archivedGroups[0].rootProcessId).toBe('mid');
+
+        // …after unarchiving mid, grand becomes the shallowest archived node and
+        // re-roots as its own archived sub-tree; root+mid stay active.
+        const afterUnarchiveMid = partitionSpawnedTreesByArchived(groupsOf(items), new Set(['grand']));
+        expect(afterUnarchiveMid.activeGroups).toHaveLength(1);
+        expect(afterUnarchiveMid.activeGroups[0].rootProcessId).toBe('root');
+        expect(afterUnarchiveMid.activeGroups[0].root.children.map(c => c.task.id)).toEqual(['mid']);
+        expect(afterUnarchiveMid.archivedTasks.map(t => t.id)).toEqual(['grand']);
+    });
+
+    it('recomputes hasUnseen for both sides after the split', () => {
+        const unseen = new Set(['grandB']);
+        const groups = groupsOf([
+            chat('root'),
+            chat('childA', { parentProcessId: 'root' }),
+            chat('childB', { parentProcessId: 'root' }),
+            chat('grandB', { parentProcessId: 'childB' }),
+        ], unseen);
+        // Whole tree is unseen because grandB is unseen.
+        expect(groups[0].hasUnseen).toBe(true);
+
+        const part = partitionSpawnedTreesByArchived(groups, new Set(['childB']), unseen);
+        // Active side (root + childA) no longer contains the unseen node.
+        expect(part.activeGroups[0].hasUnseen).toBe(false);
+        // Archived side (childB → grandB) carries the unseen flag.
+        expect(part.archivedGroups[0].hasUnseen).toBe(true);
+    });
+
+    it('resolves archived state by id OR processId', () => {
+        const groups = groupsOf([
+            { id: 'task-root', processId: 'proc-root', lastActivityAt: 1_000 },
+            { id: 'task-child', processId: 'proc-child', parentProcessId: 'proc-root', lastActivityAt: 2_000 },
+        ]);
+        // Archive keyed on the child's processId (not its id).
+        const part = partitionSpawnedTreesByArchived(groups, new Set(['proc-child']));
+        expect(part.archivedTasks.map(t => t.id)).toEqual(['task-child']);
+        expect(part.effectiveArchivedIds.has('task-child')).toBe(true);
+        expect(part.effectiveArchivedIds.has('proc-child')).toBe(true);
+    });
+
+    it('partitions several trees independently in one call', () => {
+        const groups = groupsOf([
+            chat('r1', { lastActivityAt: 5_000 }),
+            chat('r1c', { parentProcessId: 'r1', lastActivityAt: 6_000 }),
+            chat('r2', { lastActivityAt: 1_000 }),
+            chat('r2c', { parentProcessId: 'r2', lastActivityAt: 2_000 }),
+        ]);
+        // Archive the whole r2 tree; leave r1 active.
+        const part = partitionSpawnedTreesByArchived(groups, new Set(['r2']));
+        expect(part.activeGroups.map(g => g.rootProcessId)).toEqual(['r1']);
+        expect(part.archivedGroups.map(g => g.rootProcessId)).toEqual(['r2']);
+        expect([...part.effectiveArchivedIds].sort()).toEqual(['r2', 'r2c']);
     });
 });

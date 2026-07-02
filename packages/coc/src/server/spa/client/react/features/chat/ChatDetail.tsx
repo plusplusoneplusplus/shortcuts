@@ -1045,6 +1045,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 id: m.id,
                 content: m.content,
                 status: 'queued' as const,
+                ...(Array.isArray(m.images) && m.images.length > 0 ? { images: m.images } : {}),
             })));
         } catch { /* keep current turns */ }
     }, [client, setTurnsAndRef]);

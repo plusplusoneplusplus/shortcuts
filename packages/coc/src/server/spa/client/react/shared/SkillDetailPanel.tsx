@@ -13,7 +13,7 @@ export interface SkillInfo {
     references?: string[];
     scripts?: string[];
     relativePath?: string;
-    source?: 'global' | 'repo' | 'bundled' | 'linked-repo' | 'extra-folder';
+    source?: 'global' | 'repo' | 'bundled' | 'linked-repo' | 'extra-folder' | 'global-extra-folder';
     /** Workspace ID of the repo this skill was loaded from (only set when source = 'linked-repo'). */
     sourceRepoId?: string;
     /** Absolute path of the directory containing this skill. */

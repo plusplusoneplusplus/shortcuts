@@ -208,6 +208,8 @@ const BASE_SCHEMA_TREE: SchemaTree = {
     skills: {
         autoUpdate: z.boolean(),
         defaultSkills: z.array(z.string()),
+        globalExtraFolders: z.array(z.string()),
+        autoDetectDefaultFolders: z.boolean(),
     },
 };
 

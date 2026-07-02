@@ -3024,4 +3024,158 @@ describe('ChatListPane spawned-conversation tree (AC-03)', () => {
         expect(document.querySelector('[data-task-id="child"]')).toBeTruthy();
         expect(document.querySelector('[data-task-id="grand"]')).toBeTruthy();
     });
+
+    // ════════════════════════════════════════════════════════════════════
+    // AC-01 / AC-02: archived spawned subtrees leave COMPLETED and render as
+    // nested trees under ARCHIVED (fixes the leak where an archived tree node
+    // stayed rendered under COMPLETED).
+    // ════════════════════════════════════════════════════════════════════
+
+    /** root → childA (leaf) and root → childB → grand — a two-branch tree. */
+    function spawnTreeTwoBranch(now: number) {
+        const stamp = (offsetMs: number) => ({
+            completedAt: new Date(now - offsetMs).toISOString(),
+            lastActivityAt: now - offsetMs,
+            startTime: now - offsetMs,
+        });
+        return [
+            makeHistoryTask({ id: 'root', displayName: 'Root Chat', ...stamp(4000) }),
+            makeHistoryTask({ id: 'childA', displayName: 'Child A', parentProcessId: 'root', ...stamp(3000) }),
+            makeHistoryTask({ id: 'childB', displayName: 'Child B', parentProcessId: 'root', ...stamp(2000) }),
+            makeHistoryTask({ id: 'grand', displayName: 'Grandchild', parentProcessId: 'childB', ...stamp(1000) }),
+        ];
+    }
+
+    it('AC-01/AC-02: archiving the root moves the whole subtree out of COMPLETED and into ARCHIVED as a nested tree', () => {
+        mockArchivedChatIds = new Set(['root']);
+        const now = Date.now();
+        renderPane({ activeTab: 'chats', now, history: spawnTreeHistory(now) });
+
+        // The archived tree is gone from COMPLETED entirely (archived section is
+        // collapsed by default, so its subtree is not rendered anywhere yet).
+        expect(document.querySelector('[data-testid="spawned-tree-row"][data-root-id="root"]')).toBeNull();
+        expect(document.querySelector('[data-task-id="child"]')).toBeNull();
+        expect(document.querySelector('[data-task-id="grand"]')).toBeNull();
+
+        // The unrelated chat stays a normal flat row under COMPLETED.
+        expect(document.querySelector('[data-task-id="lonely"]')).toBeTruthy();
+
+        // The archived toggle reports the moved subtree as one archived tree.
+        const toggle = screen.getByTestId('chat-archived-toggle');
+        expect(toggle.textContent).toContain('1');
+
+        // Expanding ARCHIVED reveals the same tree, nested, with its full sub-job
+        // count (child + grandchild = 2).
+        fireEvent.click(toggle);
+        const archivedTree = document.querySelector('[data-testid="spawned-tree-row"][data-root-id="root"]') as HTMLElement;
+        expect(archivedTree).toBeTruthy();
+        expect(archivedTree.querySelector('[data-testid="spawned-tree-child-count"]')?.textContent).toBe('2');
+        expect(archivedTree.querySelector('[data-testid="spawned-tree-children"] [data-task-id="child"]')).toBeTruthy();
+        expect(archivedTree.querySelector('[data-task-id="grand"]')).toBeTruthy();
+    });
+
+    it('AC-01: archiving a middle node splits it off — the active root keeps its other branch in COMPLETED, the archived branch nests under ARCHIVED', () => {
+        mockArchivedChatIds = new Set(['childB']);
+        const now = Date.now();
+        renderPane({ activeTab: 'chats', now, history: spawnTreeTwoBranch(now) });
+
+        // The active root stays in COMPLETED with only its non-archived branch
+        // (childA). Sub-job count drops to 1 (childB + grand peeled off).
+        const activeTree = document.querySelector('[data-testid="spawned-tree-row"][data-root-id="root"]') as HTMLElement;
+        expect(activeTree).toBeTruthy();
+        expect(activeTree.querySelector('[data-testid="spawned-tree-child-count"]')?.textContent).toBe('1');
+        expect(activeTree.querySelector('[data-task-id="childA"]')).toBeTruthy();
+        // The archived branch is absent from COMPLETED (archived + collapsed).
+        expect(document.querySelector('[data-task-id="childB"]')).toBeNull();
+        expect(document.querySelector('[data-task-id="grand"]')).toBeNull();
+
+        // Expanding ARCHIVED reveals the split-off branch rooted at childB.
+        fireEvent.click(screen.getByTestId('chat-archived-toggle'));
+        const archivedTree = document.querySelector('[data-testid="spawned-tree-row"][data-root-id="childB"]') as HTMLElement;
+        expect(archivedTree).toBeTruthy();
+        expect(archivedTree.querySelector('[data-testid="spawned-tree-child-count"]')?.textContent).toBe('1');
+        expect(archivedTree.querySelector('[data-task-id="grand"]')).toBeTruthy();
+        // The active root did NOT follow the archived branch out of COMPLETED.
+        expect(document.querySelector('[data-testid="spawned-tree-row"][data-root-id="root"]')).toBeTruthy();
+    });
+
+    it('AC-01: archiving a leaf keeps the parent tree in COMPLETED and demotes the leaf to a flat row under ARCHIVED', () => {
+        mockArchivedChatIds = new Set(['grand']);
+        const now = Date.now();
+        renderPane({ activeTab: 'chats', now, history: spawnTreeHistory(now) });
+
+        // Parent tree stays in COMPLETED; only the archived leaf is pruned, so the
+        // sub-job count drops to 1 (child only).
+        const activeTree = document.querySelector('[data-testid="spawned-tree-row"][data-root-id="root"]') as HTMLElement;
+        expect(activeTree).toBeTruthy();
+        expect(activeTree.querySelector('[data-testid="spawned-tree-child-count"]')?.textContent).toBe('1');
+        expect(activeTree.querySelector('[data-task-id="child"]')).toBeTruthy();
+        expect(document.querySelector('[data-task-id="grand"]')).toBeNull();
+
+        // The archived leaf has no descendants, so it renders as a flat archived
+        // row (not a tree).
+        fireEvent.click(screen.getByTestId('chat-archived-toggle'));
+        const grand = document.querySelector('[data-task-id="grand"]');
+        expect(grand).toBeTruthy();
+        expect(grand!.closest('[data-testid="spawned-tree-row"]')).toBeNull();
+    });
+
+    it('AC-01: archiving the only leaf of a two-node tree demotes both roots to flat rows (COMPLETED parent, ARCHIVED leaf)', () => {
+        mockArchivedChatIds = new Set(['child']);
+        const now = Date.now();
+        const stamp = (offsetMs: number) => ({
+            completedAt: new Date(now - offsetMs).toISOString(),
+            lastActivityAt: now - offsetMs,
+            startTime: now - offsetMs,
+        });
+        renderPane({
+            activeTab: 'chats',
+            now,
+            history: [
+                makeHistoryTask({ id: 'root', displayName: 'Root Chat', ...stamp(2000) }),
+                makeHistoryTask({ id: 'child', displayName: 'Child Chat', parentProcessId: 'root', ...stamp(1000) }),
+            ],
+        });
+
+        // The root lost its only child, so there is no tree left — the root
+        // demotes to a plain COMPLETED row.
+        expect(document.querySelector('[data-testid="spawned-tree-row"]')).toBeNull();
+        const root = document.querySelector('[data-task-id="root"]');
+        expect(root).toBeTruthy();
+        expect(root!.closest('[data-testid="spawned-tree-row"]')).toBeNull();
+        expect(document.querySelector('[data-task-id="child"]')).toBeNull();
+
+        // The archived leaf surfaces as a flat row under ARCHIVED.
+        fireEvent.click(screen.getByTestId('chat-archived-toggle'));
+        expect(document.querySelector('[data-task-id="child"]')).toBeTruthy();
+    });
+
+    it('AC-03: with no archived ids the whole tree stays in COMPLETED and ARCHIVED is empty (display-only, reversible)', () => {
+        mockArchivedChatIds = new Set();
+        const now = Date.now();
+        renderPane({ activeTab: 'chats', now, history: spawnTreeHistory(now) });
+
+        // Full tree in COMPLETED, no archived section at all.
+        const tree = document.querySelector('[data-testid="spawned-tree-row"][data-root-id="root"]') as HTMLElement;
+        expect(tree).toBeTruthy();
+        expect(tree.querySelector('[data-testid="spawned-tree-child-count"]')?.textContent).toBe('2');
+        expect(screen.queryByTestId('chat-archived-toggle')).toBeNull();
+    });
+
+    it('AC-02: the Activity-tab ARCHIVED section also renders the archived subtree as a nested tree', () => {
+        mockArchivedChatIds = new Set(['root']);
+        const now = Date.now();
+        // No activeTab → the Activity branch (Completed Tasks / 📦 Archived).
+        renderPane({ now, history: spawnTreeHistory(now) });
+
+        // Not in COMPLETED (archived + collapsed archived section).
+        expect(document.querySelector('[data-testid="spawned-tree-row"][data-root-id="root"]')).toBeNull();
+
+        // Expand the Activity-tab archived toggle → nested tree appears.
+        fireEvent.click(screen.getByTestId('archived-chats-section-toggle'));
+        const archivedTree = document.querySelector('[data-testid="spawned-tree-row"][data-root-id="root"]') as HTMLElement;
+        expect(archivedTree).toBeTruthy();
+        expect(archivedTree.querySelector('[data-testid="spawned-tree-child-count"]')?.textContent).toBe('2');
+        expect(archivedTree.querySelector('[data-testid="spawned-tree-children"] [data-task-id="child"]')).toBeTruthy();
+    });
 });

@@ -276,3 +276,127 @@ export function buildSpawnedTreeChatView(
     }
     return { entries, groups, hiddenIds };
 }
+
+/** True when this node is *explicitly* archived (its own id/processId is in `archivedIds`). */
+function isNodeExplicitlyArchived(node: SpawnedTreeNode, archivedIds: ReadonlySet<string>): boolean {
+    return getTaskIds(node.task).some(id => archivedIds.has(id));
+}
+
+/** Wrap a finalized node as a spawned-tree entry (mirrors {@link groupBySpawnedTree}). */
+function entryFromNode(node: SpawnedTreeNode): SpawnedTreeEntry {
+    return {
+        kind: 'spawned-tree',
+        rootProcessId: getSpawnedNodeId(node),
+        root: node,
+        descendantCount: node.descendantCount,
+        latestTimestamp: node.subtreeLatestTimestamp,
+        hasUnseen: node.hasUnseen,
+    };
+}
+
+/**
+ * Recursively split one node into its active remainder plus every archived
+ * subtree root reachable through active ancestors.
+ *
+ * If the node is explicitly archived, the WHOLE subtree (unchanged) becomes an
+ * archived root — deeper archived descendants do not re-root, so the subtree
+ * travels together (display-only semantics; on unarchive of an ancestor they
+ * re-root naturally on the next recompute). Otherwise the node stays active: its
+ * children are split, archived branches peel off, and a fresh active node is
+ * finalized over just the surviving children so aggregate fields
+ * (descendantCount / subtree-latest / unseen) reflect the pruned shape.
+ */
+function splitNodeByArchived(
+    node: SpawnedTreeNode,
+    archivedIds: ReadonlySet<string>,
+    unseenIds?: Set<string>,
+): { active: SpawnedTreeNode | null; archivedRoots: SpawnedTreeNode[] } {
+    if (isNodeExplicitlyArchived(node, archivedIds)) {
+        return { active: null, archivedRoots: [node] };
+    }
+    const activeChildren: SpawnedTreeNode[] = [];
+    const archivedRoots: SpawnedTreeNode[] = [];
+    for (const child of node.children) {
+        const split = splitNodeByArchived(child, archivedIds, unseenIds);
+        if (split.active) {activeChildren.push(split.active);}
+        archivedRoots.push(...split.archivedRoots);
+    }
+    const active = makeNode(node.task);
+    active.children = activeChildren;
+    finalizeNode(active, unseenIds);
+    return { active, archivedRoots };
+}
+
+/**
+ * The result of partitioning spawned-tree groups by effective-archived state.
+ *
+ * A node is *effectively archived* when it, or any ancestor in its spawn tree,
+ * is explicitly in `archivedIds`. Trees split at the SHALLOWEST explicitly-
+ * archived node in every chain: that node + its subtree move to the archived
+ * side; the rest stays active. Roots pruned down to zero descendants are
+ * returned as plain tasks (flat rendering) rather than single-node groups, so
+ * they slot back into the flat COMPLETED / ARCHIVED lists.
+ */
+export interface SpawnedTreeArchivePartition {
+    /** Active trees (root still has ≥1 descendant) — stay in COMPLETED. */
+    activeGroups: SpawnedTreeEntry[];
+    /** Active roots left childless after pruning — render flat in COMPLETED. */
+    activeTasks: any[];
+    /** Archived subtrees (root has ≥1 descendant) rooted at the shallowest archived node — render as trees in ARCHIVED. */
+    archivedGroups: SpawnedTreeEntry[];
+    /** Archived roots with no descendants — render flat in ARCHIVED. */
+    archivedTasks: any[];
+    /** Every identity id (root + descendants) that is effectively archived. */
+    effectiveArchivedIds: Set<string>;
+}
+
+/**
+ * Partition spawned-tree groups by effective-archived state (display-only,
+ * recomputed each render from the per-chat `archivedIds` set — no cascade write
+ * onto descendants).
+ *
+ * When `archivedIds` is empty the input groups pass through untouched (same
+ * array reference for `activeGroups`), so the non-archived path stays a no-op.
+ */
+export function partitionSpawnedTreesByArchived(
+    groups: SpawnedTreeEntry[],
+    archivedIds?: ReadonlySet<string> | null,
+    unseenIds?: Set<string>,
+): SpawnedTreeArchivePartition {
+    if (!archivedIds || archivedIds.size === 0) {
+        return {
+            activeGroups: groups,
+            activeTasks: [],
+            archivedGroups: [],
+            archivedTasks: [],
+            effectiveArchivedIds: new Set(),
+        };
+    }
+
+    const activeGroups: SpawnedTreeEntry[] = [];
+    const activeTasks: any[] = [];
+    const archivedGroups: SpawnedTreeEntry[] = [];
+    const archivedTasks: any[] = [];
+    const effectiveArchivedIds = new Set<string>();
+
+    for (const group of groups) {
+        const { active, archivedRoots } = splitNodeByArchived(group.root, archivedIds, unseenIds);
+        if (active) {
+            if (active.children.length > 0) {activeGroups.push(entryFromNode(active));}
+            else {activeTasks.push(active.task);}
+        }
+        for (const root of archivedRoots) {
+            const entry = entryFromNode(root);
+            for (const id of getTaskIds(root.task)) {effectiveArchivedIds.add(id);}
+            for (const id of collectSpawnedDescendantIds(entry)) {effectiveArchivedIds.add(id);}
+            if (root.children.length > 0) {archivedGroups.push(entry);}
+            else {archivedTasks.push(root.task);}
+        }
+    }
+
+    // Preserve the incoming latest-activity-descending order of the surviving trees.
+    activeGroups.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+    archivedGroups.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+
+    return { activeGroups, activeTasks, archivedGroups, archivedTasks, effectiveArchivedIds };
+}

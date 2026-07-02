@@ -132,12 +132,12 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     return (
         <>
         <header
-            className="h-10 md:h-12 px-3 flex items-center justify-between border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc]"
+            className="h-10 md:h-10 px-3 flex items-center justify-between border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc]"
             data-react
         >
             <div className="flex items-center gap-2 min-w-0 flex-1">
                 <button
-                    className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target"
+                    className="h-7 w-7 flex-shrink-0 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target"
                     id="hamburger-btn"
                     aria-label={isOnReposTab ? 'Manage repositories' : 'Go to repositories'}
                     aria-pressed={isOnReposTab ? popoverOpen : false}
@@ -156,7 +156,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                 <a
                     href="#"
                     data-tab="repos"
-                    className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-8 transition-colors items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]'}`}
+                    className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-7 transition-colors items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]'}`}
                     title={brandTooltip}
                     onClick={e => { e.preventDefault(); goToRepos(); }}
                 >{ brandLabel }</a>
@@ -164,7 +164,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     <button
                         id="my-work-toggle"
                         className={
-                            `h-7 w-7 md:h-8 md:w-8 flex-shrink-0 inline-flex items-center justify-center rounded touch-target ` +
+                            `h-7 w-7 flex-shrink-0 inline-flex items-center justify-center rounded touch-target ` +
                             (isOnReposTab && state.selectedRepoId === MY_WORK_WORKSPACE_ID
                                 ? 'bg-[#0078d4] text-white'
                                 : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
@@ -180,7 +180,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     <button
                         id="my-life-toggle"
                         className={
-                            `h-7 w-7 md:h-8 md:w-8 flex-shrink-0 inline-flex items-center justify-center rounded touch-target ` +
+                            `h-7 w-7 flex-shrink-0 inline-flex items-center justify-center rounded touch-target ` +
                             (isOnReposTab && state.selectedRepoId === MY_LIFE_WORKSPACE_ID
                                 ? 'bg-[#0078d4] text-white'
                                 : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
@@ -209,7 +209,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                             <button
                                 key={tab}
                                 className={
-                                    `h-8 px-3 rounded text-sm transition-colors ` +
+                                    `h-7 px-3 rounded text-sm transition-colors ` +
                                     (state.activeTab === tab
                                         ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]'
                                         : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
@@ -255,7 +255,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     id="admin-toggle"
                     data-tab="admin"
                     className={
-                        `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target text-base leading-none ` +
+                        `h-7 w-7 inline-flex items-center justify-center rounded touch-target text-base leading-none ` +
                         // The admin shell hosts both `admin` itself and the
                         // five embedded tool routes (skills/logs/stats/
                         // servers). Reflect "user is in the admin shell" in
@@ -276,7 +276,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                 </button>
                 <button
                     id="theme-toggle"
-                    className="h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target text-base leading-none"
+                    className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target text-base leading-none"
                     aria-label="Toggle theme"
                     onClick={toggleTheme}
                 >

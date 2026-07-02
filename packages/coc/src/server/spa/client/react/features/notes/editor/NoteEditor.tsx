@@ -34,6 +34,10 @@ import { useQueue } from '../../../contexts/QueueContext';
 import { isGoalFile } from '../../../shared/goal-file-utils';
 import { RalphLaunchDialog } from '../../../shared/RalphLaunchDialog';
 import { isRalphEnabled } from '../../../utils/config';
+import {
+    useMarkdownDocumentKeyboardShortcuts,
+    useMarkdownDocumentSession,
+} from '../../../shared/markdown-document/useMarkdownDocumentSession';
 
 export type NoteViewMode = 'rich' | 'source';
 
@@ -87,8 +91,6 @@ export interface NoteEditorProps {
      *  No range highlight is applied. */
     scrollToLine?: number | null;
 }
-
-type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict';
 
 /**
  * Find contiguous changed regions in the editor document from word diff chunks.
@@ -189,11 +191,6 @@ export function NoteEditor({
     root,
     scrollToLine,
 }: NoteEditorProps) {
-    const [loading, setLoading] = useState(false);
-    const [refreshCounter, setRefreshCounter] = useState(0);
-    const [loadError, setLoadError] = useState<string | null>(null);
-    const [saveState, setSaveState] = useState<SaveState>('idle');
-    const [dirty, setDirty] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; selectedText: string } | null>(null);
     const [frontMatterResult, setFrontMatterResult] = useState<NoteFrontMatterParseResult>({ kind: 'none' });
@@ -217,10 +214,6 @@ export function NoteEditor({
     const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
     const [gitInitialized, setGitInitialized] = useState(false);
 
-    // Optimistic locking state
-    const mtimeRef = useRef<number | null>(null);
-    const [conflictContent, setConflictContent] = useState<string | null>(null);
-
     // AI edit navigator state
     const [aiEditCount, setAiEditCount] = useState(0);
     const [aiEditsVisible, setAiEditsVisible] = useState(true);
@@ -234,15 +227,10 @@ export function NoteEditor({
 
     // Source mode state
     const [viewMode, setViewModeRaw] = useState<NoteViewMode>(initialViewMode ?? 'rich');
-    const [rawMarkdown, setRawMarkdown] = useState('');
     const [sourceDirty, setSourceDirty] = useState(false);
     const viewModeRef = useRef(viewMode);
     viewModeRef.current = viewMode;
 
-    const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const sourceSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const pendingContentRef = useRef<string | null>(null);
-    const pendingSourceContentRef = useRef<string | null>(null);
     const lastSaveAtRef = useRef(0);
     const notePathRef = useRef(notePath);
     const workspaceIdRef = useRef(workspaceId);
@@ -260,6 +248,119 @@ export function NoteEditor({
     rootRef.current = root;
     frontMatterResultRef.current = frontMatterResult;
     onNotFoundRef.current = onNotFound;
+
+    const loadedThreadsRef = useRef<CommentThread[]>([]);
+    const contentLoadedRef = useRef(false);
+
+    const documentSession = useMarkdownDocumentSession({
+        workspaceId,
+        documentPath: notePath,
+        io,
+        root,
+        autosaveDebounceMs: 1500,
+        flushBeforeLoad: true,
+        onBeforeLoad: () => {
+            setViewModeRaw('rich');
+            setFrontMatterResult({ kind: 'none' });
+            setSourceDirty(false);
+            contentLoadedRef.current = false;
+            aiEditRegionsRef.current = [];
+            setAiEditCount(0);
+            setAiEditsVisible(false);
+            setTocEntries([]);
+            setTocOpen(false);
+            setTocActiveIndex(null);
+        },
+        onLoaded: ({ content }) => {
+            const parsedFrontMatter = parseNoteFrontMatter(content);
+            setFrontMatterResult(parsedFrontMatter);
+            const richMarkdown = parsedFrontMatter.kind === 'valid'
+                ? parsedFrontMatter.frontMatter.body
+                : content;
+            let html = markdownToHtml(richMarkdown);
+            html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current, rootRef.current);
+
+            const ed = editorRef.current;
+            if (ed && !ed.isDestroyed) {
+                ed.commands.setContent(html, { emitUpdate: false });
+                ed.commands.setTextSelection?.(1);
+                resetEditorHistory(ed);
+                setSourceDirty(false);
+                contentLoadedRef.current = true;
+
+                if (commentsEnabled) {
+                    if (threadsProp) {
+                        loadedThreadsRef.current = threadsProp;
+                        for (const thread of threadsProp) {
+                            if (thread.status === 'resolved') continue;
+                            const result = findAnchorInDoc(ed.state.doc, thread.anchor);
+                            if (result) {
+                                applyCommentMark(ed, thread.id, result.from, result.to);
+                            }
+                        }
+                    } else {
+                        commentBackendRef.current.loadThreads(workspaceIdRef.current, notePathRef.current ?? '').then((threads) => {
+                            const edInner = editorRef.current;
+                            if (!edInner || edInner.isDestroyed) return;
+                            loadedThreadsRef.current = threads;
+                            for (const thread of threads) {
+                                if (thread.status === 'resolved') continue;
+                                const result = findAnchorInDoc(edInner.state.doc, thread.anchor);
+                                if (result) {
+                                    applyCommentMark(edInner, thread.id, result.from, result.to);
+                                }
+                            }
+                        }).catch(() => { /* non-fatal — comments just won't highlight */ });
+                    }
+                }
+            }
+        },
+        onLoadError: (err) => {
+            if (err instanceof Error && err.message.includes('404')) {
+                onNotFoundRef.current?.();
+                return true;
+            }
+            return false;
+        },
+        onSaved: () => {
+            lastSaveAtRef.current = Date.now();
+            setSourceDirty(false);
+            const path = notePathRef.current;
+            if (commentsEnabled && editor && path) {
+                const threads = loadedThreadsRef.current;
+                for (const thread of threads) {
+                    if (thread.status === 'resolved') continue;
+                    const freshAnchor = buildAnchorFromMark(editor, thread.id);
+                    if (freshAnchor && freshAnchor.quotedText !== thread.anchor.quotedText) {
+                        commentBackendRef.current.updateThreadAnchor(workspaceIdRef.current, path, thread.id, thread.status)
+                            .catch(() => { /* non-fatal */ });
+                        thread.anchor = freshAnchor;
+                    }
+                }
+            }
+        },
+        onDiscardDirty: () => {
+            setSourceDirty(false);
+        },
+    });
+
+    const rawMarkdown = documentSession.content;
+    const setRawMarkdown = documentSession.setContent;
+    const loading = documentSession.loading;
+    const loadError = documentSession.loadError;
+    const saveState = documentSession.saveState;
+    const dirty = documentSession.dirty;
+    const setDirty = documentSession.setDirty;
+    const mtimeRef = documentSession.mtimeRef;
+    const conflictContent = documentSession.conflictContent;
+    const setConflictContent = documentSession.setConflictContent;
+    const pendingContentRef = documentSession.pendingContentRef;
+    const flushSave = documentSession.flushSave;
+    const queueSave = documentSession.queueSave;
+    const discardPending = documentSession.discardPending;
+
+    const rawMarkdownRef = useRef(rawMarkdown);
+    rawMarkdownRef.current = rawMarkdown;
 
     // View mode setter that also notifies parent
     const setViewMode = useCallback((mode: NoteViewMode) => {
@@ -353,125 +454,27 @@ export function NoteEditor({
         return false;
     }, []);
 
-    // ── Autosave ────────────────────────────────────────────────────────────
-
-    // Ref to track loaded threads for re-anchoring
-    const loadedThreadsRef = useRef<CommentThread[]>([]);
-
-    const flushSave = useCallback(async () => {
-        if (saveTimerRef.current) {
-            clearTimeout(saveTimerRef.current);
-            saveTimerRef.current = null;
-        }
-        const content = pendingContentRef.current;
-        const path = notePathRef.current;
-        if (content === null || !path) return;
-        pendingContentRef.current = null;
-        setSaveState('saving');
-        try {
-            const result = await ioRef.current.saveContent(
-                workspaceIdRef.current, path, content,
-                mtimeRef.current ?? undefined,
-                rootRef.current,
-            );
-            mtimeRef.current = result.mtime;
-            lastSaveAtRef.current = Date.now();
-            setSaveState('saved');
-            setDirty(false);
-            setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 3000);
-
-            // Re-anchor threads after save to keep context fresh
-            if (commentsEnabled && editor) {
-                const threads = loadedThreadsRef.current;
-                for (const thread of threads) {
-                    if (thread.status === 'resolved') continue;
-                    const freshAnchor = buildAnchorFromMark(editor, thread.id);
-                    if (freshAnchor && freshAnchor.quotedText !== thread.anchor.quotedText) {
-                        commentBackendRef.current.updateThreadAnchor(workspaceIdRef.current, path, thread.id, thread.status)
-                            .catch(() => { /* non-fatal */ });
-                        thread.anchor = freshAnchor;
-                    }
-                }
-            }
-        } catch (err: any) {
-            if (err?.status === 409) {
-                setConflictContent(err.currentContent ?? null);
-                setSaveState('conflict');
-                pendingContentRef.current = content;
-            } else {
-                setSaveState('error');
-            }
-        }
-    }, [editor, commentsEnabled]);
-
     function scheduleSave(ed: { getHTML: () => string }) {
-        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
         let md = htmlToMarkdown(ed.getHTML());
         md = rewriteImageSrcToRelative(md);
         const currentFrontMatter = frontMatterResultRef.current;
         if (currentFrontMatter.kind === 'valid') {
             md = composeMarkdownWithFrontMatter(currentFrontMatter.frontMatter, md);
         }
-        pendingContentRef.current = md;
-        saveTimerRef.current = setTimeout(() => flushSave(), 1500);
-    }
-
-    // ── Source mode: save raw markdown directly ─────────────────────────────
-
-    const flushSourceSave = useCallback(async () => {
-        if (sourceSaveTimerRef.current) {
-            clearTimeout(sourceSaveTimerRef.current);
-            sourceSaveTimerRef.current = null;
-        }
-        const content = pendingSourceContentRef.current;
-        const path = notePathRef.current;
-        if (content === null || !path) return;
-        pendingSourceContentRef.current = null;
-        setSaveState('saving');
-        try {
-            const result = await ioRef.current.saveContent(
-                workspaceIdRef.current, path, content,
-                mtimeRef.current ?? undefined,
-                rootRef.current,
-            );
-            mtimeRef.current = result.mtime;
-            lastSaveAtRef.current = Date.now();
-            setSaveState('saved');
-            setSourceDirty(false);
-            setDirty(false);
-            setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 3000);
-        } catch (err: any) {
-            if (err?.status === 409) {
-                setConflictContent(err.currentContent ?? null);
-                setSaveState('conflict');
-                pendingSourceContentRef.current = content;
-            } else {
-                setSaveState('error');
-            }
-        }
-    }, []);
-
-    function scheduleSourceSave() {
-        if (sourceSaveTimerRef.current) clearTimeout(sourceSaveTimerRef.current);
-        sourceSaveTimerRef.current = setTimeout(() => flushSourceSave(), 1500);
+        queueSave(md);
     }
 
     // ── Source mode: handle textarea change ─────────────────────────────────
 
     const handleSourceChange = useCallback((content: string) => {
         setRawMarkdown(content);
-        pendingSourceContentRef.current = content;
         setSourceDirty(true);
-        setDirty(true);
-        scheduleSourceSave();
-    }, []);
+        queueSave(content);
+    }, [queueSave, setRawMarkdown]);
 
     // ── Source mode: image paste ────────────────────────────────────────────
 
     const sourceTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-
-    const rawMarkdownRef = useRef(rawMarkdown);
-    rawMarkdownRef.current = rawMarkdown;
 
     const handleSourcePaste = useCallback(async (e: React.ClipboardEvent<HTMLDivElement>) => {
         const items = e.clipboardData?.items;
@@ -515,10 +518,8 @@ export function NoteEditor({
                             newContent = currentMd + mdImg;
                         }
                         setRawMarkdown(newContent);
-                        pendingSourceContentRef.current = newContent;
                         setSourceDirty(true);
-                        setDirty(true);
-                        scheduleSourceSave();
+                        queueSave(newContent);
                     } catch (err) {
                         console.error('Failed to upload pasted image:', err);
                     } finally {
@@ -539,10 +540,8 @@ export function NoteEditor({
             const end = textarea.selectionEnd;
             const newContent = currentMd.slice(0, start) + pastedText + currentMd.slice(end);
             setRawMarkdown(newContent);
-            pendingSourceContentRef.current = newContent;
             setSourceDirty(true);
-            setDirty(true);
-            scheduleSourceSave();
+            queueSave(newContent);
             const restoreSelection = () => {
                 textarea.focus();
                 const nextPos = start + pastedText.length;
@@ -551,7 +550,7 @@ export function NoteEditor({
             if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restoreSelection);
             else setTimeout(restoreSelection, 0);
         }
-    }, [rawMarkdown]);
+    }, [queueSave, setRawMarkdown]);
 
     // ── Mode toggle logic ──────────────────────────────────────────────────
 
@@ -572,21 +571,7 @@ export function NoteEditor({
     }, [flushSave, setViewMode]);
 
     const switchToRich = useCallback(async () => {
-        // Save dirty source content first
-        const pendingSource = pendingSourceContentRef.current;
-        if (pendingSource !== null) {
-            const path = notePathRef.current;
-            if (path) {
-                try {
-                    await ioRef.current.saveContent(workspaceIdRef.current, path, pendingSource, undefined, rootRef.current);
-                    pendingSourceContentRef.current = null;
-                } catch { /* continue anyway */ }
-            }
-        }
-        if (sourceSaveTimerRef.current) {
-            clearTimeout(sourceSaveTimerRef.current);
-            sourceSaveTimerRef.current = null;
-        }
+        await flushSave();
         // Convert raw markdown to HTML and load into Tiptap
         const ed = editorRef.current;
         if (ed && !ed.isDestroyed) {
@@ -602,11 +587,7 @@ export function NoteEditor({
             resetEditorHistory(ed);
 
             // Cancel any save triggered by setContent
-            pendingContentRef.current = null;
-            if (saveTimerRef.current) {
-                clearTimeout(saveTimerRef.current);
-                saveTimerRef.current = null;
-            }
+            discardPending();
 
             // Re-anchor comments
             if (commentsEnabled) {
@@ -623,21 +604,17 @@ export function NoteEditor({
         setSourceDirty(false);
         setDirty(false);
         setViewMode('rich');
-    }, [rawMarkdown, commentsEnabled, setViewMode]);
+    }, [rawMarkdown, commentsEnabled, setViewMode, flushSave, discardPending, setDirty]);
 
     // ── Conflict resolution handlers ────────────────────────────────────────
 
     const handleConflictKeepMine = useCallback(async () => {
         mtimeRef.current = null;
         setConflictContent(null);
-        setSaveState('idle');
+        documentSession.setSaveState('idle');
         // Re-trigger save without mtime check (force overwrite)
-        if (viewModeRef.current === 'source') {
-            await flushSourceSave();
-        } else {
-            await flushSave();
-        }
-    }, [flushSave, flushSourceSave]);
+        await flushSave({ expectedMtime: null });
+    }, [flushSave, mtimeRef, setConflictContent, documentSession]);
 
     const handleConflictLoadDisk = useCallback(() => {
         if (!conflictContent) return;
@@ -654,23 +631,18 @@ export function NoteEditor({
             resetEditorHistory(ed);
         }
         setRawMarkdown(conflictContent);
-        pendingContentRef.current = null;
-        pendingSourceContentRef.current = null;
-        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-        if (sourceSaveTimerRef.current) clearTimeout(sourceSaveTimerRef.current);
+        discardPending();
         setDirty(false);
         setSourceDirty(false);
         setConflictContent(null);
-        setSaveState('idle');
+        documentSession.setSaveState('idle');
         // Refresh mtime from disk
         ioRef.current.loadContent(workspaceIdRef.current, notePathRef.current!, rootRef.current)
             .then(r => { mtimeRef.current = r.mtime; })
             .catch(() => {});
-    }, [conflictContent]);
+    }, [conflictContent, discardPending, documentSession, mtimeRef, setConflictContent, setDirty, setRawMarkdown]);
 
     // ── Apply comment marks from threads prop ─────────────────────────────────
-
-    const contentLoadedRef = useRef(false);
 
     useEffect(() => {
         if (!editor || !threadsProp || !notePath || !contentLoadedRef.current || !commentsEnabled) return;
@@ -684,128 +656,11 @@ export function NoteEditor({
         }
     }, [threadsProp, editor, notePath, commentsEnabled]);
 
-    // ── Load content on path change ─────────────────────────────────────────
-    //
-    // The editor is kept mounted (hidden behind a loading overlay) so the
-    // TipTap instance is never destroyed during note switches.  This means
-    // editorRef.current is always a live editor once it has been created,
-    // and we can safely call setContent on it from the fetch callback.
-
-    const flushSaveRef = useRef(flushSave);
-    flushSaveRef.current = flushSave;
-
-    useEffect(() => {
-        flushSaveRef.current();
-
-        // Reset to rich mode when switching notes
-        setViewModeRaw('rich');
-        setRawMarkdown('');
-        setFrontMatterResult({ kind: 'none' });
-        setSourceDirty(false);
-        contentLoadedRef.current = false;
-        // Reset optimistic locking state
-        mtimeRef.current = null;
-        setConflictContent(null);
-        // Clear AI edit decorations from previous note
-        aiEditRegionsRef.current = [];
-        setAiEditCount(0);
-        setAiEditsVisible(false);
-        // Reset TOC state
-        setTocEntries([]);
-        setTocOpen(false);
-        setTocActiveIndex(null);
-
-        if (!notePath) {
-            editorRef.current?.commands.clearContent({ emitUpdate: false });
-            setLoadError(null);
-            setLoading(false);
-            return;
-        }
-
-        let cancelled = false;
-        setLoading(true);
-        setLoadError(null);
-        setSaveState('idle');
-
-        ioRef.current
-            .loadContent(workspaceId, notePath, rootRef.current)
-            .then(({ content, mtime }) => {
-                if (cancelled) return;
-                mtimeRef.current = mtime;
-                const parsedFrontMatter = parseNoteFrontMatter(content);
-                setFrontMatterResult(parsedFrontMatter);
-                const richMarkdown = parsedFrontMatter.kind === 'valid'
-                    ? parsedFrontMatter.frontMatter.body
-                    : content;
-                let html = markdownToHtml(richMarkdown);
-                html = rewriteHtmlImageSrc(html, ioRef.current, workspaceId, rootRef.current);
-
-                const ed = editorRef.current;
-                if (ed && !ed.isDestroyed) {
-                    ed.commands.setContent(html, { emitUpdate: false });
-                    ed.commands.setTextSelection?.(1);
-                    resetEditorHistory(ed);
-                    pendingContentRef.current = null;
-                    if (saveTimerRef.current) {
-                        clearTimeout(saveTimerRef.current);
-                        saveTimerRef.current = null;
-                    }
-                    setDirty(false);
-                    setRawMarkdown(content);
-                    contentLoadedRef.current = true;
-
-                    if (commentsEnabled) {
-                        if (threadsProp) {
-                            loadedThreadsRef.current = threadsProp;
-                            for (const thread of threadsProp) {
-                                if (thread.status === 'resolved') continue;
-                                const result = findAnchorInDoc(ed.state.doc, thread.anchor);
-                                if (result) {
-                                    applyCommentMark(ed, thread.id, result.from, result.to);
-                                }
-                            }
-                        } else {
-                            commentBackendRef.current.loadThreads(workspaceId, notePath).then((threads) => {
-                                if (cancelled) return;
-                                const edInner = editorRef.current;
-                                if (!edInner || edInner.isDestroyed) return;
-                                loadedThreadsRef.current = threads;
-                                for (const thread of threads) {
-                                    if (thread.status === 'resolved') continue;
-                                    const result = findAnchorInDoc(edInner.state.doc, thread.anchor);
-                                    if (result) {
-                                        applyCommentMark(edInner, thread.id, result.from, result.to);
-                                    }
-                                }
-                            }).catch(() => { /* non-fatal — comments just won't highlight */ });
-                        }
-                    }
-                }
-            })
-            .catch((err) => {
-                if (cancelled) return;
-                if (err?.message?.includes('404')) {
-                    onNotFoundRef.current?.();
-                    return;
-                }
-                setLoadError(err?.message ?? 'Failed to load note');
-            })
-            .finally(() => {
-                if (!cancelled) setLoading(false);
-            });
-
-        return () => {
-            cancelled = true;
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [notePath, workspaceId, refreshCounter]);
-
     // ── Flush on unmount ────────────────────────────────────────────────────
 
     useEffect(() => {
         return () => {
             flushSave();
-            if (sourceSaveTimerRef.current) clearTimeout(sourceSaveTimerRef.current);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -984,7 +839,6 @@ export function NoteEditor({
             if (Date.now() - lastSaveAtRef.current < 1000) return;
             // Skip reload if user has unsaved edits
             if (pendingContentRef.current !== null) return;
-            if (pendingSourceContentRef.current !== null) return;
             ioRef.current.loadContent(workspaceIdRef.current, notePath, rootRef.current).then(({ content, mtime }) => {
                 mtimeRef.current = mtime;
                 // Skip redundant reload — content already matches what's displayed
@@ -1077,72 +931,23 @@ export function NoteEditor({
         };
     }, [notePath]);
 
-    // ── Ctrl+S / Cmd+S: suppress browser dialog & flush save ──────────────
-
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                e.preventDefault();
-                if (viewMode === 'source') {
-                    flushSourceSave();
-                } else {
-                    flushSave();
-                }
-            }
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
-                if (viewMode === 'source') return; // comments not available in source mode
-                e.preventDefault();
-                onCommentCreateRef.current?.();
-            }
-        };
-        document.addEventListener('keydown', handler);
-        return () => document.removeEventListener('keydown', handler);
-    }, [flushSave, flushSourceSave, viewMode]);
-
     // ── Manual refresh ──────────────────────────────────────────────────────
 
     const handleRefresh = useCallback(() => {
-        if (dirty || sourceDirty) {
-            if (!window.confirm('You have unsaved changes. Discard and refresh?')) return;
-            if (saveTimerRef.current) {
-                clearTimeout(saveTimerRef.current);
-                saveTimerRef.current = null;
-            }
-            pendingContentRef.current = null;
-            if (sourceSaveTimerRef.current) {
-                clearTimeout(sourceSaveTimerRef.current);
-                sourceSaveTimerRef.current = null;
-            }
-            pendingSourceContentRef.current = null;
-            setDirty(false);
-            setSourceDirty(false);
-        }
-        setRefreshCounter(c => c + 1);
-    }, [dirty, sourceDirty]);
+        documentSession.refresh();
+    }, [documentSession]);
 
-    // ── Ctrl/Cmd+Shift+R keyboard shortcut for refresh ─────────────────────
-
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'R') {
+    useMarkdownDocumentKeyboardShortcuts({
+        onSave: flushSave,
+        onRefresh: handleRefresh,
+        onKeyDown: (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
+                if (viewModeRef.current === 'source') return;
                 e.preventDefault();
-                handleRefresh();
+                onCommentCreateRef.current?.();
             }
-        };
-        document.addEventListener('keydown', handler);
-        return () => document.removeEventListener('keydown', handler);
-    }, [handleRefresh]);
-
-    // ── beforeunload guard ──────────────────────────────────────────────────
-
-    useEffect(() => {
-        if (!dirty) return;
-        const handler = (e: BeforeUnloadEvent) => {
-            e.preventDefault();
-        };
-        window.addEventListener('beforeunload', handler);
-        return () => window.removeEventListener('beforeunload', handler);
-    }, [dirty]);
+        },
+    });
 
     const isEmpty = notePath === null;
 
@@ -1292,7 +1097,7 @@ export function NoteEditor({
                                 >{sourceDirty && viewMode === 'source' ? 'MD ●' : 'MD'}</button>
                             </div>
                             {viewMode === 'source' && sourceDirty && (
-                                <button className="save-btn" onClick={flushSourceSave} disabled={saveState === 'saving'} data-testid="note-source-save-btn">
+                                <button className="save-btn" onClick={() => flushSave()} disabled={saveState === 'saving'} data-testid="note-source-save-btn">
                                     {saveState === 'saving' ? 'Saving…' : 'Save'}
                                 </button>
                             )}
@@ -1418,7 +1223,7 @@ export function NoteEditor({
                         notePath={notePath}
                         currentContent={rawMarkdown}
                         gitInitialized={gitInitialized}
-                        onReload={() => setRefreshCounter(c => c + 1)}
+                        onReload={() => documentSession.refresh()}
                         onClose={() => setVersionHistoryOpen(false)}
                     />
                 )}
@@ -1507,7 +1312,7 @@ export function NoteEditor({
                 {saveState === 'error' && (
                     <span className="text-red-500">
                         Save failed{' '}
-                        <button className="underline" onClick={() => viewMode === 'source' ? flushSourceSave() : flushSave()}>
+                        <button className="underline" onClick={() => flushSave()}>
                             Retry
                         </button>
                     </span>

@@ -607,6 +607,34 @@ describe('useChatSSE', () => {
             expect(result[0]).toEqual({ id: 'pm-1', content: 'queued msg', status: 'queued' });
         });
 
+        it('SSE3b: pending-message-added carries images into the queue entry', () => {
+            const setPendingQueue = vi.fn();
+            renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
+            const images = ['data:image/png;base64,AAA'];
+            act(() => {
+                MockEventSource.last._emit('pending-message-added', {
+                    pendingMessage: { id: 'pm-img', content: 'with image', createdAt: '2024-01-01', images },
+                });
+            });
+            const updater = setPendingQueue.mock.calls[0][0];
+            const result = updater([]);
+            expect(result).toHaveLength(1);
+            expect(result[0]).toEqual({ id: 'pm-img', content: 'with image', status: 'queued', images });
+        });
+
+        it('SSE3c: pending-message-added omits images when none are present', () => {
+            const setPendingQueue = vi.fn();
+            renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));
+            act(() => {
+                MockEventSource.last._emit('pending-message-added', {
+                    pendingMessage: { id: 'pm-noimg', content: 'no image', createdAt: '2024-01-01' },
+                });
+            });
+            const updater = setPendingQueue.mock.calls[0][0];
+            const result = updater([]);
+            expect(result[0]).not.toHaveProperty('images');
+        });
+
         it('SSE4: pending-message-added deduplicates by id', () => {
             const setPendingQueue = vi.fn();
             renderHook(() => useChatSSE(makeOptions({ setPendingQueue })));

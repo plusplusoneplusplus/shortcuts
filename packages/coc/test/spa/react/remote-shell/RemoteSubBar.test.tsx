@@ -577,3 +577,33 @@ describe('RemoteSubBar', () => {
         expect(remoteRow.textContent?.toLowerCase()).not.toContain('local');
     });
 });
+
+// ── Compact sub-bar (see "Compact Header Rows" spec) ───────────────────
+// Row 2 shrinks 42px → 32px; tabs/clone-switch/overflow 30px → 26px; the
+// Ask/Queue actions 28px → 24px. The hidden measure mirror must track the tab
+// height (26px) or the overflow width calc drifts.
+describe('RemoteSubBar compact sizing', () => {
+    it('sub-bar container is 32px tall', () => {
+        renderBar();
+        expect(screen.getByTestId('remote-sub-bar').className).toContain('h-[32px]');
+    });
+
+    it('clone tabs and clone-switch are 26px tall', () => {
+        renderBar();
+        expect(screen.getAllByTestId('clone-scope-tab')[0].className).toContain('h-[26px]');
+        expect(screen.getByTestId('clone-switch').className).toContain('h-[26px]');
+    });
+
+    it('Ask and Queue actions are 24px tall (fit inside the shorter bar)', () => {
+        renderBar();
+        expect(screen.getByTestId('subbar-ask').className).toContain('h-[24px]');
+        expect(screen.getByTestId('subbar-queue').className).toContain('h-[24px]');
+    });
+
+    it('hidden measure mirror matches the 26px tab height (keeps overflow calc correct)', () => {
+        renderBar();
+        const mirror = document.querySelector('[data-measure-key]');
+        expect(mirror).not.toBeNull();
+        expect(mirror!.className).toContain('h-[26px]');
+    });
+});

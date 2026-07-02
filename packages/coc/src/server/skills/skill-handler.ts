@@ -10,6 +10,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import {
     getBundledSkills,
@@ -25,6 +26,8 @@ import { handleAPIError, notFound, badRequest, internalError } from '../errors';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import { createSkillRouteHandlers } from './skill-route-handlers';
 import { getRepoDataPath } from '../paths';
+import { loadConfigFile } from '../../config';
+import { expandHomePath } from '../executors/skill-config-resolver';
 import type { Route } from '../types';
 import {
     ENDEV_XDPU_SKILL_NAME,
@@ -72,6 +75,53 @@ function resolveExtraSkillFolderInstallPath(workspaceRoot: string, folder: strin
 }
 
 /**
+ * Read configured global extra skill folders (`skills.globalExtraFolders`) from
+ * the CLI config file. These are read-only skill sources applied across all
+ * workspaces (CoC never installs/deletes into them). Never throws — a missing or
+ * malformed config yields an empty list, and non-array/non-string shapes are
+ * dropped. The config loader is injectable so callers/tests can supply a
+ * hermetic config instead of reading the real `~/.coc/config.yaml`.
+ */
+export function readConfiguredGlobalExtraFolders(
+    load: () => { skills?: { globalExtraFolders?: unknown } } | undefined = loadConfigFile,
+): string[] {
+    try {
+        const folders = load()?.skills?.globalExtraFolders;
+        return Array.isArray(folders)
+            ? folders.filter((f): f is string => typeof f === 'string')
+            : [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Resolve a configured global extra skill folder to its source + host install
+ * paths. Global extra folders are read-only sources that must be absolute (or a
+ * WSL path) after `~` expansion — there is no repo root to anchor a relative
+ * value to — so relative and malformed entries return null and are skipped,
+ * mirroring the runtime resolver's handling.
+ */
+function resolveGlobalExtraSkillFolderPaths(
+    folder: string,
+): { sourcePath: string; installPath: string } | null {
+    if (typeof folder !== 'string' || folder.trim().length === 0) {
+        return null;
+    }
+    const expanded = expandHomePath(folder, os.homedir());
+    const isAbsoluteOrWsl = path.isAbsolute(expanded)
+        || resolveWorkspaceExecutionContext(expanded).kind === 'wsl';
+    if (!isAbsoluteOrWsl) {
+        return null;
+    }
+    try {
+        return { sourcePath: expanded, installPath: resolvePathForHostFilesystem(expanded) };
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Sort skills by most-recently-used first, then alphabetically.
  * Skills with a usage timestamp are sorted most-recent-first;
  * unused skills follow in A→Z order.
@@ -101,7 +151,7 @@ export interface SkillInfo {
     references?: string[];
     scripts?: string[];
     relativePath?: string;
-    source?: 'global' | 'repo' | 'bundled' | 'linked-repo' | 'extra-folder';
+    source?: 'global' | 'repo' | 'bundled' | 'linked-repo' | 'extra-folder' | 'global-extra-folder';
     /** Workspace ID of the repo this skill was loaded from (only set when source = 'linked-repo'). */
     sourceRepoId?: string;
     /** Absolute path of the directory containing this skill. */
@@ -317,10 +367,20 @@ export async function filterVisibleSkillsForWorkspace(
         : skills.filter(skill => skill.name !== ENDEV_XDPU_SKILL_NAME);
 }
 
+/** Options for {@link loadSkillsForWorkspace}. */
+export interface LoadSkillsOptions {
+    /**
+     * Configured global extra skill folders (`skills.globalExtraFolders`),
+     * already read from config. Read-only sources listed across all workspaces.
+     */
+    globalExtraFolders?: string[];
+}
+
 export async function loadSkillsForWorkspace(
     ws: WorkspaceInfo,
     dataDir: string | undefined,
     store: ProcessStore,
+    options?: LoadSkillsOptions,
 ): Promise<SkillInfo[]> {
     const id = ws.id;
     const installPath = getSkillsInstallPath(ws.rootPath);
@@ -345,6 +405,26 @@ export async function loadSkillsForWorkspace(
     }
     const globalNames = new Set(globalSkills.map(s => s.name));
 
+    // Configured global extra folders (read-only, apply across all workspaces).
+    // Ordered after managed-global skills and before per-workspace extra folders
+    // to match the runtime resolver's priority. A skill already provided by the
+    // repo, the managed global dir, or an earlier global extra folder wins.
+    const globalExtraSkills: SkillInfo[] = [];
+    const globalExtraNames = new Set<string>();
+    for (const folder of options?.globalExtraFolders ?? []) {
+        const resolved = resolveGlobalExtraSkillFolderPaths(folder);
+        if (!resolved) continue;
+        for (const skill of listInstalledSkills(resolved.installPath)) {
+            if (localNames.has(skill.name) || globalNames.has(skill.name) || globalExtraNames.has(skill.name)) {
+                continue;
+            }
+            skill.source = 'global-extra-folder';
+            skill.folderPath = resolved.sourcePath;
+            globalExtraSkills.push(skill);
+            globalExtraNames.add(skill.name);
+        }
+    }
+
     let allWorkspaces: WorkspaceInfo[] | null = null;
     const extraSkillFolders = await getEffectiveEnDevExtraSkillFolders(dataDir, ws);
     const extraSkills: SkillInfo[] = [];
@@ -366,7 +446,7 @@ export async function loadSkillsForWorkspace(
             }
         }
         for (const skill of folderSkills) {
-            if (localNames.has(skill.name) || globalNames.has(skill.name)) continue;
+            if (localNames.has(skill.name) || globalNames.has(skill.name) || globalExtraNames.has(skill.name)) continue;
             skill.folderPath = folderSourcePath;
             if (sourceRepoId) {
                 skill.source = 'linked-repo';
@@ -378,7 +458,7 @@ export async function loadSkillsForWorkspace(
         }
     }
 
-    let skills = dedupByName([...localSkills, ...globalSkills, ...extraSkills]);
+    let skills = dedupByName([...localSkills, ...globalSkills, ...globalExtraSkills, ...extraSkills]);
     if (dataDir) {
         try {
             const repoPrefsPath = getRepoDataPath(dataDir, id, 'preferences.json');
@@ -404,8 +484,17 @@ export async function loadSkillsForWorkspace(
 /**
  * Register skill management API routes on the given route table.
  * @param dataDir - Optional data directory for reading preferences (skill usage ordering).
+ * @param readGlobalExtraFolders - Reader for configured global extra skill
+ *   folders (`skills.globalExtraFolders`); defaults to reading the CLI config
+ *   file. Injectable so tests can supply hermetic folders instead of the real
+ *   `~/.coc/config.yaml`.
  */
-export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDir?: string): void {
+export function registerSkillRoutes(
+    routes: Route[],
+    store: ProcessStore,
+    dataDir?: string,
+    readGlobalExtraFolders: () => string[] = readConfiguredGlobalExtraFolders,
+): void {
 
     // GET /api/workspaces/:id/skills — List installed skills (including global and extra folders)
     routes.push({
@@ -415,6 +504,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
             const wsId = ws.id;
+            const globalExtraFolders = readGlobalExtraFolders();
 
             const cached = skillCache.get(wsId);
             if (cached) {
@@ -424,7 +514,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
                 const stale = Date.now() - cached.lastUpdated > SKILL_CACHE_TTL_MS;
                 if (stale && !cached.refreshing) {
                     cached.refreshing = true;
-                    loadSkillsForWorkspace(ws, dataDir, store)
+                    loadSkillsForWorkspace(ws, dataDir, store, { globalExtraFolders })
                         .then(skills => skillCache.set(wsId, { skills, refreshing: false, lastUpdated: Date.now() }))
                         .catch(() => { cached.refreshing = false; });
                 }
@@ -432,7 +522,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             }
 
             // Cache miss: load synchronously, populate cache, then respond
-            const rawSkills = await loadSkillsForWorkspace(ws, dataDir, store);
+            const rawSkills = await loadSkillsForWorkspace(ws, dataDir, store, { globalExtraFolders });
             skillCache.set(wsId, { skills: rawSkills, refreshing: false, lastUpdated: Date.now() });
             const skills = await filterVisibleSkillsForWorkspace(rawSkills, ws, dataDir);
             sendJSON(res, 200, { skills });
@@ -519,7 +609,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
                 return handleAPIError(res, badRequest('`path` query parameter is required'));
             }
 
-            const skills = await loadSkillsForWorkspace(ws, dataDir, store);
+            const skills = await loadSkillsForWorkspace(ws, dataDir, store, { globalExtraFolders: readGlobalExtraFolders() });
             const skill = skills.find(s => s.name === skillName);
             if (!skill || !skill.folderPath) {
                 return handleAPIError(res, notFound('Skill'));

@@ -18,8 +18,11 @@ import {
 import { sendJSON } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { handleAPIError, notFound, badRequest } from '../errors';
+import { loadConfigFile, writeConfigFile, getConfigFilePath, type CLIConfig } from '../../config';
 import { sortSkillsByUsage, listInstalledSkills, getSkillDetail, skillCache, loadSkillsForWorkspace, filterVisibleSkillsForWorkspace } from './skill-handler';
 import { createSkillRouteHandlers } from './skill-route-handlers';
+import { resolveEffectiveSkillPaths } from '../executors/skill-config-resolver';
+import { getEffectiveEnDevExtraSkillFolders } from '../endev/endev-detector';
 import type { Route } from '../types';
 
 // ============================================================================
@@ -27,7 +30,7 @@ import type { Route } from '../types';
 // ============================================================================
 
 /** Skill names that collide with global sub-routes and must be rejected. */
-const RESERVED_GLOBAL_SKILL_NAMES = new Set(['bundled', 'scan', 'install', 'config']);
+const RESERVED_GLOBAL_SKILL_NAMES = new Set(['bundled', 'scan', 'install', 'config', 'effective-paths']);
 
 /** Remove duplicate skills by name, keeping the first occurrence. */
 function dedupByName<T extends { name: string }>(skills: T[]): T[] {
@@ -65,6 +68,70 @@ function writePreferences(dataDir: string, prefs: any): void {
     }
 }
 
+/**
+ * Injectable accessors for the CLI config file. Lets tests point the global
+ * extra-folder / auto-detect config at a temp file instead of the real
+ * `~/.coc/config.yaml`. Defaults to the real config functions.
+ */
+export interface GlobalSkillConfigAccess {
+    loadConfigFile: (configPath?: string) => CLIConfig | undefined;
+    writeConfigFile: (configPath: string, config: CLIConfig) => void;
+    getConfigFilePath: () => string;
+}
+
+const DEFAULT_CONFIG_ACCESS: GlobalSkillConfigAccess = { loadConfigFile, writeConfigFile, getConfigFilePath };
+
+/** Global folder-source settings surfaced by `/api/skills/config`. */
+interface GlobalSkillFolderConfig {
+    globalExtraFolders: string[];
+    autoDetectDefaultFolders: boolean;
+}
+
+/**
+ * Read `skills.globalExtraFolders` / `skills.autoDetectDefaultFolders` from the
+ * CLI config file. Missing/invalid values fall back to safe defaults
+ * (`[]` and `true`). Never throws — a malformed config yields defaults.
+ */
+function readGlobalSkillFolderConfig(access: GlobalSkillConfigAccess): GlobalSkillFolderConfig {
+    try {
+        const skills = access.loadConfigFile(access.getConfigFilePath())?.skills;
+        const folders = skills?.globalExtraFolders;
+        return {
+            globalExtraFolders: Array.isArray(folders)
+                ? folders.filter((f): f is string => typeof f === 'string')
+                : [],
+            autoDetectDefaultFolders: typeof skills?.autoDetectDefaultFolders === 'boolean'
+                ? skills.autoDetectDefaultFolders
+                : true,
+        };
+    } catch {
+        return { globalExtraFolders: [], autoDetectDefaultFolders: true };
+    }
+}
+
+/**
+ * Persist global folder-source settings into the CLI config file's `skills`
+ * namespace, preserving every other config field. Only the fields present in
+ * `patch` are written.
+ */
+function persistGlobalSkillFolderConfig(
+    access: GlobalSkillConfigAccess,
+    patch: Partial<GlobalSkillFolderConfig>,
+): void {
+    const configPath = access.getConfigFilePath();
+    let existing: CLIConfig;
+    try {
+        existing = access.loadConfigFile(configPath) ?? ({} as CLIConfig);
+    } catch {
+        existing = {} as CLIConfig;
+    }
+    const skills = { ...(existing.skills ?? {}) };
+    if (patch.globalExtraFolders !== undefined) skills.globalExtraFolders = patch.globalExtraFolders;
+    if (patch.autoDetectDefaultFolders !== undefined) skills.autoDetectDefaultFolders = patch.autoDetectDefaultFolders;
+    existing.skills = skills;
+    access.writeConfigFile(configPath, existing);
+}
+
 // ============================================================================
 // Route Registration
 // ============================================================================
@@ -72,7 +139,12 @@ function writePreferences(dataDir: string, prefs: any): void {
 /**
  * Register global skill management API routes on the given route table.
  */
-export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, dataDir: string): void {
+export function registerGlobalSkillRoutes(
+    routes: Route[],
+    store: ProcessStore,
+    dataDir: string,
+    configAccess: GlobalSkillConfigAccess = DEFAULT_CONFIG_ACCESS,
+): void {
     const globalDir = getGlobalSkillsDir(dataDir);
 
     // GET /api/skills — List all global skills
@@ -135,14 +207,17 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
         pattern: /^\/api\/skills\/config$/,
         handler: async (_req, res) => {
             const prefs = readPreferences(dataDir);
+            const folderCfg = readGlobalSkillFolderConfig(configAccess);
             sendJSON(res, 200, {
                 globalDisabledSkills: prefs?.globalDisabledSkills ?? [],
                 globalSkillsDir: globalDir,
+                globalExtraFolders: folderCfg.globalExtraFolders,
+                autoDetectDefaultFolders: folderCfg.autoDetectDefaultFolders,
             });
         },
     });
 
-    // PUT /api/skills/config — Update global disabled-skills list
+    // PUT /api/skills/config — Update global disabled-skills list + folder sources
     routes.push({
         method: 'PUT',
         pattern: /^\/api\/skills\/config$/,
@@ -153,18 +228,83 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
             if (!Object.prototype.hasOwnProperty.call(body, 'globalDisabledSkills')) {
                 return handleAPIError(res, badRequest('`globalDisabledSkills` is required'));
             }
-            if (!Array.isArray(body.globalDisabledSkills)) {
+            if (!Array.isArray(body.globalDisabledSkills) || body.globalDisabledSkills.some((s: unknown) => typeof s !== 'string')) {
                 return handleAPIError(res, badRequest('`globalDisabledSkills` must be an array of strings'));
+            }
+
+            // Optional folder-source fields persisted to the config file's `skills` namespace.
+            const folderPatch: Partial<GlobalSkillFolderConfig> = {};
+            if (Object.prototype.hasOwnProperty.call(body, 'globalExtraFolders')) {
+                if (!Array.isArray(body.globalExtraFolders) || body.globalExtraFolders.some((f: unknown) => typeof f !== 'string')) {
+                    return handleAPIError(res, badRequest('`globalExtraFolders` must be an array of strings'));
+                }
+                folderPatch.globalExtraFolders = body.globalExtraFolders;
+            }
+            if (Object.prototype.hasOwnProperty.call(body, 'autoDetectDefaultFolders')) {
+                if (typeof body.autoDetectDefaultFolders !== 'boolean') {
+                    return handleAPIError(res, badRequest('`autoDetectDefaultFolders` must be a boolean'));
+                }
+                folderPatch.autoDetectDefaultFolders = body.autoDetectDefaultFolders;
             }
 
             const prefs = readPreferences(dataDir);
             prefs.globalDisabledSkills = body.globalDisabledSkills;
             writePreferences(dataDir, prefs);
 
+            if (folderPatch.globalExtraFolders !== undefined || folderPatch.autoDetectDefaultFolders !== undefined) {
+                persistGlobalSkillFolderConfig(configAccess, folderPatch);
+            }
+
+            const folderCfg = readGlobalSkillFolderConfig(configAccess);
             sendJSON(res, 200, {
                 globalDisabledSkills: body.globalDisabledSkills,
                 globalSkillsDir: globalDir,
+                globalExtraFolders: folderCfg.globalExtraFolders,
+                autoDetectDefaultFolders: folderCfg.autoDetectDefaultFolders,
             });
+        },
+    });
+
+    // GET /api/skills/effective-paths — Structured effective skill search order (read-only diagnostic)
+    //
+    // Global-only by default; pass `?workspaceId=<id>` to include workspace-scoped
+    // paths (repo-local + per-repo extra folders). Registered before /skills/:name
+    // so it is not swallowed by the catch-all skill-detail route.
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/skills\/effective-paths$/,
+        handler: async (req, res) => {
+            const url = new URL(req.url ?? '', 'http://localhost');
+            const requestedWorkspaceId = url.searchParams.get('workspaceId') ?? undefined;
+
+            const folderCfg = readGlobalSkillFolderConfig(configAccess);
+
+            let workspaceRootPath: string | undefined;
+            let extraSkillFolders: string[] | undefined;
+            let resolvedWorkspaceId: string | undefined;
+            if (requestedWorkspaceId) {
+                try {
+                    const workspaces = await store.getWorkspaces();
+                    const ws = workspaces.find(w => w.id === requestedWorkspaceId);
+                    if (ws) {
+                        resolvedWorkspaceId = ws.id;
+                        workspaceRootPath = ws.rootPath;
+                        extraSkillFolders = await getEffectiveEnDevExtraSkillFolders(dataDir, ws);
+                    }
+                } catch {
+                    // Non-fatal: fall back to a global-only diagnostic.
+                }
+            }
+
+            const paths = await resolveEffectiveSkillPaths({
+                dataDir,
+                workspaceRootPath,
+                extraSkillFolders,
+                globalExtraFolders: folderCfg.globalExtraFolders,
+                autoDetectDefaultFolders: folderCfg.autoDetectDefaultFolders,
+            });
+
+            sendJSON(res, 200, { workspaceId: resolvedWorkspaceId, paths });
         },
     });
 
@@ -223,7 +363,8 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
                 return handleAPIError(res, notFound('Workspace'));
             }
 
-            const allSkills = await loadSkillsForWorkspace(ws, dataDir, store);
+            const { globalExtraFolders } = readGlobalSkillFolderConfig(configAccess);
+            const allSkills = await loadSkillsForWorkspace(ws, dataDir, store, { globalExtraFolders });
             const visibleSkills = await filterVisibleSkillsForWorkspace(allSkills, ws, dataDir);
             const globalSkills = visibleSkills.filter(s => s.source === 'global');
             const repoSkills = visibleSkills.filter(s => s.source === 'repo');

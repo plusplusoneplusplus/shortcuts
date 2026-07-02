@@ -7,7 +7,7 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { registerSkillRoutes, sortSkillsByUsage, skillCache, SKILL_CACHE_TTL_MS } from '../../src/server/skills/skill-handler';
+import { registerSkillRoutes, sortSkillsByUsage, skillCache, SKILL_CACHE_TTL_MS, loadSkillsForWorkspace, readConfiguredGlobalExtraFolders } from '../../src/server/skills/skill-handler';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../../src/server/types';
 import { getRepoDataPath, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
@@ -114,7 +114,9 @@ describe('registerSkillRoutes', () => {
             name: 'Test Workspace',
             rootPath: workspaceDir,
         } as WorkspaceInfo]);
-        registerSkillRoutes(routes, store);
+        // Inject an empty global-extra-folder reader so these tests stay hermetic
+        // and never pick up the host's ~/.coc/config.yaml.
+        registerSkillRoutes(routes, store, undefined, () => []);
     });
 
     describe('EnDev xDPU wrapper visibility', () => {
@@ -142,7 +144,7 @@ describe('registerSkillRoutes', () => {
         beforeEach(() => {
             dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-endev-data-'));
             routesWithDataDir = [];
-            registerSkillRoutes(routesWithDataDir, store, dataDir);
+            registerSkillRoutes(routesWithDataDir, store, dataDir, () => []);
         });
 
         afterEach(() => {
@@ -545,7 +547,7 @@ describe('registerSkillRoutes', () => {
 
         // Re-register routes with dataDir
         const sortedRoutes: Route[] = [];
-        registerSkillRoutes(sortedRoutes, store, dataDir);
+        registerSkillRoutes(sortedRoutes, store, dataDir, () => []);
 
         const { statusCode, body } = await dispatchRoute(
             sortedRoutes, 'GET', `/api/workspaces/${workspaceId}/skills`
@@ -715,7 +717,7 @@ describe('registerSkillRoutes', () => {
         fs.writeFileSync(path.join(globalSkillsDir, 'global-skill', 'SKILL.md'), '---\ndescription: A global skill\n---');
 
         const globalRoutes: Route[] = [];
-        registerSkillRoutes(globalRoutes, store, dataDir);
+        registerSkillRoutes(globalRoutes, store, dataDir, () => []);
 
         const { statusCode, body } = await dispatchRoute(
             globalRoutes, 'GET', `/api/workspaces/${workspaceId}/skills`
@@ -743,7 +745,7 @@ describe('registerSkillRoutes', () => {
         fs.writeFileSync(path.join(globalSkillsDir, 'shared-skill', 'SKILL.md'), '---\ndescription: global version\n---');
 
         const globalRoutes: Route[] = [];
-        registerSkillRoutes(globalRoutes, store, dataDir);
+        registerSkillRoutes(globalRoutes, store, dataDir, () => []);
 
         const { statusCode, body } = await dispatchRoute(
             globalRoutes, 'GET', `/api/workspaces/${workspaceId}/skills`
@@ -957,5 +959,206 @@ describe('sortSkillsByUsage', () => {
         const copy = [...skills];
         sortSkillsByUsage(skills, {});
         expect(skills).toEqual(copy);
+    });
+});
+
+// ============================================================================
+// AC #2 — configured global extra skill folders
+// ============================================================================
+
+describe('loadSkillsForWorkspace — configured global extra folders (AC #2)', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let repoDir: string;
+    let tmpDirs: string[];
+    const wsId = 'ws-ge-1';
+
+    function mkSkill(root: string, name: string, frontmatter = ''): void {
+        const dir = path.join(root, name);
+        fs.mkdirSync(dir, { recursive: true });
+        const body = frontmatter ? `---\n${frontmatter}\n---\n# ${name}` : `# ${name}`;
+        fs.writeFileSync(path.join(dir, 'SKILL.md'), body);
+    }
+
+    function mkTmp(prefix: string): string {
+        const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+        tmpDirs.push(d);
+        return d;
+    }
+
+    function ws(extraSkillFolders?: string[]): WorkspaceInfo {
+        return { id: wsId, name: 'GE WS', rootPath: repoDir, extraSkillFolders } as WorkspaceInfo;
+    }
+
+    beforeEach(() => {
+        skillCache.clear();
+        tmpDirs = [];
+        repoDir = mkTmp('ge-repo-');
+        store = createMockProcessStore({ initialWorkspaces: [ws()] });
+        store.getWorkspaces = vi.fn(async () => [ws()]);
+    });
+
+    afterEach(() => {
+        for (const d of tmpDirs) fs.rmSync(d, { recursive: true, force: true });
+    });
+
+    it('surfaces skills from a configured global extra folder with source=global-extra-folder', async () => {
+        const geDir = mkTmp('ge-folder-');
+        mkSkill(geDir, 'ge-skill', 'description: A global extra skill');
+
+        const skills = await loadSkillsForWorkspace(ws(), undefined, store, { globalExtraFolders: [geDir] });
+        const s = skills.find(x => x.name === 'ge-skill');
+        expect(s).toBeDefined();
+        expect(s!.source).toBe('global-extra-folder');
+        expect(s!.folderPath).toBe(geDir);
+        expect(s!.description).toBe('A global extra skill');
+    });
+
+    it('skips a configured global extra folder that does not exist', async () => {
+        const missing = path.join(os.tmpdir(), 'ge-does-not-exist-9f8a7b');
+        const skills = await loadSkillsForWorkspace(ws(), undefined, store, { globalExtraFolders: [missing] });
+        expect(skills).toEqual([]);
+    });
+
+    it('local repo skill takes precedence over a global extra folder skill of the same name', async () => {
+        mkSkill(path.join(repoDir, '.github', 'skills'), 'dup', 'description: local version');
+        const geDir = mkTmp('ge-folder-');
+        mkSkill(geDir, 'dup', 'description: global-extra version');
+
+        const skills = await loadSkillsForWorkspace(ws(), undefined, store, { globalExtraFolders: [geDir] });
+        const dups = skills.filter(x => x.name === 'dup');
+        expect(dups).toHaveLength(1);
+        expect(dups[0].source).toBe('repo');
+        expect(dups[0].description).toBe('local version');
+    });
+
+    it('managed global skill takes precedence over a global extra folder skill of the same name', async () => {
+        const dataDir = mkTmp('ge-data-');
+        mkSkill(path.join(dataDir, 'skills'), 'dup', 'description: managed global');
+        const geDir = mkTmp('ge-folder-');
+        mkSkill(geDir, 'dup', 'description: global-extra');
+
+        const skills = await loadSkillsForWorkspace(ws(), dataDir, store, { globalExtraFolders: [geDir] });
+        const dups = skills.filter(x => x.name === 'dup');
+        expect(dups).toHaveLength(1);
+        expect(dups[0].source).toBe('global');
+        expect(dups[0].description).toBe('managed global');
+    });
+
+    it('when two global extra folders share a skill name, the first folder wins', async () => {
+        const first = mkTmp('ge-first-');
+        const second = mkTmp('ge-second-');
+        mkSkill(first, 'shared', 'description: from first');
+        mkSkill(second, 'shared', 'description: from second');
+
+        const skills = await loadSkillsForWorkspace(ws(), undefined, store, { globalExtraFolders: [first, second] });
+        const shared = skills.filter(x => x.name === 'shared');
+        expect(shared).toHaveLength(1);
+        expect(shared[0].folderPath).toBe(first);
+        expect(shared[0].description).toBe('from first');
+    });
+
+    it('per-workspace extra folder is suppressed when a global extra folder provides the same skill name', async () => {
+        const geDir = mkTmp('ge-folder-');
+        mkSkill(geDir, 'shared', 'description: from global-extra');
+        const perRepo = mkTmp('ge-perrepo-');
+        mkSkill(perRepo, 'shared', 'description: from per-repo');
+
+        const wsWithExtra = ws([perRepo]);
+        store.getWorkspaces = vi.fn(async () => [wsWithExtra]);
+
+        const skills = await loadSkillsForWorkspace(wsWithExtra, undefined, store, { globalExtraFolders: [geDir] });
+        const shared = skills.filter(x => x.name === 'shared');
+        expect(shared).toHaveLength(1);
+        expect(shared[0].source).toBe('global-extra-folder');
+        expect(shared[0].description).toBe('from global-extra');
+    });
+
+    it('ignores invalid global extra folder entries (empty, whitespace, relative, non-string) without throwing', async () => {
+        const geDir = mkTmp('ge-folder-');
+        mkSkill(geDir, 'valid', 'description: valid');
+
+        const skills = await loadSkillsForWorkspace(ws(), undefined, store, {
+            globalExtraFolders: ['', '   ', 'relative/path', 42 as any, null as any, undefined as any, geDir],
+        });
+        expect(skills.map(s => s.name)).toEqual(['valid']);
+        expect(skills[0].source).toBe('global-extra-folder');
+    });
+
+    it('treats an omitted globalExtraFolders option as no global extra folders', async () => {
+        mkSkill(path.join(repoDir, '.github', 'skills'), 'only-local');
+        const skills = await loadSkillsForWorkspace(ws(), undefined, store);
+        expect(skills.map(s => s.name)).toEqual(['only-local']);
+    });
+
+    it('expands ~ in a configured global extra folder path', async () => {
+        const home = mkTmp('ge-home-');
+        mkSkill(path.join(home, 'my-skills'), 'tilde-skill', 'description: via tilde');
+        const prevHome = process.env.HOME;
+        const prevUserProfile = process.env.USERPROFILE;
+        // os.homedir() reads $HOME on POSIX and %USERPROFILE% on Windows.
+        process.env.HOME = home;
+        process.env.USERPROFILE = home;
+        try {
+            const skills = await loadSkillsForWorkspace(ws(), undefined, store, { globalExtraFolders: ['~/my-skills'] });
+            const s = skills.find(x => x.name === 'tilde-skill');
+            expect(s).toBeDefined();
+            expect(s!.source).toBe('global-extra-folder');
+        } finally {
+            if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+            if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
+        }
+    });
+});
+
+describe('readConfiguredGlobalExtraFolders (AC #2 config shapes)', () => {
+    it('returns the configured string folders', () => {
+        expect(readConfiguredGlobalExtraFolders(() => ({ skills: { globalExtraFolders: ['/a', '/b'] } }))).toEqual(['/a', '/b']);
+    });
+
+    it('drops non-string entries', () => {
+        expect(readConfiguredGlobalExtraFolders(() => ({ skills: { globalExtraFolders: ['/a', 3, null, '/b'] } }))).toEqual(['/a', '/b']);
+    });
+
+    it('returns [] when globalExtraFolders is not an array', () => {
+        expect(readConfiguredGlobalExtraFolders(() => ({ skills: { globalExtraFolders: 'nope' } }))).toEqual([]);
+    });
+
+    it('returns [] when the skills namespace is absent', () => {
+        expect(readConfiguredGlobalExtraFolders(() => ({}))).toEqual([]);
+    });
+
+    it('returns [] when config is undefined', () => {
+        expect(readConfiguredGlobalExtraFolders(() => undefined)).toEqual([]);
+    });
+
+    it('never throws when the loader throws', () => {
+        expect(readConfiguredGlobalExtraFolders(() => { throw new Error('bad config'); })).toEqual([]);
+    });
+});
+
+describe('GET /api/workspaces/:id/skills — configured global extra folders (AC #2 wiring)', () => {
+    it('includes global-extra-folder skills from the injected config reader', async () => {
+        const geDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ge-route-'));
+        const skillDir = path.join(geDir, 'route-ge-skill');
+        fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# route-ge-skill');
+
+        const wsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ge-route-ws-'));
+        const id = 'ws-ge-route';
+        const store = createMockProcessStore({ initialWorkspaces: [{ id, name: 'W', rootPath: wsDir } as WorkspaceInfo] });
+        store.getWorkspaces = vi.fn(async () => [{ id, name: 'W', rootPath: wsDir } as WorkspaceInfo]);
+        skillCache.clear();
+
+        const routes: Route[] = [];
+        registerSkillRoutes(routes, store, undefined, () => [geDir]);
+
+        const { statusCode, body } = await dispatchRoute(routes, 'GET', `/api/workspaces/${id}/skills`);
+        expect(statusCode).toBe(200);
+        const s = body.skills.find((x: any) => x.name === 'route-ge-skill');
+        expect(s).toBeDefined();
+        expect(s.source).toBe('global-extra-folder');
+
+        fs.rmSync(geDir, { recursive: true, force: true });
+        fs.rmSync(wsDir, { recursive: true, force: true });
     });
 });

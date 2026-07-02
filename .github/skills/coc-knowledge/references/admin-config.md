@@ -35,6 +35,25 @@ The AI provider admin card stores `defaultProvider` as a top-level concrete fall
 
 Namespaced config merge/source tracking is registered in `packages/coc/src/config/namespace-registry.ts`; add namespace fields there instead of expanding branch lists in `config.ts`. Default process store backend is SQLite. CLI flags > config file > defaults.
 
+## Skills Folder Sources
+
+Skill discovery draws from several folders. Two of them are config-file settings under the non-admin `skills` namespace (not the admin registry — they are surfaced through the Skills Config API/UI, not the Features card):
+
+- `skills.globalExtraFolders: string[]` (default `[]`) — read-only global skill-source folders applied across all workspaces. Entries are absolute paths or `~`-prefixed home paths; malformed/relative/empty entries are skipped, not fatal. CoC never installs or deletes into them.
+- `skills.autoDetectDefaultFolders: boolean` (default `true`) — enables auto-detection of OneDrive/CloudStorage skill folders (`~/OneDrive/.github/skills`, `~/OneDrive - Microsoft/.github/skills`, and macOS `~/Library/CloudStorage/OneDrive-*/…/.github/skills`). Set `false` to disable all default folder auto-detection.
+
+Adding a `skills.*` field touches FOUR spots (all non-admin, hand-written): the optional + required `skills` types and `DEFAULT_CONFIG` in `packages/coc/src/config.ts`, the `BASE_SCHEMA_TREE.skills` leaf in `packages/coc/src/config/schema.ts` (optional + passthrough so old config files still validate), and the hand-coded `skills` merge in `packages/coc/src/config/namespace-registry.ts` (miss the last and tsc goes red).
+
+**Persistence split.** Global disabled skills live in `preferences.json` (`globalDisabledSkills`); `globalExtraFolders` and `autoDetectDefaultFolders` live in the config file's `skills` namespace. The `GET`/`PUT /api/skills/config` endpoint spans both stores. The managed global skills directory (`dataDir/skills`, normally `~/.coc/skills`) is a fixed install target and is NOT configurable.
+
+**Resolution order** (repo → managed-global → auto-detected → global-extra → per-repo-extra → bundled) has three consumers that must agree, all in `packages/coc/src/server/executors/skill-config-resolver.ts` (except the listing helper):
+
+- `resolveSkillConfig(...)` — execution-time; existence-filtered ordered `skillDirectories[]` the agent actually uses. Reads `skills` config via the queue-executor bridge (config file = single source of truth).
+- `resolveEffectiveSkillPaths(...)` — read-only diagnostic behind `GET /api/skills/effective-paths`; keeps declared-but-missing sources so the UI can explain them (auto-detected folders surface only when their OneDrive root exists).
+- `loadSkillsForWorkspace(...)` (in `packages/coc/src/server/skills/skill-handler.ts`) — UI listing behind `GET /api/workspaces/:id/skills`; tags configured-folder skills `source: 'global-extra-folder'` and inserts them after managed-global and before per-repo extras. Has no auto-detected/bundled entries.
+
+Keep the order identical across all three if you touch one. See [rest-api.md](rest-api.md) for the endpoints and [dashboard-spa.md](dashboard-spa.md) for the Skills Config panel UI.
+
 ## Admin UI Styling
 
 The admin route uses a self-contained, Linear-inspired design system that lives in `packages/coc/src/server/spa/client/react/admin/admin-redesign.css`. The stylesheet is imported once at the top of `AdminPanel.tsx` so esbuild bundles it into the SPA's CSS. All selectors are scoped under the `.admin-redesign` root class that wraps the entire admin page — styles never leak to other dashboard surfaces, and light/dark themes are driven by the existing `<html data-theme="…">` attribute.

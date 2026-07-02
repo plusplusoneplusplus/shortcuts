@@ -22,14 +22,9 @@ import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { CommentPopover } from '../tasks/comments/CommentPopover';
 import { ResponsiveSidebar } from '../ui/ResponsiveSidebar';
 import type { TaskComment, TaskCommentCategory, CommentSelection } from '../../comments/task-comments-types';
-import {
-    createAnchorData,
-    DEFAULT_ANCHOR_MATCH_CONFIG,
-} from '@plusplusoneplusplus/forge/editor/anchor';
 import { DASHBOARD_AI_COMMANDS } from './ai-commands';
 import { extractDocumentContext } from '../utils/document-context';
 import { useGlobalToast } from '../contexts/ToastContext';
-import { selectionToSourcePosition } from '../utils/selection-position';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { getLanguageFromFileName } from '../features/git/hooks/useSyntaxHighlight';
 import { useApp } from '../contexts/AppContext';
@@ -40,6 +35,17 @@ import { RichEditorCore } from '../features/notes/editor/RichEditorCore';
 import { markdownToHtml, htmlToMarkdown } from '../features/notes/editor/noteMarkdown';
 import type { Editor } from '@tiptap/core';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { createTasksNoteEditorIO } from '../tasks/TasksNoteEditorIO';
+import { createWorkspaceFileNoteEditorIO } from '../tasks/WorkspaceFileNoteEditorIO';
+import type { MarkdownDocumentIO } from './markdown-document/MarkdownDocumentIO';
+import {
+    useMarkdownDocumentKeyboardShortcuts,
+    useMarkdownDocumentSession,
+} from './markdown-document/useMarkdownDocumentSession';
+import {
+    buildMarkdownCommentAnchor,
+    resolveMarkdownReviewSelection,
+} from './markdown-document/markdownReviewSelection';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
 
@@ -95,19 +101,21 @@ export interface MarkdownReviewEditorProps {
 /** Minimum selection length to trigger toolbar. */
 const MIN_SELECTION_LENGTH = 3;
 
-async function fetchTaskContent(wsId: string, filePath: string): Promise<string> {
-    const data = await getSpaCocClient().tasks.getContent(wsId, filePath);
-    if (typeof data === 'string') return data;
-    if (typeof data?.content === 'string') return data.content;
-    return '';
-}
+function createMarkdownReviewIO(fetchMode: 'tasks' | 'auto'): MarkdownDocumentIO {
+    const taskIo = createTasksNoteEditorIO();
+    if (fetchMode === 'tasks') return taskIo;
 
-async function fetchWorkspaceFileContent(wsId: string, filePath: string): Promise<string> {
-    const data = await getSpaCocClient().tasks.previewWorkspaceFile(wsId, filePath, { lines: 0 });
-    if (typeof data === 'string') return data;
-    if (typeof data?.content === 'string') return data.content;
-    if (Array.isArray(data?.lines)) return data.lines.join('\n');
-    return '';
+    const workspaceFileIo = createWorkspaceFileNoteEditorIO();
+    return {
+        ...taskIo,
+        async loadContent(workspaceId, path, root) {
+            try {
+                return await taskIo.loadContent(workspaceId, path, root);
+            } catch {
+                return workspaceFileIo.loadContent(workspaceId, path, root);
+            }
+        },
+    };
 }
 
 export function MarkdownReviewEditor({
@@ -138,15 +146,11 @@ export function MarkdownReviewEditor({
         return fp;
     }, [taskRootPath, workspaceRootPath]);
 
-    const [rawContent, setRawContent] = useState('');
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
     const previewRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [viewMode, setViewModeRaw] = useState<ReviewViewMode>(initialViewMode);
     const [editedContent, setEditedContent] = useState('');
-    const [saving, setSaving] = useState(false);
-    const [refreshCounter, setRefreshCounter] = useState(0);
+    const [saveError, setSaveError] = useState<string | null>(null);
     const [aiDialogType, setAiDialogType] = useState<'update-document' | null>(null);
     const [resolveDialogState, setResolveDialogState] = useState<{
         open: boolean;
@@ -161,12 +165,41 @@ export function MarkdownReviewEditor({
     const [richEditor, setRichEditor] = useState<Editor | null>(null);
     const [richDirty, setRichDirty] = useState(false);
     const richContentRef = useRef<string>('');
+    const rawContentRef = useRef('');
+    const reviewIo = useMemo(() => createMarkdownReviewIO(fetchMode), [fetchMode]);
+    const documentSession = useMarkdownDocumentSession({
+        workspaceId: wsId,
+        documentPath: filePath,
+        io: reviewIo,
+        confirmBeforeLoadMessage: 'You have unsaved changes to the current file. Discard and load the new file?',
+        confirmRefreshMessage: 'You have unsaved changes. Discard and refresh?',
+        onDiscardDirty: () => {
+            setEditedContent(rawContentRef.current);
+            setRichDirty(false);
+            richContentRef.current = '';
+        },
+        onLoaded: (result) => {
+            setEditedContent(result.content);
+            setRichDirty(false);
+            richContentRef.current = '';
+            setSaveError(null);
+        },
+        onSaveError: (err) => {
+            setSaveError(getSpaCocClientErrorMessage(err, 'Failed to save'));
+        },
+    });
+    const rawContent = documentSession.content;
+    rawContentRef.current = rawContent;
+    const loading = documentSession.loading;
+    const error = documentSession.loadError ?? saveError;
+    const saving = documentSession.saveState === 'saving';
 
     const handleRichEditorReady = useCallback((ed: Editor) => { setRichEditor(ed); }, []);
     const handleRichChange = useCallback((ed: Editor) => {
         richContentRef.current = ed.getHTML();
         setRichDirty(true);
-    }, []);
+        documentSession.setDirty(true);
+    }, [documentSession]);
 
     const modeOptions = showRichMode ? RICH_MODE_OPTIONS : REVIEW_MODE_OPTIONS;
 
@@ -175,12 +208,12 @@ export function MarkdownReviewEditor({
         if (mode !== 'rich') onViewModeChange?.(mode as 'review' | 'source');
     }, [onViewModeChange]);
 
-    const isDirty = (viewMode === 'source' && editedContent !== rawContent) ||
-        (viewMode === 'rich' && richDirty);
+    const isDirty = documentSession.dirty;
 
-    // Ref mirror so the content-fetch useEffect can read dirty state without depending on it
-    const isDirtyRef = useRef(false);
-    isDirtyRef.current = isDirty;
+    const handleSourceChange = useCallback((content: string) => {
+        setEditedContent(content);
+        documentSession.setDirty(content !== rawContentRef.current);
+    }, [documentSession]);
 
     const { addToast } = useGlobalToast();
 
@@ -282,48 +315,6 @@ export function MarkdownReviewEditor({
 
     const showCommentListPanel = comments.length > 0;
 
-    useEffect(() => {
-        let cancelled = false;
-
-        // Guard: warn if switching files while dirty
-        if (isDirtyRef.current) {
-            if (!window.confirm('You have unsaved changes to the current file. Discard and load the new file?')) {
-                cancelled = true;
-                return;
-            }
-        }
-
-        setLoading(true);
-        setError(null);
-        setRawContent('');
-
-        const load = async () => {
-            try {
-                let content = '';
-                if (fetchMode === 'tasks') {
-                    content = await fetchTaskContent(wsId, filePath);
-                } else {
-                    try {
-                        content = await fetchTaskContent(wsId, filePath);
-                    } catch {
-                        content = await fetchWorkspaceFileContent(wsId, filePath);
-                    }
-                }
-
-                if (cancelled) return;
-                setRawContent(content);
-                setLoading(false);
-            } catch (err) {
-                if (cancelled) return;
-                setError(err instanceof Error ? err.message : 'Failed to load file');
-                setLoading(false);
-            }
-        };
-
-        void load();
-        return () => { cancelled = true; };
-    }, [wsId, filePath, fetchMode, refreshCounter]);
-
     // Restore scroll position after content finishes loading (for minimize/restore)
     useEffect(() => {
         if (!loading && initialScrollTop && scrollContainerRef.current) {
@@ -350,63 +341,28 @@ export function MarkdownReviewEditor({
 
     const saveContent = useCallback(async () => {
         if (!isDirty || saving) return;
-        setSaving(true);
         try {
             const contentToSave = viewMode === 'rich'
                 ? htmlToMarkdown(richContentRef.current)
                 : editedContent;
-            await getSpaCocClient().tasks.writeContent(wsId, { path: filePath, content: contentToSave });
-            setRawContent(contentToSave);
+            await documentSession.saveNow(contentToSave);
+            setEditedContent(contentToSave);
             if (viewMode === 'rich') setRichDirty(false);
             window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId } }));
         } catch (err) {
-            setError(getSpaCocClientErrorMessage(err, 'Failed to save'));
-        } finally {
-            setSaving(false);
+            setSaveError(getSpaCocClientErrorMessage(err, 'Failed to save'));
         }
-    }, [isDirty, saving, wsId, filePath, editedContent, viewMode]);
+    }, [isDirty, saving, editedContent, viewMode, documentSession, wsId]);
 
     const handleRefresh = useCallback(() => {
-        if (isDirty) {
-            if (!window.confirm('You have unsaved changes. Discard and refresh?')) return;
-            if (viewMode === 'source') setEditedContent(rawContent);
-            if (viewMode === 'rich') setRichDirty(false);
-        }
-        setRefreshCounter(c => c + 1);
-    }, [isDirty, rawContent, viewMode]);
+        documentSession.refresh();
+    }, [documentSession]);
 
-    // Ctrl/Cmd+Shift+R keyboard shortcut for refresh
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'R') {
-                e.preventDefault();
-                handleRefresh();
-            }
-        };
-        document.addEventListener('keydown', handler);
-        return () => document.removeEventListener('keydown', handler);
-    }, [handleRefresh]);
-
-    // Ctrl/Cmd+S keyboard shortcut for saving in source or rich mode
-    useEffect(() => {
-        if ((viewMode !== 'source' && viewMode !== 'rich') || !isDirty) return;
-        const handler = (e: KeyboardEvent) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                e.preventDefault();
-                saveContent();
-            }
-        };
-        document.addEventListener('keydown', handler);
-        return () => document.removeEventListener('keydown', handler);
-    }, [viewMode, isDirty, saveContent]);
-
-    // Warn before closing tab with unsaved changes
-    useEffect(() => {
-        if (!isDirty) return;
-        const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
-        window.addEventListener('beforeunload', handler);
-        return () => window.removeEventListener('beforeunload', handler);
-    }, [isDirty]);
+    useMarkdownDocumentKeyboardShortcuts({
+        onRefresh: handleRefresh,
+        onSave: saveContent,
+        saveEnabled: (viewMode === 'source' || viewMode === 'rich') && isDirty,
+    });
 
     // Save selection silently on mouseup
     useEffect(() => {
@@ -418,7 +374,7 @@ export function MarkdownReviewEditor({
                 previewRef.current?.contains(sel.anchorNode)
             ) {
                 const range = sel.getRangeAt(0);
-                const resolved = resolveSelectionPosition(rawContent, previewRef.current!, range, sel.toString().trim());
+                const resolved = resolveMarkdownReviewSelection(rawContent, previewRef.current!, range, sel.toString().trim());
                 setSavedSelection(resolved);
                 return;
             }
@@ -440,7 +396,7 @@ export function MarkdownReviewEditor({
                     previewRef.current?.contains(sel.anchorNode)
                 ) {
                     const range = sel.getRangeAt(0);
-                    const resolved = resolveSelectionPosition(rawContent, previewRef.current!, range, sel.toString().trim());
+                    const resolved = resolveMarkdownReviewSelection(rawContent, previewRef.current!, range, sel.toString().trim());
                     setSavedSelection(resolved);
                     if (resolved) {
                         const rect = range.getBoundingClientRect();
@@ -502,7 +458,7 @@ export function MarkdownReviewEditor({
             endColumn: pendingSelection.endColumn,
         };
 
-        const anchor = buildAnchor(
+        const anchor = buildMarkdownCommentAnchor(
             rawContent,
             pendingSelection.startLine,
             pendingSelection.endLine,
@@ -558,7 +514,7 @@ export function MarkdownReviewEditor({
             endColumn: savedSelection.endColumn,
         };
 
-        const anchor = buildAnchor(
+        const anchor = buildMarkdownCommentAnchor(
             rawContent,
             savedSelection.startLine,
             savedSelection.endLine,
@@ -599,7 +555,7 @@ export function MarkdownReviewEditor({
             endColumn: savedSelection.endColumn,
         };
 
-        const anchor = buildAnchor(
+        const anchor = buildMarkdownCommentAnchor(
             rawContent,
             savedSelection.startLine,
             savedSelection.endLine,
@@ -708,25 +664,28 @@ export function MarkdownReviewEditor({
             if (!window.confirm('You have unsaved changes. Discard and switch to Preview?')) return;
             if (viewMode === 'source') setEditedContent(rawContent);
             if (viewMode === 'rich') setRichDirty(false);
+            documentSession.setDirty(false);
         }
         setViewMode('review');
-    }, [isDirty, rawContent, setViewMode, viewMode]);
+    }, [isDirty, rawContent, setViewMode, viewMode, documentSession]);
 
     const handleSwitchToRich = useCallback(() => {
         if (viewMode === 'source' && isDirty) {
             if (!window.confirm('You have unsaved changes. Discard and switch to Rich?')) return;
             setEditedContent(rawContent);
+            documentSession.setDirty(false);
         }
         setViewMode('rich');
-    }, [viewMode, isDirty, rawContent, setViewMode]);
+    }, [viewMode, isDirty, rawContent, setViewMode, documentSession]);
 
     const handleSwitchToSource = useCallback(() => {
         if (viewMode === 'rich' && richDirty) {
             if (!window.confirm('You have unsaved changes. Discard and switch to Source?')) return;
             setRichDirty(false);
+            documentSession.setDirty(false);
         }
         setViewMode('source');
-    }, [viewMode, richDirty, setViewMode]);
+    }, [viewMode, richDirty, setViewMode, documentSession]);
 
     // Event delegation for build-time highlight click
     const handleHighlightClick = useCallback((e: React.MouseEvent) => {
@@ -737,7 +696,7 @@ export function MarkdownReviewEditor({
         if (comment) handleCommentClick(comment);
     }, [comments, handleCommentClick]);
 
-    if (loading && refreshCounter === 0) {
+    if (loading && !documentSession.hasLoaded && !rawContent) {
         return (
             <div className="flex items-center justify-center h-full">
                 <Spinner size="lg" />
@@ -856,7 +815,7 @@ export function MarkdownReviewEditor({
                         <div className="flex-1 overflow-y-auto min-h-0 min-w-0">
                             <SourceEditor
                                 content={editedContent}
-                                onChange={setEditedContent}
+                                onChange={handleSourceChange}
                             />
                         </div>
                     ) : viewMode === 'rich' ? (
@@ -1031,77 +990,4 @@ export function MarkdownReviewEditor({
             />
         </div>
     );
-}
-
-// ── Helpers (from legacy task-comments-ui.ts) ──
-
-/**
- * Attempt to create anchor data for a selection range, returning undefined if it fails.
- */
-function buildAnchor(
-    rawContent: string,
-    startLine: number,
-    endLine: number,
-    startColumn: number,
-    endColumn: number,
-) {
-    try {
-        return createAnchorData(rawContent, startLine, endLine, startColumn, endColumn, DEFAULT_ANCHOR_MATCH_CONFIG);
-    } catch {
-        return undefined;
-    }
-}
-
-/**
- * Resolve a browser selection range to source-file position coordinates.
- * Tries the DOM-aware `data-line` approach first; falls back to text-offset mapping.
- * Returns null if the selection cannot be resolved (e.g. container not found).
- */
-function resolveSelectionPosition(
-    rawContent: string,
-    previewEl: HTMLElement,
-    range: Range,
-    text: string,
-): { text: string; range: Range; startLine: number; startColumn: number; endLine: number; endColumn: number } | null {
-    const sourcePos = selectionToSourcePosition(rawContent, previewEl, range);
-    if (sourcePos) {
-        return { text, range: range.cloneRange(), ...sourcePos };
-    }
-
-    // Fallback for selections inside block elements (code blocks, tables)
-    console.warn('Selection is not inside an md-line element; using rendered-text fallback');
-    const previewText = previewEl.textContent || '';
-    const startOffset = getTextOffset(previewEl, range.startContainer, range.startOffset);
-    const endOffset = getTextOffset(previewEl, range.endContainer, range.endOffset);
-    const startPos = offsetToPosition(previewText, startOffset);
-    const endPos = offsetToPosition(previewText, endOffset);
-    return {
-        text,
-        range: range.cloneRange(),
-        startLine: startPos.line,
-        startColumn: startPos.column,
-        endLine: endPos.line,
-        endColumn: endPos.column,
-    };
-}
-
-function getTextOffset(container: Node, targetNode: Node, targetOffset: number): number {
-    let offset = 0;
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-    while (walker.nextNode()) {
-        if (walker.currentNode === targetNode) return offset + targetOffset;
-        offset += (walker.currentNode.textContent || '').length;
-    }
-    return offset + targetOffset;
-}
-
-/**
- * @deprecated Use `selectionToSourcePosition` from `../utils/selection-position` instead.
- * Kept as fallback for selections inside block elements without `data-line` ancestors.
- */
-function offsetToPosition(text: string, offset: number): { line: number; column: number } {
-    const clamped = Math.max(0, Math.min(offset, text.length));
-    const before = text.substring(0, clamped);
-    const lines = before.split('\n');
-    return { line: lines.length, column: (lines[lines.length - 1]?.length || 0) + 1 };
 }

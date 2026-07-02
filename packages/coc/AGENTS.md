@@ -53,6 +53,22 @@ all have their own `references/*.md`.
   Claude Code discovers them as slash commands. A sidecar marker
   `.coc-<name>.json` tracks CoC-managed commands to distinguish them from
   user-authored ones.
+- **Skill-folder resolution order** is: repo-local `.github/skills` →
+  managed global `~/.coc/skills` → auto-detected OneDrive/CloudStorage →
+  configured global extra folders (`skills.globalExtraFolders`) → per-repo
+  extra folders → bundled. Three consumers must keep this order identical:
+  `resolveSkillConfig` (execution-time, existence-filtered — what the agent
+  uses) and `resolveEffectiveSkillPaths` (read-only diagnostic behind
+  `GET /api/skills/effective-paths`, keeps declared-but-missing sources) in
+  `src/server/executors/skill-config-resolver.ts`, and `loadSkillsForWorkspace`
+  (UI listing behind `GET /api/workspaces/:id/skills`, tags configured-folder
+  skills `source: 'global-extra-folder'`) in `src/server/skills/skill-handler.ts`.
+  Managed `~/.coc/skills` is the only install/delete target; extra/detected
+  folders are read-only. `skills.globalExtraFolders` +
+  `skills.autoDetectDefaultFolders` live in the config `skills` namespace, while
+  `globalDisabledSkills` lives in `preferences.json`; `GET`/`PUT
+  /api/skills/config` spans both (see
+  [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
 - **Adding an admin-exposed config setting** is ONE definition entry in
   `src/config/admin-setting-definitions.ts` (value spec, default, runtime,
   optional `runtimeFlag` + Features-card `ui` metadata) plus the
