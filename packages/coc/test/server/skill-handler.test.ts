@@ -1109,19 +1109,16 @@ describe('loadSkillsForWorkspace — configured global extra folders (AC #2)', (
     it('expands ~ in a configured global extra folder path', async () => {
         const home = mkTmp('ge-home-');
         mkSkill(path.join(home, 'my-skills'), 'tilde-skill', 'description: via tilde');
-        const prevHome = process.env.HOME;
-        const prevUserProfile = process.env.USERPROFILE;
-        // os.homedir() reads $HOME on POSIX and %USERPROFILE% on Windows.
-        process.env.HOME = home;
-        process.env.USERPROFILE = home;
+        // os.homedir is mocked at the module level, so point it at the temp home
+        // to drive `~` expansion instead of mutating process.env.
+        vi.mocked(os.homedir).mockReturnValue(home);
         try {
             const skills = await loadSkillsForWorkspace(ws(), undefined, store, { globalExtraFolders: ['~/my-skills'] });
             const s = skills.find(x => x.name === 'tilde-skill');
             expect(s).toBeDefined();
             expect(s!.source).toBe('global-extra-folder');
         } finally {
-            if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
-            if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
+            vi.mocked(os.homedir).mockReturnValue(_realHomedir);
         }
     });
 });
