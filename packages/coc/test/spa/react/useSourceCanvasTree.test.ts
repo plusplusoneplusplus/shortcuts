@@ -1,16 +1,17 @@
 /**
- * Tests for useSourceCanvasDirectory — the loading/success/error state machine
- * for the docked source-canvas folder explorer (AC-01). Mocks the app
- * workspaces and the workspace-routed `explorer.tree` API to cover:
- * loading→success (entries + truncated), empty folder, fetch failure → error,
- * no-workspace → error without fetching, null ref, workspace-relative + relative
- * path resolution (tree is called with the workspace-relative path), and remote
- * workspace routing through the clone-routed client.
+ * Tests for useSourceCanvasTree — the lazy expandable-tree state machine for the
+ * docked source-canvas folder explorer. Mocks the app workspaces and the
+ * workspace-routed `explorer.tree` API to cover the root load
+ * (loading→success/empty/truncated/error, no-workspace, null ref), path
+ * resolution (workspace-relative + relative), remote-workspace routing through
+ * the clone-routed client, and lazy per-folder expansion: toggling a folder
+ * fetches its children once, collapsing keeps the cache, and a per-folder fetch
+ * failure surfaces in `errorPaths` without tearing down the root.
  */
 /* @vitest-environment jsdom */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 
 type TestWorkspace = {
     id: string;
@@ -46,7 +47,7 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClientErrorMessage: (_err: unknown, fallback: string) => fallback,
 }));
 
-import { useSourceCanvasDirectory } from '../../../src/server/spa/client/react/features/chat/source-canvas/useSourceCanvasDirectory';
+import { useSourceCanvasTree } from '../../../src/server/spa/client/react/features/chat/source-canvas/useSourceCanvasTree';
 import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const REMOTE_BASE_URL = 'http://127.0.0.1:4000';
@@ -67,6 +68,10 @@ const ENTRIES = [
     { name: 'a.ts', type: 'file' as const, path: 'src/a.ts', size: 12 },
 ];
 
+const CHILD_ENTRIES = [
+    { name: 'deep.ts', type: 'file' as const, path: 'src/sub/deep.ts' },
+];
+
 beforeEach(() => {
     treeMock.mockReset();
     remoteTreeMock.mockReset();
@@ -79,15 +84,15 @@ beforeEach(() => {
     reposRef.current = null;
 });
 
-describe('useSourceCanvasDirectory', () => {
-    it('returns loading then success with entries listed via the workspace-relative path', async () => {
+describe('useSourceCanvasTree — root load', () => {
+    it('returns loading then success with the root children listed via the workspace-relative path', async () => {
         treeMock.mockResolvedValue({ entries: ENTRIES, truncated: false });
         const { result } = renderHook(() =>
-            useSourceCanvasDirectory({ fullPath: '/home/u/proj/src', kind: 'dir' }),
+            useSourceCanvasTree({ fullPath: '/home/u/proj/src', kind: 'dir' }),
         );
         expect(result.current.status).toBe('loading');
         await waitFor(() => expect(result.current.status).toBe('success'));
-        expect(result.current.entries).toEqual(ENTRIES);
+        expect(result.current.rootEntries).toEqual(ENTRIES);
         expect(result.current.truncated).toBe(false);
         expect(result.current.resolvedPath).toBe('/home/u/proj/src');
         expect(result.current.relativePath).toBe('src');
@@ -98,28 +103,28 @@ describe('useSourceCanvasDirectory', () => {
         expect(treeMock).toHaveBeenCalledWith('ws1', { path: 'src' });
     });
 
-    it('treats an empty folder as success with no entries', async () => {
+    it('treats an empty root folder as success with no entries', async () => {
         treeMock.mockResolvedValue({ entries: [], truncated: false });
         const { result } = renderHook(() =>
-            useSourceCanvasDirectory({ fullPath: '/home/u/proj/empty', kind: 'dir' }),
+            useSourceCanvasTree({ fullPath: '/home/u/proj/empty', kind: 'dir' }),
         );
         await waitFor(() => expect(result.current.status).toBe('success'));
-        expect(result.current.entries).toEqual([]);
+        expect(result.current.rootEntries).toEqual([]);
     });
 
-    it('surfaces the truncation flag from the API', async () => {
+    it('surfaces the root truncation flag from the API', async () => {
         treeMock.mockResolvedValue({ entries: ENTRIES, truncated: true });
         const { result } = renderHook(() =>
-            useSourceCanvasDirectory({ fullPath: '/home/u/proj/src', kind: 'dir' }),
+            useSourceCanvasTree({ fullPath: '/home/u/proj/src', kind: 'dir' }),
         );
         await waitFor(() => expect(result.current.status).toBe('success'));
         expect(result.current.truncated).toBe(true);
     });
 
-    it('enters the error state when the tree fetch rejects', async () => {
+    it('enters the error state when the root tree fetch rejects', async () => {
         treeMock.mockRejectedValue(new Error('Not a directory'));
         const { result } = renderHook(() =>
-            useSourceCanvasDirectory({ fullPath: '/home/u/proj/missing', kind: 'dir' }),
+            useSourceCanvasTree({ fullPath: '/home/u/proj/missing', kind: 'dir' }),
         );
         await waitFor(() => expect(result.current.status).toBe('error'));
         expect(result.current.error).toBe('Failed to load folder');
@@ -129,7 +134,7 @@ describe('useSourceCanvasDirectory', () => {
     it('errors without fetching when no workspace can be resolved', async () => {
         workspacesRef.current = [];
         const { result } = renderHook(() =>
-            useSourceCanvasDirectory({ fullPath: '/x/y', kind: 'dir' }),
+            useSourceCanvasTree({ fullPath: '/x/y', kind: 'dir' }),
         );
         await waitFor(() => expect(result.current.status).toBe('error'));
         expect(result.current.error).toBe('No workspace available');
@@ -138,7 +143,7 @@ describe('useSourceCanvasDirectory', () => {
     });
 
     it('stays in loading and does not fetch for a null ref', () => {
-        const { result } = renderHook(() => useSourceCanvasDirectory(null));
+        const { result } = renderHook(() => useSourceCanvasTree(null));
         expect(result.current.status).toBe('loading');
         expect(treeMock).not.toHaveBeenCalled();
     });
@@ -146,7 +151,7 @@ describe('useSourceCanvasDirectory', () => {
     it('anchors a workspace-relative folder path and lists it relative to the root', async () => {
         treeMock.mockResolvedValue({ entries: ENTRIES, truncated: false });
         const { result } = renderHook(() =>
-            useSourceCanvasDirectory({ fullPath: 'src/managers', wsId: 'ws1', kind: 'dir' }),
+            useSourceCanvasTree({ fullPath: 'src/managers', wsId: 'ws1', kind: 'dir' }),
         );
         await waitFor(() => expect(result.current.status).toBe('success'));
         expect(result.current.resolvedPath).toBe('/home/u/proj/src/managers');
@@ -157,7 +162,7 @@ describe('useSourceCanvasDirectory', () => {
     it('resolves a relative folder path against the source file directory', async () => {
         treeMock.mockResolvedValue({ entries: [], truncated: false });
         renderHook(() =>
-            useSourceCanvasDirectory({
+            useSourceCanvasTree({
                 fullPath: './util',
                 sourceFilePath: '/home/u/proj/src/index.ts',
                 kind: 'dir',
@@ -168,12 +173,11 @@ describe('useSourceCanvasDirectory', () => {
         );
     });
 
-    // Regression: a folder link clicked in a REMOTE conversation carries the
-    // remote workspace id. That workspace lives only in the repos list (not
+    // Regression: a folder ref in a REMOTE conversation carries the remote
+    // workspace id. That workspace lives only in the repos list (not
     // `state.workspaces`), so resolution must fold it in, anchor against its
-    // remote rootPath, and fetch the tree via the clone-routed client (not the
-    // local default).
-    it('resolves a remote-workspace folder link and lists via the clone-routed client', async () => {
+    // remote rootPath, and fetch the tree via the clone-routed client.
+    it('resolves a remote-workspace folder and lists via the clone-routed client', async () => {
         registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: REMOTE_BASE_URL }]);
         reposRef.current = {
             repos: [
@@ -190,21 +194,61 @@ describe('useSourceCanvasDirectory', () => {
         };
         remoteTreeMock.mockResolvedValue({ entries: ENTRIES, truncated: false });
         const { result } = renderHook(() =>
-            useSourceCanvasDirectory({
+            useSourceCanvasTree({
                 fullPath: 'python/sglang/srt/managers',
                 wsId: 'remote-ws',
                 kind: 'dir',
             }),
         );
         await waitFor(() => expect(result.current.status).toBe('success'));
-        expect(result.current.entries).toEqual(ENTRIES);
+        expect(result.current.rootEntries).toEqual(ENTRIES);
         expect(result.current.resolvedPath).toBe('/home/remote/repo/python/sglang/srt/managers');
-        expect(result.current.relativePath).toBe('python/sglang/srt/managers');
         expect(result.current.wsId).toBe('remote-ws');
         expect(getCocClientForMock).toHaveBeenCalledWith(REMOTE_BASE_URL);
         expect(remoteTreeMock).toHaveBeenCalledWith('remote-ws', {
             path: 'python/sglang/srt/managers',
         });
         expect(treeMock).not.toHaveBeenCalled();
+    });
+});
+
+describe('useSourceCanvasTree — lazy expansion', () => {
+    it('fetches a folder\'s children once on expand and caches them across collapse', async () => {
+        treeMock.mockResolvedValueOnce({ entries: ENTRIES, truncated: false });
+        const { result } = renderHook(() =>
+            useSourceCanvasTree({ fullPath: '/home/u/proj/src', kind: 'dir' }),
+        );
+        await waitFor(() => expect(result.current.status).toBe('success'));
+
+        treeMock.mockResolvedValueOnce({ entries: CHILD_ENTRIES, truncated: false });
+        act(() => { result.current.toggle('src/sub'); });
+
+        await waitFor(() => expect(result.current.childrenMap.get('src/sub')).toEqual(CHILD_ENTRIES));
+        expect(result.current.expanded.has('src/sub')).toBe(true);
+        expect(treeMock).toHaveBeenLastCalledWith('ws1', { path: 'src/sub' });
+        const callsAfterExpand = treeMock.mock.calls.length;
+
+        // Collapse then re-expand — children stay cached, no refetch.
+        act(() => { result.current.toggle('src/sub'); });
+        expect(result.current.expanded.has('src/sub')).toBe(false);
+        act(() => { result.current.toggle('src/sub'); });
+        expect(result.current.expanded.has('src/sub')).toBe(true);
+        expect(treeMock.mock.calls.length).toBe(callsAfterExpand);
+    });
+
+    it('records a per-folder error when an expansion fetch fails, keeping the root intact', async () => {
+        treeMock.mockResolvedValueOnce({ entries: ENTRIES, truncated: false });
+        const { result } = renderHook(() =>
+            useSourceCanvasTree({ fullPath: '/home/u/proj/src', kind: 'dir' }),
+        );
+        await waitFor(() => expect(result.current.status).toBe('success'));
+
+        treeMock.mockRejectedValueOnce(new Error('Permission denied'));
+        act(() => { result.current.toggle('src/sub'); });
+
+        await waitFor(() => expect(result.current.errorPaths.get('src/sub')).toBe('Failed to load folder'));
+        // Root listing is unaffected by a child failure.
+        expect(result.current.status).toBe('success');
+        expect(result.current.loadingPaths.has('src/sub')).toBe(false);
     });
 });

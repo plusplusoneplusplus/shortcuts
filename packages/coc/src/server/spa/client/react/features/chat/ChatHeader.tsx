@@ -89,6 +89,15 @@ export interface ChatHeaderProps {
     showScratchpadButton?: boolean;
     /** Called when the user clicks the "Open Scratchpad" button */
     onOpenScratchpad?: () => void;
+    /**
+     * Toggle the workspace file-tree explorer dock. When provided, a persistent
+     * header button opens the read-only source-canvas tree rooted at the
+     * workspace root (and closes it when already open). Omitted when no
+     * workspace is resolved.
+     */
+    onToggleExplorer?: () => void;
+    /** Whether the explorer dock is currently open (for the toggle's active state). */
+    explorerOpen?: boolean;
     /** Called when the user clicks the Fork button */
     onFork?: () => void;
     /** Whether a fork operation is in progress */
@@ -362,6 +371,8 @@ export function ChatHeader({
     onToggleSelecting,
     showScratchpadButton,
     onOpenScratchpad,
+    onToggleExplorer,
+    explorerOpen = false,
     onFork,
     forking,
     loopCount,
@@ -544,6 +555,24 @@ export function ChatHeader({
                   of horizontally overflowing.
                 */}
                 <div className="inline-flex items-center gap-0.5 flex-wrap justify-end flex-shrink-0">
+                {/* Explorer toggle — persistent (all tiers): opens the read-only
+                    workspace file tree in the right-side dock. */}
+                {onToggleExplorer && (
+                    <button
+                        title={explorerOpen ? 'Hide file explorer' : 'Browse workspace files'}
+                        aria-pressed={explorerOpen}
+                        data-testid="chat-explorer-toggle-btn"
+                        onClick={onToggleExplorer}
+                        className={cn(
+                            ICON_BTN_CLASS,
+                            explorerOpen && 'text-[#0078d4] dark:text-[#3794ff] bg-[#e8e8e8] dark:bg-[#2d2d2d]',
+                        )}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M1.5 4a1 1 0 0 1 1-1h3l1.2 1.4H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H2.5a1 1 0 0 1-1-1V4z" />
+                        </svg>
+                    </button>
+                )}
                 {/* Open Scratchpad — inline in wide tier, overflow in narrower tiers */}
                 {isWide && showScratchpadButton && onOpenScratchpad && (
                     <button

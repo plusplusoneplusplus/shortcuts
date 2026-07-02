@@ -7,8 +7,8 @@ export { SourceCanvasDock } from './SourceCanvasDock';
 export type { SourceCanvasDockProps } from './SourceCanvasDock';
 export { SourceCanvasBody } from './SourceCanvasBody';
 export type { SourceCanvasBodyProps } from './SourceCanvasBody';
-export { SourceCanvasFolderBody } from './SourceCanvasFolderBody';
-export type { SourceCanvasFolderBodyProps } from './SourceCanvasFolderBody';
+export { SourceCanvasTreeBody } from './SourceCanvasTreeBody';
+export type { SourceCanvasTreeBodyProps } from './SourceCanvasTreeBody';
 export { SourceCanvasNoteEditor } from './SourceCanvasNoteEditor';
 export type { SourceCanvasNoteEditorProps } from './SourceCanvasNoteEditor';
 export { SourceCanvasNotePopOutButton } from './SourceCanvasNotePopOutButton';
@@ -23,11 +23,11 @@ export type {
     SourceCanvasContentState,
     SourceCanvasContentStatus,
 } from './useSourceCanvasContent';
-export { useSourceCanvasDirectory } from './useSourceCanvasDirectory';
+export { useSourceCanvasTree } from './useSourceCanvasTree';
 export type {
-    SourceCanvasDirectoryState,
-    SourceCanvasDirectoryStatus,
-} from './useSourceCanvasDirectory';
+    SourceCanvasTreeState,
+    SourceCanvasTreeStatus,
+} from './useSourceCanvasTree';
 export {
     getSourceCanvasDisplayPath,
     resolveSourceCanvasTarget,
