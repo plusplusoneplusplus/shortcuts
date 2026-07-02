@@ -119,7 +119,14 @@ all have their own `references/*.md`.
   `src/server/spa/client/react/features/chat/task-group-descriptors.ts`.
   Group statuses are normalized (`draft|running|completed|failed|cancelled`)
   with feature detail in `extra.detailStatus`; registry writes are best-effort
-  and must never break orchestration.
+  and must never break orchestration. On the SPA side, reuse the shared
+  task-group UI family instead of forking components: `TaskGroupRunRow`
+  (chat-list parent row; For Each/Map Reduce/Ralph rows are thin config
+  wrappers), `TaskGroupRunPane` (run-detail pane), `TaskGroupPlanReviewCard`
+  (plan review/approve card), `useTaskGroupExpansion`
+  (workspace-scoped expand/collapse for all group kinds), and
+  `task-group-copy-info.ts` (context-menu copy text) under
+  `src/server/spa/client/react/features/chat/`.
 - **Chat canvas** (`canvas.enabled`, default off) persists markdown, code, or
   extension artifacts (descriptor `type` + normalized `language`) under
   `~/.coc/repos/<wsId>/canvases/<canvasId>/` through
