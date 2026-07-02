@@ -13,6 +13,9 @@
  *  - AC-01: the container-width signal drives compaction; full layout when wide.
  *  - AC-04: the "Claude" model chip collapses to icon-only when narrow while
  *    keeping the model name as its accessible name.
+ *  - AC-02: the cwd chip collapses to the last folder name (basename) with the
+ *    full path in its title, driven by the same container-narrow signal threaded
+ *    down into ComposerMetaStrip.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -219,6 +222,29 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
             })} />);
             expect(screen.getByTestId('model-picker-chip').getAttribute('aria-label'))
                 .toBe('Model: claude-sonnet-4-6');
+        });
+    });
+
+    describe('AC-02 – cwd chip → basename when narrow (prop threaded)', () => {
+        const CWD = '/Users/yihengtao/Documents/Projects/nanochat';
+
+        it('shows only the last folder name and drops the cwd label when narrow', () => {
+            setContainerWidth('narrow', 420);
+            render(<FollowUpInputArea {...defaultProps({ workingDirectory: CWD })} />);
+            const chip = screen.getByTestId('composer-cwd-chip');
+            expect(screen.getByTestId('composer-cwd-path').textContent).toBe('nanochat');
+            expect(chip.textContent).not.toMatch(/\bcwd\b/);
+            // Full path preserved in the title tooltip.
+            expect(chip.getAttribute('title')).toBe(`Working directory: ${CWD}`);
+        });
+
+        it('shows the head-truncated path and cwd label when wide', () => {
+            setContainerWidth('wide', 900);
+            render(<FollowUpInputArea {...defaultProps({ workingDirectory: CWD })} />);
+            const chip = screen.getByTestId('composer-cwd-chip');
+            // Wide keeps the ellipsis-prefixed head-truncated form + the `cwd` label.
+            expect(screen.getByTestId('composer-cwd-path').textContent?.startsWith('…')).toBe(true);
+            expect(chip.querySelector('span[class*="uppercase"]')?.textContent).toBe('cwd');
         });
     });
 });

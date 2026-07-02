@@ -1237,6 +1237,7 @@ export function FollowUpInputArea({
                             <div className="hidden lg:flex items-center">
                                 <ComposerMetaStrip
                                     className="mx-1"
+                                    compact={isToolbarNarrow}
                                     workingDirectory={workingDirectory}
                                     sessionTokenLimit={sessionTokenLimit}
                                     sessionCurrentTokens={sessionCurrentTokens}
