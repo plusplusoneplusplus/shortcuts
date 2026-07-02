@@ -918,7 +918,9 @@ describe('ClaudeSDKService.sendMessage', () => {
         });
     });
 
-    it('keeps Claude result usage when context usage lookup fails', async () => {
+    it('keeps Claude result usage when context usage lookup fails and logs a warning', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
         queryFn.mockReturnValueOnce(makeQueryHandle([
             {
                 type: 'result',
@@ -945,6 +947,13 @@ describe('ClaudeSDKService.sendMessage', () => {
             cacheWriteTokens: 0,
             totalTokens: 12,
             turnCount: 1,
+        });
+        const warning = capLogger.logs.find(log =>
+            log.level === 'warn' && log.fields.event === 'claude_context_usage_error');
+        expect(warning).toBeDefined();
+        expect(warning?.fields).toMatchObject({
+            provider: 'claude',
+            error: 'context unavailable',
         });
     });
 

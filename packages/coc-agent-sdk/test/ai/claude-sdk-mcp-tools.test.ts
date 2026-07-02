@@ -101,7 +101,7 @@ describe('ClaudeSDKService MCP tool wiring', () => {
         queryFn.mockReturnValue(makeHandle([SUCCESS]));
         await svc.sendMessage({ prompt: 'hi' });
         const opts = (queryFn.mock.calls[0][0] as any).options;
-        expect(opts.allowedTools).toEqual(['Bash(gh:*)', 'WebFetch']);
+        expect(opts.allowedTools).toEqual(['Bash', 'WebFetch']);
     });
 
     // Regression: the native built-in `AskUserQuestion` shares no name with CoC's
