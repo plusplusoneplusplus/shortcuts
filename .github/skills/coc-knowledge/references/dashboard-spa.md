@@ -316,6 +316,11 @@ bare path, workspace hint, optional `sourceFilePath`, and optional line/range
 metadata. Local `file://` hrefs are converted to filesystem paths and
 GitHub-style `#L<line>` / `#L<start>-L<end>` hashes are carried as line metadata,
 so the resolver never treats a file URI as workspace-relative text. The
+shared `MarkdownView` intercepts assistant-prose conversation deep-links with
+`#/process/<id>`, `#/session/<id>`, or `#/processes/<id>` hrefs, prevents the
+default link action, and assigns `window.location.hash` so the router's existing
+hashchange handler opens the conversation in place; other hash and external
+links keep their normal renderer behavior. The
 source-canvas resolver chooses the explicit workspace hint when
 present, otherwise the longest matching workspace root, and resolves relative
 paths against `sourceFilePath` when available or the selected workspace root
