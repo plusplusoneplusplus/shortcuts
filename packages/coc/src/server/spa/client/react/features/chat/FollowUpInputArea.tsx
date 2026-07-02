@@ -1028,6 +1028,7 @@ export function FollowUpInputArea({
                                     onChange={onEffortTierChange}
                                     data-testid="follow-up-effort-tier-selector"
                                     mobileTapTarget={true}
+                                    compact={isToolbarNarrow}
                                 />
                             )}
                             {/* Model selector chip — shows the active model

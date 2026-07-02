@@ -247,4 +247,32 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
             expect(chip.querySelector('span[class*="uppercase"]')?.textContent).toBe('cwd');
         });
     });
+
+    describe('AC-03 – Effort tier selector drops the "Effort:" prefix when narrow', () => {
+        const tierProps = {
+            useEffortTierMode: true,
+            selectedEffortTier: 'medium' as const,
+            onEffortTierChange: vi.fn(),
+            effortTierMap: {
+                'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low', source: 'default' as const },
+                low: { model: 'gpt-5-mini', reasoningEffort: 'low', source: 'config' as const },
+                medium: { model: 'gpt-5', reasoningEffort: '', source: 'default' as const },
+                high: { model: 'gpt-5-pro', reasoningEffort: 'high', source: 'config' as const },
+            },
+        };
+
+        it('shows only the tier value (no "Effort:" word) when narrow', () => {
+            setContainerWidth('narrow', 420);
+            render(<FollowUpInputArea {...defaultProps(tierProps)} />);
+            const label = screen.getByTestId('effort-tier-label');
+            expect(label.textContent).toBe('Medium');
+            expect(label.textContent).not.toMatch(/Effort:/);
+        });
+
+        it('shows "Effort: <tier>" when wide', () => {
+            setContainerWidth('wide', 900);
+            render(<FollowUpInputArea {...defaultProps(tierProps)} />);
+            expect(screen.getByTestId('effort-tier-label').textContent).toBe('Effort: Medium');
+        });
+    });
 });
