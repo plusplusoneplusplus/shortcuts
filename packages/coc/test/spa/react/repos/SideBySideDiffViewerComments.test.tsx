@@ -74,6 +74,7 @@ function mockSelection(opts: {
         rangeCount: opts.collapsed ? 0 : 1,
         getRangeAt: (_: number) => mockRange,
         toString: () => opts.text ?? 'selected text',
+        removeAllRanges: vi.fn(),
     };
     vi.spyOn(window, 'getSelection').mockReturnValue(mockSel as unknown as Selection);
     return { mockSel, mockRange };

@@ -450,16 +450,19 @@ describe('registerGlobalSkillRoutes', () => {
 
         it('reflects configured globalExtraFolders with source/status from config', async () => {
             const extraDir = fs.mkdtempSync(path.join(os.tmpdir(), 'global-extra-'));
+            // A non-existent but absolute host path on the current platform, so it
+            // resolves to `missing` rather than being skipped as unresolvable.
+            const missingDir = path.join(os.tmpdir(), `global-extra-missing-${Date.now()}`);
             try {
                 writeConfigFile(configPath, {
-                    skills: { globalExtraFolders: [extraDir, '/does/not/exist'], autoDetectDefaultFolders: false },
+                    skills: { globalExtraFolders: [extraDir, missingDir], autoDetectDefaultFolders: false },
                 } as any);
 
                 const { body } = await dispatchRoute(routes, 'GET', '/api/skills/effective-paths');
                 const configured = body.paths.filter((p: any) => p.source === 'configured');
                 expect(configured).toHaveLength(2);
                 expect(configured.find((p: any) => p.path === extraDir).status).toBe('no-skills');
-                expect(configured.find((p: any) => p.path === '/does/not/exist').status).toBe('missing');
+                expect(configured.find((p: any) => p.path === missingDir).status).toBe('missing');
                 // auto-detect disabled → no auto-detected entries surface.
                 expect(body.paths.some((p: any) => p.source === 'auto-detected')).toBe(false);
             } finally {
