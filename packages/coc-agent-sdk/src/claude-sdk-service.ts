@@ -135,7 +135,13 @@ export interface ClaudeMessageBreakdown {
 
 export interface ClaudeContextUsage {
     totalTokens?: number;
+    /** Effective context-window limit; the value mapped to `tokenLimit`. */
     maxTokens?: number;
+    /**
+     * The model's raw maximum before per-session adjustments. Intentionally NOT
+     * mapped to `tokenLimit` — `maxTokens` is the effective limit (AC-01 DoD #4).
+     */
+    rawMaxTokens?: number;
     systemPromptSections?: ClaudeTokenEntry[];
     systemTools?: ClaudeTokenEntry[];
     mcpTools?: ClaudeTokenEntry[];
@@ -454,7 +460,15 @@ interface ClaudeExceptionLogContext extends ClaudeDiagnosticLogContext {
 
 const CLAUDE_AGENT_SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
 const CLAUDE_MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
-const CLAUDE_CONTEXT_USAGE_TIMEOUT_MS = 2_000;
+/**
+ * Wall-clock guard for the `getContextUsage()` control request. It is now issued
+ * while the SDK subprocess is still alive (before the input gate closes), so it
+ * normally resolves in well under a second; the guard only exists so a wedged or
+ * lost control response can never stall turn settlement. 5s balances "never
+ * stall" against tolerating a slow breakdown over a very large conversation.
+ * Override with `COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS` (primarily for tests).
+ */
+const CLAUDE_CONTEXT_USAGE_TIMEOUT_MS = 5_000;
 /**
  * Wall-clock ceiling for holding the streaming-input channel open while waiting
  * for in-flight background tasks to drain (AC-04). It is armed ONLY once a turn
@@ -465,6 +479,19 @@ const CLAUDE_CONTEXT_USAGE_TIMEOUT_MS = 2_000;
  * Generous enough for a multi-minute background `vitest`/build to complete.
  */
 const CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS = 20 * 60_000;
+/**
+ * Resolve the `getContextUsage()` guard timeout. Honors a positive numeric
+ * `COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS` override (used by tests to exercise the
+ * timeout path deterministically) and otherwise falls back to the default.
+ */
+function resolveClaudeContextUsageTimeoutMs(): number {
+    const raw = process.env.COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS;
+    if (raw !== undefined && raw.trim() !== '') {
+        const parsed = Number(raw);
+        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    return CLAUDE_CONTEXT_USAGE_TIMEOUT_MS;
+}
 /** Reasoning-effort levels CoC forwards to Claude Code's `effort` option. */
 const CLAUDE_EFFORT_LEVELS: readonly ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh'];
 const runtimeRequire = createRequire(__filename);
@@ -955,6 +982,24 @@ export class ClaudeSDKService implements ISDKService {
 
             const handle = queryFn(queryOptions);
             handle.accountInfo?.().then(info => { this.lastAccountInfo = info; }).catch(() => {});
+
+            // Capture the context-window snapshot at turn end while the SDK
+            // subprocess is still alive, then close the input gate. Closing the
+            // gate signals end-of-input and tears the subprocess down, which
+            // rejects any in-flight control request — so a `getContextUsage()`
+            // issued after the gate closes (or after the message loop ends)
+            // races the teardown and yields no meter. Captured once per turn.
+            let contextUsageCaptured = false;
+            const captureContextUsageThenClose = async (): Promise<void> => {
+                const gate = inputGate;
+                if (!gate || gate.isClosed) return;
+                if (!contextUsageCaptured) {
+                    contextUsageCaptured = true;
+                    tokenUsage = addClaudeContextUsage(tokenUsage, await this.safeGetClaudeContextUsage(handle));
+                }
+                gate.close();
+            };
+
             for await (const msg of handle) {
                 if (abortController.signal.aborted) break;
                 publishProviderSessionId(this.extractSessionId(msg));
@@ -1007,7 +1052,7 @@ export class ClaudeSDKService implements ISDKService {
                     // SDK reports idle, bounded by the drain cap.
                     if (backgroundTasks.size === 0) {
                         clearDrainCap();
-                        inputGate.close();
+                        await captureContextUsageThenClose();
                     } else {
                         armDrainCap();
                     }
@@ -1041,14 +1086,15 @@ export class ClaudeSDKService implements ISDKService {
                     // loop has exited. Settle regardless of our local tracking.
                     if (msg.state === 'idle') {
                         clearDrainCap();
-                        inputGate.close();
+                        await captureContextUsageThenClose();
                     }
                 }
             }
 
-            // Empty chunk signals end-of-stream.
+            // Empty chunk signals end-of-stream. The context-window snapshot was
+            // already captured at turn end (before the input gate closed), while
+            // the subprocess was still alive to answer the control request.
             options.onStreamingChunk?.('');
-            tokenUsage = addClaudeContextUsage(tokenUsage, await this.safeGetClaudeContextUsage(handle));
 
             return {
                 success: true,
@@ -1318,16 +1364,34 @@ export class ClaudeSDKService implements ISDKService {
 
     private async safeGetClaudeContextUsage(handle: ClaudeQueryHandle): Promise<ClaudeContextUsage | undefined> {
         if (!handle.getContextUsage) return undefined;
+        const timeoutMs = resolveClaudeContextUsageTimeoutMs();
+        const TIMED_OUT = Symbol('claude-context-usage-timeout');
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
-            return await Promise.race([
+            const outcome = await Promise.race([
                 handle.getContextUsage(),
-                new Promise<undefined>((resolve) => {
-                    timer = setTimeout(() => resolve(undefined), CLAUDE_CONTEXT_USAGE_TIMEOUT_MS);
+                new Promise<typeof TIMED_OUT>((resolve) => {
+                    timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs);
                     timer.unref?.();
                 }),
             ]);
-        } catch {
+            if (outcome === TIMED_OUT) {
+                getSDKLogger().warn(
+                    { provider: CLAUDE_PROVIDER, event: 'claude_context_usage_timeout', timeoutMs },
+                    'Claude getContextUsage timed out; context-window meter unavailable for this turn',
+                );
+                return undefined;
+            }
+            return outcome;
+        } catch (err) {
+            getSDKLogger().warn(
+                {
+                    provider: CLAUDE_PROVIDER,
+                    event: 'claude_context_usage_error',
+                    error: err instanceof Error ? err.message : String(err),
+                },
+                'Claude getContextUsage failed; context-window meter unavailable for this turn',
+            );
             return undefined;
         } finally {
             if (timer) clearTimeout(timer);
