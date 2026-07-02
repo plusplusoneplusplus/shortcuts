@@ -1928,7 +1928,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
     });
 
-    it('auto-allows scoped gh Bash and WebFetch in interactive (ask) mode', async () => {
+    it('auto-allows full Bash and WebFetch in interactive (ask) mode', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             { type: 'result', subtype: 'success' },
         ]));
@@ -1936,9 +1936,9 @@ describe('ClaudeSDKService.sendMessage', () => {
         await svc.sendMessage({ prompt: 'investigate', mode: 'interactive' });
 
         const allowedTools = queryFn.mock.calls[0][0].options.allowedTools;
-        expect(allowedTools).toContain('Bash(gh:*)');
+        expect(allowedTools).toContain('Bash');
         expect(allowedTools).toContain('WebFetch');
-        expect(allowedTools).not.toContain('Bash');
+        expect(allowedTools).not.toContain('Bash(gh:*)');
     });
 
     it('uses acceptEdits permission mode when mode is undefined', async () => {
@@ -1952,7 +1952,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
     });
 
-    it('auto-allows scoped gh Bash and WebFetch when mode is undefined', async () => {
+    it('auto-allows full Bash and WebFetch when mode is undefined', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             { type: 'result', subtype: 'success' },
         ]));
@@ -1960,9 +1960,9 @@ describe('ClaudeSDKService.sendMessage', () => {
         await svc.sendMessage({ prompt: 'investigate' });
 
         const allowedTools = queryFn.mock.calls[0][0].options.allowedTools;
-        expect(allowedTools).toContain('Bash(gh:*)');
+        expect(allowedTools).toContain('Bash');
         expect(allowedTools).toContain('WebFetch');
-        expect(allowedTools).not.toContain('Bash');
+        expect(allowedTools).not.toContain('Bash(gh:*)');
     });
 
     it('passes Claude model IDs through but drops Copilot model IDs', async () => {

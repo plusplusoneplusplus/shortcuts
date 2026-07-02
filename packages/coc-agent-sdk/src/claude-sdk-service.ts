@@ -284,11 +284,11 @@ type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'p
 /**
  * Tools auto-approved in ask/read-only mode. Under `acceptEdits` the SDK only
  * auto-accepts file edits, so Bash and WebFetch would otherwise be denied (no
- * canUseTool callback, headless — no human to answer the prompt). Allow-listing
- * scoped, read-only specifiers lets ask-mode sessions run investigative commands
- * like `gh pr view` and fetch URLs without opening up arbitrary shell writes.
+ * canUseTool callback, headless — no human to answer the prompt). Full Bash is
+ * allowed because the <coc-read-only-mode> system prompt already prevents
+ * editing git-tracked files; shell execution (tests, grep, etc.) is safe.
  */
-const ASK_MODE_AUTO_APPROVED_TOOLS = ['Bash(gh:*)', 'WebFetch'] as const;
+const ASK_MODE_AUTO_APPROVED_TOOLS = ['Bash', 'WebFetch'] as const;
 
 /**
  * MCP server config accepted by Claude Code's `query({ options: { mcpServers } })`.
