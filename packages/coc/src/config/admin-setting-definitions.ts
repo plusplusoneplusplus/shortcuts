@@ -550,6 +550,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'showPlanDepTab', default: false, runtime: 'live', runtimeFlag: 'showPlanDepTab',
+        ui: {
+            group: 'devTools', order: 70, label: 'Show Plans (Dep.) tab',
+            hint: 'Show the deprecated Plans/Tasks sub-tab in the repo view. Hidden by default — the tab and its data model are deprecated.',
+            testId: 'toggle-show-plan-dep-tab',
+        },
+    }),
+    bool({
         key: 'ralph.enabled', default: false, runtime: 'live', runtimeFlag: 'ralphEnabled',
         ui: {
             group: 'aiModes', order: 10, label: 'Ralph Mode', badge: 'experimental',

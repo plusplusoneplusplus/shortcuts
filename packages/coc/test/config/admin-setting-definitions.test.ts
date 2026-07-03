@@ -360,4 +360,24 @@ describe('Features card UI metadata', () => {
         applyAdminSettingValue(config, def!, '');
         expect(getConfigValueAtPath(config, 'chat.globalSystemPrompt')).toBeUndefined();
     });
+
+    // AC-01 (plans-dep-tab-admin-toggle): a global boolean `showPlanDepTab`
+    // defaulting to false, on the Features card under devTools, with a runtime
+    // flag so the SPA can gate the deprecated Plans/Tasks sub-tab.
+    it('exposes showPlanDepTab as a Features toggle defaulting to off', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'showPlanDepTab');
+        expect(def, 'showPlanDepTab must be an admin setting').toBeDefined();
+        expect(def!.value).toEqual({ kind: 'boolean' });
+        expect(def!.default, 'showPlanDepTab must default to off (opt-in)').toBe(false);
+        expect(def!.runtime).toBe('live');
+        expect(def!.runtimeFlag).toBe('showPlanDepTab');
+        expect(def!.ui, 'showPlanDepTab must appear on the Features card').toBeDefined();
+        expect(def!.ui!.group).toBe('devTools');
+        expect(def!.ui!.label).toBe('Show Plans (Dep.) tab');
+        expect(def!.ui!.hint, 'hint should note the tab is deprecated').toMatch(/deprecated/i);
+        // Rendered on the Features card in the devTools group.
+        expect(getFeatureCardSettings('devTools').some(d => d.key === 'showPlanDepTab')).toBe(true);
+        // Runtime flag reads false when absent from a partial config.
+        expect(buildRuntimeFeatureFlags({}).showPlanDepTab).toBe(false);
+    });
 });
