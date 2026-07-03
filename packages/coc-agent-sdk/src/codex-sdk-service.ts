@@ -83,28 +83,6 @@ const runtimeRequire = createRequire(__filename);
  */
 const CODEX_LLM_TOOLS_TIMEOUT_SEC = 31_536_000;
 const CODEX_DIFF_TIMEOUT_MS = 5000;
-const CODEX_STANDALONE_INSTALL_COMMAND = 'curl -fsSL https://chatgpt.com/codex/install.sh | sh';
-
-function extractMissingManagedStandaloneCodexPath(message: string): string | undefined {
-    const compact = message.replace(/\s+/g, ' ');
-    const match = compact.match(/managed standalone Codex install not found at\s+(.+?)\s+This command requires/);
-    if (match?.[1]) return match[1].trim();
-
-    const fallback = compact.match(/managed standalone Codex install not found at\s+(\S+)/);
-    return fallback?.[1]?.trim();
-}
-
-function normalizeCodexDaemonStartError(error: unknown): Error {
-    const original = error instanceof Error ? error : new Error(String(error));
-    const missingPath = extractMissingManagedStandaloneCodexPath(original.message);
-    if (!missingPath) return original;
-
-    return new Error(
-        `Codex app-server daemon requires the installer-managed standalone Codex at ${missingPath}. ` +
-        `PATH installs such as Homebrew are not enough for this daemon. ` +
-        `Install it with: ${CODEX_STANDALONE_INSTALL_COMMAND}. Then refresh provider quota.`,
-    );
-}
 
 // ============================================================================
 // Auth checker injection (AC-08)
@@ -846,30 +824,19 @@ export class CodexSDKService implements ISDKService {
      * Fetch Codex rate limits over JSON-RPC.
      *
      * In `@openai/codex` ≥ 0.133.0, `codex app-server` is a subcommand *group*:
-     * the bare invocation prints usage help and exits immediately, so the old
-     * code raced the exit against the RPC response and always reported
-     * "app-server exited before returning rate limits". The supported flow is a
-     * two-step handshake:
-     *   1. `app-server daemon start` — idempotent; brings the daemon up (or
-     *      no-ops if it is already running).
-     *   2. `app-server proxy` — pipes stdin/stdout to the running daemon socket,
-     *      over which we speak JSON-RPC.
+     * the bare invocation exits immediately. Use the explicit stdio listener
+     * instead of the daemon/proxy flow: daemon start requires the installer-
+     * managed standalone Codex path, while stdio works with the SDK-bundled CLI
+     * that CoC already resolves for protocol compatibility.
      */
     private async fetchRateLimitsViaRpc(codexBinPath: string): Promise<CodexRateLimitsResult> {
-        // Ensure the app-server daemon is running before opening the proxy. This
-        // is idempotent, so it is safe to run on every quota query.
-        try {
-            await this.runCodexCli(['app-server', 'daemon', 'start'], { timeout: 15_000 });
-        } catch (error: unknown) {
-            throw normalizeCodexDaemonStartError(error);
-        }
-        return this.readRateLimitsViaProxy(codexBinPath);
+        return this.readRateLimitsViaStdioAppServer(codexBinPath);
     }
 
-    /** Spawn `codex app-server proxy`, send RPC messages, and return rate limits. */
-    private readRateLimitsViaProxy(codexBinPath: string): Promise<CodexRateLimitsResult> {
+    /** Spawn `codex app-server --listen stdio://`, send RPC messages, and return rate limits. */
+    private readRateLimitsViaStdioAppServer(codexBinPath: string): Promise<CodexRateLimitsResult> {
         return new Promise<CodexRateLimitsResult>((resolve, reject) => {
-            const child = spawn(process.execPath, [codexBinPath, 'app-server', 'proxy'], {
+            const child = spawn(process.execPath, [codexBinPath, 'app-server', '--listen', 'stdio://'], {
                 stdio: ['pipe', 'pipe', 'ignore'],
                 windowsHide: true,
             });
@@ -886,7 +853,7 @@ export class CodexSDKService implements ISDKService {
 
             const timer = setTimeout(() => {
                 cleanup();
-                reject(new Error('Codex app-server proxy RPC timed out'));
+                reject(new Error('Codex app-server stdio RPC timed out'));
             }, 10_000);
 
             child.on('error', (err) => {
@@ -899,7 +866,7 @@ export class CodexSDKService implements ISDKService {
                 clearTimeout(timer);
                 if (!settled) {
                     settled = true;
-                    reject(new Error('Codex app-server proxy exited before returning rate limits'));
+                    reject(new Error('Codex app-server stdio exited before returning rate limits'));
                 }
             });
 
