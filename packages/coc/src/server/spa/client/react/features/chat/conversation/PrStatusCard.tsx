@@ -22,7 +22,7 @@
  * for the deep-link.
  */
 import React, { useEffect, useState } from 'react';
-import { prStatusBadge, formatTimestamp, type PrStatus, type PullRequestDiffStats, type Reviewer } from '../../pull-requests/pr-utils';
+import { prStatusBadge, formatTimestamp, type PrStatus, type PrIdentity, type PullRequestDiffStats, type Reviewer } from '../../pull-requests/pr-utils';
 import { buildPrDetailHash } from '../../pull-requests/pr-open-utils';
 import { PrChecksCompact, PrChecksSummaryChips, type PrChecksCompactState } from '../../pull-requests/PrChecksSummary';
 import type { PrCheckRow } from '../../pull-requests/pr-derived-data';
@@ -65,6 +65,8 @@ export interface PrStatusCardPr {
     mergedAt?: string;
     closedAt?: string;
     url?: string;
+    /** PR author identity, when surfaced by the detail (rendered as `by <alias>` in the composer chip). */
+    author?: PrIdentity;
     /** Auto-merge / auto-complete status (AC-04), when surfaced by the detail. */
     autoMerge?: PrAutoMergeInfo;
     /** Real diff stats (additions / deletions / changed files), when the detail carries them. */

@@ -30,7 +30,7 @@ import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { resolveCanonicalOriginId } from '../../../repos/originScope';
 import { runWhenIdle } from '../../../utils/runWhenIdle';
 import { buildCheckRowsFromChecks } from '../../pull-requests/pr-derived-data';
-import type { PullRequestCheck, PullRequestDiffStats, Reviewer } from '../../pull-requests/pr-utils';
+import type { PrIdentity, PullRequestCheck, PullRequestDiffStats, Reviewer } from '../../pull-requests/pr-utils';
 import {
     detectedPrsNeedingBinding,
     gatherDetectedPrsFromTurns,
@@ -119,6 +119,26 @@ export function parseDiffStats(value: unknown): PullRequestDiffStats | undefined
 }
 
 /**
+ * Maps a canonical `PrIdentity` payload (the PR detail's `author`) to the card's
+ * subset. Returns undefined when the payload carries no usable identity fields,
+ * so the composer chip simply omits the author element (no placeholder).
+ */
+export function parseAuthorIdentity(value: unknown): PrIdentity | undefined {
+    if (!isRecord(value)) return undefined;
+    const id = value.id;
+    const identity: PrIdentity = {
+        id: typeof id === 'string' || typeof id === 'number' ? id : undefined,
+        displayName: optionalString(value.displayName),
+        email: optionalString(value.email),
+        avatarUrl: optionalString(value.avatarUrl),
+    };
+    if (identity.id === undefined && identity.displayName === undefined && identity.email === undefined) {
+        return undefined;
+    }
+    return identity;
+}
+
+/**
  * Maps a fetched PR-detail payload (the canonical `PullRequest` shape) to the
  * card's {@link PrStatusCardPr} subset. Returns undefined when the payload is not
  * a recognizable PR detail (missing title/status), so callers surface an error.
@@ -137,6 +157,7 @@ export function mapPrDetailToCardPr(detail: unknown): PrStatusCardPr | undefined
         mergedAt: optionalString(detail.mergedAt),
         closedAt: optionalString(detail.closedAt),
         url: optionalString(detail.url),
+        author: parseAuthorIdentity(detail.author),
         autoMerge: parseAutoMerge(detail.autoMerge),
         diffStats: parseDiffStats(detail.diffStats),
     };

@@ -47,7 +47,7 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
 }));
 
 import { ChatPrStatusCard } from '../../../src/server/spa/client/react/features/chat/conversation/ChatPrStatusCard';
-import { mapPrDetailToCardPr, parseAutoMerge } from '../../../src/server/spa/client/react/features/chat/conversation/usePrChatStatusItems';
+import { mapPrDetailToCardPr, parseAutoMerge, parseAuthorIdentity } from '../../../src/server/spa/client/react/features/chat/conversation/usePrChatStatusItems';
 
 const GH_URL = 'https://github.com/owner/repo/pull/42';
 const GH_REMOTE = 'https://github.com/owner/repo';
@@ -483,6 +483,54 @@ describe('mapPrDetailToCardPr', () => {
     it('leaves auto-merge undefined when the detail omits it', () => {
         const pr = mapPrDetailToCardPr({ title: 'T', status: 'open' });
         expect(pr?.autoMerge).toBeUndefined();
+    });
+
+    it('maps the PR author identity (AC-01)', () => {
+        const pr = mapPrDetailToCardPr({
+            title: 'T',
+            status: 'open',
+            author: { id: 'u1', displayName: 'Alice Doe', email: 'alice@example.com' },
+        });
+        expect(pr?.author).toEqual({
+            id: 'u1',
+            displayName: 'Alice Doe',
+            email: 'alice@example.com',
+            avatarUrl: undefined,
+        });
+    });
+
+    it('leaves author undefined when the detail omits it', () => {
+        const pr = mapPrDetailToCardPr({ title: 'T', status: 'open' });
+        expect(pr?.author).toBeUndefined();
+    });
+});
+
+describe('parseAuthorIdentity', () => {
+    it('returns undefined for non-objects or empty identities', () => {
+        expect(parseAuthorIdentity(undefined)).toBeUndefined();
+        expect(parseAuthorIdentity(null)).toBeUndefined();
+        expect(parseAuthorIdentity('nope')).toBeUndefined();
+        // No usable identity field → omit (no placeholder).
+        expect(parseAuthorIdentity({ avatarUrl: 'https://img' })).toBeUndefined();
+    });
+
+    it('keeps only the recognized identity fields', () => {
+        expect(parseAuthorIdentity({ id: 7, displayName: 'Bob', email: 'bob@x.io', avatarUrl: 'a', extra: 'drop' })).toEqual({
+            id: 7,
+            displayName: 'Bob',
+            email: 'bob@x.io',
+            avatarUrl: 'a',
+        });
+    });
+
+    it('retains an identity that carries only an email or only an id', () => {
+        expect(parseAuthorIdentity({ email: 'only@mail.com' })).toEqual({
+            id: undefined,
+            displayName: undefined,
+            email: 'only@mail.com',
+            avatarUrl: undefined,
+        });
+        expect(parseAuthorIdentity({ id: 42 })).toMatchObject({ id: 42 });
     });
 });
 
