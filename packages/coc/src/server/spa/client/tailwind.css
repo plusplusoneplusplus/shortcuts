@@ -2068,80 +2068,103 @@
  * body inside both is therefore borderless and transparent — only typographic
  * treatment is retained from the rules below. */
 
-/* Semantic HTML styles for chat messages rendered by marked */
+/* Semantic HTML styles for markdown rendered by marked — shared by chat
+ * messages and the canvas markdown preview so block elements (headings,
+ * paragraphs, lists, tables) keep their vertical spacing in both surfaces. */
 .chat-message-content .markdown-body h1,
+.canvas-mermaid-preview .markdown-body h1,
 .chat-message-content .markdown-body h2,
+.canvas-mermaid-preview .markdown-body h2,
 .chat-message-content .markdown-body h3,
+.canvas-mermaid-preview .markdown-body h3,
 .chat-message-content .markdown-body h4,
+.canvas-mermaid-preview .markdown-body h4,
 .chat-message-content .markdown-body h5,
-.chat-message-content .markdown-body h6 {
+.canvas-mermaid-preview .markdown-body h5,
+.chat-message-content .markdown-body h6,
+.canvas-mermaid-preview .markdown-body h6 {
     font-weight: 700;
     color: #1e1e1e;
     margin-top: 0.6rem;
     margin-bottom: 0.3rem;
 }
 
-.chat-message-content .markdown-body h1 {
+.chat-message-content .markdown-body h1,
+.canvas-mermaid-preview .markdown-body h1 {
     font-size: 1.5rem;
     border-bottom: 1px solid #e0e0e0;
     padding-bottom: 0.25rem;
 }
 
-.chat-message-content .markdown-body h2 {
+.chat-message-content .markdown-body h2,
+.canvas-mermaid-preview .markdown-body h2 {
     font-size: 1.25rem;
     border-bottom: 1px solid #e0e0e0;
     padding-bottom: 0.2rem;
 }
 
-.chat-message-content .markdown-body h3 {
+.chat-message-content .markdown-body h3,
+.canvas-mermaid-preview .markdown-body h3 {
     font-size: 1.1rem;
 }
 
 .chat-message-content .markdown-body h4,
+.canvas-mermaid-preview .markdown-body h4,
 .chat-message-content .markdown-body h5,
-.chat-message-content .markdown-body h6 {
+.canvas-mermaid-preview .markdown-body h5,
+.chat-message-content .markdown-body h6,
+.canvas-mermaid-preview .markdown-body h6 {
     font-size: 1rem;
 }
 
-.chat-message-content .markdown-body p {
+.chat-message-content .markdown-body p,
+.canvas-mermaid-preview .markdown-body p {
     margin: 0.4rem 0;
 }
 
-.chat-message-content .markdown-body strong {
+.chat-message-content .markdown-body strong,
+.canvas-mermaid-preview .markdown-body strong {
     font-weight: 700;
 }
 
-.chat-message-content .markdown-body em {
+.chat-message-content .markdown-body em,
+.canvas-mermaid-preview .markdown-body em {
     font-style: italic;
 }
 
-.chat-message-content .markdown-body ul {
+.chat-message-content .markdown-body ul,
+.canvas-mermaid-preview .markdown-body ul {
     padding-left: 1.5rem;
     list-style: disc;
     margin: 0.3rem 0;
 }
 
-.chat-message-content .markdown-body ol {
+.chat-message-content .markdown-body ol,
+.canvas-mermaid-preview .markdown-body ol {
     padding-left: 1.5rem;
     list-style: decimal;
     margin: 0.3rem 0;
 }
 
-.chat-message-content .markdown-body li {
+.chat-message-content .markdown-body li,
+.canvas-mermaid-preview .markdown-body li {
     margin: 0.15rem 0;
 }
 
-.chat-message-content .markdown-body a {
+.chat-message-content .markdown-body a,
+.canvas-mermaid-preview .markdown-body a {
     color: #0078d4;
     text-decoration: none;
 }
 
-.chat-message-content .markdown-body a:hover {
+.chat-message-content .markdown-body a:hover,
+.canvas-mermaid-preview .markdown-body a:hover {
     cursor: pointer;
     text-decoration: underline;
 }
 
-.chat-message-content .markdown-body code {
+.chat-message-content .markdown-body code,
+.canvas-mermaid-preview .markdown-body code {
     background: #f3f3f3;
     color: #c7254e;
     padding: 0.12em 0.38em;
@@ -2150,11 +2173,13 @@
     font-size: 0.92em;
 }
 
-.chat-message-content .markdown-body pre {
+.chat-message-content .markdown-body pre,
+.canvas-mermaid-preview .markdown-body pre {
     margin: 0.6rem 0;
 }
 
-.chat-message-content .markdown-body pre > code {
+.chat-message-content .markdown-body pre > code,
+.canvas-mermaid-preview .markdown-body pre > code {
     display: block;
     background: #f8f8f8;
     color: inherit;
@@ -2167,7 +2192,8 @@
     white-space: pre;
 }
 
-.chat-message-content .markdown-body blockquote {
+.chat-message-content .markdown-body blockquote,
+.canvas-mermaid-preview .markdown-body blockquote {
     border-left: 3px solid #0078d4;
     padding-left: 12px;
     color: #5f5f5f;
@@ -2175,33 +2201,39 @@
     margin: 0.5rem 0;
 }
 
-.chat-message-content .markdown-body table {
+.chat-message-content .markdown-body table,
+.canvas-mermaid-preview .markdown-body table {
     width: 100%;
     border-collapse: collapse;
     margin: 0.6rem 0;
 }
 
-.chat-message-content .markdown-body th {
+.chat-message-content .markdown-body th,
+.canvas-mermaid-preview .markdown-body th {
     background: #f3f3f3;
     font-weight: 600;
 }
 
 .chat-message-content .markdown-body th,
-.chat-message-content .markdown-body td {
+.canvas-mermaid-preview .markdown-body th,
+.chat-message-content .markdown-body td,
+.canvas-mermaid-preview .markdown-body td {
     border: 1px solid #e0e0e0;
     padding: 6px 10px;
     text-align: left;
     vertical-align: top;
 }
 
-.chat-message-content .markdown-body hr {
+.chat-message-content .markdown-body hr,
+.canvas-mermaid-preview .markdown-body hr {
     border: none;
     border-top: 1px solid #e0e0e0;
     margin: 0.8rem 0;
 }
 
 /* Inline images from LLM markdown */
-.chat-message-content .markdown-body img.chat-inline-image {
+.chat-message-content .markdown-body img.chat-inline-image,
+.canvas-mermaid-preview .markdown-body img.chat-inline-image {
     max-width: 100%;
     max-height: 480px;
     height: auto;
@@ -2212,11 +2244,13 @@
     cursor: zoom-in;
 }
 
-.dark .chat-message-content .markdown-body img.chat-inline-image {
+.dark .chat-message-content .markdown-body img.chat-inline-image,
+.dark .canvas-mermaid-preview .markdown-body img.chat-inline-image {
     border-color: #3c3c3c;
 }
 
-.chat-message-content .markdown-body img.chat-inline-image--error {
+.chat-message-content .markdown-body img.chat-inline-image--error,
+.canvas-mermaid-preview .markdown-body img.chat-inline-image--error {
     opacity: 0.4;
     cursor: default;
     max-height: 24px;
@@ -2224,49 +2258,65 @@
 
 /* Dark-mode variants for chat semantic HTML */
 .dark .chat-message-content .markdown-body h1,
+.dark .canvas-mermaid-preview .markdown-body h1,
 .dark .chat-message-content .markdown-body h2,
+.dark .canvas-mermaid-preview .markdown-body h2,
 .dark .chat-message-content .markdown-body h3,
+.dark .canvas-mermaid-preview .markdown-body h3,
 .dark .chat-message-content .markdown-body h4,
+.dark .canvas-mermaid-preview .markdown-body h4,
 .dark .chat-message-content .markdown-body h5,
-.dark .chat-message-content .markdown-body h6 {
+.dark .canvas-mermaid-preview .markdown-body h5,
+.dark .chat-message-content .markdown-body h6,
+.dark .canvas-mermaid-preview .markdown-body h6 {
     color: #d4d4d4;
 }
 
 .dark .chat-message-content .markdown-body h1,
-.dark .chat-message-content .markdown-body h2 {
+.dark .canvas-mermaid-preview .markdown-body h1,
+.dark .chat-message-content .markdown-body h2,
+.dark .canvas-mermaid-preview .markdown-body h2 {
     border-bottom-color: #3c3c3c;
 }
 
-.dark .chat-message-content .markdown-body a {
+.dark .chat-message-content .markdown-body a,
+.dark .canvas-mermaid-preview .markdown-body a {
     color: #7bbef3;
 }
 
-.dark .chat-message-content .markdown-body code {
+.dark .chat-message-content .markdown-body code,
+.dark .canvas-mermaid-preview .markdown-body code {
     background: #2d2d2d;
     color: #ff9da4;
 }
 
-.dark .chat-message-content .markdown-body pre > code {
+.dark .chat-message-content .markdown-body pre > code,
+.dark .canvas-mermaid-preview .markdown-body pre > code {
     background: #1e1e1e;
     color: inherit;
     border-color: #3c3c3c;
 }
 
-.dark .chat-message-content .markdown-body blockquote {
+.dark .chat-message-content .markdown-body blockquote,
+.dark .canvas-mermaid-preview .markdown-body blockquote {
     border-left-color: #3794ff;
     color: #a8a8a8;
 }
 
-.dark .chat-message-content .markdown-body th {
+.dark .chat-message-content .markdown-body th,
+.dark .canvas-mermaid-preview .markdown-body th {
     background: #252526;
 }
 
 .dark .chat-message-content .markdown-body th,
-.dark .chat-message-content .markdown-body td {
+.dark .canvas-mermaid-preview .markdown-body th,
+.dark .chat-message-content .markdown-body td,
+.dark .canvas-mermaid-preview .markdown-body td {
     border-color: #3c3c3c;
 }
 
-.dark .chat-message-content .markdown-body hr {
+.dark .chat-message-content .markdown-body hr,
+.dark .canvas-mermaid-preview .markdown-body hr {
     border-top-color: #3c3c3c;
 }
 

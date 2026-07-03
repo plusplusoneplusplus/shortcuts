@@ -58,8 +58,10 @@ describe('chat-message-content .markdown-body redesign — no inner bubble borde
     });
 
     it('keeps the chat markdown link hover cursor (typography stayed intact)', () => {
+        // The selector list may include other surfaces (e.g. the canvas
+        // preview) that share the same typography rules.
         const linkHoverRule = css.match(
-            /\.chat-message-content\s+\.markdown-body\s+a:hover\s*\{([^}]+)\}/,
+            /\.chat-message-content\s+\.markdown-body\s+a:hover\s*[^{}]*\{([^}]+)\}/,
         );
         expect(linkHoverRule).toBeTruthy();
         expect(linkHoverRule![1]).toContain('cursor: pointer');
