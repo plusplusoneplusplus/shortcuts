@@ -250,21 +250,24 @@ their subresource caches (the detail route already evicts sub-caches).
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
 the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,
 default off). When enabled, `ChatDetail` discovers canvases linked to the open
-process via `client.canvases.list(workspaceId, { processId })` and reacts to
+process via `client.canvases.list(workspaceId, { processId })`, keeps those
+summaries in API order for the panel title switcher, and refreshes the list on
 live `canvas-updated` SSE events (surfaced by `useChatSSE`'s `onCanvasUpdated`
-callback) to mount the panel as a desktop-only (`lg:`) resizable right column
+callback). It mounts the panel as a desktop-only (`lg:`) resizable right column
 beside the conversation, with width persisted under
 `coc.canvasPanel.width.<workspaceId>` via `useResizablePanel`. The panel shows
 the canvas title, revision, and a Preview (shared `useMarkdownPreview`
 pipeline, with rendered HTML passed through to `useMermaid` as its re-render key
 and `.canvas-mermaid-preview` fit-to-pane SVG sizing; `.canvas-mermaid-preview
 .markdown-body` shares the chat semantic-HTML block spacing rules in
-`tailwind.css`) / Edit (plain textarea) toggle. User edits autosave with a debounce
-through `client.canvases.save(...)` carrying `expectedRevision`; an HTTP 409
-shows a conflict banner with a "Load latest" action, and a live AI update
-arriving over unsaved local edits shows a pending-update banner instead of
-clobbering the draft. The close button hides the panel for the current chat
-selection only (no persistent dismissal state). The canvas mounts as a
+`tailwind.css`) / Edit (plain textarea) toggle. When a conversation has two or
+more canvases, the title renders as a button with a chevron; its dropdown lists
+every linked canvas title only, highlights the active canvas, and updates
+`activeCanvasId` in `ChatDetail` when an item is selected. User edits autosave
+with a debounce through `client.canvases.save(...)` carrying
+`expectedRevision`; an HTTP 409 shows a conflict banner with a "Load latest"
+action, and a live AI update arriving over unsaved local edits shows a
+pending-update banner instead of clobbering the draft. The canvas mounts as a
 full-height right column of a top-level split in `ChatDetail` (the
 conversation and follow-up composer share the left column), so the panel spans
 the whole detail pane height beside the composer. A header fullscreen toggle
