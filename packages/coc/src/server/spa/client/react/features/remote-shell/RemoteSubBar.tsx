@@ -28,7 +28,7 @@ import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { useRepoQueueStats, isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTabs';
-import { groupReposByRemote, isRemoteRepo, truncatePath, getRepoHashColor } from '../../repos/repoGrouping';
+import { groupReposByRemote, isRemoteRepo, truncatePath, getRepoHashColor, getServerHashColor } from '../../repos/repoGrouping';
 import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import {
     partitionShellTabs, computeCloneStatusMap, cloneStatusColor, summarizeRemote, computeVisibleTabKeys,
@@ -401,7 +401,8 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
                                                 <span
                                                     data-testid="clone-remote-badge"
                                                     title={`Remote · ${serverLabel}`}
-                                                    className="inline-flex items-center max-w-[110px] truncate text-[9px] font-bold uppercase tracking-[0.04em] px-1.5 py-px rounded bg-[#8250df]/12 text-[#8250df] dark:bg-[#a371f7]/15 dark:text-[#a371f7]"
+                                                    style={{ color: getServerHashColor(serverLabel), backgroundColor: `${getServerHashColor(serverLabel)}1f` }}
+                                                    className="inline-flex items-center max-w-[110px] truncate text-[9px] font-bold uppercase tracking-[0.04em] px-1.5 py-px rounded"
                                                 >
                                                     {serverLabel}
                                                 </span>
