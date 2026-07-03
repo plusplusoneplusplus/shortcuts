@@ -41,12 +41,28 @@ export interface ComposerMetaStripProps {
     sessionToolTokens?: number;
     /** Conversation-history token count when the provider reports a breakdown. */
     sessionConversationTokens?: number;
+    /**
+     * When true, the composer pane is container-narrow: the cwd chip renders
+     * only the last path segment (basename) with no `cwd` label, keeping the
+     * full path in its `title` tooltip. Wide/normal state is unchanged.
+     */
+    compact?: boolean;
 }
 
 function shortenPath(path: string, maxLen = 32): string {
     if (path.length <= maxLen) return path;
     const head = '…';
     return head + path.slice(path.length - (maxLen - head.length));
+}
+
+/**
+ * Last path segment of `path` (basename), tolerant of POSIX (`/`) and Windows
+ * (`\`) separators and trailing slashes. Falls back to the trimmed path when no
+ * segment can be extracted (e.g. a bare `/`).
+ */
+function basename(path: string): string {
+    const segments = path.split(/[/\\]+/).filter(Boolean);
+    return segments.length > 0 ? segments[segments.length - 1] : path;
 }
 
 function formatTokenCount(n: number): string {
@@ -65,6 +81,7 @@ export function ComposerMetaStrip({
     sessionSystemTokens,
     sessionToolTokens,
     sessionConversationTokens,
+    compact = false,
 }: ComposerMetaStripProps) {
     const [ctxPopoverOpen, setCtxPopoverOpen] = useState(false);
 
@@ -134,9 +151,11 @@ export function ComposerMetaStrip({
                     <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-shrink-0 opacity-70">
                         <path d="M2 4a1 1 0 0 1 1-1h3.5l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4z" />
                     </svg>
-                    <span aria-hidden="true" className="hidden sm:inline font-mono text-[9px] uppercase tracking-wider opacity-60">cwd</span>
-                    <code className="font-mono text-[10.5px] text-[#1e1e1e] dark:text-[#cccccc] truncate">
-                        {shortenPath(trimmedCwd!)}
+                    {!compact && (
+                        <span aria-hidden="true" className="hidden sm:inline font-mono text-[9px] uppercase tracking-wider opacity-60">cwd</span>
+                    )}
+                    <code data-testid="composer-cwd-path" className="font-mono text-[10.5px] text-[#1e1e1e] dark:text-[#cccccc] truncate">
+                        {compact ? basename(trimmedCwd!) : shortenPath(trimmedCwd!)}
                     </code>
                 </span>
             )}

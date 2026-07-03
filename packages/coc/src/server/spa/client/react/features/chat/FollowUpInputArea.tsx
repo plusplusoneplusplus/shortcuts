@@ -16,6 +16,7 @@ import type { EffortLevel, EffortPillOption } from './EffortPillSelector';
 import { EffortTierSelector } from './EffortTierSelector';
 import type { EffortTierKey, LocalEffortTiersMap } from '../../hooks/useProviderEffortTiers';
 import { ComposerMetaStrip } from './ComposerMetaStrip';
+import { useContainerWidth } from './hooks/useContainerWidth';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
@@ -281,6 +282,14 @@ export function FollowUpInputArea({
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    // Container-width signal for the compact composer footer: the toolbar
+    // measures its OWN width (not the viewport) so it compacts when the
+    // composer pane is narrow — e.g. when the reference/note panel is open
+    // beside it on a wide screen. Width 0 means "not yet measured" (or SSR /
+    // no ResizeObserver), in which case we keep the full/wide layout.
+    const toolbarRef = useRef<HTMLDivElement>(null);
+    const toolbarWidth = useContainerWidth(toolbarRef);
+    const isToolbarNarrow = toolbarWidth.width > 0 && toolbarWidth.isNarrow;
     const modHeld = useModifierKey(inputWrapperRef as RefObject<HTMLElement>);
     // Global (unscoped) detection so chips show the "send" state even when input isn't focused.
     const chipsCtrlHeld = useModifierKey();
@@ -960,6 +969,7 @@ export function FollowUpInputArea({
                             data-testid="activity-chat-input"
                         />
                         <div
+                            ref={toolbarRef}
                             className="flex flex-nowrap lg:flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                             data-testid="chat-input-toolbar"
                         >
@@ -1018,6 +1028,7 @@ export function FollowUpInputArea({
                                     onChange={onEffortTierChange}
                                     data-testid="follow-up-effort-tier-selector"
                                     mobileTapTarget={true}
+                                    compact={isToolbarNarrow}
                                 />
                             )}
                             {/* Model selector chip — shows the active model
@@ -1040,6 +1051,10 @@ export function FollowUpInputArea({
                                         data-testid="model-picker-chip"
                                         aria-haspopup="listbox"
                                         aria-expanded={modelCommand.modelMenuVisible}
+                                        // Keep the full model name as the accessible name in both
+                                        // states — when narrow the text label is hidden and only the
+                                        // hexagon icon remains, so aria-label carries the name.
+                                        aria-label={`Model: ${modelCommand.modelOverride || sessionModel || 'model'}`}
                                     >
                                         <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
                                             <polygon
@@ -1049,9 +1064,14 @@ export function FollowUpInputArea({
                                                 strokeLinejoin="round"
                                             />
                                         </svg>
-                                        <span className="truncate font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999]">
-                                            {modelCommand.modelOverride || sessionModel || 'model'}
-                                        </span>
+                                        {!isToolbarNarrow && (
+                                            <span
+                                                data-testid="model-picker-chip-label"
+                                                className="truncate font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999]"
+                                            >
+                                                {modelCommand.modelOverride || sessionModel || 'model'}
+                                            </span>
+                                        )}
                                         {/* Mirrors AgentSelectorChip: chevron
                                              only, no inline ✕ clear. The
                                              override is cleared via the "Use
@@ -1218,6 +1238,7 @@ export function FollowUpInputArea({
                             <div className="hidden lg:flex items-center">
                                 <ComposerMetaStrip
                                     className="mx-1"
+                                    compact={isToolbarNarrow}
                                     workingDirectory={workingDirectory}
                                     sessionTokenLimit={sessionTokenLimit}
                                     sessionCurrentTokens={sessionCurrentTokens}

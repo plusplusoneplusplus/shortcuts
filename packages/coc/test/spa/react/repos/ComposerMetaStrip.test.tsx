@@ -32,6 +32,44 @@ describe('ComposerMetaStrip', () => {
         expect(code?.textContent?.startsWith('…')).toBe(true);
     });
 
+    // — Compact (container-narrow) cwd chip: AC-02 ——————————————————————
+
+    it('renders only the last path segment and no cwd label when compact', () => {
+        render(<ComposerMetaStrip workingDirectory="/Users/yihengtao/Documents/Projects/nanochat" compact />);
+        const chip = screen.getByTestId('composer-cwd-chip');
+        const path = screen.getByTestId('composer-cwd-path');
+        // Basename only — no head-truncation ellipsis, no parent segments
+        expect(path.textContent).toBe('nanochat');
+        expect(path.textContent).not.toContain('/');
+        expect(path.textContent).not.toContain('…');
+        // The tiny `cwd` label is dropped in compact mode
+        expect(chip.textContent).not.toMatch(/\bcwd\b/);
+        // Full path preserved in the title tooltip for accessibility
+        expect(chip.getAttribute('title')).toBe('Working directory: /Users/yihengtao/Documents/Projects/nanochat');
+    });
+
+    it('renders the cwd label and head-truncated path when not compact (wide)', () => {
+        const long = '/Users/yihengtao/Documents/Projects/nanochat/a/deep/path/that/keeps/going';
+        render(<ComposerMetaStrip workingDirectory={long} />);
+        const chip = screen.getByTestId('composer-cwd-chip');
+        const path = screen.getByTestId('composer-cwd-path');
+        // Wide keeps the existing head-truncated (ellipsis-prefixed) form
+        expect(path.textContent?.startsWith('…')).toBe(true);
+        // The `cwd` label element is present in wide mode
+        expect(chip.querySelector('span[class*="uppercase"]')?.textContent).toBe('cwd');
+        expect(chip.getAttribute('title')).toContain(long);
+    });
+
+    it('tolerates a trailing slash when extracting the basename in compact mode', () => {
+        render(<ComposerMetaStrip workingDirectory="/Users/yihengtao/Projects/nanochat/" compact />);
+        expect(screen.getByTestId('composer-cwd-path').textContent).toBe('nanochat');
+    });
+
+    it('tolerates Windows-style separators when extracting the basename in compact mode', () => {
+        render(<ComposerMetaStrip workingDirectory={'C:\\Users\\yh\\Projects\\nanochat'} compact />);
+        expect(screen.getByTestId('composer-cwd-path').textContent).toBe('nanochat');
+    });
+
     it('renders the ctx fuel gauge when token limit is provided', () => {
         render(<ComposerMetaStrip sessionTokenLimit={200_000} sessionCurrentTokens={84_300} />);
         expect(screen.getByTestId('composer-ctx-fuel')).toBeTruthy();

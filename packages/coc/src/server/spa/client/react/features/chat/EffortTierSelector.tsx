@@ -46,6 +46,12 @@ export interface EffortTierSelectorProps {
     'data-testid'?: string;
     className?: string;
     mobileTapTarget?: boolean;
+    /**
+     * Container-narrow signal (AC-03): when true, drop the "Effort:" prefix and
+     * show only the selected tier value, regardless of viewport. Fires in
+     * addition to the viewport `sm:` compaction driven by `mobileTapTarget`.
+     */
+    compact?: boolean;
     autoProviderMode?: boolean;
 }
 
@@ -56,6 +62,7 @@ export function EffortTierSelector({
     disabled = false,
     className,
     mobileTapTarget = false,
+    compact = false,
     autoProviderMode = false,
     ...rest
 }: EffortTierSelectorProps) {
@@ -106,11 +113,14 @@ export function EffortTierSelector({
                 <span aria-hidden="true" className={cn('font-mono text-[10px] font-semibold text-[#848484] dark:text-[#999]', mobileTapTarget ? 'inline sm:hidden' : 'hidden')}>
                     E
                 </span>
-                <span className={cn(
-                    'font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999] truncate',
-                    mobileTapTarget && 'hidden sm:inline',
-                )}>
-                    Effort: {selectedLabel}
+                <span
+                    className={cn(
+                        'font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999] truncate',
+                        mobileTapTarget && 'hidden sm:inline',
+                    )}
+                    data-testid="effort-tier-label"
+                >
+                    {compact ? selectedLabel : `Effort: ${selectedLabel}`}
                 </span>
                 <svg
                     width="7" height="7"

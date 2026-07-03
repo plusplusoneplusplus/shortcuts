@@ -80,4 +80,26 @@ describe('EffortTierSelector', () => {
         rerender(<EffortTierSelector tiers={tiers} selectedTier="very-low" onChange={onChange} />);
         expect(screen.getByTestId('effort-tier-selector').getAttribute('data-tier-value')).toBe('very-low');
     });
+
+    // AC-03 — container-narrow: drop the "Effort:" prefix, show value only.
+    describe('compact (container-narrow)', () => {
+        it('renders the value without the "Effort:" prefix when compact', () => {
+            render(<EffortTierSelector tiers={tiers} selectedTier="medium" onChange={() => {}} compact />);
+            const label = screen.getByTestId('effort-tier-label');
+            expect(label.textContent).toBe('Medium');
+            expect(label.textContent).not.toMatch(/Effort:/);
+        });
+
+        it('keeps the "Effort:" prefix when not compact', () => {
+            render(<EffortTierSelector tiers={tiers} selectedTier="medium" onChange={() => {}} />);
+            expect(screen.getByTestId('effort-tier-label').textContent).toBe('Effort: Medium');
+        });
+
+        it('preserves the accessible tier name in the compact form', () => {
+            render(<EffortTierSelector tiers={tiers} selectedTier="high" onChange={() => {}} compact />);
+            expect(screen.getByTestId('effort-tier-trigger-btn').getAttribute('aria-label')).toBe(
+                'Effort tier: High',
+            );
+        });
+    });
 });
