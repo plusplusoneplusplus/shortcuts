@@ -108,6 +108,30 @@ describe('CodexSDKService.getAccountQuota — app-server daemon/proxy handshake'
         expect(result.quotaSnapshots['five_hour'].usedRequests).toBe(10);
     });
 
+    it('normalizes the missing managed standalone install error before it reaches the quota UI', async () => {
+        mockExecFileAsync.mockRejectedValueOnce(new Error(
+            'Command failed: /path/to/codex app-server daemon start Error: managed standalone Codex install not found at /Users/test/.codex/packages/standalone/current/codex This command requires the standalone install managed by the Codex installer, because the daemon starts and updates app-server from that fixed path.',
+        ));
+
+        const svc = new CodexSDKService();
+
+        let thrown: unknown;
+        try {
+            await svc.getAccountQuota();
+        } catch (error: unknown) {
+            thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        const message = (thrown as Error).message;
+        expect(message).toContain(
+            'Codex app-server daemon requires the installer-managed standalone Codex at /Users/test/.codex/packages/standalone/current/codex.',
+        );
+        expect(message).toContain('PATH installs such as Homebrew are not enough for this daemon.');
+        expect(message).toContain('curl -fsSL https://chatgpt.com/codex/install.sh | sh');
+        expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
     it('sends every JSON-RPC message with the jsonrpc 2.0 envelope (AC-02)', async () => {
         const child = new MockCodexProxyChild();
         mockSpawn.mockReturnValueOnce(child as never);

@@ -83,6 +83,28 @@ const runtimeRequire = createRequire(__filename);
  */
 const CODEX_LLM_TOOLS_TIMEOUT_SEC = 31_536_000;
 const CODEX_DIFF_TIMEOUT_MS = 5000;
+const CODEX_STANDALONE_INSTALL_COMMAND = 'curl -fsSL https://chatgpt.com/codex/install.sh | sh';
+
+function extractMissingManagedStandaloneCodexPath(message: string): string | undefined {
+    const compact = message.replace(/\s+/g, ' ');
+    const match = compact.match(/managed standalone Codex install not found at\s+(.+?)\s+This command requires/);
+    if (match?.[1]) return match[1].trim();
+
+    const fallback = compact.match(/managed standalone Codex install not found at\s+(\S+)/);
+    return fallback?.[1]?.trim();
+}
+
+function normalizeCodexDaemonStartError(error: unknown): Error {
+    const original = error instanceof Error ? error : new Error(String(error));
+    const missingPath = extractMissingManagedStandaloneCodexPath(original.message);
+    if (!missingPath) return original;
+
+    return new Error(
+        `Codex app-server daemon requires the installer-managed standalone Codex at ${missingPath}. ` +
+        `PATH installs such as Homebrew are not enough for this daemon. ` +
+        `Install it with: ${CODEX_STANDALONE_INSTALL_COMMAND}. Then refresh provider quota.`,
+    );
+}
 
 // ============================================================================
 // Auth checker injection (AC-08)
@@ -836,7 +858,11 @@ export class CodexSDKService implements ISDKService {
     private async fetchRateLimitsViaRpc(codexBinPath: string): Promise<CodexRateLimitsResult> {
         // Ensure the app-server daemon is running before opening the proxy. This
         // is idempotent, so it is safe to run on every quota query.
-        await this.runCodexCli(['app-server', 'daemon', 'start'], { timeout: 15_000 });
+        try {
+            await this.runCodexCli(['app-server', 'daemon', 'start'], { timeout: 15_000 });
+        } catch (error: unknown) {
+            throw normalizeCodexDaemonStartError(error);
+        }
         return this.readRateLimitsViaProxy(codexBinPath);
     }
 
