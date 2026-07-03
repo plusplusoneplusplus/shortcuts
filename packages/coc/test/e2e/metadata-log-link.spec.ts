@@ -74,10 +74,6 @@ async function setup(
 }
 
 async function openMetadataPopover(page: Page): Promise<void> {
-    // Metadata trigger is now inside the overflow menu — open it first
-    const overflowBtn = page.locator('[data-testid="chat-header-overflow-btn"]');
-    await expect(overflowBtn).toBeVisible({ timeout: 8_000 });
-    await overflowBtn.click();
     const trigger = page.locator('button[aria-label="Show conversation metadata"]');
     await expect(trigger).toBeVisible({ timeout: 8_000 });
     await trigger.click();
