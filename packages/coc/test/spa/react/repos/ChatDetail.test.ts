@@ -1528,7 +1528,11 @@ describe('ChatDetail', () => {
             // The discovery effect must schedule the round-trip through runWhenIdle
             // rather than calling client.canvases.list synchronously on mount.
             const idleIdx = source.indexOf('const cancelIdle = runWhenIdle(() => {');
-            const listIdx = source.indexOf('client.canvases.list(workspaceId, { processId: canvasPid })');
+            // Anchor to the deferred probe INSIDE the discovery effect (search from
+            // idleIdx). Live-event handlers (e.g. onCanvasUpdated) legitimately call
+            // client.canvases.list synchronously elsewhere; a naive global indexOf
+            // would match that unrelated call and mask a regression here.
+            const listIdx = source.indexOf('client.canvases.list(workspaceId, { processId: canvasPid })', idleIdx);
             expect(idleIdx).toBeGreaterThan(-1);
             expect(listIdx).toBeGreaterThan(idleIdx);
             // The persisted close flag is still read synchronously, before the
@@ -1538,6 +1542,10 @@ describe('ChatDetail', () => {
             const closeFlagIdx = source.indexOf('const closed = readCanvasClosed(workspaceId, canvasPid)');
             expect(closeFlagIdx).toBeGreaterThan(-1);
             expect(closeFlagIdx).toBeLessThan(idleIdx);
+            // The discovery effect must not probe synchronously: no canvases.list
+            // between reading the close flag and scheduling the idle callback.
+            const discoveryPrelude = source.slice(closeFlagIdx, idleIdx);
+            expect(discoveryPrelude).not.toContain('client.canvases.list(');
         });
 
         it('cancels the deferred probe on cleanup', () => {
