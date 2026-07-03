@@ -75,6 +75,12 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const brandTooltip = hostname ? `Copilot of Copilot @ ${hostname}` : 'Copilot of Copilot';
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
+    // On macOS desktop the native title bar is replaced by hiddenInset traffic lights
+    // that overlay the left edge of this header. Reserve ~76 px so they don't cover
+    // the hamburger button. In all other contexts the default px-3 applies.
+    const isMacDesktop =
+        typeof window !== 'undefined' &&
+        (window as { cocDesktop?: { platform?: string } }).cocDesktop?.platform === 'darwin';
 
     const switchTab= useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
@@ -132,8 +138,10 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     return (
         <>
         <header
-            className="h-10 md:h-10 px-3 flex items-center justify-between border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc]"
+            className="h-10 md:h-10 px-3 flex items-center justify-between border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc] drag-region"
+            style={isMacDesktop ? { paddingLeft: '76px' } : undefined}
             data-react
+            data-mac-desktop={isMacDesktop ? 'true' : undefined}
         >
             <div className="flex items-center gap-2 min-w-0 flex-1">
                 <button

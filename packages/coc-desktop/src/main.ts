@@ -37,6 +37,7 @@ import {
     FIND_RESULT_CHANNEL,
     buildFindBarScript,
 } from './find-in-page';
+import { buildWindowOptions } from './window-config';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
 // In dev (electron launched against this package) this fixes the menu-bar name,
@@ -79,6 +80,7 @@ function createWindow(): BrowserWindow {
         // Windows/Linux: the BrowserWindow icon controls the taskbar/window icon.
         // macOS: ignored here; dock icon is set via app.dock.setIcon() in bootstrap().
         icon: loadCocIcon(),
+        ...buildWindowOptions(process.platform),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,

@@ -24,6 +24,9 @@ interface FindResult {
 const api = {
     /** Identifies the host so the SPA can tell it is running inside the desktop shell. */
     isDesktop: true,
+    /** OS platform string (e.g. "darwin", "win32", "linux") so the SPA can apply
+     *  platform-specific layout adjustments such as the macOS traffic-light inset. */
+    platform: process.platform as string,
     versions: {
         electron: process.versions.electron,
         chrome: process.versions.chrome,
