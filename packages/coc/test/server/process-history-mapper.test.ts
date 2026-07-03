@@ -399,6 +399,54 @@ describe('processToTaskDetail', () => {
         const task = processToTaskDetail(baseProcess);
         expect(task.repoId).toBe('ws-detail');
     });
+
+    it('should reconstruct ralph context from metadata so a retry rejoins the session', () => {
+        const proc: AIProcess = {
+            ...baseProcess,
+            status: 'failed' as const,
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-detail',
+                mode: 'ralph',
+                model: 'gpt-4',
+                ralph: {
+                    sessionId: 'ralph-sess-1',
+                    originalGoal: 'Ship the feature',
+                    maxIterations: 10,
+                    currentIteration: 3,
+                    phase: 'executing',
+                },
+                taskGroup: {
+                    groupId: 'ralph-sess-1',
+                    groupType: 'ralph',
+                    role: 'iteration',
+                    itemKey: '3',
+                    workspaceId: 'ws-detail',
+                },
+            },
+        } as AIProcess;
+
+        const task = processToTaskDetail(proc);
+        const payload = task.payload as any;
+        expect(payload.mode).toBe('ralph');
+        expect(payload.context?.ralph).toMatchObject({
+            sessionId: 'ralph-sess-1',
+            originalGoal: 'Ship the feature',
+            maxIterations: 10,
+            currentIteration: 3,
+            phase: 'executing',
+        });
+        expect(payload.context?.taskGroup).toMatchObject({
+            groupId: 'ralph-sess-1',
+            groupType: 'ralph',
+            role: 'iteration',
+        });
+    });
+
+    it('should not add a context object for non-ralph processes', () => {
+        const task = processToTaskDetail(baseProcess);
+        expect((task.payload as any).context).toBeUndefined();
+    });
 });
 
 // ============================================================================
