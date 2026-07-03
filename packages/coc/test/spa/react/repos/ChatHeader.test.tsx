@@ -123,11 +123,11 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ChatHeaderOverflo
                     data-labels={items.map((item: any) => item.label).join('|')}
                 >
                     ⋮
-                    {items.map((item: any) => (
-                        <button key={item.key} type="button" data-testid={`overflow-item-${item.key}`} onClick={item.onClick}>
-                            {item.label}
-                        </button>
-                    ))}
+                    {items.map((item: any) =>
+                        item.key === 'metadata' && item.render
+                            ? <div key={item.key} data-testid={`overflow-item-${item.key}`}>{item.render()}</div>
+                            : <button key={item.key} type="button" data-testid={`overflow-item-${item.key}`} onClick={item.onClick}>{item.label}</button>
+                    )}
                 </span>
             )
             : null,
@@ -185,7 +185,7 @@ describe('ChatHeader', () => {
     });
 
     describe('wide tier (>= 700px)', () => {
-        it('renders all elements inline', () => {
+        it('renders all elements', () => {
             render(<ChatHeader {...defaultProps()} />);
             expect(screen.getByText('Test Chat')).toBeTruthy();
             // Status pill — replaces the legacy Badge; ships with inline duration in wide tier
@@ -197,8 +197,12 @@ describe('ChatHeader', () => {
             // Context window indicator no longer rendered in the header (moved to composer)
             expect(screen.queryByTestId('context-window')).toBeNull();
             expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
-            expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
-            expect(screen.getByTestId('export-conversation-pdf-btn')).toBeTruthy();
+            // HTML and PDF are now in the overflow menu at all tiers
+            expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
+            expect(screen.queryByTestId('export-conversation-pdf-btn')).toBeNull();
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).toContain('copy-html');
+            expect(menu.getAttribute('data-keys')?.split(',')).toContain('export-pdf');
             // Resume in CLI is NOT a top-bar button — it lives inside the metadata popover only
             expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
             const metadataPopover = screen.getByTestId('metadata-popover');
@@ -209,29 +213,24 @@ describe('ChatHeader', () => {
             expect(screen.getByTestId('activity-chat-popout-btn')).toBeTruthy();
         });
 
-        it('shows inline PDF export button', () => {
+        it('includes PDF export in overflow menu', () => {
             render(<ChatHeader {...defaultProps()} />);
-            const pdfBtn = screen.getByTestId('export-conversation-pdf-btn');
-            expect(pdfBtn).toBeTruthy();
-            expect(pdfBtn.textContent).toBe('PDF');
-            expect(pdfBtn.getAttribute('title')).toBe('Export conversation as PDF');
+            expect(screen.queryByTestId('export-conversation-pdf-btn')).toBeNull();
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).toContain('export-pdf');
+            expect(menu.getAttribute('data-labels')).toContain('Export as PDF');
         });
 
-        it('disables PDF button when loading', () => {
-            render(<ChatHeader {...defaultProps({ loading: true })} />);
-            const pdfBtn = screen.getByTestId('export-conversation-pdf-btn');
-            expect(pdfBtn.hasAttribute('disabled')).toBe(true);
-        });
-
-        it('disables PDF button when no turns', () => {
-            render(<ChatHeader {...defaultProps({ turns: [] })} />);
-            const pdfBtn = screen.getByTestId('export-conversation-pdf-btn');
-            expect(pdfBtn.hasAttribute('disabled')).toBe(true);
-        });
-
-        it('does not show overflow menu', () => {
+        it('includes HTML copy in overflow menu', () => {
             render(<ChatHeader {...defaultProps()} />);
-            expect(screen.queryByTestId('overflow-menu')).toBeNull();
+            expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).toContain('copy-html');
+        });
+
+        it('shows overflow menu in wide tier', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.getByTestId('overflow-menu')).toBeTruthy();
         });
 
         it('shows full status label in pill', () => {
@@ -273,11 +272,14 @@ describe('ChatHeader', () => {
             expect(badge.title).toBe('1 loop — click to manage');
         });
 
-        it('hides inline HTML copy and metadata', () => {
+        it('has no inline HTML/PDF buttons (always in overflow)', () => {
             render(<ChatHeader {...defaultProps()} />);
             expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
             expect(screen.queryByTestId('export-conversation-pdf-btn')).toBeNull();
-            expect(screen.queryByTestId('metadata-popover')).toBeNull();
+            // Metadata is accessible via the overflow menu at all tiers
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).toContain('copy-html');
+            expect(menu.getAttribute('data-keys')?.split(',')).toContain('export-pdf');
         });
 
         it('shows overflow menu', () => {
@@ -315,7 +317,8 @@ describe('ChatHeader', () => {
             expect(screen.queryByTestId('context-window')).toBeNull();
             expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
             expect(screen.queryByTestId('export-conversation-pdf-btn')).toBeNull();
-            expect(screen.queryByTestId('metadata-popover')).toBeNull();
+            // Metadata is in overflow at all tiers; not an inline element
+            expect(screen.queryByTestId('metadata-popover')).toBeTruthy(); // via overflow menu
         });
 
         it('hides float/popout buttons (moved to overflow)', () => {
