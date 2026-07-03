@@ -1071,15 +1071,17 @@ test.describe('Resume In CLI', () => {
                 });
             });
 
-            // Force a wide-tier viewport so the ConversationMetadataPopover is rendered
-            // inline (it's only mounted when the chat container is ≥ 700px wide).
             await page.setViewportSize({ width: 1600, height: 900 });
 
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
             await waitForConversation(page, 2);
 
-            // "Resume In CLI" lives inside the ConversationMetadataPopover, which is
-            // closed by default. Open it by clicking the "i" trigger button.
+            // "Resume In CLI" lives inside the ConversationMetadataPopover.
+            // The popover trigger is now in the overflow menu at all tiers —
+            // open the overflow menu first, then click the "i" trigger button.
+            const overflowBtn = page.locator('[data-testid="chat-header-overflow-btn"]');
+            await expect(overflowBtn).toBeVisible({ timeout: 8_000 });
+            await overflowBtn.click();
             const metadataTrigger = page.locator('button[aria-label="Show conversation metadata"]');
             await expect(metadataTrigger).toBeVisible({ timeout: 5_000 });
             await metadataTrigger.click();
