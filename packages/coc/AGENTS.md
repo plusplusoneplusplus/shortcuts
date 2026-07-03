@@ -127,9 +127,8 @@ all have their own `references/*.md`.
   (workspace-scoped expand/collapse for all group kinds), and
   `task-group-copy-info.ts` (context-menu copy text) under
   `src/server/spa/client/react/features/chat/`.
-- **Chat canvas** (`canvas.enabled`, default off) persists markdown, code,
-  extension, or excalidraw artifacts (descriptor `type` + normalized
-  `language`) under
+- **Chat canvas** (`canvas.enabled`, default off) persists markdown, code, or
+  extension artifacts (descriptor `type` + normalized `language`) under
   `~/.coc/repos/<wsId>/canvases/<canvasId>/` through
   `src/server/canvas/canvas-store.ts` with revision-checked updates. AI edits
   go through the `write_canvas`/`read_canvas`/`extension_canvas` LLM tools

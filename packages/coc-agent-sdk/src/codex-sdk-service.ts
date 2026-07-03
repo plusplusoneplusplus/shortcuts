@@ -712,7 +712,11 @@ export class CodexSDKService implements ISDKService {
     }
 
     private async loadModelCatalog(): Promise<IModelInfo[]> {
-        const { stdout } = await this.runCodexCli(['debug', 'models'], { timeout: 30_000 });
+        const codexBinPath = this.resolveCodexBinPath();
+        const { stdout } = await execFileAsync(process.execPath, [codexBinPath, 'debug', 'models'], {
+            timeout: 30_000,
+            maxBuffer: 50 * 1024 * 1024,
+        });
         const parsed = JSON.parse(stdout) as { models?: unknown };
         if (!Array.isArray(parsed.models)) return [];
         const models = parsed.models
@@ -805,45 +809,10 @@ export class CodexSDKService implements ISDKService {
         }
     }
 
-    /**
-     * Run the bundled Codex CLI (`codex <args>`) as a child of the current Node
-     * runtime, resolving with its captured stdio. Shared by the model-catalog
-     * and quota RPCs so every Codex CLI invocation uses the same robust spawn
-     * pattern (Node runtime + resolved `codex.js` path, rather than relying on a
-     * `codex` binary on PATH).
-     */
-    private runCodexCli(args: string[], options: { timeout: number }): Promise<{ stdout: string; stderr: string }> {
-        const codexBinPath = this.resolveCodexBinPath();
-        return execFileAsync(process.execPath, [codexBinPath, ...args], {
-            timeout: options.timeout,
-            maxBuffer: 50 * 1024 * 1024,
-        });
-    }
-
-    /**
-     * Fetch Codex rate limits over JSON-RPC.
-     *
-     * In `@openai/codex` ≥ 0.133.0, `codex app-server` is a subcommand *group*:
-     * the bare invocation prints usage help and exits immediately, so the old
-     * code raced the exit against the RPC response and always reported
-     * "app-server exited before returning rate limits". The supported flow is a
-     * two-step handshake:
-     *   1. `app-server daemon start` — idempotent; brings the daemon up (or
-     *      no-ops if it is already running).
-     *   2. `app-server proxy` — pipes stdin/stdout to the running daemon socket,
-     *      over which we speak JSON-RPC.
-     */
-    private async fetchRateLimitsViaRpc(codexBinPath: string): Promise<CodexRateLimitsResult> {
-        // Ensure the app-server daemon is running before opening the proxy. This
-        // is idempotent, so it is safe to run on every quota query.
-        await this.runCodexCli(['app-server', 'daemon', 'start'], { timeout: 15_000 });
-        return this.readRateLimitsViaProxy(codexBinPath);
-    }
-
-    /** Spawn `codex app-server proxy`, send RPC messages, and return rate limits. */
-    private readRateLimitsViaProxy(codexBinPath: string): Promise<CodexRateLimitsResult> {
+    /** Spawn `codex app-server`, send RPC messages, and return rate limits. */
+    private fetchRateLimitsViaRpc(codexBinPath: string): Promise<CodexRateLimitsResult> {
         return new Promise<CodexRateLimitsResult>((resolve, reject) => {
-            const child = spawn(process.execPath, [codexBinPath, 'app-server', 'proxy'], {
+            const child = spawn(process.execPath, [codexBinPath, 'app-server'], {
                 stdio: ['pipe', 'pipe', 'ignore'],
                 windowsHide: true,
             });
@@ -860,7 +829,7 @@ export class CodexSDKService implements ISDKService {
 
             const timer = setTimeout(() => {
                 cleanup();
-                reject(new Error('Codex app-server proxy RPC timed out'));
+                reject(new Error('Codex app-server RPC timed out'));
             }, 10_000);
 
             child.on('error', (err) => {
@@ -873,7 +842,7 @@ export class CodexSDKService implements ISDKService {
                 clearTimeout(timer);
                 if (!settled) {
                     settled = true;
-                    reject(new Error('Codex app-server proxy exited before returning rate limits'));
+                    reject(new Error('Codex app-server exited before returning rate limits'));
                 }
             });
 
@@ -896,10 +865,8 @@ export class CodexSDKService implements ISDKService {
                 }
             });
 
-            // Every message carries the JSON-RPC 2.0 envelope so the daemon
-            // accepts it (bare messages without `jsonrpc` are rejected).
             const send = (msg: Record<string, unknown>) => {
-                child.stdin!.write(JSON.stringify({ jsonrpc: '2.0', ...msg }) + '\n');
+                child.stdin!.write(JSON.stringify(msg) + '\n');
             };
 
             send({

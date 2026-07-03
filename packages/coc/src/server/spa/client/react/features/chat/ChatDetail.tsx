@@ -9,7 +9,6 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
-import type { CanvasSummary } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { getConversationTurns } from './conversation/chatConversationUtils';
@@ -206,7 +205,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [pendingAskUserBatch, setPendingAskUserBatch] = useState<import('./hooks/useChatSSE').AskUserBatch | null>(null);
     const [mcpOAuthPrompts, setMcpOAuthPrompts] = useState<import('./hooks/useChatSSE').McpOAuthPromptData[]>([]);
     const [activeCanvasId, setActiveCanvasId] = useState<string | null>(null);
-    const [conversationCanvases, setConversationCanvases] = useState<CanvasSummary[]>([]);
     const [canvasLiveEvent, setCanvasLiveEvent] = useState<CanvasUpdatedEvent | null>(null);
     const [canvasPanelClosed, setCanvasPanelClosed] = useState(false);
     // Session-scoped, per-conversation memory of which canvas surface is open in
@@ -1184,11 +1182,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         onCanvasUpdated: (data) => {
             setActiveCanvasId(data.canvasId);
             setCanvasLiveEvent(data);
-            if (workspaceId && canvasPid) {
-                client.canvases.list(workspaceId, { processId: canvasPid })
-                    .then(canvases => setConversationCanvases(canvases))
-                    .catch(() => { /* canvas discovery is best-effort */ });
-            }
             // A fresh AI canvas edit auto-opens the panel AND clears any
             // persisted deliberate-close, so future switch-backs auto-open too.
             setCanvasPanelClosed(false);
@@ -1243,7 +1236,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         // restored canvas never flashes closed/empty.
         setCanvasLiveEvent(null);
         setActiveCanvasId(null);
-        setConversationCanvases([]);
         sourceCanvas.close();
         whisperDiff.close();
 
@@ -1287,7 +1279,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             client.canvases.list(workspaceId, { processId: canvasPid })
                 .then(canvases => {
                     if (cancelled) return;
-                    setConversationCanvases(canvases);
                     // Restore a remembered agent canvas ONLY if it still exists — a
                     // deleted one silently falls back to the first linked canvas
                     // (or nothing), never CanvasPanel's "Failed to load" error.
@@ -1371,8 +1362,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     workspaceId={workspaceId}
                     canvasId={activeCanvasId}
                     liveEvent={canvasLiveEvent}
-                    availableCanvases={conversationCanvases}
-                    onSelectCanvas={setActiveCanvasId}
                     onClose={() => { setCanvasPanelClosed(true); writeCanvasClosed(workspaceId, canvasPid, true); }}
                     onFullscreenChange={setCanvasFullscreen}
                     onPopOut={handleCanvasPopOut}

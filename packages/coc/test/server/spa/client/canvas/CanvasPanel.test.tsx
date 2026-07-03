@@ -83,12 +83,6 @@ function makeCanvas(overrides: Record<string, unknown> = {}) {
     };
 }
 
-function makeCanvasSummary(overrides: Record<string, unknown> = {}) {
-    const summary = makeCanvas(overrides);
-    delete (summary as Record<string, unknown>).content;
-    return summary;
-}
-
 function conflictError() {
     return new CocApiError({
         status: 409,
@@ -125,63 +119,6 @@ describe('CanvasPanel', () => {
         expect(preview.querySelector('h1')?.textContent).toBe('Plan body');
         expect(preview.innerHTML).not.toContain('# Plan body');
         expect(mocks.get).toHaveBeenCalledWith('ws-1', 'doc-abc123');
-    });
-
-    it('keeps a single-canvas title as plain text with no switcher affordance', async () => {
-        mocks.get.mockResolvedValue(makeCanvas());
-        const onSelectCanvas = vi.fn();
-
-        render(
-            <CanvasPanel
-                workspaceId="ws-1"
-                canvasId="doc-abc123"
-                liveEvent={null}
-                availableCanvases={[makeCanvasSummary()] as any}
-                onSelectCanvas={onSelectCanvas}
-            />,
-        );
-
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan'));
-        expect(screen.queryByTestId('canvas-panel-title-chevron')).toBeNull();
-
-        fireEvent.click(screen.getByTestId('canvas-panel-title'));
-        expect(screen.queryByTestId('canvas-panel-title-menu')).toBeNull();
-        expect(onSelectCanvas).not.toHaveBeenCalled();
-    });
-
-    it('opens a title dropdown for multiple canvases and switches the active canvas', async () => {
-        mocks.get.mockResolvedValue(makeCanvas());
-        const onSelectCanvas = vi.fn();
-        const availableCanvases = [
-            makeCanvasSummary({ id: 'doc-abc123', title: 'My Plan', type: 'markdown' }),
-            makeCanvasSummary({ id: 'code-abc123', title: 'Helper Script', type: 'code', language: 'typescript' }),
-            makeCanvasSummary({ id: 'diagram-abc123', title: 'Flow Diagram', type: 'excalidraw' }),
-        ];
-
-        render(
-            <CanvasPanel
-                workspaceId="ws-1"
-                canvasId="doc-abc123"
-                liveEvent={null}
-                availableCanvases={availableCanvases as any}
-                onSelectCanvas={onSelectCanvas}
-            />,
-        );
-
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan'));
-        expect(screen.getByTestId('canvas-panel-title-chevron')).toBeTruthy();
-
-        fireEvent.click(screen.getByTestId('canvas-panel-title'));
-
-        const options = screen.getAllByTestId('canvas-panel-title-option');
-        expect(options.map(option => option.textContent)).toEqual(['My Plan', 'Helper Script', 'Flow Diagram']);
-        expect(options[0].getAttribute('aria-current')).toBe('true');
-        expect(options[1].getAttribute('aria-current')).toBeNull();
-
-        fireEvent.click(options[1]);
-
-        expect(onSelectCanvas).toHaveBeenCalledWith('code-abc123');
-        expect(screen.queryByTestId('canvas-panel-title-menu')).toBeNull();
     });
 
     it('renders the preview as clean markdown with no source markers (AC-01)', async () => {
