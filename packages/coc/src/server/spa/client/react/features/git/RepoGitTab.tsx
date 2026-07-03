@@ -125,7 +125,7 @@ export function buildBranchRangeSkillPrompt(
 ): string {
     const base = branchRangeData?.baseRef ?? 'main';
     const head = branchRangeData?.headRef ?? branchName ?? 'HEAD';
-    return `<commit-range>${base}..${head}</commit-range>`;
+    return `Run the selected skill on this commit range:\n<commit-range>${base}..${head}</commit-range>`;
 }
 
 interface RepoGitTabProps {
@@ -1113,9 +1113,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
         let promptContent: string;
         if (pendingSkillRun.type === 'commit' && pendingSkillRun.commit) {
-            promptContent = `<commit>${pendingSkillRun.commit.hash}</commit>`;
+            promptContent = `Run the selected skill on this commit:\n<commit>${pendingSkillRun.commit.hash}</commit>`;
         } else if (pendingSkillRun.type === 'multi-commit' && pendingSkillRun.commits?.length) {
-            promptContent = `<commits>\n${pendingSkillRun.commits.map(c => c.hash).join('\n')}\n</commits>`;
+            promptContent = `Run the selected skill on these commits:\n<commits>\n${pendingSkillRun.commits.map(c => c.hash).join('\n')}\n</commits>`;
         } else {
             promptContent = buildBranchRangeSkillPrompt(branchRangeData, branchName);
         }

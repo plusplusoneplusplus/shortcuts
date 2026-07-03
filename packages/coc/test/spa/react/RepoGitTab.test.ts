@@ -1122,6 +1122,12 @@ describe('RepoGitTab', () => {
             expect(source).toContain('<commit>${pendingSkillRun.commit.hash}</commit>');
         });
 
+        it('handleConfirmSkillRun prefixes an imperative instruction before the commit tag', () => {
+            // Regression: a bare <commit> payload made the agent stall and ask
+            // which commit to use; the imperative tells it to act on the tag.
+            expect(source).toContain('Run the selected skill on this commit:\\n<commit>${pendingSkillRun.commit.hash}</commit>');
+        });
+
         it('handleConfirmSkillRun uses commit-range tag for branch range', () => {
             expect(source).toContain('<commit-range>');
         });
@@ -1480,6 +1486,7 @@ describe('RepoGitTab', () => {
             expect(block).toBeTruthy();
             expect(block![0]).toContain('<commits>');
             expect(block![0]).toContain('.map(c => c.hash)');
+            expect(block![0]).toContain('Run the selected skill on these commits:');
         });
 
         it('handleConfirmSkillRun shortId shows commit count for multi-commit', () => {
