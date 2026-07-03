@@ -370,6 +370,12 @@ describe('ConversationMiniMap', () => {
                 expect(screen.getByTestId(`minimap-strip-${i}`)).toBeTruthy();
             }
         });
+
+        it('renders the panel at the compact half-width', () => {
+            renderMiniMap({ turns: makeTurns(MIN_TURNS_TO_SHOW) });
+            const panel = screen.getByTestId('minimap-panel') as HTMLElement;
+            expect(panel.style.width).toBe('28px');
+        });
     });
 
     describe('strip colors', () => {

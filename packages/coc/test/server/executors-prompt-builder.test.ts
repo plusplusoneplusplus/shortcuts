@@ -477,6 +477,16 @@ describe('prependSelectedSkillsDirective', () => {
         expect(result).toContain('Do work');
     });
 
+    it('instructs the agent to apply the selected skills to the request that follows', () => {
+        // Regression: without an explicit "apply the skill to what follows"
+        // directive, a bare structured payload (e.g. <commit>) made the agent
+        // stall and ask for clarification instead of acting.
+        const result = prependSelectedSkillsDirective('<commit>abc123</commit>', ['submit-commits-as-pr']);
+        expect(result).toContain('Apply the selected skill(s) to the request that follows.');
+        expect(result.indexOf('Apply the selected skill(s) to the request that follows.'))
+            .toBeLessThan(result.indexOf('<commit>abc123</commit>'));
+    });
+
     it('deduplicates repeated skill names', () => {
         const result = prependSelectedSkillsDirective('Do work', ['impl', 'impl', 'review']);
         expect(result).toContain('The user explicitly selected these skills: impl, review.');

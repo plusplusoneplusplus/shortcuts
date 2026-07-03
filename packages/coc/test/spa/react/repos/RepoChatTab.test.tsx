@@ -240,6 +240,9 @@ import { RepoChatTab } from '../../../../src/server/spa/client/react/features/ch
 
 // ── Test helpers ───────────────────────────────────────────────────────
 
+const ws1CollapsedKey = 'activity-list-collapsed-ws-1';
+const ws1WidthKey = 'activity-left-panel-width-ws-1';
+
 function makeRunningTask(id = 'task-r1', overrides: any = {}) {
     return { id, type: 'chat', status: 'running', displayName: `Running ${id}`, processId: `proc-${id}`, ...overrides };
 }
@@ -353,6 +356,7 @@ async function renderTabWithDeepLink(taskId: string, workspaceId = 'ws-1') {
 
 beforeEach(() => {
     vi.clearAllMocks();
+    try { localStorage.clear(); } catch { /* ignore */ }
     mockBreakpoint = { isMobile: false, isTablet: false };
     mockUnseenTaskIds = new Set();
     lastResizablePanelOpts = null;
@@ -415,9 +419,14 @@ describe('RepoChatTab: layout', () => {
         expect(lastResizablePanelOpts?.initialWidth).toBe(320);
     });
 
-    it('passes storageKey to useResizablePanel', async () => {
+    it('passes workspace-scoped storageKey to useResizablePanel', async () => {
         await renderTab();
-        expect(lastResizablePanelOpts?.storageKey).toBe('activity-left-panel-width');
+        expect(lastResizablePanelOpts?.storageKey).toBe(ws1WidthKey);
+    });
+
+    it('scopes useResizablePanel storageKey to the active workspace', async () => {
+        await renderTab('ws-42');
+        expect(lastResizablePanelOpts?.storageKey).toBe('activity-left-panel-width-ws-42');
     });
 });
 
@@ -1870,11 +1879,11 @@ describe('RepoChatTab: Ralph session and new chat', () => {
 describe('RepoChatTab: hover-to-float peek (collapsed rail)', () => {
     beforeEach(() => {
         // Render in the collapsed state so the 36px rail shows.
-        localStorage.setItem('activity-list-collapsed', 'true');
+        localStorage.setItem(ws1CollapsedKey, 'true');
     });
     afterEach(() => {
-        localStorage.removeItem('activity-list-collapsed');
-        localStorage.removeItem('activity-left-panel-width');
+        localStorage.removeItem(ws1CollapsedKey);
+        localStorage.removeItem(ws1WidthKey);
     });
 
     it('renders the collapsed rail (not the full list panel) and the peek is closed', async () => {
@@ -1913,7 +1922,7 @@ describe('RepoChatTab: hover-to-float peek (collapsed rail)', () => {
         }, { timeout: 2000 });
 
         const peek = screen.getByTestId('activity-list-peek');
-        // Same width source as the expanded panel (activity-left-panel-width → 320 default).
+        // Same width source as the expanded panel (activity-left-panel-width-ws-1 -> 320 default).
         expect(peek.style.width).toBe('320px');
         // No dimmed/blurred backdrop element was added for the desktop peek.
         expect(screen.queryByTestId('sidebar-backdrop')).toBeNull();
@@ -1961,7 +1970,7 @@ describe('RepoChatTab: hover-to-float peek (collapsed rail)', () => {
             expect(mockDetailPane.mock.calls.at(-1)?.[0]?.selectedTaskId).toBe('proc-r1');
         });
         // … and the persisted collapsed state is never written by the peek path.
-        expect(localStorage.getItem('activity-list-collapsed')).toBe('true');
+        expect(localStorage.getItem(ws1CollapsedKey)).toBe('true');
     });
 
     it('Escape collapses the peek back to the rail', async () => {
@@ -1980,7 +1989,7 @@ describe('RepoChatTab: hover-to-float peek (collapsed rail)', () => {
         await waitFor(() => {
             expect(screen.queryByTestId('activity-list-peek')).toBeNull();
         });
-        expect(localStorage.getItem('activity-list-collapsed')).toBe('true');
+        expect(localStorage.getItem(ws1CollapsedKey)).toBe('true');
     });
 
     it('clicking outside the peek (in the conversation) collapses it', async () => {
@@ -1999,7 +2008,7 @@ describe('RepoChatTab: hover-to-float peek (collapsed rail)', () => {
         await waitFor(() => {
             expect(screen.queryByTestId('activity-list-peek')).toBeNull();
         });
-        expect(localStorage.getItem('activity-list-collapsed')).toBe('true');
+        expect(localStorage.getItem(ws1CollapsedKey)).toBe('true');
     });
 
     it('the » expand button still performs a permanent, persisted expand (unchanged)', async () => {
@@ -2013,7 +2022,7 @@ describe('RepoChatTab: hover-to-float peek (collapsed rail)', () => {
         await waitFor(() => {
             expect(screen.getByTestId('activity-list-panel')).toBeTruthy();
         });
-        expect(localStorage.getItem('activity-list-collapsed')).toBe('false');
+        expect(localStorage.getItem(ws1CollapsedKey)).toBe('false');
     });
 
     it('does not float the peek on mobile (drawer path is untouched)', async () => {
@@ -2046,6 +2055,6 @@ describe('RepoChatTab: hover-to-float peek (collapsed rail)', () => {
         expect(screen.getByTestId('activity-list-collapsed')).toBeTruthy();
         expect(screen.queryByTestId('activity-list-panel')).toBeNull();
         // localStorage persisted state is unchanged (still collapsed).
-        expect(localStorage.getItem('activity-list-collapsed')).toBe('true');
+        expect(localStorage.getItem(ws1CollapsedKey)).toBe('true');
     });
 });
