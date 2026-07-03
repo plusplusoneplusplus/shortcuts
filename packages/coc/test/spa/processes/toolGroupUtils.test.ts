@@ -1901,7 +1901,7 @@ describe('filterWhisperChunks', () => {
         });
     });
 
-    it('falls back to structured changes when apply_patch args include a unified git diff', () => {
+    it('parses real +/- counts from a Codex unified git diff in apply_patch args', () => {
         const unifiedDiff = [
             'diff --git a/src/from-diff.ts b/src/from-diff.ts',
             'index 1111111..2222222 100644',
@@ -1920,11 +1920,38 @@ describe('filterWhisperChunks', () => {
                 toolName: 'apply_patch',
                 status: 'completed',
                 args: {
+                    changes: [{ path: 'src/from-diff.ts', kind: 'update' }],
+                    diff: unifiedDiff,
+                },
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBe(1);
+        expect(wg.summary.fileEdits![0]).toMatchObject({
+            path: 'src/from-diff.ts',
+            insertions: 1,
+            deletions: 1,
+            isCreate: false,
+        });
+    });
+
+    it('falls back to structured changes when apply_patch args.diff is absent', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'apply_patch',
+                status: 'completed',
+                args: {
                     changes: [
                         { path: 'src/from-diff.ts', kind: 'update' },
                         { path: 'src/new-from-diff.ts', kind: 'add' },
                     ],
-                    diff: unifiedDiff,
+                    // no diff field — simulate in-progress / diff-capture failure
                 },
             }],
         ]);

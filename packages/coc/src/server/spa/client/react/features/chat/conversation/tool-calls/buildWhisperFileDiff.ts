@@ -15,11 +15,11 @@
  *  - `edit` (old → new string) and `create` (full file text) produce a
  *    synthesized unified hunk via the shared line-diff.
  *  - `apply_patch` reuses the captured patch body for the file (which already
- *    carries `@@` anchors and +/- lines).
- *  - Codex-style structured changes (`{ path, kind }` with no line content) are
- *    not reconstructable here, so they contribute nothing; if a file has only
- *    such changes, this returns `null` and the caller falls back to a commit
- *    diff.
+ *    carries `@@` anchors and +/- lines). Supports both the legacy
+ *    `*** Add/Update/Delete File:` format and unified `diff --git` format.
+ *  - Codex-style structured changes (`{ path, kind }` with no line content in
+ *    `args.diff`) are not reconstructable here; if a file has only such changes,
+ *    this returns `null` and the caller falls back to a commit diff.
  *
  * Returns the unified diff string, or `null` when no reconstructable edit for
  * `targetPath` exists in the group.
@@ -77,40 +77,71 @@ function lineCount(text: string): number {
     return text === '' ? 0 : text.split('\n').length;
 }
 
+/** Git metadata lines that appear between diff --git and the first @@ hunk. */
+const GIT_METADATA_RE = /^(index |similarity index |rename from |rename to |old mode |new mode |new file mode |deleted file mode )/;
+
 /**
  * Extract the unified-diff body for `targetPath` from an apply_patch patch.
  * Returns the captured lines (keeping internal `@@` anchors) for the first
  * matching file section, or `null` when the patch has no section for the file.
+ * Handles both legacy `*** Add/Update/Delete File:` and unified `diff --git` formats.
  */
 function patchHunkForFile(patchText: string, targetPath: string): FileHunk | null {
     const target = normalizePath(targetPath);
     const lines = patchText.split(/\r?\n/);
     let capturing = false;
     let isCreate = false;
+    let inUnifiedSection = false;
     const body: string[] = [];
 
     for (const line of lines) {
-        const sectionMatch =
-            line.match(/^\*\*\* (Add|Update|Delete) File: (.+)$/);
-        if (sectionMatch) {
+        // Unified diff section header: diff --git a/<old> b/<new>
+        const gitDiffMatch = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+        if (gitDiffMatch) {
             if (capturing) break; // next file section ends ours
-            const kind = sectionMatch[1];
-            const path = normalizePath(sectionMatch[2]);
-            if (path === target) {
+            const newPath = normalizePath(gitDiffMatch[2]);
+            if (newPath === target) {
                 capturing = true;
-                isCreate = kind === 'Add';
+                isCreate = false; // refined below by metadata lines
+                inUnifiedSection = true;
             }
             continue;
         }
+
+        // Legacy section header: *** Add/Update/Delete File: <path>
+        const legacyMatch = line.match(/^\*\*\* (Add|Update|Delete) File: (.+)$/);
+        if (legacyMatch) {
+            if (capturing) break; // next file section ends ours
+            const kind = legacyMatch[1];
+            const path = normalizePath(legacyMatch[2]);
+            if (path === target) {
+                capturing = true;
+                isCreate = kind === 'Add';
+                inUnifiedSection = false;
+            }
+            continue;
+        }
+
         if (!capturing) continue;
-        // `*** Move to:` / `*** End of File` / any other sentinel ends the body.
+
+        // `*** Move to:` / `*** End of File` / any other legacy sentinel ends the body.
         if (line.startsWith('***')) {
             if (line.startsWith('*** Move to:')) continue;
             break;
         }
-        // Drop git-style `---`/`+++` file headers; keep `@@` anchors as
-        // hunk separators within the file.
-        if (/^(\+\+\+|---)\s/.test(line)) continue;
+
+        // Drop unified diff metadata lines; use them to refine isCreate.
+        if (inUnifiedSection) {
+            if (line.match(/^new file mode /)) { isCreate = true; continue; }
+            if (GIT_METADATA_RE.test(line)) continue;
+        }
+
+        // Drop git-style `---`/`+++` file headers; infer isCreate from /dev/null.
+        if (/^(\+\+\+|---)\s/.test(line)) {
+            if (inUnifiedSection && line.startsWith('--- /dev/null')) isCreate = true;
+            continue;
+        }
+
         body.push(line);
     }
 
@@ -155,7 +186,7 @@ function collectHunks(toolCalls: WhisperDiffToolCall[], targetPath: string): Fil
             });
         } else if (toolName === 'apply_patch') {
             const patchText = getApplyPatchText(call.args);
-            if (!patchText) continue; // Codex structured changes carry no line content
+            if (!patchText) continue;
             const hunk = patchHunkForFile(patchText, targetPath);
             if (hunk) hunks.push(hunk);
         }
