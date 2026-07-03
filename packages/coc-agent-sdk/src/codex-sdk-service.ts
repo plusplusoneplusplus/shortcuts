@@ -238,6 +238,7 @@ class CodexFileChangeDiffTracker {
     private initialized = false;
     private enabled = false;
     private root = '';
+    private readonly rootAliases: string[] = [];
     private readonly dirtyStartSnapshots = new Map<string, CodexFileSnapshot>();
     private readonly lastSnapshots = new Map<string, CodexFileSnapshot>();
 
@@ -264,13 +265,13 @@ class CodexFileChangeDiffTracker {
     }
 
     private async captureDiff(changes: CodexFileChange[]): Promise<string | undefined> {
+        await this.ensureInitialized();
+        if (!this.enabled) return undefined;
+
         const relPaths = changes
             .map(change => this.normalizeRelativePath(change.path))
             .filter((relPath): relPath is string => !!relPath);
         if (relPaths.length === 0) return undefined;
-
-        await this.ensureInitialized();
-        if (!this.enabled) return undefined;
 
         const parts: string[] = [];
         for (const relPath of relPaths) {
@@ -298,10 +299,34 @@ class CodexFileChangeDiffTracker {
             });
             this.root = stdout.trim();
             if (!this.root) return;
+            this.addRootAlias(this.root);
+            await this.addCwdRootAlias();
             this.enabled = true;
             await this.snapshotDirtyPaths();
         } catch {
             this.enabled = false;
+        }
+    }
+
+    private async addCwdRootAlias(): Promise<void> {
+        if (!this.cwd) return;
+        try {
+            const { stdout } = await execFileAsync('git', ['rev-parse', '--show-cdup'], {
+                cwd: this.cwd,
+                timeout: CODEX_DIFF_TIMEOUT_MS,
+            });
+            this.addRootAlias(path.resolve(this.cwd, stdout.trim() || '.'));
+        } catch {
+            // The canonical git root is enough for normal operation. This alias only
+            // helps match absolute file-change paths that use a symlink spelling.
+        }
+    }
+
+    private addRootAlias(rootPath: string): void {
+        const resolved = path.resolve(rootPath);
+        const normalized = this.normalizePathForCompare(resolved);
+        if (!this.rootAliases.some(alias => this.normalizePathForCompare(alias) === normalized)) {
+            this.rootAliases.push(resolved);
         }
     }
 
@@ -346,8 +371,7 @@ class CodexFileChangeDiffTracker {
 
     private async readWorktreeSnapshot(relPath: string): Promise<CodexFileSnapshot> {
         const fullPath = path.resolve(this.root, relPath);
-        const rootWithSep = this.root.endsWith(path.sep) ? this.root : `${this.root}${path.sep}`;
-        if (fullPath !== this.root && !fullPath.startsWith(rootWithSep)) {
+        if (!this.isPathInsideRoot(fullPath)) {
             return { exists: false, content: '' };
         }
         try {
@@ -385,11 +409,40 @@ class CodexFileChangeDiffTracker {
 
     private normalizeRelativePath(input: unknown): string | undefined {
         if (typeof input !== 'string' || !input.trim()) return undefined;
-        const raw = input.replace(/\\/g, '/');
-        if (path.isAbsolute(raw) || /^[a-zA-Z]:\//.test(raw)) return undefined;
+        const raw = input.trim().replace(/\\/g, '/');
+        const isWindowsAbsolute = /^[a-zA-Z]:\//.test(raw);
+        if (path.isAbsolute(raw) || isWindowsAbsolute) {
+            if (!this.root || (isWindowsAbsolute && process.platform !== 'win32')) return undefined;
+            const fullPath = path.resolve(raw);
+            const rootAlias = this.findContainingRootAlias(fullPath);
+            if (!rootAlias) return undefined;
+            const relative = path.relative(rootAlias, fullPath).replace(/\\/g, '/');
+            return this.normalizeRelativePath(relative);
+        }
         const normalized = path.posix.normalize(raw);
         if (!normalized || normalized === '.' || normalized.startsWith('../') || normalized === '..') return undefined;
         return normalized;
+    }
+
+    private isPathInsideRoot(fullPath: string): boolean {
+        return this.isPathInside(fullPath, this.root);
+    }
+
+    private findContainingRootAlias(fullPath: string): string | undefined {
+        return this.rootAliases.find(rootAlias => this.isPathInside(fullPath, rootAlias));
+    }
+
+    private isPathInside(fullPath: string, rootPath: string): boolean {
+        const root = path.resolve(rootPath);
+        const candidate = path.resolve(fullPath);
+        const normalizedRoot = this.normalizePathForCompare(root);
+        const normalizedCandidate = this.normalizePathForCompare(candidate);
+        const rootWithSep = normalizedRoot.endsWith(path.sep) ? normalizedRoot : `${normalizedRoot}${path.sep}`;
+        return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(rootWithSep);
+    }
+
+    private normalizePathForCompare(value: string): string {
+        return process.platform === 'win32' ? value.toLowerCase() : value;
     }
 }
 
