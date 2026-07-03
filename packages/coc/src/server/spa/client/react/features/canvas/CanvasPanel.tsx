@@ -30,7 +30,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
-import type { Canvas, CanvasComment, CanvasVersion, CanvasVersionMeta } from '@plusplusoneplusplus/coc-client';
+import type { Canvas, CanvasComment, CanvasSummary, CanvasVersion, CanvasVersionMeta } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { MarkdownView } from '../../shared/MarkdownView';
 import { chatMarkdownToHtml } from '../chat/conversation/ConversationTurnBubble';
@@ -58,6 +58,10 @@ export interface CanvasPanelProps {
     onFullscreenChange?: (fullscreen: boolean) => void;
     /** Opens the canvas in a standalone pop-out window. Hidden when omitted (e.g. inside the pop-out itself). */
     onPopOut?: () => void;
+    /** All agent canvases linked to the current conversation, in API order. */
+    availableCanvases?: CanvasSummary[];
+    /** Switches the host panel to another linked agent canvas. */
+    onSelectCanvas?: (canvasId: string) => void;
     /** Bumping this value forces a reload from the server (used by the pop-out window on focus). */
     reloadNonce?: number;
 }
@@ -102,6 +106,14 @@ function CloseIcon() {
     );
 }
 
+function ChevronDownIcon() {
+    return (
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    );
+}
+
 function buildAskAiPrompt(canvas: Canvas, selection: string): string {
     return `Regarding this selection from canvas "${canvas.title}" (canvasId: ${canvas.id}, revision ${canvas.revision}):\n\n"""\n${selection}\n"""\n\n`;
 }
@@ -138,7 +150,7 @@ function fenceCode(content: string, language: string | undefined): string {
     return `\`\`\`\`${language ?? ''}\n${content}\n\`\`\`\``;
 }
 
-export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange, onPopOut, reloadNonce }: CanvasPanelProps) {
+export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange, onPopOut, availableCanvases = [], onSelectCanvas, reloadNonce }: CanvasPanelProps) {
     // AC-07: canvas get/save/versions/comments + save-to-notes target the clone.
     const cloneClient = useCocClient(workspaceId);
     const [canvas, setCanvas] = useState<Canvas | null>(null);
@@ -160,6 +172,9 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
     const [exportOpen, setExportOpen] = useState(false);
     const [exportStatus, setExportStatus] = useState<string | null>(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [titleSwitcherOpen, setTitleSwitcherOpen] = useState(false);
+    const titleSwitcherButtonRef = useRef<HTMLButtonElement | null>(null);
+    const titleSwitcherMenuRef = useRef<HTMLDivElement | null>(null);
 
     const toggleFullscreen = useCallback(() => {
         setIsFullscreen(prev => {
@@ -181,6 +196,36 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [isFullscreen, onFullscreenChange]);
+
+    useEffect(() => {
+        if (!titleSwitcherOpen) return;
+        const handler = (e: MouseEvent | TouchEvent) => {
+            const target = e.target as Node | null;
+            if (!target) return;
+            if (titleSwitcherMenuRef.current?.contains(target)) return;
+            if (titleSwitcherButtonRef.current?.contains(target)) return;
+            setTitleSwitcherOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        document.addEventListener('touchstart', handler);
+        return () => {
+            document.removeEventListener('mousedown', handler);
+            document.removeEventListener('touchstart', handler);
+        };
+    }, [titleSwitcherOpen]);
+
+    useEffect(() => {
+        if (!titleSwitcherOpen) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setTitleSwitcherOpen(false);
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [titleSwitcherOpen]);
+
+    useEffect(() => {
+        setTitleSwitcherOpen(false);
+    }, [canvasId]);
 
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const canvasRef = useRef<Canvas | null>(null);
@@ -477,6 +522,13 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         setSaveState('saved');
     }, []);
 
+    const panelTitle = canvas?.title || availableCanvases.find(item => item.id === canvasId)?.title || 'Canvas';
+    const canSwitchCanvas = availableCanvases.length >= 2 && !!onSelectCanvas;
+    const handleSelectCanvas = useCallback((nextCanvasId: string) => {
+        setTitleSwitcherOpen(false);
+        onSelectCanvas?.(nextCanvasId);
+    }, [onSelectCanvas]);
+
     const statusLabel = saveState === 'saving' ? 'Saving…'
         : saveState === 'saved' ? 'Saved'
         : saveState === 'conflict' ? 'Save conflict'
@@ -493,9 +545,58 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         >
             {/* Header */}
             <div className="flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#474749] shrink-0">
-                <span className="text-xs font-semibold truncate flex-1" title={canvas?.title ?? ''} data-testid="canvas-panel-title">
-                    {canvas?.title || 'Canvas'}
-                </span>
+                <div className="relative flex-1 min-w-0">
+                    {canSwitchCanvas ? (
+                        <>
+                            <button
+                                ref={titleSwitcherButtonRef}
+                                type="button"
+                                className="group flex max-w-full items-center gap-1 rounded px-1 py-0.5 -ml-1 text-left text-xs font-semibold hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                                title={panelTitle}
+                                data-testid="canvas-panel-title"
+                                aria-haspopup="menu"
+                                aria-expanded={titleSwitcherOpen ? 'true' : 'false'}
+                                onClick={() => setTitleSwitcherOpen(open => !open)}
+                            >
+                                <span className="truncate">{panelTitle}</span>
+                                <span className="shrink-0 text-[#848484] group-hover:text-[#1e1e1e] dark:group-hover:text-[#cccccc]" data-testid="canvas-panel-title-chevron">
+                                    <ChevronDownIcon />
+                                </span>
+                            </button>
+                            {titleSwitcherOpen && (
+                                <div
+                                    ref={titleSwitcherMenuRef}
+                                    role="menu"
+                                    className="absolute left-0 top-full z-30 mt-1 min-w-[200px] max-w-[320px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg py-1"
+                                    data-testid="canvas-panel-title-menu"
+                                >
+                                    {availableCanvases.map(item => {
+                                        const active = item.id === canvasId;
+                                        return (
+                                            <button
+                                                key={item.id}
+                                                type="button"
+                                                role="menuitem"
+                                                aria-current={active ? 'true' : undefined}
+                                                className={`block w-full px-3 py-2 text-left text-[12px] truncate ${active ? 'bg-[#e8f3ff] dark:bg-[#04395e] text-[#005a9e] dark:text-[#9cdcfe] font-semibold' : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]'}`}
+                                                data-testid="canvas-panel-title-option"
+                                                data-canvas-id={item.id}
+                                                title={item.title}
+                                                onClick={() => handleSelectCanvas(item.id)}
+                                            >
+                                                {item.title}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <span className="block text-xs font-semibold truncate" title={panelTitle} data-testid="canvas-panel-title">
+                            {panelTitle}
+                        </span>
+                    )}
+                </div>
                 {isCodeCanvas && (
                     <span className="text-[9px] uppercase px-1 py-0.5 rounded border border-[#e0e0e0] dark:border-[#474749] text-[#848484] shrink-0" data-testid="canvas-panel-language">
                         {canvas?.language ?? 'code'}
