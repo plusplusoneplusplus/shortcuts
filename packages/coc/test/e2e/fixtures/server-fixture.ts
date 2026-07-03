@@ -147,6 +147,11 @@ export const test = base.extend<ServerFixture & { _context: ServerContext }>({
         // racy across parallel workers).
         const configPath = path.join(tmpDir, 'config.yaml');
 
+        // The deprecated Plans/Tasks repo sub-tab is gated behind showPlanDepTab
+        // (default off). Many E2E specs navigate to that `tasks` sub-tab (Miller
+        // columns, task CRUD, etc.), so enable it for the whole E2E server.
+        fs.writeFileSync(configPath, 'showPlanDepTab: true\n');
+
         const server = await createExecutionServer({
             store,
             port: 0,
