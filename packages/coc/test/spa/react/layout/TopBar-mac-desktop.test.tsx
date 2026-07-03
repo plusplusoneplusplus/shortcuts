@@ -76,11 +76,11 @@ function getHeader(container: HTMLElement): HTMLElement {
     return container.querySelector('header[data-react]') as HTMLElement;
 }
 
-function setCocDesktop(platform: string | null) {
-    if (platform === null) {
+function setCocDesktop(opts: { isDesktop?: boolean; platform?: string } | null) {
+    if (opts === null) {
         delete (window as any).cocDesktop;
     } else {
-        (window as any).cocDesktop = { platform };
+        (window as any).cocDesktop = opts;
     }
 }
 
@@ -97,16 +97,29 @@ describe('TopBar — macOS desktop layout', () => {
         expect(getHeader(container).classList.contains('drag-region')).toBe(true);
     });
 
-    it('applies left-padding inset and data-mac-desktop on darwin desktop', () => {
-        setCocDesktop('darwin');
+    it('applies left-padding inset and data-mac-desktop when isDesktop + platform=darwin', () => {
+        setCocDesktop({ isDesktop: true, platform: 'darwin' });
         const { container } = render(<TopBar />);
         const header = getHeader(container);
         expect(header.getAttribute('data-mac-desktop')).toBe('true');
-        expect(header.style.paddingLeft).toBe('76px');
+        expect(header.style.paddingLeft).toBe('88px');
+    });
+
+    it('applies inset via navigator.platform fallback when cocDesktop.platform is absent', () => {
+        // Simulate older preload build: isDesktop but no platform field
+        setCocDesktop({ isDesktop: true });
+        // jsdom reports navigator.platform as '' by default; stub it to MacIntel
+        const orig = navigator.platform;
+        Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true });
+        const { container } = render(<TopBar />);
+        Object.defineProperty(navigator, 'platform', { value: orig, configurable: true });
+        const header = getHeader(container);
+        expect(header.getAttribute('data-mac-desktop')).toBe('true');
+        expect(header.style.paddingLeft).toBe('88px');
     });
 
     it('does not apply inset on win32 desktop', () => {
-        setCocDesktop('win32');
+        setCocDesktop({ isDesktop: true, platform: 'win32' });
         const { container } = render(<TopBar />);
         const header = getHeader(container);
         expect(header.getAttribute('data-mac-desktop')).toBeNull();
@@ -114,7 +127,7 @@ describe('TopBar — macOS desktop layout', () => {
     });
 
     it('does not apply inset on linux desktop', () => {
-        setCocDesktop('linux');
+        setCocDesktop({ isDesktop: true, platform: 'linux' });
         const { container } = render(<TopBar />);
         const header = getHeader(container);
         expect(header.getAttribute('data-mac-desktop')).toBeNull();
