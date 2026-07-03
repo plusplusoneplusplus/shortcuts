@@ -289,6 +289,18 @@ describe('validateAndParseTask – payload.model promotion to config.model', () 
         expect(result.valid).toBe(true);
         expect(result.input!.config.model).toBe('gpt-5.5');
     });
+
+    it('keeps Claude context-suffixed aliases for Claude chat tasks', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', provider: 'claude' },
+            config: { model: 'opus[1m]', reasoningEffort: 'xhigh' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.model).toBe('opus[1m]');
+        expect(result.input!.config.reasoningEffort).toBe('xhigh');
+    });
 });
 
 // ============================================================================

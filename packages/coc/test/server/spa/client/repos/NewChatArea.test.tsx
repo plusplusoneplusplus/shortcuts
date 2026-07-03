@@ -985,6 +985,7 @@ describe('NewChatArea – Effort Tier selector', () => {
                         model: 'balanced-model',
                         reasoningEffort: 'medium',
                     }),
+                    config: { effortTier: 'medium' },
                 }),
             );
         });
@@ -1007,6 +1008,7 @@ describe('NewChatArea – Effort Tier selector', () => {
             const body = mockEnqueueTask.mock.calls[0][0];
             expect(body.payload.model).toBe('auto-model');
             expect(body.payload.reasoningEffort).toBeUndefined();
+            expect(body.config).toEqual({ effortTier: 'medium' });
         });
     });
 

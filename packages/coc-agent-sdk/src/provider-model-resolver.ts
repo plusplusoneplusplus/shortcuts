@@ -23,6 +23,8 @@ const PROVIDER_DEFAULT_MODELS: Readonly<Record<SupportedProvider, ReadonlySet<st
     [OPENCODE_PROVIDER]: new Set(['opencode-default', 'provider-default', 'default']),
 };
 
+const CLAUDE_FAMILY_ALIAS_PATTERN = /^(opus|sonnet|haiku|fable)(\[[^\]]+\])?$/;
+
 function isProviderDefault(provider: SupportedProvider, normalizedModel: string): boolean {
     return PROVIDER_DEFAULT_MODELS[provider].has(normalizedModel);
 }
@@ -33,7 +35,7 @@ function isValidModelForProvider(provider: SupportedProvider, normalizedModel: s
         case CODEX_PROVIDER:
             return normalizedModel.startsWith('gpt-');
         case CLAUDE_PROVIDER:
-            return normalizedModel.startsWith('claude-') || normalizedModel === 'opus' || normalizedModel === 'sonnet' || normalizedModel === 'haiku';
+            return normalizedModel.startsWith('claude-') || CLAUDE_FAMILY_ALIAS_PATTERN.test(normalizedModel);
         case OPENCODE_PROVIDER:
             // OpenCode accepts provider/model composite IDs (e.g. anthropic/claude-3-5-sonnet)
             // as well as bare model names. Accept anything — the server resolves.
