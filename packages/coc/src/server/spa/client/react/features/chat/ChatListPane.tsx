@@ -2103,6 +2103,9 @@ export function ChatListPane({
          *  Enables muted mode-pill variant + a `data-group-child` marker so the row
          *  reads as nested rather than a sibling top-level chat. */
         isGroupChild?: boolean;
+        /** Replaces the status dot in the first grid column when provided (e.g. a
+         *  spawned-tree expand/collapse chevron) so the mode pill/avatar stays aligned. */
+        leadingElement?: React.ReactNode;
     }) => {
         const isUnseen = unseenProcessIds?.has(task.id) ?? false;
         const hasDraft = !!getDraft(task.id);
@@ -2256,7 +2259,9 @@ export function ChatListPane({
                     data-session-context-status={sessionContextPayload?.status}
                     title={sessionContextPayload ? `${rowTitle} — drag to attach as session context` : rowTitle}
                 >
-                    <span className={dotClasses} aria-label={`status: ${isAwaitingInput ? 'awaiting input' : isRunning ? 'running' : isFailed ? 'failed' : isQueued ? 'queued' : 'done'}`} />
+                    {options?.leadingElement ?? (
+                        <span className={dotClasses} aria-label={`status: ${isAwaitingInput ? 'awaiting input' : isRunning ? 'running' : isFailed ? 'failed' : isQueued ? 'queued' : 'done'}`} />
+                    )}
                     <span className={modeBadgeClasses} title={modeTitle}>{modeLabel}</span>
                     <span className="min-w-0 flex items-center gap-1 overflow-hidden">
                         {isHistorySelected && (
@@ -2720,6 +2725,7 @@ export function ChatListPane({
                 renderTaskCard={(task, opts) => renderChatListRow(task, listForRange, {
                     taskStatus: getGroupedChildTaskStatus(task),
                     isGroupChild: opts.isGroupChild,
+                    leadingElement: opts.leadingElement,
                 })}
             />
         );

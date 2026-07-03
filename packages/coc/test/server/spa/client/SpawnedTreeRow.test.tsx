@@ -35,8 +35,12 @@ function buildEntry(): SpawnedTreeEntry {
     return entry as SpawnedTreeEntry;
 }
 
-const renderTaskCard = (task: any, options: { isGroupChild: boolean }) => (
+const renderTaskCard = (
+    task: any,
+    options: { isGroupChild: boolean; leadingElement?: React.ReactNode },
+) => (
     <div data-testid={`chatrow-${task.id}`} data-group-child={options.isGroupChild ? 'true' : 'false'}>
+        {options.leadingElement}
         {task.title}
     </div>
 );
@@ -91,6 +95,17 @@ describe('SpawnedTreeRow', () => {
         renderRow();
         // root + child-a have children → 2 chevrons (child-b and grandchild are leaves).
         expect(screen.getAllByTestId('spawned-tree-chevron')).toHaveLength(2);
+    });
+
+    it('renders the chevron inside the task card (dot column) so the avatar stays aligned', () => {
+        renderRow();
+        // The chevron is passed as the card's `leadingElement`, so it must live
+        // inside the rendered chat row — not as a sibling prepended before it.
+        const rootCard = screen.getByTestId('chatrow-root');
+        expect(within(rootCard).getByTestId('spawned-tree-chevron')).toBeTruthy();
+        // Leaf rows pass no leading element → no chevron inside their card.
+        const leafCard = screen.getByTestId('chatrow-child-b');
+        expect(within(leafCard).queryByTestId('spawned-tree-chevron')).toBeNull();
     });
 
     it('hides descendants when the root is collapsed', () => {
