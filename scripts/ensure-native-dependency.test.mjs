@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ensureNativeDependencies, ensureNativeDependency } from "./ensure-native-dependency.mjs";
+import {
+    ensureNativeDependencies,
+    ensureNativeDependency,
+    loadAndExercisePackage,
+} from "./ensure-native-dependency.mjs";
 
 const silentLogger = {
     error() {},
@@ -99,4 +103,68 @@ test("checks every requested dependency", () => {
             { packageName: "second-native-package", ok: true, rebuilt: false },
         ],
     );
+});
+
+test("exercises better-sqlite3 by constructing a Database, not just requiring it", () => {
+    // Regression: better-sqlite3 dlopens its addon lazily inside `new
+    // Database()`, so a bare require() passed the probe even when the binary
+    // was compiled for a different NODE_MODULE_VERSION.
+    const events = [];
+
+    class FakeDatabase {
+        constructor(filename) {
+            events.push(`construct ${filename}`);
+        }
+        close() {
+            events.push("close");
+        }
+    }
+
+    loadAndExercisePackage("better-sqlite3", (name) => {
+        events.push(`require ${name}`);
+        return FakeDatabase;
+    });
+
+    assert.deepEqual(events, ["require better-sqlite3", "construct :memory:", "close"]);
+});
+
+test("exercises other packages with a bare require only", () => {
+    const events = [];
+
+    loadAndExercisePackage("some-eager-package", (name) => {
+        events.push(`require ${name}`);
+        return {};
+    });
+
+    assert.deepEqual(events, ["require some-eager-package"]);
+});
+
+test("a failing exercise surfaces as a load failure and triggers a rebuild", () => {
+    let loads = 0;
+    let rebuilds = 0;
+
+    class ExplodingDatabase {
+        constructor() {
+            loads += 1;
+            if (loads === 1) {
+                throw new Error("was compiled against a different Node.js version");
+            }
+        }
+        close() {}
+    }
+
+    const result = ensureNativeDependency("better-sqlite3", {
+        loadPackage(packageName) {
+            loadAndExercisePackage(packageName, () => ExplodingDatabase);
+        },
+        rebuildPackage() {
+            rebuilds += 1;
+            return { status: 0 };
+        },
+        logger: silentLogger,
+    });
+
+    assert.deepEqual(result, { ok: true, rebuilt: true });
+    assert.equal(rebuilds, 1);
+    assert.equal(loads, 2);
 });
