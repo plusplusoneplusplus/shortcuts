@@ -32,17 +32,6 @@ const ICON_BTN_CLASS =
     + 'disabled:opacity-40 disabled:cursor-not-allowed '
     + 'transition-colors flex-shrink-0';
 
-/**
- * Companion class for inline text-label action chips (HTML / PDF / Select).
- * Matches `ICON_BTN_CLASS` vertical metrics (h-[26px]) for a level row, but allows
- * the button width to flex with its text content.
- */
-const TEXT_BTN_CLASS =
-    'inline-flex items-center justify-center h-[26px] px-1.5 rounded text-[10px] '
-    + 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] '
-    + 'hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] '
-    + 'disabled:opacity-40 disabled:cursor-not-allowed '
-    + 'transition-colors flex-shrink-0';
 
 export interface ChatHeaderProps {
     task: any;
@@ -169,8 +158,6 @@ function buildOverflowItems(
         metadataExtraRows?: MetaRow[];
     },
 ): OverflowMenuItem[] {
-    if (tier === 'wide') return [];
-
     const items: OverflowMenuItem[] = [];
 
     // Copy HTML — always in overflow at < 700px
@@ -207,10 +194,26 @@ function buildOverflowItems(
             icon: <span className="text-[10px] font-semibold">i</span>,
             onClick: () => { /* handled via render */ },
             render: () => (
-                <ConversationMetadataPopover process={props.metadataProcess} turnsCount={props.turns.length} extraRows={props.metadataExtraRows} />
+                <ConversationMetadataPopover
+                    process={props.metadataProcess}
+                    turnsCount={props.turns.length}
+                    extraRows={props.metadataExtraRows}
+                    resumeSessionId={props.isMobile ? undefined : props.resumeSessionId}
+                    resumeLaunching={props.resumeLaunching}
+                    onLaunchInteractiveResume={props.isMobile ? undefined : props.onLaunchInteractiveResume}
+                    onCopyResumeCommand={props.isMobile ? undefined : props.onCopyResumeCommand}
+                    onFork={props.onFork}
+                    forking={props.forking}
+                    onStartFreshSameContext={props.onStartFreshSameContext}
+                    startingFreshSameContext={props.startingFreshSameContext}
+                />
             ),
         });
     }
+
+    // At wide tier, only the simplified buttons (HTML / PDF / Select / Metadata) live in overflow.
+    // All other items (references, resume CLI, context window, etc.) remain inline at wide.
+    if (tier === 'wide') return items;
 
     // References
     const dedupedFiles = deduplicateReferenceFiles(props.planPath, props.createdFiles);
@@ -641,61 +644,8 @@ export function ChatHeader({
                         </svg>
                     )}
                 </button>
-                {/* Copy HTML + PDF + Metadata — inline only in wide tier */}
-                {isWide && (
-                    <>
-                        <button
-                            title="Copy conversation as HTML"
-                            data-testid="copy-conversation-html-btn"
-                            disabled={loading || turns.length === 0}
-                            onClick={() => void handleCopyHtml()}
-                            className={TEXT_BTN_CLASS}
-                        >
-                            {copiedHtml ? '✓' : 'HTML'}
-                        </button>
-                        <button
-                            title="Export conversation as PDF"
-                            data-testid="export-conversation-pdf-btn"
-                            disabled={loading || turns.length === 0}
-                            onClick={handleExportPdf}
-                            className={TEXT_BTN_CLASS}
-                        >
-                            PDF
-                        </button>
-                        {onToggleSelecting && turns.length > 0 && (
-                            <button
-                                title={isSelecting ? 'Cancel selection' : 'Select turns for partial copy'}
-                                data-testid="select-turns-btn"
-                                onClick={onToggleSelecting}
-                                className={cn(
-                                    'inline-flex items-center justify-center h-[26px] px-1.5 rounded text-[10px] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0',
-                                    isSelecting
-                                        ? 'text-[#0078d4] dark:text-[#3794ff] font-medium'
-                                        : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
-                                )}
-                            >
-                                {isSelecting ? '✕ Cancel' : '☐ Select'}
-                            </button>
-                        )}
-                        {!isPending && metadataProcess && (
-                            <ConversationMetadataPopover
-                                process={metadataProcess}
-                                turnsCount={turns.length}
-                                extraRows={metadataExtraRows}
-                                resumeSessionId={isMobile ? undefined : resumeSessionId}
-                                resumeLaunching={resumeLaunching}
-                                onLaunchInteractiveResume={isMobile ? undefined : onLaunchInteractiveResume}
-                                onCopyResumeCommand={isMobile ? undefined : onCopyResumeCommand}
-                                onFork={onFork}
-                                forking={forking}
-                                onStartFreshSameContext={onStartFreshSameContext}
-                                startingFreshSameContext={startingFreshSameContext}
-                            />
-                        )}
-                    </>
-                )}
-                {/* Overflow menu — shown at < 700px */}
-                {!isWide && <ChatHeaderOverflowMenu items={overflowItems} wsId={wsId} />}
+                {/* Overflow menu — HTML, PDF, Select, and Metadata always via overflow */}
+                <ChatHeaderOverflowMenu items={overflowItems} wsId={wsId} />
                 </div>
             </div>
 

@@ -99,18 +99,6 @@ function hasFinePointerDevice(): boolean {
     }
 }
 
-function getActivityLeftPanelWidthStorageKey(workspaceId: string): string {
-    return `activity-left-panel-width-${workspaceId}`;
-}
-
-function getActivityListCollapsedStorageKey(workspaceId: string): string {
-    return `activity-list-collapsed-${workspaceId}`;
-}
-
-function loadActivityListCollapsed(storageKey: string): boolean {
-    try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
-}
-
 export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
@@ -168,25 +156,20 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     const { refreshUnseenCounts } = useRepos();
     const selectedTaskId = queueState.selectedTaskIdByRepo[workspaceId] ?? null;
     const { isMobile, isTablet } = useBreakpoint();
-    const activityLeftPanelWidthStorageKey = getActivityLeftPanelWidthStorageKey(workspaceId);
-    const activityListCollapsedStorageKey = getActivityListCollapsedStorageKey(workspaceId);
     const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: isTablet ? 256 : 320,
         minWidth: 160,
         maxWidth: 600,
-        storageKey: activityLeftPanelWidthStorageKey,
+        storageKey: 'activity-left-panel-width',
     });
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
     const [listCollapsed, setListCollapsed] = useState<boolean>(() => {
-        return loadActivityListCollapsed(activityListCollapsedStorageKey);
+        try { return localStorage.getItem('activity-list-collapsed') === 'true'; } catch { return false; }
     });
-    useEffect(() => {
-        setListCollapsed(loadActivityListCollapsed(activityListCollapsedStorageKey));
-    }, [activityListCollapsedStorageKey]);
     const toggleListCollapsed = useCallback((collapsed: boolean) => {
         setListCollapsed(collapsed);
-        try { localStorage.setItem(activityListCollapsedStorageKey, collapsed ? 'true' : 'false'); } catch { /* ignore */ }
-    }, [activityListCollapsedStorageKey]);
+        try { localStorage.setItem('activity-list-collapsed', collapsed ? 'true' : 'false'); } catch { /* ignore */ }
+    }, []);
     const listContainerRef = useRef<HTMLDivElement | null>(null);
     const detailContainerRef = useRef<HTMLDivElement | null>(null);
     const peekPanelRef = useRef<HTMLDivElement | null>(null);

@@ -6,7 +6,7 @@
 
 export type CanvasEditor = 'ai' | 'user';
 
-export type CanvasType = 'markdown' | 'code' | 'extension' | 'excalidraw';
+export type CanvasType = 'markdown' | 'code' | 'extension';
 
 export interface CanvasSummary {
   id: string;

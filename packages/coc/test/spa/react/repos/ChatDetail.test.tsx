@@ -590,8 +590,11 @@ describe('ChatDetail', () => {
         it('renders copy-conversation-html button', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+            // HTML copy is now inside the overflow menu
+            await waitFor(() => expect(screen.getByTestId('chat-header-overflow-btn')).toBeTruthy());
+            fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
             await waitFor(() => {
-                expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
+                expect(screen.getByTestId('overflow-item-copy-html')).toBeTruthy();
             });
         });
 
@@ -1322,9 +1325,11 @@ describe('ChatDetail', () => {
         it('copy buttons are present', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy());
+            // HTML copy is now inside the overflow menu
+            fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
             await waitFor(() => {
-                expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
-                expect(screen.getByTestId('copy-conversation-html-btn')).toBeTruthy();
+                expect(screen.getByTestId('overflow-item-copy-html')).toBeTruthy();
             });
         });
 

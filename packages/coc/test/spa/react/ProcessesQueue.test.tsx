@@ -980,6 +980,8 @@ describe('ChatDetail metadata popover', () => {
         );
 
         await screen.findByText('Your last question was ...');
+        // Metadata trigger is now inside the overflow menu — open it first
+        fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
         fireEvent.click(screen.getByRole('button', { name: 'Show conversation metadata' }));
 
         expect(screen.getByText('Conversation metadata')).toBeDefined();

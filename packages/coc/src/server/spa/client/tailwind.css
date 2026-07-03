@@ -3,6 +3,22 @@
 @tailwind utilities;
 
 @layer utilities {
+    /* Electron desktop: make an element draggable as the window title bar.
+       Interactive children opt out automatically via no-drag overrides below.
+       Harmless no-op in regular browsers. */
+    .drag-region {
+        -webkit-app-region: drag;
+    }
+    .drag-region button,
+    .drag-region a,
+    .drag-region input,
+    .drag-region select,
+    .drag-region [role="button"],
+    .drag-region [role="combobox"],
+    .drag-region [role="tab"] {
+        -webkit-app-region: no-drag;
+    }
+
     .scrollbar-hide {
         -ms-overflow-style: none;
         scrollbar-width: none;
@@ -2556,7 +2572,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 8px 5px;
+    padding: 8px 9px;
     overflow: hidden;
     min-height: 0;
 }
