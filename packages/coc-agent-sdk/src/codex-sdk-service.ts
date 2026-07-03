@@ -37,6 +37,7 @@ import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
 import { isSupportedCodexImagePath } from './image-converter';
+import { getModelContextWindow } from './model-registry';
 import { resolveCodexExecutablePath } from './codex-exec-path';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
@@ -147,9 +148,13 @@ interface CodexTurnFailedEvent {
  * Per-turn token totals from a Codex `turn.completed` event — the ONLY usage
  * signal the `@openai/codex-sdk` exposes (index.d.ts `Usage`). Codex has no
  * native context-window signal (no max/limit, no running session total), so
- * `addCodexUsage` cannot populate `TokenUsage.tokenLimit` / `currentTokens`.
- * Deriving a context window from the model registry or the latest-turn snapshot
- * is intentionally out of scope, so the context meter stays hidden for Codex.
+ * `addCodexUsage` derives the context meter from two independent sources: the
+ * static per-model `contextWindow` in `MODEL_REGISTRY` supplies `tokenLimit`,
+ * and this event's own totals supply `currentTokens` as a latest-turn
+ * occupancy snapshot (`input_tokens + output_tokens`; `cached_input_tokens` is
+ * already a subset of `input_tokens`, and reasoning tokens are excluded because
+ * they do not persist in context across turns). When the model id is unknown to
+ * the registry, `tokenLimit` stays unset and the meter remains hidden.
  */
 interface CodexUsage {
     input_tokens?: number;
@@ -1112,7 +1117,7 @@ export class CodexSDKService implements ISDKService {
                     continue;
                 }
                 if (event.type === 'turn.completed') {
-                    tokenUsage = addCodexUsage(tokenUsage, event.usage);
+                    tokenUsage = addCodexUsage(tokenUsage, event.usage, effectiveModel);
                     continue;
                 }
                 if (event.type === 'turn.failed') {
@@ -1828,13 +1833,29 @@ function codexUsageNumber(value: number | undefined): number {
 /**
  * Accumulate a Codex per-turn `Usage` into the shared `TokenUsage` envelope.
  *
- * Only per-turn fields are populated. The context-window fields
- * (`tokenLimit`, `currentTokens`, `systemTokens`, `toolDefinitionsTokens`,
- * `conversationTokens`) are intentionally left untouched: Codex emits no native
- * context-window signal (see the `CodexUsage` note above), so the UI keeps the
- * context meter hidden for Codex by design.
+ * The per-turn totals (input/output/cache/total) accumulate across turns. The
+ * context meter is derived instead of accumulated:
+ *   - `tokenLimit` = the model's static `contextWindow` from `MODEL_REGISTRY`
+ *     (via `getModelContextWindow`). Left unset for models the registry does not
+ *     know, so the indicator stays hidden rather than guessing a default.
+ *   - `currentTokens` = a latest-turn occupancy snapshot, `input_tokens +
+ *     output_tokens` of THIS turn (not a cumulative sum). `cached_input_tokens`
+ *     is already a subset of `input_tokens`, so it is not added again; reasoning
+ *     tokens are excluded because they do not persist in context across turns.
+ *     Overwriting each turn means the newest snapshot wins, and Codex
+ *     auto-compaction is handled naturally (the post-compaction turn reports the
+ *     smaller context).
+ *
+ * `currentTokens`/`tokenLimit` are only set together, and only when the model is
+ * known — an unknown model leaves the whole context meter unset. The breakdown
+ * fields (`systemTokens`, `toolDefinitionsTokens`, `conversationTokens`) are
+ * never populated: Codex provides no breakdown and none is fabricated.
  */
-function addCodexUsage(current: TokenUsage | undefined, usage: CodexUsage | undefined): TokenUsage | undefined {
+function addCodexUsage(
+    current: TokenUsage | undefined,
+    usage: CodexUsage | undefined,
+    modelId?: string,
+): TokenUsage | undefined {
     if (!usage) return current;
 
     const result = current ? { ...current } : emptyCodexTokenUsage();
@@ -1843,6 +1864,12 @@ function addCodexUsage(current: TokenUsage | undefined, usage: CodexUsage | unde
     result.cacheReadTokens += codexUsageNumber(usage.cached_input_tokens);
     result.totalTokens = result.inputTokens + result.outputTokens;
     result.turnCount += 1;
+
+    const tokenLimit = modelId ? getModelContextWindow(modelId) : undefined;
+    if (tokenLimit != null) {
+        result.tokenLimit = tokenLimit;
+        result.currentTokens = codexUsageNumber(usage.input_tokens) + codexUsageNumber(usage.output_tokens);
+    }
     return result;
 }
 

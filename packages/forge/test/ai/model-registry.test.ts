@@ -392,7 +392,9 @@ describe('Model Registry', () => {
         });
 
         it('returns known context window for gpt-5.4', () => {
-            expect(getModelContextWindow('gpt-5.4')).toBe(128_000);
+            // GPT-5.x Codex family reports 272k (Codex models_cache.json
+            // context_window field); see model-registry gpt-5.4 entry.
+            expect(getModelContextWindow('gpt-5.4')).toBe(272_000);
         });
 
         it('returns undefined for unknown model ID', () => {
