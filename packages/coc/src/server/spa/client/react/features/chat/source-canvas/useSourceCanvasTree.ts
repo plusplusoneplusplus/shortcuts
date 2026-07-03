@@ -30,7 +30,7 @@ import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import {
     resolveSourceCanvasTarget,
     isSourceCanvasResolveError,
-    getSourceCanvasDisplayPath,
+    getSourceCanvasWorkspaceRelativePath,
 } from './resolve';
 import type { SourceCanvasFileRef } from './types';
 
@@ -155,7 +155,7 @@ export function useSourceCanvasTree(
         // workspace root this strips the prefix; otherwise it falls back to the
         // resolved path and the server's traversal guard surfaces a clear error.
         const workspace = workspaces.find((ws) => ws.id === resolved.wsId);
-        const relativePath = getSourceCanvasDisplayPath(resolved.path, workspace?.rootPath);
+        const relativePath = getSourceCanvasWorkspaceRelativePath(resolved.path, workspace?.rootPath);
 
         setRoot({
             ...LOADING_ROOT,

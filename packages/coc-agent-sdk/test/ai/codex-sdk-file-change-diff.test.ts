@@ -96,6 +96,52 @@ describe('CodexSDKService file_change diff enrichment', () => {
         expect(completedEvents[0]?.parameters?.diff).toBe(diff);
     });
 
+    it('adds a unified diff when Codex reports an absolute path under the git root', async () => {
+        const absolutePath = path.join(repoDir, 'file.txt');
+        const result = await sendWithFileChange({
+            cwd: repoDir,
+            changes: [{ path: absolutePath, kind: 'update' }],
+            changeBeforeEvent: () => {
+                fs.writeFileSync(path.join(repoDir, 'file.txt'), 'codex absolute\n', 'utf8');
+            },
+        });
+
+        expect(result.success, JSON.stringify(result)).toBe(true);
+        const toolCall = result.toolCalls?.find(call => call.name === 'apply_patch');
+        expect(toolCall?.args).toMatchObject({
+            changes: [{ path: absolutePath, kind: 'update' }],
+        });
+        const diff = (toolCall?.args as { diff?: string }).diff ?? '';
+        expect(diff).toContain('--- a/file.txt');
+        expect(diff).toContain('+++ b/file.txt');
+        expect(diff).toContain('-base');
+        expect(diff).toContain('+codex absolute');
+    });
+
+    it('does not diff absolute paths outside the git root', async () => {
+        const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-file-change-outside-'));
+        try {
+            const outsidePath = path.join(outsideDir, 'outside.txt');
+            fs.writeFileSync(outsidePath, 'outside before\n', 'utf8');
+
+            const result = await sendWithFileChange({
+                cwd: repoDir,
+                changes: [{ path: outsidePath, kind: 'update' }],
+                changeBeforeEvent: () => {
+                    fs.writeFileSync(outsidePath, 'outside after\n', 'utf8');
+                },
+            });
+
+            expect(result.success, JSON.stringify(result)).toBe(true);
+            const toolCall = result.toolCalls?.find(call => call.name === 'apply_patch');
+            expect(toolCall?.args).toEqual({
+                changes: [{ path: outsidePath, kind: 'update' }],
+            });
+        } finally {
+            fs.rmSync(outsideDir, { recursive: true, force: true });
+        }
+    });
+
     it('diffs against the pre-turn dirty worktree snapshot instead of HEAD', async () => {
         fs.writeFileSync(path.join(repoDir, 'file.txt'), 'user dirty\n', 'utf8');
 

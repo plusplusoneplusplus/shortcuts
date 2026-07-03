@@ -30,6 +30,7 @@ export type {
 } from './useSourceCanvasTree';
 export {
     getSourceCanvasDisplayPath,
+    getSourceCanvasWorkspaceRelativePath,
     resolveSourceCanvasTarget,
     isSourceCanvasResolveError,
 } from './resolve';

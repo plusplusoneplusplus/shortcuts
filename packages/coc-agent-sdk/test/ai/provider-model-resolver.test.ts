@@ -24,6 +24,14 @@ describe('resolveModelForProvider', () => {
         });
     });
 
+    it('keeps Claude family aliases with context suffixes', () => {
+        expect(resolveModelForProvider('claude', 'opus[1m]')).toEqual({
+            model: 'opus[1m]',
+            coerced: false,
+            requestedModel: 'opus[1m]',
+        });
+    });
+
     it('treats provider defaults as provider default without coercion', () => {
         expect(resolveModelForProvider('codex', 'provider-default')).toEqual({
             coerced: false,

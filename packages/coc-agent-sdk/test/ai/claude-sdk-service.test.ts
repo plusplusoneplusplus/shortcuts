@@ -2131,7 +2131,7 @@ describe('ClaudeSDKService.sendMessage', () => {
     it('passes short Claude Code family aliases through unchanged', async () => {
         queryFn.mockReturnValue(makeMessages([{ type: 'result', subtype: 'success' }]));
 
-        for (const alias of ['opus', 'sonnet', 'haiku']) {
+        for (const alias of ['opus', 'sonnet', 'haiku', 'opus[1m]']) {
             queryFn.mockReset();
             queryFn.mockReturnValue(makeMessages([{ type: 'result', subtype: 'success' }]));
             await svc.sendMessage({ prompt: 'test', model: alias });

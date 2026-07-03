@@ -648,12 +648,13 @@ export function InitialChatComposer({
             return { effortTier: selectedEffortTier, autoProviderRouting: true };
         }
         const tierPayload = useEffortTierMode ? resolveEffortTier(selectedEffortTier, effortTierMap) : null;
-        const model = tierPayload?.model ?? validModelOverride ?? undefined;
-        const reasoningEffort = tierPayload !== null
-            ? tierPayload.reasoningEffort ?? undefined
-            : effortOverride ?? undefined;
+        const model = useEffortTierMode ? (tierPayload?.model ?? undefined) : (validModelOverride ?? undefined);
+        const reasoningEffort = useEffortTierMode
+            ? (tierPayload?.reasoningEffort ?? undefined)
+            : (effortOverride ?? undefined);
         return {
             ...(shouldSendProviderOverride(selectedProvider) ? { provider: selectedProvider } : {}),
+            ...(useEffortTierMode ? { effortTier: selectedEffortTier } : {}),
             ...(model ? { model } : {}),
             ...(reasoningEffort ? { reasoningEffort } : {}),
         };

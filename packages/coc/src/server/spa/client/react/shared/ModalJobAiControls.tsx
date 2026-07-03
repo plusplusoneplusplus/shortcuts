@@ -324,14 +324,17 @@ export function useModalJobAiSelection({
         if (autoProviderSelected) {
             return { effortTier: selectedEffortTier, autoProviderRouting: true };
         }
-        const model = tierPayload?.model ?? validModelOverride ?? undefined;
-        const reasoningEffort = tierPayload !== null ? (tierPayload.reasoningEffort ?? undefined) : (effortOverride ?? undefined);
+        const model = useEffortTierMode ? (tierPayload?.model ?? undefined) : (validModelOverride ?? undefined);
+        const reasoningEffort = useEffortTierMode
+            ? (tierPayload?.reasoningEffort ?? undefined)
+            : (effortOverride ?? undefined);
         return {
             ...(shouldSendProviderOverride(provider) ? { provider } : {}),
+            ...(useEffortTierMode ? { effortTier: selectedEffortTier } : {}),
             ...(model ? { model } : {}),
             ...(reasoningEffort ? { reasoningEffort } : {}),
         };
-    }, [autoProviderSelected, effortOverride, provider, selectedEffortTier, tierPayload, validModelOverride]);
+    }, [autoProviderSelected, effortOverride, provider, selectedEffortTier, tierPayload, useEffortTierMode, validModelOverride]);
 
     return {
         provider,

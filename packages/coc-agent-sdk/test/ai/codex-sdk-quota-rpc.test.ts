@@ -1,11 +1,12 @@
 /**
- * Codex SDK Service — Account quota JSON-RPC handshake tests.
+ * Codex SDK Service — Account quota JSON-RPC tests.
  *
  * Regression coverage for the `@openai/codex` ≥ 0.133.0 change that turned
  * `codex app-server` into a subcommand group. The bare invocation now prints
- * help and exits immediately, so the quota query must instead run
- * `app-server daemon start` (idempotent) followed by `app-server proxy`, and
- * every JSON-RPC message must carry the `jsonrpc: "2.0"` envelope.
+ * help and exits immediately, and `app-server daemon start` requires the
+ * installer-managed standalone path. The quota query must start the app-server
+ * directly with `--listen stdio://`, and every JSON-RPC message must carry the
+ * `jsonrpc: "2.0"` envelope.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -26,8 +27,8 @@ vi.mock('../../src/internal/exec-utils', () => ({
 const mockSpawn = vi.mocked(spawn);
 const mockExecFileAsync = vi.mocked(execFileAsync);
 
-/** Minimal stand-in for the spawned `codex app-server proxy` child process. */
-class MockCodexProxyChild extends EventEmitter {
+/** Minimal stand-in for the spawned `codex app-server --listen stdio://` child process. */
+class MockCodexAppServerChild extends EventEmitter {
     public readonly stdout = new PassThrough();
     public readonly stdinWrites: string[] = [];
     public readonly stdin: Writable;
@@ -73,32 +74,31 @@ async function flushMicrotasks(): Promise<void> {
     for (let i = 0; i < 10; i++) await Promise.resolve();
 }
 
-describe('CodexSDKService.getAccountQuota — app-server daemon/proxy handshake', () => {
+describe('CodexSDKService.getAccountQuota — app-server stdio RPC', () => {
     beforeEach(() => {
         mockSpawn.mockReset();
         mockExecFileAsync.mockReset();
         mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
     });
 
-    it('starts the daemon then proxies JSON-RPC and returns mapped quota', async () => {
-        const child = new MockCodexProxyChild();
+    it('starts the app-server over stdio and returns mapped quota without daemon start', async () => {
+        const child = new MockCodexAppServerChild();
         mockSpawn.mockReturnValueOnce(child as never);
 
         const svc = new CodexSDKService();
         const promise = svc.getAccountQuota();
 
-        // Let the daemon-start await settle and the proxy spawn/stdin writes run.
+        // Let the app-server spawn/stdin writes run.
         await flushMicrotasks();
 
-        // AC-01: the daemon is started (idempotent) before the proxy opens.
-        expect(mockExecFileAsync).toHaveBeenCalledTimes(1);
-        const daemonArgs = mockExecFileAsync.mock.calls[0][1] as string[];
-        expect(daemonArgs.slice(-3)).toEqual(['app-server', 'daemon', 'start']);
+        // Regression: do not run `app-server daemon start`, which requires the
+        // installer-managed standalone Codex path on current Codex builds.
+        expect(mockExecFileAsync).not.toHaveBeenCalled();
 
-        // AC-01: the RPC session runs over `app-server proxy`, not bare `app-server`.
+        // AC-01: the RPC session runs over explicit stdio app-server.
         expect(mockSpawn).toHaveBeenCalledTimes(1);
-        const proxyArgs = mockSpawn.mock.calls[0][1] as string[];
-        expect(proxyArgs.slice(-2)).toEqual(['app-server', 'proxy']);
+        const appServerArgs = mockSpawn.mock.calls[0][1] as string[];
+        expect(appServerArgs.slice(-3)).toEqual(['app-server', '--listen', 'stdio://']);
 
         // Deliver the rateLimits response (id: 2) the code waits for.
         child.writeStdoutLine(JSON.stringify({ jsonrpc: '2.0', id: 2, result: RATE_LIMITS_RESULT }));
@@ -109,7 +109,7 @@ describe('CodexSDKService.getAccountQuota — app-server daemon/proxy handshake'
     });
 
     it('sends every JSON-RPC message with the jsonrpc 2.0 envelope (AC-02)', async () => {
-        const child = new MockCodexProxyChild();
+        const child = new MockCodexAppServerChild();
         mockSpawn.mockReturnValueOnce(child as never);
 
         const svc = new CodexSDKService();
@@ -131,8 +131,8 @@ describe('CodexSDKService.getAccountQuota — app-server daemon/proxy handshake'
         await promise;
     });
 
-    it('rejects with a proxy-specific error when the proxy exits early', async () => {
-        const child = new MockCodexProxyChild();
+    it('rejects with a stdio app-server-specific error when the process exits early', async () => {
+        const child = new MockCodexAppServerChild();
         mockSpawn.mockReturnValueOnce(child as never);
 
         const svc = new CodexSDKService();
@@ -141,6 +141,6 @@ describe('CodexSDKService.getAccountQuota — app-server daemon/proxy handshake'
 
         child.emit('exit', 0);
 
-        await expect(promise).rejects.toThrow(/app-server proxy exited before returning rate limits/);
+        await expect(promise).rejects.toThrow(/app-server stdio exited before returning rate limits/);
     });
 });

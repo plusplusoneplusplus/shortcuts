@@ -226,4 +226,106 @@ describe('buildWhisperFileDiff', () => {
         ];
         expect(buildWhisperFileDiff(calls, 'src/a.ts')).toBeNull();
     });
+
+    // -----------------------------------------------------------------------
+    // Unified diff --git format in apply_patch args.diff
+    // -----------------------------------------------------------------------
+
+    it('reconstructs an apply_patch update from a unified git diff in args.diff', () => {
+        const unifiedDiff = [
+            'diff --git a/src/a.ts b/src/a.ts',
+            'index 1111111..2222222 100644',
+            '--- a/src/a.ts',
+            '+++ b/src/a.ts',
+            '@@ -1,2 +1,2 @@',
+            ' context',
+            '-old line',
+            '+new line',
+        ].join('\n');
+        const calls: WhisperDiffToolCall[] = [
+            {
+                toolName: 'apply_patch',
+                args: { changes: [{ path: 'src/a.ts', kind: 'update' }], diff: unifiedDiff },
+            },
+        ];
+        const diff = buildWhisperFileDiff(calls, 'src/a.ts')!;
+        const lines = diff.split('\n');
+        expect(lines[0]).toBe('diff --git a/src/a.ts b/src/a.ts');
+        expect(lines).toContain('--- a/src/a.ts');
+        expect(lines).toContain('+++ b/src/a.ts');
+        // Git metadata lines must be stripped
+        expect(lines.some(l => l.startsWith('index '))).toBe(false);
+        // Hunk content preserved
+        expect(lines).toContain('@@ -1,2 +1,2 @@');
+        expect(lines).toContain(' context');
+        expect(lines).toContain('-old line');
+        expect(lines).toContain('+new line');
+    });
+
+    it('reconstructs a new-file unified diff as a new-file diff', () => {
+        const unifiedDiff = [
+            'diff --git a/src/new.ts b/src/new.ts',
+            'new file mode 100644',
+            'index 0000000..1111111',
+            '--- /dev/null',
+            '+++ b/src/new.ts',
+            '@@ -0,0 +1,2 @@',
+            '+line1',
+            '+line2',
+        ].join('\n');
+        const calls: WhisperDiffToolCall[] = [
+            {
+                toolName: 'apply_patch',
+                args: { changes: [{ path: 'src/new.ts', kind: 'add' }], diff: unifiedDiff },
+            },
+        ];
+        const lines = buildWhisperFileDiff(calls, 'src/new.ts')!.split('\n');
+        expect(lines[0]).toBe('diff --git a/src/new.ts b/src/new.ts');
+        expect(lines).toContain('new file mode 100644');
+        expect(lines).toContain('--- /dev/null');
+        expect(lines).toContain('+++ b/src/new.ts');
+        expect(lines).toContain('+line1');
+        expect(lines).toContain('+line2');
+        // Metadata stripped
+        expect(lines.some(l => l.startsWith('index '))).toBe(false);
+    });
+
+    it('only captures the targeted file section of a multi-file unified diff', () => {
+        const unifiedDiff = [
+            'diff --git a/src/a.ts b/src/a.ts',
+            '--- a/src/a.ts',
+            '+++ b/src/a.ts',
+            '@@ -1 +1 @@',
+            '-a old',
+            '+a new',
+            'diff --git a/src/b.ts b/src/b.ts',
+            '--- a/src/b.ts',
+            '+++ b/src/b.ts',
+            '@@ -1 +1 @@',
+            '-b old',
+            '+b new',
+        ].join('\n');
+        const calls: WhisperDiffToolCall[] = [
+            { toolName: 'apply_patch', args: { diff: unifiedDiff } },
+        ];
+        const diff = buildWhisperFileDiff(calls, 'src/b.ts')!;
+        expect(diff).toContain('+b new');
+        expect(diff).not.toContain('+a new');
+        expect(diff).not.toContain('-a old');
+    });
+
+    it('returns null for a unified diff with no section matching the target path', () => {
+        const unifiedDiff = [
+            'diff --git a/src/other.ts b/src/other.ts',
+            '--- a/src/other.ts',
+            '+++ b/src/other.ts',
+            '@@ -1 +1 @@',
+            '-x',
+            '+y',
+        ].join('\n');
+        const calls: WhisperDiffToolCall[] = [
+            { toolName: 'apply_patch', args: { diff: unifiedDiff } },
+        ];
+        expect(buildWhisperFileDiff(calls, 'src/a.ts')).toBeNull();
+    });
 });

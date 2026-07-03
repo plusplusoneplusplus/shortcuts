@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     getSourceCanvasDisplayPath,
+    getSourceCanvasWorkspaceRelativePath,
     resolveSourceCanvasTarget,
     isSourceCanvasResolveError,
 } from '../../../src/server/spa/client/react/features/chat/source-canvas/resolve';
@@ -235,5 +236,37 @@ describe('getSourceCanvasDisplayPath', () => {
             '/home/u/project/src/foo.ts',
             '/home/u/proj/',
         )).toBe('/home/u/project/src/foo.ts');
+    });
+});
+
+describe('getSourceCanvasWorkspaceRelativePath', () => {
+    it('returns dot when the path is exactly the workspace root', () => {
+        expect(getSourceCanvasWorkspaceRelativePath('/home/u/proj', '/home/u/proj')).toBe('.');
+        expect(getSourceCanvasWorkspaceRelativePath('/home/u/proj/', '/home/u/proj')).toBe('.');
+    });
+
+    it('returns a workspace-relative path for descendants', () => {
+        expect(getSourceCanvasWorkspaceRelativePath(
+            '/home/u/proj/packages/coc',
+            '/home/u/proj',
+        )).toBe('packages/coc');
+    });
+
+    it('keeps an absolute path outside the workspace root so the server can reject it', () => {
+        expect(getSourceCanvasWorkspaceRelativePath(
+            '/home/u/other',
+            '/home/u/proj',
+        )).toBe('/home/u/other');
+    });
+
+    it('handles Windows root paths', () => {
+        expect(getSourceCanvasWorkspaceRelativePath(
+            'C:\\work\\proj',
+            'C:/work/proj',
+        )).toBe('.');
+        expect(getSourceCanvasWorkspaceRelativePath(
+            'C:\\work\\proj\\src',
+            'C:/work/proj',
+        )).toBe('src');
     });
 });

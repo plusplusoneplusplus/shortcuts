@@ -103,6 +103,17 @@ describe('useSourceCanvasTree — root load', () => {
         expect(treeMock).toHaveBeenCalledWith('ws1', { path: 'src' });
     });
 
+    it('lists the workspace root via dot instead of sending the absolute root path', async () => {
+        treeMock.mockResolvedValue({ entries: ENTRIES, truncated: false });
+        const { result } = renderHook(() =>
+            useSourceCanvasTree({ fullPath: '/home/u/proj', wsId: 'ws1', kind: 'dir' }),
+        );
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        expect(result.current.resolvedPath).toBe('/home/u/proj');
+        expect(result.current.relativePath).toBe('.');
+        expect(treeMock).toHaveBeenCalledWith('ws1', { path: '.' });
+    });
+
     it('treats an empty root folder as success with no entries', async () => {
         treeMock.mockResolvedValue({ entries: [], truncated: false });
         const { result } = renderHook(() =>
@@ -208,6 +219,32 @@ describe('useSourceCanvasTree — root load', () => {
         expect(remoteTreeMock).toHaveBeenCalledWith('remote-ws', {
             path: 'python/sglang/srt/managers',
         });
+        expect(treeMock).not.toHaveBeenCalled();
+    });
+
+    it('resolves a remote-workspace root explorer and lists dot via the clone-routed client', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: REMOTE_BASE_URL }]);
+        reposRef.current = {
+            repos: [
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        rootPath: '/home/remote/repo',
+                        baseUrl: REMOTE_BASE_URL,
+                        remote: remoteMarker(REMOTE_BASE_URL),
+                    },
+                },
+            ],
+        };
+        remoteTreeMock.mockResolvedValue({ entries: ENTRIES, truncated: false });
+        const { result } = renderHook(() =>
+            useSourceCanvasTree({ fullPath: '.', wsId: 'remote-ws', kind: 'dir' }),
+        );
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        expect(result.current.resolvedPath).toBe('/home/remote/repo');
+        expect(result.current.relativePath).toBe('.');
+        expect(getCocClientForMock).toHaveBeenCalledWith(REMOTE_BASE_URL);
+        expect(remoteTreeMock).toHaveBeenCalledWith('remote-ws', { path: '.' });
         expect(treeMock).not.toHaveBeenCalled();
     });
 });

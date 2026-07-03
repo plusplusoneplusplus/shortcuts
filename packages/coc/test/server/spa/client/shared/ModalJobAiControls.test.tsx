@@ -134,6 +134,7 @@ describe('ModalJobAiControls', () => {
             expect(screen.queryByTestId('effort-pill-selector')).toBeNull();
             expect(readResolved()).toEqual({
                 provider: 'codex',
+                effortTier: 'medium',
                 model: 'tier-medium-model',
                 reasoningEffort: 'high',
             });

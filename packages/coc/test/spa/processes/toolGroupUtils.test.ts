@@ -1901,6 +1901,80 @@ describe('filterWhisperChunks', () => {
         });
     });
 
+    it('parses real +/- counts from a Codex unified git diff in apply_patch args', () => {
+        const unifiedDiff = [
+            'diff --git a/src/from-diff.ts b/src/from-diff.ts',
+            'index 1111111..2222222 100644',
+            '--- a/src/from-diff.ts',
+            '+++ b/src/from-diff.ts',
+            '@@ -1 +1 @@',
+            '-export const value = false;',
+            '+export const value = true;',
+        ].join('\n');
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'apply_patch',
+                status: 'completed',
+                args: {
+                    changes: [{ path: 'src/from-diff.ts', kind: 'update' }],
+                    diff: unifiedDiff,
+                },
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBe(1);
+        expect(wg.summary.fileEdits![0]).toMatchObject({
+            path: 'src/from-diff.ts',
+            insertions: 1,
+            deletions: 1,
+            isCreate: false,
+        });
+    });
+
+    it('falls back to structured changes when apply_patch args.diff is absent', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'apply_patch',
+                status: 'completed',
+                args: {
+                    changes: [
+                        { path: 'src/from-diff.ts', kind: 'update' },
+                        { path: 'src/new-from-diff.ts', kind: 'add' },
+                    ],
+                    // no diff field — simulate in-progress / diff-capture failure
+                },
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBe(2);
+        expect(wg.summary.fileEdits).toEqual([
+            expect.objectContaining({
+                path: 'src/from-diff.ts',
+                insertions: 0,
+                deletions: 0,
+                isCreate: false,
+            }),
+            expect.objectContaining({
+                path: 'src/new-from-diff.ts',
+                insertions: 0,
+                deletions: 0,
+                isCreate: true,
+            }),
+        ]);
+    });
+
     it('aggregates create, edit, and apply_patch calls for the same path', () => {
         const patch = [
             '*** Begin Patch',
