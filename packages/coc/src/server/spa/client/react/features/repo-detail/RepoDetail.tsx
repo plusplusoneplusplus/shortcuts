@@ -150,12 +150,19 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
         pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, uiLayoutMode,
     }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, uiLayoutMode]);
 
-    // Redirect away from git/pull-requests tab when switching to a non-git repo
+    // Redirect away from git/pull-requests tab when switching to a non-git repo.
+    // Wait until git info has finished loading before acting: during the async
+    // load window the preliminary gitInfo can report `isGitRepo === false` for a
+    // real git repo (it seeds from the possibly-stale workspace record), which
+    // would clobber a remembered 'git'/'pull-requests' tab back to the default on
+    // repo switch — the source of the flaky in-session tab reset. Sibling redirect
+    // effects below use a transition ref for the same "don't fire spuriously" goal.
     useEffect(() => {
+        if (repo.gitInfoLoading) return;
         if ((activeSubTab === 'git' || activeSubTab === 'pull-requests') && !isGitRepo) {
             dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
         }
-    }, [activeSubTab, isGitRepo, dispatch]);
+    }, [activeSubTab, isGitRepo, repo.gitInfoLoading, dispatch]);
 
     // Redirect away from terminal tab only when the feature transitions to disabled
     useEffect(() => {

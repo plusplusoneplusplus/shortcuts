@@ -48,6 +48,18 @@ interface ExcalidrawPortal {
     key: string;
 }
 
+function getProcessDeepLinkHash(href: string | null): string | null {
+    if (!href?.startsWith('#/')) return null;
+
+    const parts = href.slice(2).split('/');
+    const root = parts[0];
+    if ((root === 'process' || root === 'session' || root === 'processes') && parts[1]) {
+        return href;
+    }
+
+    return null;
+}
+
 export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionCopy }: MarkdownViewProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [headingPortals, setHeadingPortals] = React.useState<
@@ -59,6 +71,29 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
     const [excalidrawPortals, setExcalidrawPortals] = React.useState<ExcalidrawPortal[]>([]);
 
     useMermaid(containerRef, html);
+
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const handleClick = (event: MouseEvent) => {
+            if (!(event.target instanceof Element)) return;
+
+            const link = event.target.closest('a[href]');
+            if (!link || !container.contains(link)) return;
+
+            const targetHash = getProcessDeepLinkHash(link.getAttribute('href'));
+            if (!targetHash) return;
+
+            event.preventDefault();
+            if (window.location.hash === targetHash) return;
+
+            window.location.hash = targetHash;
+        };
+
+        container.addEventListener('click', handleClick);
+        return () => container.removeEventListener('click', handleClick);
+    }, []);
 
     useEffect(() => {
         const hljs = (window as any).hljs;

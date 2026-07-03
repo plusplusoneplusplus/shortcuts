@@ -3,7 +3,7 @@
  * Reads activeTab from AppContext, renders the appropriate view.
  */
 
-import { useEffect, useLayoutEffect, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
 import type { AppContextState } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
@@ -18,6 +18,7 @@ import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubT
 import { SETTINGS_SECTION_VALUES, REPO_SUB_TAB_VALUES, WIKI_PROJECT_TAB_VALUES, WIKI_ADMIN_TAB_VALUES } from '../types/dashboard';
 import type { NativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
 import { getWorkspaceIdFromSelectionId } from '../repos/cloneIdentity';
+import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 
 const AdminPanel = lazy(() => import('../admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
 // Memory/Skills/Logs/Usage/Models/Servers no longer mount as standalone
@@ -77,7 +78,7 @@ export function parseWikiDeepLink(hash: string): WikiDeepLink {
 }
 
 export function parseProcessDeepLink(hash: string): string | null {
-    const cleaned = hash.replace(/^#/, '');
+    const cleaned = hash.replace(/^#/, '').replace(/^\/+/, '');
     const parts = cleaned.split('/');
     const root = parts[0];
 
@@ -464,6 +465,32 @@ export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(SETTINGS_SECTION_VAL
 /** @deprecated Use VALID_SETTINGS_SECTIONS */
 export const VALID_COPILOT_SECTIONS: Set<string> = VALID_SETTINGS_SECTIONS;
 
+function taskMatchesProcessDeepLink(task: any, processId: string): boolean {
+    const id = typeof task?.id === 'string' ? task.id : null;
+    const taskProcessId = typeof task?.processId === 'string' ? task.processId : null;
+    return taskProcessId === processId
+        || id === processId
+        || (!!id && !isQueueProcessId(id) && toQueueProcessId(id) === processId);
+}
+
+function findRepoIdForProcessDeepLink(
+    queueState: ReturnType<typeof useQueue>['state'],
+    processId: string,
+    fallbackRepoId: string | null,
+): string | null {
+    for (const [repoId, queue] of Object.entries(queueState.repoQueueMap ?? {})) {
+        if ([...(queue.running ?? []), ...(queue.queued ?? [])].some((task) => taskMatchesProcessDeepLink(task, processId))) {
+            return repoId;
+        }
+    }
+    for (const [repoId, history] of Object.entries(queueState.repoHistoryMap ?? {})) {
+        if ((history.items ?? []).some((task) => taskMatchesProcessDeepLink(task, processId))) {
+            return repoId;
+        }
+    }
+    return fallbackRepoId;
+}
+
 export function parseSettingsSection(hash: string): SettingsSection {
     const parts = hash.replace(/^#/, '').split('/');
     if (parts[0] === 'repos' && parts[2] === 'settings' && parts[3]) {
@@ -551,6 +578,14 @@ export function buildDbBrowserHash(table: string | null, page: number, sort: str
 export function Router() {
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const processDeepLinkContextRef = useRef({
+        queueState,
+        selectedRepoId: state.selectedRepoId,
+    });
+    processDeepLinkContextRef.current = {
+        queueState,
+        selectedRepoId: state.selectedRepoId,
+    };
 
     const switchTab = useCallback((tab: string) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab: tab as DashboardTab });
@@ -572,6 +607,24 @@ export function Router() {
             // it's metadata for components (which read it from location.hash
             // directly), never part of the routed path or a task id.
             const hash = location.hash.replace(/^#/, '').split('?')[0];
+            const processDeepLinkId = parseProcessDeepLink('#' + hash);
+            if (processDeepLinkId) {
+                const deepLinkContext = processDeepLinkContextRef.current;
+                const repoId = findRepoIdForProcessDeepLink(deepLinkContext.queueState, processDeepLinkId, deepLinkContext.selectedRepoId);
+                dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
+                if (repoId) {
+                    const chatTab = resolveChatSubTab(getUiLayoutMode());
+                    dispatch({ type: 'SET_SELECTED_REPO', id: repoId });
+                    dispatch({ type: 'SET_REPO_SUB_TAB', tab: chatTab });
+                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processDeepLinkId, repoId });
+                    const nextHash = '#repos/' + encodeURIComponent(repoId) + '/' + chatTab + '/' + encodeURIComponent(processDeepLinkId);
+                    if (location.hash !== nextHash) {
+                        window.history.replaceState(null, '', nextHash);
+                    }
+                }
+                return;
+            }
+
             const tab = tabFromHash('#' + hash);
             if (tab) {
                 dispatch({ type: 'SET_ACTIVE_TAB', tab });

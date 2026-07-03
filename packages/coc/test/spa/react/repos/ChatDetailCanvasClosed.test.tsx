@@ -312,7 +312,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/source-canvas', a
             return { open, close, isOpen: !!fileRef, fileRef };
         },
         useSourceCanvasContent: () => null,
-        useSourceCanvasDirectory: () => null,
+        useSourceCanvasTree: () => null,
     };
 });
 
@@ -421,6 +421,23 @@ describe('ChatDetail — persisted canvas closed state (AC-02)', () => {
         renderChat('task-A');
         await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
         expect(screen.queryByTestId('canvas-collapsed-rail')).toBeNull();
+    });
+
+    it('opens the read-only file-tree dock (kind: dir) from the persistent header explorer toggle, and closes it on re-toggle', async () => {
+        renderChat('task-A');
+        // The toggle is persistent whenever a workspace is resolved.
+        const toggle = await screen.findByTestId('chat-explorer-toggle-btn');
+        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+
+        // Toggle ON → docked source canvas opens in folder (tree) mode.
+        fireEvent.click(toggle);
+        const dock = await screen.findByTestId('source-canvas-dock');
+        expect(dock.getAttribute('data-kind')).toBe('dir');
+        await waitFor(() => expect(screen.getByTestId('chat-explorer-toggle-btn').getAttribute('aria-pressed')).toBe('true'));
+
+        // Toggle OFF → the dock closes again.
+        fireEvent.click(screen.getByTestId('chat-explorer-toggle-btn'));
+        await waitFor(() => expect(screen.queryByTestId('source-canvas-dock')).toBeNull());
     });
 
     it('(a) keeps a deliberately-closed canvas collapsed after switching away and back', async () => {

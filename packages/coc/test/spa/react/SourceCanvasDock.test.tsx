@@ -40,14 +40,22 @@ const resize = { width: 560, handleMouseDown: vi.fn(), handleTouchStart: vi.fn()
 const noteRef = { fullPath: '/home/u/proj/notes/x.md', kind: 'note' as const };
 const codeRef = { fullPath: '/home/u/proj/src/foo.ts', kind: 'code' as const };
 const dirRef = { fullPath: '/home/u/proj/src', kind: 'dir' as const };
-const dirSuccess = {
+const treeSuccess = {
     status: 'success' as const,
-    entries: [{ name: 'sub', type: 'dir' as const, path: 'src/sub' }],
+    rootEntries: [
+        { name: 'sub', type: 'dir' as const, path: 'src/sub' },
+        { name: 'a.ts', type: 'file' as const, path: 'src/a.ts' },
+    ],
     resolvedPath: '/home/u/proj/src',
     relativePath: 'src',
     wsId: 'ws1',
     truncated: false,
     error: '',
+    childrenMap: new Map<string, never>(),
+    expanded: new Set<string>(),
+    loadingPaths: new Set<string>(),
+    errorPaths: new Map<string, string>(),
+    toggle: vi.fn(),
 };
 
 describe('SourceCanvasDock', () => {
@@ -114,13 +122,13 @@ describe('SourceCanvasDock', () => {
         expect(screen.queryByTestId('source-canvas-note-editor-stub')).toBeNull();
     });
 
-    it('hosts the read-only folder explorer in the desktop column and forwards navigation (AC-01/AC-02)', () => {
+    it('hosts the read-only file tree in the desktop column and forwards file navigation', () => {
         const onNavigate = vi.fn();
         render(
             <SourceCanvasDock
                 fileRef={dirRef}
                 wsId="ws1"
-                directory={dirSuccess}
+                tree={treeSuccess}
                 onNavigate={onNavigate}
                 isMobile={false}
                 onClose={() => {}}
@@ -133,19 +141,19 @@ describe('SourceCanvasDock', () => {
         // No code viewer / note editor when listing a folder.
         expect(screen.queryByTestId('source-canvas-source')).toBeNull();
         expect(screen.queryByTestId('source-canvas-note-editor-stub')).toBeNull();
-        // Clicking a subfolder routes back through onNavigate (in-place navigation).
-        fireEvent.click(screen.getByTestId('source-canvas-dir-entry'));
+        // Clicking a file row routes back through onNavigate as a code ref.
+        fireEvent.click(screen.getAllByTestId('source-canvas-tree-node')[1]);
         expect(onNavigate).toHaveBeenCalledWith(
-            expect.objectContaining({ fullPath: 'src/sub', kind: 'dir' }),
+            expect.objectContaining({ fullPath: 'src/a.ts', kind: 'code' }),
         );
     });
 
-    it('hosts the folder explorer inside the BottomSheet for a dir ref on mobile', () => {
+    it('hosts the file tree inside the BottomSheet for a dir ref on mobile', () => {
         render(
             <SourceCanvasDock
                 fileRef={dirRef}
                 wsId="ws1"
-                directory={dirSuccess}
+                tree={treeSuccess}
                 onNavigate={() => {}}
                 isMobile
                 onClose={() => {}}

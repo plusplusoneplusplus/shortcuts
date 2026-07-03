@@ -255,28 +255,36 @@ describe('SourceCanvasPanel', () => {
         expect(queryByTestId('source-canvas-note-editor-stub')).toBeNull();
     });
 
-    // --- AC-01/AC-02: folder explorer body (kind: 'dir') ---
+    // --- Expandable file-tree body (kind: 'dir') ---
 
     const dirRef = { fullPath: '/home/u/proj/src', kind: 'dir' as const };
-    const dirSuccess = {
-        status: 'success' as const,
-        entries: [
-            { name: 'sub', type: 'dir' as const, path: 'src/sub' },
-            { name: 'a.ts', type: 'file' as const, path: 'src/a.ts' },
-        ],
-        resolvedPath: '/home/u/proj/src',
-        relativePath: 'src',
-        wsId: 'ws1',
-        truncated: false,
-        error: '',
-    };
+    function treeSuccess(over: Record<string, unknown> = {}) {
+        return {
+            status: 'success' as const,
+            rootEntries: [
+                { name: 'sub', type: 'dir' as const, path: 'src/sub' },
+                { name: 'a.ts', type: 'file' as const, path: 'src/a.ts' },
+            ],
+            resolvedPath: '/home/u/proj/src',
+            relativePath: 'src',
+            wsId: 'ws1',
+            truncated: false,
+            error: '',
+            childrenMap: new Map(),
+            expanded: new Set<string>(),
+            loadingPaths: new Set<string>(),
+            errorPaths: new Map<string, string>(),
+            toggle: vi.fn(),
+            ...over,
+        };
+    }
 
-    it('renders the folder explorer (not the code viewer or note editor) for a dir ref', () => {
+    it('renders the file tree (not the code viewer or note editor) for a dir ref', () => {
         const { getByTestId, queryByTestId } = render(
             <SourceCanvasPanel
                 fileRef={dirRef}
                 wsId="ws1"
-                directory={dirSuccess}
+                tree={treeSuccess()}
                 onNavigate={() => {}}
                 onClose={() => {}}
             />,
@@ -289,27 +297,46 @@ describe('SourceCanvasPanel', () => {
         expect(queryByTestId('source-canvas-popout-btn')).toBeNull();
     });
 
-    it('shows the folder loading state when no directory is provided', () => {
+    it('shows the folder loading state when no tree is provided', () => {
         const { getByTestId } = render(
             <SourceCanvasPanel fileRef={dirRef} wsId="ws1" onNavigate={() => {}} onClose={() => {}} />,
         );
         expect(getByTestId('source-canvas-dir-loading')).toBeTruthy();
     });
 
-    it('navigates in-place when a folder entry is clicked (AC-02)', () => {
+    it('expands a folder in place (not via onNavigate) when its row is clicked', () => {
+        const onNavigate = vi.fn();
+        const tree = treeSuccess();
+        const { getAllByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={dirRef}
+                wsId="ws1"
+                tree={tree}
+                onNavigate={onNavigate}
+                onClose={() => {}}
+            />,
+        );
+        // First node is the subfolder — clicking it toggles expansion, not nav.
+        fireEvent.click(getAllByTestId('source-canvas-tree-node')[0]);
+        expect(tree.toggle).toHaveBeenCalledWith('src/sub');
+        expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    it('opens a file row through onNavigate as kind: code', () => {
         const onNavigate = vi.fn();
         const { getAllByTestId } = render(
             <SourceCanvasPanel
                 fileRef={dirRef}
                 wsId="ws1"
-                directory={dirSuccess}
+                tree={treeSuccess()}
                 onNavigate={onNavigate}
                 onClose={() => {}}
             />,
         );
-        fireEvent.click(getAllByTestId('source-canvas-dir-entry')[0]);
+        // Second node is the file — clicking it opens the read-only viewer.
+        fireEvent.click(getAllByTestId('source-canvas-tree-node')[1]);
         expect(onNavigate).toHaveBeenCalledWith(
-            expect.objectContaining({ fullPath: 'src/sub', kind: 'dir', wsId: 'ws1' }),
+            expect.objectContaining({ fullPath: 'src/a.ts', kind: 'code', wsId: 'ws1' }),
         );
     });
 });

@@ -15,18 +15,34 @@ import { useCallback, useState } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { Spinner } from '../../../ui/Spinner';
 import { SourceCanvasBody } from './SourceCanvasBody';
-import { SourceCanvasFolderBody } from './SourceCanvasFolderBody';
+import { SourceCanvasTreeBody } from './SourceCanvasTreeBody';
 import { SourceCanvasNoteEditor } from './SourceCanvasNoteEditor';
 import { SourceCanvasNotePopOutButton } from './SourceCanvasNotePopOutButton';
 import { getSourceCanvasDisplayPath } from './resolve';
 import type { SourceCanvasFileRef } from './types';
 import type { SourceCanvasContentState } from './useSourceCanvasContent';
-import type { SourceCanvasDirectoryState } from './useSourceCanvasDirectory';
+import type { SourceCanvasTreeState } from './useSourceCanvasTree';
 
 function basename(p: string): string {
     const normalized = p.replace(/\\/g, '/');
     return normalized.split('/').pop() || p;
 }
+
+/** Loading-state fallback tree used until the host wires in real state. */
+const EMPTY_TREE: SourceCanvasTreeState = {
+    status: 'loading',
+    rootEntries: [],
+    resolvedPath: '',
+    relativePath: '',
+    wsId: '',
+    truncated: false,
+    error: '',
+    childrenMap: new Map(),
+    expanded: new Set(),
+    loadingPaths: new Set(),
+    errorPaths: new Map(),
+    toggle: () => {},
+};
 
 const headerBtnClass =
     'shrink-0 flex items-center justify-center w-8 h-8 rounded text-[#848484] ' +
@@ -61,11 +77,11 @@ export interface SourceCanvasPanelProps {
     workspaceRootPath?: string | null;
     /** Loaded content + load/error state (AC-06). Loading when omitted. */
     content?: SourceCanvasContentState;
-    /** Folder listing + load/error state for `kind: 'dir'` refs. Loading when omitted. */
-    directory?: SourceCanvasDirectoryState;
+    /** Expandable-tree state for `kind: 'dir'` refs. Loading when omitted. */
+    tree?: SourceCanvasTreeState;
     /**
-     * Open another ref in the same panel (AC-02 folder navigation): a clicked
-     * subfolder re-opens as `kind: 'dir'`, a file as the read-only code viewer.
+     * Open a file ref in the same panel (folder tree navigation): a clicked file
+     * opens the read-only code viewer. Folders expand in place, not via this.
      */
     onNavigate?: (ref: SourceCanvasFileRef) => void;
     /** Close the canvas (X button). */
@@ -77,7 +93,7 @@ export function SourceCanvasPanel({
     wsId,
     workspaceRootPath,
     content,
-    directory,
+    tree,
     onNavigate,
     onClose,
 }: SourceCanvasPanelProps) {
@@ -173,11 +189,11 @@ export function SourceCanvasPanel({
                     <SourceCanvasNoteEditor fileRef={fileRef} />
                 </div>
             ) : fileRef.kind === 'dir' ? (
-                /* Read-only folder explorer (AC-01/AC-02): the directory listing
-                   is loaded by the host; entries navigate in-place via onNavigate. */
+                /* Read-only expandable file tree: the tree state is loaded by the
+                   host; folders expand in place, files navigate via onNavigate. */
                 <div className="flex-1 min-h-0 overflow-auto" data-testid="source-canvas-body">
-                    <SourceCanvasFolderBody
-                        dir={directory ?? { status: 'loading', entries: [], resolvedPath: '', relativePath: '', wsId: '', truncated: false, error: '' }}
+                    <SourceCanvasTreeBody
+                        tree={tree ?? EMPTY_TREE}
                         folderName={fileName}
                         onNavigate={onNavigate ?? (() => {})}
                     />

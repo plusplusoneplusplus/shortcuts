@@ -17,7 +17,7 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({ preferences: mocks.preferences }),
 }));
 
-import { appReducer, SIDEBAR_KEY, getInitialSidebarCollapsed, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { appReducer, SIDEBAR_KEY, REPO_TAB_STATE_KEY, getInitialSidebarCollapsed, getInitialRepoTabState, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
 
 function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
     return {
@@ -407,6 +407,95 @@ describe('AppContext reducer', () => {
             state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
             expect(state.activeRepoSubTab).toBe('wiki');
             expect(state.repoTabState['repo-b']).toBe('wiki');
+        });
+    });
+
+    // ── Per-repo tab state localStorage persistence ────────────────
+    describe('per-repo tab state persistence', () => {
+        beforeEach(() => {
+            localStorage.clear();
+        });
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
+        it('SET_REPO_SUB_TAB persists the map to localStorage', () => {
+            const state = makeState({ selectedRepoId: 'repo-a' });
+            appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'git' });
+            expect(JSON.parse(localStorage.getItem(REPO_TAB_STATE_KEY)!)).toEqual({ 'repo-a': 'git' });
+        });
+
+        it('SET_REPO_SUB_TAB does not persist when no repo is selected', () => {
+            const state = makeState({ selectedRepoId: null });
+            appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'git' });
+            expect(localStorage.getItem(REPO_TAB_STATE_KEY)).toBeNull();
+        });
+
+        it('SET_SELECTED_REPO persists the departing repo tab to localStorage', () => {
+            const state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'explorer' });
+            appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
+            expect(JSON.parse(localStorage.getItem(REPO_TAB_STATE_KEY)!)).toEqual({ 'repo-a': 'explorer' });
+        });
+
+        it('SET_SELECTED_REPO does not persist when there is no departing repo', () => {
+            const state = makeState({ selectedRepoId: null });
+            appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
+            expect(localStorage.getItem(REPO_TAB_STATE_KEY)).toBeNull();
+        });
+
+        it('persists then rehydrates the same map across a simulated reload', () => {
+            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'chats' });
+            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'git' });
+            state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
+            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'explorer' });
+            // Simulate a page reload: rebuild state from persisted storage.
+            const rehydrated = getInitialRepoTabState();
+            expect(rehydrated).toEqual({ 'repo-a': 'git', 'repo-b': 'explorer' });
+        });
+
+        it('does not throw when localStorage.setItem fails', () => {
+            vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+            const state = makeState({ selectedRepoId: 'repo-a' });
+            expect(() => appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'git' })).not.toThrow();
+        });
+    });
+
+    // ── getInitialRepoTabState ─────────────────────────────────────
+    describe('getInitialRepoTabState', () => {
+        beforeEach(() => {
+            localStorage.clear();
+        });
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
+        it('returns an empty map when localStorage is empty', () => {
+            expect(getInitialRepoTabState()).toEqual({});
+        });
+
+        it('parses a valid persisted map', () => {
+            localStorage.setItem(REPO_TAB_STATE_KEY, JSON.stringify({ 'repo-a': 'git', 'repo-b': 'explorer' }));
+            expect(getInitialRepoTabState()).toEqual({ 'repo-a': 'git', 'repo-b': 'explorer' });
+        });
+
+        it('drops entries with unknown/stale sub-tab ids', () => {
+            localStorage.setItem(REPO_TAB_STATE_KEY, JSON.stringify({ 'repo-a': 'git', 'repo-b': 'removed-tab', 'repo-c': 42 }));
+            expect(getInitialRepoTabState()).toEqual({ 'repo-a': 'git' });
+        });
+
+        it('returns an empty map for corrupt JSON', () => {
+            localStorage.setItem(REPO_TAB_STATE_KEY, '{not valid json');
+            expect(getInitialRepoTabState()).toEqual({});
+        });
+
+        it('returns an empty map when the stored value is not an object', () => {
+            localStorage.setItem(REPO_TAB_STATE_KEY, JSON.stringify(['git']));
+            expect(getInitialRepoTabState()).toEqual({});
+        });
+
+        it('returns an empty map when localStorage.getItem throws', () => {
+            vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
+            expect(getInitialRepoTabState()).toEqual({});
         });
     });
 

@@ -34,7 +34,7 @@ import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
 import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/useChatSSE';
 import { CanvasPanel } from '../canvas/CanvasPanel';
-import { SourceCanvasDock, useSourceCanvasState, useSourceCanvasContent, useSourceCanvasDirectory } from './source-canvas';
+import { SourceCanvasDock, useSourceCanvasState, useSourceCanvasContent, useSourceCanvasTree } from './source-canvas';
 import { readCanvasClosed, writeCanvasClosed } from './canvasClosedPreference';
 import { deriveOpenCanvasMemory, type OpenCanvasMemory } from './openCanvasMemory';
 import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER_DIFF_EVENT } from './whisper-diff';
@@ -1385,14 +1385,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const sourceCanvasFileRef = sourceCanvas.fileRef;
     const sourceCanvasWsId = sourceCanvasFileRef?.wsId ?? workspaceId ?? null;
     // Notes (`kind: 'note'`) load/save through the embedded NoteEditor and
-    // folders (`kind: 'dir'`) list through `useSourceCanvasDirectory`, so skip
-    // the read-only file fetch for both — it would be unused.
+    // folders (`kind: 'dir'`) walk through `useSourceCanvasTree`, so skip the
+    // read-only file fetch for both — it would be unused.
     const sourceCanvasContent = useSourceCanvasContent(
         sourceCanvasFileRef?.kind === 'note' || sourceCanvasFileRef?.kind === 'dir'
             ? null
             : sourceCanvasFileRef,
     );
-    const sourceCanvasDirectory = useSourceCanvasDirectory(
+    const sourceCanvasTree = useSourceCanvasTree(
         sourceCanvasFileRef?.kind === 'dir' ? sourceCanvasFileRef : null,
     );
     const sourceCanvasColumn = (sourceCanvas.isOpen && sourceCanvasFileRef) ? (
@@ -1401,13 +1401,33 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             wsId={sourceCanvasWsId}
             workspaceRootPath={workspaceRootPath}
             content={sourceCanvasContent}
-            directory={sourceCanvasDirectory}
+            tree={sourceCanvasTree}
             onNavigate={sourceCanvas.open}
             isMobile={isMobile}
             onClose={sourceCanvas.close}
             resize={sourceCanvasResize}
         />
     ) : null;
+
+    // Persistent chat-header explorer toggle: opens the source canvas in folder
+    // (`kind: 'dir'`) mode rooted at the workspace root, so the file tree can be
+    // browsed anytime without a folder link. When a dir explorer is already
+    // showing, the toggle closes it. Gated on a resolved workspace. For remote
+    // clones `workspaceRootPath` is empty but the tree hook folds the remote
+    // workspace in, anchoring `.` against its own root and routing the fetch.
+    const explorerOpen = sourceCanvas.isOpen && sourceCanvasFileRef?.kind === 'dir';
+    const canOpenExplorer = !!workspaceId;
+    const handleToggleExplorer = useCallback(() => {
+        if (explorerOpen) {
+            sourceCanvas.close();
+            return;
+        }
+        sourceCanvas.open({
+            fullPath: workspaceRootPath || '.',
+            kind: 'dir',
+            wsId: workspaceId,
+        });
+    }, [explorerOpen, sourceCanvas, workspaceRootPath, workspaceId]);
 
     // Transient read-only whisper diff: a full-height sibling column on desktop,
     // a full-height BottomSheet on mobile. Mutually exclusive with the agent
@@ -2184,6 +2204,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 onToggleSelecting={selection.toggleSelecting}
                 showScratchpadButton={showScratchpadButton}
                 onOpenScratchpad={handleOpenScratchpad}
+                onToggleExplorer={canOpenExplorer ? handleToggleExplorer : undefined}
+                explorerOpen={explorerOpen}
                 onFork={metadataProcess?.sdkSessionId && task?.status === 'completed' ? handleFork : undefined}
                 forking={forking}
                 loopCount={loopsHook.manageableCount}

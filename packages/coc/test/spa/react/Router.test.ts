@@ -7,7 +7,8 @@
 import { describe, it, expect } from 'vitest';
 import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, parseRalphSessionDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash, buildRepoSubTabSuffix } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
-import type { AppContextState } from '../../../src/server/spa/client/react/contexts/AppContext';
+import type { AppContextState, AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { appReducer } from '../../../src/server/spa/client/react/contexts/AppContext';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
 
@@ -286,12 +287,24 @@ describe('process deep-link parsing', () => {
         expect(parseProcessDeepLink('#process/proc-1')).toBe('proc-1');
     });
 
+    it('parses MarkdownView #/process/:id hrefs', () => {
+        expect(parseProcessDeepLink('#/process/proc-1')).toBe('proc-1');
+    });
+
     it('parses #session/:id', () => {
         expect(parseProcessDeepLink('#session/proc-2')).toBe('proc-2');
     });
 
+    it('parses MarkdownView #/session/:id hrefs', () => {
+        expect(parseProcessDeepLink('#/session/proc-2')).toBe('proc-2');
+    });
+
     it('parses #processes/:id', () => {
         expect(parseProcessDeepLink('#processes/proc-3')).toBe('proc-3');
+    });
+
+    it('parses MarkdownView #/processes/:id hrefs', () => {
+        expect(parseProcessDeepLink('#/processes/proc-3')).toBe('proc-3');
     });
 
     it('handles URL-encoded process ids', () => {
@@ -775,6 +788,104 @@ describe('handleHash workflow dispatch simulation', () => {
     it('does not dispatch SET_SELECTED_WORKFLOW when no sub-tab', () => {
         const dispatches = simulateHandleHash('#repos/r1');
         expect(dispatches.find(d => d.type === 'SET_SELECTED_WORKFLOW')).toBeUndefined();
+    });
+});
+
+// ─── handleHash repo sub-tab restore end-to-end (URL precedence + reducer) ──
+//
+// AC-01 (hash-navigation entry point) + the URL-precedence constraint: a bare
+// `#repos/:id` must let the reducer restore the repo's remembered tab, while an
+// explicit `#repos/:id/:subTab` always wins. This drives the Router hash-handler's
+// dispatch output through the REAL appReducer to lock the whole path, not just the
+// parsing (which the pure-reducer tests exercise in isolation).
+
+describe('handleHash repo sub-tab restore (URL precedence + reducer)', () => {
+    // Mirrors the repo-restore subset of Router's handleHash effect: always select
+    // the repo, and only re-dispatch the sub-tab when the hash carries a valid one.
+    function repoHashDispatches(rawHash: string): AppAction[] {
+        const dispatches: AppAction[] = [];
+        const hash = rawHash.replace(/^#/, '');
+        if (tabFromHash('#' + hash) !== 'repos') return dispatches;
+        const parts = hash.split('/');
+        if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
+            dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
+            if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
+                dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] as any });
+            }
+        }
+        return dispatches;
+    }
+
+    function makeReducerState(overrides: Partial<AppContextState> = {}): AppContextState {
+        return {
+            selectedRepoId: null,
+            activeRepoSubTab: 'chats',
+            repoTabState: {},
+            notePathState: {},
+            selectedNotePath: null,
+            selectedWorkflowName: null,
+            selectedWorkflowProcessId: null,
+            ...overrides,
+        } as AppContextState;
+    }
+
+    // Feed a hash through the parser + reducer, returning the resulting state.
+    function navigate(state: AppContextState, rawHash: string): AppContextState {
+        return repoHashDispatches(rawHash).reduce(appReducer, state);
+    }
+
+    it('bare #repos/:id emits only SET_SELECTED_REPO (no sub-tab override)', () => {
+        const dispatches = repoHashDispatches('#repos/repo-a');
+        expect(dispatches).toEqual([{ type: 'SET_SELECTED_REPO', id: 'repo-a' }]);
+    });
+
+    it('explicit #repos/:id/git emits SET_REPO_SUB_TAB git', () => {
+        const dispatches = repoHashDispatches('#repos/repo-a/git');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
+    });
+
+    it('bare #repos/:id restores the repo remembered tab', () => {
+        const start = makeReducerState({ selectedRepoId: null, repoTabState: { 'repo-a': 'git' } });
+        const next = navigate(start, '#repos/repo-a');
+        expect(next.activeRepoSubTab).toBe('git');
+    });
+
+    it('bare #repos/:id for an unremembered repo lands on the chats default', () => {
+        const start = makeReducerState({ selectedRepoId: null });
+        const next = navigate(start, '#repos/repo-new');
+        expect(next.activeRepoSubTab).toBe('chats');
+    });
+
+    it('explicit deep-link sub-tab wins over the remembered tab and updates memory', () => {
+        const start = makeReducerState({ selectedRepoId: null, repoTabState: { 'repo-a': 'git' } });
+        const next = navigate(start, '#repos/repo-a/notes');
+        expect(next.activeRepoSubTab).toBe('notes');
+        expect(next.repoTabState['repo-a']).toBe('notes');
+    });
+
+    it('an unknown sub-tab segment does not clobber the remembered tab', () => {
+        const start = makeReducerState({ selectedRepoId: null, repoTabState: { 'repo-a': 'git' } });
+        const next = navigate(start, '#repos/repo-a/bogus-tab');
+        expect(next.activeRepoSubTab).toBe('git');
+    });
+
+    it('drives a full A(git) → B → A(bare) hash cycle and restores git', () => {
+        // A opens on git via explicit deep-link.
+        let state = navigate(makeReducerState({ selectedRepoId: null }), '#repos/repo-a/git');
+        expect(state.activeRepoSubTab).toBe('git');
+        // Switch to B (bare) — B has no memory, defaults to chats, A's git is saved.
+        state = navigate(state, '#repos/repo-b');
+        expect(state.activeRepoSubTab).toBe('chats');
+        expect(state.repoTabState['repo-a']).toBe('git');
+        // Set B to explorer.
+        state = navigate(state, '#repos/repo-b/explorer');
+        expect(state.activeRepoSubTab).toBe('explorer');
+        // Back to A (bare) — remembered git restored, not clobbered to default.
+        state = navigate(state, '#repos/repo-a');
+        expect(state.activeRepoSubTab).toBe('git');
+        // Back to B (bare) — remembered explorer restored.
+        state = navigate(state, '#repos/repo-b');
+        expect(state.activeRepoSubTab).toBe('explorer');
     });
 });
 

@@ -15,7 +15,7 @@ import { BottomSheet } from '../../../ui/BottomSheet';
 import { SourceCanvasPanel } from './SourceCanvasPanel';
 import type { SourceCanvasFileRef } from './types';
 import type { SourceCanvasContentState } from './useSourceCanvasContent';
-import type { SourceCanvasDirectoryState } from './useSourceCanvasDirectory';
+import type { SourceCanvasTreeState } from './useSourceCanvasTree';
 import type { UseResizablePanelReturn } from '../../../hooks/ui/useResizablePanel';
 
 function sheetTitle(fileRef: SourceCanvasFileRef): string {
@@ -32,9 +32,9 @@ export interface SourceCanvasDockProps {
     workspaceRootPath?: string | null;
     /** Loaded content for the read-only viewer (unused for notes). */
     content?: SourceCanvasContentState;
-    /** Folder listing for the read-only explorer (`kind: 'dir'` refs only). */
-    directory?: SourceCanvasDirectoryState;
-    /** Open another ref in the same panel (AC-02 folder navigation). */
+    /** Expandable-tree state for the read-only explorer (`kind: 'dir'` refs only). */
+    tree?: SourceCanvasTreeState;
+    /** Open a file ref in the same panel (folder-tree file navigation). */
     onNavigate?: (ref: SourceCanvasFileRef) => void;
     /** Mobile breakpoint → render inside a BottomSheet instead of a column. */
     isMobile: boolean;
@@ -49,7 +49,7 @@ export function SourceCanvasDock({
     wsId,
     workspaceRootPath,
     content,
-    directory,
+    tree,
     onNavigate,
     isMobile,
     onClose,
@@ -68,7 +68,7 @@ export function SourceCanvasDock({
                     wsId={wsId}
                     workspaceRootPath={workspaceRootPath}
                     content={content}
-                    directory={directory}
+                    tree={tree}
                     onNavigate={onNavigate}
                     onClose={onClose}
                 />
@@ -96,7 +96,7 @@ export function SourceCanvasDock({
                     wsId={wsId}
                     workspaceRootPath={workspaceRootPath}
                     content={content}
-                    directory={directory}
+                    tree={tree}
                     onNavigate={onNavigate}
                     onClose={onClose}
                 />
