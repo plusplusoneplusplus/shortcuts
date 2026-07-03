@@ -24,6 +24,7 @@ import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabl
 import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
+import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { useRepoQueueStats, isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
@@ -78,6 +79,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
     const pullRequestsEnabled = usePullRequestsEnabled();
     const dreamsEnabled = useDreamsEnabled();
     const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
+    const showPlanDepTab = useShowPlanDepTab();
     const [uiLayoutMode] = useUiLayoutMode();
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
     const workItemOriginId = useMemo(() => resolveRepoWorkItemOriginScope(repo).originId, [repo]);
@@ -89,8 +91,8 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
 
     const tabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, uiLayoutMode,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, uiLayoutMode]);
+        pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
+    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode]);
     const { remote: remoteTabs, clone: cloneTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
 
     const group = useMemo(() => {

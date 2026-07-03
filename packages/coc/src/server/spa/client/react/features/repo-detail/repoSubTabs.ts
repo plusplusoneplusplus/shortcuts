@@ -57,6 +57,8 @@ export interface VisibleSubTabOptions {
     pullRequestsEnabled: boolean;
     dreamsEnabled: boolean;
     nativeCliSessionsEnabled: boolean;
+    /** When false (default), the deprecated `tasks` sub-tab is hidden in both layout modes. */
+    showPlanDepTab: boolean;
     uiLayoutMode: 'classic' | 'dev-workflow';
 }
 
@@ -70,11 +72,12 @@ export interface VisibleSubTabOptions {
 export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
     const {
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, uiLayoutMode,
+        pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
     } = opts;
 
     let tabs: SubTabDef[] = VISIBLE_SUB_TABS;
     if (!isGitRepo) tabs = tabs.filter(t => t.key !== 'git' && t.key !== 'pull-requests');
+    if (!showPlanDepTab) tabs = tabs.filter(t => t.key !== 'tasks');
     if (!terminalEnabled) tabs = tabs.filter(t => t.key !== 'terminal');
     if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
     if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');

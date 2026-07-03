@@ -96,6 +96,12 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useDream
     useDreamsEnabled: () => mockDreamsEnabled,
 }));
 
+// Keep the deprecated Plans/Tasks sub-tab visible for these layout-mode tests
+// (they route to the `tasks` sub-tab directly), independent of the default-off flag.
+vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useShowPlanDepTab', () => ({
+    useShowPlanDepTab: () => true,
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/features/notes/hooks/useNotesAutoCommit', () => ({
     useNotesAutoCommit: () => false,
 }));
