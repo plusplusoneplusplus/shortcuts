@@ -2264,6 +2264,74 @@ describe('Queue Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.task.id).not.toBe(taskId);
         });
+
+        it('keeps ralph mode and rejoins the session when retrying an in-memory ralph task', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            const ralphContext = {
+                phase: 'executing',
+                sessionId: 'ralph-sess-42',
+                originalGoal: 'Ship the retry fix',
+                currentIteration: 4,
+                maxIterations: 10,
+            };
+            const createRes = await postJSON(`${srv.url}/api/queue`, makeTask({
+                displayName: 'Ralph iteration 4',
+                repoId: 'ws-ralph',
+                payload: {
+                    kind: 'chat',
+                    mode: 'ralph',
+                    prompt: 'iterate',
+                    workspaceId: 'ws-ralph',
+                    context: {
+                        ralph: ralphContext,
+                        taskGroup: {
+                            groupId: 'ralph-sess-42',
+                            groupType: 'ralph',
+                            role: 'iteration',
+                            itemKey: '4',
+                            workspaceId: 'ws-ralph',
+                        },
+                    },
+                },
+            }));
+            const taskId = JSON.parse(createRes.body).task.id;
+            await request(`${srv.url}/api/queue/${taskId}`, { method: 'DELETE' });
+
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, {});
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            // AC-01: retried task stays in ralph mode.
+            expect(body.task.payload.mode).toBe('ralph');
+            // AC-02: retried task rejoins the same ralph session.
+            expect(body.task.payload.context.ralph).toMatchObject(ralphContext);
+            // AC-03: task-group grouping is preserved.
+            expect(body.task.payload.context.taskGroup).toMatchObject({
+                groupId: 'ralph-sess-42',
+                groupType: 'ralph',
+                role: 'iteration',
+            });
+            // Fresh conversation — no stale processId.
+            expect(body.task.payload.processId).toBeUndefined();
+        });
+
+        it('does not add ralph context when retrying a plain non-ralph task', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            const createRes = await postJSON(`${srv.url}/api/queue`, makeTask({
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'plain' },
+            }));
+            const taskId = JSON.parse(createRes.body).task.id;
+            await request(`${srv.url}/api/queue/${taskId}`, { method: 'DELETE' });
+
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, {});
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.mode).toBe('autopilot');
+            expect(body.task.payload.context).toBeUndefined();
+        });
     });
 
     // ========================================================================

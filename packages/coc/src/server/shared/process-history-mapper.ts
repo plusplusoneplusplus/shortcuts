@@ -136,6 +136,29 @@ function mapProcessStatus(status: string): string {
     return status === 'cancelling' ? 'cancelled' : status;
 }
 
+/** Read a plain-object metadata field, or undefined if absent / not an object. */
+function readObjectMetadata(proc: AIProcess, key: 'ralph' | 'taskGroup'): Record<string, unknown> | undefined {
+    const value = proc.metadata?.[key];
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : undefined;
+}
+
+/**
+ * Rebuilds `payload.context` from the denormalized ralph/taskGroup metadata so a
+ * retried task can rejoin its Ralph session (see processToTaskDetail). Returns
+ * undefined for non-ralph processes so ordinary chat retries carry no context.
+ */
+function buildReconstructedContext(proc: AIProcess): Record<string, unknown> | undefined {
+    const ralph = readObjectMetadata(proc, 'ralph');
+    if (!ralph) return undefined;
+    const taskGroup = readObjectMetadata(proc, 'taskGroup');
+    return {
+        ralph,
+        ...(taskGroup ? { taskGroup } : {}),
+    };
+}
+
 /**
  * Reconstruct a read-only task detail from a stored AIProcess for the
  * GET /api/queue/:id endpoint.  Unlike processToQueuedTask, this preserves
@@ -144,6 +167,12 @@ function mapProcessStatus(status: string): string {
 export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
     const dream = readDreamMetadata(proc);
     const dreamPayload = buildDreamPayload(proc);
+    // Reconstruct orchestration context from the denormalized metadata so a
+    // retry of a Ralph iteration rejoins the same session in ralph mode
+    // (metadata.mode is already carried below). Only ralph/taskGroup are
+    // reconstructed — non-ralph processes get no `context`, leaving plain
+    // chat/autopilot retries unaffected.
+    const reconstructedContext = buildReconstructedContext(proc);
     return {
         id: isQueueProcessId(proc.id) ? toTaskId(proc.id) : proc.id,
         type: proc.type === 'clarification' ? 'chat' : proc.type,
@@ -158,6 +187,7 @@ export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
             pipelineName: proc.metadata?.pipelineName,
             workItemId: proc.metadata?.workItemId,
             provider: proc.metadata?.provider,
+            ...(reconstructedContext ? { context: reconstructedContext } : {}),
             ...(dreamPayload
                 ? {
                     trigger: dreamPayload.trigger,

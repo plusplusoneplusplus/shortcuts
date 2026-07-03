@@ -19,6 +19,7 @@ const allOn: VisibleSubTabOptions = {
     pullRequestsEnabled: true,
     dreamsEnabled: true,
     nativeCliSessionsEnabled: true,
+    showPlanDepTab: true,
     uiLayoutMode: 'dev-workflow',
 };
 
@@ -66,5 +67,29 @@ describe('computeVisibleSubTabs', () => {
         // Non-gated tabs survive.
         expect(tabs.find(t => t.key === 'work-items')).toBeDefined();
         expect(tabs.find(t => t.key === 'git')).toBeDefined();
+    });
+
+    // AC-02: the deprecated `tasks` sub-tab is hidden when showPlanDepTab is false,
+    // in both classic and dev-workflow layout modes.
+    it('hides the tasks (Plans Dep.) tab when showPlanDepTab is false — classic', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic', showPlanDepTab: false });
+        expect(tabs.find(t => t.key === 'tasks')).toBeUndefined();
+    });
+
+    it('hides the tasks (Tasks Dep.) tab when showPlanDepTab is false — dev-workflow', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'dev-workflow', showPlanDepTab: false });
+        expect(tabs.find(t => t.key === 'tasks')).toBeUndefined();
+    });
+
+    // AC-03: when showPlanDepTab is true, the tab appears exactly as before with
+    // the layout-specific label.
+    it('shows the tasks tab labeled "Plans (Dep.)" in classic mode when showPlanDepTab is true', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic', showPlanDepTab: true });
+        expect(tabs.find(t => t.key === 'tasks')?.label).toBe('Plans (Dep.)');
+    });
+
+    it('shows the tasks tab labeled "Tasks (Dep.)" in dev-workflow mode when showPlanDepTab is true', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'dev-workflow', showPlanDepTab: true });
+        expect(tabs.find(t => t.key === 'tasks')?.label).toBe('Tasks (Dep.)');
     });
 });

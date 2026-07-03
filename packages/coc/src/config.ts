@@ -62,6 +62,8 @@ export interface CLIConfig {
     persist?: boolean;
     /** Show report_intent tool calls in conversation views (default: false) */
     showReportIntent?: boolean;
+    /** Show the deprecated Plans (Dep.) / Tasks (Dep.) repo sub-tab (default: false) */
+    showPlanDepTab?: boolean;
     /** How compact to render tool calls in conversation views: 0=full, 1=compact, 2=minimal, 3=whisper */
     toolCompactness?: 0 | 1 | 2 | 3;
     /** Density of task cards in the activity tab: 'compact' (default) or 'dense' (single-line) */
@@ -386,6 +388,7 @@ export interface ResolvedCLIConfig {
     timeout?: number;
     persist: boolean;
     showReportIntent: boolean;
+    showPlanDepTab: boolean;
     toolCompactness: 0 | 1 | 2 | 3;
     taskCardDensity: 'compact' | 'dense';
     groupSingleLineMessages: boolean;
@@ -684,6 +687,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     approvePermissions: false,
     persist: true,
     showReportIntent: false,
+    showPlanDepTab: false,
     toolCompactness: 3,
     taskCardDensity: 'dense',
     groupSingleLineMessages: true,
@@ -886,7 +890,7 @@ export type ConfigFieldSource = 'default' | 'file';
 
 const TOP_LEVEL_CONFIG_SOURCE_KEYS = [
     'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
-    'timeout', 'persist', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages',
+    'timeout', 'persist', 'showReportIntent', 'showPlanDepTab', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages',
     'defaultProvider',
 ] as const;
 
@@ -1035,6 +1039,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         timeout: override.timeout ?? base.timeout,
         persist: override.persist ?? base.persist,
         showReportIntent: override.showReportIntent ?? base.showReportIntent,
+        showPlanDepTab: override.showPlanDepTab ?? base.showPlanDepTab,
         toolCompactness: (override.toolCompactness ?? base.toolCompactness) as 0 | 1 | 2 | 3,
         taskCardDensity: (override.taskCardDensity ?? base.taskCardDensity) as 'compact' | 'dense',
         groupSingleLineMessages: override.groupSingleLineMessages ?? base.groupSingleLineMessages,

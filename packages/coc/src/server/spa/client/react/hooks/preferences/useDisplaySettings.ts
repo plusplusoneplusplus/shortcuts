@@ -12,6 +12,7 @@ import {
     isNotesEnabled,
     isPullRequestsEnabled,
     isScratchpadEnabled,
+    isShowPlanDepTab,
     isTerminalEnabled,
     isVimNavigationEnabled,
     isWorkflowsEnabled,
@@ -34,6 +35,7 @@ interface DisplaySettings {
     pullRequestsEnabled: boolean;
     dreamsEnabled: boolean;
     vimNavigationEnabled: boolean;
+    showPlanDepTab: boolean;
 }
 
 const DEFAULT_SETTINGS: DisplaySettings = {
@@ -52,6 +54,7 @@ const DEFAULT_SETTINGS: DisplaySettings = {
     pullRequestsEnabled: false,
     dreamsEnabled: false,
     vimNavigationEnabled: false,
+    showPlanDepTab: false,
 };
 
 /** Build initial settings seeded from window.__DASHBOARD_CONFIG__ when available. */
@@ -68,6 +71,7 @@ function getInitialSettings(): DisplaySettings {
         pullRequestsEnabled: isPullRequestsEnabled(),
         dreamsEnabled: isDreamsEnabled(),
         vimNavigationEnabled: isVimNavigationEnabled(),
+        showPlanDepTab: isShowPlanDepTab(),
     };
 }
 
@@ -94,6 +98,7 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
             pullRequestsEnabled: resolved?.pullRequests?.enabled ?? false,
             dreamsEnabled: resolved?.dreams?.enabled ?? false,
             vimNavigationEnabled: resolved?.vimNavigation?.enabled ?? false,
+            showPlanDepTab: resolved?.showPlanDepTab ?? false,
         };
     } catch {
         return DEFAULT_SETTINGS;

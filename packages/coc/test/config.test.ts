@@ -916,6 +916,7 @@ timeout: 300
                 'timeout: 600',
                 'persist: false',
                 'showReportIntent: true',
+                'showPlanDepTab: true',
                 'toolCompactness: 1',
                 'taskCardDensity: dense',
                 'groupSingleLineMessages: false',
@@ -1340,6 +1341,7 @@ timeout: 300
                   "servers": {
                     "enabled": true,
                   },
+                  "showPlanDepTab": false,
                   "showReportIntent": true,
                   "skills": {
                     "autoDetectDefaultFolders": true,
@@ -1450,6 +1452,7 @@ timeout: 300
                   "serve.serverName": "file",
                   "serve.theme": "file",
                   "servers.enabled": "file",
+                  "showPlanDepTab": "default",
                   "showReportIntent": "file",
                   "taskCardDensity": "file",
                   "terminal.enabled": "file",

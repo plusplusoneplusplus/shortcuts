@@ -19,7 +19,8 @@
  */
 import React from 'react';
 import { cn } from '../../../ui/cn';
-import { prStatusBadge, summarizeReviewerApprovals } from '../../pull-requests/pr-utils';
+import { useContainerWidth } from '../hooks/useContainerWidth';
+import { prStatusBadge, summarizeReviewerApprovals, type PrIdentity } from '../../pull-requests/pr-utils';
 import { buildPrDetailHash } from '../../pull-requests/pr-open-utils';
 import { summarizeCheckRows } from '../../pull-requests/PrChecksSummary';
 import { ComposerPrChecksPopover, type ComposerPrChecksAutoFix } from './ComposerPrChecksPopover';
@@ -128,6 +129,45 @@ function DismissButton({ itemKey, onDismiss }: { itemKey: string; onDismiss: (ke
         >
             ✕
         </button>
+    );
+}
+
+/**
+ * Resolves a PR author to a short display alias for the composer chip, in
+ * priority order: `displayName` → local-part of `email` (text before `@`) →
+ * `String(id)`. The first non-empty candidate wins; returns `''` when the author
+ * is missing or carries no usable identity (the chip then omits the element).
+ */
+function resolveAuthorAlias(author: PrIdentity | undefined): string {
+    if (!author) return '';
+    const displayName = author.displayName?.trim();
+    if (displayName) return displayName;
+    const emailLocal = author.email?.split('@')[0]?.trim();
+    if (emailLocal) return emailLocal;
+    if (author.id !== undefined && author.id !== null) {
+        const id = String(author.id).trim();
+        if (id) return id;
+    }
+    return '';
+}
+
+/**
+ * Muted `by <alias>` label rendered right after the PR title in the ready chip
+ * (AC-01). Text-only (no avatar / person icon), non-bold, with the full alias in
+ * a `title` tooltip. Callers omit it entirely when the alias is empty or the
+ * container is narrow (AC-02), so it renders nothing defensively for an empty
+ * alias too.
+ */
+function AuthorLabel({ alias }: { alias: string }) {
+    if (!alias) return null;
+    return (
+        <span
+            className="shrink-0 text-[#57606a] dark:text-[#8b949e]"
+            data-testid="composer-pr-chip-author"
+            title={alias}
+        >
+            by {alias}
+        </span>
     );
 }
 
@@ -387,6 +427,15 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
     const number = item.pr?.number ?? item.number;
     const linkTarget = getPrLinkTarget(item, number);
 
+    // Self-measure the chip's own row width so the author label can hide when the
+    // composer pane is narrow (AC-02), mirroring FollowUpInputArea's
+    // `isToolbarNarrow`. The ref is attached to the ready-branch row root below.
+    // The `width > 0` guard keeps the author visible until the first measurement,
+    // so it never flashes hidden before ResizeObserver reports a width.
+    const rowRef = React.useRef<HTMLDivElement | null>(null);
+    const rowWidth = useContainerWidth(rowRef);
+    const authorHidden = rowWidth.width > 0 && rowWidth.isNarrow;
+
     // Per-PR CI auto-fix lifecycle (AC-05). The hook is inert until the feature
     // is enabled AND the PR/conversation context resolves, so it's safe to call
     // in every render state.
@@ -445,8 +494,9 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
     // ready
     const pr = item.pr;
     const diff = pr?.diffStats;
+    const authorAlias = resolveAuthorAlias(pr?.author);
     return (
-        <div className={ROW_CLASS} data-testid="composer-pr-chip" data-state="ready" data-pr-key={item.key}>
+        <div ref={rowRef} className={ROW_CLASS} data-testid="composer-pr-chip" data-state="ready" data-pr-key={item.key}>
             <GitGlyph />
             <PinGlyph />
             <a
@@ -465,6 +515,7 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
             >
                 {pr?.title}
             </span>
+            {!authorHidden && <AuthorLabel alias={authorAlias} />}
             {pr && <StatusBadge status={pr.status} />}
             <ReviewersBadge item={item} />
             <ChecksBadge item={item} autoFix={autoFix?.enabled ? autoFixState : undefined} autoMerge={autoFix?.enabled ? autoMergeState : undefined} />

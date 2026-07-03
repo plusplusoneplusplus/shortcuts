@@ -28,9 +28,9 @@
  *   Badge:       [data-testid="spawned-tree-child-count"] (only when descendantCount > 0)
  *
  * A node's OWN chevron / badge live in its header (the node div's first <div>
- * child); descendants live under a sibling `spawned-tree-children` div. The
- * `> div > ...` direct-child combinator isolates a node's own controls from its
- * descendants'.
+ * child); descendants live under a sibling `spawned-tree-children` div. Scoping
+ * to that header row — the direct-child <div> that is not the children
+ * container — isolates a node's own controls from its descendants'.
  */
 
 import * as fs from 'fs';
@@ -160,10 +160,16 @@ const treeRow = (page: Page, rootId: string) =>
 const treeNode = (page: Page, nodeId: string) =>
     page.locator(`[data-testid="spawned-tree-node"][data-node-id="${nodeId}"]`);
 
-/** A node's OWN chevron (its header, not a descendant's). */
+/**
+ * A node's OWN chevron (its header, not a descendant's). The chevron now lives
+ * inside the task card's first grid column (via `leadingElement`), so it is a
+ * deeper descendant of the header row rather than a direct child. Scope to the
+ * header row — the node's only direct-child <div> that is not the
+ * `spawned-tree-children` subtree container — to isolate it from descendants.
+ */
 const nodeChevron = (page: Page, nodeId: string) =>
     page.locator(
-        `[data-testid="spawned-tree-node"][data-node-id="${nodeId}"] > div > [data-testid="spawned-tree-chevron"]`,
+        `[data-testid="spawned-tree-node"][data-node-id="${nodeId}"] > div:not([data-testid="spawned-tree-children"]) [data-testid="spawned-tree-chevron"]`,
     );
 
 /** A node's OWN descendant-count badge (its header, not a descendant's). */

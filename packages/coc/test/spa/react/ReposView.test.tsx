@@ -66,6 +66,9 @@ vi.mock('../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode'
 vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({
     useWorkflowsEnabled: () => true,
 }));
+vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useShowPlanDepTab', () => ({
+    useShowPlanDepTab: () => true,
+}));
 
 function Wrap({ children }: { children: ReactNode }) {
     return (

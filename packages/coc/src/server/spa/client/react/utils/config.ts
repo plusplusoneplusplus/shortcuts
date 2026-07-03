@@ -71,6 +71,8 @@ interface DashboardConfig {
     effortLevelsEnabled?: boolean;
     /** Whether the read-only native CLI sessions tab is enabled (feature flag). */
     nativeCliSessionsEnabled?: boolean;
+    /** Whether the deprecated Plans (Dep.) / Tasks (Dep.) sub-tab is shown. Default false (hidden). */
+    showPlanDepTab?: boolean;
     /** Whether the remote-first two-row dashboard shell is enabled (feature flag). */
     remoteShellEnabled?: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
@@ -334,6 +336,11 @@ export function isDreamsEnabled(): boolean {
 
 export function isNativeCliSessionsEnabled(): boolean {
     return getConfig().nativeCliSessionsEnabled === true;
+}
+
+/** Returns true when the deprecated Plans (Dep.) / Tasks (Dep.) sub-tab should be shown. */
+export function isShowPlanDepTab(): boolean {
+    return getConfig().showPlanDepTab === true;
 }
 
 /** Returns true when the remote-first two-row dashboard shell is enabled. */
