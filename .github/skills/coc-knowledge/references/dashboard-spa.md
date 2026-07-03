@@ -350,7 +350,10 @@ non-chat file references continue to route to the floating
 The source canvas header shows project-relative paths for files inside the
 current workspace root while retaining the full absolute path in the hover
 tooltip; files outside the workspace root continue to display their absolute
-path.
+path. The source-canvas folder explorer uses the same resolver but converts the
+resolved absolute folder to a workspace-relative tree path before calling
+`explorer.tree`; the workspace root is sent as `.` while outside-root paths stay
+absolute so the server-side repo guard can reject them clearly.
 
 ## Key Contexts
 

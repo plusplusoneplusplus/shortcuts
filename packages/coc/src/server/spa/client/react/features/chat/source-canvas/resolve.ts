@@ -81,15 +81,31 @@ export function getSourceCanvasDisplayPath(
     fullPath: string,
     workspaceRootPath?: string | null,
 ): string {
+    const relativePath = getRelativePathInsideWorkspace(fullPath, workspaceRootPath);
+    return relativePath === null ? fullPath : relativePath || fullPath;
+}
+
+/** API path for repo tree/blob endpoints: workspace-relative, with root as ".". */
+export function getSourceCanvasWorkspaceRelativePath(
+    fullPath: string,
+    workspaceRootPath?: string | null,
+): string {
+    const relativePath = getRelativePathInsideWorkspace(fullPath, workspaceRootPath);
+    return relativePath === null ? fullPath : relativePath || '.';
+}
+
+function getRelativePathInsideWorkspace(
+    fullPath: string,
+    workspaceRootPath?: string | null,
+): string | null {
     const rootPath = typeof workspaceRootPath === 'string' ? workspaceRootPath.trim() : '';
     if (!rootPath || !isSameOrWithinRoot(fullPath, rootPath)) {
-        return fullPath;
+        return null;
     }
 
     const normalizedFile = trimTrailingSlashes(fullPath);
     const normalizedRoot = trimTrailingSlashes(rootPath);
-    const relativePath = normalizedFile.slice(normalizedRoot.length).replace(/^\/+/, '');
-    return relativePath || fullPath;
+    return normalizedFile.slice(normalizedRoot.length).replace(/^\/+/, '');
 }
 
 function findBestWorkspaceForPath(
