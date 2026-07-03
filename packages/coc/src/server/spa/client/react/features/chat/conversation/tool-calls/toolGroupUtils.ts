@@ -750,8 +750,9 @@ export function filterWhisperChunks(
             }
         } else if (toolName === 'apply_patch') {
             const patchText = getApplyPatchText(tc.args);
-            if (patchText) {
-                for (const change of parseApplyPatchFileChanges(patchText)) {
+            const patchChanges = patchText ? parseApplyPatchFileChanges(patchText) : [];
+            if (patchChanges.length > 0) {
+                for (const change of patchChanges) {
                     const entry = getFileEditStats(fileMap, change.path);
                     entry.insertions += change.insertions;
                     entry.deletions += change.deletions;

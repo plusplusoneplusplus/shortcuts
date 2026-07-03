@@ -789,6 +789,10 @@ For Codex `file_change` calls normalized to `apply_patch`, `ToolCallView`
 continues to summarize from `args.changes`; when the backend enriches the
 parameters with a unified `args.diff`, expanded tool details and hover previews
 render that patch text instead of the short result summary.
+Collapsed whisper summaries also count file edits from `args.changes` when an
+enriched `apply_patch` carries a unified `diff --git` patch that has no legacy
+`*** Add/Update/Delete File:` markers; legacy apply-patch marker diffs still
+provide line counts when present.
 `utils/conversationScan.ts` powers chat References and goal-file detection by
 scanning completed file-writing tool calls for pinned document extensions
 (`.md`, `.txt`, `.yaml`, `.yml`, `.json`). Tool names and args are run through
