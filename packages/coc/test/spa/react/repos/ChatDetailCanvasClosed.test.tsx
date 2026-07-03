@@ -52,7 +52,7 @@ const { mockState } = vi.hoisted(() => ({
         sseOpts: null as any,
         // Per-pid canvas descriptors served by the fetch handler for
         // `client.canvases.list`.
-        canvasesByPid: {} as Record<string, Array<{ id: string }>>,
+        canvasesByPid: {} as Record<string, Array<{ id: string; title?: string; type?: string }>>,
     },
 }));
 
@@ -284,6 +284,16 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
 // and the active canvas id (so restore tests can assert WHICH agent canvas shows).
 vi.mock('../../../../src/server/spa/client/react/features/canvas/CanvasPanel', () => ({
     CanvasPanel: (props: any) => React.createElement('div', { 'data-testid': 'canvas-panel-mock', 'data-canvas-id': props.canvasId },
+        React.createElement('span', {
+            'data-testid': 'canvas-available-count',
+            'data-count': props.availableCanvases?.length ?? 0,
+        }),
+        props.availableCanvases?.[1]
+            ? React.createElement('button', {
+                'data-testid': 'canvas-switch-second',
+                onClick: () => props.onSelectCanvas?.(props.availableCanvases[1].id),
+            }, 'Switch second')
+            : null,
         React.createElement('button', { 'data-testid': 'canvas-close', onClick: props.onClose }, 'Close'),
     ),
 }));
@@ -421,6 +431,22 @@ describe('ChatDetail — persisted canvas closed state (AC-02)', () => {
         renderChat('task-A');
         await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
         expect(screen.queryByTestId('canvas-collapsed-rail')).toBeNull();
+    });
+
+    it('passes the linked canvas list into the panel and switches active canvas from the panel', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [
+            { id: 'canvas-A1', title: 'First Canvas', type: 'markdown' },
+            { id: 'canvas-A2', title: 'Second Canvas', type: 'code' },
+        ];
+
+        renderChat('task-A');
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A1'));
+        expect(screen.getByTestId('canvas-available-count').getAttribute('data-count')).toBe('2');
+
+        fireEvent.click(screen.getByTestId('canvas-switch-second'));
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A2'));
     });
 
     it('opens the read-only file-tree dock (kind: dir) from the persistent header explorer toggle, and closes it on re-toggle', async () => {

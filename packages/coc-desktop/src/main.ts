@@ -37,7 +37,7 @@ import {
     FIND_RESULT_CHANNEL,
     buildFindBarScript,
 } from './find-in-page';
-import { buildWindowOptions } from './window-config';
+import { buildWindowOptions, buildMacInsetCss } from './window-config';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
 // In dev (electron launched against this package) this fixes the menu-bar name,
@@ -188,6 +188,22 @@ function wireFindInPage(win: BrowserWindow): void {
 }
 
 /**
+ * macOS only: pad the SPA's top bar clear of the hiddenInset traffic lights and
+ * make it the window drag handle. Injected on every load (reload-safe) from the
+ * main process so it works regardless of the served SPA's version.
+ */
+function wireMacTitleBarInset(win: BrowserWindow): void {
+    if (process.platform !== 'darwin') {
+        return;
+    }
+    win.webContents.on('did-finish-load', () => {
+        win.webContents.insertCSS(buildMacInsetCss()).catch(() => {
+            /* styling is a nicety — never break the app if it fails */
+        });
+    });
+}
+
+/**
  * Point the main window at the live CoC SPA and reveal it once painted.
  * Always `loadURL` against `http://127.0.0.1:<port>` — never a bundled
  * `file://` asset — so the window renders the real, server-served client.
@@ -196,6 +212,7 @@ async function showServedSpa(url: string): Promise<void> {
     mainWindow = createWindow();
     wireExternalLinkRouting(mainWindow, url);
     wireFindInPage(mainWindow);
+    wireMacTitleBarInset(mainWindow);
 
     // Reveal the window only once the renderer can paint, then drop the splash,
     // so the user never sees an empty white frame.

@@ -54,6 +54,17 @@ Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memo
 - **Run CoCContainer with rebuild loop:** `./scripts/coccontainer-serve-loop.sh --port 8080` installs dependencies, builds and links the package chain, verifies native dependencies such as `better-sqlite3`, then starts `coccontainer serve --no-open`
 - **Run CoC as a service:** see [coc-service.md](coc-service.md)
 
+### Native-module ABI (better-sqlite3 / node-pty)
+
+The plain-Node server and the Electron desktop share one hoisted `node_modules`, but better-sqlite3 is a V8-ABI addon — its compiled `.node` matches exactly one runtime's `NODE_MODULE_VERSION` at a time (node-pty is N-API and ABI-stable). The preflight `packages/coc-desktop/scripts/ensure-native-abi.mjs` keeps this self-healing:
+
+- **Desktop:** coc-desktop's `prestart` hook runs the preflight before every Electron launch (`npm run dev:desktop` and direct `npm run start -w packages/coc-desktop` alike). It probes by *exercising* each addon under Electron (`new Database(':memory:')` — better-sqlite3 dlopens lazily, so a bare `require()` proves nothing) and heals only the modules that fail.
+- **Node server:** `npm run ensure:native:node` (root) flips the tree back for the plain-Node runtime.
+- **Binary cache:** every verified build is stashed per `{module version, ABI, platform, arch}` under `node_modules/.cache/coc-native-abi/`, so flipping runtimes is a sub-second file restore after the first compile of each flavor. `rebuild:native` (`--force`, used by `build:desktop`) always recompiles.
+- The two runtimes still cannot use the shared tree *simultaneously* — the last `ensure:*` run wins.
+
+`scripts/ensure-native-dependency.mjs` (used by `coccontainer-serve-loop.sh`) is the standalone Node-side check; it also constructs an in-memory Database to force the lazy dlopen before trusting a load.
+
 ## Cross-Package Conventions
 
 **Repo-scoped data:** All runtime data specific to a single repository must live under `~/.coc/repos/<workspaceId>/`. Use `getRepoDataPath(dataDir, workspaceId, filename)` from `packages/coc/src/server/` to resolve the path. Do **NOT** add new top-level directories under `~/.coc/` for per-repo data.

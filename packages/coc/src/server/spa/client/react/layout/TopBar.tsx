@@ -76,11 +76,16 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
     // On macOS desktop the native title bar is replaced by hiddenInset traffic lights
-    // that overlay the left edge of this header. Reserve ~76 px so they don't cover
-    // the hamburger button. In all other contexts the default px-3 applies.
+    // that overlay the left edge of this header. Reserve space so they don't cover
+    // the hamburger button. Falls back to navigator.platform for builds where the
+    // preload hasn't yet exposed cocDesktop.platform.
     const isMacDesktop =
         typeof window !== 'undefined' &&
-        (window as { cocDesktop?: { platform?: string } }).cocDesktop?.platform === 'darwin';
+        (window as { cocDesktop?: { isDesktop?: boolean; platform?: string } }).cocDesktop?.isDesktop === true &&
+        (
+            (window as { cocDesktop?: { platform?: string } }).cocDesktop?.platform === 'darwin' ||
+            /Mac/.test(navigator.platform)
+        );
 
     const switchTab= useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
@@ -139,7 +144,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
         <>
         <header
             className="h-10 md:h-10 px-3 flex items-center justify-between border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc] drag-region"
-            style={isMacDesktop ? { paddingLeft: '76px' } : undefined}
+            style={isMacDesktop ? { paddingLeft: '88px' } : undefined}
             data-react
             data-mac-desktop={isMacDesktop ? 'true' : undefined}
         >

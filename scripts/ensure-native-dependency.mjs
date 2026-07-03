@@ -6,8 +6,22 @@ import { fileURLToPath } from "node:url";
 
 const requireFromCwd = createRequire(path.join(process.cwd(), "package.json"));
 
+/**
+ * Load a package so that its native addon actually dlopens. better-sqlite3
+ * loads its compiled `.node` lazily inside `new Database()` — a bare require()
+ * "succeeds" even when the binary was built for a different NODE_MODULE_VERSION,
+ * and the ABI mismatch would only explode later inside the running server.
+ * Constructing (and closing) an in-memory database forces the real load.
+ */
+export function loadAndExercisePackage(packageName, requireFn) {
+    const mod = requireFn(packageName);
+    if (packageName === "better-sqlite3") {
+        new mod(":memory:").close();
+    }
+}
+
 function defaultLoadPackage(packageName) {
-    requireFromCwd(packageName);
+    loadAndExercisePackage(packageName, requireFromCwd);
 }
 
 function defaultRebuildPackage(packageName) {

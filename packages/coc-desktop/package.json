@@ -7,10 +7,12 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
+    "prestart": "node scripts/ensure-native-abi.mjs",
     "start": "electron .",
     "icon": "node scripts/generate-icon.mjs",
     "rebuild:native": "node scripts/ensure-native-abi.mjs --force",
     "ensure:native": "node scripts/ensure-native-abi.mjs",
+    "ensure:native:node": "node scripts/ensure-native-abi.mjs --runtime=node",
     "prebuild:sqlite:win": "node scripts/fetch-win-sqlite.mjs",
     "pack": "electron-builder --dir",
     "dist:mac": "electron-builder --mac",

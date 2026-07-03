@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildWindowOptions } from '../src/window-config';
+import { buildWindowOptions, buildMacInsetCss } from '../src/window-config';
 
 describe('buildWindowOptions', () => {
     it('returns hiddenInset titleBarStyle on darwin', () => {
@@ -33,5 +33,25 @@ describe('buildWindowOptions', () => {
     it('does not set titleBarStyle on non-darwin platforms', () => {
         expect(buildWindowOptions('win32').titleBarStyle).toBeUndefined();
         expect(buildWindowOptions('linux').titleBarStyle).toBeUndefined();
+    });
+});
+
+describe('buildMacInsetCss', () => {
+    it('pads the SPA top bar clear of the traffic lights with !important', () => {
+        const css = buildMacInsetCss();
+        expect(css).toContain('header[data-react]');
+        expect(css).toContain('padding-left: 88px !important');
+    });
+
+    it('makes the top bar a drag region', () => {
+        expect(buildMacInsetCss()).toContain('-webkit-app-region: drag');
+    });
+
+    it('keeps interactive children clickable via no-drag', () => {
+        const css = buildMacInsetCss();
+        expect(css).toContain('-webkit-app-region: no-drag');
+        for (const sel of ['button', ' a,', 'input', 'select', '[role="button"]', '[role="tab"]']) {
+            expect(css).toContain(sel);
+        }
     });
 });
