@@ -197,13 +197,15 @@ function makeRun(overrides: Partial<ForEachRun> = {}): ForEachRun {
     };
 }
 
-function renderRepoChatTab() {
+function renderRepoChatTab(workspaceId = 'ws-1') {
     return render(
         <QueueProvider>
-            <RepoChatTab workspaceId="ws-1" />
+            <RepoChatTab workspaceId={workspaceId} />
         </QueueProvider>,
     );
 }
+
+const ws1CollapsedKey = 'activity-list-collapsed-ws-1';
 
 describe('RepoChatTab For Each navigation', () => {
     beforeEach(() => {
@@ -260,7 +262,7 @@ describe('RepoChatTab chat list collapse', () => {
         vi.clearAllMocks();
         mocks.isMobile = false;
         window.location.hash = '';
-        try { localStorage.removeItem('activity-list-collapsed'); } catch { /* ignore */ }
+        try { localStorage.clear(); } catch { /* ignore */ }
         mocks.queueList.mockResolvedValue({ running: [], queued: [], stats: { isPaused: false, isAutopilotPaused: false } });
         mocks.history.mockResolvedValue({ history: [], hasMore: false });
     });
@@ -275,20 +277,40 @@ describe('RepoChatTab chat list collapse', () => {
 
         await waitFor(() => expect(screen.getByTestId('activity-list-collapsed')).toBeTruthy());
         expect(screen.queryByTestId('activity-list-panel')).toBeNull();
-        expect(localStorage.getItem('activity-list-collapsed')).toBe('true');
+        expect(localStorage.getItem(ws1CollapsedKey)).toBe('true');
 
         fireEvent.click(screen.getByTestId('activity-list-expand'));
 
         await waitFor(() => expect(screen.getByTestId('activity-list-panel')).toBeTruthy());
-        expect(localStorage.getItem('activity-list-collapsed')).toBe('false');
+        expect(localStorage.getItem(ws1CollapsedKey)).toBe('false');
     });
 
-    it('starts collapsed when the persisted preference is set', async () => {
-        try { localStorage.setItem('activity-list-collapsed', 'true'); } catch { /* ignore */ }
+    it('starts collapsed when the workspace-scoped persisted preference is set', async () => {
+        try { localStorage.setItem(ws1CollapsedKey, 'true'); } catch { /* ignore */ }
 
         renderRepoChatTab();
 
         await waitFor(() => expect(screen.getByTestId('activity-list-collapsed')).toBeTruthy());
         expect(screen.queryByTestId('activity-list-panel')).toBeNull();
+    });
+
+    it('does not apply another workspace collapsed preference', async () => {
+        try { localStorage.setItem(ws1CollapsedKey, 'true'); } catch { /* ignore */ }
+
+        renderRepoChatTab('ws-2');
+
+        await screen.findByTestId('activity-list-panel');
+        expect(screen.queryByTestId('activity-list-collapsed')).toBeNull();
+        expect(localStorage.getItem('activity-list-collapsed-ws-2')).toBeNull();
+    });
+
+    it('ignores the abandoned global collapsed preference on first workspace visit', async () => {
+        try { localStorage.setItem('activity-list-collapsed', 'true'); } catch { /* ignore */ }
+
+        renderRepoChatTab();
+
+        await screen.findByTestId('activity-list-panel');
+        expect(screen.queryByTestId('activity-list-collapsed')).toBeNull();
+        expect(localStorage.getItem(ws1CollapsedKey)).toBeNull();
     });
 });

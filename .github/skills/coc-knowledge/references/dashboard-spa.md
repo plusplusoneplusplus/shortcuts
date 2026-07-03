@@ -122,6 +122,12 @@ generation/map/reduce chats by `payload.context.mapReduce`, persisted
 `mapReduce` metadata, or `generationProcessId` so child chats do not duplicate
 as standalone rows.
 
+`RepoChatTab` stores the Activity chat-list collapsed state and left-panel width
+in localStorage keys suffixed by the active `workspaceId`
+(`activity-list-collapsed-{workspaceId}` and
+`activity-left-panel-width-{workspaceId}`), so each workspace restores its own
+rail visibility and desktop/tablet panel width.
+
 Chat row pin/archive state comes from process summaries (`pinnedAt` and
 `archived`) and is synchronized through `ChatPreferencesProvider` /
 `ChatPrefsSync`. Mutating row actions call `pinArchiveApi` with the provider's
@@ -1221,9 +1227,10 @@ from `TopBar` for `BottomNav`/`Router`) — kept out of the heavily-mocked
 - Search box
 - Selection persists in `localStorage['coc-activity-scope']`
 - The desktop activity split (`RepoChatTab`) can collapse the left chat-list
-  panel to a thin rail; the choice persists in
-  `localStorage['activity-list-collapsed']` and the collapse affordance sits on
-  the list/detail resize handle.
+  panel to a thin rail; collapsed state persists in
+  `localStorage['activity-list-collapsed-{workspaceId}']`, the left-panel width
+  persists in `localStorage['activity-left-panel-width-{workspaceId}']`, and the
+  collapse affordance sits on the list/detail resize handle.
 - For Each parent run group rows render in Activity Chats and All, but not in
   Activity Automations or Loops; loop-linked child chats can still appear in
   Loops independently of the hidden parent group row.
