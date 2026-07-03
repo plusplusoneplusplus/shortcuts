@@ -405,6 +405,7 @@ export function prependSelectedSkillsDirective(
                 ...selectedSkillReferences.map(ref => `- ${ref.name}: ${ref.skillFilePath}`),
             ]
             : []),
+        'Apply the selected skill(s) to the request that follows.',
         '</selected_skills>',
     ].join('\n');
 

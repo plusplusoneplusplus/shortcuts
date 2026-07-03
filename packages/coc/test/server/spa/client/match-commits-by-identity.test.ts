@@ -111,17 +111,22 @@ describe('buildBranchRangeSkillPrompt', () => {
         expect(buildBranchRangeSkillPrompt({
             baseRef: 'origin/main',
             headRef: 'HEAD',
-        })).toBe('<commit-range>origin/main..HEAD</commit-range>');
+        })).toBe('Run the selected skill on this commit range:\n<commit-range>origin/main..HEAD</commit-range>');
     });
 
     it('preserves non-main remote base refs', () => {
         expect(buildBranchRangeSkillPrompt({
             baseRef: 'origin/master',
             headRef: 'HEAD',
-        })).toBe('<commit-range>origin/master..HEAD</commit-range>');
+        })).toBe('Run the selected skill on this commit range:\n<commit-range>origin/master..HEAD</commit-range>');
     });
 
     it('falls back to the current branch name when range data is missing a head ref', () => {
-        expect(buildBranchRangeSkillPrompt(null, 'feature/demo')).toBe('<commit-range>main..feature/demo</commit-range>');
+        expect(buildBranchRangeSkillPrompt(null, 'feature/demo')).toBe('Run the selected skill on this commit range:\n<commit-range>main..feature/demo</commit-range>');
+    });
+
+    it('prefixes an imperative instruction so the agent acts on the range instead of asking for clarification', () => {
+        const prompt = buildBranchRangeSkillPrompt({ baseRef: 'origin/main', headRef: 'HEAD' });
+        expect(prompt.startsWith('Run the selected skill on this commit range:')).toBe(true);
     });
 });
