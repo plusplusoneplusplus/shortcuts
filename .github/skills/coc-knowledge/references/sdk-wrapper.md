@@ -296,6 +296,15 @@ Pipeline (all in `coc-agent-sdk/src/llm-tools/`):
 4. `buildCocLlmToolsMcpConfig()` emits the `{ command, args, env }` stdio spec; bridge
    path resolves to the dist-adjacent `bridge.js`, overridable via
    `setCocLlmToolsBridgePath()` / `COC_LLM_TOOLS_BRIDGE_PATH` for bundled hosts.
+   `command` defaults to `process.execPath`. When the host runs on an Electron
+   binary (`process.versions.electron` set — the CoC desktop server is forked as
+   Electron's Node via `ELECTRON_RUN_AS_NODE=1`, so `process.execPath` is the
+   Electron executable) and the launcher is that binary, the emitted `env` also
+   carries `ELECTRON_RUN_AS_NODE=1`. Without it the bridge child boots Electron's
+   GUI runtime, never answers the MCP stdio handshake, and the provider silently
+   drops all CoC tools. This must be an explicit `env` entry because Codex
+   sanitizes inherited env for MCP server children (Claude inherits it, but that
+   is incidental); plain-Node hosts are unaffected.
 
 Provider wiring (per request, only when `options.tools` is non-empty; disposed in
 `finally`):
