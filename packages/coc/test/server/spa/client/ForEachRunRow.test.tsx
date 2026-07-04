@@ -94,7 +94,7 @@ describe('ForEachRunRow', () => {
         render(<ForEachRunRow group={makeGroup()} {...defaultProps} />);
 
         const body = screen.getByTestId('for-each-run-body');
-        expect(body.className).toContain('grid-cols-[10px_30px_minmax(0,1fr)_auto]');
+        expect(body.className).toContain('grid-cols-[10px_20px_minmax(0,1fr)_auto]');
         expect(body.className).toContain('h-[26px]');
     });
 

@@ -3,7 +3,7 @@
  *
  * Renders as a compact one-line row matching the activity-compact reference's
  * `.row.has-children` style: status dot + compact mode pill + title (with rotating
- * chevron) + relative time, in the same `[10px_30px_minmax(0,1fr)_auto]`
+ * chevron) + relative time, in the same `[10px_20px_minmax(0,1fr)_auto]`
  * grid as `renderChatListRow`. The mode pill collapses children's modes:
  * if every child shares the same mode the parent shows that mode
  * (ASK/AUTO/SCRP); when they differ a neutral "MIX" pill is shown with the
@@ -123,7 +123,7 @@ export function HistoryGroupHeader({
             className={cn(
                 'chat-row group relative cursor-pointer leading-none transition-colors',
                 'grid items-center gap-2 px-3 py-1',
-                'grid-cols-[10px_30px_minmax(0,1fr)_auto]',
+                'grid-cols-[10px_20px_minmax(0,1fr)_auto]',
                 'text-[12.5px] h-[26px]',
                 'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
                 'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
