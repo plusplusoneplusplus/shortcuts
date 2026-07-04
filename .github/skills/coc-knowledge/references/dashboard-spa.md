@@ -1001,62 +1001,61 @@ in the Config tab, not per-repo.
 
 ### Remote-first shell (experimental)
 
-An optional two-row navigation mode gated by `useRemoteShellEnabled()`
+The remote-first navigation model is gated by `useRemoteShellEnabled()`
 (`hooks/feature-flags/useRemoteShellEnabled.ts`), which reads the live
 `features.remoteShell` admin flag (runtime flag `remoteShellEnabled`,
 `isRemoteShellEnabled()` in `utils/config.ts`). It is a **global admin setting**
-toggled in **Admin → Configure → Features → Remote-first shell**
+toggled in **Admin -> Configure -> Features -> Remote-first shell**
 (`toggle-remote-shell-enabled`), defined once in `ADMIN_SETTING_DEFINITIONS`.
 Disabled by default; desktop-only; takes effect on reload.
 
-When on, the desktop top nav switches from per-clone repo tabs to a remote-first
-model built on `features/remote-shell/`:
-- **Row 1 `RemoteTopBar`** replaces `RepoTabStrip` inside `TopBar`. It renders one
-  tab per remote (origin) via `groupReposByRemote`, with a color dot, clone-count
-  chip, aggregate running pulse, and summed unseen badge. Aggregated remote
-  checkouts fold into the matching local origin's tab (by normalized git URL); a
-  remote-only repo (no local counterpart) gets its own tab. Selecting a remote
-  picks its last-used clone (else the first) — and because each group's clones are
-  sorted **local-first** by `groupReposByRemote`, the first clone is a local
-  checkout when one exists (a remote-only group selects its sole remote clone).
-  Aggregation comes from `summarizeRemote` / `computeCloneStatusMap` in
-  `shellModel.ts`. A trailing `+` button (`remote-add-btn`) opens an add menu — Add
-  workspace folder (`AddFolderDialog`), Add specific repository (`AddRepoDialog`),
-  Clone repository (`CloneRepoDialog`) — the single top-level add action (not
-  duplicated per-origin).
-- **Row 2 `RemoteSubBar`** renders above a `chromeless` `RepoDetail` in `ReposView`
-  and replaces RepoDetail's own header. `partitionShellTabs` splits tabs into
-  remote-scoped (Work Items, Pull Requests — always shown left) and clone-scoped
-  (everything else). A clone-switcher popover (lists the remote's clones only) sits
-  between them, then the clone tabs, then compact Ask/Queue targeting the active
-  clone. The popover lists local and folded remote clones together; each remote
-  clone row is badged (`clone-remote-badge`) with its `remote.serverLabel` so it's
-  visually distinct. The closed clone-switch button also sums
-  `ReposContext.unseenCounts` across the current remote group's clones and renders
-  the compact red unread badge when the total is non-zero; open popover rows render
-  their own per-clone unread badge, capped at `99+`, only when that clone has unread
-  conversations. The PRIMARY marker is anchored on the first **local** clone (a
-  remote clone never displaces it; a remote-only group marks its first remote clone
-  primary). `isRemoteRepo(repo)` (`repos/repoGrouping.ts`) is the pure guard that
-  distinguishes folded remote rows. Each clone row's **status dot** comes from
-  `cloneStatusColor(computeCloneStatusMap(...)[id])`: local
-  clones stay queue-derived; remote clones blend connection-first via
-  `blendRemoteCloneStatus` — `offline`/`failed` → offline (dim grey `#8c959f`),
-  `connecting`/`idle` (not yet online) → connecting (blue `#3b82f6`, distinct from
-  queued orange), else the remote `queue` state (mirroring local running/queued/
-  paused/idle). The computed status is exposed on each row as
-  `data-clone-status`. A remote clone whose status resolves to `offline`
-  (server offline/failed) renders the row greyed (`opacity-50 grayscale`),
-  non-interactive (`disabled` + `aria-disabled`, `data-offline="true"`, click
-  guarded so `selectClone` is a no-op — its live tabs never open while offline),
-  and adds an `offline` badge (`clone-offline-badge`) next to the server-label
-  badge; it flips back to interactive automatically when the marker reports the
-  server online again (next `aggregateRemoteWorkspaces` run). Local clones and
-  online/connecting remote clones are never greyed. Clone tabs use **responsive
-  overflow**: a hidden
-  measurement mirror plus a `ResizeObserver` feed `computeVisibleTabKeys`, which
-  shows every tab that fits and collapses the tail into a `…` menu (always keeping
-  the active tab visible).
+When `features.remoteShell` is on, the desktop top nav switches from per-clone
+repo tabs to a remote-first model built on `features/remote-shell/`. The current
+default is still the legacy two-row layout; enabling
+`features.singleRowShell` (runtime flag `singleRowShellEnabled`,
+`useSingleRowShellEnabled()`) moves the remote and workspace controls into one
+global header row while leaving the two-row path available as fallback.
+
+- **Single-row path (`RemoteShellHeader`)** renders inside `TopBar` when
+  `remoteShellEnabled && singleRowShellEnabled`, the active tab is `repos`, a
+  real repo is selected, and the viewport is not mobile. `RemoteScopeCluster`
+  renders a boxed current-remote chip plus Work Items / Pull Requests pills; the
+  chip opens a dropdown with recent remotes from global preference
+  `recentRemotes` (MRU keys are `groupKey(group)`, capped at 8), default-group
+  fallback before any MRU exists, search across all remotes, a Show all overflow,
+  and add actions for Add workspace folder (`AddFolderDialog`), Add specific
+  repository (`AddRepoDialog`), and Clone repository (`CloneRepoDialog`).
+  Selecting a remote records it in the MRU and picks that remote's remembered
+  clone when available, otherwise the first local-first clone. `WorkspaceTabsCluster`
+  renders the existing clone switcher, clone popover, clone-scoped tabs, overflow
+  menu, repo info/remove dialogs, and toast behavior in the same row. `TopBar`
+  also renders `header-new-btn` as the first right-side action before the WebSocket
+  status pill; it opens the enqueue dialog for the active clone. In this mode
+  `ReposView` renders only a `chromeless` `RepoDetail`; there is no row-2
+  `RemoteSubBar`.
+- **Two-row fallback (`RemoteTopBar` + `RemoteSubBar`)** remains active whenever
+  `features.remoteShell` is on but `features.singleRowShell` is off. Row 1
+  `RemoteTopBar` replaces `RepoTabStrip` inside `TopBar`. It renders one tab per
+  remote (origin) via `groupReposByRemote`, with a color dot, clone-count chip,
+  aggregate running pulse, and summed unseen badge. A trailing `+` button
+  (`remote-add-btn`) opens the add menu. Row 2 `RemoteSubBar` renders above a
+  `chromeless` `RepoDetail` in `ReposView`, splits tabs into remote-scoped (Work
+  Items, Pull Requests) and clone-scoped groups, and keeps the compact Ask/Queue
+  actions targeting the active clone.
+- **Shared shell behavior** comes from `shellModel.ts` and `repoGrouping.ts`.
+  Aggregated remote checkouts fold into the matching local origin's tab (by
+  normalized git URL); a remote-only repo gets its own group. Group clones are
+  sorted **local-first** by `groupReposByRemote`, so the default clone is local
+  when one exists. `partitionShellTabs` keeps Work Items and Pull Requests
+  remote-scoped. `computeCloneStatusMap` and `cloneStatusColor` drive clone dots:
+  local clones stay queue-derived; remote clones blend connection-first via
+  `blendRemoteCloneStatus` (`offline`/`failed` -> grey offline,
+  `connecting`/not-yet-online -> blue connecting, online -> remote queue state).
+  Offline remote rows stay visible but disabled/greyed with `data-offline="true"`
+  and `clone-offline-badge`; online and connecting rows stay interactive. Clone
+  tabs use a hidden measurement mirror plus `ResizeObserver` feeding
+  `computeVisibleTabKeys`, so as many tabs as fit stay inline and the tail
+  collapses into the overflow menu while keeping the active tab visible.
 
 **Remote workspace aggregation** (gated by `features.remoteShell`): when the flag
 is ON, `ReposContext.fetchRepos` also calls `aggregateRemoteWorkspaces()`

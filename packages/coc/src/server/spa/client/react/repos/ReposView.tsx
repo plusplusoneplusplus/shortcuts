@@ -15,6 +15,7 @@ import { ReposGrid } from './ReposGrid';
 import { RepoDetail } from '../features/repo-detail/RepoDetail';
 import { RemoteSubBar } from '../features/remote-shell/RemoteSubBar';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
+import { useSingleRowShellEnabled } from '../hooks/feature-flags/useSingleRowShellEnabled';
 import { ContainerSessionView, CONTAINER_DEFAULT_REPO_ID } from '../features/container-session/ContainerSessionView';
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from './MyWorkView';
 import { MyLifeView, MY_LIFE_WORKSPACE_ID } from './MyLifeView';
@@ -28,13 +29,16 @@ export function ReposView() {
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
     const remoteShell = useRemoteShellEnabled();
+    const singleRowShell = useSingleRowShellEnabled();
     const isMobile = breakpoint === 'mobile';
     const hasSelection = state.selectedRepoId !== null;
     const heightClass = isMobile
         ? hasSelection
             ? 'h-[calc(100dvh-40px)]'
             : 'h-[calc(100dvh-40px-48px)]'
-        : 'h-[calc(100vh-48px)]';
+        : remoteShell && singleRowShell
+            ? 'h-[calc(100vh-40px)]'
+            : 'h-[calc(100vh-48px)]';
 
     const handleBack = useCallback(() => {
         dispatch({ type: 'SET_SELECTED_REPO', id: null });
@@ -112,13 +116,17 @@ export function ReposView() {
                 <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
                     {selectedRepo ? (
                         remoteShell ? (
-                            // Remote-first shell: RemoteSubBar (row 2) above a chromeless RepoDetail body.
-                            <>
-                                <RemoteSubBar repo={selectedRepo} repos={repos} />
-                                <div className="flex-1 min-h-0 min-w-0 flex flex-col">
-                                    <RepoDetail chromeless key={`${getRepoSelectionId(selectedRepo)}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
-                                </div>
-                            </>
+                            // Remote-first shell: single-row header when flagged, otherwise row 2 above a chromeless body.
+                            singleRowShell ? (
+                                <RepoDetail chromeless key={`${getRepoSelectionId(selectedRepo)}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                            ) : (
+                                <>
+                                    <RemoteSubBar repo={selectedRepo} repos={repos} />
+                                    <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+                                        <RepoDetail chromeless key={`${getRepoSelectionId(selectedRepo)}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                                    </div>
+                                </>
+                            )
                         ) : (
                             <RepoDetail key={`${getRepoSelectionId(selectedRepo)}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
                         )

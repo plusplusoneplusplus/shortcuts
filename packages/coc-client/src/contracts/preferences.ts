@@ -3,6 +3,7 @@ export interface GlobalPreferences {
   reposSidebarCollapsed?: boolean;
   gitGroupOrder?: string[];
   repoTabOrder?: string[];
+  recentRemotes?: string[];
   hasSeenWelcome?: boolean;
   dismissedTips?: string[];
   uiLayoutMode?: 'classic' | 'dev-workflow';

@@ -386,6 +386,14 @@ export const GlobalPreferencesSchema = z.object({
         })
         .optional()
         .catch(undefined),
+    /** Most recently used remote groups in the single-row remote shell. */
+    recentRemotes: z.array(z.unknown())
+        .transform(arr => {
+            const filtered = arr.filter((k): k is string => typeof k === 'string' && k.length > 0);
+            return filtered.length > 0 ? [...new Set(filtered)].slice(0, 8) : undefined;
+        })
+        .optional()
+        .catch(undefined),
     /** Whether the user has dismissed the welcome modal. */
     hasSeenWelcome: z.boolean().optional().catch(undefined),
     /** Tracks progress through the onboarding checklist steps. */

@@ -355,11 +355,15 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         }
         return resolution.provider;
     };
-    const getEffortTiersForProvider = (provider: ChatProvider) => (
-        loadConfigFile(opts.runtimeConfigService?.configPath ?? opts.configPath)?.models?.providers?.[provider]?.effortTiers
-        ?? opts.runtimeConfigService?.config.models?.providers?.[provider]?.effortTiers
-        ?? opts.resolvedConfig?.models?.providers?.[provider]?.effortTiers
-    );
+    const getEffortTiersForProvider = (provider: ChatProvider) => {
+        const configPath = opts.runtimeConfigService?.configPath ?? opts.configPath;
+        const fileConfig = configPath ? loadConfigFile(configPath) : undefined;
+        return (
+            fileConfig?.models?.providers?.[provider]?.effortTiers
+            ?? opts.runtimeConfigService?.config.models?.providers?.[provider]?.effortTiers
+            ?? opts.resolvedConfig?.models?.providers?.[provider]?.effortTiers
+        );
+    };
     const prepareEnqueueTask = async (input: CreateTaskInput): Promise<void> => {
         await prepareTaskForEnqueue(input, {
             getDefaultProvider: concreteDefaultProvider,
