@@ -137,8 +137,9 @@ describe('UnifiedDiffViewer', () => {
             expect(source).toContain("from '../hooks/useSyntaxHighlight'");
         });
 
-        it('imports highlightLine from useSyntaxHighlight', () => {
-            expect(source).toContain('highlightLine');
+        it('imports highlightBlock from useSyntaxHighlight for one-pass highlighting', () => {
+            expect(source).toContain('highlightBlock');
+            expect(source).toContain("from '../hooks/useSyntaxHighlight'");
         });
     });
 
@@ -151,8 +152,9 @@ describe('UnifiedDiffViewer', () => {
             expect(source).toContain('fileName,');
         });
 
-        it('calls highlightLine for code content with per-line language', () => {
-            expect(source).toContain('highlightLine(content, languages[i])');
+        it('precomputes highlighted HTML once instead of highlighting per-render', () => {
+            expect(source).toContain('computeHighlightedHtml(diffLines, languages');
+            expect(source).toContain('highlightedHtml[i]');
         });
 
         it('uses dangerouslySetInnerHTML for highlighted content', () => {
