@@ -22,6 +22,8 @@ import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../../contexts/Git
 import { lookupCloneBaseUrl } from '../../../../repos/cloneRegistry';
 import { normalizeToolName } from './toolNormalization';
 import type { WhisperDiffToolCall } from './buildWhisperFileDiff';
+import { clampPopoverPosition, useHoverPopover, HoverSummarySpan } from './hoverPopover';
+import { buildWhisperGroupModel, collectGroupToolCalls } from './whisperGroupModel';
 
 /**
  * Context emitted when a user clicks an active changed-file row in the whisper
@@ -108,77 +110,10 @@ export interface WhisperCollapsedGroupProps {
     onOpenFileDiff?: (ctx: WhisperDiffOpenContext) => void;
 }
 
-function formatDuration(startTime?: number, endTime?: number): string {
-    if (startTime == null || endTime == null) return '';
-    const ms = endTime - startTime;
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
-}
-
-// ---------------------------------------------------------------------------
-// Shared popover positioning — clamp to viewport
-// ---------------------------------------------------------------------------
-
-function clampPopoverPosition(
-    rect: DOMRect,
-    popoverWidth: number,
-    popoverHeight: number,
-): { top: number; left: number } {
-    const margin = 8;
-    let left = rect.left;
-    let top = rect.bottom + 4;
-
-    // Clamp right edge
-    if (left + popoverWidth > window.innerWidth - margin) {
-        left = Math.max(margin, window.innerWidth - popoverWidth - margin);
-    }
-    // Flip above if clipped at bottom
-    if (top + popoverHeight > window.innerHeight - margin) {
-        top = Math.max(margin, rect.top - popoverHeight - 4);
-    }
-    return { top, left };
-}
-
-function useHoverPopoverDismissal(
-    open: boolean,
-    anchorRef: React.RefObject<HTMLElement | null>,
-    popoverRef: React.RefObject<HTMLElement | null>,
-    onDismiss: () => void,
-) {
-    useEffect(() => {
-        if (!open) {
-            return;
-        }
-
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                onDismiss();
-            }
-        };
-        const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-            const target = event.target as Node | null;
-            if (!target) {
-                return;
-            }
-            if (anchorRef.current?.contains(target)) {
-                return;
-            }
-            if (popoverRef.current?.contains(target)) {
-                return;
-            }
-            onDismiss();
-        };
-
-        document.addEventListener('keydown', handleKeyDown);
-        document.addEventListener('mousedown', handlePointerDown);
-        document.addEventListener('touchstart', handlePointerDown);
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown);
-            document.removeEventListener('mousedown', handlePointerDown);
-            document.removeEventListener('touchstart', handlePointerDown);
-        };
-    }, [open, anchorRef, popoverRef, onDismiss]);
-}
+// Popover positioning (`clampPopoverPosition`) and the hover state machine
+// (`useHoverPopover` / `HoverSummarySpan`) live in ./hoverPopover.
+// Header-part construction + group tool-call collection live in
+// ./whisperGroupModel.
 
 // ---------------------------------------------------------------------------
 // shortenPath — shows dir/basename, truncating middle for long paths
@@ -304,48 +239,13 @@ interface SkillHoverSpanProps {
 }
 
 function SkillHoverSpan({ text, skillNames, testId }: SkillHoverSpanProps) {
-    const [hovered, setHovered] = useState(false);
-    const anchorRef = useRef<HTMLSpanElement | null>(null);
-    const popoverRef = useRef<HTMLDivElement | null>(null);
-    const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const showPopover = useCallback(() => {
-        if (graceTimer.current) { clearTimeout(graceTimer.current); graceTimer.current = null; }
-        setHovered(true);
-    }, []);
-
-    const hidePopover = useCallback(() => {
-        graceTimer.current = setTimeout(() => setHovered(false), 150);
-    }, []);
-    const dismissPopover = useCallback(() => {
-        if (graceTimer.current) {
-            clearTimeout(graceTimer.current);
-            graceTimer.current = null;
-        }
-        setHovered(false);
-    }, []);
-
-    useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
-
     return (
-        <span
-            ref={anchorRef}
-            onMouseEnter={showPopover}
-            onMouseLeave={hidePopover}
-            className="underline decoration-dotted cursor-default"
-            data-testid={testId}
-        >
-            {text}
-            {hovered && skillNames.length > 0 && (
-                <SkillHoverPopover
-                    skillNames={skillNames}
-                    anchorRef={anchorRef}
-                    popoverRef={popoverRef}
-                    onMouseEnter={showPopover}
-                    onMouseLeave={hidePopover}
-                />
-            )}
-        </span>
+        <HoverSummarySpan
+            text={text}
+            testId={testId}
+            hasContent={skillNames.length > 0}
+            renderPopover={(anchor) => <SkillHoverPopover skillNames={skillNames} {...anchor} />}
+        />
     );
 }
 
@@ -509,48 +409,13 @@ interface MemoryHoverSpanProps {
 }
 
 function MemoryHoverSpan({ text, actions, testId }: MemoryHoverSpanProps) {
-    const [hovered, setHovered] = useState(false);
-    const anchorRef = useRef<HTMLSpanElement | null>(null);
-    const popoverRef = useRef<HTMLDivElement | null>(null);
-    const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const showPopover = useCallback(() => {
-        if (graceTimer.current) { clearTimeout(graceTimer.current); graceTimer.current = null; }
-        setHovered(true);
-    }, []);
-
-    const hidePopover = useCallback(() => {
-        graceTimer.current = setTimeout(() => setHovered(false), 150);
-    }, []);
-    const dismissPopover = useCallback(() => {
-        if (graceTimer.current) {
-            clearTimeout(graceTimer.current);
-            graceTimer.current = null;
-        }
-        setHovered(false);
-    }, []);
-
-    useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
-
     return (
-        <span
-            ref={anchorRef}
-            onMouseEnter={showPopover}
-            onMouseLeave={hidePopover}
-            className="underline decoration-dotted cursor-default"
-            data-testid={testId}
-        >
-            {text}
-            {hovered && actions.length > 0 && (
-                <MemoryHoverPopover
-                    actions={actions}
-                    anchorRef={anchorRef}
-                    popoverRef={popoverRef}
-                    onMouseEnter={showPopover}
-                    onMouseLeave={hidePopover}
-                />
-            )}
-        </span>
+        <HoverSummarySpan
+            text={text}
+            testId={testId}
+            hasContent={actions.length > 0}
+            renderPopover={(anchor) => <MemoryHoverPopover actions={actions} {...anchor} />}
+        />
     );
 }
 
@@ -791,28 +656,7 @@ interface FileHoverSpanProps {
 }
 
 function FileHoverSpan({ text, files, testId, showInlineTotals = true, onFileClick, onOpenCombined }: FileHoverSpanProps) {
-    const [hovered, setHovered] = useState(false);
-    const anchorRef = useRef<HTMLSpanElement | null>(null);
-    const popoverRef = useRef<HTMLDivElement | null>(null);
-    const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const showPopover = useCallback(() => {
-        if (graceTimer.current) { clearTimeout(graceTimer.current); graceTimer.current = null; }
-        setHovered(true);
-    }, []);
-
-    const hidePopover = useCallback(() => {
-        graceTimer.current = setTimeout(() => setHovered(false), 150);
-    }, []);
-    const dismissPopover = useCallback(() => {
-        if (graceTimer.current) {
-            clearTimeout(graceTimer.current);
-            graceTimer.current = null;
-        }
-        setHovered(false);
-    }, []);
-
-    useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
+    const { hovered, anchorRef, popoverRef, showPopover, hidePopover } = useHoverPopover<HTMLSpanElement>();
 
     const activeFiles = useMemo(() => files.filter(f => !f.isDeleted), [files]);
     const totals = useMemo(() => computeFileEditTotals(activeFiles), [activeFiles]);
@@ -862,49 +706,13 @@ interface CommitHoverSpanProps {
 }
 
 function CommitHoverSpan({ text, commits, workspaceId, testId }: CommitHoverSpanProps) {
-    const [hovered, setHovered] = useState(false);
-    const anchorRef = useRef<HTMLSpanElement | null>(null);
-    const popoverRef = useRef<HTMLDivElement | null>(null);
-    const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const showPopover = useCallback(() => {
-        if (graceTimer.current) { clearTimeout(graceTimer.current); graceTimer.current = null; }
-        setHovered(true);
-    }, []);
-
-    const hidePopover = useCallback(() => {
-        graceTimer.current = setTimeout(() => setHovered(false), 150);
-    }, []);
-    const dismissPopover = useCallback(() => {
-        if (graceTimer.current) {
-            clearTimeout(graceTimer.current);
-            graceTimer.current = null;
-        }
-        setHovered(false);
-    }, []);
-
-    useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
-
     return (
-        <span
-            ref={anchorRef}
-            onMouseEnter={showPopover}
-            onMouseLeave={hidePopover}
-            className="underline decoration-dotted cursor-default"
-            data-testid={testId}
-        >
-            {text}
-            {hovered && commits.length > 0 && (
-                <CommitHoverPopover
-                    commits={commits}
-                    workspaceId={workspaceId}
-                    anchorRef={anchorRef}
-                    popoverRef={popoverRef}
-                    onMouseEnter={showPopover}
-                    onMouseLeave={hidePopover}
-                />
-            )}
-        </span>
+        <HoverSummarySpan
+            text={text}
+            testId={testId}
+            hasContent={commits.length > 0}
+            renderPopover={(anchor) => <CommitHoverPopover commits={commits} workspaceId={workspaceId} {...anchor} />}
+        />
     );
 }
 
@@ -982,48 +790,13 @@ interface PullRequestHoverSpanProps {
 }
 
 function PullRequestHoverSpan({ text, pullRequests, testId }: PullRequestHoverSpanProps) {
-    const [hovered, setHovered] = useState(false);
-    const anchorRef = useRef<HTMLSpanElement | null>(null);
-    const popoverRef = useRef<HTMLDivElement | null>(null);
-    const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const showPopover = useCallback(() => {
-        if (graceTimer.current) { clearTimeout(graceTimer.current); graceTimer.current = null; }
-        setHovered(true);
-    }, []);
-
-    const hidePopover = useCallback(() => {
-        graceTimer.current = setTimeout(() => setHovered(false), 150);
-    }, []);
-    const dismissPopover = useCallback(() => {
-        if (graceTimer.current) {
-            clearTimeout(graceTimer.current);
-            graceTimer.current = null;
-        }
-        setHovered(false);
-    }, []);
-
-    useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
-
     return (
-        <span
-            ref={anchorRef}
-            onMouseEnter={showPopover}
-            onMouseLeave={hidePopover}
-            className="underline decoration-dotted cursor-default"
-            data-testid={testId}
-        >
-            {text}
-            {hovered && pullRequests.length > 0 && (
-                <PullRequestHoverPopover
-                    pullRequests={pullRequests}
-                    anchorRef={anchorRef}
-                    popoverRef={popoverRef}
-                    onMouseEnter={showPopover}
-                    onMouseLeave={hidePopover}
-                />
-            )}
-        </span>
+        <HoverSummarySpan
+            text={text}
+            testId={testId}
+            hasContent={pullRequests.length > 0}
+            renderPopover={(anchor) => <PullRequestHoverPopover pullRequests={pullRequests} {...anchor} />}
+        />
     );
 }
 
@@ -1122,48 +895,13 @@ interface PushHoverSpanProps {
 }
 
 function PushHoverSpan({ text, pushes, testId }: PushHoverSpanProps) {
-    const [hovered, setHovered] = useState(false);
-    const anchorRef = useRef<HTMLSpanElement | null>(null);
-    const popoverRef = useRef<HTMLDivElement | null>(null);
-    const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const showPopover = useCallback(() => {
-        if (graceTimer.current) { clearTimeout(graceTimer.current); graceTimer.current = null; }
-        setHovered(true);
-    }, []);
-
-    const hidePopover = useCallback(() => {
-        graceTimer.current = setTimeout(() => setHovered(false), 150);
-    }, []);
-    const dismissPopover = useCallback(() => {
-        if (graceTimer.current) {
-            clearTimeout(graceTimer.current);
-            graceTimer.current = null;
-        }
-        setHovered(false);
-    }, []);
-
-    useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
-
     return (
-        <span
-            ref={anchorRef}
-            onMouseEnter={showPopover}
-            onMouseLeave={hidePopover}
-            className="underline decoration-dotted cursor-default"
-            data-testid={testId}
-        >
-            {text}
-            {hovered && pushes.length > 0 && (
-                <PushHoverPopover
-                    pushes={pushes}
-                    anchorRef={anchorRef}
-                    popoverRef={popoverRef}
-                    onMouseEnter={showPopover}
-                    onMouseLeave={hidePopover}
-                />
-            )}
-        </span>
+        <HoverSummarySpan
+            text={text}
+            testId={testId}
+            hasContent={pushes.length > 0}
+            renderPopover={(anchor) => <PushHoverPopover pushes={pushes} {...anchor} />}
+        />
     );
 }
 
@@ -1185,21 +923,10 @@ export function WhisperCollapsedGroup({
     // preceding chunks (both standalone tool chunks and tool-groups). This is
     // the primary diff source replayed by `buildWhisperFileDiff` when a file
     // row is clicked.
-    const groupToolCalls = useMemo<WhisperDiffToolCall[]>(() => {
-        const calls: WhisperDiffToolCall[] = [];
-        for (const c of precedingChunks) {
-            if (c.kind === 'tool' && c.toolId) {
-                const tool = toolById.get(c.toolId);
-                if (tool) calls.push({ toolName: tool.toolName, args: tool.args });
-            } else if (c.kind === 'tool-group' && Array.isArray((c as any).toolIds)) {
-                for (const id of (c as any).toolIds as string[]) {
-                    const tool = toolById.get(id);
-                    if (tool) calls.push({ toolName: tool.toolName, args: tool.args });
-                }
-            }
-        }
-        return calls;
-    }, [precedingChunks, toolById]);
+    const groupToolCalls = useMemo<WhisperDiffToolCall[]>(
+        () => collectGroupToolCalls(precedingChunks, toolById),
+        [precedingChunks, toolById],
+    );
 
     const handleFileClick = useCallback(
         (file: FileEdit) => {
@@ -1231,48 +958,10 @@ export function WhisperCollapsedGroup({
     }, [onOpenFileDiff, summary.fileEdits, groupToolCalls, summary.commits, workspaceId]);
     const onOpenCombined = onOpenFileDiff ? handleOpenCombined : undefined;
 
-    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'pr' | 'push' | 'file' | 'removed-file' | 'skill' | 'memory' }> = [];
-    if (summary.toolCallCount > 0) {
-        headerParts.push({ text: `${summary.toolCallCount} tool call${summary.toolCallCount !== 1 ? 's' : ''}` });
-    }
-    if (summary.messageCount > 0) {
-        headerParts.push({ text: `${summary.messageCount} message${summary.messageCount !== 1 ? 's' : ''}` });
-    }
-    if (summary.fileEditCount && summary.fileEditCount > 0) {
-        const activeCount = summary.fileEditCount - (summary.deletedFileCount ?? 0);
-        if (activeCount > 0) {
-            headerParts.push({ text: `${activeCount} file${activeCount !== 1 ? 's' : ''}`, kind: 'file' });
-        }
-        if (summary.deletedFileCount && summary.deletedFileCount > 0) {
-            headerParts.push({ text: `${summary.deletedFileCount} removed`, kind: 'removed-file' });
-        }
-    }
-    if (summary.commitCount && summary.commitCount > 0) {
-        headerParts.push({ text: `${summary.commitCount} commit${summary.commitCount !== 1 ? 's' : ''}`, kind: 'commit' });
-    }
-    if (summary.fixupCommitCount && summary.fixupCommitCount > 0) {
-        headerParts.push({ text: `${summary.fixupCommitCount} fixup${summary.fixupCommitCount !== 1 ? 's' : ''}`, kind: 'fixup' });
-    }
-    if (summary.prCount && summary.prCount > 0) {
-        headerParts.push({ text: `${summary.prCount} PR${summary.prCount !== 1 ? 's' : ''}`, kind: 'pr' });
-    }
-    if (summary.pushCount && summary.pushCount > 0) {
-        headerParts.push({ text: `${summary.pushCount} pushed`, kind: 'push' });
-    }
-    if (summary.skillCount && summary.skillCount > 0) {
-        headerParts.push({
-            text: `${summary.skillCount} skill${summary.skillCount !== 1 ? 's' : ''}`,
-            kind: 'skill',
-        });
-    }
-    if (summary.memoryCount && summary.memoryCount > 0) {
-        headerParts.push({
-            text: `${summary.memoryCount} memor${summary.memoryCount !== 1 ? 'ies' : 'y'}`,
-            kind: 'memory',
-        });
-    }
-    const duration = formatDuration(summary.startTime, summary.endTime);
-    const headerTextPlain = headerParts.map(p => p.text).join(' · ') + (duration ? ` (${duration})` : '');
+    const { headerParts, headerTextPlain, duration } = useMemo(
+        () => buildWhisperGroupModel(summary),
+        [summary],
+    );
 
     const headerElements: React.ReactNode[] = [];
     headerParts.forEach((part, idx) => {
