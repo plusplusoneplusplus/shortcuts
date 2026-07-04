@@ -184,6 +184,42 @@ describe('CanvasPanel', () => {
         expect(screen.queryByTestId('canvas-panel-title-menu')).toBeNull();
     });
 
+    it('gives the single-canvas title an explicit foreground so it stays readable in dark mode', async () => {
+        mocks.get.mockResolvedValue(makeCanvas());
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan'));
+        // Header sets only a dark background (dark:bg-[#1e1e1e]); without an explicit
+        // dark-mode color the title inherits a near-black default and vanishes.
+        const title = screen.getByTestId('canvas-panel-title');
+        expect(title.className).toContain('text-[#1e1e1e]');
+        expect(title.className).toContain('dark:text-[#cccccc]');
+    });
+
+    it('gives the multi-canvas switcher title an explicit dark-mode foreground', async () => {
+        mocks.get.mockResolvedValue(makeCanvas());
+        const availableCanvases = [
+            makeCanvasSummary({ id: 'doc-abc123', title: 'My Plan', type: 'markdown' }),
+            makeCanvasSummary({ id: 'code-abc123', title: 'Helper Script', type: 'code', language: 'typescript' }),
+        ];
+
+        render(
+            <CanvasPanel
+                workspaceId="ws-1"
+                canvasId="doc-abc123"
+                liveEvent={null}
+                availableCanvases={availableCanvases as any}
+                onSelectCanvas={vi.fn()}
+            />,
+        );
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan'));
+        const title = screen.getByTestId('canvas-panel-title');
+        expect(title.className).toContain('text-[#1e1e1e]');
+        expect(title.className).toContain('dark:text-[#cccccc]');
+    });
+
     it('renders the preview as clean markdown with no source markers (AC-01)', async () => {
         mocks.get.mockResolvedValue(makeCanvas({ content: '### Heading\n\nsome **bold** text' }));
 
