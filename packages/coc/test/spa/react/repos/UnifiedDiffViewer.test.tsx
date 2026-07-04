@@ -75,6 +75,23 @@ function mockSelection(opts: {
     return { mockSel, mockRange };
 }
 
+describe('UnifiedDiffViewer — container styling', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    // Regression: the container only set a background, so non-tokenized code text
+    // (and all text when the CDN hljs theme fails to load) inherited a near-black
+    // default and rendered dark-on-dark in dark mode. Assert the explicit base
+    // foreground for both light and dark mode.
+    it('outer container carries a readable base foreground for both modes', () => {
+        render(<UnifiedDiffViewer diff={SIMPLE_DIFF} data-testid="udiff" />);
+        const cls = screen.getByTestId('udiff').className;
+        expect(cls).toContain('text-[#1e1e1e]');
+        expect(cls).toContain('dark:text-[#cccccc]');
+    });
+});
+
 describe('UnifiedDiffViewer — selection detection', () => {
     afterEach(() => {
         vi.restoreAllMocks();

@@ -47,6 +47,17 @@ describe('SideBySideDiffViewer — basic rendering', () => {
         expect(screen.getByTestId('sxs-diff')).toBeTruthy();
     });
 
+    // Regression: the container only set a background, so non-tokenized code text
+    // (and all text when the CDN hljs theme fails to load) inherited a near-black
+    // default and rendered dark-on-dark in dark mode. Assert the explicit base
+    // foreground for both light and dark mode.
+    it('outer container carries a readable base foreground for both modes', () => {
+        render(<SideBySideDiffViewer diff={TWO_HUNK_DIFF} data-testid="sxs-diff" />);
+        const cls = screen.getByTestId('sxs-diff').className;
+        expect(cls).toContain('text-[#1e1e1e]');
+        expect(cls).toContain('dark:text-[#cccccc]');
+    });
+
     it('content rows have two w-1/2 column divs', () => {
         const { container } = render(<SideBySideDiffViewer diff={TWO_HUNK_DIFF} />);
         const colDivs = container.querySelectorAll<HTMLElement>('.w-1\\/2');

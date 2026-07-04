@@ -509,7 +509,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     onMouseUp={handleMouseUp}
                     onMouseDown={handleMouseDown}
                     onContextMenu={enableComments ? handleContextMenu : undefined}
-                    className="font-mono text-xs leading-tight overflow-x-auto bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
+                    className="font-mono text-xs leading-tight overflow-x-auto text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
                 >
                     {virtualized ? (
                         <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
