@@ -73,8 +73,10 @@ interface DashboardConfig {
     nativeCliSessionsEnabled?: boolean;
     /** Whether the deprecated Plans (Dep.) / Tasks (Dep.) sub-tab is shown. Default false (hidden). */
     showPlanDepTab?: boolean;
-    /** Whether the remote-first two-row dashboard shell is enabled (feature flag). */
+    /** Whether the remote-first dashboard shell is enabled (feature flag). */
     remoteShellEnabled?: boolean;
+    /** Whether the remote-first shell uses the single-row header layout. */
+    singleRowShellEnabled?: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
     prewarmDebounceMs?: number;
     /** Warm-client idle TTL (ms), resolved from env on the server. `0` means warming is disabled. */
@@ -343,9 +345,14 @@ export function isShowPlanDepTab(): boolean {
     return getConfig().showPlanDepTab === true;
 }
 
-/** Returns true when the remote-first two-row dashboard shell is enabled. */
+/** Returns true when the remote-first dashboard shell is enabled. */
 export function isRemoteShellEnabled(): boolean {
     return getConfig().remoteShellEnabled === true;
+}
+
+/** Returns true when the remote-first shell uses the single-row header layout. */
+export function isSingleRowShellEnabled(): boolean {
+    return getConfig().singleRowShellEnabled === true;
 }
 
 export function isExcalidrawEnabled(): boolean {

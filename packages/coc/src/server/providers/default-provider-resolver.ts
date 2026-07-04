@@ -152,8 +152,10 @@ export class DefaultProviderResolver {
      * Searches runtime config first, then static config file.
      */
     getEffortTiersForProvider(provider: ChatProvider): StoredEffortTiersMap | undefined {
+        const configPath = this.runtimeConfigService?.configPath ?? this.configPath;
+        const fileConfig = configPath ? loadConfigFile(configPath) : undefined;
         return (
-            loadConfigFile(this.runtimeConfigService?.configPath ?? this.configPath)?.models?.providers?.[provider]?.effortTiers
+            fileConfig?.models?.providers?.[provider]?.effortTiers
             ?? this.runtimeConfigService?.config.models?.providers?.[provider]?.effortTiers
             ?? this.resolvedConfig?.models?.providers?.[provider]?.effortTiers
         );

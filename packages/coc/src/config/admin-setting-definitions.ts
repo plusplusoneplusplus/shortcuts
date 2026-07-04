@@ -756,8 +756,16 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'features.remoteShell', default: false, runtime: 'live', runtimeFlag: 'remoteShellEnabled',
         ui: {
             group: 'dashboard', order: 65, label: 'Remote-first shell', badge: 'experimental',
-            hint: 'Replace per-clone repo tabs with a remote-first two-row top bar: one tab per git remote, a clone switcher, and remote/clone-scoped sub-tabs. Desktop only. Disabled by default.',
+            hint: 'Replace per-clone repo tabs with a remote-first shell: one entry per git remote, a clone switcher, and remote/clone-scoped sub-tabs. Desktop only. Disabled by default.',
             testId: 'toggle-remote-shell-enabled',
+        },
+    }),
+    bool({
+        key: 'features.singleRowShell', default: false, runtime: 'live', runtimeFlag: 'singleRowShellEnabled',
+        ui: {
+            group: 'dashboard', order: 66, label: 'Single-row remote shell', badge: 'experimental', dependsOn: 'features.remoteShell',
+            hint: 'Moves the remote chip, remote-scoped tabs, workspace switcher, clone tabs, and New action into the global header. Disabled by default.',
+            testId: 'toggle-single-row-shell-enabled',
         },
     }),
     bool({

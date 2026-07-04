@@ -256,6 +256,7 @@ export interface RuntimeDashboardConfig {
     effortLevelsEnabled: boolean;
     nativeCliSessionsEnabled: boolean;
     remoteShellEnabled: boolean;
+    singleRowShellEnabled: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
     prewarmDebounceMs: number;
     /** Warm-client idle TTL (ms), resolved from env on the server. `0` means warming is disabled. */

@@ -9,7 +9,7 @@
  * are no longer rendered as a topbar dropdown.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
 import { useRepos } from '../contexts/ReposContext';
@@ -19,12 +19,15 @@ import { NotificationBell } from '../shared/NotificationBell';
 import { agentProviderQuotaIndicator as AgentProviderQuotaIndicator } from '../shared/AgentProviderQuotaIndicator';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
 import { RemoteTopBar } from '../features/remote-shell/RemoteTopBar';
+import { RemoteShellHeader } from '../features/remote-shell/RemoteShellHeader';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
+import { useSingleRowShellEnabled } from '../hooks/feature-flags/useSingleRowShellEnabled';
 import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../repos/MyLifeView';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
+import { findRepoBySelectionId } from '../repos/cloneIdentity';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { getHostname } from '../utils/config';
 import { SHOW_WIKI_TAB, SHOW_MEMORY_TAB } from '../navFlags';
@@ -63,12 +66,13 @@ export interface TopBarProps {
 
 export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
-    const { state: queueState } = useQueue();
+    const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { repos, unseenCounts, fetchRepos } = useRepos();
     const { theme, toggleTheme } = useTheme();
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
     const remoteShell = useRemoteShellEnabled();
+    const singleRowShell = useSingleRowShellEnabled();
     const [popoverOpen, setPopoverOpen] = useState(false);
     const hostname = getHostname();
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
@@ -136,6 +140,11 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     }, [dispatch, queueState.selectedTaskIdByRepo, state]);
 
     const isOnReposTab = state.activeTab === 'repos';
+    const selectedRepo = useMemo(() => {
+        const scopedRepos = repos.filter(r => !state.currentAgentId || !r.workspace.agentId || r.workspace.agentId === state.currentAgentId);
+        return findRepoBySelectionId(scopedRepos, state.selectedRepoId) || findRepoBySelectionId(repos, state.selectedRepoId);
+    }, [repos, state.currentAgentId, state.selectedRepoId]);
+    const showSingleRowShell = remoteShell && singleRowShell && isOnReposTab && !!selectedRepo && !isMobile;
 
     const wsStatus = state.wsStatus ?? 'closed';
     const wsConfig = wsStatusConfig[wsStatus];
@@ -206,7 +215,11 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     </button>
                 )}
                 {!isMobile && (remoteShell ? (
-                    <RemoteTopBar />
+                    showSingleRowShell && selectedRepo ? (
+                        <RemoteShellHeader repo={selectedRepo} repos={repos} />
+                    ) : (
+                        <RemoteTopBar />
+                    )
                 ) : (
                     <RepoTabStrip
                         repos={repos}
@@ -237,6 +250,17 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                 )}
             </div>
             <div className="flex flex-shrink-0 items-center gap-1.5" data-testid="topbar-actions">
+                {showSingleRowShell && selectedRepo && (
+                    <button
+                        data-testid="header-new-btn"
+                        title={`Queue a task on ${selectedRepo.workspace.name}`}
+                        onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: String(selectedRepo.workspace.id) })}
+                        className="hidden md:inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[12px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:border-[#1f883d] dark:hover:border-[#2ea043] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2a2a] transition-colors"
+                    >
+                        <span className="text-[#1f883d] dark:text-[#3fb950] text-[15px] leading-none">+</span>
+                        <span>New</span>
+                    </button>
+                )}
                 {/* WS status — pill on desktop, bare dot on mobile to save space */}
                 <span
                     className="hidden md:inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-xs font-medium text-[#656d76] dark:text-[#999]"
