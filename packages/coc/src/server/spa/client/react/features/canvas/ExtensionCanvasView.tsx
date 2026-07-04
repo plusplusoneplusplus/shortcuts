@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Canvas, CanvasExtension } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 
 export interface ExtensionCanvasViewProps {
     workspaceId: string;
@@ -83,12 +83,20 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
     const canvasCurrentRef = useRef(canvas);
     canvasCurrentRef.current = canvas;
 
+    // Route every canvas REST call to the workspace's OWNING server: the remote
+    // clone's origin for a remote workspace, else the default page origin. The
+    // bare page-origin client (getSpaCocClient) 404s for remote workspaces —
+    // their canvas (incl. the extension docs) lives only on the remote server —
+    // even though the parent CanvasPanel already loads the content via this same
+    // clone-aware client, so the frame renders while the extension GET fails.
+    const client = useCocClient(workspaceId);
+
     // (Re)load extension documents when the canvas or its revision changes —
     // the AI may have replaced the UI/capabilities via
     // create_or_update_extension_canvas, which bumps the revision.
     useEffect(() => {
         let cancelled = false;
-        getSpaCocClient().canvases.getExtension(workspaceId, canvas.id)
+        client.canvases.getExtension(workspaceId, canvas.id)
             .then(loaded => {
                 if (cancelled) return;
                 setExtension(prev =>
@@ -103,7 +111,7 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
                 if (!cancelled) setLoadError('Failed to load canvas extension');
             });
         return () => { cancelled = true; };
-    }, [workspaceId, canvas.id, canvas.revision]);
+    }, [client, workspaceId, canvas.id, canvas.revision]);
 
     const postState = useCallback((target: Canvas) => {
         iframeRef.current?.contentWindow?.postMessage({
@@ -133,7 +141,7 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
             }
 
             if (data.type === 'invoke-capability' && typeof data.name === 'string') {
-                getSpaCocClient().canvases.invokeCapability(workspaceId, canvasIdRef.current, data.name, data.params)
+                client.canvases.invokeCapability(workspaceId, canvasIdRef.current, data.name, data.params)
                     .then(saved => {
                         setActionError(null);
                         onCanvasSaved(saved);
@@ -146,7 +154,7 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
 
             if (data.type === 'set-state') {
                 const content = JSON.stringify(data.state ?? {}, null, 2);
-                getSpaCocClient().canvases.save(workspaceId, canvasIdRef.current, {
+                client.canvases.save(workspaceId, canvasIdRef.current, {
                     content,
                     expectedRevision: canvasCurrentRef.current.revision,
                 })
@@ -162,7 +170,7 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
 
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [workspaceId, onCanvasSaved, postState]);
+    }, [client, workspaceId, onCanvasSaved, postState]);
 
     if (loadError) {
         return <div className="text-xs text-red-500 py-6 text-center" data-testid="extension-canvas-error">{loadError}</div>;

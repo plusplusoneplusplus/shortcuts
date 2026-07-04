@@ -314,7 +314,11 @@ content to `canvases/<slug>.md` in the workspace Notes tree via
 posts `canvas-state` on ready and on every live update, services
 `invoke-capability` through `canvases.invokeCapability` and `set-state` through
 the revision-checked `canvases.save`, so human UI actions and AI capability
-calls share one gate. Edit mode shows the raw JSON shared state.
+calls share one gate. The extension load, `invoke-capability`, and `set-state`
+calls all route through the workspace-scoped `useCocClient(workspaceId)` client
+(like `CanvasPanel`), so a remote workspace's extension is read from and written
+to its owning server rather than the local page origin. Edit mode shows the raw
+JSON shared state.
 
 `features/chat/source-canvas/` renders the docked, read-only source-file canvas
 for local file references clicked inside assistant chat responses. The global
