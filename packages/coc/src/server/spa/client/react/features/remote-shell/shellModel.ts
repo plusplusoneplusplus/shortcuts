@@ -204,18 +204,36 @@ export function summarizeRemote(
     return { status, unseen, cloneCount: group.repos.length, color, name };
 }
 
+/** Hosting provider a remote resolves to. `remote` is the unknown/other fallback. */
+export type RemoteProviderKind = 'github' | 'ado' | 'remote';
+
+/**
+ * Derive the hosting provider from a normalized remote URL (`host/user/repo`).
+ * Returns `remote` for unknown or empty hosts.
+ */
+export function remoteProviderKind(normalizedUrl: string | null | undefined): RemoteProviderKind {
+    if (!normalizedUrl) return 'remote';
+    const host = normalizedUrl.split('/')[0]?.toLowerCase() ?? '';
+    if (host === 'dev.azure.com' || host.endsWith('.visualstudio.com') || host.includes('azure.com')) {
+        return 'ado';
+    }
+    if (host === 'github.com' || host.endsWith('.github.com') || host.includes('github')) {
+        return 'github';
+    }
+    return 'remote';
+}
+
 /**
  * Derive the hosting-provider label ("ADO" or "GitHub") from a normalized
  * remote URL (`host/user/repo`). Falls back to "Remote" for unknown hosts.
  */
 export function remoteProviderLabel(normalizedUrl: string | null | undefined): string {
-    if (!normalizedUrl) return 'Remote';
-    const host = normalizedUrl.split('/')[0]?.toLowerCase() ?? '';
-    if (host === 'dev.azure.com' || host.endsWith('.visualstudio.com') || host.includes('azure.com')) {
-        return 'ADO';
+    switch (remoteProviderKind(normalizedUrl)) {
+        case 'ado':
+            return 'ADO';
+        case 'github':
+            return 'GitHub';
+        default:
+            return 'Remote';
     }
-    if (host === 'github.com' || host.endsWith('.github.com') || host.includes('github')) {
-        return 'GitHub';
-    }
-    return 'Remote';
 }

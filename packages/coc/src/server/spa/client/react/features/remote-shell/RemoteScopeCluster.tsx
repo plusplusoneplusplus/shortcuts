@@ -20,7 +20,8 @@ import { getRepoSelectionId, isRepoSelected } from '../../repos/cloneIdentity';
 import { groupKey, groupReposByRemote, type RepoData, type RepoGroup } from '../../repos/repoGrouping';
 import { resolveRepoWorkItemOriginScope } from '../work-items/workItemOriginScope';
 import type { RepoSubTab } from '../../types/dashboard';
-import { computeCloneStatusMap, partitionShellTabs, remoteProviderLabel, summarizeRemote } from './shellModel';
+import { computeCloneStatusMap, partitionShellTabs, summarizeRemote } from './shellModel';
+import { RemoteProviderBadge } from './RemoteProviderBadge';
 import { useRecentRemotes } from './useRecentRemotes';
 import { useShellNavigation } from './useShellNavigation';
 
@@ -116,7 +117,6 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
     }, [groups, repos, cloneId]);
     const activeGroupKey = activeGroup ? groupKey(activeGroup) : null;
     const activeSummary = activeGroup ? summarizeRemote(activeGroup, cloneStatus, unseenCounts) : null;
-    const activeProvider = remoteProviderLabel(activeGroup?.normalizedUrl);
     const { recentGroups, remainingGroups, recordUse } = useRecentRemotes(groups);
 
     useEffect(() => {
@@ -263,7 +263,11 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
                 className="relative inline-flex items-center gap-1.5 h-[26px] px-2 rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] max-w-[190px]"
             >
                 <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: activeSummary?.color ?? '#848484' }} aria-hidden />
-                <span className="hidden xl:inline text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#848484] dark:text-[#777]">{activeProvider}</span>
+                <RemoteProviderBadge
+                    normalizedUrl={activeGroup?.normalizedUrl}
+                    testId="remote-provider-badge"
+                    className="hidden xl:inline-flex items-center text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#848484] dark:text-[#777]"
+                />
                 <span className="truncate">{activeSummary?.name ?? repo.workspace.name}</span>
                 {activeSummary && activeSummary.cloneCount > 1 && (
                     <span className="hidden lg:inline-flex items-center gap-0.5 h-[16px] px-1.5 rounded-full text-[10px] font-semibold leading-none bg-black/[0.06] dark:bg-white/[0.10] text-[#555] dark:text-[#bbb]">
