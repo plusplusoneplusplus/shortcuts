@@ -2089,7 +2089,7 @@ export function ChatListPane({
      * Render a single compact row, used for ALL task types (chat, workflow, script)
      * across both the chats and activity branches.
      *
-     * Layout (CSS grid): [status-dot 10px] [MODE pill 30px] [title 1fr] [right auto]
+     * Layout (CSS grid): [status-dot 10px] [MODE pill 20px] [title 1fr] [right auto]
      * - Mode pill: ASK / AUTO (chat) or AUTO / SCRP (non-chat).
      * - Status dot encodes runtime state independently of the mode pill.
      * - On hover the timestamp swaps to inline pin/archive/more buttons.
@@ -2215,7 +2215,7 @@ export function ChatListPane({
                     className={cn(
                         'chat-row group relative cursor-pointer leading-none transition-colors',
                         'grid items-center gap-2 px-4 py-2 md:px-3 md:py-1',
-                        'grid-cols-[10px_30px_minmax(0,1fr)_auto]',
+                        'grid-cols-[10px_20px_minmax(0,1fr)_auto]',
                         'text-[12.5px] min-h-[40px] md:min-h-0 md:h-[26px]',
                         'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
                         'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',

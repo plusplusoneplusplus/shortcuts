@@ -148,7 +148,7 @@ export function TaskGroupRunRow({
                 className={cn(
                     'chat-row group relative cursor-pointer leading-none transition-colors',
                     'grid items-center gap-2 px-3 py-1',
-                    'grid-cols-[10px_30px_minmax(0,1fr)_auto]',
+                    'grid-cols-[10px_20px_minmax(0,1fr)_auto]',
                     'text-[12.5px] h-[26px]',
                     'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
                     'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',

@@ -5,15 +5,19 @@
  * allowing parent containers to swap between views with zero prop changes.
  */
 
-import { useMemo, useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { highlightLine } from '../hooks/useSyntaxHighlight';
+import { useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
     computeDiffLines,
     computeEditStarts,
     computeSideBySideLines,
+    computeHighlightedHtml,
+    shouldSkipHighlight,
     getLanguagesForLines,
     buildLineCommentMap,
     getLineHighlightClass,
+    DIFF_LINE_ESTIMATE_PX,
+    VIRTUALIZE_THRESHOLD,
     type UnifiedDiffViewerProps,
     type UnifiedDiffViewerHandle,
     type DiffLine,
@@ -79,9 +83,16 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
     ) {
         const lines     = useMemo(() => diff.split('\n'), [diff]);
         const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
-        const sxsLines  = useMemo(() => computeSideBySideLines(diffLines), [diffLines]);
+        // Generated/huge files skip highlight + word-level intra-line diff (fast path).
+        const skipHighlight = useMemo(() => shouldSkipHighlight(fileName, lines.length), [fileName, lines.length]);
+        const sxsLines  = useMemo(() => computeSideBySideLines(diffLines, skipHighlight), [diffLines, skipHighlight]);
         const editStarts = useMemo(() => computeEditStarts(diffLines), [diffLines]);
         const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
+        // Syntax highlighting computed ONCE (per-file block pass), keyed by diff-line index.
+        const highlightedHtml = useMemo(
+            () => computeHighlightedHtml(diffLines, languages, skipHighlight),
+            [diffLines, languages, skipHighlight]
+        );
         const lineCommentMap = useMemo(
             () => (comments ? buildLineCommentMap(comments) : new Map<number, DiffComment[]>()),
             [comments]
@@ -118,7 +129,84 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             onLinesReadyRef.current?.(diffLines);
         }, [diffLines]);
 
-        useImperativeHandle(ref, () => ({
+        // ── Windowing (large files only) ────────────────────────────────
+        // Small diffs render eagerly so existing behavior/tests are unchanged.
+        // Beyond VIRTUALIZE_THRESHOLD the row list is windowed to bound DOM size.
+        const virtualized = sxsLines.length > VIRTUALIZE_THRESHOLD;
+        const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
+        const [scrollMargin, setScrollMargin] = useState(0);
+        useLayoutEffect(() => {
+            const c = containerRef.current;
+            if (!c) return;
+            const se = getScrollableAncestor(c);
+            setScrollEl(se);
+            setScrollMargin(c.getBoundingClientRect().top - se.getBoundingClientRect().top + se.scrollTop);
+        }, [virtualized]);
+
+        const rowVirtualizer = useVirtualizer({
+            count: virtualized ? sxsLines.length : 0,
+            getScrollElement: () => scrollEl,
+            estimateSize: () => DIFF_LINE_ESTIMATE_PX,
+            overscan: 24,
+            scrollMargin,
+            measureElement: (el) => {
+                const h = (el as HTMLElement).getBoundingClientRect?.().height;
+                return h && h > 0 ? h : DIFF_LINE_ESTIMATE_PX;
+            },
+        });
+
+        // Row (sxsLines) indices where an edit group starts, and file-header rows —
+        // derived from the row model so navigation works when rows are windowed.
+        const editStartRows = useMemo(() => {
+            const rows: number[] = [];
+            sxsLines.forEach((row, idx) => {
+                const isEdit =
+                    (row.left.originalIndex !== null && editStarts.has(row.left.originalIndex)) ||
+                    (row.right.originalIndex !== null && editStarts.has(row.right.originalIndex));
+                if (isEdit) rows.push(idx);
+            });
+            return rows;
+        }, [sxsLines, editStarts]);
+        const fileHeaderRows = useMemo(() => {
+            const map = new Map<string, number>();
+            sxsLines.forEach((row, idx) => {
+                if (row.filePath && !map.has(row.filePath)) map.set(row.filePath, idx);
+            });
+            return map;
+        }, [sxsLines]);
+
+        useImperativeHandle(ref, () => {
+            if (virtualized) {
+                const scrollToEdit = (n: number) => rowVirtualizer.scrollToIndex(editStartRows[n], { align: 'center' });
+                return {
+                    scrollToNextHunk: () => {
+                        if (editStartRows.length === 0) return;
+                        const next = (currentHunkIndexRef.current + 1) % editStartRows.length;
+                        currentHunkIndexRef.current = next;
+                        scrollToEdit(next);
+                    },
+                    scrollToPrevHunk: () => {
+                        if (editStartRows.length === 0) return;
+                        const start = currentHunkIndexRef.current === -1 ? editStartRows.length : currentHunkIndexRef.current;
+                        const prev = (start - 1 + editStartRows.length) % editStartRows.length;
+                        currentHunkIndexRef.current = prev;
+                        scrollToEdit(prev);
+                    },
+                    getHunkCount: () => editStartRows.length,
+                    getCurrentHunkIndex: () => currentHunkIndexRef.current,
+                    scrollToHunk: (index: number) => {
+                        if (index < 0 || index >= editStartRows.length) return;
+                        currentHunkIndexRef.current = index;
+                        scrollToEdit(index);
+                    },
+                    scrollToFile: (filePath: string) => {
+                        const idx = fileHeaderRows.get(filePath);
+                        if (idx === undefined) return;
+                        rowVirtualizer.scrollToIndex(idx, { align: 'start' });
+                    },
+                };
+            }
+            return {
             scrollToNextHunk: () => {
                 const container = containerRef.current;
                 if (!container) return;
@@ -182,7 +270,8 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     behavior: 'smooth',
                 });
             },
-        }));
+            };
+        });
 
         const handleMouseUp = useCallback((e: React.MouseEvent) => {
             if (e.button !== 0) return;
@@ -357,7 +446,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                                             ? <mark key={pi} className="bg-[#f97575] dark:bg-[#b91c1c] rounded-[2px]">{part.text}</mark>
                                             : <span key={pi}>{part.text}</span>
                                       )
-                                    : <span dangerouslySetInnerHTML={{ __html: highlightLine(row.left.content.slice(1), languages[row.left.originalIndex]) }} />
+                                    : <span dangerouslySetInnerHTML={{ __html: highlightedHtml[row.left.originalIndex] }} />
                                 : '\u00a0'}
                         </span>
                     </div>
@@ -404,7 +493,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                                             ? <mark key={pi} className="bg-[#34c759] dark:bg-[#166534] rounded-[2px]">{part.text}</mark>
                                             : <span key={pi}>{part.text}</span>
                                       )
-                                    : <span dangerouslySetInnerHTML={{ __html: highlightLine(row.right.content.slice(1), languages[row.right.originalIndex]) }} />
+                                    : <span dangerouslySetInnerHTML={{ __html: highlightedHtml[row.right.originalIndex] }} />
                                 : '\u00a0'}
                         </span>
                     </div>
@@ -422,7 +511,28 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     onContextMenu={enableComments ? handleContextMenu : undefined}
                     className="font-mono text-xs leading-tight overflow-x-auto bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
                 >
-                    {sxsLines.map((row, rowIdx) => renderRow(row, rowIdx))}
+                    {virtualized ? (
+                        <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
+                            {rowVirtualizer.getVirtualItems().map(vi => (
+                                <div
+                                    key={vi.key}
+                                    data-index={vi.index}
+                                    ref={rowVirtualizer.measureElement}
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        transform: `translateY(${vi.start - rowVirtualizer.options.scrollMargin}px)`,
+                                    }}
+                                >
+                                    {renderRow(sxsLines[vi.index], vi.index)}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        sxsLines.map((row, rowIdx) => renderRow(row, rowIdx))
+                    )}
                 </div>
                 {enableComments && (
                     <DiffContextMenu

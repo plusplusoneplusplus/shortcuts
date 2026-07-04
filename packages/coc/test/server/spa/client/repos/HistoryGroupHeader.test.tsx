@@ -353,10 +353,10 @@ describe('HistoryGroupHeader render', () => {
     });
 
     // Layout contract — row grid matches activity-compact reference ───
-    it('uses the chat-row grid layout (10px dot, 30px mode, 1fr title, auto right)', () => {
+    it('uses the chat-row grid layout (10px dot, 20px mode, 1fr title, auto right)', () => {
         renderHeader();
         const header = screen.getByTestId('history-group-header');
-        expect(header.className).toContain('grid-cols-[10px_30px_minmax(0,1fr)_auto]');
+        expect(header.className).toContain('grid-cols-[10px_20px_minmax(0,1fr)_auto]');
     });
 
     it('uses border-b and h-[26px] to match the compact-row visual rhythm', () => {

@@ -743,6 +743,15 @@ Inside `WhisperCollapsedGroup`, tool calls render as compact "whisper-row" varia
 - Single flat row: kind pill + truncated summary + duration + chevron
 - Color-coded pills: Read/blue, Grep/Glob/green, Edit/Write/amber, Shell/PS/SQL/purple, Skill/grey
 
+`ToolCallView` display policy is a pure kernel: `buildToolCallRenderModel`
+(`toolCallRenderModel.ts`) derives normalized identity, summary, truncation,
+preview eligibility, and the whisper-row metric; the whisper-row and card
+variants share one `ToolCallDetailSections` body. Whisper header parts and the
+group's reconstructable tool calls come from `buildWhisperGroupModel` /
+`collectGroupToolCalls` (`whisperGroupModel.ts`). The whisper summary spans
+(skills/memories/files/commits/PRs/pushes) share the `useHoverPopover` /
+`HoverSummarySpan` hover primitive (`hoverPopover.tsx`).
+
 In whisper mode (`toolCompactness === 3`), `filterWhisperChunks` keeps a tail of
 the final assistant message plus any `task_complete`/visible `ask_user` chunks,
 collapsing everything else into one summary group. The final message is the last

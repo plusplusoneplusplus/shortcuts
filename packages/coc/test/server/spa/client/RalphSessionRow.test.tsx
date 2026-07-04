@@ -335,10 +335,10 @@ describe('RalphSessionRow', () => {
         expect(container.textContent).not.toContain('iterations');
     });
 
-    it('uses the plan-group grid layout (grid-cols-[10px_30px_minmax(0,1fr)_auto])', () => {
+    it('uses the plan-group grid layout (grid-cols-[10px_20px_minmax(0,1fr)_auto])', () => {
         render(<RalphSessionRow session={makeSession()} {...defaultProps} />);
         const header = screen.getByTestId('ralph-session-body');
-        expect(header.className).toContain('grid-cols-[10px_30px_minmax(0,1fr)_auto]');
+        expect(header.className).toContain('grid-cols-[10px_20px_minmax(0,1fr)_auto]');
         expect(header.className).toContain('h-[26px]');
     });
 

@@ -6,8 +6,9 @@
  * Code content lines are syntax-highlighted using highlight.js token spans.
  */
 
-import { Fragment, useMemo, useEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
-import { getLanguageFromFileName, highlightLine } from '../hooks/useSyntaxHighlight';
+import { Fragment, useMemo, useEffect, useLayoutEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { getLanguageFromFileName, highlightBlock, escapeHtml } from '../hooks/useSyntaxHighlight';
 import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
 import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
 import type { HunkCategory, HunkClassification } from '../../pull-requests/classification-types';
@@ -328,7 +329,7 @@ export function computeDiffLines(lines: string[]): DiffLine[] {
     });
 }
 
-export function computeSideBySideLines(lines: DiffLine[]): SideBySideLine[] {
+export function computeSideBySideLines(lines: DiffLine[], skipIntraLineDiff = false): SideBySideLine[] {
     const result: SideBySideLine[] = [];
     let i = 0;
     let pendingFilePath: string | null = null;
@@ -384,7 +385,7 @@ export function computeSideBySideLines(lines: DiffLine[]): SideBySideLine[] {
                 const add = addedGroup[k];
                 let leftParts: IntraLinePart[] | undefined;
                 let rightParts: IntraLinePart[] | undefined;
-                if (rem && add) {
+                if (rem && add && !skipIntraLineDiff) {
                     const [lp, rp] = computeIntraLineDiff(rem.content.slice(1), add.content.slice(1));
                     if (lp.some(p => p.changed) || rp.some(p => p.changed)) {
                         leftParts = lp;
@@ -449,6 +450,109 @@ export function getLanguagesForLines(lines: string[], fileName: string | undefin
         result.push(currentLang);
     }
     return result;
+}
+
+// ── Performance guards ──────────────────────────────────────────────────
+//
+// Two structural safeguards keep large files from freezing the diff tab:
+//   1. Windowing: once a diff exceeds VIRTUALIZE_THRESHOLD lines only the
+//      visible rows (plus overscan) are mounted, bounding DOM-node count.
+//   2. Memoized highlighting: syntax highlighting runs once per file via
+//      highlightBlock, not per-line on every render.
+// Plus a fast path for generated/huge files that skips highlighting AND
+// word-level intra-line diff entirely (escaped plain text only).
+
+/** Estimated row height (px) for the virtualizer at `text-xs leading-tight`. */
+export const DIFF_LINE_ESTIMATE_PX = 18;
+
+/** Diffs longer than this many lines render through the windowed row list. */
+export const VIRTUALIZE_THRESHOLD = 500;
+
+/** Files longer than this many lines skip highlight + word-level intra-line diff. */
+export const LARGE_FILE_LINES = 5000;
+
+/** Base names always treated as generated (skip highlight + word diff). */
+const GENERATED_FILE_NAMES = new Set([
+    'package-lock.json',
+    'pnpm-lock.yaml',
+    'yarn.lock',
+    'npm-shrinkwrap.json',
+    'composer.lock',
+    'Cargo.lock',
+    'poetry.lock',
+    'Gemfile.lock',
+]);
+
+/** Extensions/suffixes always treated as generated. */
+const GENERATED_FILE_RE = /\.(min\.js|min\.css|map)$/i;
+
+/** True when a file name matches a known generated/lock artifact. */
+export function isGeneratedFile(fileName: string | undefined): boolean {
+    if (!fileName) return false;
+    const base = fileName.split('/').pop() ?? fileName;
+    return GENERATED_FILE_NAMES.has(base) || GENERATED_FILE_RE.test(base);
+}
+
+/**
+ * Decide whether to skip syntax highlighting + word-level intra-line diff for a
+ * file. Triggers on known generated names or when the diff is very large, where
+ * per-line highlight and O(m*n) word diff dominate render cost with little value.
+ */
+export function shouldSkipHighlight(fileName: string | undefined, lineCount: number): boolean {
+    return isGeneratedFile(fileName) || lineCount > LARGE_FILE_LINES;
+}
+
+/**
+ * Precompute per-line highlighted HTML for every content line of a unified diff.
+ *
+ * Highlighting runs ONCE per contiguous same-language run of content lines via
+ * `highlightBlock` (a single hljs pass that also fixes multi-line tokens such as
+ * block comments), instead of calling `highlightLine` per-line inside the render
+ * body on every re-render. Returns an array indexed by diff-line index; entries
+ * for meta / hunk-header / empty lines are '' and are ignored by the row
+ * renderer. When `skipHighlight` is set the content falls back to escaped plain
+ * text with no hljs pass at all.
+ */
+export function computeHighlightedHtml(
+    diffLines: DiffLine[],
+    languages: (string | null)[],
+    skipHighlight = false,
+): string[] {
+    const result = new Array<string>(diffLines.length).fill('');
+    const isContent = (dl: DiffLine) =>
+        (dl.type === 'added' || dl.type === 'removed' || dl.type === 'context') && dl.content.length > 0;
+
+    let i = 0;
+    while (i < diffLines.length) {
+        if (!isContent(diffLines[i])) { i++; continue; }
+        // Gather a maximal run of consecutive content lines sharing one language.
+        const startI = i;
+        const lang = languages[i] ?? null;
+        const contents: string[] = [];
+        while (i < diffLines.length && isContent(diffLines[i]) && (languages[i] ?? null) === lang) {
+            contents.push(diffLines[i].content.slice(1));
+            i++;
+        }
+        const htmls = skipHighlight ? contents.map(escapeHtml) : highlightBlock(contents, lang);
+        for (let k = 0; k < htmls.length; k++) result[startI + k] = htmls[k];
+    }
+    return result;
+}
+
+/** Ascending diff-line indices where an edit group starts (from `editStarts`). */
+export function editStartIndexList(editStarts: Set<number>): number[] {
+    return Array.from(editStarts).sort((a, b) => a - b);
+}
+
+/** Map of file path → diff-line index of its first `diff --git` header. */
+export function fileHeaderIndexMap(diffLines: DiffLine[]): Map<string, number> {
+    const map = new Map<string, number>();
+    for (const dl of diffLines) {
+        if (dl.type !== 'meta') continue;
+        const fp = extractFilePathFromDiffHeader(dl.content);
+        if (fp && !map.has(fp)) map.set(fp, dl.index);
+    }
+    return map;
 }
 
 export interface UnifiedDiffViewerHandle {
@@ -724,8 +828,18 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
-    const sxsLines = useMemo(() => computeSideBySideLines(diffLines), [diffLines]);
-    const intraLinePartsMap = useMemo(() => buildIntraLinePartsMap(sxsLines), [sxsLines]);
+    // Generated/huge files skip highlight + word-level intra-line diff (fast path).
+    const skipHighlight = useMemo(() => shouldSkipHighlight(fileName, lines.length), [fileName, lines.length]);
+    // Word-level intra-line diff — skipped on the fast path (empty map).
+    const intraLinePartsMap = useMemo(
+        () => (skipHighlight ? new Map<number, IntraLinePart[]>() : buildIntraLinePartsMap(computeSideBySideLines(diffLines))),
+        [diffLines, skipHighlight]
+    );
+    // Syntax highlighting computed ONCE (per-file block pass), not per-line/per-render.
+    const highlightedHtml = useMemo(
+        () => computeHighlightedHtml(diffLines, languages, skipHighlight),
+        [diffLines, languages, skipHighlight]
+    );
     const editStarts = useMemo(() => computeEditStarts(diffLines), [diffLines]);
     const lineCommentMap = useMemo(
         () => (comments ? buildLineCommentMap(comments) : new Map<number, DiffComment[]>()),
@@ -827,7 +941,76 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         onLinesReadyRef.current?.(diffLines);
     }, [diffLines]);
 
-    useImperativeHandle(ref, () => ({
+    // ── Windowing (large files only) ────────────────────────────────────
+    // Small diffs render eagerly (every row in the DOM) so existing behavior
+    // and tests are unchanged. Beyond VIRTUALIZE_THRESHOLD the row list is
+    // windowed: only viewport + overscan rows mount, bounding DOM-node count.
+    const virtualized = lines.length > VIRTUALIZE_THRESHOLD;
+    const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
+    const [scrollMargin, setScrollMargin] = useState(0);
+    useLayoutEffect(() => {
+        const c = containerRef.current;
+        if (!c) return;
+        const se = getScrollableAncestor(c);
+        setScrollEl(se);
+        // Offset of the row list within the scroll element's content, so
+        // scrollToIndex targets the right absolute position when the diff is
+        // not the first thing inside the scroll container.
+        setScrollMargin(c.getBoundingClientRect().top - se.getBoundingClientRect().top + se.scrollTop);
+    }, [virtualized]);
+
+    const rowVirtualizer = useVirtualizer({
+        count: virtualized ? lines.length : 0,
+        getScrollElement: () => scrollEl,
+        estimateSize: () => DIFF_LINE_ESTIMATE_PX,
+        overscan: 24,
+        scrollMargin,
+        // jsdom reports 0-height rects; fall back to the estimate so windowing
+        // stays deterministic in tests while self-correcting in a real browser.
+        measureElement: (el) => {
+            const h = (el as HTMLElement).getBoundingClientRect?.().height;
+            return h && h > 0 ? h : DIFF_LINE_ESTIMATE_PX;
+        },
+    });
+
+    useImperativeHandle(ref, () => {
+        // Windowed path: off-screen rows aren't in the DOM, so drive navigation
+        // from diffLines geometry via the virtualizer's index→offset API.
+        if (virtualized) {
+            const editList = editStartIndexList(editStarts);
+            const fileHeaders = fileHeaderIndexMap(diffLines);
+            const scrollToEdit = (n: number) => {
+                rowVirtualizer.scrollToIndex(editList[n], { align: 'center' });
+            };
+            return {
+                scrollToNextHunk: () => {
+                    if (editList.length === 0) return;
+                    const next = (currentHunkIndexRef.current + 1) % editList.length;
+                    currentHunkIndexRef.current = next;
+                    scrollToEdit(next);
+                },
+                scrollToPrevHunk: () => {
+                    if (editList.length === 0) return;
+                    const start = currentHunkIndexRef.current === -1 ? editList.length : currentHunkIndexRef.current;
+                    const prev = (start - 1 + editList.length) % editList.length;
+                    currentHunkIndexRef.current = prev;
+                    scrollToEdit(prev);
+                },
+                getHunkCount: () => editList.length,
+                getCurrentHunkIndex: () => currentHunkIndexRef.current,
+                scrollToHunk: (index: number) => {
+                    if (index < 0 || index >= editList.length) return;
+                    currentHunkIndexRef.current = index;
+                    scrollToEdit(index);
+                },
+                scrollToFile: (filePath: string) => {
+                    const idx = fileHeaders.get(filePath);
+                    if (idx === undefined) return;
+                    rowVirtualizer.scrollToIndex(idx, { align: 'start' });
+                },
+            };
+        }
+        return {
         scrollToNextHunk: () => {
             const container = containerRef.current;
             if (!container) return;
@@ -894,7 +1077,8 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                 behavior: 'smooth',
             });
         },
-    }));
+        };
+    });
 
     const [toolbar, setToolbar] = useState<{
         visible: boolean;
@@ -931,12 +1115,14 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
 
         const minIdx = Math.min(startIdx, endIdx);
         const maxIdx = Math.max(startIdx, endIdx);
-        const lineEls = containerRef.current?.querySelectorAll<HTMLElement>('[data-diff-line-index]') ?? [];
-        for (const el of Array.from(lineEls)) {
-            const idx = parseInt(el.getAttribute('data-diff-line-index') ?? '-1', 10);
-            if (idx >= minIdx && idx <= maxIdx && el.getAttribute('data-line-type') === 'meta') {
-                const text = el.textContent ?? '';
-                if (text.startsWith('diff --git') || text.startsWith('diff ')) { clear(); return; }
+        // Reject selections that cross a file boundary. Derive this from diffLines
+        // rather than querying mounted rows, so it stays correct when the row list
+        // is windowed and intermediate meta rows are not in the DOM.
+        for (let idx = minIdx; idx <= maxIdx && idx < diffLines.length; idx++) {
+            const dl = diffLines[idx];
+            if (dl.type === 'meta' && (dl.content.startsWith('diff --git') || dl.content.startsWith('diff '))) {
+                clear();
+                return;
             }
         }
 
@@ -955,7 +1141,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         const selectedText = sel.toString();
         pendingSelectionRef.current = { selection, selectedText };
         setToolbar(t => ({ ...t, visible: false, selection, selectedText }));
-    }, [enableComments]);
+    }, [enableComments, diffLines]);
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
         if (!enableComments) return;
@@ -992,7 +1178,56 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             className="overflow-x-auto font-mono text-xs leading-tight bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
             data-testid={testId}
         >
-            {lines.map((line, i) => {
+            {virtualized ? (
+                <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
+                    {rowVirtualizer.getVirtualItems().map(vi => (
+                        <div
+                            key={vi.key}
+                            data-index={vi.index}
+                            ref={rowVirtualizer.measureElement}
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                transform: `translateY(${vi.start - rowVirtualizer.options.scrollMargin}px)`,
+                            }}
+                        >
+                            {renderLineRow(vi.index)}
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                lines.map((_, i) => renderLineRow(i))
+            )}
+        </div>
+        {enableComments && (
+            <DiffContextMenu
+                visible={toolbar.visible}
+                position={toolbar.position}
+                onAddComment={() => {
+                    if (toolbar.selection) {
+                        onAddComment?.(toolbar.selection, toolbar.selectedText, { top: toolbar.position.y, left: toolbar.position.x });
+                    }
+                }}
+                onAskAI={onAskAI ? () => {
+                    if (toolbar.selection) {
+                        onAskAI(toolbar.selection, toolbar.selectedText, { top: toolbar.position.y, left: toolbar.position.x });
+                    }
+                } : undefined}
+                onCopyAsContext={onCopyAsContext ? () => {
+                    if (toolbar.selection) {
+                        onCopyAsContext(toolbar.selection, toolbar.selectedText);
+                    }
+                } : undefined}
+                onClose={() => setToolbar(t => ({ ...t, visible: false }))}
+            />
+        )}
+        </>
+    );
+
+    function renderLineRow(i: number) {
+                const line = lines[i];
                 const { type, oldLine, newLine } = diffLines[i];
                 if (skipIndices.has(i)) return null;
                 const collapsedHunk = collapsedByStart.get(i);
@@ -1008,7 +1243,9 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                     const markClass = type === 'removed'
                         ? 'bg-[#f97575] dark:bg-[#b91c1c] rounded-[2px]'
                         : 'bg-[#34c759] dark:bg-[#166534] rounded-[2px]';
-                    const html = intraParts ? null : highlightLine(content, languages[i]);
+                    // Highlighting is precomputed once (computeHighlightedHtml) instead of
+                    // calling highlightLine(content, languages[i]) per-line on every render.
+                    const html = intraParts ? null : highlightedHtml[i];
                     return (
                         <div
                             key={i}
@@ -1143,30 +1380,5 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                     );
                 }
                 return <Fragment key={i}>{row}</Fragment>;
-            })}
-        </div>
-        {enableComments && (
-            <DiffContextMenu
-                visible={toolbar.visible}
-                position={toolbar.position}
-                onAddComment={() => {
-                    if (toolbar.selection) {
-                        onAddComment?.(toolbar.selection, toolbar.selectedText, { top: toolbar.position.y, left: toolbar.position.x });
-                    }
-                }}
-                onAskAI={onAskAI ? () => {
-                    if (toolbar.selection) {
-                        onAskAI(toolbar.selection, toolbar.selectedText, { top: toolbar.position.y, left: toolbar.position.x });
-                    }
-                } : undefined}
-                onCopyAsContext={onCopyAsContext ? () => {
-                    if (toolbar.selection) {
-                        onCopyAsContext(toolbar.selection, toolbar.selectedText);
-                    }
-                } : undefined}
-                onClose={() => setToolbar(t => ({ ...t, visible: false }))}
-            />
-        )}
-        </>
-    );
+    }
 });

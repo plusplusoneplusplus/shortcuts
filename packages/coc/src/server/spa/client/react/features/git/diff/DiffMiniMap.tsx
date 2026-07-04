@@ -189,9 +189,27 @@ export function DiffMiniMap({ diffLines, scrollContainerRef }: DiffMiniMapProps)
         if (!sc) return;
 
         const { offsets, totalHeight } = measureLineOffsets(sc);
+
+        // When the diff viewer is windowed (large files), only viewport rows are
+        // mounted, so DOM measurement covers a fraction of the lines. Fall back to
+        // uniform offsets derived from the virtual content height (scrollHeight),
+        // which reflects the virtualizer's estimated total size.
+        const measuredCount = offsets.reduce((n, o) => (o ? n + 1 : n), 0);
+        if (totalLines > 0 && measuredCount > 0 && measuredCount < totalLines) {
+            const contentHeight = sc.scrollHeight || totalHeight;
+            const perLine = contentHeight / totalLines;
+            const uniform: Array<LineOffset> = Array.from(
+                { length: totalLines },
+                (_, i) => ({ top: i * perLine, height: perLine }),
+            );
+            setLineOffsets(uniform);
+            setTotalContentHeight(contentHeight);
+            return;
+        }
+
         setLineOffsets(offsets);
         setTotalContentHeight(totalHeight);
-    }, [scrollContainerRef]);
+    }, [scrollContainerRef, totalLines]);
 
     const scheduleMeasure = useCallback(() => {
         if (measureRafRef.current !== null) return;

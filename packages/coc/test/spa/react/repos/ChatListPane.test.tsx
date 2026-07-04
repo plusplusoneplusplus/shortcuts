@@ -1998,7 +1998,7 @@ describe('ChatListPane', () => {
 
     // ── Mode pills ─────────────────────────────────────────────────────
     // The redesigned compact list surfaces task category via a MODE pill in the
-    // 30px column. Pills show a single letter: A (ask/auto), R (ralph), S (script).
+    // 20px column. Pills show a single letter: A (ask/auto), R (ralph), S (script).
     describe('Mode pills', () => {
         it('chat ask renders A pill', () => {
             const { container } = renderPane({
@@ -2112,7 +2112,7 @@ describe('ChatListPane', () => {
             renderPane({ running: [makeRunningTask()] });
             const card = document.querySelector('[data-task-id="run-1"]');
             expect(card!.className).toContain('grid');
-            expect(card!.className).toContain('grid-cols-[10px_30px_minmax(0,1fr)_auto]');
+            expect(card!.className).toContain('grid-cols-[10px_20px_minmax(0,1fr)_auto]');
         });
     });
 
