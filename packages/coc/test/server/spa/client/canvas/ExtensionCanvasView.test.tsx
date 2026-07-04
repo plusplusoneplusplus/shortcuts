@@ -5,19 +5,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
+    useCocClient: vi.fn(),
     getExtension: vi.fn(),
     invokeCapability: vi.fn(),
     save: vi.fn(),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
-        canvases: {
-            getExtension: mocks.getExtension,
-            invokeCapability: mocks.invokeCapability,
-            save: mocks.save,
-        },
-    }),
+// The view must route every workspace-scoped canvas call through the clone-aware
+// client so remote workspaces reach their OWNING server. The remote-routing
+// regression tests below override this to assert a remote workspace never
+// resolves to the shared local client.
+vi.mock('../../../../../src/server/spa/client/react/repos/cloneRouting', () => ({
+    useCocClient: mocks.useCocClient,
 }));
 
 import { ExtensionCanvasView, buildExtensionSrcDoc } from '../../../../../src/server/spa/client/react/features/canvas/ExtensionCanvasView';
@@ -68,6 +67,14 @@ describe('ExtensionCanvasView', () => {
         mocks.getExtension.mockReset().mockResolvedValue(EXTENSION);
         mocks.invokeCapability.mockReset();
         mocks.save.mockReset();
+        // Default: a single shared client backed by the method mocks above.
+        mocks.useCocClient.mockReset().mockReturnValue({
+            canvases: {
+                getExtension: mocks.getExtension,
+                invokeCapability: mocks.invokeCapability,
+                save: mocks.save,
+            },
+        });
     });
 
     it('loads the extension and renders a sandboxed iframe', async () => {
@@ -147,5 +154,76 @@ describe('ExtensionCanvasView', () => {
         });
 
         expect(mocks.invokeCapability).not.toHaveBeenCalled();
+    });
+});
+
+/**
+ * Regression: canvas data (incl. the extension docs) lives ONLY on the coc
+ * server that owns the workspace and is never synced to other servers. The view
+ * previously fetched via the bare page-origin client (getSpaCocClient), so for a
+ * REMOTE workspace the extension GET/invoke/save hit the local server — which
+ * has no clone at that id — and returned 404 ("Canvas extension not found")
+ * even though the frame rendered (the parent CanvasPanel loads content through
+ * the clone-aware client). All three calls must route via useCocClient(wsId).
+ */
+describe('ExtensionCanvasView — remote-aware routing', () => {
+    function makeClient() {
+        return {
+            canvases: {
+                getExtension: vi.fn().mockResolvedValue(EXTENSION),
+                invokeCapability: vi.fn().mockResolvedValue(makeCanvas({ revision: 3 })),
+                save: vi.fn().mockResolvedValue(makeCanvas({ revision: 3 })),
+            },
+        };
+    }
+
+    beforeEach(() => {
+        mocks.useCocClient.mockReset();
+    });
+
+    it('regression: loads the extension from the workspace-owning (remote) server, never the local client', async () => {
+        const REMOTE_WS = 'ws-remote-xyz';
+        const remoteClient = makeClient();
+        const localClient = makeClient();
+        mocks.useCocClient.mockImplementation((wsId: string) => (wsId === REMOTE_WS ? remoteClient : localClient));
+
+        render(<ExtensionCanvasView workspaceId={REMOTE_WS} canvas={makeCanvas({ workspaceId: REMOTE_WS })} onCanvasSaved={vi.fn()} />);
+        await screen.findByTestId('extension-canvas-iframe');
+
+        // Client is resolved by workspace id, and the fetch hit the remote server.
+        expect(mocks.useCocClient).toHaveBeenCalledWith(REMOTE_WS);
+        expect(remoteClient.canvases.getExtension).toHaveBeenCalledWith(REMOTE_WS, 'board-abc123');
+        // The default/local client is never used for a remote workspace — the bug.
+        expect(localClient.canvases.getExtension).not.toHaveBeenCalled();
+    });
+
+    it('regression: capability + set-state actions also route to the remote server', async () => {
+        const REMOTE_WS = 'ws-remote-xyz';
+        const remoteClient = makeClient();
+        const localClient = makeClient();
+        mocks.useCocClient.mockImplementation((wsId: string) => (wsId === REMOTE_WS ? remoteClient : localClient));
+
+        render(<ExtensionCanvasView workspaceId={REMOTE_WS} canvas={makeCanvas({ workspaceId: REMOTE_WS })} onCanvasSaved={vi.fn()} />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+
+        postFromIframe(iframe, { __canvasHost: true, type: 'invoke-capability', name: 'add_card', params: { id: 'c1' } });
+        postFromIframe(iframe, { __canvasHost: true, type: 'set-state', state: { cards: [] } });
+
+        await waitFor(() => expect(remoteClient.canvases.invokeCapability).toHaveBeenCalledWith(REMOTE_WS, 'board-abc123', 'add_card', { id: 'c1' }));
+        await waitFor(() => expect(remoteClient.canvases.save).toHaveBeenCalled());
+        expect(localClient.canvases.invokeCapability).not.toHaveBeenCalled();
+        expect(localClient.canvases.save).not.toHaveBeenCalled();
+    });
+
+    it('a local workspace resolves to the default client', async () => {
+        const LOCAL_WS = 'ws-local';
+        const localClient = makeClient();
+        mocks.useCocClient.mockReturnValue(localClient);
+
+        render(<ExtensionCanvasView workspaceId={LOCAL_WS} canvas={makeCanvas({ workspaceId: LOCAL_WS })} onCanvasSaved={vi.fn()} />);
+        await screen.findByTestId('extension-canvas-iframe');
+
+        expect(mocks.useCocClient).toHaveBeenCalledWith(LOCAL_WS);
+        expect(localClient.canvases.getExtension).toHaveBeenCalledWith(LOCAL_WS, 'board-abc123');
     });
 });
