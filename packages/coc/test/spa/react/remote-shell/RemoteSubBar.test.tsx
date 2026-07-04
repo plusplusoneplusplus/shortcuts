@@ -97,14 +97,18 @@ describe('RemoteSubBar', () => {
         expect(remoteTabs).toEqual(['work-items', 'pull-requests']);
     });
 
-    it('labels the remote scope by provider (GitHub) and drops the Clone scope label', () => {
+    it('marks the remote scope with the GitHub logo (not a keyword) and drops the Clone scope label', () => {
         renderBar();
         const label = screen.getByTestId('scope-label-remote');
-        expect(label.textContent).toBe('GitHub');
+        expect(label.getAttribute('data-provider')).toBe('github');
+        expect(label.getAttribute('aria-label')).toBe('GitHub');
+        // The keyword text is replaced by an icon.
+        expect(label.textContent).toBe('');
+        expect(label.querySelector('svg')).not.toBeNull();
         expect(screen.queryByTestId('scope-label-clone')).toBeNull();
     });
 
-    it('labels the remote scope ADO for Azure DevOps remotes', () => {
+    it('marks the remote scope with the Azure DevOps logo for ADO remotes', () => {
         const ado = 'https://dev.azure.com/org/project/_git/repo';
         const adoRepo = (id: string, name: string) => ({
             workspace: { id, name, color: '#0078d4', remoteUrl: ado, rootPath: `/r/${id}` },
@@ -112,7 +116,10 @@ describe('RemoteSubBar', () => {
         });
         const repos = [adoRepo('a', 'repo'), adoRepo('b', 'repo-2')];
         render(<RemoteSubBar repo={repos[0] as any} repos={repos as any} />);
-        expect(screen.getByTestId('scope-label-remote').textContent).toBe('ADO');
+        const label = screen.getByTestId('scope-label-remote');
+        expect(label.getAttribute('data-provider')).toBe('ado');
+        expect(label.getAttribute('aria-label')).toBe('ADO');
+        expect(label.querySelector('svg')).not.toBeNull();
     });
 
     it('shows every non-remote tab in the clone scope, inline, when width is unconstrained', () => {

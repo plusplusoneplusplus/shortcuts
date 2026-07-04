@@ -10,6 +10,7 @@ import {
     blendRemoteCloneStatus,
     summarizeRemote,
     remoteProviderLabel,
+    remoteProviderKind,
     REMOTE_SCOPE_KEYS,
 } from '../../../../src/server/spa/client/react/features/remote-shell/shellModel';
 import type { SubTabDef } from '../../../../src/server/spa/client/react/features/repo-detail/repoSubTabs';
@@ -218,5 +219,24 @@ describe('remoteProviderLabel', () => {
         expect(remoteProviderLabel(null)).toBe('Remote');
         expect(remoteProviderLabel(undefined)).toBe('Remote');
         expect(remoteProviderLabel('')).toBe('Remote');
+    });
+});
+
+describe('remoteProviderKind', () => {
+    it('returns "ado" for Azure DevOps remotes', () => {
+        expect(remoteProviderKind('dev.azure.com/org/project/repo')).toBe('ado');
+        expect(remoteProviderKind('acme.visualstudio.com/project/repo')).toBe('ado');
+    });
+
+    it('returns "github" for GitHub remotes', () => {
+        expect(remoteProviderKind('github.com/acme/shortcuts')).toBe('github');
+        expect(remoteProviderKind('ghe.github.com/acme/repo')).toBe('github');
+    });
+
+    it('returns "remote" for unknown or empty hosts', () => {
+        expect(remoteProviderKind('gitlab.com/acme/repo')).toBe('remote');
+        expect(remoteProviderKind(null)).toBe('remote');
+        expect(remoteProviderKind(undefined)).toBe('remote');
+        expect(remoteProviderKind('')).toBe('remote');
     });
 });

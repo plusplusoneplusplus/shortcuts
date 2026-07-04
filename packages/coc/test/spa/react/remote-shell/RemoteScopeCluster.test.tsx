@@ -92,6 +92,27 @@ describe('RemoteScopeCluster', () => {
             .toEqual(['work-items', 'pull-requests']);
     });
 
+    it('shows the GitHub logo (not a keyword) in the remote chip for GitHub remotes', () => {
+        render(<RemoteScopeCluster repo={mockRepos[0]} repos={mockRepos} />);
+
+        const badge = screen.getByTestId('remote-provider-badge');
+        expect(badge.getAttribute('data-provider')).toBe('github');
+        expect(badge.getAttribute('aria-label')).toBe('GitHub');
+        expect(badge.textContent).toBe('');
+        expect(badge.querySelector('svg')).not.toBeNull();
+    });
+
+    it('shows the Azure DevOps logo in the remote chip for ADO remotes', () => {
+        const ADO = 'https://dev.azure.com/org/project/_git/repo';
+        mockRepos = [repo('a', 'repo', ADO), repo('b', 'repo-2', ADO)];
+        render(<RemoteScopeCluster repo={mockRepos[0]} repos={mockRepos} />);
+
+        const badge = screen.getByTestId('remote-provider-badge');
+        expect(badge.getAttribute('data-provider')).toBe('ado');
+        expect(badge.getAttribute('aria-label')).toBe('ADO');
+        expect(badge.querySelector('svg')).not.toBeNull();
+    });
+
     it('opens the remote dropdown with recent rows, Show all, search, and add actions', () => {
         mockRepos = [
             repo('a', 'shortcuts', SHORTCUTS),

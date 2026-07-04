@@ -33,8 +33,8 @@ import { groupReposByRemote, isRemoteRepo, truncatePath, getRepoHashColor, getSe
 import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import {
     partitionShellTabs, computeCloneStatusMap, cloneStatusColor, summarizeRemote, computeVisibleTabKeys,
-    remoteProviderLabel,
 } from './shellModel';
+import { RemoteProviderBadge } from './RemoteProviderBadge';
 import { useShellNavigation } from './useShellNavigation';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab } from '../../types/dashboard';
@@ -106,7 +106,6 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
     );
     const remoteColor = getRepoHashColor(clones[0]?.workspace, getHostname() ?? 'local');
     const remoteLabel = group ? summarizeRemote(group, cloneStatus, {}).name : ws.name;
-    const providerLabel = remoteProviderLabel(group?.normalizedUrl);
     const branch = repo.gitInfo?.branch || null;
 
     const { fetchRepos, unseenCounts } = useRepos();
@@ -303,7 +302,7 @@ export function RemoteSubBar({ repo, repos }: RemoteSubBarProps) {
             </div>
 
             {/* ── Remote scope ── */}
-            {remoteTabs.length > 0 && <span className={scopeLabelClass} data-testid="scope-label-remote">{providerLabel}</span>}
+            {remoteTabs.length > 0 && <RemoteProviderBadge normalizedUrl={group?.normalizedUrl} className={scopeLabelClass} testId="scope-label-remote" />}
             {remoteTabs.map(t => renderTab(t, 'remote-scope-tab'))}
 
             {/* divider */}
