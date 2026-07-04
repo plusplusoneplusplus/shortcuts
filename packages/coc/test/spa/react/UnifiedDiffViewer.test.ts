@@ -122,6 +122,14 @@ describe('UnifiedDiffViewer', () => {
             expect(source).toContain('border border-[#e0e0e0] dark:border-[#3c3c3c] rounded');
         });
 
+        // Regression: the container only set a background, so non-tokenized code
+        // text (identifiers, operators, punctuation) — and all text when the CDN
+        // hljs theme fails to load — inherited a near-black default and rendered
+        // dark-on-dark in dark mode. An explicit base foreground keeps it readable.
+        it('sets a readable base foreground for both light and dark mode', () => {
+            expect(source).toContain('text-[#1e1e1e] dark:text-[#cccccc]');
+        });
+
         it('line number columns use shrink-0 to prevent flex collapse', () => {
             expect(source).toContain('w-8 shrink-0 inline-block');
         });

@@ -135,6 +135,15 @@ describe('ConversationTurnBubble redesign — user bubble surface', () => {
         expect(bubble.className).toContain('sm:max-w-[78%]');
     });
 
+    it('user plain-text content carries a light foreground in dark mode for readability on the dark bubble', () => {
+        const { getByTestId } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'Hello world' })} />);
+        const text = getByTestId('user-plain-text');
+        // Dark bubble background is dark:bg-[#2a2a2c]; the text needs a light dark-mode color
+        // so it does not inherit a near-black default and vanish against the surface.
+        expect(text.className).toContain('text-[#1e1e1e]');
+        expect(text.className).toContain('dark:text-[#cccccc]');
+    });
+
     it('pinned user bubble switches to the amber palette and gains a border', () => {
         const { container } = render(
             <ConversationTurnBubble turn={makeTurn({ role: 'user', pinnedAt: '2026-01-15T10:31:00Z' })} />

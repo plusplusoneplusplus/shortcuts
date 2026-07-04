@@ -1175,7 +1175,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             onMouseUp={enableComments ? handleMouseUp : undefined}
             onMouseDown={enableComments ? handleMouseDown : undefined}
             onContextMenu={enableComments ? handleContextMenu : undefined}
-            className="overflow-x-auto font-mono text-xs leading-tight bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
+            className="overflow-x-auto font-mono text-xs leading-tight text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
             data-testid={testId}
         >
             {virtualized ? (

@@ -551,7 +551,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                             <button
                                 ref={titleSwitcherButtonRef}
                                 type="button"
-                                className="group flex max-w-full items-center gap-1 rounded px-1 py-0.5 -ml-1 text-left text-xs font-semibold hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                                className="group flex max-w-full items-center gap-1 rounded px-1 py-0.5 -ml-1 text-left text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
                                 title={panelTitle}
                                 data-testid="canvas-panel-title"
                                 aria-haspopup="menu"
@@ -592,7 +592,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                             )}
                         </>
                     ) : (
-                        <span className="block text-xs font-semibold truncate" title={panelTitle} data-testid="canvas-panel-title">
+                        <span className="block text-xs font-semibold truncate text-[#1e1e1e] dark:text-[#cccccc]" title={panelTitle} data-testid="canvas-panel-title">
                             {panelTitle}
                         </span>
                     )}

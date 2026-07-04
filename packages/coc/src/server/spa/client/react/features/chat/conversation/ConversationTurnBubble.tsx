@@ -1834,7 +1834,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         />
                     ))}
                     {isUser && !showRaw && visibleUserContentText.trim() && (
-                        <div className="whitespace-pre-wrap break-words text-[13px]" data-testid="user-plain-text"
+                        <div className="whitespace-pre-wrap break-words text-[13px] text-[#1e1e1e] dark:text-[#cccccc]" data-testid="user-plain-text"
                             dangerouslySetInnerHTML={{ __html: userContentHtml }}
                         />
                     )}
