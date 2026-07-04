@@ -349,10 +349,17 @@ describe('RepoTemplatesTab — delete', () => {
 import * as fs from 'fs';
 import * as path from 'path';
 
-const SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'templates', 'RepoTemplatesTab.tsx'),
-    'utf-8',
+const TEMPLATES_DIR = path.join(
+    __dirname, '..', '..', '..',
+    'src', 'server', 'spa', 'client', 'react', 'features', 'templates',
 );
+const readTemplateSource = (...parts: string[]) => fs.readFileSync(path.join(TEMPLATES_DIR, ...parts), 'utf-8');
+
+const SOURCE = readTemplateSource('RepoTemplatesTab.tsx');
+const COMPONENTS_SOURCE = readTemplateSource('commit-templates', 'components.tsx');
+const CONTEXT_MENU_SOURCE = readTemplateSource('commit-templates', 'ContextMenu.tsx');
+const HELPERS_SOURCE = readTemplateSource('commit-templates', 'helpers.ts');
+const CONTROLLER_SOURCE = readTemplateSource('commit-templates', 'useCommitTemplatesController.ts');
 
 describe('RepoTemplatesTab — source structure', () => {
     it('exports RepoTemplatesTab as a named export', () => {
@@ -363,13 +370,12 @@ describe('RepoTemplatesTab — source structure', () => {
         expect(SOURCE).toContain('workspaceId: string');
     });
 
-    it('uses the typed templates client for template list and detail reads', () => {
-        expect(SOURCE).toContain('getSpaCocClient().templates.list');
-        expect(SOURCE).toContain('getSpaCocClient().templates.detail');
+    it('drives state through the shared useCommitTemplatesController', () => {
+        expect(SOURCE).toContain('useCommitTemplatesController(workspaceId)');
     });
 
-    it('uses encodeURIComponent for commit validation calls', () => {
-        expect(SOURCE).toContain('enc(workspaceId)');
+    it('imports the shared commit-template components', () => {
+        expect(SOURCE).toContain("from './commit-templates'");
     });
 
     it('renders split panel layout with left (list) and right (detail) panels', () => {
@@ -377,90 +383,87 @@ describe('RepoTemplatesTab — source structure', () => {
         expect(SOURCE).toContain('RIGHT PANEL');
     });
 
-    it('has TemplateDetailView sub-component', () => {
-        expect(SOURCE).toContain('function TemplateDetailView');
-    });
-
-    it('has CreateTemplateForm sub-component', () => {
-        expect(SOURCE).toContain('function CreateTemplateForm');
-    });
-
-    it('has ReplicateDialog sub-component', () => {
-        expect(SOURCE).toContain('function ReplicateDialog');
-    });
-
-    it('has ContextMenu sub-component', () => {
-        expect(SOURCE).toContain('function ContextMenu');
-    });
-
-    it('uses ReactDOM.createPortal for context menu', () => {
-        expect(SOURCE).toContain('ReactDOM.createPortal');
-    });
-
-    it('listens for templates-changed window event', () => {
-        expect(SOURCE).toContain("'templates-changed'");
-    });
-
-    it('supports template editing through client.templates', () => {
-        expect(SOURCE).toContain('getSpaCocClient().templates.update');
-    });
-
-    it('supports template deletion through client.templates', () => {
-        expect(SOURCE).toContain('getSpaCocClient().templates.delete');
-    });
-
-    it('supports template creation and replication through client.templates', () => {
-        expect(SOURCE).toContain('getSpaCocClient().templates.create');
-        expect(SOURCE).toContain('getSpaCocClient().templates.replicate');
-    });
-
-    it('validates template name with kebab-case regex', () => {
-        expect(SOURCE).toContain('/^[a-z0-9]+(-[a-z0-9]+)*$/');
-    });
-
-    it('uses confirm dialog before delete', () => {
-        expect(SOURCE).toContain('confirm(');
-    });
-
     it('renders Spinner for loading states', () => {
         expect(SOURCE).toContain('<Spinner');
     });
 
-    it('uses Dialog component for replicate modal', () => {
-        expect(SOURCE).toContain('<Dialog');
+    it('has dark mode classes throughout', () => {
+        expect(SOURCE).toContain('dark:');
+    });
+});
+
+describe('commit-templates shared module — source structure', () => {
+    it('exports the presentational commit-template components', () => {
+        expect(COMPONENTS_SOURCE).toContain('export function TemplateListItem');
+        expect(COMPONENTS_SOURCE).toContain('export function TemplateDetailView');
+        expect(COMPONENTS_SOURCE).toContain('export function CreateTemplateForm');
+        expect(COMPONENTS_SOURCE).toContain('export function ReplicateDialog');
     });
 
-    it('renders file status colors', () => {
-        expect(SOURCE).toContain('function statusColor');
-        expect(SOURCE).toContain("case 'added'");
-        expect(SOURCE).toContain("case 'deleted'");
-        expect(SOURCE).toContain("case 'renamed'");
+    it('exports a portal-based ContextMenu', () => {
+        expect(CONTEXT_MENU_SOURCE).toContain('export function ContextMenu');
+        expect(CONTEXT_MENU_SOURCE).toContain('ReactDOM.createPortal');
+    });
+
+    it('reads template list and detail through the typed client (controller)', () => {
+        expect(CONTROLLER_SOURCE).toContain('getSpaCocClient().templates.list');
+        expect(CONTROLLER_SOURCE).toContain('getSpaCocClient().templates.detail');
+    });
+
+    it('listens for templates-changed window event in the controller', () => {
+        expect(CONTROLLER_SOURCE).toContain("'templates-changed'");
+    });
+
+    it('deletes through client.templates with a confirm guard in the controller', () => {
+        expect(CONTROLLER_SOURCE).toContain('getSpaCocClient().templates.delete');
+        expect(CONTROLLER_SOURCE).toContain('confirm(');
+    });
+
+    it('resets selection when the workspace changes in the controller', () => {
+        expect(CONTROLLER_SOURCE).toContain('setSelectedName(null)');
+        expect(CONTROLLER_SOURCE).toContain('setShowCreate(false)');
+        expect(CONTROLLER_SOURCE).toContain('setEditingName(null)');
+    });
+
+    it('supports template editing, creation, and replication through client.templates', () => {
+        expect(COMPONENTS_SOURCE).toContain('getSpaCocClient().templates.update');
+        expect(COMPONENTS_SOURCE).toContain('getSpaCocClient().templates.create');
+        expect(COMPONENTS_SOURCE).toContain('getSpaCocClient().templates.replicate');
+    });
+
+    it('uses encodeURIComponent for commit validation calls', () => {
+        expect(COMPONENTS_SOURCE).toContain('enc(workspaceId)');
     });
 
     it('supports commit hash validation via API on blur', () => {
-        expect(SOURCE).toContain('handleCommitBlur');
-        expect(SOURCE).toContain('/git/commits/');
+        expect(COMPONENTS_SOURCE).toContain('handleCommitBlur');
+        expect(COMPONENTS_SOURCE).toContain('/git/commits/');
     });
 
     it('edit mode shows name, kind, and commitHash as read-only', () => {
-        expect(SOURCE).toContain('isEdit');
+        expect(COMPONENTS_SOURCE).toContain('isEdit');
     });
 
-    it('resets selection when workspace changes', () => {
-        expect(SOURCE).toContain('setSelectedName(null)');
-        expect(SOURCE).toContain('setShowCreate(false)');
-        expect(SOURCE).toContain('setEditingName(null)');
+    it('uses Dialog component for replicate modal', () => {
+        expect(COMPONENTS_SOURCE).toContain('<Dialog');
     });
 
     it('uses formatRelativeTime for timestamps', () => {
-        expect(SOURCE).toContain('formatRelativeTime');
+        expect(COMPONENTS_SOURCE).toContain('formatRelativeTime');
     });
 
     it('supports clipboard copy for commit hash', () => {
-        expect(SOURCE).toContain('navigator.clipboard.writeText');
+        expect(COMPONENTS_SOURCE).toContain('navigator.clipboard.writeText');
     });
 
-    it('has dark mode classes throughout', () => {
-        expect(SOURCE).toContain('dark:');
+    it('validates template name with kebab-case regex', () => {
+        expect(HELPERS_SOURCE).toContain('/^[a-z0-9]+(-[a-z0-9]+)*$/');
+    });
+
+    it('renders file status colors', () => {
+        expect(HELPERS_SOURCE).toContain('export function statusColor');
+        expect(HELPERS_SOURCE).toContain("case 'added'");
+        expect(HELPERS_SOURCE).toContain("case 'deleted'");
+        expect(HELPERS_SOURCE).toContain("case 'renamed'");
     });
 });
