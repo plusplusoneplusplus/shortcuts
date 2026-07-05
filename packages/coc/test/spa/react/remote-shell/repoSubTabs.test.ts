@@ -28,6 +28,13 @@ describe('VISIBLE_SUB_TABS', () => {
         expect(VISIBLE_SUB_TABS.find(t => t.key === 'wiki')).toBeUndefined();
         expect(SUB_TABS.find(t => t.key === 'wiki')).toBeDefined();
     });
+
+    // The remote-scope tabs use the short labels "WIs" / "PRs" so they stay
+    // compact in the remote shell header (RemoteScopeCluster / RemoteSubBar).
+    it('labels the remote-scope tabs compactly as "WIs" and "PRs"', () => {
+        expect(SUB_TABS.find(t => t.key === 'work-items')?.label).toBe('WIs');
+        expect(SUB_TABS.find(t => t.key === 'pull-requests')?.label).toBe('PRs');
+    });
 });
 
 describe('computeVisibleSubTabs', () => {
@@ -38,9 +45,20 @@ describe('computeVisibleSubTabs', () => {
         expect(tabs.find(t => t.key === 'tasks')?.label).toBe('Plans (Dep.)');
     });
 
+    // Screenshot scenario: classic mode keeps the compact "WIs" / "PRs" labels
+    // for the remote-scope tabs (no per-layout override touches them here).
+    it('classic mode keeps the compact "WIs" / "PRs" labels', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic' });
+        expect(tabs.find(t => t.key === 'work-items')?.label).toBe('WIs');
+        expect(tabs.find(t => t.key === 'pull-requests')?.label).toBe('PRs');
+    });
+
     it('dev-workflow mode reorders chats first and relabels PRs / schedules', () => {
         const tabs = computeVisibleSubTabs(allOn);
         expect(tabs[0].key).toBe('chats');
+        // Work Items keeps the compact base label; the dev-workflow override only
+        // renames pull-requests to "Full Requests".
+        expect(tabs.find(t => t.key === 'work-items')?.label).toBe('WIs');
         expect(tabs.find(t => t.key === 'pull-requests')?.label).toBe('Full Requests');
         expect(tabs.find(t => t.key === 'schedules')?.label).toBe('Jobs');
     });
