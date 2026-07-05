@@ -682,14 +682,14 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         )}
                         {exportOpen && (
                             <div className="absolute right-0 top-6 z-20 min-w-[150px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-md py-1" data-testid="canvas-panel-export-menu">
-                                <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={() => void handleCopy()} data-testid="canvas-panel-export-copy">
+                                <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={() => void handleCopy()} data-testid="canvas-panel-export-copy">
                                     Copy content
                                 </button>
-                                <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={handleDownload} data-testid="canvas-panel-export-download">
+                                <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={handleDownload} data-testid="canvas-panel-export-download">
                                     Download file
                                 </button>
                                 {canvas.type === 'markdown' && (
-                                    <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={() => void handleSaveToNotes()} data-testid="canvas-panel-export-notes">
+                                    <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={() => void handleSaveToNotes()} data-testid="canvas-panel-export-notes">
                                         Save to Notes
                                     </button>
                                 )}
