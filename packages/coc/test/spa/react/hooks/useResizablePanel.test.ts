@@ -267,4 +267,91 @@ describe('useResizablePanel', () => {
 
         removeEventListenerSpy.mockRestore();
     });
+
+    describe("direction: 'right' (right-anchored panel)", () => {
+        it('narrows when the handle is dragged right', () => {
+            const { result } = renderHook(() =>
+                useResizablePanel({ initialWidth: 300, minWidth: 100, maxWidth: 500, direction: 'right' })
+            );
+
+            act(() => {
+                result.current.handleMouseDown({
+                    preventDefault: vi.fn(),
+                    clientX: 300,
+                } as unknown as React.MouseEvent);
+            });
+
+            // Drag right (+100px): a right-anchored panel shrinks.
+            act(() => {
+                document.dispatchEvent(new MouseEvent('mousemove', { clientX: 400 }));
+            });
+
+            expect(result.current.width).toBe(200);
+        });
+
+        it('widens when the handle is dragged left', () => {
+            const { result } = renderHook(() =>
+                useResizablePanel({ initialWidth: 300, minWidth: 100, maxWidth: 500, direction: 'right' })
+            );
+
+            act(() => {
+                result.current.handleMouseDown({
+                    preventDefault: vi.fn(),
+                    clientX: 300,
+                } as unknown as React.MouseEvent);
+            });
+
+            // Drag left (-100px): a right-anchored panel grows.
+            act(() => {
+                document.dispatchEvent(new MouseEvent('mousemove', { clientX: 200 }));
+            });
+
+            expect(result.current.width).toBe(400);
+        });
+    });
+
+    describe('drag overlay (keeps pointer events off underlying iframes)', () => {
+        const overlays = () => document.querySelectorAll('[data-resize-overlay]');
+
+        it('mounts a full-window overlay while dragging and removes it on drag end', () => {
+            const { result } = renderHook(() => useResizablePanel());
+            expect(overlays().length).toBe(0);
+
+            act(() => {
+                result.current.handleMouseDown({
+                    preventDefault: vi.fn(),
+                    clientX: 320,
+                } as unknown as React.MouseEvent);
+            });
+
+            // Overlay must exist during the drag so mousemove over an iframe is
+            // captured by the main document instead of being swallowed.
+            expect(overlays().length).toBe(1);
+            const overlay = overlays()[0] as HTMLElement;
+            expect(overlay.style.position).toBe('fixed');
+            expect(overlay.style.cursor).toBe('col-resize');
+
+            act(() => {
+                document.dispatchEvent(new MouseEvent('mouseup'));
+            });
+
+            expect(overlays().length).toBe(0);
+        });
+
+        it('removes the overlay when unmounted mid-drag', () => {
+            const { result, unmount } = renderHook(() => useResizablePanel());
+
+            act(() => {
+                result.current.handleMouseDown({
+                    preventDefault: vi.fn(),
+                    clientX: 320,
+                } as unknown as React.MouseEvent);
+            });
+            expect(overlays().length).toBe(1);
+
+            unmount();
+
+            expect(overlays().length).toBe(0);
+        });
+    });
 });

@@ -93,6 +93,22 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
     useEffect(() => {
         if (!isDragging) return;
 
+        // While dragging, cover the viewport with a transparent overlay so the
+        // pointer stays over the main document the whole time. Without it, a
+        // drag that crosses an <iframe> (e.g. the canvas panel) stalls: the
+        // iframe is a separate document that swallows `mousemove`, so the drag
+        // only tracks while the cursor is exactly over the thin resize handle.
+        // The overlay keeps pointer events flowing regardless of what sits
+        // underneath, and gives a consistent resize cursor across the window.
+        const overlay = document.createElement('div');
+        overlay.setAttribute('data-resize-overlay', '');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.zIndex = '9999';
+        overlay.style.cursor = 'col-resize';
+        overlay.style.userSelect = 'none';
+        document.body.appendChild(overlay);
+
         const handleMouseMove = (e: MouseEvent) => {
             e.preventDefault();
             onMove(e.clientX);
@@ -116,6 +132,7 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
             document.removeEventListener('mouseup', handleMouseUp);
             document.removeEventListener('touchmove', handleTouchMove);
             document.removeEventListener('touchend', handleTouchEnd);
+            overlay.remove();
         };
     }, [isDragging, onMove, onEnd]);
 
