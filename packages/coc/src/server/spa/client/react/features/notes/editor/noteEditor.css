@@ -6,6 +6,7 @@
     padding: 1rem;
     font-size: 0.9375rem;
     line-height: 1.65;
+    color: #1e1e1e;
 }
 
 .note-editor .ProseMirror p.is-editor-empty:first-child::before {
@@ -76,6 +77,8 @@
 }
 
 /* Dark mode overrides */
+.dark .note-editor .ProseMirror { color: #d4d4d4; }
+.dark .note-editor .ProseMirror a { color: #4ea6ea; }
 .dark .note-editor .ProseMirror blockquote { border-left-color: #555; color: #aaa; }
 .dark .note-editor .ProseMirror code { background: #2d2d2d; color: #ff9da4; }
 .dark .note-editor .ProseMirror pre {

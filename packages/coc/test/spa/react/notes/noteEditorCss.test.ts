@@ -74,6 +74,36 @@ describe('noteEditor.css theme consistency', () => {
         expect(preCode![0]).toContain('color: inherit');
     });
 
+    // --- Base content text color ---
+
+    it('light-mode content area sets an explicit dark text color', () => {
+        // The base .ProseMirror rule must set an explicit color so text does
+        // not depend on an inherited value.
+        const base = css.match(
+            /\.note-editor\s+\.ProseMirror\s*\{[^}]+\}/,
+        );
+        expect(base).not.toBeNull();
+        const color = base![0].match(/color:\s*(#[0-9a-fA-F]{6})/);
+        expect(color).not.toBeNull();
+        // A dark text color for light backgrounds → low red channel.
+        const r = parseInt(color![1].slice(1, 3), 16);
+        expect(r).toBeLessThan(0x40);
+    });
+
+    it('dark-mode content area sets a light text color', () => {
+        // Without this rule, note body/heading text stays near-black and is
+        // unreadable on the dark editor background.
+        const darkBase = css.match(
+            /\.dark\s+\.note-editor\s+\.ProseMirror\s*\{[^}]+\}/,
+        );
+        expect(darkBase).not.toBeNull();
+        const color = darkBase![0].match(/color:\s*(#[0-9a-fA-F]{6})/);
+        expect(color).not.toBeNull();
+        // A light text color for dark backgrounds → high red channel.
+        const r = parseInt(color![1].slice(1, 3), 16);
+        expect(r).toBeGreaterThan(0xc0);
+    });
+
     // --- Links ---
 
     it('note editor links always use a pointer cursor', () => {
@@ -82,6 +112,18 @@ describe('noteEditor.css theme consistency', () => {
         );
         expect(linkRule).not.toBeNull();
         expect(linkRule![0]).toContain('cursor: pointer');
+    });
+
+    it('dark-mode links use a brighter color than the light-mode link', () => {
+        const darkLink = css.match(
+            /\.dark\s+\.note-editor\s+\.ProseMirror\s+a\s*\{[^}]+\}/,
+        );
+        expect(darkLink).not.toBeNull();
+        const color = darkLink![0].match(/color:\s*(#[0-9a-fA-F]{6})/);
+        expect(color).not.toBeNull();
+        // The dark link blue should be lighter than the light-mode #0078d4.
+        const g = parseInt(color![1].slice(3, 5), 16);
+        expect(g).toBeGreaterThan(0x78);
     });
 
     // --- Mermaid block toolbar button ---
