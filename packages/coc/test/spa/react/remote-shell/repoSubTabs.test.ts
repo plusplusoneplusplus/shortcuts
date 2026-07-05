@@ -93,3 +93,53 @@ describe('computeVisibleSubTabs', () => {
         expect(tabs.find(t => t.key === 'tasks')?.label).toBe('Tasks (Dep.)');
     });
 });
+
+// AC-02: when the splitWorkspacePanel flag is on, the split "Workspace" view
+// replaces the chat slot — the standalone `git` sub-tab is hidden and the chat
+// tab is relabeled "Workspace" (key preserved). Off by default; off-path is a
+// strict no-op. Absent option (remote-shell callers) behaves as off.
+describe('computeVisibleSubTabs — splitWorkspacePanel flag', () => {
+    it('off by default: omitting the option leaves git visible and labels unchanged (classic)', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic' });
+        expect(tabs.find(t => t.key === 'git')?.label).toBe('Git');
+        expect(tabs.find(t => t.key === 'activity')?.label).toBe('Activity');
+    });
+
+    it('explicit false is a no-op (dev-workflow keeps git + "Chats")', () => {
+        const off = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'dev-workflow', splitWorkspacePanelEnabled: false });
+        const baseline = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'dev-workflow' });
+        expect(off).toEqual(baseline);
+        expect(off.find(t => t.key === 'git')?.label).toBe('Git');
+        expect(off.find(t => t.key === 'chats')?.label).toBe('Chats');
+    });
+
+    it('flag on hides the git sub-tab and relabels the chat tab "Workspace" (classic)', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic', splitWorkspacePanelEnabled: true });
+        expect(tabs.find(t => t.key === 'git')).toBeUndefined();
+        // Key preserved (activity), only the label changes so mount/selection logic is unaffected.
+        expect(tabs.find(t => t.key === 'activity')?.label).toBe('Workspace');
+        expect(tabs.find(t => t.key === 'chats')).toBeUndefined();
+    });
+
+    it('flag on hides the git sub-tab and relabels the chat tab "Workspace" (dev-workflow)', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'dev-workflow', splitWorkspacePanelEnabled: true });
+        expect(tabs.find(t => t.key === 'git')).toBeUndefined();
+        expect(tabs.find(t => t.key === 'chats')?.label).toBe('Workspace');
+        expect(tabs.find(t => t.key === 'activity')).toBeUndefined();
+    });
+
+    it('flag on hides ONLY git — pull-requests and other tabs are untouched (parity of the rest)', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, splitWorkspacePanelEnabled: true });
+        expect(tabs.find(t => t.key === 'git')).toBeUndefined();
+        expect(tabs.find(t => t.key === 'pull-requests')).toBeDefined();
+        expect(tabs.find(t => t.key === 'work-items')).toBeDefined();
+        expect(tabs.find(t => t.key === 'terminal')).toBeDefined();
+    });
+
+    it('flag on is idempotent with the non-git-repo path (git already hidden)', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, isGitRepo: false, splitWorkspacePanelEnabled: true });
+        expect(tabs.find(t => t.key === 'git')).toBeUndefined();
+        // Chat tab still relabeled even when there was no git tab to hide.
+        expect(tabs.find(t => t.key === 'chats')?.label).toBe('Workspace');
+    });
+});
