@@ -471,7 +471,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
 
                                     {(question.type === 'yes-no' || question.type === 'confirm') && (
                                         <div className="flex items-center gap-3">
-                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <label className="flex items-center gap-2 text-sm text-[#1e1e1e] dark:text-[#cccccc] cursor-pointer">
                                                 <input
                                                     type="radio"
                                                     name={`ask-user-${question.questionId}`}
@@ -483,7 +483,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                 />
                                                 {question.type === 'yes-no' ? 'Yes' : 'Confirm'}
                                             </label>
-                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <label className="flex items-center gap-2 text-sm text-[#1e1e1e] dark:text-[#cccccc] cursor-pointer">
                                                 <input
                                                     type="radio"
                                                     name={`ask-user-${question.questionId}`}

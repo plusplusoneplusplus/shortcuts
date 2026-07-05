@@ -512,6 +512,36 @@ describe('AskUserInline', () => {
         expect(source).toContain('useCocClient');
     });
 
+    describe('dark-mode styling', () => {
+        it('gives yes-no option labels a dark-mode text color so they stay readable on the dark card', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([makeQuestion({ type: 'yes-no', options: undefined })])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            const yesLabel = screen.getByTestId('ask-user-yes-radio').closest('label');
+            const noLabel = screen.getByTestId('ask-user-no-radio').closest('label');
+            expect(yesLabel?.className).toContain('dark:text-[#cccccc]');
+            expect(noLabel?.className).toContain('dark:text-[#cccccc]');
+        });
+
+        it('gives confirm option labels a dark-mode text color', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([makeQuestion({ type: 'confirm', options: undefined })])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            const confirmLabel = screen.getByTestId('ask-user-confirm-radio').closest('label');
+            const cancelLabel = screen.getByTestId('ask-user-cancel-radio').closest('label');
+            expect(confirmLabel?.className).toContain('dark:text-[#cccccc]');
+            expect(cancelLabel?.className).toContain('dark:text-[#cccccc]');
+        });
+    });
+
     describe('markdown rendering', () => {
         it('renders bold and inline code in the question text', () => {
             render(
