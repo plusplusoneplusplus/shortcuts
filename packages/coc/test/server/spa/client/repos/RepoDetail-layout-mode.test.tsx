@@ -7,7 +7,8 @@
  * of layout mode, causing duplicate API calls and WebSocket listeners.
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { createPortal } from 'react-dom';
 
 // jsdom doesn't implement scrollIntoView
 beforeAll(() => {
@@ -147,22 +148,58 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
 }));
 
-// Stub RepoChatTab — render a marker div that captures mode prop
+// Stub RepoChatTab — render a marker div that captures mode prop.
+// In split-workspace layout it is ALSO seam-aware (mirrors the real portal seam):
+// a clickable list item fires onActivateDetail, and when detailActive it portals a
+// `chat-detail-marker` into the shared detailContainer. This lets the last-selection
+// routing be exercised behaviorally (AC-04) without pulling in the real ~56KB tab.
 vi.mock('../../../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
-    RepoChatTab: (props: any) => (
-        <div
-            data-testid={`repo-chat-tab-${props.mode ?? 'activity'}`}
-            data-workspace-id={props.workspaceId}
-            data-mode={props.mode ?? 'activity'}
-        />
-    ),
+    RepoChatTab: (props: any) => {
+        const isSplit = props.layout === 'split-workspace';
+        return (
+            <div
+                data-testid={`repo-chat-tab-${props.mode ?? 'activity'}`}
+                data-workspace-id={props.workspaceId}
+                data-mode={props.mode ?? 'activity'}
+            >
+                {isSplit && (
+                    <button
+                        data-testid="split-chat-list-item"
+                        onClick={() => props.onActivateDetail?.()}
+                    />
+                )}
+                {isSplit && props.detailActive && props.detailContainer
+                    ? createPortal(<div data-testid="chat-detail-marker" />, props.detailContainer)
+                    : null}
+            </div>
+        );
+    },
 }));
 
 // Stub all other tab components
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/RepoInfoTab', () => ({ RepoInfoTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/templates/TemplatesTab', () => ({ TemplatesTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab', () => ({ RepoSchedulesTab: () => null }));
-vi.mock('../../../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({ RepoGitTab: () => null }));
+// Stub RepoGitTab — null on every non-split path (as before). In split-workspace
+// layout it becomes seam-aware (mirror of the chat mock): a clickable list item
+// fires onActivateDetail and, when detailActive, portals a `git-detail-marker` into
+// the shared detailContainer — so last-selection-wins routing can be tested (AC-04).
+vi.mock('../../../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({
+    RepoGitTab: (props: any) => {
+        if (props.layout !== 'split-workspace') return null;
+        return (
+            <div data-testid="repo-git-tab-split">
+                <button
+                    data-testid="split-git-list-item"
+                    onClick={() => props.onActivateDetail?.()}
+                />
+                {props.detailActive && props.detailContainer
+                    ? createPortal(<div data-testid="git-detail-marker" />, props.detailContainer)
+                    : null}
+            </div>
+        );
+    },
+}));
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/RepoWikiTab', () => ({ RepoWikiTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab', () => ({ RepoSettingsTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({ ExplorerPanel: () => null }));
@@ -622,5 +659,35 @@ describe('RepoDetail — split workspace panel', () => {
 
         expect(screen.getByTestId('split-workspace-divider')).toBeTruthy();
         expect(screen.getByTestId('split-workspace-width-divider')).toBeTruthy();
+    });
+
+    // End-to-end AC-04: clicking a list item in one half routes THAT half's detail
+    // into the single shared pane and evicts the other's — driven by RepoDetail's own
+    // `splitLastClicked` state and the mirrored detailActive/onActivateDetail wiring.
+    // Both tabs point at the SAME detail host, so the pane never shows chat + git at once.
+    it('flag ON: last-selection-wins routes the clicked half into the ONE shared detail (AC-04)', () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+
+        const host = screen.getByTestId('split-workspace-detail-host');
+
+        // Default selection is 'chat' → the chat detail occupies the shared pane.
+        expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
+        expect(host.querySelector('[data-testid="git-detail-marker"]')).toBeNull();
+
+        // Click a git list item → git detail takes over the shared pane; chat is evicted.
+        fireEvent.click(screen.getByTestId('split-git-list-item'));
+        expect(host.querySelector('[data-testid="git-detail-marker"]')).toBeTruthy();
+        expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeNull();
+
+        // Click a chat list item → chat detail returns; git is evicted (last-selection-wins).
+        fireEvent.click(screen.getByTestId('split-chat-list-item'));
+        expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
+        expect(host.querySelector('[data-testid="git-detail-marker"]')).toBeNull();
+
+        // The detail pane is always singular — exactly one shared region throughout.
+        expect(screen.getAllByTestId('split-workspace-detail')).toHaveLength(1);
     });
 });
