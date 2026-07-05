@@ -154,7 +154,9 @@ describe('ProcessesSidebar (legacy process list)', () => {
             expect(screen.getByText('nav-project')).toBeDefined();
         });
         fireEvent.click(screen.getByTitle('Go to repo: nav-project'));
-        expect(window.location.hash).toBe('#repos/ws-nav');
+        // Per-workspace route persistence always lands on an explicit sub-tab;
+        // with no remembered route the default is the chats tab.
+        expect(window.location.hash).toBe('#repos/ws-nav/chats');
     });
 
     it('does not show repo name when process has no workspaceId', async () => {

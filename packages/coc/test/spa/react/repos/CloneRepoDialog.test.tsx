@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
+import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/QueueContext';
 import {
     CloneRepoDialog,
     deriveRepoName,
@@ -23,7 +24,9 @@ vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () =>
 }));
 
 function Wrap({ children }: { children: ReactNode }) {
-    return <AppProvider>{children}</AppProvider>;
+    // CloneRepoDialog navigates via useWorkspaceNavigation, which reads queue
+    // context (selected-task-per-repo), so the dialog needs QueueProvider too.
+    return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
 }
 
 describe('deriveRepoName', () => {
@@ -101,7 +104,9 @@ describe('CloneRepoDialog', () => {
             name: 'repo',
             rootPath: '/projects/repo',
         });
-        expect(location.hash).toBe('#repos/ws-cloned');
+        // Per-workspace route persistence lands on an explicit sub-tab; with no
+        // remembered route for a freshly cloned workspace the default is chats.
+        expect(location.hash).toBe('#repos/ws-cloned/chats');
         expect(onSuccess).toHaveBeenCalledTimes(1);
         expect(onClose).toHaveBeenCalledTimes(1);
     });
