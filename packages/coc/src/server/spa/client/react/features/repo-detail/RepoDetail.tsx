@@ -61,7 +61,8 @@ interface RepoDetailProps {
     repos: RepoData[];
     onRefresh: () => void;
     /** When true, suppress the desktop header (title + sub-tab strip + actions).
-     *  Used by the remote-first shell, which renders its own RemoteSubBar instead. */
+     *  Used by the remote-first shell, whose header (RemoteShellHeader) lives in
+     *  the global TopBar instead. */
     chromeless?: boolean;
 }
 
@@ -451,7 +452,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     return (
         <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
             {/* Header — desktop only; on mobile the repo name lives in MobileTabBar leadingSlot.
-                Suppressed when chromeless (remote-first shell renders its own RemoteSubBar). */}
+                Suppressed when chromeless (the remote-first shell's header lives in the global TopBar). */}
             {!isMobile && !chromeless && (
             <div
                 className="repo-detail-header px-3 border-b border-[#d0d7de] dark:border-[#3c3c3c] flex flex-row items-center bg-white dark:bg-[#1e1e1e] gap-2"

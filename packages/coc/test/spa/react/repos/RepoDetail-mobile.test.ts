@@ -31,7 +31,7 @@ describe('RepoDetail mobile: imports', () => {
 describe('RepoDetail mobile: header layout', () => {
     it('desktop header is guarded with !isMobile and uses flex-row layout', () => {
         // Header is desktop-only — not rendered on mobile (and suppressed when the
-        // remote-first shell renders its own RemoteSubBar, hence !chromeless).
+        // remote-first shell puts its header in the global TopBar, hence !chromeless).
         expect(REPO_DETAIL_SOURCE).toContain('!isMobile && !chromeless && (');
         expect(REPO_DETAIL_SOURCE).toContain('repo-detail-header');
         // Desktop header always uses flex-row (no mobile variant needed)

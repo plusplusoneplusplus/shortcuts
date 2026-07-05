@@ -386,7 +386,7 @@ export const GlobalPreferencesSchema = z.object({
         })
         .optional()
         .catch(undefined),
-    /** Most recently used remote groups in the single-row remote shell. */
+    /** Most recently used remote groups in the remote shell. */
     recentRemotes: z.array(z.unknown())
         .transform(arr => {
             const filtered = arr.filter((k): k is string => typeof k === 'string' && k.length > 0);

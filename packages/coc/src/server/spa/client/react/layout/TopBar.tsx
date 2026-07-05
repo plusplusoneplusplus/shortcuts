@@ -18,10 +18,8 @@ import { buildNoteHash, buildRepoSubTabSuffix } from './Router';
 import { NotificationBell } from '../shared/NotificationBell';
 import { agentProviderQuotaIndicator as AgentProviderQuotaIndicator } from '../shared/AgentProviderQuotaIndicator';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
-import { RemoteTopBar } from '../features/remote-shell/RemoteTopBar';
 import { RemoteShellHeader } from '../features/remote-shell/RemoteShellHeader';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
-import { useSingleRowShellEnabled } from '../hooks/feature-flags/useSingleRowShellEnabled';
 import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../repos/MyLifeView';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
@@ -72,7 +70,6 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
     const remoteShell = useRemoteShellEnabled();
-    const singleRowShell = useSingleRowShellEnabled();
     const [popoverOpen, setPopoverOpen] = useState(false);
     const hostname = getHostname();
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
@@ -144,7 +141,10 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
         const scopedRepos = repos.filter(r => !state.currentAgentId || !r.workspace.agentId || r.workspace.agentId === state.currentAgentId);
         return findRepoBySelectionId(scopedRepos, state.selectedRepoId) || findRepoBySelectionId(repos, state.selectedRepoId);
     }, [repos, state.currentAgentId, state.selectedRepoId]);
-    const showSingleRowShell = remoteShell && singleRowShell && isOnReposTab && !!selectedRepo && !isMobile;
+    // Single-row remote header: the sole remote-repo layout when the remote
+    // shell is on (desktop, repos tab, a clone selected). No selection or off
+    // the repos tab → nothing renders in the remote slot.
+    const showRemoteHeader = remoteShell && isOnReposTab && !!selectedRepo && !isMobile;
 
     const wsStatus = state.wsStatus ?? 'closed';
     const wsConfig = wsStatusConfig[wsStatus];
@@ -215,11 +215,9 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     </button>
                 )}
                 {!isMobile && (remoteShell ? (
-                    showSingleRowShell && selectedRepo ? (
+                    showRemoteHeader && selectedRepo ? (
                         <RemoteShellHeader repo={selectedRepo} repos={repos} />
-                    ) : (
-                        <RemoteTopBar />
-                    )
+                    ) : null
                 ) : (
                     <RepoTabStrip
                         repos={repos}
@@ -250,7 +248,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                 )}
             </div>
             <div className="flex flex-shrink-0 items-center gap-1.5" data-testid="topbar-actions">
-                {showSingleRowShell && selectedRepo && (
+                {showRemoteHeader && selectedRepo && (
                     <button
                         data-testid="header-new-btn"
                         title={`Queue a task on ${selectedRepo.workspace.name}`}

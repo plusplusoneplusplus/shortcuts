@@ -761,14 +761,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.singleRowShell', default: false, runtime: 'live', runtimeFlag: 'singleRowShellEnabled',
-        ui: {
-            group: 'dashboard', order: 66, label: 'Single-row remote shell', badge: 'experimental', dependsOn: 'features.remoteShell',
-            hint: 'Moves the remote chip, remote-scoped tabs, workspace switcher, clone tabs, and New action into the global header. Disabled by default.',
-            testId: 'toggle-single-row-shell-enabled',
-        },
-    }),
-    bool({
         key: 'features.ralphMultiAgentGrill', default: false, runtime: 'live', runtimeFlag: 'ralphMultiAgentGrillEnabled',
         ui: {
             group: 'aiModes', order: 15, label: 'Ralph Multi-Agent Grilling', badge: 'experimental',

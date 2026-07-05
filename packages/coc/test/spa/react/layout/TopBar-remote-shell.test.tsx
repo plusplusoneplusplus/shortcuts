@@ -1,5 +1,10 @@
 /**
- * TopBar single-row remote shell tests.
+ * TopBar remote-shell header tests.
+ *
+ * The remote-first shell is now a single header row: when features.remoteShell
+ * is on (desktop, repos tab, a clone selected), the TopBar renders
+ * RemoteShellHeader unconditionally — there is no experimental flag gate and no
+ * two-row RemoteTopBar fallback anymore.
  *
  * @vitest-environment jsdom
  */
@@ -18,7 +23,6 @@ let mockAppState: any = {
 };
 let mockRepos: any[] = [];
 let mockRemoteShell = true;
-let mockSingleRowShell = true;
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: mockAppState, dispatch: mockAppDispatch }),
@@ -44,17 +48,11 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoManagementPopover', (
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip', () => ({
     RepoTabStrip: () => <div data-testid="repo-tab-strip" />,
 }));
-vi.mock('../../../../src/server/spa/client/react/features/remote-shell/RemoteTopBar', () => ({
-    RemoteTopBar: () => <div data-testid="remote-top-bar" />,
-}));
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/RemoteShellHeader', () => ({
     RemoteShellHeader: () => <div data-testid="remote-shell-header" />,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
     useRemoteShellEnabled: () => mockRemoteShell,
-}));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSingleRowShellEnabled', () => ({
-    useSingleRowShellEnabled: () => mockSingleRowShell,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEnabled', () => ({
     useMyWorkEnabled: () => false,
@@ -77,7 +75,6 @@ beforeEach(() => {
     mockAppDispatch.mockReset();
     mockQueueDispatch.mockReset();
     mockRemoteShell = true;
-    mockSingleRowShell = true;
     mockAppState = {
         activeTab: 'repos',
         selectedRepoId: 'a',
@@ -89,12 +86,12 @@ beforeEach(() => {
     mockRepos = [repo('a', 'shortcuts')];
 });
 
-describe('TopBar single-row remote shell', () => {
-    it('renders the merged remote shell header instead of the old remote strip', () => {
+describe('TopBar remote-shell header', () => {
+    it('renders RemoteShellHeader as the sole remote header (no RepoTabStrip)', () => {
         render(<TopBar />);
 
         expect(screen.getByTestId('remote-shell-header')).toBeTruthy();
-        expect(screen.queryByTestId('remote-top-bar')).toBeNull();
+        expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
     });
 
     it('places + New before the connection indicator and opens the queue dialog for the active clone', () => {
@@ -106,20 +103,29 @@ describe('TopBar single-row remote shell', () => {
         expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_DIALOG', workspaceId: 'a' });
     });
 
-    it('falls back to the old remote strip when the single-row flag is off', () => {
-        mockSingleRowShell = false;
+    it('falls back to the classic RepoTabStrip when remoteShell is off', () => {
+        mockRemoteShell = false;
         render(<TopBar />);
 
         expect(screen.queryByTestId('remote-shell-header')).toBeNull();
-        expect(screen.getByTestId('remote-top-bar')).toBeTruthy();
+        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
         expect(screen.queryByTestId('header-new-btn')).toBeNull();
     });
 
-    it('hides the single-row shell off the repos tab', () => {
+    it('renders no remote header off the repos tab', () => {
         mockAppState = { ...mockAppState, activeTab: 'wiki' };
         render(<TopBar />);
 
         expect(screen.queryByTestId('remote-shell-header')).toBeNull();
         expect(screen.queryByTestId('header-new-btn')).toBeNull();
+    });
+
+    it('renders no remote header (and no RepoTabStrip) when no clone is selected', () => {
+        mockAppState = { ...mockAppState, selectedRepoId: null };
+        render(<TopBar />);
+
+        expect(screen.queryByTestId('remote-shell-header')).toBeNull();
+        expect(screen.queryByTestId('header-new-btn')).toBeNull();
+        expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
     });
 });

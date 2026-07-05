@@ -2,8 +2,9 @@
  * repoSubTabs — pure definitions and visibility logic for the repo sub-tab strip.
  *
  * Extracted from RepoDetail so the same tab taxonomy and feature-flag/layout
- * filtering can be reused by the remote-first shell (RemoteSubBar) without
- * duplicating logic. Keeping it pure also makes it unit-testable.
+ * filtering can be reused by the remote-first shell (RemoteScopeCluster /
+ * WorkspaceTabsCluster) without duplicating logic. Keeping it pure also makes
+ * it unit-testable.
  */
 
 import type { RepoSubTab } from '../../types/dashboard';
