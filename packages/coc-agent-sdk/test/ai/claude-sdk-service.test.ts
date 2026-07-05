@@ -3185,15 +3185,9 @@ describe('ClaudeSDKService session operations', () => {
         expect(isRewindUnsupportedError(err)).toBe(true);
     });
 
-    it('compactSession throws the typed CompactUnsupportedError (AC-03)', async () => {
-        await expect(svc.compactSession('any-id')).rejects.toBeInstanceOf(CompactUnsupportedError);
-        await expect(svc.compactSession('any-id', 'focus on auth')).rejects.toMatchObject({
-            code: 'COMPACT_UNSUPPORTED',
-            provider: CLAUDE_PROVIDER,
-        });
-        const err = await svc.compactSession('any-id').catch((e) => e);
-        expect(isCompactUnsupportedError(err)).toBe(true);
-    });
+    // compactSession is now supported for Claude via the native `/compact`
+    // slash command — its success / capability-absent / no-op behavior is
+    // covered by the dedicated 'ClaudeSDKService.compactSession' block below.
 
     it('steerSession returns false (unsupported, not silent success)', async () => {
         const result = await svc.steerSession('any-id', 'steer prompt');
@@ -3203,6 +3197,243 @@ describe('ClaudeSDKService session operations', () => {
     it('softAbortSession delegates to abortSession (no-op for missing session)', async () => {
         const result = await svc.softAbortSession('nonexistent');
         expect(result).toBe(false);
+    });
+});
+
+// ============================================================================
+// compactSession — native `/compact` slash command (AC-01/02/03/04)
+// ============================================================================
+
+/** Captures what the provider sent to the mocked `query()` for a compaction turn. */
+interface CompactCapture {
+    prompt?: string;
+    resume?: string;
+}
+
+/**
+ * Builds a `queryFn` that models a resumed `/compact` turn:
+ *  - exposes `supportedCommands()` for the AC-04 capability gate (unless
+ *    `supportedCommandsMissing`/`supportedCommandsError` is set);
+ *  - fires any registered `PostCompact` hook with `compact_summary` (AC-02),
+ *    then yields the compaction message stream;
+ *  - records the `/compact <instructions>` prompt and `resume` id the provider
+ *    sent (AC-03) without prematurely finalizing the streaming-input gate.
+ */
+function makeCompactQuery(config: {
+    messages: object[];
+    supportedCommands?: Array<{ name?: string; aliases?: string[] }>;
+    supportedCommandsMissing?: boolean;
+    supportedCommandsError?: Error;
+    postCompactSummary?: string;
+    capture?: CompactCapture;
+}) {
+    return (queryOptions: { prompt: unknown; options?: { hooks?: any; resume?: string } }) => {
+        if (config.capture) config.capture.resume = queryOptions.options?.resume;
+        const postCompactHook = queryOptions.options?.hooks?.PostCompact?.[0]?.hooks?.[0];
+        const handle: Record<string, unknown> = {
+            async *[Symbol.asyncIterator]() {
+                const iterator = (queryOptions.prompt as AsyncIterable<any>)[Symbol.asyncIterator]();
+                // Record the first user message (the `/compact …` prompt) without
+                // finalizing the gate, so the provider can still close it later.
+                const first = await iterator.next();
+                if (config.capture && !first.done) {
+                    const content = first.value?.message?.content;
+                    config.capture.prompt = typeof content === 'string'
+                        ? content
+                        : Array.isArray(content)
+                            ? (content.find((b: any) => b?.type === 'text')?.text ?? '')
+                            : '';
+                }
+                if (postCompactHook && config.postCompactSummary !== undefined) {
+                    await postCompactHook({
+                        hook_event_name: 'PostCompact',
+                        trigger: 'manual',
+                        compact_summary: config.postCompactSummary,
+                    });
+                }
+                for (const msg of config.messages) yield msg;
+                // Safety drain: block until the provider closes the input gate
+                // (only reached if a test omits a terminal `result` message).
+                for (;;) {
+                    const next = await iterator.next();
+                    if (next.done) break;
+                }
+            },
+            accountInfo: async () => ({}),
+            return: async (value?: unknown) => ({ done: true as const, value }),
+        };
+        if (config.supportedCommandsError) {
+            handle.supportedCommands = async () => { throw config.supportedCommandsError; };
+        } else if (!config.supportedCommandsMissing) {
+            handle.supportedCommands = async () => config.supportedCommands ?? [{ name: 'compact', aliases: [] }];
+        }
+        return handle;
+    };
+}
+
+/** A realistic manual-compaction success stream (status → boundary → summary → result). */
+function compactSuccessMessages(pre: number, post: number): object[] {
+    return [
+        { type: 'system', subtype: 'status', status: 'compacting', session_id: 's1' },
+        { type: 'system', subtype: 'status', status: null, compact_result: 'success', session_id: 's1' },
+        { type: 'system', subtype: 'init', session_id: 's1' },
+        {
+            type: 'system',
+            subtype: 'compact_boundary',
+            compact_metadata: {
+                trigger: 'manual',
+                pre_tokens: pre,
+                post_tokens: post,
+                duration_ms: 14600,
+                preserved_messages: { anchor_uuid: 'a', uuids: ['u1', 'u2'] },
+            },
+            session_id: 's1',
+        },
+        { type: 'user', message: { content: 'This session is being continued from a previous conversation…' } },
+        { type: 'user', message: { content: '<local-command-stdout>Compacted.</local-command-stdout>' } },
+        { type: 'result', subtype: 'success', result: '' },
+    ];
+}
+
+describe('ClaudeSDKService.compactSession (native /compact)', () => {
+    let svc: ClaudeSDKService;
+    const queryFn = vi.fn();
+
+    beforeEach(() => {
+        svc = new ClaudeSDKService();
+        mockDynamicImport.mockReset();
+        queryFn.mockReset();
+        mockDynamicImport.mockResolvedValue({ query: queryFn });
+    });
+
+    afterEach(() => {
+        svc.dispose();
+    });
+
+    it('AC-01/02: maps a manual compact_boundary + PostCompact summary to CompactResult', async () => {
+        queryFn.mockImplementation(
+            makeCompactQuery({
+                messages: compactSuccessMessages(23032, 2429),
+                postCompactSummary: 'A concise summary of the conversation so far.',
+            }),
+        );
+
+        const result = await svc.compactSession('session-abc');
+
+        expect(result).toEqual({
+            success: true,
+            tokensRemoved: 20603, // pre - post
+            messagesRemoved: 0, // best-effort fallback (not derivable from resume stream)
+            summaryContent: 'A concise summary of the conversation so far.',
+        });
+    });
+
+    it('AC-02: clamps tokensRemoved to 0 when post_tokens exceeds pre_tokens', async () => {
+        queryFn.mockImplementation(
+            makeCompactQuery({ messages: compactSuccessMessages(100, 500), postCompactSummary: 'x' }),
+        );
+
+        const result = await svc.compactSession('session-abc');
+
+        expect(result.success).toBe(true);
+        expect(result.tokensRemoved).toBe(0);
+    });
+
+    it('AC-02: falls back to the post-boundary user message when the PostCompact hook yields no summary', async () => {
+        // No `postCompactSummary` → the hook never delivers one; the provider must
+        // fall back to the first user message after the boundary.
+        queryFn.mockImplementation(makeCompactQuery({ messages: compactSuccessMessages(23032, 2429) }));
+
+        const result = await svc.compactSession('session-abc');
+
+        expect(result.success).toBe(true);
+        expect(result.summaryContent).toBe('This session is being continued from a previous conversation…');
+    });
+
+    it('AC-03: forwards custom instructions as the /compact argument and resumes the session', async () => {
+        const capture: CompactCapture = {};
+        queryFn.mockImplementation(
+            makeCompactQuery({ messages: compactSuccessMessages(9000, 1000), postCompactSummary: 's', capture }),
+        );
+
+        await svc.compactSession('session-xyz', '  focus on the auth refactor  ');
+
+        expect(capture.prompt).toBe('/compact focus on the auth refactor');
+        expect(capture.resume).toBe('session-xyz');
+    });
+
+    it('AC-03: issues a bare /compact when no instructions are given', async () => {
+        const capture: CompactCapture = {};
+        queryFn.mockImplementation(
+            makeCompactQuery({ messages: compactSuccessMessages(9000, 1000), postCompactSummary: 's', capture }),
+        );
+
+        await svc.compactSession('session-xyz');
+
+        expect(capture.prompt).toBe('/compact');
+    });
+
+    it('reports a no-op (success:false) without throwing when compaction finds too few messages', async () => {
+        queryFn.mockImplementation(
+            makeCompactQuery({
+                messages: [
+                    { type: 'system', subtype: 'status', status: 'compacting', session_id: 's1' },
+                    {
+                        type: 'system',
+                        subtype: 'status',
+                        compact_result: 'failed',
+                        compact_error: 'Not enough messages to compact.',
+                        session_id: 's1',
+                    },
+                    { type: 'system', subtype: 'init', session_id: 's1' },
+                    { type: 'assistant', message: { content: [{ type: 'text', text: 'Not enough messages to compact.' }] } },
+                    { type: 'result', subtype: 'success', result: 'Not enough messages to compact.' },
+                ],
+            }),
+        );
+
+        const result = await svc.compactSession('session-abc');
+
+        expect(result).toEqual({ success: false, tokensRemoved: 0, messagesRemoved: 0 });
+    });
+
+    it('AC-04: throws CompactUnsupportedError when the CLI does not advertise /compact', async () => {
+        queryFn.mockImplementation(
+            makeCompactQuery({ messages: [], supportedCommands: [{ name: 'help' }, { name: 'clear' }] }),
+        );
+
+        await expect(svc.compactSession('session-abc')).rejects.toBeInstanceOf(CompactUnsupportedError);
+        const err = await svc.compactSession('session-abc').catch((e) => e);
+        expect(isCompactUnsupportedError(err)).toBe(true);
+        expect(err).toMatchObject({ code: 'COMPACT_UNSUPPORTED', provider: CLAUDE_PROVIDER });
+    });
+
+    it('AC-04: throws CompactUnsupportedError when the handle exposes no supportedCommands method', async () => {
+        queryFn.mockImplementation(makeCompactQuery({ messages: [], supportedCommandsMissing: true }));
+
+        await expect(svc.compactSession('session-abc')).rejects.toBeInstanceOf(CompactUnsupportedError);
+    });
+
+    it('AC-04: treats a supportedCommands() failure as unsupported (throws, does not hang)', async () => {
+        queryFn.mockImplementation(
+            makeCompactQuery({ messages: [], supportedCommandsError: new Error('control channel closed') }),
+        );
+
+        await expect(svc.compactSession('session-abc')).rejects.toBeInstanceOf(CompactUnsupportedError);
+    });
+
+    it('recognizes /compact advertised via an alias rather than the command name', async () => {
+        queryFn.mockImplementation(
+            makeCompactQuery({
+                messages: compactSuccessMessages(5000, 1000),
+                postCompactSummary: 's',
+                supportedCommands: [{ name: 'summarize', aliases: ['compact'] }],
+            }),
+        );
+
+        const result = await svc.compactSession('session-abc');
+
+        expect(result.success).toBe(true);
     });
 });
 
