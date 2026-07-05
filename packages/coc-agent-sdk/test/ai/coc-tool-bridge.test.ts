@@ -228,9 +228,22 @@ describe('bridge JSON-RPC handlers', () => {
 });
 
 describe('buildCocLlmToolsMcpConfig', () => {
+    const hadElectron = 'electron' in process.versions;
+    const originalElectron = (process.versions as { electron?: string }).electron;
+
+    const setElectron = (version: string | undefined) => {
+        if (version === undefined) {
+            delete (process.versions as { electron?: string }).electron;
+        } else {
+            (process.versions as { electron?: string }).electron = version;
+        }
+    };
+
     afterEach(() => {
         setCocLlmToolsBridgePath(undefined);
         delete process.env.COC_LLM_TOOLS_BRIDGE_PATH;
+        // Restore the real Electron marker (absent under a plain-node vitest run).
+        setElectron(hadElectron ? originalElectron : undefined);
     });
 
     it('produces a stdio server spec with endpoint+token env vars', () => {
@@ -241,6 +254,41 @@ describe('buildCocLlmToolsMcpConfig', () => {
             [COC_LLM_TOOLS_ENDPOINT_ENV]: 'http://127.0.0.1:5000',
             [COC_LLM_TOOLS_TOKEN_ENV]: 'tok123',
         });
+    });
+
+    it('does NOT set ELECTRON_RUN_AS_NODE when not running under Electron', () => {
+        setElectron(undefined);
+        const config = buildCocLlmToolsMcpConfig({ endpoint: 'http://127.0.0.1:5000', token: 'tok', bridgePath: '/x/bridge.js' });
+        expect(config.env).not.toHaveProperty('ELECTRON_RUN_AS_NODE');
+    });
+
+    it('sets ELECTRON_RUN_AS_NODE=1 when the bridge is launched with the Electron binary', () => {
+        // Regression: the CoC desktop server runs as Electron's Node
+        // (ELECTRON_RUN_AS_NODE=1), so process.execPath is the Electron binary.
+        // Codex strips inherited env from MCP server children, so the flag must be
+        // injected explicitly or the bridge boots Electron's GUI runtime, never
+        // answers the MCP handshake, and CoC tools silently disappear.
+        setElectron('35.7.5');
+        const config = buildCocLlmToolsMcpConfig({ endpoint: 'http://127.0.0.1:5000', token: 'tok', bridgePath: '/x/bridge.js' });
+        expect(config.command).toBe(process.execPath);
+        expect(config.env.ELECTRON_RUN_AS_NODE).toBe('1');
+        // Endpoint/token still present alongside the injected flag.
+        expect(config.env[COC_LLM_TOOLS_ENDPOINT_ENV]).toBe('http://127.0.0.1:5000');
+        expect(config.env[COC_LLM_TOOLS_TOKEN_ENV]).toBe('tok');
+    });
+
+    it('does NOT set ELECTRON_RUN_AS_NODE when a non-Electron command is supplied explicitly', () => {
+        // Even under Electron, an explicit real-Node launcher must not be forced
+        // into ELECTRON_RUN_AS_NODE mode.
+        setElectron('35.7.5');
+        const config = buildCocLlmToolsMcpConfig({
+            endpoint: 'http://127.0.0.1:5000',
+            token: 'tok',
+            command: '/usr/local/bin/node',
+            bridgePath: '/x/bridge.js',
+        });
+        expect(config.command).toBe('/usr/local/bin/node');
+        expect(config.env).not.toHaveProperty('ELECTRON_RUN_AS_NODE');
     });
 
     it('honors an explicit bridge-path override', () => {
