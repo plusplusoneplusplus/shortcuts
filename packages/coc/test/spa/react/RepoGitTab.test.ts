@@ -544,6 +544,84 @@ describe('RepoGitTab', () => {
         });
     });
 
+    describe('split-workspace layout seam (AC-04/AC-05)', () => {
+        it('imports createPortal from react-dom', () => {
+            expect(source).toContain("import { createPortal } from 'react-dom'");
+        });
+
+        it('declares the four optional split-workspace props', () => {
+            expect(source).toContain("layout?: 'split-workspace'");
+            expect(source).toContain('detailContainer?: HTMLElement | null');
+            expect(source).toContain('detailActive?: boolean');
+            expect(source).toContain('onActivateDetail?: () => void');
+        });
+
+        it('destructures the split-workspace props (default-absent ⇒ no-op)', () => {
+            expect(source).toContain('export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive, onActivateDetail }: RepoGitTabProps)');
+        });
+
+        it('derives isSplitWorkspace from the layout prop', () => {
+            expect(source).toContain("const isSplitWorkspace = layout === 'split-workspace'");
+        });
+
+        it('gates the entire split branch on a truthy layout so the off-path is a strict no-op', () => {
+            expect(source).toContain('if (isSplitWorkspace) {');
+            // The standalone return still exists below the split branch.
+            expect(source).toContain('data-testid="repo-git-tab"');
+        });
+
+        it('renders ONLY the reused git list in the split branch (parity via reuse — AC-05)', () => {
+            expect(source).toContain('const listPane = (');
+            expect(source).toContain('data-testid="git-split-workspace-list"');
+            const splitBlock = source.match(/if \(isSplitWorkspace\) \{[\s\S]*?\n {4}\}/);
+            expect(splitBlock).toBeTruthy();
+            // The split branch mounts the shared listPane (not a forked list).
+            expect(splitBlock![0]).toContain('{listPane}');
+            // No resize handle / standalone <main> in the split branch.
+            expect(splitBlock![0]).not.toContain('git-resize-handle');
+            expect(splitBlock![0]).not.toContain('data-testid="git-detail-panel"');
+        });
+
+        it('marks git last-clicked via capture-phase click on the list wrapper (AC-04)', () => {
+            expect(source).toContain('onClickCapture={() => onActivateDetail?.()}');
+        });
+
+        it('portals the detail subtree into the parent container, gated on detailActive (AC-04 single shared pane)', () => {
+            const splitBlock = source.match(/if \(isSplitWorkspace\) \{[\s\S]*?\n {4}\}/);
+            expect(splitBlock).toBeTruthy();
+            expect(splitBlock![0]).toContain('detailActive && detailContainer');
+            expect(splitBlock![0]).toContain('createPortal(');
+            expect(splitBlock![0]).toContain('detailContainer,');
+            expect(splitBlock![0]).toContain('data-testid="git-split-workspace-detail"');
+            // Reuses the same detail subtree the standalone layout renders.
+            expect(splitBlock![0]).toContain('{detailPanel}');
+        });
+
+        it('list panel drops the fixed width style + mobile hide-toggle in split mode (shell owns layout — AC-06)', () => {
+            // The width <style> is gated so the split shell controls sizing.
+            expect(source).toContain('{!isSplitWorkspace && (');
+            const asideBlock = source.match(/const listPane = \([\s\S]*?data-testid="git-commit-list-panel"/);
+            expect(asideBlock).toBeTruthy();
+            // Split className has no per-panel width / hide-on-mobile toggle.
+            expect(asideBlock![0]).toContain("'w-full flex-1 min-h-0 overflow-y-auto bg-[#f3f3f3] dark:bg-[#252526]'");
+        });
+
+        it('shares the overlays (modals/toasts/context menus) across both layouts', () => {
+            expect(source).toContain('const overlays = (');
+            // Both returns render the shared overlays.
+            const overlaysUses = source.match(/\{overlays\}/g);
+            expect(overlaysUses).toBeTruthy();
+            expect(overlaysUses!.length).toBe(2);
+        });
+
+        it('default layout still renders GitPanelHeader actions + resize handle (off-path unchanged)', () => {
+            expect(source).toContain('<GitPanelHeader');
+            expect(source).toContain('onPush={handlePush}');
+            expect(source).toContain('data-testid="git-resize-handle"');
+            expect(source).toContain('{detailMain}');
+        });
+    });
+
     describe('rendering', () => {
         it('renders CommitList component', () => {
             expect(source).toContain('<CommitList');
