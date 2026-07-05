@@ -128,6 +128,19 @@ in localStorage keys suffixed by the active `workspaceId`
 `activity-left-panel-width-{workspaceId}`), so each workspace restores its own
 rail visibility and desktop/tablet panel width.
 
+Workspace inner-tab navigation is also client-local and workspace-scoped.
+`AppContext` persists `repoTabState` under `coc-repo-tab-state` and the full
+inner route suffix under `coc-repo-route-state`, dropping unknown sub-tab ids on
+hydrate. `Router` records the suffix for every `#repos/<workspaceId>/<subroute>`
+hash and expands bare `#repos/<workspaceId>` hashes to the remembered route,
+then the remembered tab, then `/chats`. Workspace switchers use
+`useWorkspaceNavigation()` so TopBar, repo grid, process-sidebar links, and
+clone completion all write full hashes. `RepoDetail` treats `chats`/`activity`
+and `cli-sessions`/`copilot-sessions` as logical aliases, waits for git
+capability loading to finish, and falls back to the chat surface only when the
+active sub-tab is absent from the resolved `visibleSubTabs`; that display
+fallback does not erase the stored deep route suffix.
+
 Chat row pin/archive state comes from process summaries (`pinnedAt` and
 `archived`) and is synchronized through `ChatPreferencesProvider` /
 `ChatPrefsSync`. Mutating row actions call `pinArchiveApi` with the provider's

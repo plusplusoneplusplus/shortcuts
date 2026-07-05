@@ -582,10 +582,14 @@ export function Router() {
         queueState,
         selectedRepoId: state.selectedRepoId,
     });
+    const repoRouteStateRef = useRef(state.repoRouteState);
+    const repoTabStateRef = useRef(state.repoTabState);
     processDeepLinkContextRef.current = {
         queueState,
         selectedRepoId: state.selectedRepoId,
     };
+    repoRouteStateRef.current = state.repoRouteState;
+    repoTabStateRef.current = state.repoTabState;
 
     const switchTab = useCallback((tab: string) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab: tab as DashboardTab });
@@ -606,7 +610,7 @@ export function Router() {
             // Strip any `?query` (e.g. `?view=agents`) before parsing the path —
             // it's metadata for components (which read it from location.hash
             // directly), never part of the routed path or a task id.
-            const hash = location.hash.replace(/^#/, '').split('?')[0];
+            let hash = location.hash.replace(/^#/, '').split('?')[0];
             const processDeepLinkId = parseProcessDeepLink('#' + hash);
             if (processDeepLinkId) {
                 const deepLinkContext = processDeepLinkContextRef.current;
@@ -635,9 +639,18 @@ export function Router() {
 
             // Parse repo deep links: #repos/:id or #repos/:id/:subTab
             if (tab === 'repos') {
-                const parts = hash.split('/');
+                let parts = hash.split('/');
                 if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
                     const repoId = decodeURIComponent(parts[1]);
+                    if (!parts[2]) {
+                        const suffix = repoRouteStateRef.current[repoId] ?? '/' + (repoTabStateRef.current[repoId] ?? 'chats');
+                        const nextHash = '#repos/' + parts[1] + suffix;
+                        if (location.hash !== nextHash) {
+                            window.history.replaceState(null, '', nextHash);
+                        }
+                        hash = nextHash.replace(/^#/, '').split('?')[0];
+                        parts = hash.split('/');
+                    }
                     dispatch({ type: 'SET_SELECTED_REPO', id: repoId });
                     // Redirect legacy #repos/:id/workflows deep-links to workflows tab
                     if (parts[2] === 'workflows') {
@@ -655,6 +668,14 @@ export function Router() {
                         dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'workflows' as RepoSubTab });
                         location.replace('#repos/' + parts[1] + '/workflows');
                         return;
+                    }
+                    if (
+                        parts.length >= 3 &&
+                        parts[2] !== 'copilot' &&
+                        parts[2] !== 'info' &&
+                        !(parts[2] === 'settings' && parts[3] === 'display')
+                    ) {
+                        dispatch({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId, suffix: '/' + parts.slice(2).join('/') });
                     }
                     if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
                         dispatch({ type: 'SET_REPO_SUB_TAB', tab: parts[2] as RepoSubTab });

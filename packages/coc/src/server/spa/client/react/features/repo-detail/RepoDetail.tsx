@@ -70,6 +70,20 @@ interface RepoDetailProps {
 // shared with the remote-first shell. Re-exported here for backward compatibility.
 export { SUB_TABS, VISIBLE_SUB_TABS } from './repoSubTabs';
 
+function isRepoSubTabVisible(
+    tab: RepoSubTab,
+    visibleSubTabs: ReadonlyArray<{ key: RepoSubTab }>,
+): boolean {
+    const visibleKeys = new Set(visibleSubTabs.map(t => t.key));
+    if (tab === 'chats' || tab === 'activity') {
+        return visibleKeys.has('chats') || visibleKeys.has('activity');
+    }
+    if (tab === 'copilot-sessions') {
+        return visibleKeys.has('cli-sessions') || visibleKeys.has('copilot-sessions');
+    }
+    return visibleKeys.has(tab);
+}
+
 export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoDetailProps) {
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
@@ -139,81 +153,19 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     }, [ws.id, workItemOriginId, workItemDispatch, workItemState.workItemsByRepo]);
     const unseenWorkItemCount = (workItemState.unseenByRepo[workItemOriginId] || []).length;
 
-    // Track previous feature-flag values so redirects only fire on true→false
-    // transitions, not on the initial mount (defense-in-depth for deep links).
-    const prevTerminalEnabled = useRef(terminalEnabled);
-    const prevNotesEnabled = useRef(notesEnabled);
-    const prevWorkflowsEnabled = useRef(workflowsEnabled);
-    const prevPullRequestsEnabled = useRef(pullRequestsEnabled);
-    const prevDreamsEnabled = useRef(dreamsEnabled);
-    const prevNativeCliSessionsEnabled = useRef(nativeCliSessionsEnabled);
-
     const visibleSubTabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
     }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode]);
 
-    // Redirect away from git/pull-requests tab when switching to a non-git repo.
-    // Wait until git info has finished loading before acting: during the async
-    // load window the preliminary gitInfo can report `isGitRepo === false` for a
-    // real git repo (it seeds from the possibly-stale workspace record), which
-    // would clobber a remembered 'git'/'pull-requests' tab back to the default on
-    // repo switch — the source of the flaky in-session tab reset. Sibling redirect
-    // effects below use a transition ref for the same "don't fire spuriously" goal.
+    // Redirect only after the capability set for this workspace has resolved.
+    // Route memory is kept separately in AppContext, so this display fallback
+    // does not erase the remembered deep route if the capability returns later.
     useEffect(() => {
         if (repo.gitInfoLoading) return;
-        if ((activeSubTab === 'git' || activeSubTab === 'pull-requests') && !isGitRepo) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
-        }
-    }, [activeSubTab, isGitRepo, repo.gitInfoLoading, dispatch]);
-
-    // Redirect away from terminal tab only when the feature transitions to disabled
-    useEffect(() => {
-        if (activeSubTab === 'terminal' && !terminalEnabled && prevTerminalEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
-        }
-        prevTerminalEnabled.current = terminalEnabled;
-    }, [activeSubTab, terminalEnabled, dispatch]);
-
-    // Redirect away from notes tab only when the feature transitions to disabled
-    useEffect(() => {
-        if (activeSubTab === 'notes' && !notesEnabled && prevNotesEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
-        }
-        prevNotesEnabled.current = notesEnabled;
-    }, [activeSubTab, notesEnabled, dispatch]);
-
-    // Redirect away from workflows tab only when the feature transitions to disabled
-    useEffect(() => {
-        if (activeSubTab === 'workflows' && !workflowsEnabled && prevWorkflowsEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
-        }
-        prevWorkflowsEnabled.current = workflowsEnabled;
-    }, [activeSubTab, workflowsEnabled, dispatch]);
-
-    // Redirect away from pull-requests tab only when the feature transitions to disabled
-    useEffect(() => {
-        if (activeSubTab === 'pull-requests' && !pullRequestsEnabled && prevPullRequestsEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
-        }
-        prevPullRequestsEnabled.current = pullRequestsEnabled;
-    }, [activeSubTab, pullRequestsEnabled, dispatch]);
-
-    // Redirect away from dreams tab only when the feature transitions to disabled
-    useEffect(() => {
-        if (activeSubTab === 'dreams' && !dreamsEnabled && prevDreamsEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
-        }
-        prevDreamsEnabled.current = dreamsEnabled;
-    }, [activeSubTab, dreamsEnabled, dispatch]);
-
-    // Redirect away from CLI sessions tab only when the feature transitions to disabled
-    useEffect(() => {
-        if ((activeSubTab === 'cli-sessions' || activeSubTab === 'copilot-sessions') && !nativeCliSessionsEnabled && prevNativeCliSessionsEnabled.current) {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
-        }
-        prevNativeCliSessionsEnabled.current = nativeCliSessionsEnabled;
-    }, [activeSubTab, nativeCliSessionsEnabled, dispatch]);
+        if (isRepoSubTabVisible(activeSubTab, visibleSubTabs)) return;
+        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+    }, [activeSubTab, visibleSubTabs, repo.gitInfoLoading, dispatch]);
 
     // Redirect when switching layout modes
     useEffect(() => {

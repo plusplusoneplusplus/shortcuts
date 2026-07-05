@@ -17,7 +17,7 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({ preferences: mocks.preferences }),
 }));
 
-import { appReducer, SIDEBAR_KEY, REPO_TAB_STATE_KEY, getInitialSidebarCollapsed, getInitialRepoTabState, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { appReducer, SIDEBAR_KEY, REPO_TAB_STATE_KEY, REPO_ROUTE_STATE_KEY, getInitialSidebarCollapsed, getInitialRepoTabState, getInitialRepoRouteState, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
 
 function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
     return {
@@ -56,6 +56,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         activeSkillsSubTab: 'installed',
         activeAdminSubTab: 'settings',
         repoTabState: {},
+        repoRouteState: {},
         notePathState: {},
         repoSubTabNavState: {},
         settingsSection: 'info',
@@ -408,6 +409,38 @@ describe('AppContext reducer', () => {
             expect(state.activeRepoSubTab).toBe('wiki');
             expect(state.repoTabState['repo-b']).toBe('wiki');
         });
+
+        it('restores the tab derived from a remembered deep route suffix', () => {
+            const state = makeState({
+                selectedRepoId: 'repo-a',
+                activeRepoSubTab: 'chats',
+                repoTabState: { 'repo-b': 'chats' },
+                repoRouteState: { 'repo-b': '/git/abc123/src%2Ffile.ts' },
+            });
+            const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
+            expect(result.activeRepoSubTab).toBe('git');
+        });
+
+        it('records a full route suffix and derives repoTabState from it', () => {
+            const state = makeState();
+            const result = appReducer(state, {
+                type: 'RECORD_REPO_ROUTE_SUFFIX',
+                repoId: 'repo-a',
+                suffix: '/work-items/item-1/session/task-1',
+            });
+            expect(result.repoRouteState['repo-a']).toBe('/work-items/item-1/session/task-1');
+            expect(result.repoTabState['repo-a']).toBe('work-items');
+        });
+
+        it('ignores route suffixes with unknown sub-tabs', () => {
+            const state = makeState({ repoRouteState: { 'repo-a': '/git/abc' } });
+            const result = appReducer(state, {
+                type: 'RECORD_REPO_ROUTE_SUFFIX',
+                repoId: 'repo-b',
+                suffix: '/removed-tab/value',
+            });
+            expect(result).toBe(state);
+        });
     });
 
     // ── Per-repo tab state localStorage persistence ────────────────
@@ -458,6 +491,17 @@ describe('AppContext reducer', () => {
             const state = makeState({ selectedRepoId: 'repo-a' });
             expect(() => appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'git' })).not.toThrow();
         });
+
+        it('RECORD_REPO_ROUTE_SUFFIX persists route and derived tab maps', () => {
+            const state = makeState();
+            appReducer(state, {
+                type: 'RECORD_REPO_ROUTE_SUFFIX',
+                repoId: 'repo-a',
+                suffix: '/notes/Notebook/Page.md',
+            });
+            expect(JSON.parse(localStorage.getItem(REPO_ROUTE_STATE_KEY)!)).toEqual({ 'repo-a': '/notes/Notebook/Page.md' });
+            expect(JSON.parse(localStorage.getItem(REPO_TAB_STATE_KEY)!)).toEqual({ 'repo-a': 'notes' });
+        });
     });
 
     // ── getInitialRepoTabState ─────────────────────────────────────
@@ -496,6 +540,34 @@ describe('AppContext reducer', () => {
         it('returns an empty map when localStorage.getItem throws', () => {
             vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
             expect(getInitialRepoTabState()).toEqual({});
+        });
+    });
+
+    describe('getInitialRepoRouteState', () => {
+        beforeEach(() => {
+            localStorage.clear();
+        });
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
+        it('returns an empty map when localStorage is empty', () => {
+            expect(getInitialRepoRouteState()).toEqual({});
+        });
+
+        it('parses a valid persisted route map', () => {
+            localStorage.setItem(REPO_ROUTE_STATE_KEY, JSON.stringify({ 'repo-a': '/git/abc123/src%2Ffile.ts', 'repo-b': '/chats/task-1' }));
+            expect(getInitialRepoRouteState()).toEqual({ 'repo-a': '/git/abc123/src%2Ffile.ts', 'repo-b': '/chats/task-1' });
+        });
+
+        it('drops route entries with unknown/stale sub-tab ids', () => {
+            localStorage.setItem(REPO_ROUTE_STATE_KEY, JSON.stringify({ 'repo-a': '/git/abc123', 'repo-b': '/removed-tab/value', 'repo-c': 'notes/path' }));
+            expect(getInitialRepoRouteState()).toEqual({ 'repo-a': '/git/abc123' });
+        });
+
+        it('returns an empty map for corrupt JSON', () => {
+            localStorage.setItem(REPO_ROUTE_STATE_KEY, '{not valid json');
+            expect(getInitialRepoRouteState()).toEqual({});
         });
     });
 

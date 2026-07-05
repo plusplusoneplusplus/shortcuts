@@ -42,6 +42,7 @@ function defaultAppState(): AppContextState {
         conversationCache: {},
         wsStatus: 'closed',
         repoTabState: {},
+        repoRouteState: {},
     };
 }
 

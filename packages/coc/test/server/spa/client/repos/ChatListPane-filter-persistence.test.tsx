@@ -67,6 +67,7 @@ describe('appReducer – myWorkExcludedTypes', () => {
         adminDbSort: null,
         adminDbOrder: null,
         repoTabState: {},
+        repoRouteState: {},
         notePathState: {},
         wikiTabState: {},
         repoSubTabNavState: {},

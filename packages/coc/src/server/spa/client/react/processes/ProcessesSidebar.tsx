@@ -18,6 +18,7 @@ import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 import { isSessionContextAttachmentsEnabled } from '../utils/config';
 import { createSessionContextDragPayload, writeSessionContextDragData } from '../features/chat/sessionContextDrag';
 import { getTaskProvider } from '../shared/providerActivity';
+import { useWorkspaceNavigation } from '../hooks/useWorkspaceNavigation';
 
 export interface TypeFilterOptions {
     includeTypes?: string[];
@@ -81,6 +82,7 @@ function groupByFolder(tasks: any[]): { folder: string | null; tasks: any[] }[] 
 export function ProcessesSidebar() {
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const { navigateToWorkspace } = useWorkspaceNavigation();
     const { queued, running, history, stats, showHistory, draining, drainQueued, drainRunning } = queueState;
     const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
     const activeWorkspaceId = state.workspace !== '__all' ? state.workspace : null;
@@ -103,10 +105,10 @@ export function ProcessesSidebar() {
         },
     );
 
-    const navigateToRepo= useCallback((e: React.MouseEvent, workspaceId: string) => {
+    const navigateToRepo = useCallback((e: React.MouseEvent, workspaceId: string) => {
         e.stopPropagation();
-        location.hash = '#repos/' + encodeURIComponent(workspaceId);
-    }, []);
+        navigateToWorkspace(workspaceId);
+    }, [navigateToWorkspace]);
 
     const handleRename = useCallback(async (newTitle: string) => {
         if (!renameTarget) return;

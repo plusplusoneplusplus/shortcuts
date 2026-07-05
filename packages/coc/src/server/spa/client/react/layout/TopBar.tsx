@@ -14,7 +14,7 @@ import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
 import { useRepos } from '../contexts/ReposContext';
 import { useTheme } from './ThemeProvider';
-import { buildNoteHash, buildRepoSubTabSuffix } from './Router';
+import { buildNoteHash } from './Router';
 import { NotificationBell } from '../shared/NotificationBell';
 import { agentProviderQuotaIndicator as AgentProviderQuotaIndicator } from '../shared/AgentProviderQuotaIndicator';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
@@ -31,6 +31,7 @@ import { getHostname } from '../utils/config';
 import { SHOW_WIKI_TAB, SHOW_MEMORY_TAB } from '../navFlags';
 import type { DashboardTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
+import { useWorkspaceNavigation } from '../hooks/useWorkspaceNavigation';
 
 // Nav flags live in navFlags.ts; re-exported here for modules that import them
 // from TopBar (BottomNav, Router).
@@ -64,8 +65,9 @@ export interface TopBarProps {
 
 export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
-    const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const { dispatch: queueDispatch } = useQueue();
     const { repos, unseenCounts, fetchRepos } = useRepos();
+    const { navigateToWorkspace } = useWorkspaceNavigation();
     const { theme, toggleTheme } = useTheme();
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
@@ -125,16 +127,8 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     }, [state.activeTab]);
 
     const selectRepo = useCallback((id: string) => {
-        dispatch({ type: 'SET_SELECTED_REPO', id });
-        const subTab = state.repoTabState[id] ?? 'chats';
-        const selectedTaskId = queueState.selectedTaskIdByRepo?.[id] ?? null;
-        const suffix = buildRepoSubTabSuffix(
-            subTab,
-            { ...state, selectedNotePath: state.notePathState?.[id] ?? null },
-            selectedTaskId
-        );
-        location.hash = '#repos/' + encodeURIComponent(id) + suffix;
-    }, [dispatch, queueState.selectedTaskIdByRepo, state]);
+        navigateToWorkspace(id);
+    }, [navigateToWorkspace]);
 
     const isOnReposTab = state.activeTab === 'repos';
     const selectedRepo = useMemo(() => {

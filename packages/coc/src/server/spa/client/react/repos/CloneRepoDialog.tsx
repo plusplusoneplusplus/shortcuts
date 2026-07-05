@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog, Button } from '../ui';
 import { useApp } from '../contexts/AppContext';
+import { useWorkspaceNavigation } from '../hooks/useWorkspaceNavigation';
 import {
     browseWorkspaceFolders,
     cloneRepository,
@@ -82,6 +83,7 @@ export function suggestNonConflictingName(
 
 export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogProps) {
     const { dispatch } = useApp();
+    const { navigateToWorkspace } = useWorkspaceNavigation();
     const [url, setUrl] = useState('');
     const [parentDir, setParentDir] = useState('');
     const [folderName, setFolderName] = useState('');
@@ -216,8 +218,7 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
                 rootPath: clonedPath,
             });
             dispatch({ type: 'WORKSPACE_REGISTERED', workspace });
-            dispatch({ type: 'SET_SELECTED_REPO', id: workspace.id });
-            location.hash = '#repos/' + encodeURIComponent(workspace.id);
+            navigateToWorkspace(workspace.id);
             onSuccess();
             onClose();
         } catch (cloneError) {
@@ -225,7 +226,7 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
         } finally {
             setCloning(false);
         }
-    }, [dispatch, folderName, onClose, onSuccess, parentDir, url]);
+    }, [dispatch, folderName, navigateToWorkspace, onClose, onSuccess, parentDir, url]);
 
     return (
         <Dialog

@@ -18,6 +18,7 @@ let mockAppState: any = {
     selectedRepoId: 'a',
     currentAgentId: null,
     repoTabState: {},
+    repoRouteState: {},
     notePathState: {},
     wsStatus: 'open',
 };
@@ -80,6 +81,7 @@ beforeEach(() => {
         selectedRepoId: 'a',
         currentAgentId: null,
         repoTabState: {},
+        repoRouteState: {},
         notePathState: {},
         wsStatus: 'open',
     };

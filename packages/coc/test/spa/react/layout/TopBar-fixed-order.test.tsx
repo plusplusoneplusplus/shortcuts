@@ -17,6 +17,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
             wsStatus: 'open',
             selectedRepoId: null,
             repoTabState: {},
+            repoRouteState: {},
             notePathState: {},
         },
         dispatch: mockDispatch,
