@@ -20,6 +20,7 @@ const mockDispatch = vi.fn();
 let mockActiveRepoSubTab = 'chats';
 let mockUiLayoutMode = 'dev-workflow';
 let mockDreamsEnabled = false;
+let mockSplitWorkspacePanelEnabled = false;
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
@@ -141,6 +142,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isWorkflowsEnabled: () => false,
     isPullRequestsEnabled: () => false,
     isNativeCliSessionsEnabled: () => false,
+    isSplitWorkspacePanelEnabled: () => mockSplitWorkspacePanelEnabled,
     getScratchpadLayout: () => 'horizontal',
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
 }));
@@ -210,6 +212,7 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
         mockDispatch.mockClear();
         mockQueueDispatch.mockClear();
         mockDreamsEnabled = false;
+        mockSplitWorkspacePanelEnabled = false;
         location.hash = '';
     });
 
@@ -460,6 +463,7 @@ describe('RepoDetail — header action buttons by layout mode', () => {
         mockDispatch.mockClear();
         mockQueueDispatch.mockClear();
         mockDreamsEnabled = false;
+        mockSplitWorkspacePanelEnabled = false;
         location.hash = '';
     });
 
@@ -520,5 +524,103 @@ describe('RepoDetail — header action buttons by layout mode', () => {
         // Make sure ask-mode colour overrides did not leak into it.
         expect(cls).not.toMatch(/!bg-yellow-/);
         expect(cls).not.toMatch(/!bg-blue-/);
+    });
+});
+
+// ── Split "Workspace" panel (feature flag `splitWorkspacePanel`) ──────────────
+// AC-02 (flag-on replaces Activity, hides Git), AC-03 (split left panel),
+// AC-04 (one shared detail pane, last-selection-wins). Flag off = today's behavior.
+describe('RepoDetail — split workspace panel', () => {
+    beforeEach(() => {
+        mockDispatch.mockClear();
+        mockQueueDispatch.mockClear();
+        mockDreamsEnabled = false;
+        mockSplitWorkspacePanelEnabled = false;
+        location.hash = '';
+    });
+
+    it('flag OFF: renders the standalone chat tab, no split panel (AC-01 no-op)', () => {
+        mockSplitWorkspacePanelEnabled = false;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+
+        expect(screen.getByTestId('repo-chat-tab-chats')).toBeTruthy();
+        expect(screen.queryByTestId('split-workspace-panel')).toBeNull();
+    });
+
+    it('flag ON: replaces the chat slot with the split panel (AC-02/03)', () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+
+        // The split panel shell mounts, with both left halves and the detail slot.
+        expect(screen.getByTestId('split-workspace-panel')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-chat')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-git')).toBeTruthy();
+    });
+
+    it('flag ON: exactly ONE shared detail region, fed by the RepoDetail host (AC-04)', () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+
+        // Single shared detail pane — never two.
+        expect(screen.getAllByTestId('split-workspace-detail')).toHaveLength(1);
+        // The RepoDetail-owned host div (the portal target) lives inside it.
+        const detail = screen.getByTestId('split-workspace-detail');
+        expect(detail.querySelector('[data-testid="split-workspace-detail-host"]')).toBeTruthy();
+    });
+
+    it('flag ON: the chat list is mounted inside the panel (dev-workflow → mode="chats")', () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+
+        const chatSlot = screen.getByTestId('split-workspace-chat');
+        expect(chatSlot.querySelector('[data-testid="repo-chat-tab-chats"]')).toBeTruthy();
+    });
+
+    it('flag ON in classic mode: the chat list mounts as the activity variant', () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'classic';
+        mockActiveRepoSubTab = 'activity';
+        renderDetail();
+
+        const chatSlot = screen.getByTestId('split-workspace-chat');
+        expect(chatSlot.querySelector('[data-testid="repo-chat-tab-activity"]')).toBeTruthy();
+    });
+
+    it('flag ON: the standalone git sub-tab button is hidden from the strip (AC-02)', () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        const { container } = renderDetail();
+
+        // Git tab is filtered from visibleSubTabs — its functionality now lives in
+        // the split panel — so no top-level git button remains.
+        expect(container.querySelector('[data-subtab="git"]')).toBeNull();
+    });
+
+    it('flag OFF: the git sub-tab button is still present (toggling restores it)', () => {
+        mockSplitWorkspacePanelEnabled = false;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        const { container } = renderDetail();
+
+        expect(container.querySelector('[data-subtab="git"]')).toBeTruthy();
+    });
+
+    it('flag ON: the chat/git divider renders for the draggable split (AC-03)', () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+
+        expect(screen.getByTestId('split-workspace-divider')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-width-divider')).toBeTruthy();
     });
 });
