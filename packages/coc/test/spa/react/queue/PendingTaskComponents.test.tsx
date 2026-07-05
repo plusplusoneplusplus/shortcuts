@@ -388,3 +388,78 @@ describe('PendingTaskPayload non-chat payload', () => {
         expect(screen.getByText(/"workflow": "deploy.yaml"/)).toBeTruthy();
     });
 });
+
+// ── PendingTaskPayload: dark-mode readable text ────────────────────────
+//
+// Regression for a dark-mode bug where the <pre> prompt/payload boxes set a
+// dark background (dark:bg-[#252526]) but no text color, so the text inherited
+// a near-black color and was unreadable on the dark background. Every <pre>
+// must carry an explicit light-on-dark text color, matching its label above.
+
+/** Finds the closest <pre> ancestor for an element containing `text`. */
+function preContaining(container: HTMLElement, text: string): HTMLElement {
+    const pres = Array.from(container.querySelectorAll('pre'));
+    const match = pres.find((p) => (p.textContent || '').includes(text));
+    if (!match) throw new Error(`No <pre> containing "${text}"`);
+    return match as HTMLElement;
+}
+
+function expectReadableInDarkMode(pre: HTMLElement) {
+    // Light mode: dark text; dark mode: light text — same pair the labels use.
+    expect(pre.className).toContain('text-[#1e1e1e]');
+    expect(pre.className).toContain('dark:text-[#cccccc]');
+}
+
+describe('PendingTaskPayload dark-mode text color', () => {
+    it('standard chat prompt box has readable dark-mode text color', () => {
+        const { container } = render(<PendingTaskPayload task={makeTask()} />);
+        expectReadableInDarkMode(preContaining(container, 'Hello world'));
+    });
+
+    it('follow-up message box has readable dark-mode text color', () => {
+        const task = makeTask({
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'Continue', processId: 'proc-1' },
+        });
+        const { container } = render(<PendingTaskPayload task={task} />);
+        expectReadableInDarkMode(preContaining(container, 'Continue'));
+    });
+
+    it('task-generation prompt box has readable dark-mode text color', () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Generate tasks',
+                context: { taskGeneration: { name: 'feat' } },
+            },
+        });
+        const { container } = render(<PendingTaskPayload task={task} />);
+        expectReadableInDarkMode(preContaining(container, 'Generate tasks'));
+    });
+
+    it('resolve-comments prompt and document-snapshot boxes have readable dark-mode text color', () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Fix the comments',
+                context: {
+                    resolveComments: {
+                        filePath: 'docs/readme.md',
+                        commentIds: ['c-1'],
+                        documentContent: '# Snapshot body',
+                    },
+                },
+            },
+        });
+        const { container } = render(<PendingTaskPayload task={task} />);
+        expectReadableInDarkMode(preContaining(container, 'Fix the comments'));
+        expectReadableInDarkMode(preContaining(container, '# Snapshot body'));
+    });
+
+    it('non-chat JSON payload box has readable dark-mode text color', () => {
+        const task = { id: 'task-3', type: 'run-workflow', payload: { workflow: 'deploy.yaml' } };
+        const { container } = render(<PendingTaskPayload task={task} />);
+        expectReadableInDarkMode(preContaining(container, 'deploy.yaml'));
+    });
+});

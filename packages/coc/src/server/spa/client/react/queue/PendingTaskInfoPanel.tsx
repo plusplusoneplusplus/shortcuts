@@ -88,7 +88,7 @@ export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTas
                     {resolvedPrompt.planFileContent && (
                         <div className="mt-2">
                             <span className="text-xs text-[#848484] font-semibold">Plan File Content</span>
-                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
+                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
                                 {resolvedPrompt.planFileContent}
                             </pre>
                         </div>
@@ -96,13 +96,13 @@ export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTas
                     {resolvedPrompt.promptFileContent && (
                         <div className="mt-2">
                             <span className="text-xs text-[#848484] font-semibold">Prompt File Content</span>
-                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
+                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
                                 {resolvedPrompt.promptFileContent}
                             </pre>
                         </div>
                     )}
                     {resolvedPrompt.resolvedPrompt && !resolvedPrompt.planFileContent && !resolvedPrompt.promptFileContent && (
-                        <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
+                        <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
                             {resolvedPrompt.resolvedPrompt}
                         </pre>
                     )}

@@ -661,6 +661,43 @@ describe('PendingTaskInfoPanel', () => {
         expect(screen.queryByText('Effort Tier')).toBeNull();
     });
 
+    // Dark-mode readability: the resolved-prompt <pre> box must carry an
+    // explicit light-on-dark text color, not inherit near-black text.
+    it('renders "Full Prompt (Resolved)" box with readable dark-mode text color', async () => {
+        const task = makePendingTask({
+            type: 'chat',
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'do it', workingDirectory: '/home/user/project' },
+        });
+        fetchMock.mockImplementation(async (url: string) => {
+            if (typeof url === 'string' && url.includes('/resolved-prompt')) {
+                return new Response(JSON.stringify({ resolvedPrompt: 'FULLY RESOLVED PROMPT' }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                });
+            }
+            if (typeof url === 'string' && url.includes('/queue/')) {
+                return new Response(JSON.stringify({ task }), { status: 200, headers: { 'content-type': 'application/json' } });
+            }
+            return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+        });
+
+        render(
+            <Wrap>
+                <SeededChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Full Prompt (Resolved)')).toBeTruthy();
+        });
+        const pre = Array.from(document.querySelectorAll('pre')).find((p) =>
+            (p.textContent || '').includes('FULLY RESOLVED PROMPT'),
+        );
+        expect(pre).toBeTruthy();
+        expect(pre!.className).toContain('text-[#1e1e1e]');
+        expect(pre!.className).toContain('dark:text-[#cccccc]');
+    });
+
     it('existing Model row is unaffected when both model and effortTier are present', async () => {
         const task = makePendingTask({ config: { model: 'gpt-4', effortTier: 'high' } });
         setupFetchForTask(task);
