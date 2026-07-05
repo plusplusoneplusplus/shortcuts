@@ -270,10 +270,8 @@ export interface CLIConfig {
         ralphMultiAgentGrill?: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions?: boolean;
-        /** Remote-first two-row dashboard shell (one tab per remote). Disabled by default. */
+        /** Remote-first dashboard shell (one tab per remote). Disabled by default. */
         remoteShell?: boolean;
-        /** Single-row remote-first dashboard shell header. Disabled by default. */
-        singleRowShell?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -586,10 +584,8 @@ export interface ResolvedCLIConfig {
         ralphMultiAgentGrill: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions: boolean;
-        /** Remote-first two-row dashboard shell (one tab per remote). Disabled by default. */
+        /** Remote-first dashboard shell (one tab per remote). Disabled by default. */
         remoteShell: boolean;
-        /** Single-row remote-first dashboard shell header. Disabled by default. */
-        singleRowShell: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -840,7 +836,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         ralphMultiAgentGrill: false,
         nativeCliSessions: false,
         remoteShell: false,
-        singleRowShell: false,
     },
     memoryPromotion: {
         batchSize: 50,

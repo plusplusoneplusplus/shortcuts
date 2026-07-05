@@ -94,6 +94,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         activeMemorySubTab: 'bounded',
         activeSkillsSubTab: 'installed',
         repoTabState: {},
+        repoRouteState: {},
         wikiTabState: {},
         repoSubTabNavState: {},
         settingsSection: 'info',

@@ -17,6 +17,7 @@ let capturedOnSelect: ((id: string) => void) | null = null;
 const mockDispatch = vi.fn();
 
 let mockRepoTabState: Record<string, RepoSubTab> = {};
+let mockRepoRouteState: Record<string, string> = {};
 let mockSettingsSection: SettingsSection = 'info';
 let mockSelectedTaskIdByRepo: Record<string, string | null> = {};
 
@@ -30,6 +31,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
             wsStatus: 'open',
             selectedRepoId: null,
             repoTabState: mockRepoTabState,
+            repoRouteState: mockRepoRouteState,
         },
         dispatch: mockDispatch,
     }),
@@ -85,6 +87,7 @@ describe('TopBar — selectRepo restores target repo sub-tab from repoTabState',
         capturedOnSelect = null;
         mockDispatch.mockClear();
         mockRepoTabState = {};
+        mockRepoRouteState = {};
         mockSettingsSection = 'info';
         mockSelectedTaskIdByRepo = {};
     });
@@ -98,6 +101,14 @@ describe('TopBar — selectRepo restores target repo sub-tab from repoTabState',
         render(<TopBar />);
         act(() => { capturedOnSelect?.('repo-abc'); });
         expect(location.hash).toBe('#repos/repo-abc/git');
+    });
+
+    it('restores deep route suffix from repoRouteState before repoTabState', () => {
+        mockRepoTabState = { 'repo-abc': 'chats' };
+        mockRepoRouteState = { 'repo-abc': '/git/abc123/src%2Ffile.ts' };
+        render(<TopBar />);
+        act(() => { capturedOnSelect?.('repo-abc'); });
+        expect(location.hash).toBe('#repos/repo-abc/git/abc123/src%2Ffile.ts');
     });
 
     it('restores templates sub-tab from repoTabState for target repo', () => {

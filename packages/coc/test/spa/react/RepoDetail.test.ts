@@ -157,9 +157,12 @@ describe('RepoDetail Dreams tab feature gating', () => {
         expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode]');
     });
 
-    it('redirects away from dreams when the feature transitions to disabled', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'dreams' && !dreamsEnabled && prevDreamsEnabled.current");
-        expect(REPO_DETAIL_SOURCE).toContain('prevDreamsEnabled.current = dreamsEnabled');
+    it('redirects away from dreams when the feature is disabled (via the visibility guard)', () => {
+        // The per-feature ref-guard effects were consolidated into a single
+        // visibility-based redirect: a disabled dreams tab drops out of
+        // visibleSubTabs, and any non-visible active tab falls back to chats.
+        expect(REPO_DETAIL_SOURCE).toContain('if (isRepoSubTabVisible(activeSubTab, visibleSubTabs)) return;');
+        expect(REPO_DETAIL_SOURCE).toContain("dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });");
     });
 
     it('guards DreamsPanel mounting on dreamsEnabled', () => {

@@ -83,10 +83,11 @@ describe('Git tab hidden when gitInfo is undefined', () => {
 // ── 4. Tab fallback on repo switch ──────────────────────────────────────────
 
 describe('Tab fallback on repo switch', () => {
-    it('has a useEffect that redirects git tab to chats for non-git repos', () => {
-        // Should check activeSubTab === 'git' && !isGitRepo → dispatch chats
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'git'");
-        expect(REPO_DETAIL_SOURCE).toContain('!isGitRepo');
+    it('has a useEffect that redirects hidden tabs (e.g. git on non-git repos) to chats', () => {
+        // git/pull-requests are filtered out of visibleSubTabs when !isGitRepo
+        // (computeVisibleSubTabs), and the consolidated visibility redirect then
+        // drives any non-visible active tab back to chats.
+        expect(REPO_DETAIL_SOURCE).toContain('if (isRepoSubTabVisible(activeSubTab, visibleSubTabs)) return;');
         expect(REPO_DETAIL_SOURCE).toContain("tab: 'chats'");
     });
 

@@ -102,13 +102,17 @@ describe('RepoDetail terminal visibility gating', () => {
 // ── RepoDetail: redirect when terminal disabled ─────────────────────────────
 
 describe('RepoDetail terminal redirect', () => {
-    it('has useEffect that redirects terminal → chats when disabled', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'terminal' && !terminalEnabled");
+    it('redirects terminal → chats when disabled via the visibility guard', () => {
+        // The per-feature terminal redirect effect was consolidated into a
+        // single visibility-based redirect: disabling terminal drops it from
+        // visibleSubTabs, and any non-visible active tab falls back to chats.
+        expect(REPO_DETAIL_SOURCE).toContain('if (isRepoSubTabVisible(activeSubTab, visibleSubTabs)) return;');
+        expect(REPO_DETAIL_SOURCE).toContain("dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });");
     });
 
-    it('redirect dispatches SET_REPO_SUB_TAB with chats', () => {
-        // Verify the redirect pattern matches the git redirect pattern
-        expect(REPO_DETAIL_SOURCE).toContain("[activeSubTab, terminalEnabled, dispatch]");
+    it('terminal drops out of visibleSubTabs when disabled', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('terminalEnabled');
+        expect(REPO_DETAIL_SOURCE).toContain('visibleSubTabs');
     });
 });
 

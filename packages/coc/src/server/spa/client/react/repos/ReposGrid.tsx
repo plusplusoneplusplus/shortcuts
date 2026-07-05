@@ -21,6 +21,7 @@ import type { RepoData, RepoGroup } from './repoGrouping';
 import { getRepoSelectionId, isRepoSelected } from './cloneIdentity';
 import { getGlobalPreferences, updateGlobalPreferences } from './repositoryService';
 import { isContainerMode, isContainerDefaultAgentEnabled } from '../utils/config';
+import { useWorkspaceNavigation } from '../hooks/useWorkspaceNavigation';
 
 const GROUP_DRAG_MIME = 'application/x-git-group-drag';
 const GROUP_EXPANDED_KEY = 'coc-git-group-expanded-state';
@@ -51,6 +52,7 @@ interface ReposGridProps {
 export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
     const { state, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
+    const { navigateToWorkspace } = useWorkspaceNavigation();
     const containerAgentCtx = useContainerAgents();
     const [expandedState, setExpandedState] = useState<Record<string, boolean>>(loadGroupExpandedState);
     const [addOpen, setAddOpen] = useState(false);
@@ -125,9 +127,8 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
     const selectRepo = (repo: RepoData, agentId?: string | null) => {
         const id = getRepoSelectionId(repo);
         if (agentId) dispatch({ type: 'SET_CURRENT_AGENT', agentId });
-        dispatch({ type: 'SET_SELECTED_REPO', id });
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
-        location.hash = '#repos/' + encodeURIComponent(id);
+        navigateToWorkspace(id);
     };
 
     // ── Drag handlers ──────────────────────────────────────────────────

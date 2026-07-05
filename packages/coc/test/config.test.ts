@@ -151,6 +151,31 @@ timeout: 300
             expect(result!.output).toBeUndefined();
         });
 
+        it('silently ignores unknown / removed feature flags (backward compat)', () => {
+            // A config written before an experimental feature flag was removed may
+            // still carry it under features.*. Unknown feature keys must be passed
+            // through — loading must not throw, warn, or alter behaviour, and the
+            // sibling features.remoteShell flag still resolves normally. This is the
+            // mechanism that keeps a legacy single-row-shell feature entry harmless.
+            const legacyKey = 'anExperimentalFlagRemovedLater';
+            const configPath = path.join(tmpDir, 'legacy-feature-flag.yaml');
+            fs.writeFileSync(configPath, [
+                'features:',
+                '  remoteShell: true',
+                `  ${legacyKey}: true`,
+            ].join('\n') + '\n');
+            const result = loadConfigFile(configPath);
+            expect(result).toBeDefined();
+            expect(result!.features!.remoteShell).toBe(true);
+            expect((result!.features as Record<string, unknown>)[legacyKey]).toBe(true);
+
+            // Fully resolved config keeps remoteShell and never tracks the unknown
+            // key as a config source.
+            const resolved = getResolvedConfigWithSource(configPath);
+            expect(resolved.resolved.features.remoteShell).toBe(true);
+            expect(Object.keys(resolved.sources)).not.toContain(`features.${legacyKey}`);
+        });
+
         it('should throw for invalid YAML', () => {
             const configPath = path.join(tmpDir, 'invalid.yaml');
             fs.writeFileSync(configPath, '{{invalid yaml content]]');
@@ -1024,7 +1049,6 @@ timeout: 300
                 '  ralphMultiAgentGrill: true',
                 '  nativeCliSessions: true',
                 '  remoteShell: true',
-                '  singleRowShell: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',
@@ -1243,7 +1267,6 @@ timeout: 300
                     "ralphMultiAgentGrill": false,
                     "remoteShell": false,
                     "sessionContextAttachments": false,
-                    "singleRowShell": false,
                   },
                   "forEach": {
                     "enabled": false,
@@ -1420,7 +1443,6 @@ timeout: 300
                   "features.ralphMultiAgentGrill": "default",
                   "features.remoteShell": "default",
                   "features.sessionContextAttachments": "default",
-                  "features.singleRowShell": "default",
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
                   "loops.enabled": "file",

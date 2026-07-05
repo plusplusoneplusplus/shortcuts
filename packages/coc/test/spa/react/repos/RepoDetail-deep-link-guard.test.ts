@@ -1,10 +1,15 @@
 /**
- * Tests for the deep-link redirect guard in RepoDetail.
+ * Tests for the sub-tab visibility redirect guard in RepoDetail.
  *
- * Verifies that:
- * - Terminal/notes redirect effects use ref-based guards to track previous state
- * - Redirects only fire on true→false transitions, not on initial mount
- * - The guard pattern (prevRef.current check + update) is present for both features
+ * The six per-feature ref-guard effects (prevTerminalEnabled, prevNotesEnabled,
+ * …) were consolidated into a single visibility-based redirect. This verifies:
+ * - A single redirect effect drives the active sub-tab back to 'chats' when the
+ *   tab is no longer visible for the workspace's capability set.
+ * - The redirect waits for git info to finish loading before acting (avoids the
+ *   flaky reset during the async gitInfo load window).
+ * - Visibility is decided via the isRepoSubTabVisible helper.
+ * - Route memory lives separately in AppContext, so this display fallback does
+ *   not erase a remembered deep route when a capability resolves later.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -15,64 +20,49 @@ const REPO_DETAIL_SOURCE_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'
 );
 
-describe('RepoDetail deep-link redirect guards', () => {
+describe('RepoDetail sub-tab visibility redirect guard', () => {
     let source: string;
 
     beforeAll(() => {
         source = fs.readFileSync(REPO_DETAIL_SOURCE_PATH, 'utf-8');
     });
 
-    // ── Ref declarations ─────────────────────────────────────────────────────
+    // ── Consolidated helper + redirect ───────────────────────────────────────
 
-    it('declares prevTerminalEnabled ref', () => {
-        expect(source).toContain('prevTerminalEnabled = useRef(terminalEnabled)');
+    it('defines the isRepoSubTabVisible helper', () => {
+        expect(source).toContain('function isRepoSubTabVisible(');
     });
 
-    it('declares prevNotesEnabled ref', () => {
-        expect(source).toContain('prevNotesEnabled = useRef(notesEnabled)');
+    it('redirect waits for git info to finish loading before acting', () => {
+        expect(source).toContain('if (repo.gitInfoLoading) return;');
     });
 
-    // ── Terminal redirect guard ──────────────────────────────────────────────
-
-    it('terminal redirect checks prevTerminalEnabled.current before dispatching', () => {
-        expect(source).toContain('!terminalEnabled && prevTerminalEnabled.current');
+    it('redirect skips when the active sub-tab is still visible', () => {
+        expect(source).toContain('if (isRepoSubTabVisible(activeSubTab, visibleSubTabs)) return;');
     });
 
-    it('terminal redirect updates prevTerminalEnabled.current after check', () => {
-        expect(source).toContain('prevTerminalEnabled.current = terminalEnabled');
-    });
-
-    // ── Notes redirect guard ─────────────────────────────────────────────────
-
-    it('notes redirect checks prevNotesEnabled.current before dispatching', () => {
-        expect(source).toContain('!notesEnabled && prevNotesEnabled.current');
-    });
-
-    it('notes redirect updates prevNotesEnabled.current after check', () => {
-        expect(source).toContain('prevNotesEnabled.current = notesEnabled');
-    });
-
-    // ── Git redirect is unguarded (no async race for git detection) ──────────
-
-    it('git/pull-requests redirect does NOT use a ref guard (sync value)', () => {
-        expect(source).not.toContain('prevIsGitRepo');
-    });
-
-    // ── Redirect still dispatches SET_REPO_SUB_TAB for feature disable ──────
-
-    it('terminal redirect dispatches SET_REPO_SUB_TAB to chats', () => {
-        const terminalBlock = source.slice(
-            source.indexOf('activeSubTab === \'terminal\''),
-            source.indexOf('prevTerminalEnabled.current = terminalEnabled') + 50
+    it('redirect dispatches SET_REPO_SUB_TAB to chats when the tab is hidden', () => {
+        const redirectBlock = source.slice(
+            source.indexOf('if (isRepoSubTabVisible(activeSubTab, visibleSubTabs)) return;'),
+            source.indexOf('if (isRepoSubTabVisible(activeSubTab, visibleSubTabs)) return;') + 200
         );
-        expect(terminalBlock).toContain("tab: 'chats'");
+        expect(redirectBlock).toContain("dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });");
     });
 
-    it('notes redirect dispatches SET_REPO_SUB_TAB to chats', () => {
-        const notesBlock = source.slice(
-            source.indexOf('activeSubTab === \'notes\' && !notesEnabled'),
-            source.indexOf('prevNotesEnabled.current = notesEnabled') + 50
-        );
-        expect(notesBlock).toContain("tab: 'chats'");
+    // ── Old per-feature transition refs are gone ─────────────────────────────
+
+    it('no longer uses per-feature transition refs', () => {
+        expect(source).not.toContain('prevTerminalEnabled');
+        expect(source).not.toContain('prevNotesEnabled');
+        expect(source).not.toContain('prevWorkflowsEnabled');
+        expect(source).not.toContain('prevPullRequestsEnabled');
+        expect(source).not.toContain('prevDreamsEnabled');
+        expect(source).not.toContain('prevNativeCliSessionsEnabled');
+    });
+
+    // ── Route memory decoupled from the display fallback ─────────────────────
+
+    it('documents that route memory is kept separately in AppContext', () => {
+        expect(source).toContain('Route memory is kept separately in AppContext');
     });
 });

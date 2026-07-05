@@ -26,6 +26,7 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => 
         state: {
             activeRepoSubTab: mockActiveRepoSubTab,
             repoTabState: {},
+            repoRouteState: {},
             wikis: [],
             settingsSection: 'info',
             selectedGitCommitHash: null,
@@ -425,6 +426,32 @@ describe('RepoDetail — git tab redirect does not clobber a remembered git tab 
         renderDetail(repo);
 
         expect(gitTabRedirectCalls().length).toBe(0);
+    });
+
+    it('does NOT redirect away from a feature-gated tab while capabilities are still loading', () => {
+        mockActiveRepoSubTab = 'notes';
+        const repo = {
+            workspace: { id: 'ws-1', rootPath: '/repo', name: 'test-repo', color: '#ccc', remoteUrl: null },
+            gitInfo: { isGitRepo: false },
+            gitInfoLoading: true,
+            taskCount: 0,
+        } as any;
+        renderDetail(repo);
+
+        expect(gitTabRedirectCalls().length).toBe(0);
+    });
+
+    it('redirects a genuinely unavailable feature-gated remembered tab after capabilities resolve', () => {
+        mockActiveRepoSubTab = 'notes';
+        const repo = {
+            workspace: { id: 'ws-1', rootPath: '/repo', name: 'test-repo', color: '#ccc', remoteUrl: null },
+            gitInfo: { isGitRepo: true },
+            gitInfoLoading: false,
+            taskCount: 0,
+        } as any;
+        renderDetail(repo);
+
+        expect(gitTabRedirectCalls().length).toBeGreaterThan(0);
     });
 });
 

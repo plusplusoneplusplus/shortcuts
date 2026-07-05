@@ -802,13 +802,25 @@ describe('handleHash workflow dispatch simulation', () => {
 describe('handleHash repo sub-tab restore (URL precedence + reducer)', () => {
     // Mirrors the repo-restore subset of Router's handleHash effect: always select
     // the repo, and only re-dispatch the sub-tab when the hash carries a valid one.
-    function repoHashDispatches(rawHash: string): AppAction[] {
+    function repoHashDispatches(
+        rawHash: string,
+        remembered: { repoRouteState?: Record<string, string>; repoTabState?: Record<string, any> } = {},
+    ): AppAction[] {
         const dispatches: AppAction[] = [];
-        const hash = rawHash.replace(/^#/, '');
+        let hash = rawHash.replace(/^#/, '');
         if (tabFromHash('#' + hash) !== 'repos') return dispatches;
-        const parts = hash.split('/');
+        let parts = hash.split('/');
         if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
-            dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
+            const repoId = decodeURIComponent(parts[1]);
+            if (!parts[2]) {
+                const suffix = remembered.repoRouteState?.[repoId] ?? '/' + (remembered.repoTabState?.[repoId] ?? 'chats');
+                hash = 'repos/' + parts[1] + suffix;
+                parts = hash.split('/');
+            }
+            dispatches.push({ type: 'SET_SELECTED_REPO', id: repoId });
+            if (parts.length >= 3) {
+                dispatches.push({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId, suffix: '/' + parts.slice(2).join('/') });
+            }
             if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
                 dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] as any });
             }
@@ -821,6 +833,7 @@ describe('handleHash repo sub-tab restore (URL precedence + reducer)', () => {
             selectedRepoId: null,
             activeRepoSubTab: 'chats',
             repoTabState: {},
+            repoRouteState: {},
             notePathState: {},
             selectedNotePath: null,
             selectedWorkflowName: null,
@@ -831,12 +844,35 @@ describe('handleHash repo sub-tab restore (URL precedence + reducer)', () => {
 
     // Feed a hash through the parser + reducer, returning the resulting state.
     function navigate(state: AppContextState, rawHash: string): AppContextState {
-        return repoHashDispatches(rawHash).reduce(appReducer, state);
+        return repoHashDispatches(rawHash, {
+            repoRouteState: state.repoRouteState,
+            repoTabState: state.repoTabState,
+        }).reduce(appReducer, state);
     }
 
-    it('bare #repos/:id emits only SET_SELECTED_REPO (no sub-tab override)', () => {
+    it('bare #repos/:id expands to chats when no route or tab memory exists', () => {
         const dispatches = repoHashDispatches('#repos/repo-a');
-        expect(dispatches).toEqual([{ type: 'SET_SELECTED_REPO', id: 'repo-a' }]);
+        expect(dispatches).toEqual([
+            { type: 'SET_SELECTED_REPO', id: 'repo-a' },
+            { type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: 'repo-a', suffix: '/chats' },
+            { type: 'SET_REPO_SUB_TAB', tab: 'chats' },
+        ]);
+    });
+
+    it('bare #repos/:id expands to a remembered deep route suffix', () => {
+        const dispatches = repoHashDispatches('#repos/repo-a', {
+            repoRouteState: { 'repo-a': '/git/abc123/src%2Ffile.ts' },
+        });
+        expect(dispatches).toContainEqual({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: 'repo-a', suffix: '/git/abc123/src%2Ffile.ts' });
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
+    });
+
+    it('bare #repos/:id expands to old tab memory when no route suffix exists', () => {
+        const dispatches = repoHashDispatches('#repos/repo-a', {
+            repoTabState: { 'repo-a': 'notes' },
+        });
+        expect(dispatches).toContainEqual({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: 'repo-a', suffix: '/notes' });
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'notes' });
     });
 
     it('explicit #repos/:id/git emits SET_REPO_SUB_TAB git', () => {
@@ -844,16 +880,30 @@ describe('handleHash repo sub-tab restore (URL precedence + reducer)', () => {
         expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
     });
 
-    it('bare #repos/:id restores the repo remembered tab', () => {
-        const start = makeReducerState({ selectedRepoId: null, repoTabState: { 'repo-a': 'git' } });
+    it('explicit deep repo hashes record the full route suffix', () => {
+        const dispatches = repoHashDispatches('#repos/repo-a/work-items/item-1/session/task-1');
+        expect(dispatches).toContainEqual({
+            type: 'RECORD_REPO_ROUTE_SUFFIX',
+            repoId: 'repo-a',
+            suffix: '/work-items/item-1/session/task-1',
+        });
+        const next = navigate(makeReducerState(), '#repos/repo-a/work-items/item-1/session/task-1');
+        expect(next.repoRouteState['repo-a']).toBe('/work-items/item-1/session/task-1');
+        expect(next.repoTabState['repo-a']).toBe('work-items');
+    });
+
+    it('bare #repos/:id restores the repo remembered route tab', () => {
+        const start = makeReducerState({ selectedRepoId: null, repoRouteState: { 'repo-a': '/git/abc123/src%2Ffile.ts' } });
         const next = navigate(start, '#repos/repo-a');
         expect(next.activeRepoSubTab).toBe('git');
+        expect(next.repoRouteState['repo-a']).toBe('/git/abc123/src%2Ffile.ts');
     });
 
     it('bare #repos/:id for an unremembered repo lands on the chats default', () => {
         const start = makeReducerState({ selectedRepoId: null });
         const next = navigate(start, '#repos/repo-new');
         expect(next.activeRepoSubTab).toBe('chats');
+        expect(next.repoRouteState['repo-new']).toBe('/chats');
     });
 
     it('explicit deep-link sub-tab wins over the remembered tab and updates memory', () => {

@@ -26,9 +26,24 @@ export function getInitialSidebarCollapsed(): boolean {
 // ── Per-repo sub-tab persistence ───────────────────────────────────────
 
 export const REPO_TAB_STATE_KEY = 'coc-repo-tab-state';
+export const REPO_ROUTE_STATE_KEY = 'coc-repo-route-state';
 
 /** Set of valid sub-tab ids, used to drop unknown/stale values on hydrate. */
 const VALID_REPO_SUB_TAB_SET: ReadonlySet<string> = new Set(REPO_SUB_TAB_VALUES);
+
+function normalizeRepoRouteSuffix(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    if (!value.startsWith('/')) return null;
+    const tab = value.slice(1).split('/')[0];
+    if (!VALID_REPO_SUB_TAB_SET.has(tab)) return null;
+    return value;
+}
+
+export function getRepoSubTabFromRouteSuffix(suffix: string | null | undefined): RepoSubTab | null {
+    const normalized = normalizeRepoRouteSuffix(suffix);
+    if (!normalized) return null;
+    return normalized.slice(1).split('/')[0] as RepoSubTab;
+}
 
 /**
  * Read the persisted per-repo sub-tab map from localStorage. Values that are
@@ -58,6 +73,29 @@ export function getInitialRepoTabState(): Record<string, RepoSubTab> {
 function persistRepoTabState(repoTabState: Record<string, RepoSubTab>): void {
     try {
         localStorage.setItem(REPO_TAB_STATE_KEY, JSON.stringify(repoTabState));
+    } catch { /* SSR / test / quota */ }
+}
+
+export function getInitialRepoRouteState(): Record<string, string> {
+    try {
+        const raw = localStorage.getItem(REPO_ROUTE_STATE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+        const result: Record<string, string> = {};
+        for (const [repoId, suffix] of Object.entries(parsed as Record<string, unknown>)) {
+            const normalized = normalizeRepoRouteSuffix(suffix);
+            if (normalized) result[repoId] = normalized;
+        }
+        return result;
+    } catch {
+        return {};
+    }
+}
+
+function persistRepoRouteState(repoRouteState: Record<string, string>): void {
+    try {
+        localStorage.setItem(REPO_ROUTE_STATE_KEY, JSON.stringify(repoRouteState));
     } catch { /* SSR / test / quota */ }
 }
 
@@ -129,8 +167,10 @@ export interface AppContextState {
     adminDbPage: number;
     adminDbSort: string | null;
     adminDbOrder: 'asc' | 'desc' | null;
-    /** Per-repo remembered sub-tab (in-memory only, resets on page refresh). */
+    /** Per-repo remembered sub-tab, persisted locally and restored on workspace switch. */
     repoTabState: Record<string, RepoSubTab>;
+    /** Per-repo remembered inner route suffix, persisted locally and restored on workspace switch. */
+    repoRouteState: Record<string, string>;
     /** Per-workspace remembered note path (in-memory only, resets on page refresh). */
     notePathState: Record<string, string | null>;
     /** Per-wiki remembered project tab (in-memory only, resets on page refresh). */
@@ -201,6 +241,7 @@ const initialState: AppContextState = {
     adminDbSort: null,
     adminDbOrder: null,
     repoTabState: getInitialRepoTabState(),
+    repoRouteState: getInitialRepoRouteState(),
     notePathState: {},
     wikiTabState: {},
     repoSubTabNavState: {},
@@ -236,6 +277,7 @@ export type AppAction =
     | { type: 'SET_SELECTED_REPO'; id: string | null }
     | { type: 'SET_CURRENT_AGENT'; agentId: string | null }
     | { type: 'SET_REPO_SUB_TAB'; tab: RepoSubTab }
+    | { type: 'RECORD_REPO_ROUTE_SUFFIX'; repoId: string; suffix: string }
     | { type: 'TOGGLE_REPOS_SIDEBAR' }
     | { type: 'SET_REPOS_SIDEBAR_COLLAPSED'; value: boolean }
     | { type: 'SET_WIKI_VIEW'; wikiId: string | null; componentId: string | null; view: WikiViewMode }
@@ -373,7 +415,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             const savedTabState = state.selectedRepoId
                 ? { ...state.repoTabState, [state.selectedRepoId]: state.activeRepoSubTab }
                 : state.repoTabState;
-            const restoredTab = action.id ? (savedTabState[action.id] ?? 'chats') : state.activeRepoSubTab;
+            const restoredRouteTab = action.id ? getRepoSubTabFromRouteSuffix(state.repoRouteState?.[action.id]) : null;
+            const restoredTab = action.id ? (restoredRouteTab ?? savedTabState[action.id] ?? 'chats') : state.activeRepoSubTab;
             // Save + restore note path per workspace
             const savedNoteState = state.selectedRepoId
                 ? { ...state.notePathState, [state.selectedRepoId]: state.selectedNotePath }
@@ -392,6 +435,23 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 : state.repoTabState;
             if (updatedRepoTabState !== state.repoTabState) persistRepoTabState(updatedRepoTabState);
             return { ...state, activeRepoSubTab: action.tab, repoTabState: updatedRepoTabState };
+        }
+        case 'RECORD_REPO_ROUTE_SUFFIX': {
+            const suffix = normalizeRepoRouteSuffix(action.suffix);
+            const tab = getRepoSubTabFromRouteSuffix(suffix);
+            if (!suffix || !tab) return state;
+            const currentRouteState = state.repoRouteState ?? {};
+            const currentTabState = state.repoTabState ?? {};
+            const updatedRouteState = currentRouteState[action.repoId] === suffix
+                ? currentRouteState
+                : { ...currentRouteState, [action.repoId]: suffix };
+            const updatedTabState = currentTabState[action.repoId] === tab
+                ? currentTabState
+                : { ...currentTabState, [action.repoId]: tab };
+            if (updatedRouteState !== currentRouteState) persistRepoRouteState(updatedRouteState);
+            if (updatedTabState !== currentTabState) persistRepoTabState(updatedTabState);
+            if (updatedRouteState === state.repoRouteState && updatedTabState === state.repoTabState) return state;
+            return { ...state, repoRouteState: updatedRouteState, repoTabState: updatedTabState };
         }
         case 'TOGGLE_REPOS_SIDEBAR': {
             const next = !state.reposSidebarCollapsed;
