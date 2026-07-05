@@ -310,6 +310,119 @@ describe('useResizablePanel', () => {
         });
     });
 
+    // AC-03/AC-06: the split-workspace divider between the chat (top) and git
+    // (bottom) halves resizes along the Y axis. These guard the vertical path
+    // added to the (previously horizontal-only) hook.
+    describe("direction: 'top' (top-anchored panel, vertical drag)", () => {
+        it('grows the top panel when the handle is dragged down', () => {
+            const { result } = renderHook(() =>
+                useResizablePanel({ initialWidth: 300, minWidth: 100, maxWidth: 500, direction: 'top' })
+            );
+
+            // Start drag at clientY=300 (X is ignored on the vertical axis).
+            act(() => {
+                result.current.handleMouseDown({
+                    preventDefault: vi.fn(),
+                    clientX: 999,
+                    clientY: 300,
+                } as unknown as React.MouseEvent);
+            });
+
+            // Drag down (+100px): a top-anchored panel grows taller.
+            act(() => {
+                document.dispatchEvent(new MouseEvent('mousemove', { clientX: 999, clientY: 400 }));
+            });
+
+            expect(result.current.width).toBe(400);
+        });
+
+        it('shrinks the top panel when the handle is dragged up, clamped to minWidth', () => {
+            const { result } = renderHook(() =>
+                useResizablePanel({ initialWidth: 300, minWidth: 160, maxWidth: 600, direction: 'top' })
+            );
+
+            act(() => {
+                result.current.handleMouseDown({
+                    preventDefault: vi.fn(),
+                    clientY: 300,
+                } as unknown as React.MouseEvent);
+            });
+
+            // Drag far up: height shrinks and clamps to minWidth (min size).
+            act(() => {
+                document.dispatchEvent(new MouseEvent('mousemove', { clientY: 0 }));
+            });
+
+            expect(result.current.width).toBe(160);
+        });
+
+        it('ignores X-axis movement on the vertical axis', () => {
+            const { result } = renderHook(() =>
+                useResizablePanel({ initialWidth: 300, minWidth: 100, maxWidth: 500, direction: 'top' })
+            );
+
+            act(() => {
+                result.current.handleMouseDown({
+                    preventDefault: vi.fn(),
+                    clientX: 300,
+                    clientY: 300,
+                } as unknown as React.MouseEvent);
+            });
+
+            // Move only along X — a vertical panel must not resize.
+            act(() => {
+                document.dispatchEvent(new MouseEvent('mousemove', { clientX: 500, clientY: 300 }));
+            });
+
+            expect(result.current.width).toBe(300);
+        });
+
+        it('persists the height per storageKey on drag end', () => {
+            const key = 'test-split-divider-height';
+            const { result } = renderHook(() =>
+                useResizablePanel({ initialWidth: 300, minWidth: 100, maxWidth: 600, storageKey: key, direction: 'top' })
+            );
+
+            act(() => {
+                result.current.handleMouseDown({
+                    preventDefault: vi.fn(),
+                    clientY: 300,
+                } as unknown as React.MouseEvent);
+            });
+            act(() => {
+                document.dispatchEvent(new MouseEvent('mousemove', { clientY: 380 }));
+            });
+            act(() => {
+                document.dispatchEvent(new MouseEvent('mouseup'));
+            });
+
+            expect(result.current.width).toBe(380);
+            expect(localStorage.getItem(key)).toBe('380');
+        });
+    });
+
+    describe("direction: 'bottom' (bottom-anchored panel, vertical drag)", () => {
+        it('grows the bottom panel when the handle is dragged up', () => {
+            const { result } = renderHook(() =>
+                useResizablePanel({ initialWidth: 300, minWidth: 100, maxWidth: 500, direction: 'bottom' })
+            );
+
+            act(() => {
+                result.current.handleMouseDown({
+                    preventDefault: vi.fn(),
+                    clientY: 300,
+                } as unknown as React.MouseEvent);
+            });
+
+            // Drag up (−100px): a bottom-anchored panel grows.
+            act(() => {
+                document.dispatchEvent(new MouseEvent('mousemove', { clientY: 200 }));
+            });
+
+            expect(result.current.width).toBe(400);
+        });
+    });
+
     describe('drag overlay (keeps pointer events off underlying iframes)', () => {
         const overlays = () => document.querySelectorAll('[data-resize-overlay]');
 
@@ -336,6 +449,20 @@ describe('useResizablePanel', () => {
             });
 
             expect(overlays().length).toBe(0);
+        });
+
+        it('uses a row-resize cursor for a vertical panel', () => {
+            const { result } = renderHook(() => useResizablePanel({ direction: 'top' }));
+
+            act(() => {
+                result.current.handleMouseDown({
+                    preventDefault: vi.fn(),
+                    clientY: 200,
+                } as unknown as React.MouseEvent);
+            });
+
+            const overlay = overlays()[0] as HTMLElement;
+            expect(overlay.style.cursor).toBe('row-resize');
         });
 
         it('removes the overlay when unmounted mid-drag', () => {
