@@ -272,6 +272,8 @@ export interface CLIConfig {
         nativeCliSessions?: boolean;
         /** Remote-first dashboard shell (one tab per remote). Disabled by default. */
         remoteShell?: boolean;
+        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Disabled by default. */
+        splitWorkspacePanel?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -586,6 +588,8 @@ export interface ResolvedCLIConfig {
         nativeCliSessions: boolean;
         /** Remote-first dashboard shell (one tab per remote). Disabled by default. */
         remoteShell: boolean;
+        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Disabled by default. */
+        splitWorkspacePanel: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -836,6 +840,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         ralphMultiAgentGrill: false,
         nativeCliSessions: false,
         remoteShell: false,
+        splitWorkspacePanel: false,
     },
     memoryPromotion: {
         batchSize: 50,

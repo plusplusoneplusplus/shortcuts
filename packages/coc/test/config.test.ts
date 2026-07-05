@@ -1049,6 +1049,7 @@ timeout: 300
                 '  ralphMultiAgentGrill: true',
                 '  nativeCliSessions: true',
                 '  remoteShell: true',
+                '  splitWorkspacePanel: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',
@@ -1267,6 +1268,7 @@ timeout: 300
                     "ralphMultiAgentGrill": false,
                     "remoteShell": false,
                     "sessionContextAttachments": false,
+                    "splitWorkspacePanel": false,
                   },
                   "forEach": {
                     "enabled": false,
@@ -1443,6 +1445,7 @@ timeout: 300
                   "features.ralphMultiAgentGrill": "default",
                   "features.remoteShell": "default",
                   "features.sessionContextAttachments": "default",
+                  "features.splitWorkspacePanel": "default",
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
                   "loops.enabled": "file",

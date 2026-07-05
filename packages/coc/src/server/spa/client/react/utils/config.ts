@@ -75,6 +75,8 @@ interface DashboardConfig {
     showPlanDepTab?: boolean;
     /** Whether the remote-first dashboard shell is enabled (feature flag). */
     remoteShellEnabled?: boolean;
+    /** Whether the split "Workspace" left panel (chat top / git bottom + shared detail pane) is enabled. */
+    splitWorkspacePanelEnabled?: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
     prewarmDebounceMs?: number;
     /** Warm-client idle TTL (ms), resolved from env on the server. `0` means warming is disabled. */
@@ -346,6 +348,11 @@ export function isShowPlanDepTab(): boolean {
 /** Returns true when the remote-first dashboard shell is enabled. */
 export function isRemoteShellEnabled(): boolean {
     return getConfig().remoteShellEnabled === true;
+}
+
+/** Returns true when the split "Workspace" left panel (chat top / git bottom + shared detail pane) is enabled. */
+export function isSplitWorkspacePanelEnabled(): boolean {
+    return getConfig().splitWorkspacePanelEnabled === true;
 }
 
 export function isExcalidrawEnabled(): boolean {

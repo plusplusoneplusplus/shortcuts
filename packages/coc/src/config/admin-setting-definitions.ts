@@ -761,6 +761,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.splitWorkspacePanel', default: false, runtime: 'live', runtimeFlag: 'splitWorkspacePanelEnabled',
+        ui: {
+            group: 'dashboard', order: 67, label: 'Split Workspace panel', badge: 'experimental',
+            hint: 'Replaces the Activity tab with a split "Workspace" view (chat list on top, git on the bottom) that feeds one shared detail pane, and hides the standalone Git tab. Disabled by default.',
+            testId: 'toggle-split-workspace-panel-enabled',
+        },
+    }),
+    bool({
         key: 'features.ralphMultiAgentGrill', default: false, runtime: 'live', runtimeFlag: 'ralphMultiAgentGrillEnabled',
         ui: {
             group: 'aiModes', order: 15, label: 'Ralph Multi-Agent Grilling', badge: 'experimental',
