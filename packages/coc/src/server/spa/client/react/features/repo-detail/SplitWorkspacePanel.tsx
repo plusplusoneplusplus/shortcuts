@@ -132,9 +132,11 @@ function SectionHeader({ label, collapsed, onToggle, testId }: SectionHeaderProp
             className={cn(
                 'group flex h-[22px] w-full flex-shrink-0 items-center gap-1 px-1.5 text-left select-none',
                 'text-[10px] font-semibold uppercase tracking-wide leading-none',
-                'text-[#6b6b6b] dark:text-[#a0a0a0]',
-                'bg-[#f3f3f3] hover:bg-[#e8e8e8] dark:bg-[#252526] dark:hover:bg-[#2d2d2d]',
-                'border-b border-[#e5e5e5] dark:border-[#333]',
+                'text-[#4d566b] dark:text-[#b6bcc9]',
+                // A cool blue-grey band so the header reads as a distinct
+                // divider against the white chat/git content below it.
+                'bg-[#e4e9f2] hover:bg-[#d7deec] dark:bg-[#2c303a] dark:hover:bg-[#353a46]',
+                'border-b border-[#cfd6e4] dark:border-[#3b414d]',
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#007acc]',
                 'transition-colors',
             )}
@@ -142,7 +144,7 @@ function SectionHeader({ label, collapsed, onToggle, testId }: SectionHeaderProp
             <span
                 aria-hidden="true"
                 className={cn(
-                    'inline-block text-[8px] leading-none text-[#8a8a8a] transition-transform duration-150',
+                    'inline-block text-[8px] leading-none text-[#7883a0] transition-transform duration-150',
                     collapsed && '-rotate-90',
                 )}
             >

@@ -199,6 +199,10 @@ describe('SplitWorkspacePanel collapsible sections', () => {
         // space (the explicit ask).
         expect(chatHeader.className).toContain('h-[22px]');
         expect(gitHeader.className).toContain('h-[22px]');
+        // Distinct tinted band so the header is visually identifiable against
+        // the white chat/git content below (not left-transparent/white).
+        expect(chatHeader.className).toContain('bg-[#e4e9f2]');
+        expect(gitHeader.className).toContain('bg-[#e4e9f2]');
         // Bodies are visible (not hidden) while expanded.
         expect(screen.getByTestId('split-workspace-chat-body').classList.contains('hidden')).toBe(false);
         expect(screen.getByTestId('split-workspace-git-body').classList.contains('hidden')).toBe(false);
