@@ -38,7 +38,14 @@ export function splitWorkspaceDividerStorageKey(workspaceId: string): string {
 }
 
 const DIVIDER_CLASS =
-    'flex items-center justify-center hover:bg-[#007acc]/30 active:bg-[#007acc]/50 transition-colors flex-shrink-0';
+    'group relative flex items-center justify-center hover:bg-[#007acc]/15 active:bg-[#007acc]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/40 transition-colors flex-shrink-0';
+
+const CHAT_SPLIT_MIN_HEIGHT = 120;
+const CHAT_SPLIT_MAX_HEIGHT = 800;
+const CHAT_SPLIT_INITIAL_HEIGHT = 320;
+const LEFT_COLUMN_MIN_WIDTH = 240;
+const LEFT_COLUMN_MAX_WIDTH = 640;
+const LEFT_COLUMN_INITIAL_WIDTH = 360;
 
 export function SplitWorkspacePanel({ workspaceId, chatList, gitList, detail }: SplitWorkspacePanelProps) {
     const { isMobile } = useBreakpoint();
@@ -47,18 +54,18 @@ export function SplitWorkspacePanel({ workspaceId, chatList, gitList, detail }: 
     // half is a top-anchored panel whose height is the persisted "ratio".
     const chatHalf = useResizablePanel({
         direction: 'top',
-        initialWidth: 320,
-        minWidth: 120,
-        maxWidth: 800,
+        initialWidth: CHAT_SPLIT_INITIAL_HEIGHT,
+        minWidth: CHAT_SPLIT_MIN_HEIGHT,
+        maxWidth: CHAT_SPLIT_MAX_HEIGHT,
         storageKey: splitWorkspaceDividerStorageKey(workspaceId),
     });
 
     // Horizontal divider setting the whole left column's width.
     const leftColumn = useResizablePanel({
         direction: 'left',
-        initialWidth: 360,
-        minWidth: 240,
-        maxWidth: 640,
+        initialWidth: LEFT_COLUMN_INITIAL_WIDTH,
+        minWidth: LEFT_COLUMN_MIN_WIDTH,
+        maxWidth: LEFT_COLUMN_MAX_WIDTH,
         storageKey: splitWorkspaceWidthStorageKey(workspaceId),
     });
 
@@ -101,15 +108,24 @@ export function SplitWorkspacePanel({ workspaceId, chatList, gitList, detail }: 
 
                 {/* Divider between chat and git — drag up/down to rebalance. */}
                 <div
-                    className={cn(DIVIDER_CLASS, 'h-1 cursor-row-resize')}
+                    className={cn(
+                        DIVIDER_CLASS,
+                        'h-2 cursor-row-resize border-y border-[#e0e0e0] dark:border-[#333]',
+                        chatHalf.isDragging && 'bg-[#007acc]/20',
+                    )}
                     onMouseDown={chatHalf.handleMouseDown}
                     onTouchStart={chatHalf.handleTouchStart}
                     data-testid="split-workspace-divider"
                     role="separator"
                     aria-orientation="horizontal"
                     aria-label="Resize chat and git panels"
+                    aria-valuemin={CHAT_SPLIT_MIN_HEIGHT}
+                    aria-valuemax={CHAT_SPLIT_MAX_HEIGHT}
+                    aria-valuenow={chatHalf.width}
                     tabIndex={0}
-                />
+                >
+                    <span className="h-px w-full bg-[#c8c8c8] dark:bg-[#5a5a5a] group-hover:h-[2px] group-hover:bg-[#007acc] transition-all" />
+                </div>
 
                 {/* BOTTOM — git list, fills the remaining height. */}
                 <div className="flex-1 min-h-0 overflow-hidden" data-testid="split-workspace-git">
@@ -119,15 +135,24 @@ export function SplitWorkspacePanel({ workspaceId, chatList, gitList, detail }: 
 
             {/* Divider between the left column and the detail pane. */}
             <div
-                className={cn(DIVIDER_CLASS, 'w-1 cursor-col-resize')}
+                className={cn(
+                    DIVIDER_CLASS,
+                    'w-2 cursor-col-resize border-x border-[#e0e0e0] dark:border-[#333]',
+                    leftColumn.isDragging && 'bg-[#007acc]/20',
+                )}
                 onMouseDown={leftColumn.handleMouseDown}
                 onTouchStart={leftColumn.handleTouchStart}
                 data-testid="split-workspace-width-divider"
                 role="separator"
                 aria-orientation="vertical"
                 aria-label="Resize left panel width"
+                aria-valuemin={LEFT_COLUMN_MIN_WIDTH}
+                aria-valuemax={LEFT_COLUMN_MAX_WIDTH}
+                aria-valuenow={leftColumn.width}
                 tabIndex={0}
-            />
+            >
+                <span className="h-full w-px bg-[#c8c8c8] dark:bg-[#5a5a5a] group-hover:w-[2px] group-hover:bg-[#007acc] transition-all" />
+            </div>
 
             {/* RIGHT — the single shared detail pane (last-clicked item). */}
             <div className="flex-1 min-w-0 min-h-0 overflow-hidden" data-testid="split-workspace-detail">

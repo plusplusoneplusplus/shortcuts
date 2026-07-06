@@ -537,6 +537,26 @@ describe('ChatListPane', () => {
             expect(actionBar.className).not.toContain('md:mb-3');
         });
 
+        it('keeps the activity controls sticky above the scrolling task list', () => {
+            renderPane({
+                history: [makeHistoryTask()],
+                onPauseResumeAutopilot: vi.fn(),
+            });
+
+            const fixedHeader = screen.getByTestId('chat-list-fixed-header');
+            const pane = screen.getByTestId('chat-list-pane');
+            const newChatBtn = screen.getByTestId('toolbar-new-chat-btn');
+            const searchInput = screen.getByTestId('queue-search-input');
+            const completedHeader = screen.getByText('Completed Tasks').closest('[data-section="completed"]');
+
+            expect(fixedHeader.className).toContain('sticky');
+            expect(fixedHeader.className).toContain('top-0');
+            expect(fixedHeader.contains(newChatBtn)).toBe(true);
+            expect(fixedHeader.contains(searchInput)).toBe(true);
+            expect(completedHeader && fixedHeader.contains(completedHeader)).toBe(false);
+            expect(completedHeader && pane.contains(completedHeader)).toBe(true);
+        });
+
         it('AP pause button shows only the AP scope tag when not paused', () => {
             renderPane({
                 history: [makeHistoryTask()],

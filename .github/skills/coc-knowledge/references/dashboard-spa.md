@@ -1258,11 +1258,17 @@ from `TopBar` for `BottomNav`/`Router`) — kept out of the heavily-mocked
 - Scope segmented control: Chats / Loops (when `loops.enabled`) / Automations / All
 - Search box
 - Selection persists in `localStorage['coc-activity-scope']`
+- `ChatListPane` keeps the action/scope/search controls in a sticky
+  `chat-list-fixed-header` block while the list rows scroll underneath.
 - The desktop activity split (`RepoChatTab`) can collapse the left chat-list
   panel to a thin rail; collapsed state persists in
   `localStorage['activity-list-collapsed-{workspaceId}']`, the left-panel width
   persists in `localStorage['activity-left-panel-width-{workspaceId}']`, and the
   collapse affordance sits on the list/detail resize handle.
+- The `SplitWorkspacePanel` chat/git divider is an explicit horizontal
+  `role="separator"` resize handle with an expanded hit target; it persists the
+  chat pane height per workspace under
+  `split-workspace:{workspaceId}:chat-height`.
 - For Each parent run group rows render in Activity Chats and All, but not in
   Activity Automations or Loops; loop-linked child chats can still appear in
   Loops independently of the hidden parent group row.

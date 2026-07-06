@@ -2809,10 +2809,18 @@ export function ChatListPane({
 
     return (
         <>
-            <div ref={containerRef} className="p-2 md:p-4 flex flex-col gap-2 md:gap-3 overflow-y-auto flex-1">
+            <div
+                ref={containerRef}
+                className="p-2 md:p-4 flex flex-col gap-2 md:gap-3 overflow-y-auto flex-1"
+                data-testid="chat-list-pane"
+            >
                 {/* ── Chats tab: redesigned status-grouped list ── */}
                 {activeTab === 'chats' && chatGroups && (
                     <>
+                        <div
+                            className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-2 md:py-4 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
+                            data-testid="chat-list-fixed-header"
+                        >
                         <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className={cn("self-start", isMobile && "hidden")} data-testid="new-chat-btn">
                             💬 New Chat
                         </Button>
@@ -2897,6 +2905,7 @@ export function ChatListPane({
                                 })}
                             </div>
                         )}
+                        </div>
 
                         {/* FTS5 server-side search results (replaces normal sections when active) */}
                         {isServerSearchActive ? (
@@ -3041,7 +3050,12 @@ export function ChatListPane({
                 )}
 
                 {/* ── Tasks tab: queue-style sections ── */}
-                {activeTab !== 'chats' && (<>
+                {activeTab !== 'chats' && (
+                    <React.Fragment>
+                <div
+                    className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-2 md:py-4 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
+                    data-testid="chat-list-fixed-header"
+                >
                 {isPaused && (
                     <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
                         <span className="flex-1">
@@ -3359,6 +3373,7 @@ export function ChatListPane({
                             >✕</button>
                         </div>
                     )}
+                </div>
                 </div>
                 </div>
 
@@ -3724,7 +3739,8 @@ export function ChatListPane({
             )}
                     </>
                 )}
-                </>)}
+                    </React.Fragment>
+                )}
         </div>
         {contextMenu && (
             <ContextMenu

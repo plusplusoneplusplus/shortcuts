@@ -46,6 +46,26 @@ describe('SplitWorkspacePanel', () => {
         expect(screen.getByTestId('split-workspace-width-divider')).toBeTruthy();
     });
 
+    it('exposes visible accessible resize handles for both split lines', () => {
+        renderPanel();
+        const divider = screen.getByTestId('split-workspace-divider');
+        const widthDivider = screen.getByTestId('split-workspace-width-divider');
+
+        expect(divider.getAttribute('role')).toBe('separator');
+        expect(divider.getAttribute('aria-orientation')).toBe('horizontal');
+        expect(divider.getAttribute('aria-valuemin')).toBe('120');
+        expect(divider.getAttribute('aria-valuemax')).toBe('800');
+        expect(divider.getAttribute('aria-valuenow')).toBe('320');
+        expect(divider.className).toContain('h-2');
+
+        expect(widthDivider.getAttribute('role')).toBe('separator');
+        expect(widthDivider.getAttribute('aria-orientation')).toBe('vertical');
+        expect(widthDivider.getAttribute('aria-valuemin')).toBe('240');
+        expect(widthDivider.getAttribute('aria-valuemax')).toBe('640');
+        expect(widthDivider.getAttribute('aria-valuenow')).toBe('360');
+        expect(widthDivider.className).toContain('w-2');
+    });
+
     it('has exactly one shared detail region (AC-04)', () => {
         renderPanel();
         expect(screen.getAllByTestId('split-workspace-detail')).toHaveLength(1);
