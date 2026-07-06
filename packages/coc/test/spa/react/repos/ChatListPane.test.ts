@@ -721,7 +721,7 @@ describe('ChatListPane pinned chats', () => {
         it('prevents default browser find on Ctrl+F', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 600,
+                source.indexOf("e.key === 'f'") + 1000,
             );
             expect(handler).toContain('e.preventDefault()');
         });
@@ -729,28 +729,30 @@ describe('ChatListPane pinned chats', () => {
         it('sets searchVisible to true on Ctrl+F', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 600,
+                source.indexOf("e.key === 'f'") + 1000,
             );
             expect(handler).toContain('setSearchVisible(true)');
         });
 
-        it('skips interception when a conversation is open and focus is outside the list', () => {
+        it('tracks focus live against the list container instead of a cached flag', () => {
             // Focus is compared live against the list container instead of a
-            // cached mousedown flag: when a chat is open and the keydown target
-            // is not inside the list, the handler bails so the native
-            // find-in-page can run.
+            // cached mousedown flag (which went stale when a chat was opened by
+            // clicking its list row). `focusElsewhereWithChatOpen` still gates
+            // Ctrl+N (don't open a new chat while working in a conversation).
             expect(source).toContain('containerRef.current?.contains(target)');
             expect(source).toContain('const focusElsewhereWithChatOpen = !focusInList && !!selectedTaskId');
         });
 
-        it('bails on focusElsewhereWithChatOpen before intercepting Ctrl+F', () => {
+        it('Ctrl+F only yields to native find while typing in an open conversation', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 600,
+                source.indexOf("e.key === 'f'") + 1000,
             );
-            expect(handler).toContain('if (focusElsewhereWithChatOpen) return');
-            // The guard must come before preventDefault
-            const guardIdx = handler.indexOf('focusElsewhereWithChatOpen) return');
+            // Ctrl+F opens the list search except when the user is typing in an
+            // editable field of an open conversation — then it falls through to
+            // the native find-in-page. The guard must come before preventDefault.
+            expect(handler).toContain('if (selectedTaskId && !focusInList && isEditableTarget(e.target)) return');
+            const guardIdx = handler.indexOf('isEditableTarget(e.target)) return');
             const preventIdx = handler.indexOf('e.preventDefault()');
             expect(guardIdx).toBeLessThan(preventIdx);
         });
@@ -758,7 +760,7 @@ describe('ChatListPane pinned chats', () => {
         it('bails out when container is hidden (offsetParent === null)', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 600,
+                source.indexOf("e.key === 'f'") + 1000,
             );
             // Visibility guard must appear before preventDefault
             expect(handler).toContain('containerRef.current.offsetParent === null');
@@ -1617,7 +1619,7 @@ describe('ChatListPane: chat search', () => {
         it('Ctrl+F handler does not gate on activeTab', () => {
             const ctrlFBlock = source.substring(
                 source.indexOf("e.key === 'f'") - 100,
-                source.indexOf("e.key === 'f'") + 600,
+                source.indexOf("e.key === 'f'") + 1000,
             );
             // The Ctrl+F handler should set searchVisible and focus — no activeTab check
             expect(ctrlFBlock).toContain('setSearchVisible(true)');

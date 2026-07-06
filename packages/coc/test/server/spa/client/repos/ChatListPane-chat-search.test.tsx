@@ -546,17 +546,18 @@ describe('ChatListPane – Ctrl+F / Ctrl+N list-focus guard', () => {
         await waitFor(() => expect(document.activeElement).toBe(input));
     });
 
-    it('Ctrl+F does NOT reveal the list search when the conversation pane is focused (regression)', async () => {
+    it('Ctrl+F does NOT reveal the list search while typing in an open conversation message field (regression)', async () => {
         render(<ChatListPane {...defaultProps(chatOpenProps())} />);
         makePaneVisible();
+        // The editor stands in for the conversation's message composer (a
+        // textarea = editable). Ctrl+F there must fall through to the native
+        // find-in-page, leaving the list search unmounted and focus in the field.
         const { detail, editor } = mountDetailPane();
         editor.focus();
         expect(document.activeElement).toBe(editor);
 
         fireEvent.keyDown(editor, { key: 'f', ctrlKey: true });
 
-        // Give the async reveal/focus a chance to run — it must never fire here,
-        // so the search input stays unmounted and focus stays in the editor.
         await new Promise(resolve => setTimeout(resolve, 5));
         expect(screen.queryByTestId('queue-search-input')).toBeNull();
         expect(document.activeElement).toBe(editor);
@@ -564,17 +565,19 @@ describe('ChatListPane – Ctrl+F / Ctrl+N list-focus guard', () => {
         document.body.removeChild(detail);
     });
 
-    it('Ctrl+F does NOT reveal the list search when a conversation is open and focus rests on the body (regression)', async () => {
+    it('Ctrl+F reveals the list search when a conversation is open but focus is not in an editable field', async () => {
         render(<ChatListPane {...defaultProps(chatOpenProps())} />);
         makePaneVisible();
 
-        // A conversation is open, but the user has not clicked into any field —
-        // focus sits on document.body while they read the conversation.
+        // A conversation is open, but the user is not typing in any field —
+        // focus sits on document.body while they read the conversation. Ctrl+F
+        // should still open the list search (the previous focus guard used to
+        // swallow it here, which made Ctrl+F feel broken with a chat open).
         expect(screen.queryByTestId('queue-search-input')).toBeNull();
         fireEvent.keyDown(document.body, { key: 'f', ctrlKey: true });
 
-        await new Promise(resolve => setTimeout(resolve, 5));
-        expect(screen.queryByTestId('queue-search-input')).toBeNull();
+        const input = await screen.findByTestId('queue-search-input');
+        await waitFor(() => expect(document.activeElement).toBe(input));
     });
 
     it('Ctrl+N opens a new chat when no conversation is open', () => {
