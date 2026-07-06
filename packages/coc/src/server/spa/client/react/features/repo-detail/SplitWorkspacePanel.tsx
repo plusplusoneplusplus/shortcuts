@@ -36,6 +36,13 @@ export interface SplitWorkspacePanelProps {
     chatLabel?: string;
     /** Label for the git section header. Defaults to `Git`. */
     gitLabel?: string;
+    /**
+     * Optional docked footer pinned to the bottom of the left column, below the
+     * git half. Used by the remote-first shell to host the status/action cluster
+     * (connection / notifications / quota / admin / theme). Desktop layout only —
+     * the narrow single-column fallback ignores it. When absent, nothing renders.
+     */
+    footer?: ReactNode;
 }
 
 /** localStorage key for the left column's overall width, per workspace. */
@@ -162,6 +169,7 @@ export function SplitWorkspacePanel({
     detail,
     chatLabel = 'Chat',
     gitLabel = 'Git',
+    footer,
 }: SplitWorkspacePanelProps) {
     const { isMobile } = useBreakpoint();
 
@@ -292,6 +300,14 @@ export function SplitWorkspacePanel({
                         {gitList}
                     </div>
                 </div>
+
+                {/* Docked footer pinned to the bottom of the left column (below
+                    the git half). Hosts the remote-first shell's status cluster. */}
+                {footer && (
+                    <div className="flex-shrink-0" data-testid="split-workspace-footer">
+                        {footer}
+                    </div>
+                )}
             </div>
 
             {/* Divider between the left column and the detail pane. */}

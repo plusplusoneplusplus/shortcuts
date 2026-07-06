@@ -168,6 +168,31 @@ describe('SplitWorkspacePanel', () => {
         expect(keys.every((k) => allowed.has(k))).toBe(true);
     });
 
+    it('renders no docked footer when no footer prop is provided', () => {
+        renderPanel();
+        expect(screen.queryByTestId('split-workspace-footer')).toBeNull();
+    });
+
+    it('docks a footer at the bottom of the left column when provided', () => {
+        render(
+            <SplitWorkspacePanel
+                workspaceId="ws-footer"
+                chatList={<div data-testid="chat-content">chat</div>}
+                gitList={<div data-testid="git-content">git</div>}
+                detail={<div data-testid="detail-content">detail</div>}
+                footer={<div data-testid="my-footer">footer</div>}
+            />,
+        );
+        const footer = screen.getByTestId('split-workspace-footer');
+        expect(footer).toBeTruthy();
+        // It lives inside the left column (not the shared detail pane), pinned
+        // so it never scrolls or grows.
+        const leftColumn = screen.getByTestId('split-workspace-left');
+        expect(leftColumn.contains(footer)).toBe(true);
+        expect(footer.className).toContain('flex-shrink-0');
+        expect(screen.getByTestId('my-footer')).toHaveTextContent('footer');
+    });
+
     it('falls back to a single column with no dividers at narrow width (AC-07)', () => {
         mockIsMobile = true;
         renderPanel();

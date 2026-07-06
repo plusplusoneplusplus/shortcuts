@@ -1,8 +1,13 @@
 /**
- * TopBar — top navigation bar with tab switching and theme toggle.
+ * TopBar — top navigation bar with tab switching and the status/action cluster.
  *
- * Right-side layout:
- *   [Connected pill] [NotificationBell] [Quota] [Admin] [Theme]
+ * Right-side layout (the cluster itself lives in `StatusActions`):
+ *   [+ New?] [Connected pill] [NotificationBell] [Quota] [Admin] [Theme]
+ *
+ * In the remote-first shell, the cluster moves to a docked footer at the bottom
+ * of the left sidebar (see `StatusActions` variant="sidebar", mounted by
+ * `SplitWorkspacePanel`), so it is hidden here whenever that footer is on screen
+ * (`statusInSidebar`).
  *
  * The Skills / Logs / Usage / Models / Servers nav targets now live in
  * the Admin page's left-panel "Tools" group — see `AdminPanel.tsx`. They
@@ -13,13 +18,12 @@ import { useCallback, useMemo, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
 import { useRepos } from '../contexts/ReposContext';
-import { useTheme } from './ThemeProvider';
 import { buildNoteHash } from './Router';
-import { NotificationBell } from '../shared/NotificationBell';
-import { agentProviderQuotaIndicator as AgentProviderQuotaIndicator } from '../shared/AgentProviderQuotaIndicator';
+import { StatusActions } from './StatusActions';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
 import { RemoteShellHeader } from '../features/remote-shell/RemoteShellHeader';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
+import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../repos/MyLifeView';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
@@ -30,7 +34,6 @@ import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { getHostname } from '../utils/config';
 import { SHOW_WIKI_TAB, SHOW_MEMORY_TAB } from '../navFlags';
 import type { DashboardTab } from '../types/dashboard';
-import type { WsStatus } from '../hooks/useWebSocket';
 import { useWorkspaceNavigation } from '../hooks/useWorkspaceNavigation';
 
 // Nav flags live in navFlags.ts; re-exported here for modules that import them
@@ -45,20 +48,6 @@ export const TABS: { label: string; tab: DashboardTab }[] = SHOW_WIKI_TAB
     ? ALL_TABS
     : ALL_TABS.filter(t => t.tab !== 'wiki');
 
-const themeEmoji: Record<string, string> = {
-    auto: '🌗',
-    dark: '🌙',
-    light: '☀️',
-};
-
-const wsStatusConfig: Record<WsStatus, { color: string; label: string; pulse: boolean }> = {
-    open: { color: 'bg-[#16825d] dark:bg-[#89d185]', label: 'Connected', pulse: false },
-    connecting: { color: 'bg-[#cca700] dark:bg-[#cca700]', label: 'Connecting…', pulse: true },
-    reconnecting: { color: 'bg-[#cca700] dark:bg-[#cca700]', label: 'Reconnecting…', pulse: true },
-    closing: { color: 'bg-[#cca700] dark:bg-[#cca700]', label: 'Disconnecting…', pulse: true },
-    closed: { color: 'bg-[#f14c4c] dark:bg-[#f48771]', label: 'Disconnected', pulse: false },
-};
-
 export interface TopBarProps {
     onAdminOpen?: () => void;
 }
@@ -68,10 +57,10 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { dispatch: queueDispatch } = useQueue();
     const { repos, unseenCounts, fetchRepos } = useRepos();
     const { navigateToWorkspace } = useWorkspaceNavigation();
-    const { theme, toggleTheme } = useTheme();
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
     const remoteShell = useRemoteShellEnabled();
+    const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
     const [popoverOpen, setPopoverOpen] = useState(false);
     const hostname = getHostname();
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
@@ -140,8 +129,14 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     // the repos tab → nothing renders in the remote slot.
     const showRemoteHeader = remoteShell && isOnReposTab && !!selectedRepo && !isMobile;
 
-    const wsStatus = state.wsStatus ?? 'closed';
-    const wsConfig = wsStatusConfig[wsStatus];
+    // In the remote-first shell the status cluster (connection / notifications /
+    // quota / admin / theme) moves to a docked footer at the bottom of the left
+    // sidebar — but that footer only exists in the split "Workspace" left column,
+    // which renders on the chat/activity sub-tab. Hide the topbar cluster exactly
+    // when that footer is on screen so the two never both show (and controls
+    // never vanish on other tabs/sub-tabs, where the footer is absent).
+    const onChatSubTab = state.activeRepoSubTab === 'chats' || state.activeRepoSubTab === 'activity';
+    const statusInSidebar = showRemoteHeader && splitWorkspacePanelEnabled && onChatSubTab;
 
     return (
         <>
@@ -261,64 +256,11 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         <span>New</span>
                     </button>
                 )}
-                {/* WS status — pill on desktop, bare dot on mobile to save space */}
-                <span
-                    className="hidden md:inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-xs font-medium text-[#656d76] dark:text-[#999]"
-                    title={wsConfig.label}
-                    aria-label={`Connection: ${wsConfig.label}`}
-                    data-testid="ws-status-indicator"
-                    data-ws-status={wsStatus}
-                >
-                    <span
-                        className={`inline-block w-2 h-2 rounded-full ${wsConfig.color}${wsConfig.pulse ? ' animate-pulse' : ''}`}
-                        aria-hidden="true"
-                    />
-                    <span data-testid="ws-status-label">{wsConfig.label}</span>
-                </span>
-                <span
-                    className="md:hidden inline-flex items-center justify-center h-7 w-7"
-                    title={wsConfig.label}
-                    aria-label={`Connection: ${wsConfig.label}`}
-                    data-testid="ws-status-indicator-mobile"
-                    data-ws-status={wsStatus}
-                >
-                    <span
-                        className={`inline-block w-2 h-2 rounded-full ${wsConfig.color}${wsConfig.pulse ? ' animate-pulse' : ''}`}
-                    />
-                </span>
-                <NotificationBell />
-                <AgentProviderQuotaIndicator />
-                <button
-                    id="admin-toggle"
-                    data-tab="admin"
-                    className={
-                        `h-7 w-7 inline-flex items-center justify-center rounded touch-target text-base leading-none ` +
-                        // The admin shell hosts both `admin` itself and the
-                        // five embedded tool routes (skills/logs/stats/
-                        // servers). Reflect "user is in the admin shell" in
-                        // the highlight for any of those tabs.
-                        (state.activeTab === 'admin'
-                         || state.activeTab === 'skills'
-                         || state.activeTab === 'logs'
-                         || state.activeTab === 'stats'
-                         || state.activeTab === 'servers'
-                            ? 'bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
-                    aria-label="Admin"
-                    title="Admin"
-                    onClick={onAdminOpen}
-                >
-                    &#9881;
-                </button>
-                <button
-                    id="theme-toggle"
-                    className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target text-base leading-none"
-                    aria-label="Toggle theme"
-                    onClick={toggleTheme}
-                >
-                    {themeEmoji[theme] || '🌗'}
-                </button>
+                {/* Status cluster — hidden here when it lives in the sidebar
+                    footer (remote-first shell chat/activity view). */}
+                {!statusInSidebar && (
+                    <StatusActions variant="topbar" onAdminOpen={onAdminOpen} />
+                )}
             </div>
         </header>
         {isOnReposTab && (
