@@ -486,26 +486,21 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                     role="button"
                     tabIndex={0}
                     aria-expanded={workingChangesExpanded}
-                    className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-[#16825d]/[0.05] dark:bg-[#3fb950]/[0.08] hover:bg-[#16825d]/[0.09] dark:hover:bg-[#3fb950]/[0.14] text-left cursor-pointer transition-colors min-h-[38px]"
+                    className="w-full flex items-center gap-2 px-2.5 py-1 bg-[#16825d]/[0.05] dark:bg-[#3fb950]/[0.08] hover:bg-[#16825d]/[0.09] dark:hover:bg-[#3fb950]/[0.14] text-left cursor-pointer transition-colors"
                     onClick={() => setWorkingChangesExpanded(prev => !prev)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setWorkingChangesExpanded(prev => !prev); } }}
                     data-testid="working-changes-header"
                 >
                     <span className="text-[10px] text-[#848484] dark:text-[#9d9d9d] flex-shrink-0 w-3 text-center">{workingChangesExpanded ? '▼' : '▶'}</span>
-                    <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-                        <span className="flex items-center gap-1.5 min-w-0">
-                            <span
-                                className="inline-flex items-center px-1.5 py-px rounded-full font-mono font-semibold uppercase tracking-[0.06em] text-[9px] leading-[1.4] text-[#16825d] dark:text-[#3fb950] bg-[#dafbe1] dark:bg-[#3fb950]/15 border border-[#16825d]/30 dark:border-[#3fb950]/35 whitespace-nowrap flex-shrink-0"
-                                data-testid="working-tree-badge"
-                            >
-                                Local Tree
-                            </span>
-                            <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#ccc] truncate">
-                                Working changes
-                            </span>
+                    <span className="flex-1 min-w-0 flex items-center gap-1.5">
+                        <span
+                            className="inline-flex items-center px-1.5 py-px rounded-full font-mono font-semibold uppercase tracking-[0.06em] text-[9px] leading-[1.4] text-[#16825d] dark:text-[#3fb950] bg-[#dafbe1] dark:bg-[#3fb950]/15 border border-[#16825d]/30 dark:border-[#3fb950]/35 whitespace-nowrap flex-shrink-0"
+                            data-testid="working-tree-badge"
+                        >
+                            Local Tree
                         </span>
                         <span
-                            className="text-[10.5px] text-[#616161] dark:text-[#999] truncate"
+                            className="text-[10.5px] text-[#616161] dark:text-[#999] truncate min-w-0"
                             data-testid="working-tree-summary"
                             title={`${staged.length} staged · ${unstaged.length} modified · ${untracked.length} untracked`}
                         >

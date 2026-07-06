@@ -790,7 +790,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                             role="option"
                                             aria-selected={isSelected}
                                             data-hash={commit.hash}
-                                            className={`commit-row w-full grid grid-cols-[14px_minmax(0,1fr)_auto] items-start gap-2 px-3 py-1.5 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 shadow-[inset_3px_0_0_#0078d4] dark:shadow-[inset_3px_0_0_#3794ff]' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}${isFixup ? ' opacity-70' : ''}${isContextDragSource ? ' cursor-grab active:cursor-grabbing hover:ring-1 hover:ring-sky-300 dark:hover:ring-sky-700' : ''}`}
+                                            className={`commit-row w-full grid grid-cols-[14px_minmax(0,1fr)_auto] items-start gap-2 px-3 py-1 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 shadow-[inset_3px_0_0_#0078d4] dark:shadow-[inset_3px_0_0_#3794ff]' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}${isFixup ? ' opacity-70' : ''}${isContextDragSource ? ' cursor-grab active:cursor-grabbing hover:ring-1 hover:ring-sky-300 dark:hover:ring-sky-700' : ''}`}
                                             onClick={(e) => handleCommitClick(commit, e)}
                                             onDoubleClick={() => onDoubleClick?.(commit)}
                                             draggable={isContextDragSource}
@@ -823,56 +823,53 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                         )}
                                     </span>
 
-                                    {/* Body column: subject (line 1) + meta (line 2) */}
-                                    <span className="min-w-0 flex flex-col gap-0.5">
-                                        <span className="flex items-start gap-1.5 min-w-0">
-                                            {canDrag && (
-                                                <span
-                                                    className="text-[10px] flex-shrink-0 cursor-grab text-[#848484] hover:text-[#333] dark:hover:text-[#ccc]"
-                                                    title="Drag to reorder"
-                                                    aria-hidden="true"
-                                                    draggable={canDrag}
-                                                    onDragStart={(e) => handleReorderDragStart(e, index)}
-                                                    data-testid={`commit-reorder-handle-${commit.shortHash}`}
-                                                >
-                                                    ⠿
-                                                </span>
-                                            )}
-                                            {isMobileSelecting && (
-                                                <span
-                                                    className="text-[13px] flex-shrink-0 text-[#0078d4] dark:text-[#3794ff]"
-                                                    aria-hidden="true"
-                                                    data-testid={`commit-mobile-select-indicator-${commit.shortHash}`}
-                                                >
-                                                    {isSelected ? '☑' : '☐'}
-                                                </span>
-                                            )}
-                                            {fixupEntry && (
-                                                <span
-                                                    className="text-[10px] font-bold px-1.5 py-0 rounded-full leading-[18px] flex-shrink-0"
-                                                    style={{ backgroundColor: groupColor, color: '#fff' }}
-                                                    title={`${fixupEntry.type} for ${fixupEntry.targetHash.substring(0, 7)} — ${fixupEntry.displaySubject}`}
-                                                    data-testid={`fixup-pill-${commit.shortHash}`}
-                                                >
-                                                    {fixupEntry.pillLabel}
-                                                </span>
-                                            )}
-                                            <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#ccc] break-words min-w-0 leading-snug">
-                                                {isFixup ? fixupEntry!.displaySubject : commit.subject}
-                                            </span>
-                                        </span>
-                                        <span className="flex items-center gap-1.5 text-[11px] text-[#848484] dark:text-[#9d9d9d] min-w-0">
-                                            <span className={`font-mono ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : 'text-[#0078d4] dark:text-[#3794ff]'}`}>{commit.shortHash}</span>
+                                    {/* Body column: subject + inline meta on a single compact row */}
+                                    <span className="min-w-0 flex items-center gap-1.5">
+                                        {canDrag && (
                                             <span
-                                                className="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full text-[8px] font-semibold flex-shrink-0"
-                                                style={{ background: palette.bg, color: palette.fg }}
+                                                className="text-[10px] flex-shrink-0 cursor-grab text-[#848484] hover:text-[#333] dark:hover:text-[#ccc]"
+                                                title="Drag to reorder"
                                                 aria-hidden="true"
+                                                draggable={canDrag}
+                                                onDragStart={(e) => handleReorderDragStart(e, index)}
+                                                data-testid={`commit-reorder-handle-${commit.shortHash}`}
                                             >
-                                                {initials}
+                                                ⠿
                                             </span>
-                                            <span className="truncate">{commit.author}</span>
-                                            <span className="whitespace-nowrap">· {formatRelativeTime(commit.date)}</span>
+                                        )}
+                                        {isMobileSelecting && (
+                                            <span
+                                                className="text-[13px] flex-shrink-0 text-[#0078d4] dark:text-[#3794ff]"
+                                                aria-hidden="true"
+                                                data-testid={`commit-mobile-select-indicator-${commit.shortHash}`}
+                                            >
+                                                {isSelected ? '☑' : '☐'}
+                                            </span>
+                                        )}
+                                        {fixupEntry && (
+                                            <span
+                                                className="text-[10px] font-bold px-1.5 py-0 rounded-full leading-[18px] flex-shrink-0"
+                                                style={{ backgroundColor: groupColor, color: '#fff' }}
+                                                title={`${fixupEntry.type} for ${fixupEntry.targetHash.substring(0, 7)} — ${fixupEntry.displaySubject}`}
+                                                data-testid={`fixup-pill-${commit.shortHash}`}
+                                            >
+                                                {fixupEntry.pillLabel}
+                                            </span>
+                                        )}
+                                        <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1 leading-snug">
+                                            {isFixup ? fixupEntry!.displaySubject : commit.subject}
                                         </span>
+                                        <span
+                                            className="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full text-[8px] font-semibold flex-shrink-0"
+                                            style={{ background: palette.bg, color: palette.fg }}
+                                            title={commit.author}
+                                            aria-hidden="true"
+                                        >
+                                            {initials}
+                                        </span>
+                                        <span className="sr-only">{commit.author}</span>
+                                        <span className={`font-mono text-[11px] flex-shrink-0 ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : 'text-[#0078d4] dark:text-[#3794ff]'}`}>{commit.shortHash}</span>
+                                        <span className="text-[11px] text-[#848484] dark:text-[#9d9d9d] whitespace-nowrap flex-shrink-0">{formatRelativeTime(commit.date)}</span>
                                     </span>
 
                                     {/* Right column: per-commit mini-flags (comments, fixup count, merge, unpushed) */}
