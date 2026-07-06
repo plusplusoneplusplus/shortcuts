@@ -22,7 +22,7 @@ import { buildFixupGroups, FIXUP_GROUP_COLORS_LIGHT, FIXUP_GROUP_COLORS_DARK } f
 import type { FixupGroupMap } from '../fixup-utils';
 import { useLongPress } from '../../../hooks/ui/useLongPress';
 import { useSwipeReveal, SWIPE_LEFT_MAX, SWIPE_DETECT_THRESHOLD } from '../../../hooks/ui/useSwipeReveal';
-import { createGitCommitContextDragPayload, type GitCommitContextDragPayload, writePointerContextDragData } from '../../chat/sessionContextDrag';
+import { createGitCommitContextDragPayload, type GitCommitContextDragPayload, writePointerContextDragData, writeSessionContextDragBundle } from '../../chat/sessionContextDrag';
 import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 
 export interface GitCommitItem {
@@ -585,8 +585,20 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
 
     const handleCommitContextDragStart = useCallback((e: React.DragEvent, sessionContextPayload: GitCommitContextDragPayload) => {
         e.stopPropagation();
+        const draggedHash = sessionContextPayload.commitHash;
+        // Bundle the whole selection only when the dragged commit is part of an
+        // active multi-selection (AC-02); an unselected commit carries just
+        // itself. The dragged item stays first so singular readers see it.
+        if (selectedHashes && selectedHashes.size > 1 && selectedHashes.has(draggedHash)) {
+            const selectedPayloads = commits
+                .filter(c => c.hash !== draggedHash && selectedHashes.has(c.hash))
+                .map(c => createGitCommitContextDragPayload(c, { activeWorkspaceId: workspaceId }))
+                .filter((p): p is GitCommitContextDragPayload => p !== null);
+            writeSessionContextDragBundle(e.dataTransfer, [sessionContextPayload, ...selectedPayloads]);
+            return;
+        }
         writePointerContextDragData(e.dataTransfer, sessionContextPayload);
-    }, []);
+    }, [selectedHashes, commits, workspaceId]);
 
     const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
         if (dragIndex === null) return;

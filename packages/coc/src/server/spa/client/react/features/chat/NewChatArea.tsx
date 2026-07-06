@@ -73,6 +73,7 @@ import type { AttachmentPayload } from '../../types/attachments';
 import {
     dataTransferHasAnyData,
     dataTransferHasSessionContext,
+    getPayloadLogicalKey,
     readSessionContextDropPayload,
     useConversationRetrievalCapability,
     validateSessionContextAttachmentsForSend,
@@ -945,12 +946,22 @@ export function InitialChatComposer({
         const stillPending: SessionContextAttachmentDragPayload[] = [];
         let nextError: string | null = null;
         let attachedAny = false;
+        // A multi-select bundle (AC-02) merges several items in one synchronous
+        // pass, but `attachedContext.getItems()` reflects `itemsRef.current`,
+        // which does not update until the next render. Track keys added in this
+        // pass so a duplicate carried within the same batch is skipped instead of
+        // being added twice (AC-03 dedupe).
+        const seenThisPass = new Set<string>();
         for (const payload of pendingSeedContext) {
             const requiresRetrieval = payload.kind === SESSION_CONTEXT_DRAG_KIND
                 || payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND;
             if (requiresRetrieval && canRetrieveConversations === null) {
                 // Capability not resolved yet — keep and retry when it settles.
                 stillPending.push(payload);
+                continue;
+            }
+            if (seenThisPass.has(getPayloadLogicalKey(payload))) {
+                // Duplicate already merged earlier in this same pass — skip.
                 continue;
             }
             const validation = validateSessionContextDrop({
@@ -963,6 +974,7 @@ export function InitialChatComposer({
             });
             if (validation.ok) {
                 attachedContext.addSessionContext(validation.payload);
+                seenThisPass.add(getPayloadLogicalKey(validation.payload));
                 attachedAny = true;
             } else if (!nextError) {
                 nextError = validation.error;

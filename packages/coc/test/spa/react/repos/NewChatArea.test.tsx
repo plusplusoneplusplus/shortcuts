@@ -1780,5 +1780,50 @@ describe('NewChatArea', () => {
 
             expect(screen.getAllByTestId('attached-commit-context-chip')).toHaveLength(1);
         });
+
+        it('attaches every item carried in a single multi-select bundle push (AC-02)', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            await act(async () => {});
+
+            await act(async () => {
+                pushNewChatSeedContext([
+                    makeCommitPayload({ commitHash: '1'.repeat(16), shortHash: '1111111', label: 'Commit 1111111', subject: 'One', title: 'One' }),
+                    makeCommitPayload({ commitHash: '2'.repeat(16), shortHash: '2222222', label: 'Commit 2222222', subject: 'Two', title: 'Two' }),
+                ]);
+            });
+            await waitFor(() => expect(screen.getAllByTestId('attached-commit-context-chip')).toHaveLength(2));
+            expect(mockEnqueueTask).not.toHaveBeenCalled();
+        });
+
+        it('dedupes duplicate items carried within a single bundle push (AC-03)', async () => {
+            // The bundle reader dedupes, but a batch can still reach the composer
+            // with repeats; getItems() is stale mid-loop, so the merge must guard
+            // against adding the same logical item twice in one pass.
+            render(<NewChatArea workspaceId="ws-1" />);
+            await act(async () => {});
+
+            await act(async () => {
+                pushNewChatSeedContext([makeCommitPayload(), makeCommitPayload()]);
+            });
+            await screen.findByTestId('attached-commit-context-chip');
+            await act(async () => {});
+
+            expect(screen.getAllByTestId('attached-commit-context-chip')).toHaveLength(1);
+        });
+
+        it('keeps the default mode when an item is seeded (no auto-switch, AC-03)', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            await act(async () => {});
+            // Default new-chat mode is "ask".
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+
+            await act(async () => {
+                pushNewChatSeedContext([makeCommitPayload()]);
+            });
+            await screen.findByTestId('attached-commit-context-chip');
+
+            // Dropping a commit must not switch the mode based on the item kind.
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+        });
     });
 });

@@ -10,6 +10,7 @@ import {
     PULL_REQUEST_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_MIME,
+    SESSION_CONTEXT_BUNDLE_DRAG_MIME,
     SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_MIME,
     WORK_ITEM_CONTEXT_DRAG_KIND,
@@ -336,7 +337,8 @@ export function dataTransferHasSessionContext(dataTransfer: SessionContextDataTr
     const types = Array.from(dataTransfer.types ?? []);
     return types.includes(SESSION_CONTEXT_DRAG_MIME)
         || types.includes(RALPH_SESSION_CONTEXT_DRAG_MIME)
-        || types.includes(POINTER_CONTEXT_DRAG_MIME);
+        || types.includes(POINTER_CONTEXT_DRAG_MIME)
+        || types.includes(SESSION_CONTEXT_BUNDLE_DRAG_MIME);
 }
 
 export function dataTransferHasAnyData(dataTransfer: SessionContextDataTransfer | null | undefined): boolean {
@@ -380,12 +382,51 @@ export function readSessionContextDropPayload(dataTransfer: SessionContextDataTr
         ?? readSessionContextDragPayload(dataTransfer);
 }
 
+/** Normalize a raw bundle entry by dispatching on its declared kind. */
+function normalizeAttachmentDragPayload(value: unknown): SessionContextAttachmentDragPayload | null {
+    if (!value || typeof value !== 'object') return null;
+    const kind = (value as { kind?: unknown }).kind;
+    if (kind === RALPH_SESSION_CONTEXT_DRAG_KIND) return normalizeRalphSessionContextPayload(value);
+    if (kind === SESSION_CONTEXT_DRAG_KIND) return normalizeSessionContextPayload(value);
+    return normalizePointerContextPayload(value);
+}
+
 /**
- * Read every session-context payload carried by a drop. Today a drag carries a
- * single payload, so this returns `[payload]` (or `[]`); AC-02's multi-select
- * bundle support extends this to return every bundled item.
+ * Read the multi-select bundle carried by a drag started inside an active
+ * selection (AC-02). Returns validated, logically-deduplicated payloads in the
+ * bundle's order, or `[]` when no bundle MIME is present.
+ */
+export function readSessionContextBundleDragPayloads(dataTransfer: SessionContextDataTransfer): SessionContextAttachmentDragPayload[] {
+    const raw = dataTransfer.getData(SESSION_CONTEXT_BUNDLE_DRAG_MIME);
+    if (!raw) return [];
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return [];
+    }
+    if (!Array.isArray(parsed)) return [];
+    const payloads: SessionContextAttachmentDragPayload[] = [];
+    const seen = new Set<string>();
+    for (const entry of parsed) {
+        const payload = normalizeAttachmentDragPayload(entry);
+        if (!payload) continue;
+        const key = getPayloadLogicalKey(payload);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        payloads.push(payload);
+    }
+    return payloads;
+}
+
+/**
+ * Read every session-context payload carried by a drop. A drag started inside a
+ * multi-selection carries a bundle (AC-02) — return all its items; otherwise a
+ * single-item drag returns `[payload]` (or `[]`).
  */
 export function readSessionContextDropPayloads(dataTransfer: SessionContextDataTransfer): SessionContextAttachmentDragPayload[] {
+    const bundle = readSessionContextBundleDragPayloads(dataTransfer);
+    if (bundle.length > 0) return bundle;
     const single = readSessionContextDropPayload(dataTransfer);
     return single ? [single] : [];
 }
@@ -397,7 +438,7 @@ function payloadIncludesProcess(payload: SessionContextAttachmentDragPayload, pr
     return false;
 }
 
-function getPayloadLogicalKey(payload: SessionContextAttachmentDragPayload): string {
+export function getPayloadLogicalKey(payload: SessionContextAttachmentDragPayload): string {
     if (payload.kind === SESSION_CONTEXT_DRAG_KIND) {
         return `session\0${payload.sourceWorkspaceId}\0${payload.sourceProcessId}`;
     }

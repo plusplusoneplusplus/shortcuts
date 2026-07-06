@@ -46,7 +46,7 @@ import { LoopIcon } from './icons/LoopIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
 import { getProviderDotClasses, getTaskChatProvider } from './ProviderBadge';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragData } from './sessionContextDrag';
+import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragBundle, writeSessionContextDragData, type SessionContextDragPayload } from './sessionContextDrag';
 import { dataTransferHasSessionContext, readSessionContextDropPayloads } from './sessionContextDrop';
 import { pushNewChatSeedContext } from './newChatSeedContext';
 import type { ForEachRunSummary, MapReduceRunSummary, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
@@ -1049,6 +1049,50 @@ export function ChatListPane({
         () => [...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history],
         [running, queued, history],
     );
+
+    // Lookups used to bundle a multi-selection into a single drag payload (AC-02).
+    const taskById = useMemo(() => {
+        const map = new Map<string, any>();
+        for (const t of allTasks) {
+            if (t && typeof t.id === 'string') map.set(t.id, t);
+        }
+        return map;
+    }, [allTasks]);
+    const runningIdSet = useMemo(() => new Set<string>(running.map((t: any) => t.id)), [running]);
+    const queuedIdSet = useMemo(() => new Set<string>(queued.map((t: any) => t.id)), [queued]);
+
+    // Build a chat drag payload for an arbitrary selected task, mirroring the
+    // per-row idSource logic (a queued/running row without a processId resolves
+    // its queue-task id; everything else uses its process id).
+    const buildChatSessionContextPayload = useCallback((task: any): SessionContextDragPayload | null => {
+        if (!sessionContextDragEnabled) return null;
+        const isRunningTask = runningIdSet.has(task.id);
+        const isQueuedTask = queuedIdSet.has(task.id);
+        return createSessionContextDragPayload(task, {
+            activeWorkspaceId: workspaceId,
+            idSource: task.processId || (!isRunningTask && !isQueuedTask) ? 'process' : 'queue-task',
+        });
+    }, [sessionContextDragEnabled, runningIdSet, queuedIdSet, workspaceId]);
+
+    // Bundle every selected chat when a drag starts inside an active
+    // multi-selection (AC-02); an unselected row carries just itself. The
+    // dragged item stays first so singular readers see it as the primary.
+    const handleChatRowDragStart = useCallback((e: React.DragEvent, task: any, primaryPayload: SessionContextDragPayload) => {
+        const draggedId = task.id as string;
+        if (selectedHistoryIds.size > 1 && selectedHistoryIds.has(draggedId)) {
+            const selectedPayloads: SessionContextDragPayload[] = [];
+            for (const id of selectedHistoryIds) {
+                if (id === draggedId) continue;
+                const selectedTask = taskById.get(id);
+                if (!selectedTask) continue;
+                const payload = buildChatSessionContextPayload(selectedTask);
+                if (payload) selectedPayloads.push(payload);
+            }
+            writeSessionContextDragBundle(e.dataTransfer, [primaryPayload, ...selectedPayloads]);
+            return;
+        }
+        writeSessionContextDragData(e.dataTransfer, primaryPayload);
+    }, [selectedHistoryIds, taskById, buildChatSessionContextPayload]);
     const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [running, excludedTypes, searchQuery]);
     const filteredQueued = useMemo(
         () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery))),
@@ -2291,7 +2335,7 @@ export function ChatListPane({
                     }}
                     onContextMenu={(e) => handleTaskContextMenu(e, task.id, contextMenuKind)}
                     draggable={!!sessionContextPayload}
-                    onDragStart={sessionContextPayload ? (e) => writeSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
+                    onDragStart={sessionContextPayload ? (e) => handleChatRowDragStart(e, task, sessionContextPayload) : undefined}
                     onTouchStart={(e) => {
                         historyLongPressTaskRef.current = task.id;
                         historyLongPress.onTouchStart(e);

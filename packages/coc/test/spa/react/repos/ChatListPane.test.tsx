@@ -33,6 +33,7 @@ import {
     getTaskModeLabel,
 } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 import { POINTER_CONTEXT_DRAG_MIME, SESSION_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+import { readSessionContextDropPayloads } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrop';
 import {
     drainNewChatSeedContext,
     peekNewChatSeedContext,
@@ -1197,6 +1198,70 @@ describe('ChatListPane', () => {
             fireEvent.drop(btn, { dataTransfer });
             expect(onNewChat).not.toHaveBeenCalled();
             expect(drainNewChatSeedContext()).toEqual([]);
+        });
+    });
+
+    // ── AC-02: chat-row multi-select drag bundles all selected chats ─────
+    describe('Chat-row multi-select drag bundling', () => {
+        function makeRecordingDataTransfer() {
+            const store = new Map<string, string>();
+            return {
+                effectAllowed: 'none' as DataTransfer['effectAllowed'],
+                setData(format: string, data: string) { store.set(format, data); },
+                getData(format: string) { return store.get(format) ?? ''; },
+                get types() { return Array.from(store.keys()); },
+            };
+        }
+
+        function renderThreeChats() {
+            return renderPane({
+                activeTab: 'chats',
+                workspaceId: 'ws-1',
+                history: [
+                    makeHistoryTask({ id: 'chat-a', workspaceId: 'ws-1', displayName: 'Chat A' }),
+                    makeHistoryTask({ id: 'chat-b', workspaceId: 'ws-1', displayName: 'Chat B' }),
+                    makeHistoryTask({ id: 'chat-c', workspaceId: 'ws-1', displayName: 'Chat C' }),
+                ],
+            });
+        }
+
+        function row(id: string) {
+            return document.querySelector(`[data-task-id="${id}"]`) as HTMLElement;
+        }
+
+        function dragStartAndRead(id: string) {
+            const dataTransfer = makeRecordingDataTransfer();
+            fireEvent.dragStart(row(id), { dataTransfer });
+            return readSessionContextDropPayloads(dataTransfer) as Array<{ sourceProcessId: string }>;
+        }
+
+        beforeEach(() => {
+            mockSessionContextAttachmentsEnabled = true;
+        });
+
+        it('bundles every selected chat when dragging one that is in the selection', () => {
+            renderThreeChats();
+            fireEvent.click(row('chat-a'), { ctrlKey: true });
+            fireEvent.click(row('chat-b'), { ctrlKey: true });
+
+            const payloads = dragStartAndRead('chat-a');
+            expect(payloads.map(p => p.sourceProcessId).sort()).toEqual(['chat-a', 'chat-b']);
+        });
+
+        it('carries only the dragged chat when it is not part of the selection', () => {
+            renderThreeChats();
+            fireEvent.click(row('chat-a'), { ctrlKey: true });
+            fireEvent.click(row('chat-b'), { ctrlKey: true });
+
+            const payloads = dragStartAndRead('chat-c');
+            expect(payloads.map(p => p.sourceProcessId)).toEqual(['chat-c']);
+        });
+
+        it('carries only the dragged chat when there is no multi-selection', () => {
+            renderThreeChats();
+
+            const payloads = dragStartAndRead('chat-a');
+            expect(payloads.map(p => p.sourceProcessId)).toEqual(['chat-a']);
         });
     });
 
