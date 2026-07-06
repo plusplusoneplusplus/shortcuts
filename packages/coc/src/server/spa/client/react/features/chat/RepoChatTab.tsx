@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef, cloneElement } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../../ui';
 import { useCocClient } from '../../repos/cloneRouting';
 import { isContainerMode, isForEachEnabled, isMapReduceEnabled } from '../../utils/config';
@@ -35,6 +36,23 @@ import { parseForEachRunDeepLink, parseMapReduceRunDeepLink, parseRalphSessionDe
 export interface RepoChatTabProps {
     workspaceId: string;
     mode?: 'chats' | 'tasks';
+    /**
+     * When `'split-workspace'`, the tab renders ONLY its conversation list in
+     * place and portals its detail pane into `detailContainer` (gated on
+     * `detailActive`), so chat + git can feed ONE shared detail region — see
+     * `SplitWorkspacePanel`. Absent ⇒ the tab renders its own list + detail
+     * exactly as before (strict no-op, no regression on the flag-off path).
+     */
+    layout?: 'split-workspace';
+    /** Portal target for the detail pane when `layout === 'split-workspace'`. */
+    detailContainer?: HTMLElement | null;
+    /**
+     * Only portal the detail when this tab holds the last click (AC-04) — so the
+     * shared region never shows chat and git detail at the same time.
+     */
+    detailActive?: boolean;
+    /** Fired when the user clicks in the chat list, so the parent marks chat last-clicked. */
+    onActivateDetail?: () => void;
 }
 
 function getActivityTabSegment(mode: RepoChatTabProps['mode']): 'activity' | 'chats' | 'tasks' {
@@ -111,7 +129,7 @@ function loadActivityListCollapsed(storageKey: string): boolean {
     try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
 }
 
-export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detailActive, onActivateDetail }: RepoChatTabProps) {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
     // Per-clone client (AC-07): the Activity tab's conversation LIST + queue +
@@ -931,6 +949,75 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         />
     );
 
+    // The detail pane content (last-clicked chat / Ralph / for-each / map-reduce).
+    // Shared by the desktop two-pane layout and the split-workspace portal below,
+    // so the routing lives in one place.
+    const detailPaneContent = selectedRalphSessionId ? (
+        <RalphWorkflowPaneContainer
+            workspaceId={workspaceId}
+            sessionId={selectedRalphSessionId}
+            onClose={() => {
+                setSelectedRalphSessionId(null);
+                setSelectedRalphFileName(null);
+            }}
+            onSelectIteration={handleSelectRalphIteration}
+            selectedFileName={selectedRalphFileName ?? undefined}
+            onSelectFile={handleSelectRalphFile}
+        />
+    ) : selectedForEachRunId ? (
+        <ForEachRunPane
+            workspaceId={workspaceId}
+            runId={selectedForEachRunId}
+            onClose={() => setSelectedForEachRunId(null)}
+            onSelectGenerationProcess={handleSelectForEachGenerationProcess}
+            onSelectChildProcess={handleSelectForEachChildProcess}
+        />
+    ) : selectedMapReduceRunId ? (
+        <MapReduceRunPane
+            workspaceId={workspaceId}
+            runId={selectedMapReduceRunId}
+            onClose={() => setSelectedMapReduceRunId(null)}
+            onSelectGenerationProcess={handleSelectMapReduceGenerationProcess}
+            onSelectChildProcess={handleSelectMapReduceChildProcess}
+        />
+    ) : (
+        <ChatDetailPane
+            selectedTaskId={selectedTaskId}
+            selectedTask={selectedTask}
+            workspaceId={workspaceId}
+            readOnly={mode === 'tasks'}
+            onOpenForEachRun={handleOpenForEachRun}
+            onOpenMapReduceRun={handleOpenMapReduceRun}
+        />
+    );
+
+    // Split-workspace layout (behind the `splitWorkspacePanel` flag): render only
+    // the conversation LIST in place and portal the detail pane into a
+    // parent-provided container, so chat + git share ONE detail region. Only the
+    // last-clicked tab (`detailActive`) portals, so the shared region never shows
+    // two panes (AC-04). A capture-phase click anywhere in the list marks chat as
+    // last-clicked — this also flips the pane back to chat on a re-click of the
+    // already-selected conversation. The shell (`SplitWorkspacePanel`) owns the
+    // width/height dividers and the narrow-width fallback, so this branch keeps no
+    // resize handle or mobile split of its own.
+    if (layout === 'split-workspace') {
+        return (
+            <ChatPreferencesProvider workspaceId={workspaceId}>
+                <ChatPrefsSync history={history} workspaceId={workspaceId} />
+                <div
+                    className="flex flex-col h-full min-h-0 overflow-hidden outline-none"
+                    data-testid="activity-split-workspace-list"
+                    onClickCapture={() => onActivateDetail?.()}
+                >
+                    {listPane}
+                </div>
+                {detailActive && detailContainer
+                    ? createPortal(detailPaneContent, detailContainer)
+                    : null}
+            </ChatPreferencesProvider>
+        );
+    }
+
     if (isMobile) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
@@ -1141,44 +1228,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                 data-testid="activity-detail-panel"
                 data-pane="detail"
             >
-                {selectedRalphSessionId ? (
-                    <RalphWorkflowPaneContainer
-                        workspaceId={workspaceId}
-                        sessionId={selectedRalphSessionId}
-                        onClose={() => {
-                            setSelectedRalphSessionId(null);
-                            setSelectedRalphFileName(null);
-                        }}
-                        onSelectIteration={handleSelectRalphIteration}
-                        selectedFileName={selectedRalphFileName ?? undefined}
-                        onSelectFile={handleSelectRalphFile}
-                    />
-                ) : selectedForEachRunId ? (
-                    <ForEachRunPane
-                        workspaceId={workspaceId}
-                        runId={selectedForEachRunId}
-                        onClose={() => setSelectedForEachRunId(null)}
-                        onSelectGenerationProcess={handleSelectForEachGenerationProcess}
-                        onSelectChildProcess={handleSelectForEachChildProcess}
-                    />
-                ) : selectedMapReduceRunId ? (
-                    <MapReduceRunPane
-                        workspaceId={workspaceId}
-                        runId={selectedMapReduceRunId}
-                        onClose={() => setSelectedMapReduceRunId(null)}
-                        onSelectGenerationProcess={handleSelectMapReduceGenerationProcess}
-                        onSelectChildProcess={handleSelectMapReduceChildProcess}
-                    />
-                ) : (
-                    <ChatDetailPane
-                        selectedTaskId={selectedTaskId}
-                        selectedTask={selectedTask}
-                        workspaceId={workspaceId}
-                        readOnly={mode === 'tasks'}
-                        onOpenForEachRun={handleOpenForEachRun}
-                        onOpenMapReduceRun={handleOpenMapReduceRun}
-                    />
-                )}
+                {detailPaneContent}
             </div>
         </div>
         </ChatPreferencesProvider>

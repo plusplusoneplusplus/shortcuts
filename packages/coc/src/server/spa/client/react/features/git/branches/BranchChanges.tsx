@@ -173,7 +173,7 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
             aria-label={`Branch Changes: ${branchLabel}`}
         >
             <button
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-[#0078d4]/[0.05] dark:bg-[#3794ff]/[0.08] hover:bg-[#0078d4]/[0.09] dark:hover:bg-[#3794ff]/[0.14] text-left cursor-pointer transition-colors min-h-[38px]"
+                className="w-full flex items-center gap-2 px-2.5 py-1 bg-[#0078d4]/[0.05] dark:bg-[#3794ff]/[0.08] hover:bg-[#0078d4]/[0.09] dark:hover:bg-[#3794ff]/[0.14] text-left cursor-pointer transition-colors"
                 onClick={() => { setExpanded(prev => !prev); onBranchRangeSelect?.(); }}
                 onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onBranchContextMenu?.(e); }}
                 draggable={!!sessionContextPayload}
@@ -187,20 +187,15 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
                 <span className="text-[10px] text-[#848484] dark:text-[#9d9d9d] flex-shrink-0 w-3 text-center">
                     {expanded ? '▼' : '▶'}
                 </span>
-                <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-                    <span className="flex items-center gap-1.5 min-w-0">
-                        <span
-                            className="inline-flex items-center px-1.5 py-px rounded-full font-mono font-semibold uppercase tracking-[0.06em] text-[9px] leading-[1.4] text-[#0078d4] dark:text-[#3794ff] bg-[#ddf4ff] dark:bg-[#3794ff]/15 border border-[#0078d4]/30 dark:border-[#3794ff]/35 whitespace-nowrap flex-shrink-0"
-                            data-testid="branch-changes-badge"
-                        >
-                            Branch Range
-                        </span>
-                        <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#ccc] truncate" title={`Review changes against ${baseShort}`}>
-                            Review changes against {baseShort}
-                        </span>
+                <span className="flex-1 min-w-0 flex items-center gap-1.5">
+                    <span
+                        className="inline-flex items-center px-1.5 py-px rounded-full font-mono font-semibold uppercase tracking-[0.06em] text-[9px] leading-[1.4] text-[#0078d4] dark:text-[#3794ff] bg-[#ddf4ff] dark:bg-[#3794ff]/15 border border-[#0078d4]/30 dark:border-[#3794ff]/35 whitespace-nowrap flex-shrink-0"
+                        data-testid="branch-changes-badge"
+                    >
+                        Branch Range
                     </span>
                     <span
-                        className="text-[10.5px] text-[#616161] dark:text-[#999] truncate"
+                        className="text-[10.5px] text-[#616161] dark:text-[#999] truncate min-w-0"
                         data-testid="branch-changes-summary"
                         title={`${baseShort}...${headShort} · ${rangeInfo.commitCount} commit${rangeInfo.commitCount !== 1 ? 's' : ''} ahead · +${rangeInfo.additions} −${rangeInfo.deletions}`}
                     >

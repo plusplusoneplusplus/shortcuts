@@ -66,6 +66,13 @@ describe('WorkingTree', () => {
             expect(source).toContain('{totalCount}');
         });
 
+        it('renders the header as a single compact line', () => {
+            // Compact card: badge + summary share one row — no fixed 38px min
+            // height and no stacked two-line body.
+            expect(source).not.toContain('min-h-[38px]');
+            expect(source).not.toContain('flex flex-col gap-0.5');
+        });
+
         it('tracks workingChangesExpanded state', () => {
             expect(source).toContain('workingChangesExpanded');
             expect(source).toContain('setWorkingChangesExpanded');

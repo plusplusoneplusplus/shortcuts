@@ -1035,39 +1035,27 @@ toggled in **Admin -> Configure -> Features -> Remote-first shell**
 (`toggle-remote-shell-enabled`), defined once in `ADMIN_SETTING_DEFINITIONS`.
 Disabled by default; desktop-only; takes effect on reload.
 
-When `features.remoteShell` is on, the desktop top nav switches from per-clone
-repo tabs to a remote-first model built on `features/remote-shell/`. The current
-default is still the legacy two-row layout; enabling
-`features.singleRowShell` (runtime flag `singleRowShellEnabled`,
-`useSingleRowShellEnabled()`) moves the remote and workspace controls into one
-global header row while leaving the two-row path available as fallback.
-
-- **Single-row path (`RemoteShellHeader`)** renders inside `TopBar` when
-  `remoteShellEnabled && singleRowShellEnabled`, the active tab is `repos`, a
-  real repo is selected, and the viewport is not mobile. `RemoteScopeCluster`
-  renders a boxed current-remote chip plus Work Items / Pull Requests pills; the
-  chip opens a dropdown with recent remotes from global preference
-  `recentRemotes` (MRU keys are `groupKey(group)`, capped at 8), default-group
-  fallback before any MRU exists, search across all remotes, a Show all overflow,
-  and add actions for Add workspace folder (`AddFolderDialog`), Add specific
-  repository (`AddRepoDialog`), and Clone repository (`CloneRepoDialog`).
-  Selecting a remote records it in the MRU and picks that remote's remembered
-  clone when available, otherwise the first local-first clone. `WorkspaceTabsCluster`
-  renders the existing clone switcher, clone popover, clone-scoped tabs, overflow
-  menu, repo info/remove dialogs, and toast behavior in the same row. `TopBar`
-  also renders `header-new-btn` as the first right-side action before the WebSocket
-  status pill; it opens the enqueue dialog for the active clone. In this mode
-  `ReposView` renders only a `chromeless` `RepoDetail`; there is no row-2
-  `RemoteSubBar`.
-- **Two-row fallback (`RemoteTopBar` + `RemoteSubBar`)** remains active whenever
-  `features.remoteShell` is on but `features.singleRowShell` is off. Row 1
-  `RemoteTopBar` replaces `RepoTabStrip` inside `TopBar`. It renders one tab per
-  remote (origin) via `groupReposByRemote`, with a color dot, clone-count chip,
-  aggregate running pulse, and summed unseen badge. A trailing `+` button
-  (`remote-add-btn`) opens the add menu. Row 2 `RemoteSubBar` renders above a
-  `chromeless` `RepoDetail` in `ReposView`, splits tabs into remote-scoped (Work
-  Items, Pull Requests) and clone-scoped groups, and keeps the compact Ask/Queue
-  actions targeting the active clone.
+- **Single-row shell (`RemoteShellHeader`)** renders inside `TopBar` when
+  `remoteShellEnabled`, the active tab is `repos`, a real repo is selected, and
+  the viewport is not mobile. `RemoteScopeCluster` renders a boxed current-remote
+  chip plus Work Items / Pull Requests pills; the chip opens a dropdown with
+  recent remotes from global preference `recentRemotes` (MRU keys are
+  `groupKey(group)`, capped at 8), default-group fallback before any MRU exists,
+  search across all remotes, a Show all overflow, and add actions for Add
+  workspace folder (`AddFolderDialog`), Add specific repository
+  (`AddRepoDialog`), and Clone repository (`CloneRepoDialog`). Selecting a remote
+  records it in the MRU and picks that remote's remembered clone when available,
+  otherwise the first local-first clone. `WorkspaceTabsCluster` renders the
+  existing clone switcher, clone popover, clone-scoped tabs, overflow menu, repo
+  info/remove dialogs, and toast behavior in the same row. `TopBar` also renders
+  `header-new-btn` as the first right-side action before the WebSocket status
+  pill; it opens the enqueue dialog for the active clone. `ReposView` renders a
+  `chromeless` `RepoDetail` for the active repo.
+- When `features.remoteShell` is on but no real repo can back
+  `RemoteShellHeader` (for example a fresh desktop window with no selection, or a
+  virtual workspace such as `my_work` / `my_life`), `TopBar` falls back to the
+  classic `RepoTabStrip` while the user remains on the Repos tab, so repository
+  navigation stays visible.
 - **Shared shell behavior** comes from `shellModel.ts` and `repoGrouping.ts`.
   Aggregated remote checkouts fold into the matching local origin's tab (by
   normalized git URL); a remote-only repo gets its own group. Group clones are
@@ -1244,6 +1232,10 @@ shell so the two stay behaviorally identical. Selection/routing reuse
 live in a dedicated lightweight `navFlags.ts` (read by `repoSubTabs.ts`; re-exported
 from `TopBar` for `BottomNav`/`Router`) — kept out of the heavily-mocked
 `featureFlags.ts` so partial test mocks of it don't break on the missing export.
+When `features.splitWorkspacePanel` is enabled, both `RepoDetail` and the
+remote-shell `WorkspaceTabsCluster` pass the flag into `computeVisibleSubTabs`,
+so the clone-scoped standalone Git tab is hidden and the chat tab label becomes
+Workspace while Git remains available inside `SplitWorkspacePanel`.
 
 ## Onboarding
 
@@ -1258,11 +1250,30 @@ from `TopBar` for `BottomNav`/`Router`) — kept out of the heavily-mocked
 - Scope segmented control: Chats / Loops (when `loops.enabled`) / Automations / All
 - Search box
 - Selection persists in `localStorage['coc-activity-scope']`
+- `ChatListPane` keeps the action/scope/search controls in a sticky
+  `chat-list-fixed-header` block while the list rows scroll underneath. The
+  header full-bleeds to the scroll container edges (`-mx-2 md:-mx-4`) and the
+  `chat-list-pane` scroll container carries no top padding (`px-2 pb-2 md:px-4
+  md:pb-4`, not `p-2 md:p-4`) so the `sticky top-0` header sits flush against the
+  top — top padding there would show as a gap above the panel, which a negative
+  header margin cannot cancel because sticky clamps to the padding edge.
 - The desktop activity split (`RepoChatTab`) can collapse the left chat-list
   panel to a thin rail; collapsed state persists in
   `localStorage['activity-list-collapsed-{workspaceId}']`, the left-panel width
   persists in `localStorage['activity-left-panel-width-{workspaceId}']`, and the
   collapse affordance sits on the list/detail resize handle.
+- The `SplitWorkspacePanel` chat/git divider is an explicit horizontal
+  `role="separator"` resize handle with an expanded hit target; it persists the
+  chat pane height per workspace under
+  `split-workspace:{workspaceId}:chat-height`.
+- Each `SplitWorkspacePanel` left half (chat top, git bottom) sits under a
+  compact 22px VS Code-style section header. Clicking a header collapses that
+  half to just its bar; the still-open half grows to fill (the chat/git divider
+  renders only when both halves are open). Collapsed bodies stay mounted but
+  `hidden` so scroll/selection survive. Collapsed state persists per workspace
+  under `split-workspace:{workspaceId}:chat-collapsed` and
+  `split-workspace:{workspaceId}:git-collapsed`, written only on an explicit
+  user toggle (never on mount or workspace switch).
 - For Each parent run group rows render in Activity Chats and All, but not in
   Activity Automations or Loops; loop-linked child chats can still appear in
   Loops independently of the hidden parent group row.

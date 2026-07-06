@@ -9,6 +9,7 @@ import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequest
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
+import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { isHidden as isHiddenTask, useRepoQueueStats } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
@@ -61,6 +62,7 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const dreamsEnabled = useDreamsEnabled();
     const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
+    const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
     const [uiLayoutMode] = useUiLayoutMode();
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
     const activeTab = state.activeRepoSubTab;
@@ -71,7 +73,8 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const tabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode]);
+        splitWorkspacePanelEnabled,
+    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled]);
     const { clone: cloneTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
 
     const group = useMemo(() => {

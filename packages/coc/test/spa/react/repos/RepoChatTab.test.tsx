@@ -2058,3 +2058,131 @@ describe('RepoChatTab: hover-to-float peek (collapsed rail)', () => {
         expect(localStorage.getItem(ws1CollapsedKey)).toBe('true');
     });
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// SPLIT-WORKSPACE LAYOUT (portal seam for the split "Workspace" panel — AC-04)
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('RepoChatTab: split-workspace layout (portal seam)', () => {
+    let createdHosts: HTMLElement[] = [];
+
+    /** A parent-provided container that stands in for SplitWorkspacePanel's shared detail slot. */
+    function makeDetailHost(): HTMLElement {
+        const host = document.createElement('div');
+        host.setAttribute('data-detail-host', 'true');
+        document.body.appendChild(host);
+        createdHosts.push(host);
+        return host;
+    }
+
+    afterEach(() => {
+        for (const host of createdHosts) host.remove();
+        createdHosts = [];
+    });
+
+    async function renderSplitTab(opts: {
+        workspaceId?: string;
+        detailActive?: boolean;
+        onActivateDetail?: () => void;
+    } = {}): Promise<HTMLElement> {
+        const { workspaceId = 'ws-1', detailActive = true, onActivateDetail } = opts;
+        const host = makeDetailHost();
+        await act(async () => {
+            renderWithProviders(
+                React.createElement(RepoChatTab, {
+                    workspaceId,
+                    layout: 'split-workspace',
+                    detailContainer: host,
+                    detailActive,
+                    onActivateDetail,
+                }),
+            );
+        });
+        await waitFor(() => {
+            expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument();
+        });
+        return host;
+    }
+
+    it('renders only the conversation list in place — no own detail panel or resize handle (shell owns layout)', async () => {
+        setupFetchMock();
+        await renderSplitTab();
+        // The list surface renders in place …
+        expect(screen.getByTestId('activity-split-workspace-list')).toBeTruthy();
+        expect(screen.getByTestId('mock-list-pane')).toBeTruthy();
+        // … but NOT the tab's own two-pane chrome (that is the shell's job now).
+        expect(screen.queryByTestId('activity-split-panel')).toBeNull();
+        expect(screen.queryByTestId('activity-detail-panel')).toBeNull();
+        expect(screen.queryByTestId('activity-resize-handle')).toBeNull();
+    });
+
+    it('portals the detail pane into the parent container when this tab is active (AC-04)', async () => {
+        setupFetchMock();
+        const host = await renderSplitTab({ detailActive: true });
+        // The detail renders INTO the shared container, not inside the list wrapper.
+        expect(host.querySelector('[data-testid="mock-detail-pane"]')).toBeTruthy();
+        const listWrapper = screen.getByTestId('activity-split-workspace-list');
+        expect(listWrapper.querySelector('[data-testid="mock-detail-pane"]')).toBeNull();
+    });
+
+    it('does NOT portal the detail when this tab is not the last-clicked one (AC-04 single shared pane)', async () => {
+        setupFetchMock();
+        const host = await renderSplitTab({ detailActive: false });
+        // Nothing rendered into the shared container, and no detail mounted anywhere.
+        expect(host.querySelector('[data-testid="mock-detail-pane"]')).toBeNull();
+        expect(screen.queryByTestId('mock-detail-pane')).toBeNull();
+        // The list still renders in place.
+        expect(screen.getByTestId('mock-list-pane')).toBeTruthy();
+    });
+
+    it('clicking a conversation calls onActivateDetail so the parent marks chat last-clicked (AC-04)', async () => {
+        const r1 = makeRunningTask('r1');
+        setupFetchMock({ running: [r1] });
+        const onActivateDetail = vi.fn();
+        await renderSplitTab({ onActivateDetail });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('task-r1'));
+        });
+
+        expect(onActivateDetail).toHaveBeenCalled();
+    });
+
+    it('the shared detail pane reflects the clicked conversation', async () => {
+        const r1 = makeRunningTask('r1');
+        setupFetchMock({ running: [r1] });
+        const host = await renderSplitTab({ detailActive: true });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('task-r1'));
+        });
+
+        await waitFor(() => {
+            expect(mockDetailPane.mock.calls.at(-1)?.[0]?.selectedTaskId).toBe('proc-r1');
+        });
+        // …and that detail lives in the shared container.
+        expect(host.querySelector('[data-testid="mock-detail-pane"]')?.getAttribute('data-selected')).toBe('proc-r1');
+    });
+
+    it('routes non-chat detail (Ralph session) through the SAME shared container', async () => {
+        setupFetchMock();
+        const host = await renderSplitTab({ detailActive: true });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('select-ralph-btn'));
+        });
+
+        await waitFor(() => {
+            expect(host.querySelector('[data-testid="mock-ralph-pane"]')).toBeTruthy();
+        });
+        // The chat detail pane is replaced, not shown alongside (one shared pane).
+        expect(host.querySelector('[data-testid="mock-detail-pane"]')).toBeNull();
+    });
+
+    it('default layout (no split-workspace) is unchanged — renders its own detail pane, no portal seam', async () => {
+        setupFetchMock();
+        await renderTab();
+        expect(screen.getByTestId('activity-detail-panel')).toBeTruthy();
+        expect(screen.queryByTestId('activity-split-workspace-list')).toBeNull();
+    });
+});

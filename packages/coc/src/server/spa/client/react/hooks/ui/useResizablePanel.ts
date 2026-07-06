@@ -1,20 +1,34 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
 export interface UseResizablePanelOptions {
-    /** Initial width of the panel in pixels. Default: 320 */
+    /**
+     * Initial size of the panel in pixels. This is a width for horizontal
+     * (`left`/`right`) panels and a height for vertical (`top`/`bottom`) panels.
+     * Default: 320
+     */
     initialWidth?: number;
-    /** Minimum width of the panel in pixels. Default: 160 */
+    /** Minimum size of the panel in pixels. Default: 160 */
     minWidth?: number;
-    /** Maximum width of the panel in pixels. Default: 600 */
+    /** Maximum size of the panel in pixels. Default: 600 */
     maxWidth?: number;
-    /** localStorage key to persist width. If set, the width is saved/restored. */
+    /** localStorage key to persist the size. If set, the size is saved/restored. */
     storageKey?: string;
-    /** Which side the resizable panel is on. 'left' (default): drag right to widen. 'right': drag left to widen. */
-    direction?: 'left' | 'right';
+    /**
+     * Which edge the resizable panel is anchored to. This determines both the
+     * drag axis and the direction that grows the panel:
+     * - 'left' (default): horizontal; drag right to widen a left-anchored panel.
+     * - 'right': horizontal; drag left to widen a right-anchored panel.
+     * - 'top': vertical; drag down to grow a top-anchored panel.
+     * - 'bottom': vertical; drag up to grow a bottom-anchored panel.
+     */
+    direction?: 'left' | 'right' | 'top' | 'bottom';
 }
 
 export interface UseResizablePanelReturn {
-    /** Current width of the panel in px. */
+    /**
+     * Current size of the panel in px — a width for horizontal panels, a height
+     * for vertical (`top`/`bottom`) panels.
+     */
     width: number;
     /** Whether the user is currently dragging the resize handle. */
     isDragging: boolean;
@@ -56,16 +70,23 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
         return clampWidth(persisted, minWidth, maxWidth);
     });
     const [isDragging, setIsDragging] = useState(false);
-    const startXRef = useRef(0);
+    const startCoordRef = useRef(0);
     const startWidthRef = useRef(0);
     const skipNextPersistRef = useRef(false);
 
-    const onMove = useCallback((clientX: number) => {
-        const rawDelta = clientX - startXRef.current;
-        const delta = direction === 'right' ? -rawDelta : rawDelta;
+    // `top`/`bottom` panels resize along the Y axis; `left`/`right` along X.
+    const isVertical = direction === 'top' || direction === 'bottom';
+    // A drag away from the anchored edge grows the panel: dragging right/down
+    // grows a left/top panel (+delta), dragging left/up grows a right/bottom
+    // panel (−delta).
+    const growSign = direction === 'right' || direction === 'bottom' ? -1 : 1;
+
+    const onMove = useCallback((clientCoord: number) => {
+        const rawDelta = clientCoord - startCoordRef.current;
+        const delta = growSign * rawDelta;
         const newWidth = clampWidth(startWidthRef.current + delta, minWidth, maxWidth);
         setWidth(newWidth);
-    }, [minWidth, maxWidth, direction]);
+    }, [minWidth, maxWidth, growSign]);
 
     const onEnd = useCallback(() => {
         setIsDragging(false);
@@ -93,15 +114,31 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
     useEffect(() => {
         if (!isDragging) return;
 
+        // While dragging, cover the viewport with a transparent overlay so the
+        // pointer stays over the main document the whole time. Without it, a
+        // drag that crosses an <iframe> (e.g. the canvas panel) stalls: the
+        // iframe is a separate document that swallows `mousemove`, so the drag
+        // only tracks while the cursor is exactly over the thin resize handle.
+        // The overlay keeps pointer events flowing regardless of what sits
+        // underneath, and gives a consistent resize cursor across the window.
+        const overlay = document.createElement('div');
+        overlay.setAttribute('data-resize-overlay', '');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.zIndex = '9999';
+        overlay.style.cursor = isVertical ? 'row-resize' : 'col-resize';
+        overlay.style.userSelect = 'none';
+        document.body.appendChild(overlay);
+
         const handleMouseMove = (e: MouseEvent) => {
             e.preventDefault();
-            onMove(e.clientX);
+            onMove(isVertical ? e.clientY : e.clientX);
         };
         const handleMouseUp = () => onEnd();
         const handleTouchMove = (e: TouchEvent) => {
             if (e.touches.length === 1) {
                 e.preventDefault();
-                onMove(e.touches[0].clientX);
+                onMove(isVertical ? e.touches[0].clientY : e.touches[0].clientX);
             }
         };
         const handleTouchEnd = () => onEnd();
@@ -116,22 +153,23 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
             document.removeEventListener('mouseup', handleMouseUp);
             document.removeEventListener('touchmove', handleTouchMove);
             document.removeEventListener('touchend', handleTouchEnd);
+            overlay.remove();
         };
-    }, [isDragging, onMove, onEnd]);
+    }, [isDragging, onMove, onEnd, isVertical]);
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
-        startXRef.current = e.clientX;
+        startCoordRef.current = isVertical ? e.clientY : e.clientX;
         startWidthRef.current = width;
         setIsDragging(true);
-    }, [width]);
+    }, [width, isVertical]);
 
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
         if (e.touches.length !== 1) return;
-        startXRef.current = e.touches[0].clientX;
+        startCoordRef.current = isVertical ? e.touches[0].clientY : e.touches[0].clientX;
         startWidthRef.current = width;
         setIsDragging(true);
-    }, [width]);
+    }, [width, isVertical]);
 
     const resetWidth = useCallback(() => {
         setWidth(initialWidth);

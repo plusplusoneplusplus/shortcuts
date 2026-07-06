@@ -16,6 +16,7 @@ import { RepoChatTab } from '../chat/RepoChatTab';
 import { RepoSchedulesTab } from '../schedules/RepoSchedulesTab';
 import { RepoGitTab } from '../git/RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
+import { SplitWorkspacePanel } from './SplitWorkspacePanel';
 import { RepoSettingsTab } from '../repo-settings/RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
 import { PullRequestsTab } from '../pull-requests/PullRequestsTab';
@@ -42,6 +43,7 @@ import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequest
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
+import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
 import { TAB_GROUP_INDEX, computeVisibleSubTabs } from './repoSubTabs';
@@ -132,6 +134,14 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const dreamsEnabled = useDreamsEnabled();
     const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
+    const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
+    // Split "Workspace" panel (behind the `splitWorkspacePanel` flag): which of the
+    // two left lists last drove the shared detail pane, plus the detail-slot DOM
+    // node both tabs portal their detail into. State-backed (not a plain ref) so
+    // the portal mounts on the second render once the slot node exists — see
+    // AC-04 (single shared detail pane, last-selection-wins).
+    const [splitLastClicked, setSplitLastClicked] = useState<'chat' | 'git'>('chat');
+    const [splitDetailNode, setSplitDetailNode] = useState<HTMLDivElement | null>(null);
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(ws.id, sessionContextAttachmentsEnabled);
     const [headerContextDropTarget, setHeaderContextDropTarget] = useState<'task' | 'ask' | null>(null);
@@ -156,7 +166,8 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const visibleSubTabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode]);
+        splitWorkspacePanelEnabled,
+    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled]);
 
     // Redirect only after the capability set for this workspace has resolved.
     // Route memory is kept separately in AppContext, so this display fallback
@@ -704,18 +715,62 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                           preferences fetch settles). Without this, the hidden display:none
                           wrapper collapsed the chat detail to 0×0 → blank screen.
                         */}
-                        {uiLayoutMode === 'classic' && (
+                        {!splitWorkspacePanelEnabled && uiLayoutMode === 'classic' && (
                             <div style={{ display: (activeSubTab === 'activity' || activeSubTab === 'chats') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <RepoChatTab key={`${ws.id}-activity`} workspaceId={ws.id} />
                             </div>
                         )}
-                        {uiLayoutMode === 'dev-workflow' && (
+                        {!splitWorkspacePanelEnabled && uiLayoutMode === 'dev-workflow' && (
                             <div style={{ display: (activeSubTab === 'chats' || activeSubTab === 'activity') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <RepoChatTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />
                             </div>
                         )}
+                        {/*
+                          Split "Workspace" view (feature flag `splitWorkspacePanel`): replaces
+                          the Activity/Chats chat slot with a split left panel — chat list on top,
+                          git list on the bottom — both feeding ONE shared detail pane (the
+                          `splitDetailNode` slot each tab portals its detail into). The standalone
+                          git block below is suppressed on this path (git now lives in the panel).
+                          Kept mounted via the same display:none toggle so state survives tab
+                          switches. Off-path is a strict no-op (the two blocks above render as today).
+                        */}
+                        {splitWorkspacePanelEnabled && (
+                            <div style={{ display: (activeSubTab === 'activity' || activeSubTab === 'chats') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                                <SplitWorkspacePanel
+                                    workspaceId={ws.id}
+                                    chatList={
+                                        <RepoChatTab
+                                            key={`${ws.id}-split-chat`}
+                                            workspaceId={ws.id}
+                                            mode={uiLayoutMode === 'dev-workflow' ? 'chats' : undefined}
+                                            layout="split-workspace"
+                                            detailContainer={splitDetailNode}
+                                            detailActive={splitLastClicked === 'chat'}
+                                            onActivateDetail={() => setSplitLastClicked('chat')}
+                                        />
+                                    }
+                                    gitList={isGitRepo ? (
+                                        <RepoGitTab
+                                            key={`${ws.id}-split-git`}
+                                            workspaceId={ws.id}
+                                            layout="split-workspace"
+                                            detailContainer={splitDetailNode}
+                                            detailActive={splitLastClicked === 'git'}
+                                            onActivateDetail={() => setSplitLastClicked('git')}
+                                        />
+                                    ) : null}
+                                    detail={
+                                        <div
+                                            ref={setSplitDetailNode}
+                                            className="flex flex-col flex-1 min-h-0 min-w-0 h-full w-full overflow-hidden"
+                                            data-testid="split-workspace-detail-host"
+                                        />
+                                    }
+                                />
+                            </div>
+                        )}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
-                        {isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                        {!splitWorkspacePanelEnabled && isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             {wasVisited('git') && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         </div>}
                         {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}

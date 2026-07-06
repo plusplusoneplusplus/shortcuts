@@ -60,7 +60,7 @@ export function PendingTaskPayload({ task }: { task: any }) {
                     {payload.prompt && (
                         <>
                             <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Follow-up Message</h3>
-                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
                                 {payload.prompt}
                             </pre>
                         </>
@@ -89,7 +89,7 @@ export function PendingTaskPayload({ task }: { task: any }) {
                     {payload.prompt && (
                         <>
                             <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Prompt</h3>
-                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
                                 {payload.prompt}
                             </pre>
                         </>
@@ -120,7 +120,7 @@ export function PendingTaskPayload({ task }: { task: any }) {
                     {payload.prompt && (
                         <>
                             <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Full Prompt</h3>
-                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mb-3">
+                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mb-3">
                                 {payload.prompt}
                             </pre>
                         </>
@@ -128,7 +128,7 @@ export function PendingTaskPayload({ task }: { task: any }) {
                     {rc.documentContent && (
                         <details className="mt-2">
                             <summary className="cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Document Snapshot</summary>
-                            <pre className="max-h-72 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
+                            <pre className="max-h-72 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
                                 {rc.documentContent}
                             </pre>
                         </details>
@@ -151,7 +151,7 @@ export function PendingTaskPayload({ task }: { task: any }) {
                 {payload.prompt && (
                     <>
                         <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Prompt</h3>
-                        <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
                             {payload.prompt}
                         </pre>
                     </>
@@ -159,7 +159,7 @@ export function PendingTaskPayload({ task }: { task: any }) {
                 {ctx.blocks?.map((b: any, i: number) => (
                     <details key={i} className="mt-3">
                         <summary className="cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{b.label || 'Context'}</summary>
-                        <pre className="max-h-72 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
+                        <pre className="max-h-72 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
                             {b.content}
                         </pre>
                     </details>
@@ -173,7 +173,7 @@ export function PendingTaskPayload({ task }: { task: any }) {
         return (
             <div>
                 <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Payload</h3>
-                <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
                     {JSON.stringify(payload, null, 2)}
                 </pre>
                 {imagesSection}

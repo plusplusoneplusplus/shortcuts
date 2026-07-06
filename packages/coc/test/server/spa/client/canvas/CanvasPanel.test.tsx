@@ -562,6 +562,23 @@ describe('CanvasPanel', () => {
         expect(writeText).toHaveBeenCalledWith('# Plan body');
     });
 
+    it('gives the export menu items an explicit dark-mode foreground so they stay readable', async () => {
+        mocks.get.mockResolvedValue(makeCanvas());
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-panel-export'));
+
+        // The dropdown paints a dark background (dark:bg-[#252526]); without an explicit
+        // dark-mode color these items inherit a near-black default and disappear.
+        for (const testId of ['canvas-panel-export-copy', 'canvas-panel-export-download', 'canvas-panel-export-notes']) {
+            const item = screen.getByTestId(testId);
+            expect(item.className).toContain('text-[#1e1e1e]');
+            expect(item.className).toContain('dark:text-[#cccccc]');
+        }
+    });
+
     it('shows a pop-out button only when onPopOut is provided and invokes it', async () => {
         mocks.get.mockResolvedValue(makeCanvas());
         const onPopOut = vi.fn();

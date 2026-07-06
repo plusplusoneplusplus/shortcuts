@@ -265,12 +265,33 @@ interface ClaudeTaskUpdatedMessage {
     session_id?: string;
 }
 
+/**
+ * Emitted once when the SDK rewrites the transcript at a compaction boundary
+ * (native `/compact`). `compact_metadata.trigger` distinguishes a manual
+ * `/compact` turn from auto-compaction; `pre_tokens - post_tokens` is the
+ * context freed. Mirrors the SDK's `SDKCompactBoundaryMessage`.
+ */
+interface ClaudeCompactBoundaryMessage {
+    type: 'system';
+    subtype: 'compact_boundary';
+    compact_metadata: {
+        trigger: 'manual' | 'auto';
+        pre_tokens?: number;
+        post_tokens?: number;
+        duration_ms?: number;
+        /** Ordered UUIDs of the messages compaction kept (reports the KEPT count only, not the pre-total). */
+        preserved_messages?: { anchor_uuid?: string; uuids?: string[] };
+    };
+    session_id?: string;
+}
+
 /** Maps an SDK `system` message `subtype` to its concrete message shape. */
 interface ClaudeSystemSubtypeMap {
     task_started: ClaudeTaskStartedMessage;
     task_updated: ClaudeTaskUpdatedMessage;
     task_notification: ClaudeTaskNotificationMessage;
     session_state_changed: ClaudeSessionStateChangedMessage;
+    compact_boundary: ClaudeCompactBoundaryMessage;
 }
 
 /** Terminal task-update statuses that drain a tracked background task. */
@@ -284,7 +305,7 @@ interface ClaudeBackgroundTaskEntry {
     description?: string;
 }
 
-type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeUserMessage | ClaudeResultMessage | ClaudeSystemMessage | ClaudeRateLimitEvent | ClaudeSessionStateChangedMessage | ClaudeTaskStartedMessage | ClaudeTaskNotificationMessage | ClaudeTaskUpdatedMessage | Record<string, unknown>;
+type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeUserMessage | ClaudeResultMessage | ClaudeSystemMessage | ClaudeRateLimitEvent | ClaudeSessionStateChangedMessage | ClaudeTaskStartedMessage | ClaudeTaskNotificationMessage | ClaudeTaskUpdatedMessage | ClaudeCompactBoundaryMessage | Record<string, unknown>;
 type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto';
 
 /**
@@ -306,6 +327,19 @@ type ClaudeMcpServerConfig =
     | { type?: 'stdio'; command: string; args?: string[]; env?: Record<string, string>; alwaysLoad?: boolean }
     | { type: 'http'; url: string; headers?: Record<string, string> }
     | { type: 'sse'; url: string; headers?: Record<string, string> };
+
+/**
+ * Minimal shape of a Claude Code lifecycle hook callback. The compaction path
+ * (`compactSession`) registers a single `PostCompact` hook to capture the
+ * generated summary; only its input (which carries `compact_summary`) is read,
+ * so the return type is a permissive object. Mirrors the SDK's
+ * `HookCallback` / `HookCallbackMatcher`.
+ */
+type ClaudeHookCallback = (input: unknown, toolUseId?: string, options?: unknown) => Promise<Record<string, unknown>>;
+interface ClaudeHookCallbackMatcher {
+    matcher?: string;
+    hooks: ClaudeHookCallback[];
+}
 
 interface ClaudeQueryOptions {
     prompt: string | AsyncIterable<ClaudeStreamingUserMessage>;
@@ -348,6 +382,12 @@ interface ClaudeQueryOptions {
          * fails to spawn (`ENOTDIR`).
          */
         pathToClaudeCodeExecutable?: string;
+        /**
+         * Lifecycle hooks keyed by event name. CoC registers only `PostCompact`
+         * (to capture the summary generated during a `/compact` turn — see
+         * {@link ClaudeSDKService.compactSession}).
+         */
+        hooks?: Partial<Record<string, ClaudeHookCallbackMatcher[]>>;
     };
 }
 
@@ -371,6 +411,12 @@ export interface ClaudeAccountInfo {
 interface ClaudeQueryHandle extends AsyncIterable<ClaudeSDKMessage> {
     accountInfo?(): Promise<ClaudeAccountInfo>;
     supportedModels?(): Promise<Array<{ value?: string; displayName?: string; description?: string }>>;
+    /**
+     * Native slash commands the running CLI advertises. Used to gate `/compact`
+     * capability detection (AC-04): a build too old to compact omits `compact`
+     * from this list (or omits the method entirely).
+     */
+    supportedCommands?(): Promise<Array<{ name?: string; aliases?: string[] }>>;
     getContextUsage?(): Promise<ClaudeContextUsage>;
     return?(value?: unknown): Promise<{ done: true; value: unknown }>;
 }
@@ -469,6 +515,13 @@ const CLAUDE_MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
  * Override with `COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS` (primarily for tests).
  */
 const CLAUDE_CONTEXT_USAGE_TIMEOUT_MS = 5_000;
+/**
+ * Wall-clock guard for the `supportedCommands()` capability probe at the top of
+ * a `/compact` turn (AC-04). The spike measured ~550ms; 5s leaves generous
+ * headroom while guaranteeing a wedged or lost control response degrades to
+ * "compaction unsupported" instead of hanging the turn.
+ */
+const CLAUDE_SUPPORTED_COMMANDS_TIMEOUT_MS = 5_000;
 /**
  * Wall-clock ceiling for holding the streaming-input channel open while waiting
  * for in-flight background tasks to drain (AC-04). It is armed ONLY once a turn
@@ -1805,13 +1858,177 @@ export class ClaudeSDKService implements ISDKService {
     }
 
     /**
-     * History compaction is not supported by the Claude Code SDK (AC-03). Throws
-     * the typed {@link CompactUnsupportedError} so the backend can surface a
-     * "compaction unsupported" rejection to the user, mirroring
-     * {@link rewindSession}.
+     * Compact a session via Claude Code's native `/compact` slash command.
+     *
+     * Unlike Copilot (which has a synchronous `rpc.history.compact()` RPC), the
+     * Claude `Query` handle exposes no `compact()` control method — compaction is
+     * driven by issuing `/compact` as a resumed streaming turn and reading the
+     * emitted `compact_boundary` (AC-01). The user's free text becomes the slash
+     * command's argument (AC-03). We register a `PostCompact` hook to capture the
+     * generated summary (AC-02).
+     *
+     * A manual `compact_boundary` means the compaction ran: we map
+     * `pre_tokens - post_tokens` to `tokensRemoved` and return `success: true`.
+     * A "too few messages" no-op (no boundary) returns `success: false` WITHOUT
+     * throwing — compaction is still supported, it just did nothing. Only a build
+     * whose CLI does not advertise `/compact` throws {@link CompactUnsupportedError}
+     * (AC-04), so the backend returns 422 and the UI shows the "unsupported" path.
      */
-    public async compactSession(_sessionId: string, _customInstructions?: string): Promise<CompactResult> {
-        throw new CompactUnsupportedError(CLAUDE_PROVIDER);
+    public async compactSession(sessionId: string, customInstructions?: string): Promise<CompactResult> {
+        if (this.disposed) throw new Error('ClaudeSDKService has been disposed');
+        const avail = await this.isAvailable();
+        if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
+        const queryFn = this.queryFn!;
+
+        // AC-03: forward the user's free text as the slash command's argument; a
+        // blank/omitted instruction issues a bare `/compact`.
+        const instructions = customInstructions?.trim();
+        const prompt = instructions ? `/compact ${instructions}` : '/compact';
+
+        // Keep the query alive past the boundary via a streaming-input gate so the
+        // native slash command runs as a proper turn. A bare string prompt would
+        // tell the SDK the turn is single-shot and tear the session down before
+        // the boundary is read.
+        const inputGate = new ClaudeInputGate([{
+            type: 'user',
+            message: { role: 'user', content: prompt },
+            parent_tool_use_id: null,
+        }]);
+        const abortController = new AbortController();
+
+        // AC-02: the PostCompact hook delivers the clean generated summary — the
+        // primary `summaryContent` source (the post-boundary user message carries
+        // a "This session is being continued…" preamble and is noisier).
+        let compactSummary: string | undefined;
+        const hooks: NonNullable<ClaudeQueryOptions['options']>['hooks'] = {
+            PostCompact: [{
+                hooks: [async (input: unknown): Promise<Record<string, unknown>> => {
+                    const summary = (input as { compact_summary?: unknown } | null)?.compact_summary;
+                    if (typeof summary === 'string' && summary.trim()) compactSummary = summary;
+                    return {};
+                }],
+            }],
+        };
+
+        // In a packaged desktop build the SDK's own `require.resolve` of the
+        // native binary yields an unspawnable `app.asar` path; pass the unpacked
+        // path explicitly (mirrors the send path).
+        const claudeExecutable = this.resolveClaudeExecutablePath();
+        const handle = queryFn({
+            prompt: inputGate.stream(),
+            abortController,
+            options: {
+                ...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {}),
+                resume: sessionId,
+                hooks,
+            },
+        });
+
+        try {
+            // AC-04: gate on the native `/compact` command being advertised.
+            // Awaited before draining the stream (verified deadlock-free, ~550ms).
+            await this.assertClaudeCompactSupported(handle);
+
+            let boundary: ClaudeCompactBoundaryMessage['compact_metadata'] | undefined;
+            // AC-02 fallback: the first user message after the boundary carries
+            // the summary continuation ("This session is being continued…").
+            // Used only if the PostCompact hook did not deliver a summary.
+            let fallbackSummary: string | undefined;
+            for await (const msg of handle) {
+                if (abortController.signal.aborted) break;
+                if (this.isClaudeSystemSubtype(msg, 'compact_boundary')) {
+                    boundary = msg.compact_metadata;
+                } else if (boundary && fallbackSummary === undefined && isClaudeUserMessage(msg)) {
+                    const text = extractClaudeUserMessageText(msg);
+                    if (text) fallbackSummary = text;
+                } else if (this.isResultMessage(msg)) {
+                    // Terminal signal for both the success and the no-op/failed
+                    // streams (the boundary, when present, arrives before it).
+                    break;
+                }
+            }
+
+            // AC-02: a manual boundary means the compaction actually ran.
+            if (boundary && boundary.trigger === 'manual') {
+                const pre = boundary.pre_tokens ?? 0;
+                const post = boundary.post_tokens ?? 0;
+                const summaryContent = compactSummary ?? fallbackSummary;
+                return {
+                    success: true,
+                    tokensRemoved: Math.max(0, pre - post),
+                    // Not derivable from the resume stream: history is not fully
+                    // replayed and the metadata reports only the KEPT count, so an
+                    // exact diff is impossible — fall back to 0 while keeping
+                    // tokensRemoved accurate (AC-02 [assumption]).
+                    messagesRemoved: 0,
+                    ...(summaryContent ? { summaryContent } : {}),
+                };
+            }
+
+            // Compaction IS supported but was a no-op (e.g. "Not enough messages
+            // to compact."). Report failure without throwing — only the
+            // capability-absent path throws CompactUnsupportedError (AC-04).
+            return { success: false, tokensRemoved: 0, messagesRemoved: 0 };
+        } finally {
+            inputGate.close();
+            abortController.abort();
+        }
+    }
+
+    /**
+     * AC-04 capability gate. Throws {@link CompactUnsupportedError} when the
+     * running CLI cannot enumerate its commands or does not advertise a native
+     * `/compact` — i.e. a build too old to compact. A lost/timed-out probe is
+     * treated as "unsupported" rather than hanging the turn.
+     */
+    private async assertClaudeCompactSupported(handle: ClaudeQueryHandle): Promise<void> {
+        const commands = await this.safeGetClaudeSupportedCommands(handle);
+        const supported = !!commands && commands.some(
+            (c) => c?.name === 'compact' || (Array.isArray(c?.aliases) && c.aliases.includes('compact')),
+        );
+        if (!supported) throw new CompactUnsupportedError(CLAUDE_PROVIDER);
+    }
+
+    /**
+     * Timeout-guarded `supportedCommands()` probe. Returns `undefined` when the
+     * method is absent, times out, or rejects — the caller maps that to "compaction
+     * unsupported". Mirrors {@link safeGetClaudeContextUsage}'s teardown-safe shape.
+     */
+    private async safeGetClaudeSupportedCommands(
+        handle: ClaudeQueryHandle,
+    ): Promise<Array<{ name?: string; aliases?: string[] }> | undefined> {
+        if (typeof handle.supportedCommands !== 'function') return undefined;
+        const TIMED_OUT = Symbol('claude-supported-commands-timeout');
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            const outcome = await Promise.race([
+                handle.supportedCommands(),
+                new Promise<typeof TIMED_OUT>((resolve) => {
+                    timer = setTimeout(() => resolve(TIMED_OUT), CLAUDE_SUPPORTED_COMMANDS_TIMEOUT_MS);
+                    timer.unref?.();
+                }),
+            ]);
+            if (outcome === TIMED_OUT) {
+                getSDKLogger().warn(
+                    { provider: CLAUDE_PROVIDER, event: 'claude_supported_commands_timeout', timeoutMs: CLAUDE_SUPPORTED_COMMANDS_TIMEOUT_MS },
+                    'Claude supportedCommands() timed out; treating compaction as unsupported',
+                );
+                return undefined;
+            }
+            return outcome;
+        } catch (err) {
+            getSDKLogger().warn(
+                {
+                    provider: CLAUDE_PROVIDER,
+                    event: 'claude_supported_commands_error',
+                    error: err instanceof Error ? err.message : String(err),
+                },
+                'Claude supportedCommands() failed; treating compaction as unsupported',
+            );
+            return undefined;
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
     }
 
     public async abortSession(sessionId: string): Promise<boolean> {
@@ -1875,6 +2092,34 @@ export function registerClaudeSDKService(): ClaudeSDKService {
     const svc = new ClaudeSDKService();
     sdkServiceRegistry.register(CLAUDE_PROVIDER, svc);
     return svc;
+}
+
+/** True for an SDK `type: 'user'` message (used by the compaction summary fallback). */
+function isClaudeUserMessage(msg: ClaudeSDKMessage): msg is ClaudeUserMessage {
+    return typeof msg === 'object' && msg !== null && (msg as Record<string, unknown>).type === 'user';
+}
+
+/**
+ * Best-effort text of a user message's content, handling both the plain-string
+ * shape and a block array (joining `text` blocks). Returns an empty string when
+ * no text is present. Used only as the AC-02 summary fallback.
+ */
+function extractClaudeUserMessageText(msg: ClaudeUserMessage): string {
+    const content = msg.message?.content;
+    if (typeof content === 'string') return content.trim();
+    if (Array.isArray(content)) {
+        return content
+            .map((block) => {
+                if (block && typeof block === 'object' && (block as { type?: unknown }).type === 'text') {
+                    const text = (block as { text?: unknown }).text;
+                    return typeof text === 'string' ? text : '';
+                }
+                return '';
+            })
+            .join('')
+            .trim();
+    }
+    return '';
 }
 
 /**

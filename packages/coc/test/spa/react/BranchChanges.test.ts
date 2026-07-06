@@ -236,6 +236,13 @@ describe('BranchChanges', () => {
             expect(source).toContain('Branch Range');
         });
 
+        it('renders the header as a single compact line', () => {
+            // Compact card: badge + summary share one row — no fixed 38px min
+            // height and no stacked two-line body.
+            expect(source).not.toContain('min-h-[38px]');
+            expect(source).not.toContain('flex flex-col gap-0.5');
+        });
+
         it('makes the branch-range header a shared pointer context drag source', () => {
             expect(source).toContain('createGitRangeContextDragPayload');
             expect(source).toContain('writePointerContextDragData');

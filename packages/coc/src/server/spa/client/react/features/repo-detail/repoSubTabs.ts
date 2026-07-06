@@ -21,9 +21,9 @@ export const SUB_TABS: SubTabDef[] = [
     { key: 'cli-sessions', label: 'CLI Sessions' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'terminal', label: 'Terminal' },
-    { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
+    { key: 'work-items', label: 'WIs', shortcut: 'Alt+I' },
     { key: 'dreams', label: 'Dreams', shortcut: 'Alt+D' },
-    { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
+    { key: 'pull-requests', label: 'PRs', shortcut: 'Alt+R' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
@@ -61,6 +61,16 @@ export interface VisibleSubTabOptions {
     /** When false (default), the deprecated `tasks` sub-tab is hidden in both layout modes. */
     showPlanDepTab: boolean;
     uiLayoutMode: 'classic' | 'dev-workflow';
+    /**
+     * When true (feature flag `splitWorkspacePanel`, default off), the split
+     * "Workspace" view takes over the chat slot: the standalone `git` sub-tab is
+     * hidden (its diff/stage/commit/push functionality now lives inside the split
+     * panel) and the chat tab is relabeled "Workspace". The tab *key*
+     * (`activity`/`chats`) is unchanged so mount/selection logic is unaffected —
+     * only the label and git-visibility change. Optional so the remote-shell
+     * callers, which don't host the split panel, keep today's behavior.
+     */
+    splitWorkspacePanelEnabled?: boolean;
 }
 
 /**
@@ -74,6 +84,7 @@ export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
     const {
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
+        splitWorkspacePanelEnabled = false,
     } = opts;
 
     let tabs: SubTabDef[] = VISIBLE_SUB_TABS;
@@ -117,5 +128,17 @@ export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
         }
         tabs = ordered;
     }
+
+    // Split "Workspace" panel (feature flag). Applied last so it overrides the
+    // per-layout labeling in either mode. Hide the standalone `git` sub-tab —
+    // its functionality moves into the split panel — and relabel the chat tab
+    // (key `activity` in classic, `chats` in dev-workflow) to "Workspace". The
+    // key is left untouched so mount/selection/pinned-tab logic is unaffected.
+    if (splitWorkspacePanelEnabled) {
+        tabs = tabs
+            .filter(t => t.key !== 'git')
+            .map(t => (t.key === 'activity' || t.key === 'chats') ? { ...t, label: 'Workspace' } : t);
+    }
+
     return tabs;
 }

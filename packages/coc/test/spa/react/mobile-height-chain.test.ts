@@ -31,8 +31,8 @@ describe('mobile repo tab height chain', () => {
             ...Array.from(repoDetailSource.matchAll(compound), match => match[1]),
         ];
 
-        expect(paneClasses).toHaveLength(9);
-        expect(paneClasses).toEqual(Array(9).fill('flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden'));
+        expect(paneClasses).toHaveLength(10);
+        expect(paneClasses).toEqual(Array(10).fill('flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden'));
     });
 
     it('keeps the RepoChatTab mobile root in the flex height chain', () => {

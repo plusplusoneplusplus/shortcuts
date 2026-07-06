@@ -6,6 +6,13 @@ export const SESSION_CONTEXT_DRAG_KIND = 'coc.session-context';
 export const RALPH_SESSION_CONTEXT_DRAG_MIME = 'application/vnd.coc.ralph-session-context+json';
 export const RALPH_SESSION_CONTEXT_DRAG_KIND = 'coc.ralph-session-context';
 export const POINTER_CONTEXT_DRAG_MIME = 'application/vnd.coc.pointer-context+json';
+/**
+ * Carries an ordered array of session-context payloads for a drag that started
+ * inside an active multi-selection (AC-02). The first entry is the primary
+ * (dragged) item and is ALSO written to its single-item MIME, so existing
+ * singular readers/drop-targets keep working unchanged.
+ */
+export const SESSION_CONTEXT_BUNDLE_DRAG_MIME = 'application/vnd.coc.session-context-bundle+json';
 export const WORK_ITEM_CONTEXT_DRAG_KIND = 'coc.work-item-context';
 export const GIT_COMMIT_CONTEXT_DRAG_KIND = 'coc.git-commit-context';
 export const GIT_RANGE_CONTEXT_DRAG_KIND = 'coc.git-range-context';
@@ -587,4 +594,35 @@ export function writePointerContextDragData(dataTransfer: DragDataTransfer, payl
     dataTransfer.setData(POINTER_CONTEXT_DRAG_MIME, JSON.stringify(payload));
     const title = payload.title ? ` - ${payload.title}` : '';
     dataTransfer.setData('text/plain', `CoC pointer context: ${payload.label}${title}`);
+}
+
+function writeSessionContextAttachmentDragData(
+    dataTransfer: DragDataTransfer,
+    payload: SessionContextAttachmentDragPayload,
+): void {
+    if (payload.kind === SESSION_CONTEXT_DRAG_KIND) {
+        writeSessionContextDragData(dataTransfer, payload);
+    } else if (payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND) {
+        writeRalphSessionContextDragData(dataTransfer, payload);
+    } else {
+        writePointerContextDragData(dataTransfer, payload);
+    }
+}
+
+/**
+ * Write a drag payload carrying one or more session-context items (AC-02).
+ * `payloads[0]` is the primary (dragged) item and is written to its single-item
+ * MIME so singular readers and existing drop targets keep working; when more
+ * than one item is present the full ordered array is also written to the bundle
+ * MIME that multi-attach drop targets (the "+ New chat" button) read.
+ */
+export function writeSessionContextDragBundle(
+    dataTransfer: DragDataTransfer,
+    payloads: SessionContextAttachmentDragPayload[],
+): void {
+    if (payloads.length === 0) return;
+    writeSessionContextAttachmentDragData(dataTransfer, payloads[0]);
+    if (payloads.length > 1) {
+        dataTransfer.setData(SESSION_CONTEXT_BUNDLE_DRAG_MIME, JSON.stringify(payloads));
+    }
 }

@@ -154,7 +154,7 @@ describe('RepoDetail Dreams tab feature gating', () => {
     });
 
     it('visibleSubTabs depends on dreamsEnabled', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode]');
+        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled]');
     });
 
     it('redirects away from dreams when the feature is disabled (via the visibility guard)', () => {
@@ -819,5 +819,84 @@ describe('RepoDetail dev-workflow tab relabeling and reorder', () => {
         for (const key of keys) {
             expect(SUB_TABS.find(t => t.key === key)).toBeDefined();
         }
+    });
+});
+
+/**
+ * Split "Workspace" panel integration (feature flag `splitWorkspacePanel`).
+ * These source-structure assertions guard the RepoDetail wiring that makes the
+ * whole feature go live: the flag hook, the computeVisibleSubTabs pass-through,
+ * mounting SplitWorkspacePanel with both reused tabs feeding ONE shared detail
+ * container, and the strict off-path no-op. See AC-02..AC-07.
+ */
+describe('RepoDetail split-workspace panel wiring', () => {
+    it('imports SplitWorkspacePanel and the flag hook', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { SplitWorkspacePanel } from './SplitWorkspacePanel'");
+        expect(REPO_DETAIL_SOURCE).toContain("import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled'");
+    });
+
+    it('reads the flag via the hook and feeds it into computeVisibleSubTabs (AC-02)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();');
+        // Passed as an opt so git is hidden + chat relabeled "Workspace" when on.
+        const memoCall = REPO_DETAIL_SOURCE.split('computeVisibleSubTabs({')[1]?.split('})')[0] ?? '';
+        expect(memoCall).toContain('splitWorkspacePanelEnabled');
+    });
+
+    it('owns last-clicked state (default chat) and a state-backed detail node (AC-04)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("const [splitLastClicked, setSplitLastClicked] = useState<'chat' | 'git'>('chat')");
+        // State-backed node (not a plain ref) so the portal mounts once the slot exists.
+        expect(REPO_DETAIL_SOURCE).toContain('const [splitDetailNode, setSplitDetailNode] = useState<HTMLDivElement | null>(null)');
+    });
+
+    it('mounts SplitWorkspacePanel only when the flag is on (AC-02 mount half)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('{splitWorkspacePanelEnabled && (');
+        expect(REPO_DETAIL_SOURCE).toContain('<SplitWorkspacePanel');
+    });
+
+    it('feeds the chat list into the panel as a split-workspace RepoChatTab (AC-03/04)', () => {
+        const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
+        expect(anchor).toBeGreaterThan(-1);
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 2000);
+        expect(block).toContain('chatList={');
+        expect(block).toContain('<RepoChatTab');
+        expect(block).toContain('key={`${ws.id}-split-chat`}');
+        expect(block).toContain("layout=\"split-workspace\"");
+    });
+
+    it('feeds the git list into the panel as a split-workspace RepoGitTab, git-gated (AC-05)', () => {
+        const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 2000);
+        expect(block).toContain('gitList={isGitRepo ? (');
+        expect(block).toContain('key={`${ws.id}-split-git`}');
+    });
+
+    it('points BOTH tabs at the SAME shared detail container (AC-04 single pane)', () => {
+        const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 2000);
+        // Both tabs receive detailContainer={splitDetailNode}; the detail slot is the
+        // single ref target both portal into.
+        const containerRefs = block.match(/detailContainer=\{splitDetailNode\}/g) ?? [];
+        expect(containerRefs.length).toBe(2);
+        expect(block).toContain('ref={setSplitDetailNode}');
+    });
+
+    it('routes last-selection-wins: chat active vs git active are mirror opposites (AC-04)', () => {
+        const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 2000);
+        expect(block).toContain("detailActive={splitLastClicked === 'chat'}");
+        expect(block).toContain("onActivateDetail={() => setSplitLastClicked('chat')}");
+        expect(block).toContain("detailActive={splitLastClicked === 'git'}");
+        expect(block).toContain("onActivateDetail={() => setSplitLastClicked('git')}");
+    });
+
+    it('off-path is a strict no-op: standalone chat blocks are gated by !flag (AC-01)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("!splitWorkspacePanelEnabled && uiLayoutMode === 'classic'");
+        expect(REPO_DETAIL_SOURCE).toContain("!splitWorkspacePanelEnabled && uiLayoutMode === 'dev-workflow'");
+    });
+
+    it('suppresses the standalone git block when the flag is on (AC-02/05)', () => {
+        // The always-mounted standalone git tab is gated on !flag so git is not
+        // double-mounted (it now lives inside the split panel).
+        expect(REPO_DETAIL_SOURCE).toContain('{!splitWorkspacePanelEnabled && isGitRepo && <div');
     });
 });

@@ -46,7 +46,9 @@ import { LoopIcon } from './icons/LoopIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
 import { getProviderDotClasses, getTaskChatProvider } from './ProviderBadge';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragData } from './sessionContextDrag';
+import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragBundle, writeSessionContextDragData, type SessionContextDragPayload } from './sessionContextDrag';
+import { dataTransferHasSessionContext, readSessionContextDropPayloads } from './sessionContextDrop';
+import { pushNewChatSeedContext } from './newChatSeedContext';
 import type { ForEachRunSummary, MapReduceRunSummary, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
 
 /** Primary task types surfaced as individual filter options. */
@@ -810,6 +812,55 @@ export function ChatListPane({
     const loopsEnabled = isLoopsEnabled();
     const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
 
+    // AC-01: the desktop "+ New chat" button is a drop target for session-context
+    // drags. A drop opens a fresh new-chat composer seeded with the dropped
+    // item(s); the composer merges them via the existing attached-context path.
+    const [newChatDropActive, setNewChatDropActive] = useState(false);
+    const newChatDropDepthRef = useRef(0);
+
+    const resetNewChatDropState = useCallback(() => {
+        newChatDropDepthRef.current = 0;
+        setNewChatDropActive(false);
+    }, []);
+
+    const handleNewChatDragEnter = useCallback((e: React.DragEvent<HTMLElement>) => {
+        if (!sessionContextDragEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        newChatDropDepthRef.current += 1;
+        setNewChatDropActive(true);
+    }, [sessionContextDragEnabled]);
+
+    const handleNewChatDragOver = useCallback((e: React.DragEvent<HTMLElement>) => {
+        if (!sessionContextDragEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        // preventDefault on dragover is required for the accepted MIME so the
+        // browser fires a `drop` on this button.
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        setNewChatDropActive(true);
+    }, [sessionContextDragEnabled]);
+
+    const handleNewChatDragLeave = useCallback((e: React.DragEvent<HTMLElement>) => {
+        if (!sessionContextDragEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        newChatDropDepthRef.current = Math.max(0, newChatDropDepthRef.current - 1);
+        if (newChatDropDepthRef.current === 0) {
+            setNewChatDropActive(false);
+        }
+    }, [sessionContextDragEnabled]);
+
+    const handleNewChatDrop = useCallback((e: React.DragEvent<HTMLElement>) => {
+        if (!sessionContextDragEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        resetNewChatDropState();
+        const payloads = readSessionContextDropPayloads(e.dataTransfer);
+        if (payloads.length === 0) return;
+        // Buffer the items, then open the composer via the normal new-chat flow.
+        // The composer drains the buffer and validates each item (workspace
+        // alignment, dedupe, cap) before attaching — no auto-send.
+        pushNewChatSeedContext(payloads);
+        (onNewChat ?? onOpenDialog)?.();
+    }, [sessionContextDragEnabled, resetNewChatDropState, onNewChat, onOpenDialog]);
+
     const [searchQuery, setSearchQueryRaw] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -998,6 +1049,50 @@ export function ChatListPane({
         () => [...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history],
         [running, queued, history],
     );
+
+    // Lookups used to bundle a multi-selection into a single drag payload (AC-02).
+    const taskById = useMemo(() => {
+        const map = new Map<string, any>();
+        for (const t of allTasks) {
+            if (t && typeof t.id === 'string') map.set(t.id, t);
+        }
+        return map;
+    }, [allTasks]);
+    const runningIdSet = useMemo(() => new Set<string>(running.map((t: any) => t.id)), [running]);
+    const queuedIdSet = useMemo(() => new Set<string>(queued.map((t: any) => t.id)), [queued]);
+
+    // Build a chat drag payload for an arbitrary selected task, mirroring the
+    // per-row idSource logic (a queued/running row without a processId resolves
+    // its queue-task id; everything else uses its process id).
+    const buildChatSessionContextPayload = useCallback((task: any): SessionContextDragPayload | null => {
+        if (!sessionContextDragEnabled) return null;
+        const isRunningTask = runningIdSet.has(task.id);
+        const isQueuedTask = queuedIdSet.has(task.id);
+        return createSessionContextDragPayload(task, {
+            activeWorkspaceId: workspaceId,
+            idSource: task.processId || (!isRunningTask && !isQueuedTask) ? 'process' : 'queue-task',
+        });
+    }, [sessionContextDragEnabled, runningIdSet, queuedIdSet, workspaceId]);
+
+    // Bundle every selected chat when a drag starts inside an active
+    // multi-selection (AC-02); an unselected row carries just itself. The
+    // dragged item stays first so singular readers see it as the primary.
+    const handleChatRowDragStart = useCallback((e: React.DragEvent, task: any, primaryPayload: SessionContextDragPayload) => {
+        const draggedId = task.id as string;
+        if (selectedHistoryIds.size > 1 && selectedHistoryIds.has(draggedId)) {
+            const selectedPayloads: SessionContextDragPayload[] = [];
+            for (const id of selectedHistoryIds) {
+                if (id === draggedId) continue;
+                const selectedTask = taskById.get(id);
+                if (!selectedTask) continue;
+                const payload = buildChatSessionContextPayload(selectedTask);
+                if (payload) selectedPayloads.push(payload);
+            }
+            writeSessionContextDragBundle(e.dataTransfer, [primaryPayload, ...selectedPayloads]);
+            return;
+        }
+        writeSessionContextDragData(e.dataTransfer, primaryPayload);
+    }, [selectedHistoryIds, taskById, buildChatSessionContextPayload]);
     const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [running, excludedTypes, searchQuery]);
     const filteredQueued = useMemo(
         () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery))),
@@ -2240,7 +2335,7 @@ export function ChatListPane({
                     }}
                     onContextMenu={(e) => handleTaskContextMenu(e, task.id, contextMenuKind)}
                     draggable={!!sessionContextPayload}
-                    onDragStart={sessionContextPayload ? (e) => writeSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
+                    onDragStart={sessionContextPayload ? (e) => handleChatRowDragStart(e, task, sessionContextPayload) : undefined}
                     onTouchStart={(e) => {
                         historyLongPressTaskRef.current = task.id;
                         historyLongPress.onTouchStart(e);
@@ -2809,10 +2904,23 @@ export function ChatListPane({
 
     return (
         <>
-            <div ref={containerRef} className="p-2 md:p-4 flex flex-col gap-2 md:gap-3 overflow-y-auto flex-1">
+            {/* No top padding on this scroll container: the sticky "New chat"
+                header (`top-0`) full-bleeds to the container edges, so any top
+                padding here would sit ABOVE it as a gap (sticky top-0 clamps to
+                the padding edge, so a negative header margin can't cancel it).
+                Keep horizontal + bottom padding. */}
+            <div
+                ref={containerRef}
+                className="px-2 pb-2 md:px-4 md:pb-4 flex flex-col gap-2 md:gap-3 overflow-y-auto flex-1"
+                data-testid="chat-list-pane"
+            >
                 {/* ── Chats tab: redesigned status-grouped list ── */}
                 {activeTab === 'chats' && chatGroups && (
                     <>
+                        <div
+                            className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-2 md:py-4 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
+                            data-testid="chat-list-fixed-header"
+                        >
                         <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className={cn("self-start", isMobile && "hidden")} data-testid="new-chat-btn">
                             💬 New Chat
                         </Button>
@@ -2897,6 +3005,7 @@ export function ChatListPane({
                                 })}
                             </div>
                         )}
+                        </div>
 
                         {/* FTS5 server-side search results (replaces normal sections when active) */}
                         {isServerSearchActive ? (
@@ -3041,7 +3150,12 @@ export function ChatListPane({
                 )}
 
                 {/* ── Tasks tab: queue-style sections ── */}
-                {activeTab !== 'chats' && (<>
+                {activeTab !== 'chats' && (
+                    <React.Fragment>
+                <div
+                    className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-2 md:py-4 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
+                    data-testid="chat-list-fixed-header"
+                >
                 {isPaused && (
                     <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
                         <span className="flex-1">
@@ -3090,15 +3204,30 @@ export function ChatListPane({
                     <button
                         type="button"
                         onClick={onNewChat ?? onOpenDialog}
-                        title={`New chat (${newChatKbdLabel})`}
+                        title={newChatDropActive ? 'Drop to start a new chat' : `New chat (${newChatKbdLabel})`}
                         data-testid="toolbar-new-chat-btn"
-                        className="flex-1 min-w-0 inline-flex items-center gap-1.5 h-7 pl-2 pr-2 bg-[#f3f3f3] hover:bg-[#e8e8e8] dark:bg-[#1e1e1e] dark:hover:bg-[#2a2a2a] text-[#1e1e1e] dark:text-white rounded-md text-[12px] leading-none font-medium tracking-tight transition-colors active:translate-y-[0.5px]"
+                        data-drop-active={newChatDropActive || undefined}
+                        onDragEnter={handleNewChatDragEnter}
+                        onDragOver={handleNewChatDragOver}
+                        onDragLeave={handleNewChatDragLeave}
+                        onDragEnd={resetNewChatDropState}
+                        onDrop={handleNewChatDrop}
+                        className={cn(
+                            'flex-1 min-w-0 inline-flex items-center gap-1.5 h-7 pl-2 pr-2 rounded-md text-[12px] leading-none font-medium tracking-tight transition-colors active:translate-y-[0.5px]',
+                            newChatDropActive
+                                ? 'bg-[#eaf4ff] dark:bg-[#06314f] text-[#005a9e] dark:text-[#9cdcfe] ring-2 ring-[#0078d4]/60 ring-inset'
+                                : 'bg-[#f3f3f3] hover:bg-[#e8e8e8] dark:bg-[#1e1e1e] dark:hover:bg-[#2a2a2a] text-[#1e1e1e] dark:text-white',
+                        )}
                     >
                         <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true" className="flex-shrink-0">
                             <path d="M7 2v10M2 7h10" />
                         </svg>
-                        <span className="flex-1 text-left truncate">New chat</span>
-                        <kbd className="font-mono text-[10px] tracking-wider rounded-[3px] px-1 py-px border border-[#1e1e1e]/30 dark:border-white/30 text-[#1e1e1e]/85 dark:text-white/85 select-none flex-shrink-0">{newChatKbdLabel}</kbd>
+                        <span className="flex-1 text-left truncate" data-testid={newChatDropActive ? 'new-chat-drop-hint' : undefined}>
+                            {newChatDropActive ? 'Drop to start a new chat' : 'New chat'}
+                        </span>
+                        {!newChatDropActive && (
+                            <kbd className="font-mono text-[10px] tracking-wider rounded-[3px] px-1 py-px border border-[#1e1e1e]/30 dark:border-white/30 text-[#1e1e1e]/85 dark:text-white/85 select-none flex-shrink-0">{newChatKbdLabel}</kbd>
+                        )}
                     </button>
 
                     <Button
@@ -3359,6 +3488,7 @@ export function ChatListPane({
                             >✕</button>
                         </div>
                     )}
+                </div>
                 </div>
                 </div>
 
@@ -3724,7 +3854,8 @@ export function ChatListPane({
             )}
                     </>
                 )}
-                </>)}
+                    </React.Fragment>
+                )}
         </div>
         {contextMenu && (
             <ContextMenu

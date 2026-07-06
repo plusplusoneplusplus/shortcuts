@@ -235,13 +235,33 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 
 import { InitialChatComposer, NewChatArea } from '../../../../src/server/spa/client/react/features/chat/NewChatArea';
 import {
+    GIT_COMMIT_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_MIME,
     SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_MIME,
+    type GitCommitContextDragPayload,
     type RalphSessionContextDragPayload,
     type SessionContextDragPayload,
 } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+import {
+    pushNewChatSeedContext,
+    resetNewChatSeedContext,
+} from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
+
+function makeCommitPayload(overrides: Partial<GitCommitContextDragPayload> = {}): GitCommitContextDragPayload {
+    return {
+        kind: GIT_COMMIT_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId: 'ws-1',
+        commitHash: 'abcdef1234567890',
+        shortHash: 'abcdef1',
+        label: 'Commit abcdef1',
+        subject: 'Add drop target',
+        title: 'Add drop target',
+        ...overrides,
+    };
+}
 
 function makeSessionPayload(overrides: Partial<SessionContextDragPayload> = {}): SessionContextDragPayload {
     return {
@@ -1681,6 +1701,129 @@ describe('NewChatArea', () => {
             const body = mockEnqueueTask.mock.calls[0][0];
             expect(body.payload.prompt).toBe('Hello world');
             expect(body.payload.prompt).not.toContain('.goal.md');
+        });
+    });
+
+    // ── AC-01/AC-03: items dropped onto the "+ New chat" button seed the composer ──
+    describe('new-chat seed context', () => {
+        beforeEach(() => {
+            resetNewChatSeedContext();
+            mockSessionContextAttachmentsEnabled.value = true;
+        });
+        afterEach(() => {
+            resetNewChatSeedContext();
+        });
+
+        it('attaches a pointer item buffered before the composer mounted', async () => {
+            // Simulate the button drop happening before the composer exists.
+            pushNewChatSeedContext([makeCommitPayload()]);
+
+            render(<NewChatArea workspaceId="ws-1" />);
+            await act(async () => {});
+
+            const chip = await screen.findByTestId('attached-commit-context-chip');
+            expect(chip.textContent).toContain('Commit abcdef1');
+            // No auto-send.
+            expect(mockEnqueueTask).not.toHaveBeenCalled();
+        });
+
+        it('attaches a session item pushed while the composer is already open', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            await act(async () => {
+                pushNewChatSeedContext([makeSessionPayload()]);
+            });
+
+            const chip = await screen.findByTestId('attached-session-context-chip');
+            expect(chip.textContent).toContain('Source chat');
+            expect(mockEnqueueTask).not.toHaveBeenCalled();
+        });
+
+        it('appends to an open composer without discarding typed text (append-keep)', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'review these' } });
+
+            await act(async () => {
+                pushNewChatSeedContext([makeCommitPayload()]);
+            });
+            await screen.findByTestId('attached-commit-context-chip');
+
+            // Second drop appends a chat while keeping the commit and typed text.
+            await act(async () => {
+                pushNewChatSeedContext([makeSessionPayload()]);
+            });
+            await screen.findByTestId('attached-session-context-chip');
+
+            expect(screen.getByTestId('attached-commit-context-chip')).toBeTruthy();
+            expect((screen.getByTestId('new-chat-input') as HTMLInputElement).value).toBe('review these');
+        });
+
+        it('dedupes a repeated item to a single chip', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            await act(async () => {});
+
+            await act(async () => {
+                pushNewChatSeedContext([makeCommitPayload()]);
+            });
+            await screen.findByTestId('attached-commit-context-chip');
+
+            await act(async () => {
+                pushNewChatSeedContext([makeCommitPayload()]);
+            });
+            await act(async () => {});
+
+            expect(screen.getAllByTestId('attached-commit-context-chip')).toHaveLength(1);
+        });
+
+        it('attaches every item carried in a single multi-select bundle push (AC-02)', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            await act(async () => {});
+
+            await act(async () => {
+                pushNewChatSeedContext([
+                    makeCommitPayload({ commitHash: '1'.repeat(16), shortHash: '1111111', label: 'Commit 1111111', subject: 'One', title: 'One' }),
+                    makeCommitPayload({ commitHash: '2'.repeat(16), shortHash: '2222222', label: 'Commit 2222222', subject: 'Two', title: 'Two' }),
+                ]);
+            });
+            await waitFor(() => expect(screen.getAllByTestId('attached-commit-context-chip')).toHaveLength(2));
+            expect(mockEnqueueTask).not.toHaveBeenCalled();
+        });
+
+        it('dedupes duplicate items carried within a single bundle push (AC-03)', async () => {
+            // The bundle reader dedupes, but a batch can still reach the composer
+            // with repeats; getItems() is stale mid-loop, so the merge must guard
+            // against adding the same logical item twice in one pass.
+            render(<NewChatArea workspaceId="ws-1" />);
+            await act(async () => {});
+
+            await act(async () => {
+                pushNewChatSeedContext([makeCommitPayload(), makeCommitPayload()]);
+            });
+            await screen.findByTestId('attached-commit-context-chip');
+            await act(async () => {});
+
+            expect(screen.getAllByTestId('attached-commit-context-chip')).toHaveLength(1);
+        });
+
+        it('keeps the default mode when an item is seeded (no auto-switch, AC-03)', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            await act(async () => {});
+            // Default new-chat mode is "ask".
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+
+            await act(async () => {
+                pushNewChatSeedContext([makeCommitPayload()]);
+            });
+            await screen.findByTestId('attached-commit-context-chip');
+
+            // Dropping a commit must not switch the mode based on the item kind.
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
         });
     });
 });

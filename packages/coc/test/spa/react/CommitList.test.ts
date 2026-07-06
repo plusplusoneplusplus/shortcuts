@@ -456,18 +456,29 @@ describe('CommitList', () => {
         });
     });
 
-    describe('commit subject display', () => {
-        it('does not truncate commit subject text', () => {
-            // subject span should allow wrapping, not truncate with ellipsis
-            expect(source).not.toContain('"text-xs text-[#1e1e1e] dark:text-[#ccc] truncate"');
+    describe('commit subject display (compact single-line)', () => {
+        it('truncates the commit subject so each row stays on one line', () => {
+            // Compact rows keep the subject on a single line, truncating with an
+            // ellipsis instead of wrapping onto a second metadata line.
+            expect(source).toContain('truncate min-w-0 flex-1');
+            expect(source).not.toContain('break-words');
         });
 
-        it('uses break-words to allow full subject display', () => {
-            expect(source).toContain('break-words');
+        it('renders the subject and meta inline instead of a stacked two-line body', () => {
+            // The body column is a single horizontal flex row now; the old
+            // vertical stack ("flex flex-col gap-0.5") must be gone.
+            expect(source).not.toContain('flex flex-col gap-0.5');
         });
 
-        it('aligns hash and subject to top for multi-line subjects', () => {
-            expect(source).toContain('items-start');
+        it('keeps the short hash and relative time in the inline meta cluster', () => {
+            expect(source).toContain('commit.shortHash');
+            expect(source).toContain('formatRelativeTime(commit.date)');
+        });
+
+        it('exposes the author name via the avatar tooltip rather than inline text', () => {
+            // The author name text was dropped from the row to save width; the
+            // avatar still carries it as a hover title so no information is lost.
+            expect(source).toContain('title={commit.author}');
         });
     });
 
