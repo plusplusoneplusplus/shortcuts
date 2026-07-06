@@ -477,22 +477,37 @@ describe('RepoGitTab', () => {
     });
 
     describe('scenario banner', () => {
+        // Isolate the scenarioBanner block so assertions don't accidentally match
+        // the same tokens elsewhere in this large component.
+        const bannerSrc = () => source.slice(
+            source.indexOf('const scenarioBanner'),
+            source.indexOf('const commitListPanel'),
+        );
+
         it('derives scenario banner from ahead/behind', () => {
             expect(source).toContain('scenarioBanner');
         });
 
-        it('shows ahead count in banner', () => {
-            expect(source).toContain('ahead > 0');
-            expect(source).toMatch(/↑\$\{ahead\}/);
+        // Regression: the ahead count is shown by the compact badge in
+        // GitPanelHeader, so the banner must NOT render an "ahead" row — doing so
+        // duplicated the badge and wasted vertical space.
+        it('does not duplicate the ahead count in the banner', () => {
+            const banner = bannerSrc();
+            expect(banner).not.toMatch(/↑\$\{ahead\}/);
+            expect(banner).not.toContain('commits ahead');
+            expect(banner).not.toContain('commit ahead');
+        });
+
+        it('renders no banner when only ahead (ahead is shown by the header badge)', () => {
+            expect(bannerSrc()).toContain('if (behind <= 0) return null');
         });
 
         it('shows behind count in banner', () => {
-            expect(source).toContain('behind > 0');
-            expect(source).toMatch(/↓\$\{behind\}/);
+            expect(bannerSrc()).toMatch(/↓\$\{behind\}/);
         });
 
         it('shows "consider pulling" message when behind', () => {
-            expect(source).toContain('consider pulling');
+            expect(bannerSrc()).toContain('consider pulling');
         });
 
         it('returns null for banner on default branch', () => {
@@ -504,11 +519,7 @@ describe('RepoGitTab', () => {
         });
 
         it('uses warning styling when behind', () => {
-            expect(source).toContain('bg-[#fff3cd]');
-        });
-
-        it('uses info styling when only ahead', () => {
-            expect(source).toContain('bg-[#f0f9ff]');
+            expect(bannerSrc()).toContain('bg-[#fff3cd]');
         });
     });
 

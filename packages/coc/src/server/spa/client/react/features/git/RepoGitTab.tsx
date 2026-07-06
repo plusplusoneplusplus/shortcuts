@@ -1648,25 +1648,19 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
     const selectedBranchFile = rightPanelView?.type === 'branch-file' ? rightPanelView.filePath : null;
     const selectedWorkingTreeFile = rightPanelView?.type === 'working-tree-file' ? rightPanelView.filePath : null;
 
-    // Scenario banner
+    // Scenario banner. The compact ahead/behind badge in GitPanelHeader already
+    // shows the ahead count, so surfacing an "N commits ahead" row here would just
+    // duplicate the badge and waste vertical space. The banner is therefore kept
+    // only for the actionable "behind — consider pulling" warning.
     const scenarioBanner = (() => {
         if (onDefaultBranch) return null;
-        const parts: string[] = [];
-        if (ahead > 0) parts.push(`↑${ahead} commit${ahead !== 1 ? 's' : ''} ahead`);
-        if (behind > 0) parts.push(`↓${behind} commit${behind !== 1 ? 's' : ''} behind`);
-        if (parts.length === 0) return null;
-        const isWarning = behind > 0;
+        if (behind <= 0) return null;
         return (
             <div
-                className={`px-4 py-1.5 text-xs border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${
-                    isWarning
-                        ? 'bg-[#fff3cd] dark:bg-[#3c3520] text-[#856404] dark:text-[#ffc107]'
-                        : 'bg-[#f0f9ff] dark:bg-[#1a2733] text-[#0078d4] dark:text-[#3794ff]'
-                }`}
+                className="px-4 py-1.5 text-xs border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fff3cd] dark:bg-[#3c3520] text-[#856404] dark:text-[#ffc107]"
                 data-testid="git-scenario-banner"
             >
-                {parts.join(' · ')}
-                {behind > 0 && ' — consider pulling'}
+                {`↓${behind} commit${behind !== 1 ? 's' : ''} behind`} — consider pulling
             </div>
         );
     })();
