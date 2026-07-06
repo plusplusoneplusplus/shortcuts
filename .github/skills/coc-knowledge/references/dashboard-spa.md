@@ -1035,39 +1035,27 @@ toggled in **Admin -> Configure -> Features -> Remote-first shell**
 (`toggle-remote-shell-enabled`), defined once in `ADMIN_SETTING_DEFINITIONS`.
 Disabled by default; desktop-only; takes effect on reload.
 
-When `features.remoteShell` is on, the desktop top nav switches from per-clone
-repo tabs to a remote-first model built on `features/remote-shell/`. The current
-default is still the legacy two-row layout; enabling
-`features.singleRowShell` (runtime flag `singleRowShellEnabled`,
-`useSingleRowShellEnabled()`) moves the remote and workspace controls into one
-global header row while leaving the two-row path available as fallback.
-
-- **Single-row path (`RemoteShellHeader`)** renders inside `TopBar` when
-  `remoteShellEnabled && singleRowShellEnabled`, the active tab is `repos`, a
-  real repo is selected, and the viewport is not mobile. `RemoteScopeCluster`
-  renders a boxed current-remote chip plus Work Items / Pull Requests pills; the
-  chip opens a dropdown with recent remotes from global preference
-  `recentRemotes` (MRU keys are `groupKey(group)`, capped at 8), default-group
-  fallback before any MRU exists, search across all remotes, a Show all overflow,
-  and add actions for Add workspace folder (`AddFolderDialog`), Add specific
-  repository (`AddRepoDialog`), and Clone repository (`CloneRepoDialog`).
-  Selecting a remote records it in the MRU and picks that remote's remembered
-  clone when available, otherwise the first local-first clone. `WorkspaceTabsCluster`
-  renders the existing clone switcher, clone popover, clone-scoped tabs, overflow
-  menu, repo info/remove dialogs, and toast behavior in the same row. `TopBar`
-  also renders `header-new-btn` as the first right-side action before the WebSocket
-  status pill; it opens the enqueue dialog for the active clone. In this mode
-  `ReposView` renders only a `chromeless` `RepoDetail`; there is no row-2
-  `RemoteSubBar`.
-- **Two-row fallback (`RemoteTopBar` + `RemoteSubBar`)** remains active whenever
-  `features.remoteShell` is on but `features.singleRowShell` is off. Row 1
-  `RemoteTopBar` replaces `RepoTabStrip` inside `TopBar`. It renders one tab per
-  remote (origin) via `groupReposByRemote`, with a color dot, clone-count chip,
-  aggregate running pulse, and summed unseen badge. A trailing `+` button
-  (`remote-add-btn`) opens the add menu. Row 2 `RemoteSubBar` renders above a
-  `chromeless` `RepoDetail` in `ReposView`, splits tabs into remote-scoped (Work
-  Items, Pull Requests) and clone-scoped groups, and keeps the compact Ask/Queue
-  actions targeting the active clone.
+- **Single-row shell (`RemoteShellHeader`)** renders inside `TopBar` when
+  `remoteShellEnabled`, the active tab is `repos`, a real repo is selected, and
+  the viewport is not mobile. `RemoteScopeCluster` renders a boxed current-remote
+  chip plus Work Items / Pull Requests pills; the chip opens a dropdown with
+  recent remotes from global preference `recentRemotes` (MRU keys are
+  `groupKey(group)`, capped at 8), default-group fallback before any MRU exists,
+  search across all remotes, a Show all overflow, and add actions for Add
+  workspace folder (`AddFolderDialog`), Add specific repository
+  (`AddRepoDialog`), and Clone repository (`CloneRepoDialog`). Selecting a remote
+  records it in the MRU and picks that remote's remembered clone when available,
+  otherwise the first local-first clone. `WorkspaceTabsCluster` renders the
+  existing clone switcher, clone popover, clone-scoped tabs, overflow menu, repo
+  info/remove dialogs, and toast behavior in the same row. `TopBar` also renders
+  `header-new-btn` as the first right-side action before the WebSocket status
+  pill; it opens the enqueue dialog for the active clone. `ReposView` renders a
+  `chromeless` `RepoDetail` for the active repo.
+- When `features.remoteShell` is on but no real repo can back
+  `RemoteShellHeader` (for example a fresh desktop window with no selection, or a
+  virtual workspace such as `my_work` / `my_life`), `TopBar` falls back to the
+  classic `RepoTabStrip` while the user remains on the Repos tab, so repository
+  navigation stays visible.
 - **Shared shell behavior** comes from `shellModel.ts` and `repoGrouping.ts`.
   Aggregated remote checkouts fold into the matching local origin's tab (by
   normalized git URL); a remote-only repo gets its own group. Group clones are

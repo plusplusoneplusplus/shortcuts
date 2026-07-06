@@ -211,6 +211,14 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                 {!isMobile && (remoteShell ? (
                     showRemoteHeader && selectedRepo ? (
                         <RemoteShellHeader repo={selectedRepo} repos={repos} />
+                    ) : isOnReposTab ? (
+                        <RepoTabStrip
+                            repos={repos}
+                            selectedRepoId={state.selectedRepoId}
+                            onSelect={selectRepo}
+                            unseenCounts={unseenCounts}
+                            onRefresh={fetchRepos}
+                        />
                     ) : null
                 ) : (
                     <RepoTabStrip

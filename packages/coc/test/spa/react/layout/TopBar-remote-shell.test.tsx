@@ -3,8 +3,8 @@
  *
  * The remote-first shell is now a single header row: when features.remoteShell
  * is on (desktop, repos tab, a clone selected), the TopBar renders
- * RemoteShellHeader unconditionally — there is no experimental flag gate and no
- * two-row RemoteTopBar fallback anymore.
+ * RemoteShellHeader. When there is no concrete clone selected (cold start or a
+ * virtual workspace), it falls back to the normal repo strip.
  *
  * @vitest-environment jsdom
  */
@@ -24,6 +24,7 @@ let mockAppState: any = {
 };
 let mockRepos: any[] = [];
 let mockRemoteShell = true;
+let mockMyLifeEnabled = false;
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: mockAppState, dispatch: mockAppDispatch }),
@@ -59,7 +60,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEn
     useMyWorkEnabled: () => false,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyLifeEnabled', () => ({
-    useMyLifeEnabled: () => false,
+    useMyLifeEnabled: () => mockMyLifeEnabled,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
@@ -76,6 +77,7 @@ beforeEach(() => {
     mockAppDispatch.mockReset();
     mockQueueDispatch.mockReset();
     mockRemoteShell = true;
+    mockMyLifeEnabled = false;
     mockAppState = {
         activeTab: 'repos',
         selectedRepoId: 'a',
@@ -122,12 +124,22 @@ describe('TopBar remote-shell header', () => {
         expect(screen.queryByTestId('header-new-btn')).toBeNull();
     });
 
-    it('renders no remote header (and no RepoTabStrip) when no clone is selected', () => {
+    it('falls back to the classic RepoTabStrip when no clone is selected', () => {
         mockAppState = { ...mockAppState, selectedRepoId: null };
         render(<TopBar />);
 
         expect(screen.queryByTestId('remote-shell-header')).toBeNull();
         expect(screen.queryByTestId('header-new-btn')).toBeNull();
-        expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
+        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
+    });
+
+    it('falls back to the classic RepoTabStrip for the My Life virtual workspace', () => {
+        mockMyLifeEnabled = true;
+        mockAppState = { ...mockAppState, selectedRepoId: 'my_life' };
+        render(<TopBar />);
+
+        expect(screen.queryByTestId('remote-shell-header')).toBeNull();
+        expect(screen.queryByTestId('header-new-btn')).toBeNull();
+        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
     });
 });
