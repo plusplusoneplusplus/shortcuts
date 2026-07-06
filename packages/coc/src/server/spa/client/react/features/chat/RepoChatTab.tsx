@@ -31,6 +31,7 @@ import { adaptSearchResults } from '../../utils/search-adapter';
 import type { ForEachRunSummary, MapReduceRunSummary, ProcessGroupPin, ProcessGroupPinType, ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
+import { mergeCompactingConversations, isCompactingProcess } from './compacting-conversations';
 import { parseForEachRunDeepLink, parseMapReduceRunDeepLink, parseRalphSessionDeepLink } from '../../layout/Router';
 
 export interface RepoChatTabProps {
@@ -530,6 +531,51 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
     }, [appState.processes, running]);
     const { markReadByProcessId } = useNotifications();
 
+    // Chat-list feed: bucket a mid-`/compact` conversation into RUNNING TASKS.
+    //
+    // When a user runs `/compact` on an already-completed conversation, the
+    // compact route flips the process-store status to `running` +
+    // `metadata.compaction.state='running'` (restoring the prior terminal status
+    // on settle) and broadcasts `process-updated`. That conversation finished
+    // long ago, so it is NOT in the in-memory task queue that feeds the `running`
+    // bucket — without this merge it stays in `history` and renders under
+    // COMPLETED TASKS the whole time. Scope the process index to THIS workspace
+    // (it is the global index) so a compaction in another workspace never
+    // surfaces here, then let the pure, provider-agnostic helper promote matching
+    // rows into `running` (and out of `history`). Returns the same references
+    // when nothing is compacting, so the ChatListPane props stay stable.
+    const workspaceProcesses = useMemo(
+        () => (Array.isArray(appState.processes) ? appState.processes : [])
+            .filter((p: any) => p?.workspaceId === workspaceId),
+        [appState.processes, workspaceId],
+    );
+    const { running: mergedRunning, history: mergedHistory } = useMemo(
+        () => mergeCompactingConversations({ running, history, processes: workspaceProcesses as any }),
+        [running, history, workspaceProcesses],
+    );
+
+    // On settle, pull the restored terminal row back into history. The
+    // terminal-only history endpoint excludes a `running` process, so a reload
+    // mid-compaction (or a compaction that started in another tab) leaves the
+    // conversation absent from local `history` and shown only via a synthesized
+    // running row. When it settles it is no longer promoted into `running`, so
+    // without a refetch it would vanish entirely — refetch history so the
+    // now-terminal row reappears under COMPLETED. Idempotent (and cheap) for the
+    // common case where the row was already in local history.
+    const prevCompactingIdsRef = useRef<Set<string>>(new Set());
+    useEffect(() => {
+        const current = new Set<string>();
+        for (const proc of workspaceProcesses as any[]) {
+            if (isCompactingProcess(proc)) current.add(proc.id);
+        }
+        let settled = false;
+        for (const id of prevCompactingIdsRef.current) {
+            if (!current.has(id)) { settled = true; break; }
+        }
+        prevCompactingIdsRef.current = current;
+        if (settled) fetchHistory();
+    }, [workspaceProcesses, fetchHistory]);
+
     // Wrap seen-state mutations to refresh badge counts after debounced API flush
     const scheduleUnseenRefresh = useCallback(() => {
         setTimeout(() => refreshUnseenCounts([workspaceId]), 300);
@@ -897,9 +943,9 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
 
     const listPane = (
         <ChatListPane
-            running={running}
+            running={mergedRunning}
             queued={queued}
-            history={history}
+            history={mergedHistory}
             isPaused={isPaused}
             isPauseResumeLoading={isPauseResumeLoading}
             isRefreshing={isRefreshing}

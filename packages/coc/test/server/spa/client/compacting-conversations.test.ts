@@ -58,6 +58,18 @@ describe('isCompactingProcess', () => {
         expect(isCompactingProcess(null)).toBe(false);
         expect(isCompactingProcess(undefined)).toBe(false);
     });
+
+    // The runtime value from `appState.processes` (seeded by `/api/processes/summaries`
+    // and kept fresh by `process-updated`) carries compaction FLAT on the summary,
+    // not nested under `metadata`. Lock in that this is the shape actually bucketed.
+    it('is true for the flat compaction shape carried on the process summary', () => {
+        expect(isCompactingProcess(proc({ status: 'running', compaction: { state: 'running' } }))).toBe(true);
+    });
+
+    it('is false for the flat shape once compaction has settled', () => {
+        expect(isCompactingProcess(proc({ status: 'completed', compaction: { state: 'completed' } }))).toBe(false);
+        expect(isCompactingProcess(proc({ status: 'failed', compaction: { state: 'failed' } }))).toBe(false);
+    });
 });
 
 describe('mergeCompactingConversations', () => {
@@ -154,6 +166,32 @@ describe('mergeCompactingConversations', () => {
 
         expect(result.running).toBe(running);
         expect(result.history).toBe(history);
+    });
+
+    it('AC-01/AC-02: buckets and settles using the flat runtime compaction shape', () => {
+        // Mirrors exactly what RepoChatTab feeds: `appState.processes` entries carry
+        // `compaction` FLAT (from `ProcessSummary`/`ProcessIndexEntry`), never nested.
+        const history = [historyItem({ id: 'proc-1', status: 'completed' })];
+
+        // In flight: status running + flat compaction.state running -> promoted to running.
+        const inFlight = mergeCompactingConversations({
+            running: [],
+            history,
+            processes: [proc({ id: 'proc-1', status: 'running', compaction: { state: 'running' } })],
+        });
+        expect(inFlight.running.map(t => t.id)).toEqual(['proc-1']);
+        expect(inFlight.running[0].status).toBe('running');
+        expect(inFlight.history).toEqual([]);
+
+        // Settled: prior terminal status restored + flat compaction.state completed
+        // -> back to history, out of running (pure no-op on the history reference).
+        const settled = mergeCompactingConversations({
+            running: [],
+            history,
+            processes: [proc({ id: 'proc-1', status: 'completed', compaction: { state: 'completed' } })],
+        });
+        expect(settled.running).toEqual([]);
+        expect(settled.history).toBe(history);
     });
 
     it('handles multiple simultaneous compactions and mixes promote + synthesize', () => {
