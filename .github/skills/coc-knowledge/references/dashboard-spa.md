@@ -1232,6 +1232,10 @@ shell so the two stay behaviorally identical. Selection/routing reuse
 live in a dedicated lightweight `navFlags.ts` (read by `repoSubTabs.ts`; re-exported
 from `TopBar` for `BottomNav`/`Router`) — kept out of the heavily-mocked
 `featureFlags.ts` so partial test mocks of it don't break on the missing export.
+When `features.splitWorkspacePanel` is enabled, both `RepoDetail` and the
+remote-shell `WorkspaceTabsCluster` pass the flag into `computeVisibleSubTabs`,
+so the clone-scoped standalone Git tab is hidden and the chat tab label becomes
+Workspace while Git remains available inside `SplitWorkspacePanel`.
 
 ## Onboarding
 

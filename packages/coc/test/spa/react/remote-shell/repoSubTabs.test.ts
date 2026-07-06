@@ -115,7 +115,7 @@ describe('computeVisibleSubTabs', () => {
 // AC-02: when the splitWorkspacePanel flag is on, the split "Workspace" view
 // replaces the chat slot — the standalone `git` sub-tab is hidden and the chat
 // tab is relabeled "Workspace" (key preserved). Off by default; off-path is a
-// strict no-op. Absent option (remote-shell callers) behaves as off.
+// strict no-op.
 describe('computeVisibleSubTabs — splitWorkspacePanel flag', () => {
     it('off by default: omitting the option leaves git visible and labels unchanged (classic)', () => {
         const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic' });
