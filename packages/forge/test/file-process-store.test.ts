@@ -479,6 +479,30 @@ describe('FileProcessStore — per-workspace layout', () => {
         expect(clearedWaiting.pendingAskUserCount).toBeUndefined();
     });
 
+    // Compaction state must survive a reload (the reload seed reads getProcessSummaries)
+    // so the chat-list sidebar keeps a mid-`/compact` conversation under RUNNING TASKS.
+    it('getProcessSummaries forwards in-flight compaction metadata in entries', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('compacting', {
+            status: 'running',
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-compact',
+                compaction: { state: 'running', priorStatus: 'completed', startedAt: '2026-06-01T10:00:00Z' },
+            },
+        }));
+        await store.addProcess(makeProcess('plain', {
+            status: 'completed',
+            metadata: { type: 'chat', workspaceId: 'ws-compact' },
+        }));
+
+        const { entries } = await store.getProcessSummaries({ workspaceId: 'ws-compact' });
+        const byId = Object.fromEntries(entries.map(e => [e.id, e]));
+        expect(byId['compacting'].compaction?.state).toBe('running');
+        expect(byId['compacting'].compaction?.priorStatus).toBe('completed');
+        expect(byId['plain'].compaction).toBeUndefined();
+    });
+
     it('persists, reads back, and clears pendingAskUserAnswer across reloads', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         const answer = {

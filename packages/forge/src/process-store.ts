@@ -8,7 +8,7 @@
  */
 
 import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent, ConversationTurn, TimelineItem } from './ai/process-types';
-import type { PendingMessage } from './ai/process-interfaces';
+import type { PendingMessage, ProcessCompactionState } from './ai/process-interfaces';
 import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline-types';
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ConversationCostEstimate } from './ai/conversation-cost-estimate';
@@ -315,6 +315,14 @@ export interface ProcessIndexEntry {
      * views to surface an "awaiting input" indicator without loading the full process.
      */
     pendingAskUserCount?: number;
+    /**
+     * In-progress `/compact` lifecycle, forwarded from the process metadata
+     * (`GenericProcessMetadata.compaction`). Lets list/sidebar views bucket a
+     * compacting conversation as running (status is `running` while
+     * `compaction.state === 'running'`) without loading the full process. Omitted
+     * when the process never ran `/compact`.
+     */
+    compaction?: ProcessCompactionState;
 }
 
 /**

@@ -24,6 +24,10 @@ export interface CompactionProcessLike {
     id: string;
     status?: string;
     type?: string;
+    /** Compaction lifecycle, forwarded flat on the process summary payloads
+     *  (`ProcessSummary` / `ProcessIndexEntry`). */
+    compaction?: { state?: string } | null;
+    /** Legacy/nested location — some callers pass the raw metadata envelope. */
     metadata?: { compaction?: { state?: string } | null } | null;
     // Fallback display fields used when the conversation is absent from local
     // history (e.g. a reload lands mid-compaction — the terminal-only history
@@ -45,9 +49,11 @@ export interface CompactionProcessLike {
  * `compaction.state` `completed`/`failed`) is NOT treated as running.
  */
 export function isCompactingProcess(proc: CompactionProcessLike | null | undefined): boolean {
-    return !!proc
-        && proc.status === 'running'
-        && proc.metadata?.compaction?.state === 'running';
+    if (!proc || proc.status !== 'running') return false;
+    // `compaction` is forwarded flat on the summary payloads; some callers pass
+    // the raw metadata envelope instead. Accept either location.
+    const state = proc.compaction?.state ?? proc.metadata?.compaction?.state;
+    return state === 'running';
 }
 
 export interface MergeCompactingInput {

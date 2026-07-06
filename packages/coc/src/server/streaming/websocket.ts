@@ -16,7 +16,7 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { AIProcess, MarkdownComment } from '@plusplusoneplusplus/forge';
+import type { AIProcess, MarkdownComment, ProcessCompactionState } from '@plusplusoneplusplus/forge';
 import { getServerLogger } from '../logging/server-logger';
 import { isLoopbackOrigin } from '../shared/cors';
 
@@ -72,6 +72,14 @@ export interface ProcessSummary {
      * to surface an "awaiting input" indicator on running tasks.
      */
     pendingAskUserCount?: number;
+    /**
+     * In-progress `/compact` lifecycle, forwarded verbatim from the process
+     * metadata (`GenericProcessMetadata.compaction`). Lets the chat-list sidebar
+     * bucket a compacting conversation under RUNNING TASKS while
+     * `compaction.state === 'running'`, then release it on settle. Omitted when
+     * the process never ran `/compact`.
+     */
+    compaction?: ProcessCompactionState;
 }
 
 /** Lightweight queue task summary for WebSocket messages. */
@@ -508,6 +516,7 @@ export function toProcessSummary(process: AIProcess): ProcessSummary {
         lastMessagePreview: process.lastMessagePreview,
         lastEventAt: process.lastEventAt instanceof Date ? process.lastEventAt.toISOString() : (process.lastEventAt ? String(process.lastEventAt) : undefined),
         pendingAskUserCount: askUserCount > 0 ? askUserCount : 0,
+        compaction: process.metadata?.compaction,
     };
 }
 

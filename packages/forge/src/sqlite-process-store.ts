@@ -36,6 +36,7 @@ import {
     ToolCallPermissionRequest,
     ToolCallPermissionResult,
     ProcessEvent,
+    ProcessCompactionState,
 } from './ai/process-types';
 import type { PendingMessage } from './ai/process-interfaces';
 import type { AIBackendType } from './ai/types';
@@ -921,7 +922,8 @@ export class SqliteProcessStore implements ProcessStore {
         // the metadata JSON envelope so list/sidebar views can show an "awaiting input"
         // indicator without loading the full process row.
         const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived, ` +
-            `COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS pending_ask_user_count ` +
+            `COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS pending_ask_user_count, ` +
+            `json_extract(metadata, '$.compaction') AS compaction_json ` +
             `FROM processes ${sql} ORDER BY last_event_at DESC` +
             (filter?.limit !== undefined ? ` LIMIT ?` : '') +
             (filter?.offset !== undefined ? ` OFFSET ?` : '');
@@ -930,7 +932,7 @@ export class SqliteProcessStore implements ProcessStore {
         if (filter?.limit !== undefined) queryParams.push(filter.limit);
         if (filter?.offset !== undefined) queryParams.push(filter.offset);
 
-        type SummaryRow = ProcessRow & { pending_ask_user_count?: number | null };
+        type SummaryRow = ProcessRow & { pending_ask_user_count?: number | null; compaction_json?: string | null };
 
         const entries: ProcessIndexEntry[] = [];
         for (const row of this.db.prepare(selectQuery).iterate(...queryParams) as IterableIterator<SummaryRow>) {
@@ -956,6 +958,7 @@ export class SqliteProcessStore implements ProcessStore {
                 pinnedAt: row.pinned_at ?? undefined,
                 archived: intToBool(row.archived) || undefined,
                 pendingAskUserCount: askUserCount > 0 ? askUserCount : undefined,
+                compaction: jsonParse<ProcessCompactionState>(row.compaction_json ?? null),
             });
         }
 
@@ -1118,8 +1121,8 @@ export class SqliteProcessStore implements ProcessStore {
 
     getPinnedProcesses(workspaceId: string): ProcessIndexEntry[] {
         const rows = this.db.prepare(
-            'SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived FROM processes WHERE workspace_id = ? AND pinned_at IS NOT NULL ORDER BY pinned_at DESC'
-        ).all(workspaceId) as ProcessRow[];
+            "SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived, json_extract(metadata, '$.compaction') AS compaction_json FROM processes WHERE workspace_id = ? AND pinned_at IS NOT NULL ORDER BY pinned_at DESC"
+        ).all(workspaceId) as (ProcessRow & { compaction_json?: string | null })[];
 
         return rows.map(row => {
             const startMs = new Date(row.start_time).getTime();
@@ -1141,6 +1144,7 @@ export class SqliteProcessStore implements ProcessStore {
                 lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
                 pinnedAt: row.pinned_at ?? undefined,
                 archived: intToBool(row.archived) || undefined,
+                compaction: jsonParse<ProcessCompactionState>(row.compaction_json ?? null),
             };
         });
     }
@@ -2278,14 +2282,15 @@ export class SqliteProcessStore implements ProcessStore {
         const query = `
             SELECT id, workspace_id, status, type, start_time, end_time,
                    prompt_preview, error, parent_process_id, title, custom_title, last_message_preview,
-                   last_event_at, pinned_at, archived
+                   last_event_at, pinned_at, archived,
+                   json_extract(metadata, '$.compaction') AS compaction_json
             FROM processes ${whereSQL}
             ORDER BY last_event_at DESC
             LIMIT ? OFFSET ?
         `;
 
         const entries: ProcessIndexEntry[] = [];
-        for (const row of this.db.prepare(query).iterate(...params, limit, offset) as IterableIterator<ProcessRow>) {
+        for (const row of this.db.prepare(query).iterate(...params, limit, offset) as IterableIterator<ProcessRow & { compaction_json?: string | null }>) {
             const startMs = new Date(row.start_time).getTime();
             const endMs = row.end_time ? new Date(row.end_time).getTime() : undefined;
             entries.push({
@@ -2306,6 +2311,7 @@ export class SqliteProcessStore implements ProcessStore {
                 activityAt: new Date(row.last_event_at ?? row.start_time).toISOString(),
                 pinnedAt: row.pinned_at ?? undefined,
                 archived: intToBool(row.archived) || undefined,
+                compaction: jsonParse<ProcessCompactionState>(row.compaction_json ?? null),
             });
         }
 
