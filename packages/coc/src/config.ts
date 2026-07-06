@@ -270,9 +270,9 @@ export interface CLIConfig {
         ralphMultiAgentGrill?: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions?: boolean;
-        /** Remote-first dashboard shell (one tab per remote). Disabled by default. */
+        /** Remote-first dashboard shell (one tab per remote). Enabled by default. */
         remoteShell?: boolean;
-        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Disabled by default. */
+        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel?: boolean;
     };
     /** Memory promotion configuration */
@@ -586,9 +586,9 @@ export interface ResolvedCLIConfig {
         ralphMultiAgentGrill: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions: boolean;
-        /** Remote-first dashboard shell (one tab per remote). Disabled by default. */
+        /** Remote-first dashboard shell (one tab per remote). Enabled by default. */
         remoteShell: boolean;
-        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Disabled by default. */
+        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel: boolean;
     };
     /** Memory promotion configuration */
@@ -839,8 +839,8 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         autoAgentProviderRouting: false,
         ralphMultiAgentGrill: false,
         nativeCliSessions: false,
-        remoteShell: false,
-        splitWorkspacePanel: false,
+        remoteShell: true,
+        splitWorkspacePanel: true,
     },
     memoryPromotion: {
         batchSize: 50,

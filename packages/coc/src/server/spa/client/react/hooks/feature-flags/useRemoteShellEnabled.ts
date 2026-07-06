@@ -7,7 +7,7 @@ import { DASHBOARD_CONFIG_UPDATED_EVENT, isRemoteShellEnabled } from '../../util
  * When enabled (Admin → Configure → Features → Remote-first shell), the desktop
  * dashboard uses the single-row remote-first header for selected repos and falls
  * back to repo tabs when no real repo is selected. Global admin setting — applies
- * to the whole deployment, takes effect on reload.
+ * to the whole deployment, takes effect on reload. Enabled by default.
  */
 export function useRemoteShellEnabled(): boolean {
     const [enabled, setEnabled] = useState(isRemoteShellEnabled());

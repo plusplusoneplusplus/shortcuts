@@ -380,4 +380,31 @@ describe('Features card UI metadata', () => {
         // Runtime flag reads false when absent from a partial config.
         expect(buildRuntimeFeatureFlags({}).showPlanDepTab).toBe(false);
     });
+
+    // Remote-first shell and Split Workspace panel graduated out of experimental:
+    // they now default ON (resolved default true) with no `experimental` badge,
+    // while staying bootstrap-conservative (absentFallback false) so legacy
+    // partial configs that predate the flag still read as off.
+    it.each([
+        { key: 'features.remoteShell', flag: 'remoteShellEnabled', label: 'Remote-first shell' },
+        { key: 'features.splitWorkspacePanel', flag: 'splitWorkspacePanelEnabled', label: 'Split Workspace panel' },
+    ])('exposes $label as a default-on Features toggle with no experimental badge', ({ key, flag, label }) => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === key);
+        expect(def, `${key} must be an admin setting`).toBeDefined();
+        expect(def!.value).toEqual({ kind: 'boolean' });
+        expect(def!.default, `${key} must default on`).toBe(true);
+        expect(def!.absentFallback, `${key} must stay bootstrap-conservative`).toBe(false);
+        expect(def!.runtime).toBe('live');
+        expect(def!.runtimeFlag).toBe(flag);
+        expect(def!.ui, `${key} must appear on the Features card`).toBeDefined();
+        expect(def!.ui!.group).toBe('dashboard');
+        expect(def!.ui!.label).toBe(label);
+        expect(def!.ui!.badge, `${key} must no longer be flagged experimental`).toBeUndefined();
+        expect(def!.ui!.hint).toMatch(/enabled by default/i);
+        expect(getFeatureCardSettings('dashboard').some(d => d.key === key)).toBe(true);
+        // Resolved config (all fields present) reads the on default; a legacy
+        // partial config that lacks the key still reads off.
+        expect((buildRuntimeFeatures(DEFAULT_CONFIG) as Record<string, unknown>)[flag]).toBe(true);
+        expect(buildRuntimeFeatureFlags({})[flag]).toBe(false);
+    });
 });

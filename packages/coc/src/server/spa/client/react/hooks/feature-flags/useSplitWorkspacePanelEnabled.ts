@@ -8,7 +8,7 @@ import { DASHBOARD_CONFIG_UPDATED_EVENT, isSplitWorkspacePanelEnabled } from '..
  * dashboard replaces the Activity tab with a split "Workspace" view — chat list
  * on top, git on the bottom — that both feed one shared detail pane, and hides
  * the standalone Git tab. Global admin setting; applies to the whole deployment
- * and takes effect on reload. Disabled by default.
+ * and takes effect on reload. Enabled by default.
  */
 export function useSplitWorkspacePanelEnabled(): boolean {
     const [enabled, setEnabled] = useState(isSplitWorkspacePanelEnabled());

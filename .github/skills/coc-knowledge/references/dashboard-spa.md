@@ -1028,7 +1028,7 @@ source forms its own NON-removable group (`🌐 <folderPath>`) placed after
 global/repo and before per-repo extras, since those folders are managed globally
 in the Config tab, not per-repo.
 
-### Remote-first shell (experimental)
+### Remote-first shell
 
 The remote-first navigation model is gated by `useRemoteShellEnabled()`
 (`hooks/feature-flags/useRemoteShellEnabled.ts`), which reads the live
@@ -1036,7 +1036,7 @@ The remote-first navigation model is gated by `useRemoteShellEnabled()`
 `isRemoteShellEnabled()` in `utils/config.ts`). It is a **global admin setting**
 toggled in **Admin -> Configure -> Features -> Remote-first shell**
 (`toggle-remote-shell-enabled`), defined once in `ADMIN_SETTING_DEFINITIONS`.
-Disabled by default; desktop-only; takes effect on reload.
+Enabled by default; desktop-only; takes effect on reload.
 
 - **Single-row shell (`RemoteShellHeader`)** renders inside `TopBar` when
   `remoteShellEnabled`, the active tab is `repos`, a real repo is selected, and

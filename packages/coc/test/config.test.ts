@@ -1266,9 +1266,9 @@ timeout: 300
                     "gitCrossCloneCherryPick": true,
                     "nativeCliSessions": false,
                     "ralphMultiAgentGrill": false,
-                    "remoteShell": false,
+                    "remoteShell": true,
                     "sessionContextAttachments": false,
-                    "splitWorkspacePanel": false,
+                    "splitWorkspacePanel": true,
                   },
                   "forEach": {
                     "enabled": false,
