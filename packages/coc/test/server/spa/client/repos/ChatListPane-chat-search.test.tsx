@@ -4,7 +4,7 @@
  * Tests for ChatListPane — focused on FTS5 search wiring in the Chats tab.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
 // Mocks – declared before importing component under test
@@ -453,5 +453,132 @@ describe('ChatListPane – Chats tab FTS5 search', () => {
         );
 
         expect(screen.queryByTestId('chat-search-load-more-btn')).toBeNull();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — Ctrl+F / Ctrl+N list-focus guard
+//
+// The list-pane Ctrl+F (focus search) and Ctrl+N (new chat) shortcuts should
+// only fire when the user is actually working inside the chat list. When a
+// conversation is open and focus sits elsewhere — inside the conversation
+// pane, the message box, or nowhere in particular (document.body) — the
+// shortcut must be left alone so it does not yank focus back to the list (and
+// so the desktop shell's native find-in-page can handle Ctrl+F instead).
+//
+// Regression: focus used to be tracked with a mousedown-only flag that went
+// stale when a chat was opened by clicking its list row, and a follow-up
+// attempt that keyed off the event target missed the common case where a
+// conversation is open but focus rests on document.body.
+// ---------------------------------------------------------------------------
+
+describe('ChatListPane – Ctrl+F / Ctrl+N list-focus guard', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    // jsdom performs no layout, so offsetParent is always null and the
+    // shortcut guard `offsetParent === null` would bail before reaching the
+    // focus check. Force a truthy offsetParent so the real code path runs.
+    function makePaneVisible() {
+        const pane = screen.getByTestId('chat-list-pane');
+        Object.defineProperty(pane, 'offsetParent', {
+            configurable: true,
+            get: () => document.body,
+        });
+    }
+
+    // Build a sibling conversation pane holding a focusable editor.
+    function mountDetailPane() {
+        const detail = document.createElement('div');
+        detail.setAttribute('data-pane', 'detail');
+        const editor = document.createElement('textarea');
+        detail.appendChild(editor);
+        document.body.appendChild(detail);
+        return { detail, editor };
+    }
+
+    // A non-empty list is required so the full list (with its search input +
+    // container) renders instead of the empty-state placeholder.
+    const CHAT_ID = 'queue_x';
+    const listProps = () => ({ activeTab: 'chats' as const, history: [makeChatTask(CHAT_ID, 'A chat')] });
+    // Same, but with the chat open in the detail pane.
+    const chatOpenProps = () => ({ ...listProps(), selectedTaskId: CHAT_ID });
+
+    it('Ctrl+F focuses the list search when no conversation is open', async () => {
+        render(<ChatListPane {...defaultProps(listProps())} />);
+        makePaneVisible();
+        const input = screen.getByTestId('queue-search-input');
+
+        // Nothing is open and focus rests on the body.
+        fireEvent.keyDown(document.body, { key: 'f', ctrlKey: true });
+
+        await waitFor(() => expect(document.activeElement).toBe(input));
+    });
+
+    it('Ctrl+F focuses the list search when focus is within the list even with a conversation open', async () => {
+        render(<ChatListPane {...defaultProps(chatOpenProps())} />);
+        makePaneVisible();
+        const input = screen.getByTestId('queue-search-input');
+        const newChatBtn = screen.getByTestId('new-chat-btn');
+        newChatBtn.focus();
+
+        // Ctrl+F originates from a control inside the list pane.
+        fireEvent.keyDown(newChatBtn, { key: 'f', ctrlKey: true });
+
+        await waitFor(() => expect(document.activeElement).toBe(input));
+    });
+
+    it('Ctrl+F does NOT steal focus to the list search when the conversation pane is focused (regression)', async () => {
+        render(<ChatListPane {...defaultProps(chatOpenProps())} />);
+        makePaneVisible();
+        const input = screen.getByTestId('queue-search-input');
+        const { detail, editor } = mountDetailPane();
+        editor.focus();
+        expect(document.activeElement).toBe(editor);
+
+        fireEvent.keyDown(editor, { key: 'f', ctrlKey: true });
+
+        // Give the async focus() a chance to run — it must never fire here.
+        await new Promise(resolve => setTimeout(resolve, 5));
+        expect(document.activeElement).toBe(editor);
+        expect(document.activeElement).not.toBe(input);
+
+        document.body.removeChild(detail);
+    });
+
+    it('Ctrl+F does NOT steal focus when a conversation is open and focus rests on the body (regression)', async () => {
+        render(<ChatListPane {...defaultProps(chatOpenProps())} />);
+        makePaneVisible();
+        const input = screen.getByTestId('queue-search-input');
+
+        // A conversation is open, but the user has not clicked into any field —
+        // focus sits on document.body while they read the conversation.
+        expect(document.activeElement).not.toBe(input);
+        fireEvent.keyDown(document.body, { key: 'f', ctrlKey: true });
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+        expect(document.activeElement).not.toBe(input);
+    });
+
+    it('Ctrl+N opens a new chat when no conversation is open', () => {
+        const onNewChat = vi.fn();
+        render(<ChatListPane {...defaultProps({ ...listProps(), onNewChat })} />);
+        makePaneVisible();
+
+        fireEvent.keyDown(document.body, { key: 'n', ctrlKey: true });
+
+        expect(onNewChat).toHaveBeenCalledTimes(1);
+    });
+
+    it('Ctrl+N does NOT fire when a conversation is open and focus is outside the list (regression)', () => {
+        const onNewChat = vi.fn();
+        render(<ChatListPane {...defaultProps({ ...chatOpenProps(), onNewChat })} />);
+        makePaneVisible();
+
+        // Focus rests on the body while a conversation is open.
+        fireEvent.keyDown(document.body, { key: 'n', ctrlKey: true });
+
+        expect(onNewChat).not.toHaveBeenCalled();
     });
 });

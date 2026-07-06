@@ -982,17 +982,6 @@ export function ChatListPane({
         setSearchVisible(false);
     }, [workspaceId]);
 
-    const detailPaneFocusedRef = useRef(false);
-
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            const detailPane = document.querySelector('[data-pane="detail"]');
-            detailPaneFocusedRef.current = !!detailPane?.contains(e.target as Node);
-        };
-        document.addEventListener('mousedown', handler, true);
-        return () => document.removeEventListener('mousedown', handler, true);
-    }, []);
-
     useEffect(() => {
         const root = containerRef.current;
         if (!root) return;
@@ -1015,20 +1004,31 @@ export function ChatListPane({
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
+            // Only claim the list shortcuts when the user is actually working
+            // inside the chat list. When a conversation is open and focus sits
+            // anywhere else — the conversation body, the message box, or nowhere
+            // in particular (document.body) — leave Ctrl+F/Ctrl+N alone so they
+            // don't yank focus back to the list (and, in the desktop shell, so
+            // Ctrl+F can fall through to the native in-page find). A cached
+            // mousedown flag used to gate this, but it went stale whenever a
+            // chat was opened by clicking its list row.
+            const target = e.target as Node | null;
+            const focusInList = !!(target && containerRef.current?.contains(target));
+            const focusElsewhereWithChatOpen = !focusInList && !!selectedTaskId;
             if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
                 // Skip interception when this pane is hidden (display:none via parent).
                 if (!containerRef.current || containerRef.current.offsetParent === null) return;
-                if (detailPaneFocusedRef.current) return;
+                if (focusElsewhereWithChatOpen) return;
                 e.preventDefault();
                 setSearchVisible(true);
                 setTimeout(() => searchInputRef.current?.focus(), 0);
             }
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n' && !e.shiftKey && !e.altKey) {
                 // ⌘N / Ctrl+N — primary "New chat" shortcut. Only intercept when
-                // the activity pane is visible and the detail pane isn't focused
-                // (so users editing a chat aren't disrupted).
+                // the activity pane is visible and focus isn't in an open
+                // conversation (so users editing a chat aren't disrupted).
                 if (!containerRef.current || containerRef.current.offsetParent === null) return;
-                if (detailPaneFocusedRef.current) return;
+                if (focusElsewhereWithChatOpen) return;
                 e.preventDefault();
                 (onNewChat ?? onOpenDialog)?.();
             }
@@ -1043,7 +1043,7 @@ export function ChatListPane({
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [searchVisible, onNewChat, onOpenDialog, selectedHistoryIds.size]);
+    }, [searchVisible, onNewChat, onOpenDialog, selectedHistoryIds.size, selectedTaskId]);
 
     const allTasks = useMemo(
         () => [...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history],
