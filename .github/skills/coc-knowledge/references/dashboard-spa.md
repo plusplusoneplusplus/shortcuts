@@ -1251,7 +1251,12 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
 - Search box
 - Selection persists in `localStorage['coc-activity-scope']`
 - `ChatListPane` keeps the action/scope/search controls in a sticky
-  `chat-list-fixed-header` block while the list rows scroll underneath.
+  `chat-list-fixed-header` block while the list rows scroll underneath. The
+  header full-bleeds to the scroll container edges (`-mx-2 md:-mx-4`) and the
+  `chat-list-pane` scroll container carries no top padding (`px-2 pb-2 md:px-4
+  md:pb-4`, not `p-2 md:p-4`) so the `sticky top-0` header sits flush against the
+  top — top padding there would show as a gap above the panel, which a negative
+  header margin cannot cancel because sticky clamps to the padding edge.
 - The desktop activity split (`RepoChatTab`) can collapse the left chat-list
   panel to a thin rail; collapsed state persists in
   `localStorage['activity-list-collapsed-{workspaceId}']`, the left-panel width

@@ -2809,9 +2809,14 @@ export function ChatListPane({
 
     return (
         <>
+            {/* No top padding on this scroll container: the sticky "New chat"
+                header (`top-0`) full-bleeds to the container edges, so any top
+                padding here would sit ABOVE it as a gap (sticky top-0 clamps to
+                the padding edge, so a negative header margin can't cancel it).
+                Keep horizontal + bottom padding. */}
             <div
                 ref={containerRef}
-                className="p-2 md:p-4 flex flex-col gap-2 md:gap-3 overflow-y-auto flex-1"
+                className="px-2 pb-2 md:px-4 md:pb-4 flex flex-col gap-2 md:gap-3 overflow-y-auto flex-1"
                 data-testid="chat-list-pane"
             >
                 {/* ── Chats tab: redesigned status-grouped list ── */}

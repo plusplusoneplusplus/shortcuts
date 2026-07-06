@@ -551,6 +551,21 @@ describe('ChatListPane', () => {
 
             expect(fixedHeader.className).toContain('sticky');
             expect(fixedHeader.className).toContain('top-0');
+            // The sticky header full-bleeds to the scroll container's horizontal
+            // edges (`-mx-*`). Regression guard for the "gap above the New chat
+            // panel": the scroll container must NOT carry TOP padding, because a
+            // `sticky top-0` header clamps to the padding edge — so any top padding
+            // shows as an empty gap above the panel that a negative header margin
+            // cannot cancel. Horizontal + bottom padding stay.
+            expect(fixedHeader.className).toContain('-mx-2');
+            expect(fixedHeader.className).toContain('md:-mx-4');
+            const paneClasses = pane.className.split(/\s+/);
+            expect(paneClasses).not.toContain('p-2');
+            expect(paneClasses).not.toContain('md:p-4');
+            expect(paneClasses).not.toContain('pt-2');
+            expect(paneClasses).not.toContain('md:pt-4');
+            expect(paneClasses).toContain('pb-2');
+            expect(paneClasses).toContain('md:pb-4');
             expect(fixedHeader.contains(newChatBtn)).toBe(true);
             expect(fixedHeader.contains(searchInput)).toBe(true);
             expect(completedHeader && fixedHeader.contains(completedHeader)).toBe(false);
