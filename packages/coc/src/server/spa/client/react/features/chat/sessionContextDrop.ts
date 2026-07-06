@@ -380,6 +380,16 @@ export function readSessionContextDropPayload(dataTransfer: SessionContextDataTr
         ?? readSessionContextDragPayload(dataTransfer);
 }
 
+/**
+ * Read every session-context payload carried by a drop. Today a drag carries a
+ * single payload, so this returns `[payload]` (or `[]`); AC-02's multi-select
+ * bundle support extends this to return every bundled item.
+ */
+export function readSessionContextDropPayloads(dataTransfer: SessionContextDataTransfer): SessionContextAttachmentDragPayload[] {
+    const single = readSessionContextDropPayload(dataTransfer);
+    return single ? [single] : [];
+}
+
 function payloadIncludesProcess(payload: SessionContextAttachmentDragPayload, processId: string | null | undefined): boolean {
     if (!processId) return false;
     if (payload.kind === SESSION_CONTEXT_DRAG_KIND) return payload.sourceProcessId === processId;

@@ -47,6 +47,8 @@ import { isRalphTask } from '../../../../../tasks/task-types';
 import { getProviderDotClasses, getTaskChatProvider } from './ProviderBadge';
 import { normalizeChatMode } from '../../repos/modeConfig';
 import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragData } from './sessionContextDrag';
+import { dataTransferHasSessionContext, readSessionContextDropPayloads } from './sessionContextDrop';
+import { pushNewChatSeedContext } from './newChatSeedContext';
 import type { ForEachRunSummary, MapReduceRunSummary, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
 
 /** Primary task types surfaced as individual filter options. */
@@ -809,6 +811,55 @@ export function ChatListPane({
     const { loopStateByProcess, processIdsWithLoops, loopProcessCount } = useAllLoops();
     const loopsEnabled = isLoopsEnabled();
     const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
+
+    // AC-01: the desktop "+ New chat" button is a drop target for session-context
+    // drags. A drop opens a fresh new-chat composer seeded with the dropped
+    // item(s); the composer merges them via the existing attached-context path.
+    const [newChatDropActive, setNewChatDropActive] = useState(false);
+    const newChatDropDepthRef = useRef(0);
+
+    const resetNewChatDropState = useCallback(() => {
+        newChatDropDepthRef.current = 0;
+        setNewChatDropActive(false);
+    }, []);
+
+    const handleNewChatDragEnter = useCallback((e: React.DragEvent<HTMLElement>) => {
+        if (!sessionContextDragEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        newChatDropDepthRef.current += 1;
+        setNewChatDropActive(true);
+    }, [sessionContextDragEnabled]);
+
+    const handleNewChatDragOver = useCallback((e: React.DragEvent<HTMLElement>) => {
+        if (!sessionContextDragEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        // preventDefault on dragover is required for the accepted MIME so the
+        // browser fires a `drop` on this button.
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        setNewChatDropActive(true);
+    }, [sessionContextDragEnabled]);
+
+    const handleNewChatDragLeave = useCallback((e: React.DragEvent<HTMLElement>) => {
+        if (!sessionContextDragEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        newChatDropDepthRef.current = Math.max(0, newChatDropDepthRef.current - 1);
+        if (newChatDropDepthRef.current === 0) {
+            setNewChatDropActive(false);
+        }
+    }, [sessionContextDragEnabled]);
+
+    const handleNewChatDrop = useCallback((e: React.DragEvent<HTMLElement>) => {
+        if (!sessionContextDragEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        e.preventDefault();
+        resetNewChatDropState();
+        const payloads = readSessionContextDropPayloads(e.dataTransfer);
+        if (payloads.length === 0) return;
+        // Buffer the items, then open the composer via the normal new-chat flow.
+        // The composer drains the buffer and validates each item (workspace
+        // alignment, dedupe, cap) before attaching — no auto-send.
+        pushNewChatSeedContext(payloads);
+        (onNewChat ?? onOpenDialog)?.();
+    }, [sessionContextDragEnabled, resetNewChatDropState, onNewChat, onOpenDialog]);
 
     const [searchQuery, setSearchQueryRaw] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
@@ -3109,15 +3160,30 @@ export function ChatListPane({
                     <button
                         type="button"
                         onClick={onNewChat ?? onOpenDialog}
-                        title={`New chat (${newChatKbdLabel})`}
+                        title={newChatDropActive ? 'Drop to start a new chat' : `New chat (${newChatKbdLabel})`}
                         data-testid="toolbar-new-chat-btn"
-                        className="flex-1 min-w-0 inline-flex items-center gap-1.5 h-7 pl-2 pr-2 bg-[#f3f3f3] hover:bg-[#e8e8e8] dark:bg-[#1e1e1e] dark:hover:bg-[#2a2a2a] text-[#1e1e1e] dark:text-white rounded-md text-[12px] leading-none font-medium tracking-tight transition-colors active:translate-y-[0.5px]"
+                        data-drop-active={newChatDropActive || undefined}
+                        onDragEnter={handleNewChatDragEnter}
+                        onDragOver={handleNewChatDragOver}
+                        onDragLeave={handleNewChatDragLeave}
+                        onDragEnd={resetNewChatDropState}
+                        onDrop={handleNewChatDrop}
+                        className={cn(
+                            'flex-1 min-w-0 inline-flex items-center gap-1.5 h-7 pl-2 pr-2 rounded-md text-[12px] leading-none font-medium tracking-tight transition-colors active:translate-y-[0.5px]',
+                            newChatDropActive
+                                ? 'bg-[#eaf4ff] dark:bg-[#06314f] text-[#005a9e] dark:text-[#9cdcfe] ring-2 ring-[#0078d4]/60 ring-inset'
+                                : 'bg-[#f3f3f3] hover:bg-[#e8e8e8] dark:bg-[#1e1e1e] dark:hover:bg-[#2a2a2a] text-[#1e1e1e] dark:text-white',
+                        )}
                     >
                         <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true" className="flex-shrink-0">
                             <path d="M7 2v10M2 7h10" />
                         </svg>
-                        <span className="flex-1 text-left truncate">New chat</span>
-                        <kbd className="font-mono text-[10px] tracking-wider rounded-[3px] px-1 py-px border border-[#1e1e1e]/30 dark:border-white/30 text-[#1e1e1e]/85 dark:text-white/85 select-none flex-shrink-0">{newChatKbdLabel}</kbd>
+                        <span className="flex-1 text-left truncate" data-testid={newChatDropActive ? 'new-chat-drop-hint' : undefined}>
+                            {newChatDropActive ? 'Drop to start a new chat' : 'New chat'}
+                        </span>
+                        {!newChatDropActive && (
+                            <kbd className="font-mono text-[10px] tracking-wider rounded-[3px] px-1 py-px border border-[#1e1e1e]/30 dark:border-white/30 text-[#1e1e1e]/85 dark:text-white/85 select-none flex-shrink-0">{newChatKbdLabel}</kbd>
+                        )}
                     </button>
 
                     <Button

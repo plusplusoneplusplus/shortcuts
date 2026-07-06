@@ -1240,7 +1240,11 @@ describe('ChatListPane: New Chat button uses onNewChat', () => {
         // The activity-compact action bar treats the New chat button as the
         // primary, flex-grow CTA — so the label is always visible (no
         // responsive hiding) and a platform-aware kbd hint is shown next to it.
-        expect(source).toMatch(/<span className="flex-1 text-left truncate">New chat<\/span>/);
+        // AC-01 makes the button a drop target: the label span swaps to a drop
+        // hint while a context drag is over it, so the default label lives in the
+        // "New chat" branch of that ternary rather than as inline span text.
+        expect(source).toContain('className="flex-1 text-left truncate"');
+        expect(source).toContain("'New chat'");
         expect(source).toContain('newChatKbdLabel');
     });
 

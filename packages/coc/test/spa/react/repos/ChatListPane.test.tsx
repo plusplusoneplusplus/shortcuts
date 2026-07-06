@@ -16,7 +16,7 @@
  */
 
 import React from 'react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import {
@@ -32,7 +32,12 @@ import {
     getTaskModeKey,
     getTaskModeLabel,
 } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
-import { SESSION_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+import { POINTER_CONTEXT_DRAG_MIME, SESSION_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+import {
+    drainNewChatSeedContext,
+    peekNewChatSeedContext,
+    resetNewChatSeedContext,
+} from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
@@ -1078,6 +1083,120 @@ describe('ChatListPane', () => {
                 sourceProcessId: 'queue_q-source',
                 status: 'queued',
             });
+        });
+    });
+
+    // ── AC-01: "+ New chat" button as a seeded-composer drop target ──────
+    describe('New chat drop target', () => {
+        const sessionPayload = {
+            kind: 'coc.session-context',
+            version: 1,
+            sourceWorkspaceId: 'ws-1',
+            sourceProcessId: 'source-proc-123456',
+            title: 'Source chat',
+            status: 'completed',
+            lastActivityAt: '2026-01-01T00:00:00.000Z',
+        };
+        const commitPayload = {
+            kind: 'coc.git-commit-context',
+            version: 1,
+            sourceWorkspaceId: 'ws-1',
+            commitHash: 'abcdef1234567890',
+            shortHash: 'abcdef1',
+            label: 'Commit abcdef1',
+            subject: 'Add drop target',
+            title: 'Add drop target',
+        };
+
+        function makeDropDataTransfer(payload: unknown, mime = SESSION_CONTEXT_DRAG_MIME) {
+            return {
+                types: [mime],
+                dropEffect: 'none',
+                getData: (format: string) => (format === mime ? JSON.stringify(payload) : ''),
+            };
+        }
+
+        beforeEach(() => {
+            resetNewChatSeedContext();
+            mockSessionContextAttachmentsEnabled = true;
+        });
+        afterEach(() => {
+            resetNewChatSeedContext();
+        });
+
+        it('shows the drop affordance while a session-context drag is over the button', () => {
+            renderPane({ workspaceId: 'ws-1', onNewChat: vi.fn(), history: [makeHistoryTask()] });
+            const btn = screen.getByTestId('toolbar-new-chat-btn');
+
+            const dataTransfer = makeDropDataTransfer(sessionPayload);
+            fireEvent.dragEnter(btn, { dataTransfer });
+
+            expect(dataTransfer.dropEffect).toBe('copy');
+            expect(btn.getAttribute('data-drop-active')).toBe('true');
+            expect(btn.textContent).toContain('Drop to start a new chat');
+
+            fireEvent.dragLeave(btn, { dataTransfer });
+            expect(btn.getAttribute('data-drop-active')).toBeNull();
+        });
+
+        it.each([
+            ['chat/session', sessionPayload, SESSION_CONTEXT_DRAG_MIME],
+            ['git commit (pointer)', commitPayload, POINTER_CONTEXT_DRAG_MIME],
+        ])('opens the new-chat flow and buffers the dropped %s item', (_label, payload, mime) => {
+            const onNewChat = vi.fn();
+            renderPane({ workspaceId: 'ws-1', onNewChat, history: [makeHistoryTask()] });
+            const btn = screen.getByTestId('toolbar-new-chat-btn');
+
+            const dataTransfer = makeDropDataTransfer(payload, mime);
+            fireEvent.dragOver(btn, { dataTransfer });
+            fireEvent.drop(btn, { dataTransfer });
+
+            // Composer opens via the existing new-chat flow.
+            expect(onNewChat).toHaveBeenCalledTimes(1);
+            // Dropped item is buffered for the composer to drain (no auto-send).
+            expect(peekNewChatSeedContext()).toEqual([payload]);
+            // Affordance clears after the drop.
+            expect(btn.getAttribute('data-drop-active')).toBeNull();
+        });
+
+        it('falls back to onOpenDialog when no onNewChat handler is provided', () => {
+            const onOpenDialog = vi.fn();
+            renderPane({ workspaceId: 'ws-1', onNewChat: undefined, onOpenDialog, history: [makeHistoryTask()] });
+            const btn = screen.getByTestId('toolbar-new-chat-btn');
+
+            const dataTransfer = makeDropDataTransfer(commitPayload, POINTER_CONTEXT_DRAG_MIME);
+            fireEvent.drop(btn, { dataTransfer });
+
+            expect(onOpenDialog).toHaveBeenCalledTimes(1);
+            expect(peekNewChatSeedContext()).toEqual([commitPayload]);
+        });
+
+        it('ignores drops that carry no supported context and does not open the composer', () => {
+            const onNewChat = vi.fn();
+            renderPane({ workspaceId: 'ws-1', onNewChat, history: [makeHistoryTask()] });
+            const btn = screen.getByTestId('toolbar-new-chat-btn');
+
+            fireEvent.drop(btn, {
+                dataTransfer: { types: ['text/plain'], dropEffect: 'none', getData: () => 'nope' },
+            });
+
+            expect(onNewChat).not.toHaveBeenCalled();
+            expect(drainNewChatSeedContext()).toEqual([]);
+        });
+
+        it('does not activate the drop target when the feature flag is off', () => {
+            mockSessionContextAttachmentsEnabled = false;
+            const onNewChat = vi.fn();
+            renderPane({ workspaceId: 'ws-1', onNewChat, history: [makeHistoryTask()] });
+            const btn = screen.getByTestId('toolbar-new-chat-btn');
+
+            const dataTransfer = makeDropDataTransfer(sessionPayload);
+            fireEvent.dragEnter(btn, { dataTransfer });
+            expect(btn.getAttribute('data-drop-active')).toBeNull();
+
+            fireEvent.drop(btn, { dataTransfer });
+            expect(onNewChat).not.toHaveBeenCalled();
+            expect(drainNewChatSeedContext()).toEqual([]);
         });
     });
 
