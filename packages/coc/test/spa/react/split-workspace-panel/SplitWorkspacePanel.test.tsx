@@ -5,6 +5,8 @@ import {
     SplitWorkspacePanel,
     splitWorkspaceWidthStorageKey,
     splitWorkspaceDividerStorageKey,
+    splitWorkspaceChatCollapsedStorageKey,
+    splitWorkspaceGitCollapsedStorageKey,
 } from '../../../../src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel';
 
 // Toggle the responsive fallback per test without a real matchMedia.
@@ -177,5 +179,136 @@ describe('SplitWorkspacePanel', () => {
         expect(screen.getByTestId('split-workspace-panel').getAttribute('data-narrow')).toBe('true');
         expect(screen.queryByTestId('split-workspace-divider')).toBeNull();
         expect(screen.queryByTestId('split-workspace-width-divider')).toBeNull();
+    });
+});
+
+describe('SplitWorkspacePanel collapsible sections', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        mockIsMobile = false;
+    });
+
+    it('renders a compact collapsible header for each half, expanded by default', () => {
+        renderPanel();
+        const chatHeader = screen.getByTestId('split-workspace-chat-header');
+        const gitHeader = screen.getByTestId('split-workspace-git-header');
+        // Both start expanded.
+        expect(chatHeader.getAttribute('aria-expanded')).toBe('true');
+        expect(gitHeader.getAttribute('aria-expanded')).toBe('true');
+        // Compact: a short fixed-height bar so the header barely costs vertical
+        // space (the explicit ask).
+        expect(chatHeader.className).toContain('h-[22px]');
+        expect(gitHeader.className).toContain('h-[22px]');
+        // Bodies are visible (not hidden) while expanded.
+        expect(screen.getByTestId('split-workspace-chat-body').classList.contains('hidden')).toBe(false);
+        expect(screen.getByTestId('split-workspace-git-body').classList.contains('hidden')).toBe(false);
+    });
+
+    it('uses custom section labels when provided', () => {
+        render(
+            <SplitWorkspacePanel
+                workspaceId="ws-labels"
+                chatList={<div>chat</div>}
+                gitList={<div>git</div>}
+                detail={<div>detail</div>}
+                chatLabel="Conversations"
+                gitLabel="Source Control"
+            />,
+        );
+        expect(screen.getByTestId('split-workspace-chat-header')).toHaveTextContent('Conversations');
+        expect(screen.getByTestId('split-workspace-git-header')).toHaveTextContent('Source Control');
+    });
+
+    it('collapsing the chat half hides its body, drops the divider, and lets git fill', () => {
+        renderPanel();
+        act(() => {
+            fireEvent.click(screen.getByTestId('split-workspace-chat-header'));
+        });
+        // Body hidden but still mounted; header still present and marked collapsed.
+        expect(screen.getByTestId('split-workspace-chat-body').classList.contains('hidden')).toBe(true);
+        expect(screen.getByTestId('split-workspace-chat-header').getAttribute('aria-expanded')).toBe('false');
+        // The fixed-height style is dropped so the collapsed half is header-only.
+        expect(screen.getByTestId('split-workspace-chat').style.height).toBe('');
+        // No rebalance divider while a half is collapsed.
+        expect(screen.queryByTestId('split-workspace-divider')).toBeNull();
+        // Git half grows to fill the freed space.
+        expect(screen.getByTestId('split-workspace-git').className).toContain('flex-1');
+    });
+
+    it('collapsing the git half hides its body and lets chat fill', () => {
+        renderPanel();
+        act(() => {
+            fireEvent.click(screen.getByTestId('split-workspace-git-header'));
+        });
+        expect(screen.getByTestId('split-workspace-git-body').classList.contains('hidden')).toBe(true);
+        expect(screen.getByTestId('split-workspace-git-header').getAttribute('aria-expanded')).toBe('false');
+        // Chat half now fills (no fixed height) and the divider is gone.
+        expect(screen.getByTestId('split-workspace-chat').className).toContain('flex-1');
+        expect(screen.getByTestId('split-workspace-chat').style.height).toBe('');
+        expect(screen.queryByTestId('split-workspace-divider')).toBeNull();
+    });
+
+    it('can collapse both halves at once (headers stay, both bodies hidden)', () => {
+        renderPanel();
+        act(() => {
+            fireEvent.click(screen.getByTestId('split-workspace-chat-header'));
+        });
+        act(() => {
+            fireEvent.click(screen.getByTestId('split-workspace-git-header'));
+        });
+        expect(screen.getByTestId('split-workspace-chat-body').classList.contains('hidden')).toBe(true);
+        expect(screen.getByTestId('split-workspace-git-body').classList.contains('hidden')).toBe(true);
+        // Headers remain the click targets to expand again.
+        expect(screen.getByTestId('split-workspace-chat-header')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-git-header')).toBeTruthy();
+    });
+
+    it('toggling a header expands it back and restores the divider and fixed height', () => {
+        renderPanel();
+        const chatHeader = () => screen.getByTestId('split-workspace-chat-header');
+        act(() => { fireEvent.click(chatHeader()); });
+        expect(chatHeader().getAttribute('aria-expanded')).toBe('false');
+        act(() => { fireEvent.click(chatHeader()); });
+        expect(chatHeader().getAttribute('aria-expanded')).toBe('true');
+        // Both expanded again → the rebalance divider returns...
+        expect(screen.getByTestId('split-workspace-divider')).toBeTruthy();
+        // ...and chat regains its persisted fixed height.
+        expect(screen.getByTestId('split-workspace-chat').style.height).toBe('320px');
+    });
+
+    it('persists collapsed state per-workspace on toggle', () => {
+        renderPanel('ws-collapse');
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-chat-header')); });
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-git-header')); });
+        expect(localStorage.getItem(splitWorkspaceChatCollapsedStorageKey('ws-collapse'))).toBe('1');
+        expect(localStorage.getItem(splitWorkspaceGitCollapsedStorageKey('ws-collapse'))).toBe('1');
+        // Keys are workspace-scoped: another workspace has nothing stored.
+        expect(localStorage.getItem(splitWorkspaceChatCollapsedStorageKey('ws-other'))).toBeNull();
+    });
+
+    it('does not write a collapsed key until the user toggles', () => {
+        renderPanel('ws-clean');
+        expect(localStorage.getItem(splitWorkspaceChatCollapsedStorageKey('ws-clean'))).toBeNull();
+        expect(localStorage.getItem(splitWorkspaceGitCollapsedStorageKey('ws-clean'))).toBeNull();
+    });
+
+    it('re-expanding writes the collapsed flag back to 0', () => {
+        renderPanel('ws-roundtrip');
+        const chatHeader = () => screen.getByTestId('split-workspace-chat-header');
+        act(() => { fireEvent.click(chatHeader()); });
+        expect(localStorage.getItem(splitWorkspaceChatCollapsedStorageKey('ws-roundtrip'))).toBe('1');
+        act(() => { fireEvent.click(chatHeader()); });
+        expect(localStorage.getItem(splitWorkspaceChatCollapsedStorageKey('ws-roundtrip'))).toBe('0');
+    });
+
+    it('restores persisted collapsed state on a fresh mount', () => {
+        localStorage.setItem(splitWorkspaceChatCollapsedStorageKey('ws-restore'), '1');
+        renderPanel('ws-restore');
+        expect(screen.getByTestId('split-workspace-chat-header').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.getByTestId('split-workspace-chat-body').classList.contains('hidden')).toBe(true);
+        // Git was not persisted collapsed → it stays expanded.
+        expect(screen.getByTestId('split-workspace-git-header').getAttribute('aria-expanded')).toBe('true');
+        // A collapsed chat on load means no rebalance divider.
+        expect(screen.queryByTestId('split-workspace-divider')).toBeNull();
     });
 });

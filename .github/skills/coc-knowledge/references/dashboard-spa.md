@@ -1266,6 +1266,14 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   `role="separator"` resize handle with an expanded hit target; it persists the
   chat pane height per workspace under
   `split-workspace:{workspaceId}:chat-height`.
+- Each `SplitWorkspacePanel` left half (chat top, git bottom) sits under a
+  compact 22px VS Code-style section header. Clicking a header collapses that
+  half to just its bar; the still-open half grows to fill (the chat/git divider
+  renders only when both halves are open). Collapsed bodies stay mounted but
+  `hidden` so scroll/selection survive. Collapsed state persists per workspace
+  under `split-workspace:{workspaceId}:chat-collapsed` and
+  `split-workspace:{workspaceId}:git-collapsed`, written only on an explicit
+  user toggle (never on mount or workspace switch).
 - For Each parent run group rows render in Activity Chats and All, but not in
   Activity Automations or Loops; loop-linked child chats can still appear in
   Loops independently of the hidden parent group row.
