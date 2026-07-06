@@ -2925,7 +2925,8 @@ export function ChatListPane({
                             💬 New Chat
                         </Button>
 
-                        {/* Search bar — magnifying glass + ⌘F kbd hint */}
+                        {/* Search bar — hidden by default; revealed with Ctrl+F / ⌘F (see the keydown handler). */}
+                        {searchVisible && (
                         <div className="relative">
                             <span className="absolute left-[7px] top-1/2 -translate-y-1/2 text-[#848484] dark:text-[#a0a0a0] pointer-events-none" aria-hidden="true">
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
@@ -2965,6 +2966,7 @@ export function ChatListPane({
                                 </div>
                             )}
                         </div>
+                        )}
 
                         {/* Filter chips: All / Running / Failed (chips with zero count auto-hide except All) */}
                         {!isServerSearchActive && (
@@ -3443,7 +3445,8 @@ export function ChatListPane({
                     </div>
                 )}
 
-                {/* Search bar — always visible on every tab to match the activity-compact reference. */}
+                {/* Search bar — hidden by default; revealed with Ctrl+F / ⌘F (see the keydown handler). */}
+                {searchVisible && (
                 <div className="relative">
                     <span className="absolute left-[7px] top-1/2 -translate-y-1/2 text-[#848484] dark:text-[#a0a0a0] pointer-events-none" aria-hidden="true">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
@@ -3489,6 +3492,7 @@ export function ChatListPane({
                         </div>
                     )}
                 </div>
+                )}
                 </div>
                 </div>
 

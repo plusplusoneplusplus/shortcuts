@@ -224,6 +224,19 @@ function makeSearchResult(id: string, displayName: string, snippet = '') {
     };
 }
 
+// The search input is hidden by default and only mounts once the user presses
+// Ctrl+F / ⌘F. jsdom has no layout engine (offsetParent is always null), so the
+// keydown handler's visibility guard would bail — force a truthy offsetParent on
+// the pane, then fire Ctrl+F to reveal the input.
+function revealSearch() {
+    const pane = screen.getByTestId('chat-list-pane');
+    Object.defineProperty(pane, 'offsetParent', {
+        configurable: true,
+        get: () => document.body,
+    });
+    fireEvent.keyDown(document.body, { key: 'f', ctrlKey: true });
+}
+
 // ---------------------------------------------------------------------------
 // Tests — Chats tab FTS5 search wiring
 // ---------------------------------------------------------------------------
@@ -392,7 +405,8 @@ describe('ChatListPane – Chats tab FTS5 search', () => {
             />,
         );
 
-        // Type in the Chats tab's own search bar
+        // Reveal + type in the Chats tab's own search bar
+        revealSearch();
         const input = screen.getByTestId('queue-search-input');
         fireEvent.change(input, { target: { value: 'hello' } });
 
@@ -413,6 +427,7 @@ describe('ChatListPane – Chats tab FTS5 search', () => {
             />,
         );
 
+        revealSearch();
         const input = screen.getByTestId('queue-search-input');
         fireEvent.change(input, { target: { value: 'Chat' } });
 
@@ -498,67 +513,68 @@ describe('ChatListPane – Ctrl+F / Ctrl+N list-focus guard', () => {
         return { detail, editor };
     }
 
-    // A non-empty list is required so the full list (with its search input +
-    // container) renders instead of the empty-state placeholder.
+    // A non-empty list is required so the full list (with its pane container)
+    // renders instead of the empty-state placeholder.
     const CHAT_ID = 'queue_x';
     const listProps = () => ({ activeTab: 'chats' as const, history: [makeChatTask(CHAT_ID, 'A chat')] });
     // Same, but with the chat open in the detail pane.
     const chatOpenProps = () => ({ ...listProps(), selectedTaskId: CHAT_ID });
 
-    it('Ctrl+F focuses the list search when no conversation is open', async () => {
+    it('Ctrl+F reveals and focuses the list search when no conversation is open', async () => {
         render(<ChatListPane {...defaultProps(listProps())} />);
         makePaneVisible();
-        const input = screen.getByTestId('queue-search-input');
+        // Hidden by default.
+        expect(screen.queryByTestId('queue-search-input')).toBeNull();
 
         // Nothing is open and focus rests on the body.
         fireEvent.keyDown(document.body, { key: 'f', ctrlKey: true });
 
+        const input = await screen.findByTestId('queue-search-input');
         await waitFor(() => expect(document.activeElement).toBe(input));
     });
 
-    it('Ctrl+F focuses the list search when focus is within the list even with a conversation open', async () => {
+    it('Ctrl+F reveals and focuses the list search when focus is within the list even with a conversation open', async () => {
         render(<ChatListPane {...defaultProps(chatOpenProps())} />);
         makePaneVisible();
-        const input = screen.getByTestId('queue-search-input');
         const newChatBtn = screen.getByTestId('new-chat-btn');
         newChatBtn.focus();
 
         // Ctrl+F originates from a control inside the list pane.
         fireEvent.keyDown(newChatBtn, { key: 'f', ctrlKey: true });
 
+        const input = await screen.findByTestId('queue-search-input');
         await waitFor(() => expect(document.activeElement).toBe(input));
     });
 
-    it('Ctrl+F does NOT steal focus to the list search when the conversation pane is focused (regression)', async () => {
+    it('Ctrl+F does NOT reveal the list search when the conversation pane is focused (regression)', async () => {
         render(<ChatListPane {...defaultProps(chatOpenProps())} />);
         makePaneVisible();
-        const input = screen.getByTestId('queue-search-input');
         const { detail, editor } = mountDetailPane();
         editor.focus();
         expect(document.activeElement).toBe(editor);
 
         fireEvent.keyDown(editor, { key: 'f', ctrlKey: true });
 
-        // Give the async focus() a chance to run — it must never fire here.
+        // Give the async reveal/focus a chance to run — it must never fire here,
+        // so the search input stays unmounted and focus stays in the editor.
         await new Promise(resolve => setTimeout(resolve, 5));
+        expect(screen.queryByTestId('queue-search-input')).toBeNull();
         expect(document.activeElement).toBe(editor);
-        expect(document.activeElement).not.toBe(input);
 
         document.body.removeChild(detail);
     });
 
-    it('Ctrl+F does NOT steal focus when a conversation is open and focus rests on the body (regression)', async () => {
+    it('Ctrl+F does NOT reveal the list search when a conversation is open and focus rests on the body (regression)', async () => {
         render(<ChatListPane {...defaultProps(chatOpenProps())} />);
         makePaneVisible();
-        const input = screen.getByTestId('queue-search-input');
 
         // A conversation is open, but the user has not clicked into any field —
         // focus sits on document.body while they read the conversation.
-        expect(document.activeElement).not.toBe(input);
+        expect(screen.queryByTestId('queue-search-input')).toBeNull();
         fireEvent.keyDown(document.body, { key: 'f', ctrlKey: true });
 
         await new Promise(resolve => setTimeout(resolve, 5));
-        expect(document.activeElement).not.toBe(input);
+        expect(screen.queryByTestId('queue-search-input')).toBeNull();
     });
 
     it('Ctrl+N opens a new chat when no conversation is open', () => {

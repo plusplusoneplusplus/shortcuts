@@ -1251,7 +1251,11 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
 
 - Action bar: New chat + refresh + ALL/AP split pause pill
 - Scope segmented control: Chats / Loops (when `loops.enabled`) / Automations / All
-- Search box
+- Search box: hidden by default, gated behind `searchVisible`. Ctrl+F / ⌘F
+  reveals and focuses it (the same shortcut is suppressed when a conversation is
+  open and focus is outside the list, so native find-in-page still works); ✕
+  clears the query but leaves the box open; Escape clears the query and hides the
+  box; a `workspaceId` change also resets `searchVisible`
 - Selection persists in `localStorage['coc-activity-scope']`
 - `ChatListPane` keeps the action/scope/search controls in a sticky
   `chat-list-fixed-header` block while the list rows scroll underneath. The
