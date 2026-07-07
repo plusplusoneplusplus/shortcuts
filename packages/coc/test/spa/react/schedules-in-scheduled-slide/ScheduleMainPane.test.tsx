@@ -24,6 +24,7 @@ import { AppProvider } from '../../../../src/server/spa/client/react/contexts/Ap
 import {
     ScheduleMainPane,
     parseScheduleMainPaneRoute,
+    isSchedulesRoute,
     type ScheduleMainPaneRoute,
 } from '../../../../src/server/spa/client/react/features/schedules/ScheduleMainPane';
 import {
@@ -126,6 +127,27 @@ describe('parseScheduleMainPaneRoute', () => {
     it('ignores a trailing query string', () => {
         expect(parseScheduleMainPaneRoute('#repos/ws-1/schedules/sch-1?x=1', 'ws-1'))
             .toEqual({ kind: 'detail', scheduleId: 'sch-1' });
+    });
+});
+
+describe('isSchedulesRoute', () => {
+    it('is true for the bare schedules landing hash (where parse returns null)', () => {
+        expect(isSchedulesRoute('#repos/ws-1/schedules', 'ws-1')).toBe(true);
+        expect(parseScheduleMainPaneRoute('#repos/ws-1/schedules', 'ws-1')).toBeNull();
+    });
+    it('is true for the create and detail deep links', () => {
+        expect(isSchedulesRoute('#repos/ws-1/schedules/new', 'ws-1')).toBe(true);
+        expect(isSchedulesRoute('#repos/ws-1/schedules/sch-1', 'ws-1')).toBe(true);
+        expect(isSchedulesRoute('#repos/ws-1/schedules/repo%3Aslug?x=1', 'ws-1')).toBe(true);
+    });
+    it('is false when the workspace does not match', () => {
+        expect(isSchedulesRoute('#repos/ws-2/schedules/sch-1', 'ws-1')).toBe(false);
+        expect(isSchedulesRoute('#repos/ws-2/schedules', 'ws-1')).toBe(false);
+    });
+    it('is false for non-schedules routes and empty hashes', () => {
+        expect(isSchedulesRoute('#repos/ws-1/chats/abc', 'ws-1')).toBe(false);
+        expect(isSchedulesRoute('#repos/ws-1', 'ws-1')).toBe(false);
+        expect(isSchedulesRoute('', 'ws-1')).toBe(false);
     });
 });
 

@@ -672,6 +672,15 @@ export interface ChatListPaneProps {
     onSelectMapReduceRun?: (runId: string) => void;
     /** Keyboard cursor highlight id from useChatPaneNavigation. May differ from selectedTaskId. */
     cursorTaskId?: string | null;
+    /**
+     * When set (schedules-in-slide flag ON + a `#repos/{ws}/schedules...` route
+     * is active), forces the "Scheduled" (`loops`) slide active so a
+     * deep-linked or redirected schedule surface lands on the right segment
+     * (AC-03 deep-link / AC-04 redirect). Applied once when it changes to a
+     * value, leaving the user free to switch segments afterward. Omitted (flag
+     * OFF / non-schedule routes) → the persisted scope is used unchanged.
+     */
+    forceScope?: ActivityScope;
 }
 
 function formatMetadataText(task: any): string {
@@ -793,6 +802,7 @@ export function ChatListPane({
     selectedMapReduceRunId,
     onSelectMapReduceRun,
     cursorTaskId,
+    forceScope,
 }: ChatListPaneProps) {
     const { state: queueState } = useQueue();
     const isTaskSubmitting = queueState.isTaskSubmitting;
@@ -891,6 +901,9 @@ export function ChatListPane({
      * Default is 'all' to preserve the pre-existing behavior of showing every task.
      */
     const [activeScope, setActiveScopeState] = useState<ActivityScope>(() => {
+        // A schedules route is the active surface on mount (deep-link / reload):
+        // land on the Scheduled slide instead of the persisted scope.
+        if (forceScope) return forceScope;
         if (typeof window === 'undefined') return 'all';
         try {
             const saved = localStorage.getItem('coc-activity-scope');
@@ -902,6 +915,16 @@ export function ChatListPane({
         setActiveScopeState(next);
         try { localStorage.setItem('coc-activity-scope', next); } catch { /* ignore */ }
     }, []);
+
+    // Force the "Scheduled" slide active when a schedules route becomes the
+    // active surface (deep-link / redirect). Keyed on `forceScope`, so it fires
+    // once when the value transitions (undefined → 'loops') and does NOT refire
+    // while staying on the schedules family — the user can still switch segments
+    // with a schedule open. No-op when `forceScope` is absent (flag OFF / other
+    // routes), preserving the persisted-scope behavior for every other caller.
+    useEffect(() => {
+        if (forceScope) setActiveScope(forceScope);
+    }, [forceScope, setActiveScope]);
 
     const setSearchQuery = useCallback((q: string) => {
         setSearchQueryRaw(q);

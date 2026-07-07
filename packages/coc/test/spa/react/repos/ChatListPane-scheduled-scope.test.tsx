@@ -364,3 +364,47 @@ describe('ChatListPane Scheduled scope', () => {
         expect(localStorage.getItem('coc-activity-scope')).toBe('loops');
     });
 });
+
+// --- forceScope: schedules route forces the Scheduled slide active (AC-03/AC-04) ---
+
+describe('ChatListPane forceScope', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        // The Scheduled segment must be visible for the force to have a target.
+        loopsEnabledValue = true;
+        mockListAll.mockResolvedValue([]);
+        try { localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
+    });
+
+    it('forces the Scheduled segment active, overriding a persisted "chat" scope', async () => {
+        try { localStorage.setItem('coc-activity-scope', 'chat'); } catch { /* ignore */ }
+        await act(async () => {
+            render(<ChatListPane {...defaultProps} history={[makeTask()]} forceScope="loops" />);
+        });
+        expect(screen.getByTestId('activity-scope-tab-loops').getAttribute('aria-selected')).toBe('true');
+        expect(screen.getByTestId('activity-scope-tab-chat').getAttribute('aria-selected')).toBe('false');
+        // The force writes through to the persisted scope (matches existing
+        // scope-persistence behavior).
+        expect(localStorage.getItem('coc-activity-scope')).toBe('loops');
+    });
+
+    it('uses the persisted scope when forceScope is absent (flag off / non-schedule routes)', async () => {
+        try { localStorage.setItem('coc-activity-scope', 'chat'); } catch { /* ignore */ }
+        await act(async () => {
+            render(<ChatListPane {...defaultProps} history={[makeTask()]} />);
+        });
+        expect(screen.getByTestId('activity-scope-tab-chat').getAttribute('aria-selected')).toBe('true');
+        expect(screen.getByTestId('activity-scope-tab-loops').getAttribute('aria-selected')).toBe('false');
+    });
+
+    it('still lets the user switch segments while forced (does not re-force)', async () => {
+        await act(async () => {
+            render(<ChatListPane {...defaultProps} history={[makeTask()]} forceScope="loops" />);
+        });
+        expect(screen.getByTestId('activity-scope-tab-loops').getAttribute('aria-selected')).toBe('true');
+        // A schedule stays open (forceScope prop unchanged) but the user picks Chats.
+        await act(async () => { await userEvent.click(screen.getByTestId('activity-scope-tab-chat')); });
+        expect(screen.getByTestId('activity-scope-tab-chat').getAttribute('aria-selected')).toBe('true');
+        expect(screen.getByTestId('activity-scope-tab-loops').getAttribute('aria-selected')).toBe('false');
+    });
+});

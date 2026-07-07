@@ -18,7 +18,7 @@ import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
-import { ScheduleMainPane, parseScheduleMainPaneRoute } from '../schedules/ScheduleMainPane';
+import { ScheduleMainPane, parseScheduleMainPaneRoute, isSchedulesRoute } from '../schedules/ScheduleMainPane';
 import type { ScheduleMainPaneRoute } from '../schedules/ScheduleMainPane';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
 import { RalphWorkflowPaneContainer } from './RalphWorkflowPaneContainer';
@@ -744,9 +744,17 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
     const [scheduleRoute, setScheduleRoute] = useState<ScheduleMainPaneRoute | null>(
         () => schedulesInSlideEnabled ? parseScheduleMainPaneRoute(location.hash, workspaceId) : null,
     );
+    // Whether the active hash is *any* `#repos/{ws}/schedules...` route (bare
+    // landing hash included, unlike `scheduleRoute`). Drives forcing the
+    // chat-list "Scheduled" slide active so a deep-linked / redirected schedule
+    // surface lands on the right sidebar segment (AC-03 deep-link / AC-04).
+    const [scheduleScopeActive, setScheduleScopeActive] = useState<boolean>(
+        () => schedulesInSlideEnabled ? isSchedulesRoute(location.hash, workspaceId) : false,
+    );
     useEffect(() => {
         if (!schedulesInSlideEnabled) {
             setScheduleRoute(prev => (prev === null ? prev : null));
+            setScheduleScopeActive(prev => (prev ? false : prev));
             return;
         }
         const apply = () => {
@@ -759,6 +767,8 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
                 }
                 return next;
             });
+            const scopeActive = isSchedulesRoute(location.hash, workspaceId);
+            setScheduleScopeActive(prev => (prev === scopeActive ? prev : scopeActive));
         };
         apply();
         window.addEventListener('hashchange', apply);
@@ -1034,6 +1044,7 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
             onSelectMapReduceRun={handleOpenMapReduceRun}
             cursorTaskId={cursorTaskId}
             onNewChat={handleNewChat}
+            forceScope={scheduleScopeActive ? 'loops' : undefined}
         />
     );
 

@@ -48,6 +48,23 @@ export function parseScheduleMainPaneRoute(hash: string, workspaceId: string): S
     return { kind: 'detail', scheduleId: decodeURIComponent(parts[3]) };
 }
 
+/**
+ * True when `hash` addresses the schedules family for `workspaceId` — the bare
+ * `#repos/{ws}/schedules` landing hash OR any `#repos/{ws}/schedules/...` deep
+ * link (new / detail). Unlike `parseScheduleMainPaneRoute` (which returns null
+ * for the bare hash, meaning "no active schedule in the main pane"), this covers
+ * the whole family so the chat-list "Scheduled" slide can be forced active
+ * whenever the schedules surface is the active route (AC-03 deep-link / AC-04
+ * redirect target).
+ */
+export function isSchedulesRoute(hash: string, workspaceId: string): boolean {
+    const clean = hash.replace(/^#/, '').split('?')[0];
+    const parts = clean.split('/');
+    if (parts[0] !== 'repos' || !parts[1]) return false;
+    if (decodeURIComponent(parts[1]) !== workspaceId) return false;
+    return parts[2] === 'schedules';
+}
+
 interface ScheduleMainPaneProps {
     workspaceId: string;
     route: ScheduleMainPaneRoute;
