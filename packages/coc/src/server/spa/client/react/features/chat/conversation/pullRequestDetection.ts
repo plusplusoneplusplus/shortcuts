@@ -89,6 +89,48 @@ function getCommandString(args: unknown): string {
     return '';
 }
 
+// A shell interpreter invoked with a `-c`/`-lc` flag, e.g. `bash -lc '<cmd>'`,
+// `/bin/bash -c "<cmd>"`, `sh -c '<cmd>'`. Some agent harnesses serialize every
+// shell tool call this way, so the real command lives entirely inside the quoted
+// payload. Without unwrapping, `stripQuotedShellText` erases that payload and a
+// genuine `gh pr create` is never seen.
+const SHELL_WRAPPER_RE = /^\s*(?:\S*\/)?(?:ba|z|k|da)?sh\s+-[a-z]*c\b\s*/i;
+
+/**
+ * If `command` is a shell-interpreter wrapper (`bash -lc '…'`, `sh -c "…"`, …),
+ * returns the inner command payload — the first quoted argument after the
+ * `-c`/`-lc` flag. Returns null for anything that is not such a wrapper, so a
+ * quoted argument to an ordinary command (e.g. `rg "gh pr create" .`) is never
+ * treated as a command to scan.
+ */
+function extractShellWrapperPayload(command: string): string | null {
+    const match = SHELL_WRAPPER_RE.exec(command);
+    if (!match) return null;
+    const rest = command.slice(match[0].length);
+    const quote = rest[0];
+    if (quote !== '"' && quote !== "'") return null;
+
+    let payload = '';
+    let escaped = false;
+    for (let i = 1; i < rest.length; i++) {
+        const ch = rest[i];
+        if (escaped) {
+            payload += ch;
+            escaped = false;
+            continue;
+        }
+        if (ch === '\\' && quote === '"') {
+            escaped = true;
+            payload += ch;
+            continue;
+        }
+        if (ch === quote) return payload;
+        payload += ch;
+    }
+    // Unterminated quote: treat the remainder as the payload.
+    return payload;
+}
+
 function stripQuotedShellText(command: string): string {
     let quote: '"' | "'" | null = null;
     let escaped = false;
@@ -117,9 +159,17 @@ function stripQuotedShellText(command: string): string {
     return stripped;
 }
 
-function isPullRequestCreatingCommand(command: string): boolean {
+function matchesPrCreatePattern(command: string): boolean {
     const commandOutsideQuotes = stripQuotedShellText(command);
     return PR_CREATING_PATTERNS.some(re => re.test(commandOutsideQuotes));
+}
+
+function isPullRequestCreatingCommand(command: string): boolean {
+    if (matchesPrCreatePattern(command)) return true;
+    // Also scan inside a shell-interpreter wrapper (`bash -lc 'gh pr create …'`),
+    // where the real command is quoted and would otherwise be stripped away.
+    const payload = extractShellWrapperPayload(command);
+    return payload !== null && matchesPrCreatePattern(payload);
 }
 
 function isPullRequestCreatingWrapperCommand(command: string): boolean {

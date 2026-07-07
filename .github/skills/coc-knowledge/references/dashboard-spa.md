@@ -178,7 +178,10 @@ card. The
 (`pullRequestDetection.ts`, no new regex) with persisted bindings looked up by
 `task_id`. Detection requires PR-creation evidence from the GitHub connector's
 create-pull-request tool, or per shell tool call: a `gh pr create` /
-`az repos pr create` command, a result carrying the
+`az repos pr create` command — including when the harness serializes it inside a
+shell-interpreter wrapper (`bash -lc '…'`, `/bin/bash -c "…"`, `sh -c '…'`), whose
+quoted payload is unwrapped and scanned so the wrapped command still matches — a
+result carrying the
 `submit_commits_as_pr.py` wrapper's structured success line (a line-start
 `JSON: {... "pr_url": "...", "status": "done"}` — recognized even when surfaced
 by a later `grep`/`tail` of the wrapper's persisted stdout, since the original
