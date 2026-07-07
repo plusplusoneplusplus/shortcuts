@@ -230,7 +230,7 @@ function TableControls({ editor }: TableControlsProps) {
 
     return (
         <div
-            className="flex items-center gap-0.5 px-2 py-0.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a] text-xs"
+            className="flex items-center gap-0.5 px-2 py-0.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a] text-xs text-[#1e1e1e] dark:text-[#cccccc]"
             data-testid="table-controls-row"
         >
             {/* Column operations */}
@@ -301,7 +301,7 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
     return (
         <>
         <div
-            className="flex items-center gap-0.5 px-2 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-wrap"
+            className="flex items-center gap-0.5 px-2 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-wrap text-[#1e1e1e] dark:text-[#cccccc]"
             role="toolbar"
             aria-label="Formatting toolbar"
             data-testid="note-editor-toolbar"

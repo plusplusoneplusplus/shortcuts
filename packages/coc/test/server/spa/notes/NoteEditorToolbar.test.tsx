@@ -323,3 +323,23 @@ describe('NoteEditorToolbar — highlight swatch dark-mode contrast', () => {
         expect(swatch.className).toContain('text-[#1e1e1e]');
     });
 });
+
+describe('NoteEditorToolbar — dark-mode text color', () => {
+    let editor: Editor;
+
+    afterEach(() => {
+        cleanup();
+        editor?.destroy();
+        vi.restoreAllMocks();
+    });
+
+    it('sets an explicit base text color so formatting icons stay visible in dark mode', () => {
+        editor = createTestEditor();
+        render(<NoteEditorToolbar editor={editor} />);
+        const toolbar = screen.getByTestId('note-editor-toolbar');
+        // Without an explicit color the icon buttons inherit near-black and
+        // vanish on the dark toolbar background.
+        expect(toolbar.className).toContain('text-[#1e1e1e]');
+        expect(toolbar.className).toContain('dark:text-[#cccccc]');
+    });
+});
