@@ -4,6 +4,7 @@ import { ConversationTurnBubble } from './conversation/ConversationTurnBubble';
 import { CompactionBubble } from './CompactionBubble';
 import { shouldInjectStreamingPlaceholder } from './streaming-placeholder';
 import { useMessageNavigation } from './hooks/useMessageNavigation';
+import { useConversationSearchHighlight } from './hooks/useConversationSearchHighlight';
 import { PendingTaskInfoPanel } from '../../queue/PendingTaskInfoPanel';
 import { cn } from '../../ui/cn';
 import { QueuedFollowUps } from './QueuedBubble';
@@ -139,6 +140,12 @@ export interface ConversationAreaProps {
     isCompacting?: boolean;
     /** Custom instructions typed after the `/compact` token, surfaced in the compacting bubble. */
     compactInstructions?: string;
+    /**
+     * Active chat-list search query (AC-04/AC-05). While non-empty, every
+     * occurrence across the rendered turns is highlighted and the first is
+     * scrolled into view; clearing it (empty/undefined) tears the highlight down.
+     */
+    searchHighlightQuery?: string;
 }
 
 export function ConversationArea({
@@ -189,6 +196,7 @@ export function ConversationArea({
     postConversationContent,
     isCompacting,
     compactInstructions,
+    searchHighlightQuery,
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -196,6 +204,12 @@ export function ConversationArea({
         scrollRef,
         containerRef,
         inputRef,
+    });
+    // AC-04/AC-05: highlight the chat-list search query across rendered turns.
+    useConversationSearchHighlight({
+        query: searchHighlightQuery,
+        containerRef: turnsContainerRef,
+        turns,
     });
     // Escape key exits selection mode
     useEffect(() => {

@@ -1034,6 +1034,7 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
             readOnly={mode === 'tasks'}
             onOpenForEachRun={handleOpenForEachRun}
             onOpenMapReduceRun={handleOpenMapReduceRun}
+            searchHighlightQuery={searchQuery}
         />
     );
 
@@ -1127,6 +1128,7 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
                                      readOnly={mode === 'tasks'}
                                      onOpenForEachRun={handleOpenForEachRun}
                                      onOpenMapReduceRun={handleOpenMapReduceRun}
+                                     searchHighlightQuery={searchQuery}
                                   />
                             )}
                         </div>
