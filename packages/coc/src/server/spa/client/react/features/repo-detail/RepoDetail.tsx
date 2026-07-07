@@ -17,6 +17,7 @@ import { RepoSchedulesTab } from '../schedules/RepoSchedulesTab';
 import { RepoGitTab } from '../git/RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { SplitWorkspacePanel } from './SplitWorkspacePanel';
+import { WorkspaceRightDock, useWorkspaceDock } from './WorkspaceRightDock';
 import { StatusActions } from '../../layout/StatusActions';
 import { RepoSettingsTab } from '../repo-settings/RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
@@ -148,6 +149,12 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // Portal host inside the split panel's "Git" section header — RepoGitTab
     // portals its compact toolbar here so it shares the 22px header row.
     const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
+    // Workspace right dock (Terminal + Explorer) — behind the same
+    // `splitWorkspacePanel` flag. One controller shared by the header toggle and
+    // the dock body. Rendered only on desktop with a chrome header (not the
+    // remote-first chromeless shell, whose header lives elsewhere).
+    const dock = useWorkspaceDock(ws.id);
+    const showDock = splitWorkspacePanelEnabled && !isMobile && !chromeless;
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(ws.id, sessionContextAttachmentsEnabled);
     const [headerContextDropTarget, setHeaderContextDropTarget] = useState<'task' | 'ask' | null>(null);
@@ -527,6 +534,30 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         <div className="w-px self-stretch bg-[#d8dee4] dark:bg-[#3c3c3c] mx-1 my-2 flex-shrink-0" data-testid="repo-header-splitter" />
                         {/* Action buttons */}
                         <div ref={overflowContainerRef} className="flex items-center gap-1 flex-shrink-0 relative">
+                            {/* Right-dock (Terminal + Explorer) open/close toggle. Reflects
+                                open state with active styling. Behind splitWorkspacePanel. */}
+                            {showDock && (
+                                <button
+                                    type="button"
+                                    onClick={dock.toggleOpen}
+                                    aria-label={dock.isOpen ? 'Close terminal and explorer dock' : 'Open terminal and explorer dock'}
+                                    aria-pressed={dock.isOpen}
+                                    title={dock.isOpen ? 'Close panel' : 'Open panel'}
+                                    data-testid="workspace-dock-toggle"
+                                    className={cn(
+                                        'inline-flex items-center justify-center h-[26px] w-[31px] rounded-md border focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da]',
+                                        dock.isOpen
+                                            ? 'border-[#0969da]/40 bg-[#ddf4ff] text-[#0969da] dark:bg-[#3794ff]/20 dark:text-[#79c0ff]'
+                                            : 'border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[#656d76] dark:text-[#999] hover:bg-[#eaeef2] dark:hover:bg-[#333]',
+                                    )}
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden>
+                                        <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+                                        <line x1="10" y1="2.5" x2="10" y2="13.5" />
+                                        <rect x="10.2" y="2.7" width="4.1" height="10.6" rx="1" fill="currentColor" stroke="none" opacity="0.35" />
+                                    </svg>
+                                </button>
+                            )}
                             {/* Classic-mode primary visible buttons (mirror reference layout). */}
                             {uiLayoutMode === 'classic' && (
                                 <>
@@ -689,6 +720,10 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                 />
             )}
 
+            {/* Workspace content row: main sub-tab content + the right dock as the
+                outermost-right, full-height column. The dock stays mounted across
+                every sub-tab so its terminal/explorer session survives tab changes. */}
+            <div className="flex flex-row flex-1 min-h-0 min-w-0 overflow-hidden">
             {/* Sub-tab content */}
             <div id="repo-sub-tab-content" className={cn("flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden")}>
                 {activeSubTab === 'work-items' ? (
@@ -827,6 +862,8 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}
                     </div>
                 )}
+            </div>
+            {showDock && <WorkspaceRightDock workspaceId={ws.id} dock={dock} />}
             </div>
 
             {/* Generate Task with AI dialog */}

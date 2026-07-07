@@ -96,8 +96,11 @@ function readCollapsed(storageKey: string): boolean {
  * an explicit user toggle (never on mount or on a workspace switch), so a
  * workspace with no collapse history keeps a clean localStorage. Re-syncs when
  * the key changes (workspace switch).
+ *
+ * Exported so the workspace right dock (`WorkspaceRightDock`) can reuse the exact
+ * same persisted-boolean semantics for its open/closed flag (AC-06).
  */
-function useCollapsedState(storageKey: string): [boolean, () => void] {
+export function useCollapsedState(storageKey: string): [boolean, () => void] {
     const [collapsed, setCollapsed] = useState(() => readCollapsed(storageKey));
     // Suppress the persist effect for the initial value and for values loaded on
     // a workspace switch — those are reads, not user intent.
