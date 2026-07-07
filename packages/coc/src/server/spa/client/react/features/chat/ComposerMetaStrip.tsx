@@ -143,6 +143,17 @@ export function ComposerMetaStrip({
             data-testid="composer-meta-strip"
         >
             {hasCwd && (
+                /* The cwd chip is the strip's most expendable piece: when the
+                   composer toolbar's flexible middle (an inline-size
+                   @container) is too tight to fit cwd + ctx side by side, this
+                   group hides so the ctx gauge keeps its space instead of the
+                   two overlapping the neighbouring toolbar zones. Outside a
+                   container context the query never matches and the chip is
+                   always visible. */
+                <span
+                    className="flex items-center min-w-0 [@container_(max-width:319px)]:hidden"
+                    data-testid="composer-cwd-group"
+                >
                 <span
                     title={`Working directory: ${trimmedCwd}`}
                     data-testid="composer-cwd-chip"
@@ -158,9 +169,10 @@ export function ComposerMetaStrip({
                         {compact ? basename(trimmedCwd!) : shortenPath(trimmedCwd!)}
                     </code>
                 </span>
-            )}
-            {hasCwd && showCtx && (
-                <span aria-hidden="true" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 flex-shrink-0" />
+                {showCtx && (
+                    <span aria-hidden="true" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 flex-shrink-0" />
+                )}
+                </span>
             )}
             {showCtx && (
                 <span

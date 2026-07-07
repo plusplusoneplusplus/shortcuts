@@ -1129,26 +1129,44 @@ export function FollowUpInputArea({
                                  zero hypothetical size: the meta strip can never
                                  push the toolbar onto a second line. It grows
                                  into the free space and shrinks by truncating
-                                 the cwd path (min-w-0 chain). The strip itself
-                                 is desktop-only (≤1023px hides it) — below lg
-                                 this div still provides the spacer that pushes
-                                 the tools/send zone right. */}
+                                 the cwd path (min-w-0 chain). Because basis-0
+                                 makes its width equal the toolbar's free space
+                                 regardless of content, it doubles as an
+                                 inline-size @container: the strip's fixed-width
+                                 pieces (ctx gauge, cwd chip) hide via container
+                                 queries when the free space can't fit them —
+                                 they must never overlap the tools/send zone.
+                                 The strip itself is desktop-only (≤1023px hides
+                                 it) — below lg this div still provides the
+                                 spacer that pushes the tools/send zone right. */}
                             <div
-                                className="flex-1 basis-0 min-w-0 flex items-center justify-end"
+                                className="flex-1 basis-0 min-w-0 [container-type:inline-size] flex items-center justify-end"
                                 data-testid="chat-toolbar-flex-middle"
                             >
                                 <div className="hidden lg:flex items-center min-w-0">
-                                    <ComposerMetaStrip
-                                        className="mx-1"
-                                        compact={isToolbarNarrow}
-                                        workingDirectory={workingDirectory}
-                                        sessionTokenLimit={sessionTokenLimit}
-                                        sessionCurrentTokens={sessionCurrentTokens}
-                                        sessionModel={sessionModel}
-                                        sessionSystemTokens={sessionSystemTokens}
-                                        sessionToolTokens={sessionToolTokens}
-                                        sessionConversationTokens={sessionConversationTokens}
-                                    />
+                                    {/* Fit gate: the ctx gauge cluster is ~160px of
+                                         unshrinkable content — below that free space
+                                         the whole strip hides rather than bleeding
+                                         over its neighbours. Kept as a separate
+                                         element from the lg: gate above so the two
+                                         display rules can never fight in the CSS
+                                         cascade. */}
+                                    <div
+                                        className="flex items-center min-w-0 [@container_(max-width:159px)]:hidden"
+                                        data-testid="chat-toolbar-meta-fit-gate"
+                                    >
+                                        <ComposerMetaStrip
+                                            className="mx-1"
+                                            compact={isToolbarNarrow}
+                                            workingDirectory={workingDirectory}
+                                            sessionTokenLimit={sessionTokenLimit}
+                                            sessionCurrentTokens={sessionCurrentTokens}
+                                            sessionModel={sessionModel}
+                                            sessionSystemTokens={sessionSystemTokens}
+                                            sessionToolTokens={sessionToolTokens}
+                                            sessionConversationTokens={sessionConversationTokens}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                             {/* Tools zone — slash/mention/attach live on the

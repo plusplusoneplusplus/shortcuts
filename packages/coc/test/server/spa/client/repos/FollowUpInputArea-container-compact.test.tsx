@@ -232,6 +232,29 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
             expect(middle.contains(strip)).toBe(true);
         });
 
+        it('hides the strip via container query instead of overlapping when free space runs out', () => {
+            setContainerWidth('wide', 900);
+            render(<FollowUpInputArea {...defaultProps({
+                workingDirectory: '/Users/yihengtao/Documents/Projects/nanochat',
+                sessionTokenLimit: 200_000,
+                sessionCurrentTokens: 28_000,
+            })} />);
+            // The middle is an inline-size @container whose width equals the
+            // toolbar's free space (basis-0). The strip's unshrinkable pieces
+            // hide via container queries below their fit widths — regression
+            // for the ctx gauge bleeding over the tools/send zone.
+            const middle = screen.getByTestId('chat-toolbar-flex-middle');
+            expect(middle.className).toContain('[container-type:inline-size]');
+            const fitGate = screen.getByTestId('chat-toolbar-meta-fit-gate');
+            expect(fitGate.className).toContain('[@container_(max-width:159px)]:hidden');
+            expect(fitGate.contains(screen.getByTestId('composer-meta-strip'))).toBe(true);
+            // The cwd group (chip + divider) is the first to go, keeping the
+            // ctx gauge; the divider hides together with the chip.
+            const cwdGroup = screen.getByTestId('composer-cwd-group');
+            expect(cwdGroup.className).toContain('[@container_(max-width:319px)]:hidden');
+            expect(cwdGroup.contains(screen.getByTestId('composer-cwd-chip'))).toBe(true);
+        });
+
         it('keeps the flexible middle as a spacer when no meta content is present', () => {
             setContainerWidth('wide', 900);
             render(<FollowUpInputArea {...defaultProps()} />);
