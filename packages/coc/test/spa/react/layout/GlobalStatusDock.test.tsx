@@ -1,9 +1,11 @@
 /**
  * GlobalStatusDock — the app-wide bottom status bar for the remote-first shell.
  *
- * It renders the shared `StatusActions` sidebar variant across every tab, but
- * only in the remote-first shell on desktop. Off (classic mode) or on mobile it
- * renders nothing, so the topbar keeps hosting the cluster.
+ * It renders the shared `StatusActions` sidebar variant across tabs, but only in
+ * the remote-first shell on desktop, and only as wide as the left sidebar
+ * column. Off (classic mode) or on mobile it renders nothing (topbar keeps the
+ * cluster). On the workspace chat/activity sub-tab it also renders nothing —
+ * that view docks the cluster in its own left-column footer instead.
  *
  * @vitest-environment jsdom
  */
@@ -11,11 +13,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 let mockRemoteShell = true;
+let mockSplitPanel = true;
 let mockIsMobile = false;
+let mockAppState: Record<string, unknown> = {};
 let lastStatusActionsProps: Record<string, unknown> | null = null;
 
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
+    useApp: () => ({ state: mockAppState, dispatch: vi.fn() }),
+}));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
     useRemoteShellEnabled: () => mockRemoteShell,
+}));
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
+    useSplitWorkspacePanelEnabled: () => mockSplitPanel,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: mockIsMobile ? 'mobile' : 'desktop', isMobile: mockIsMobile, isTablet: false, isDesktop: !mockIsMobile }),
@@ -31,7 +41,10 @@ import { GlobalStatusDock } from '../../../../src/server/spa/client/react/layout
 
 beforeEach(() => {
     mockRemoteShell = true;
+    mockSplitPanel = true;
     mockIsMobile = false;
+    // A non-chat context by default, so the global dock renders.
+    mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: undefined };
     lastStatusActionsProps = null;
 });
 
@@ -70,5 +83,31 @@ describe('GlobalStatusDock', () => {
         const { container } = render(<GlobalStatusDock />);
         expect(screen.queryByTestId('status-actions')).toBeNull();
         expect(container.firstChild).toBeNull();
+    });
+
+    it('renders nothing on the workspace chat sub-tab (its own footer hosts the dock)', () => {
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'chats' };
+        const { container } = render(<GlobalStatusDock />);
+        expect(screen.queryByTestId('status-actions')).toBeNull();
+        expect(container.firstChild).toBeNull();
+    });
+
+    it('renders nothing on the classic activity sub-tab too', () => {
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'activity' };
+        const { container } = render(<GlobalStatusDock />);
+        expect(container.firstChild).toBeNull();
+    });
+
+    it('still renders on a non-chat repo sub-tab (no left-column footer there)', () => {
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'terminal' };
+        render(<GlobalStatusDock />);
+        expect(screen.getByTestId('status-actions')).toBeTruthy();
+    });
+
+    it('still renders on the chat sub-tab when the split panel is disabled (no footer to defer to)', () => {
+        mockSplitPanel = false;
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'chats' };
+        render(<GlobalStatusDock />);
+        expect(screen.getByTestId('status-actions')).toBeTruthy();
     });
 });

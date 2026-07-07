@@ -417,9 +417,11 @@ function AppInner() {
                         <Router />
                     </main>
                     {/* Remote-first shell: the status cluster docks in a bottom
-                        bar the width of the left sidebar, on every tab (desktop
-                        only). Renders null otherwise; TopBar keeps the top-right
-                        cluster then. */}
+                        bar the width of the left sidebar (desktop only). Covers
+                        every tab except the workspace chat/activity view, which
+                        docks it in its own left-column footer so the chat detail
+                        pane stays full height. Renders null in classic/mobile,
+                        where TopBar keeps the top-right cluster. */}
                     <GlobalStatusDock onAdminOpen={handleAdminOpen} />
                 </div>
                 <FloatingChatManager />

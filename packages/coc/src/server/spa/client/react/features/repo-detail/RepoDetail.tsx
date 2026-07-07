@@ -17,6 +17,7 @@ import { RepoSchedulesTab } from '../schedules/RepoSchedulesTab';
 import { RepoGitTab } from '../git/RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { SplitWorkspacePanel } from './SplitWorkspacePanel';
+import { StatusActions } from '../../layout/StatusActions';
 import { RepoSettingsTab } from '../repo-settings/RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
 import { PullRequestsTab } from '../pull-requests/PullRequestsTab';
@@ -741,6 +742,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                             <div style={{ display: (activeSubTab === 'activity' || activeSubTab === 'chats') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <SplitWorkspacePanel
                                     workspaceId={ws.id}
+                                    footer={chromeless ? <StatusActions variant="sidebar" /> : undefined}
                                     chatList={
                                         <RepoChatTab
                                             key={`${ws.id}-split-chat`}
