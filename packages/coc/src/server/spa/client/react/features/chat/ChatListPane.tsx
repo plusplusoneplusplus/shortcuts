@@ -17,6 +17,7 @@ import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextM
 import { RenameDialog } from '../../ui/RenameDialog';
 import { useCocClient } from '../../repos/cloneRouting';
 import { useWorkflowProgress } from '../workflow/hooks/useWorkflowProgress';
+import { ScheduledSlideSchedules } from '../schedules/ScheduledSlideSchedules';
 import { getDraft } from './hooks/useDraftStore';
 import { useLongPress } from '../../hooks/ui/useLongPress';
 import { useChatPrefs } from '../../contexts/ChatPreferencesContext';
@@ -3459,6 +3460,13 @@ export function ChatListPane({
                             );
                         })}
                     </div>
+                )}
+
+                {/* Scheduled slide: schedule-definitions section (feature-flagged, self-gating).
+                    Sits above the scheduled run instances ("Recent runs"), which keep
+                    rendering as the Running / Queued / History sections below. */}
+                {!activeTab && activeScope === 'loops' && workspaceId && (
+                    <ScheduledSlideSchedules workspaceId={workspaceId} />
                 )}
 
                 {/* Search bar — hidden by default; revealed with Ctrl+F / ⌘F (see the keydown handler). */}
