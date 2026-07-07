@@ -3,10 +3,12 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { useNotifications, type NotificationEntry } from '../contexts/NotificationContext';
 import { useApp } from '../contexts/AppContext';
 import { useFloatingChats } from '../contexts/FloatingChatsContext';
 import { cn } from '../ui/cn';
+import { useAnchoredPanelPosition } from './useAnchoredPanelPosition';
 
 const TYPE_ICONS: Record<NotificationEntry['type'], string> = {
     success: '✅',
@@ -47,6 +49,7 @@ export function NotificationBell({ placement = 'down' }: NotificationBellProps =
     const [open, setOpen] = useState(false);
     const bellRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
+    const panelPos = useAnchoredPanelPosition({ open, placement, triggerRef: bellRef, panelRef });
 
     const toggle = useCallback(() => setOpen(prev => !prev), []);
 
@@ -131,13 +134,11 @@ export function NotificationBell({ placement = 'down' }: NotificationBellProps =
                 )}
             </button>
 
-            {open && (
+            {open && ReactDOM.createPortal(
                 <div
                     ref={panelRef}
-                    className={cn(
-                        'absolute w-[340px] max-h-[400px] flex flex-col rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg z-[10002]',
-                        placement === 'up' ? 'left-0 bottom-full mb-1' : 'right-0 top-full mt-1',
-                    )}
+                    className="fixed w-[340px] max-h-[400px] flex flex-col rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg z-[10002]"
+                    style={{ top: panelPos.top, left: panelPos.left }}
                     data-testid="notification-panel"
                     data-placement={placement}
                     role="dialog"
@@ -240,7 +241,8 @@ export function NotificationBell({ placement = 'down' }: NotificationBellProps =
                             </button>
                         </div>
                     )}
-                </div>
+                </div>,
+                document.body,
             )}
         </div>
     );

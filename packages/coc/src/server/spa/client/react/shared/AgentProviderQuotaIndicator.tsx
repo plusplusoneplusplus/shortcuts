@@ -3,8 +3,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import type { AgentProviderId, AgentProvidersQuotaResponse, ProviderQuotaResult, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { useAnchoredPanelPosition } from './useAnchoredPanelPosition';
 import {
     formatQuotaTypeLabel,
     getFiniteQuotaTypes,
@@ -211,6 +213,7 @@ export function agentProviderQuotaIndicator({ placement = 'down' }: AgentProvide
     const panelRef = useRef<HTMLDivElement>(null);
     const mountedRef = useRef(false);
     const quotaDataRef = useRef<AgentProvidersQuotaResponse | null>(null);
+    const panelPos = useAnchoredPanelPosition({ open, placement, triggerRef: buttonRef, panelRef });
 
     useEffect(() => {
         quotaDataRef.current = quotaData;
@@ -330,13 +333,11 @@ export function agentProviderQuotaIndicator({ placement = 'down' }: AgentProvide
                 {renderQuotaPie({ usedPercent, remainingPercent, testId: 'agent-provider-quota-gauge' })}
             </button>
 
-            {open && (
+            {open && ReactDOM.createPortal(
                 <div
                     ref={panelRef}
-                    className={cn(
-                        'absolute w-[360px] max-h-[440px] flex flex-col rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg z-[10002]',
-                        placement === 'up' ? 'left-0 bottom-full mb-1' : 'right-0 top-full mt-1',
-                    )}
+                    className="fixed w-[360px] max-h-[440px] flex flex-col rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg z-[10002]"
+                    style={{ top: panelPos.top, left: panelPos.left }}
                     data-testid="agent-provider-quota-panel"
                     data-placement={placement}
                     role="dialog"
@@ -392,7 +393,8 @@ export function agentProviderQuotaIndicator({ placement = 'down' }: AgentProvide
                             Admin → AI Providers
                         </a>
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
         </div>
     );

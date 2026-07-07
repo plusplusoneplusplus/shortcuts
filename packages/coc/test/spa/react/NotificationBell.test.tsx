@@ -106,26 +106,25 @@ describe('NotificationBell — panel', () => {
         expect(screen.queryByTestId('notification-panel')).toBeNull();
     });
 
-    it('opens downward and right-aligns by default', () => {
+    it('reflects placement "down" on the portaled panel by default', () => {
         render(<NotificationBell />);
         act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
         const panel = screen.getByTestId('notification-panel');
         expect(panel.getAttribute('data-placement')).toBe('down');
-        expect(panel.className).toContain('top-full');
-        expect(panel.className).not.toContain('bottom-full');
-        expect(panel.className).toContain('right-0');
-        expect(panel.className).not.toContain('left-0');
+        // Panel is portaled to <body> and fixed-positioned so it escapes the
+        // sidebar column's overflow clip instead of anchoring in-flow.
+        expect(panel.parentElement).toBe(document.body);
+        expect(panel.className).toContain('fixed');
+        expect(panel.className).not.toContain('absolute');
     });
 
-    it('opens upward and left-aligns with placement="up" (bottom-docked sidebar footer)', () => {
+    it('reflects placement "up" on the portaled panel (bottom-docked sidebar footer)', () => {
         render(<NotificationBell placement="up" />);
         act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
         const panel = screen.getByTestId('notification-panel');
         expect(panel.getAttribute('data-placement')).toBe('up');
-        expect(panel.className).toContain('bottom-full');
-        expect(panel.className).not.toContain('top-full');
-        expect(panel.className).toContain('left-0');
-        expect(panel.className).not.toContain('right-0');
+        expect(panel.parentElement).toBe(document.body);
+        expect(panel.className).toContain('fixed');
     });
 
     it('outside click closes panel', () => {
