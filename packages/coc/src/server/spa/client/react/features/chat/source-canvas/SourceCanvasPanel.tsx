@@ -134,12 +134,18 @@ export function SourceCanvasPanel({
                     >
                         {fileName}
                     </span>
+                    {/* Truncate from the FRONT (dir=rtl) so the low-signal
+                        `packages/coc/src/...` prefix is dropped and the meaningful
+                        tail (parent folders + file) stays visible. `<bdi>` keeps the
+                        path itself in normal left-to-right order. The full path is
+                        preserved in the DOM for the tooltip + copy-path action. */}
                     <span
-                        className="text-[11px] text-[#848484] truncate min-w-0"
+                        className="text-[11px] text-[#848484] truncate min-w-0 text-left"
+                        dir="rtl"
                         title={fullPath}
                         data-testid="source-canvas-path"
                     >
-                        {path}
+                        <bdi>{path}</bdi>
                     </span>
                 </div>
                 <div className="flex items-center gap-0.5 shrink-0">
