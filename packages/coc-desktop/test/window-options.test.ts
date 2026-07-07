@@ -54,4 +54,19 @@ describe('buildMacInsetCss', () => {
             expect(css).toContain(sel);
         }
     });
+
+    it('also clears the maximized canvas panel header from the traffic lights', () => {
+        const css = buildMacInsetCss();
+        const canvasHeader = '[data-testid="canvas-panel"][data-fullscreen="true"] > div:first-child';
+        // The fullscreen canvas header gets the same left clearance + drag handle.
+        expect(css).toContain(`${canvasHeader} { padding-left: 88px !important; -webkit-app-region: drag; }`);
+        // Its buttons (title switcher, mode toggle, export, close) stay clickable.
+        expect(css).toContain(`${canvasHeader} button`);
+    });
+
+    it('does not pad the canvas panel header when it is not fullscreen', () => {
+        // Docked (non-fullscreen) panels sit away from the traffic lights, so the
+        // selector must be scoped to data-fullscreen="true" only.
+        expect(buildMacInsetCss()).not.toContain('[data-fullscreen="false"]');
+    });
 });

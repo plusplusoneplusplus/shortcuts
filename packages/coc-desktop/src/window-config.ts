@@ -22,24 +22,41 @@ export function buildWindowOptions(platform: NodeJS.Platform): Partial<Electron.
 }
 
 /**
- * CSS injected by the main process on macOS to keep the SPA's top bar clear of
- * the hiddenInset traffic lights and to make it act as the window drag handle.
+ * CSS injected by the main process on macOS to keep the SPA's top bars clear of
+ * the hiddenInset traffic lights and to make them act as the window drag handle.
  *
  * Injected from the main process (not the SPA) so it applies regardless of the
  * served SPA's version or its own platform detection — the main process is the
  * single source of truth for whether hiddenInset is active.
+ *
+ * Two elements can reach the window's top-left under the traffic lights:
+ *  - `header[data-react]` — the SPA's own top bar, always at the top.
+ *  - the fullscreen canvas panel header — a `fixed inset-0` overlay whose header
+ *    covers the top of the window, so its title would sit under the lights too.
  */
 export function buildMacInsetCss(): string {
-    return [
-        // Clear the traffic lights (3 buttons ending ~x=70) with comfortable margin.
-        'header[data-react] { padding-left: 88px !important; -webkit-app-region: drag; }',
-        // Interactive elements inside the drag region must remain clickable.
-        'header[data-react] button,',
-        'header[data-react] a,',
-        'header[data-react] input,',
-        'header[data-react] select,',
-        'header[data-react] [role="button"],',
-        'header[data-react] [role="combobox"],',
-        'header[data-react] [role="tab"] { -webkit-app-region: no-drag; }',
-    ].join('\n');
+    const topBars = [
+        'header[data-react]',
+        // The header is the first child of the maximized (fullscreen) canvas panel.
+        '[data-testid="canvas-panel"][data-fullscreen="true"] > div:first-child',
+    ];
+    const interactive = [
+        'button',
+        'a',
+        'input',
+        'select',
+        '[role="button"]',
+        '[role="combobox"]',
+        '[role="tab"]',
+        '[role="menuitem"]',
+    ];
+    // Clear the traffic lights (3 buttons ending ~x=70) with comfortable margin,
+    // and make the cleared bar the window drag handle.
+    const clearRules = topBars.map(
+        bar => `${bar} { padding-left: 88px !important; -webkit-app-region: drag; }`,
+    );
+    // Interactive elements inside the drag region must remain clickable.
+    const noDragSelectors = topBars.flatMap(bar => interactive.map(el => `${bar} ${el}`));
+    const noDragRule = `${noDragSelectors.join(',\n')} { -webkit-app-region: no-drag; }`;
+    return [...clearRules, noDragRule].join('\n');
 }
