@@ -8,7 +8,9 @@
  *     delegated to `onAdminOpen` so the topbar keeps its existing callback.
  *   - `variant="sidebar"` renders a docked footer bar for the bottom of the
  *     left sidebar (remote-first shell). It full-bleeds a top border and lays
- *     the connection label and icon buttons out as a single row. It uses a
+ *     the icon buttons and connection label out as a single row, ordered
+ *     left→right as [Admin] [NotificationBell] [Quota] [Theme] with the
+ *     connection pill pushed to the right edge (`justify-between`). It uses a
  *     soft blue-tinted background (distinct from the sidebar's neutral gray) so
  *     the dock reads as a separate strip rather than blending into the panel.
  *     The bell/quota popovers open upward (`placement="up"`) since the dock
@@ -72,22 +74,7 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
                 className="flex flex-shrink-0 items-center justify-between gap-1 px-2 py-1.5 border-t border-[#b9d2f2] dark:border-[#34496b] bg-[#dbe8fa] dark:bg-[#23324a]"
                 data-testid="sidebar-status-actions"
             >
-                <span
-                    className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[11px] font-medium text-[#656d76] dark:text-[#999] min-w-0"
-                    title={wsConfig.label}
-                    aria-label={`Connection: ${wsConfig.label}`}
-                    data-testid="sidebar-ws-status-indicator"
-                    data-ws-status={wsStatus}
-                >
-                    <span
-                        className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${wsConfig.color}${wsConfig.pulse ? ' animate-pulse' : ''}`}
-                        aria-hidden="true"
-                    />
-                    <span className="truncate" data-testid="sidebar-ws-status-label">{wsConfig.label}</span>
-                </span>
                 <span className="flex items-center gap-0.5 flex-shrink-0">
-                    <NotificationBell placement="up" />
-                    <AgentProviderQuotaIndicator placement="up" />
                     <button
                         data-tab="admin"
                         className={
@@ -101,6 +88,8 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
                     >
                         &#9881;
                     </button>
+                    <NotificationBell placement="up" />
+                    <AgentProviderQuotaIndicator placement="up" />
                     <button
                         className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target text-base leading-none"
                         aria-label="Toggle theme"
@@ -109,6 +98,19 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
                     >
                         {themeEmoji[theme] || '🌗'}
                     </button>
+                </span>
+                <span
+                    className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[11px] font-medium text-[#656d76] dark:text-[#999] min-w-0"
+                    title={wsConfig.label}
+                    aria-label={`Connection: ${wsConfig.label}`}
+                    data-testid="sidebar-ws-status-indicator"
+                    data-ws-status={wsStatus}
+                >
+                    <span
+                        className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${wsConfig.color}${wsConfig.pulse ? ' animate-pulse' : ''}`}
+                        aria-hidden="true"
+                    />
+                    <span className="truncate" data-testid="sidebar-ws-status-label">{wsConfig.label}</span>
                 </span>
             </div>
         );

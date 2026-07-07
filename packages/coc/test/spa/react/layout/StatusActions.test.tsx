@@ -84,6 +84,22 @@ describe('StatusActions — sidebar variant', () => {
         expect(screen.getByTestId('sidebar-theme-toggle')).toBeTruthy();
     });
 
+    it('lays the dock out left→right as admin, notifications, quota, theme, then the connection pill', () => {
+        render(<StatusActions variant="sidebar" />);
+        const dock = screen.getByTestId('sidebar-status-actions');
+        const expected = [
+            'sidebar-admin-toggle',
+            'notification-bell',
+            'agent-provider-quota-indicator',
+            'sidebar-theme-toggle',
+            'sidebar-ws-status-indicator',
+        ];
+        const seen = Array.from(dock.querySelectorAll('[data-testid]'))
+            .map(el => el.getAttribute('data-testid'))
+            .filter((id): id is string => !!id && expected.includes(id));
+        expect(seen).toEqual(expected);
+    });
+
     it('opens the bell and quota popovers upward so they stay on-screen above the dock', () => {
         render(<StatusActions variant="sidebar" />);
         expect(screen.getByTestId('notification-bell').getAttribute('data-placement')).toBe('up');
