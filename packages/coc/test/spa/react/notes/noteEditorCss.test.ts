@@ -126,6 +126,23 @@ describe('noteEditor.css theme consistency', () => {
         expect(g).toBeGreaterThan(0x78);
     });
 
+    // --- Highlight marks ---
+
+    it('dark-mode highlight marks use dark text on the pale highlight swatch', () => {
+        // Highlight backgrounds are drawn from a fixed pale palette in both
+        // themes. A light text color here made highlighted text unreadable on
+        // the pale swatch, so the dark-mode rule must set a dark ink color.
+        const darkMark = css.match(
+            /\.dark\s+\.note-editor\s+\.ProseMirror\s+mark\s*\{[^}]+\}/,
+        );
+        expect(darkMark).not.toBeNull();
+        const color = darkMark![0].match(/color:\s*(#[0-9a-fA-F]{6})/);
+        expect(color).not.toBeNull();
+        // A dark ink color for the pale highlight → low red channel.
+        const r = parseInt(color![1].slice(1, 3), 16);
+        expect(r).toBeLessThan(0x40);
+    });
+
     // --- Mermaid block toolbar button ---
 
     it('mermaid toolbar button has a visible border at rest', () => {

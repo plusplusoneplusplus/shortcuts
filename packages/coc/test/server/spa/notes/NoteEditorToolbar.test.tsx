@@ -304,3 +304,22 @@ describe('NoteEditorToolbar — refresh button', () => {
         expect(screen.getByTestId('note-editor-refresh-btn')).toBeInTheDocument();
     });
 });
+
+describe('NoteEditorToolbar — highlight swatch dark-mode contrast', () => {
+    let editor: Editor;
+
+    afterEach(() => {
+        cleanup();
+        editor?.destroy();
+        vi.restoreAllMocks();
+    });
+
+    it('renders the HL swatch with dark ink so it stays readable on the pale highlight color', () => {
+        editor = createTestEditor();
+        render(<NoteEditorToolbar editor={editor} />);
+        const swatch = screen.getByText('HL');
+        // The swatch background is always a pale palette color in both themes,
+        // so the label must use dark text to keep enough contrast in dark mode.
+        expect(swatch.className).toContain('text-[#1e1e1e]');
+    });
+});

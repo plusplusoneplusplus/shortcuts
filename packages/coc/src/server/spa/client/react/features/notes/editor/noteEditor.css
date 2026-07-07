@@ -87,8 +87,11 @@
     border-color: #3c3c3c;
 }
 .dark .note-editor .ProseMirror hr { border-top-color: #3c3c3c; }
+/* Highlight backgrounds come from a fixed pale palette in both themes, so
+   highlighted text needs dark ink to stay readable — a light color here made
+   it near-invisible on the pale swatch. */
 .dark .note-editor .ProseMirror mark {
-    color: #e0e0e0;
+    color: #1e1e1e;
 }
 
 /* Tables */

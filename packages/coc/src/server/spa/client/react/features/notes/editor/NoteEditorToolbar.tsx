@@ -154,7 +154,7 @@ function HighlightButton({ editor }: HighlightButtonProps) {
                     }}
                 >
                     <span
-                        className="inline-block w-4 h-4 leading-4 text-center rounded-sm text-[10px] font-bold"
+                        className="inline-block w-4 h-4 leading-4 text-center rounded-sm text-[10px] font-bold text-[#1e1e1e]"
                         style={{ backgroundColor: isActive ? (editor.getAttributes('highlight').color ?? DEFAULT_HIGHLIGHT_COLOR) : DEFAULT_HIGHLIGHT_COLOR }}
                     >
                         HL
