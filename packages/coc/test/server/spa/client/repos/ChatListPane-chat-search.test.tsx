@@ -546,12 +546,13 @@ describe('ChatListPane – Ctrl+F / Ctrl+N list-focus guard', () => {
         await waitFor(() => expect(document.activeElement).toBe(input));
     });
 
-    it('Ctrl+F does NOT reveal the list search while typing in an open conversation message field (regression)', async () => {
+    it('Ctrl+F does NOT reveal the list search while focus is in the conversation composer (AC-01)', async () => {
         render(<ChatListPane {...defaultProps(chatOpenProps())} />);
         makePaneVisible();
-        // The editor stands in for the conversation's message composer (a
-        // textarea = editable). Ctrl+F there must fall through to the native
-        // find-in-page, leaving the list search unmounted and focus in the field.
+        // The editor stands in for the conversation's message composer, which
+        // lives inside the right conversation panel (data-pane="detail"). Ctrl+F
+        // with focus there must fall through to the native find-in-page, leaving
+        // the list search unmounted and focus in the field.
         const { detail, editor } = mountDetailPane();
         editor.focus();
         expect(document.activeElement).toBe(editor);
@@ -565,14 +566,36 @@ describe('ChatListPane – Ctrl+F / Ctrl+N list-focus guard', () => {
         document.body.removeChild(detail);
     });
 
-    it('Ctrl+F reveals the list search when a conversation is open but focus is not in an editable field', async () => {
+    it('Ctrl+F does NOT reveal the list search while focus is in the conversation reading area (AC-01)', async () => {
+        render(<ChatListPane {...defaultProps(chatOpenProps())} />);
+        makePaneVisible();
+        // The user is reading the conversation: focus rests on a NON-editable
+        // element inside the right panel (data-pane="detail") — e.g. the detail
+        // pane container itself, which is focusable via tabIndex. AC-01 broadens
+        // the exception from "editable target only" to "any focus in the right
+        // panel", so Ctrl+F must fall through to the native find-in-page here and
+        // NOT open the list search.
+        const { detail } = mountDetailPane();
+        const reader = document.createElement('div');
+        reader.setAttribute('tabindex', '-1');
+        detail.appendChild(reader);
+        reader.focus();
+
+        fireEvent.keyDown(reader, { key: 'f', ctrlKey: true });
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+        expect(screen.queryByTestId('queue-search-input')).toBeNull();
+
+        document.body.removeChild(detail);
+    });
+
+    it('Ctrl+F reveals the list search when a conversation is open but focus rests on the body (nothing focused)', async () => {
         render(<ChatListPane {...defaultProps(chatOpenProps())} />);
         makePaneVisible();
 
-        // A conversation is open, but the user is not typing in any field —
-        // focus sits on document.body while they read the conversation. Ctrl+F
-        // should still open the list search (the previous focus guard used to
-        // swallow it here, which made Ctrl+F feel broken with a chat open).
+        // A conversation is open, but keyboard focus is nowhere in particular —
+        // it sits on document.body (not inside the right panel). Per AC-01,
+        // "nothing / body focused" opens the list search.
         expect(screen.queryByTestId('queue-search-input')).toBeNull();
         fireEvent.keyDown(document.body, { key: 'f', ctrlKey: true });
 

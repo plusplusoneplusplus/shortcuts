@@ -1252,13 +1252,14 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
 - Action bar: New chat + refresh + ALL/AP split pause pill
 - Scope segmented control: Chats / Loops (when `loops.enabled`) / Automations / All
 - Search box: hidden by default, gated behind `searchVisible`. Ctrl+F / ⌘F
-  reveals and focuses it. The only time Ctrl+F does NOT open it is while the user
-  is typing in an editable field (`isEditableTarget`) of an open conversation —
-  e.g. the message composer — so the native find-in-page can search within that
-  conversation; reading a conversation (focus on the body), working in the list,
-  or having no conversation open all still open the search. ✕ clears the query
-  but leaves the box open; Escape clears the query and hides the box; a
-  `workspaceId` change also resets `searchVisible`
+  routes by which pane owns keyboard focus (never mouse hover). When focus is
+  inside the right conversation panel — the detail pane, marked `data-pane="detail"`,
+  covering both the reading area and the message composer — Ctrl+F is left alone
+  (no `preventDefault`) so the native find-in-page takes over (`isWithinDetailPane`
+  detects this via `target.closest('[data-pane="detail"]')`). Focus in the chat
+  list, or nowhere in particular (`document.body`), reveals and focuses the list
+  search. ✕ clears the query but leaves the box open; Escape clears the query and
+  hides the box; a `workspaceId` change also resets `searchVisible`
 - Selection persists in `localStorage['coc-activity-scope']`
 - `ChatListPane` keeps the action/scope/search controls in a sticky
   `chat-list-fixed-header` block while the list rows scroll underneath. The

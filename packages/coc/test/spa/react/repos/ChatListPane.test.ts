@@ -743,16 +743,20 @@ describe('ChatListPane pinned chats', () => {
             expect(source).toContain('const focusElsewhereWithChatOpen = !focusInList && !!selectedTaskId');
         });
 
-        it('Ctrl+F only yields to native find while typing in an open conversation', () => {
+        it('Ctrl+F yields to native find when focus is in the right conversation panel (AC-01)', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
                 source.indexOf("e.key === 'f'") + 1000,
             );
-            // Ctrl+F opens the list search except when the user is typing in an
-            // editable field of an open conversation — then it falls through to
-            // the native find-in-page. The guard must come before preventDefault.
-            expect(handler).toContain('if (selectedTaskId && !focusInList && isEditableTarget(e.target)) return');
-            const guardIdx = handler.indexOf('isEditableTarget(e.target)) return');
+            // AC-01: Ctrl+F opens the list search unless keyboard focus is inside
+            // the right conversation panel (reading area OR composer), in which
+            // case it falls through to the native find-in-page. The routing is
+            // by owning pane, not by editable-target only. The guard must come
+            // before preventDefault.
+            expect(handler).toContain('if (focusInDetail) return');
+            expect(source).toContain('isWithinDetailPane');
+            expect(source).toContain(`target.closest('[data-pane="detail"]')`);
+            const guardIdx = handler.indexOf('if (focusInDetail) return');
             const preventIdx = handler.indexOf('e.preventDefault()');
             expect(guardIdx).toBeLessThan(preventIdx);
         });

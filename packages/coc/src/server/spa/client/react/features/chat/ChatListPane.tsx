@@ -174,15 +174,15 @@ export function taskMatchesSearch(task: any, query: string): boolean {
 }
 
 /**
- * Whether an event target is an editable field (text input, textarea, select,
- * or contenteditable). Used to decide when a keyboard shortcut should yield to
- * the field the user is typing in (e.g. a conversation's message composer).
+ * Whether an event target sits inside the right conversation panel — the detail
+ * pane, marked with `data-pane="detail"`, which wraps both the reading area and
+ * the message composer. Ctrl+F uses this to decide, by keyboard focus (never
+ * mouse hover), whether to open the list search or yield to the native
+ * find-in-page (AC-01).
  */
-export function isEditableTarget(target: EventTarget | null): boolean {
+export function isWithinDetailPane(target: EventTarget | null): boolean {
     if (!(target instanceof Element)) return false;
-    const tag = target.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-    return (target as HTMLElement).isContentEditable === true;
+    return target.closest('[data-pane="detail"]') !== null;
 }
 
 /** Return a type-specific icon for a task, matching the chat mode selector icons. */
@@ -1017,21 +1017,24 @@ export function ChatListPane({
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             // Focus tracking for the list shortcuts. `focusInList` is true when
-            // the keydown originates from inside the chat-list pane; combined
-            // with an open conversation it tells the shortcuts whether the user
-            // is working in the list or somewhere else.
+            // the keydown originates from inside the chat-list pane; `focusInDetail`
+            // is true when it originates from the right conversation panel (its
+            // reading area or message composer). Ctrl+N still gates on
+            // `focusElsewhereWithChatOpen`.
             const target = e.target as Node | null;
             const focusInList = !!(target && containerRef.current?.contains(target));
+            const focusInDetail = isWithinDetailPane(e.target);
             const focusElsewhereWithChatOpen = !focusInList && !!selectedTaskId;
             if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
                 // Skip interception when this pane is hidden (display:none via parent).
                 if (!containerRef.current || containerRef.current.offsetParent === null) return;
-                // Ctrl+F opens the (hidden-by-default) list search. Exception:
-                // while typing in an editable field of an open conversation
-                // (e.g. the message composer), fall through to the native
-                // find-in-page. Reading a chat, working in the list, or having
-                // no conversation open all still open the search.
-                if (selectedTaskId && !focusInList && isEditableTarget(e.target)) return;
+                // AC-01: route Ctrl+F by which pane owns keyboard focus. When focus
+                // is inside the right conversation panel (reading area OR composer),
+                // leave Ctrl+F alone so it falls through to the native find-in-page
+                // (the desktop Electron overlay / the browser's built-in find).
+                // Focus in the list pane, or nowhere in particular (document.body),
+                // opens the list search.
+                if (focusInDetail) return;
                 e.preventDefault();
                 setSearchVisible(true);
                 setTimeout(() => searchInputRef.current?.focus(), 0);
