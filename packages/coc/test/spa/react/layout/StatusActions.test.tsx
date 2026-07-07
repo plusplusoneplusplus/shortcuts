@@ -90,4 +90,17 @@ describe('StatusActions — sidebar variant', () => {
         render(<StatusActions variant="sidebar" />);
         expect(screen.getByTestId('sidebar-admin-toggle').className).toContain('bg-[#0078d4]');
     });
+
+    it('uses a distinct blue-tinted dock background (not the sidebar gray)', () => {
+        render(<StatusActions variant="sidebar" />);
+        const dock = screen.getByTestId('sidebar-status-actions');
+        // The dock must stand apart from the sidebar body, so it must NOT reuse
+        // the neutral panel gray and must carry its own tinted background/border.
+        expect(dock.className).not.toContain('bg-[#f3f3f3]');
+        expect(dock.className).not.toContain('dark:bg-[#252526]');
+        expect(dock.className).toContain('bg-[#dbe8fa]');
+        expect(dock.className).toContain('dark:bg-[#23324a]');
+        expect(dock.className).toContain('border-[#b9d2f2]');
+        expect(dock.className).toContain('dark:border-[#34496b]');
+    });
 });

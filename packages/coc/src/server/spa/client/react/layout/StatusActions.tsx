@@ -8,7 +8,9 @@
  *     delegated to `onAdminOpen` so the topbar keeps its existing callback.
  *   - `variant="sidebar"` renders a docked footer bar for the bottom of the
  *     left sidebar (remote-first shell). It full-bleeds a top border and lays
- *     the connection label and icon buttons out as a single row.
+ *     the connection label and icon buttons out as a single row. It uses a
+ *     soft blue-tinted background (distinct from the sidebar's neutral gray) so
+ *     the dock reads as a separate strip rather than blending into the panel.
  *
  * The sidebar variant uses distinct `data-testid`s and drops the `id`
  * attributes so it never collides with the topbar cluster when both happen to
@@ -65,7 +67,7 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
     if (variant === 'sidebar') {
         return (
             <div
-                className="flex flex-shrink-0 items-center justify-between gap-1 px-2 py-1.5 border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
+                className="flex flex-shrink-0 items-center justify-between gap-1 px-2 py-1.5 border-t border-[#b9d2f2] dark:border-[#34496b] bg-[#dbe8fa] dark:bg-[#23324a]"
                 data-testid="sidebar-status-actions"
             >
                 <span
