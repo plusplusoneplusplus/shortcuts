@@ -775,6 +775,22 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
         return () => window.removeEventListener('hashchange', apply);
     }, [schedulesInSlideEnabled, workspaceId]);
 
+    // On mobile the list/detail share one column (`mobileShowDetail`). An active
+    // schedule route (create / detail) takes over the detail pane, so opening a
+    // schedule must flip to detail and closing it (route → null) must drop back
+    // to the list. Reacts only to schedule-route transitions so it never fights
+    // the chat-selection flow that otherwise owns `mobileShowDetail`; a no-op
+    // when the flag is off (scheduleRoute stays null), keeping mobile unchanged.
+    const prevScheduleRouteActiveRef = useRef(scheduleRoute !== null);
+    useEffect(() => {
+        const active = scheduleRoute !== null;
+        const wasActive = prevScheduleRouteActiveRef.current;
+        prevScheduleRouteActiveRef.current = active;
+        if (!isMobile) return;
+        if (active) setMobileShowDetail(true);
+        else if (wasActive) setMobileShowDetail(false);
+    }, [isMobile, scheduleRoute]);
+
     // When a chat task is selected, drop any active parent-run selection so
     // the right pane consistently reflects the user's most recent click.
     useEffect(() => {
@@ -1153,7 +1169,9 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
                             data-pane="detail"
                             onPointerDown={handleDetailPointerDown}
                         >
-                            {selectedRalphSessionId ? (
+                            {(schedulesInSlideEnabled && scheduleRoute) ? (
+                                <ScheduleMainPane workspaceId={workspaceId} route={scheduleRoute} />
+                            ) : selectedRalphSessionId ? (
                                 <RalphWorkflowPaneContainer
                                     workspaceId={workspaceId}
                                     sessionId={selectedRalphSessionId}
