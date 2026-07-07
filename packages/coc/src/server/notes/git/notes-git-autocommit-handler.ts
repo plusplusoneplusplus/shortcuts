@@ -69,7 +69,7 @@ export function registerNotesGitAutoCommitRoutes(
             if (scheduleManager) {
                 const stale = findAutoCommitSchedule(scheduleManager, wsId);
                 if (stale) {
-                    try { scheduleManager.removeSchedule(wsId, stale.id); } catch { /* best-effort */ }
+                    try { await scheduleManager.removeSchedule(wsId, stale.id); } catch { /* best-effort */ }
                 }
             }
 

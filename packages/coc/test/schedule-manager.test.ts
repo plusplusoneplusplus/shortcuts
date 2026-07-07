@@ -89,7 +89,7 @@ function createDeferredQueueManager() {
 // ============================================================================
 
 describe('parseCron', () => {
-    it('parses wildcard fields', () => {
+    it('parses wildcard fields', async () => {
         const fields = parseCron('* * * * *');
         expect(fields.minutes.size).toBe(60);
         expect(fields.hours.size).toBe(24);
@@ -98,7 +98,7 @@ describe('parseCron', () => {
         expect(fields.daysOfWeek.size).toBe(7);
     });
 
-    it('parses specific values', () => {
+    it('parses specific values', async () => {
         const fields = parseCron('30 9 15 6 1');
         expect(fields.minutes).toEqual(new Set([30]));
         expect(fields.hours).toEqual(new Set([9]));
@@ -107,28 +107,28 @@ describe('parseCron', () => {
         expect(fields.daysOfWeek).toEqual(new Set([1]));
     });
 
-    it('parses comma-separated values', () => {
+    it('parses comma-separated values', async () => {
         const fields = parseCron('0,30 9,17 * * *');
         expect(fields.minutes).toEqual(new Set([0, 30]));
         expect(fields.hours).toEqual(new Set([9, 17]));
     });
 
-    it('parses ranges', () => {
+    it('parses ranges', async () => {
         const fields = parseCron('0 9-17 * * *');
         expect(fields.hours).toEqual(new Set([9, 10, 11, 12, 13, 14, 15, 16, 17]));
     });
 
-    it('parses step values', () => {
+    it('parses step values', async () => {
         const fields = parseCron('*/15 * * * *');
         expect(fields.minutes).toEqual(new Set([0, 15, 30, 45]));
     });
 
-    it('parses range with step', () => {
+    it('parses range with step', async () => {
         const fields = parseCron('0 0-12/3 * * *');
         expect(fields.hours).toEqual(new Set([0, 3, 6, 9, 12]));
     });
 
-    it('throws on invalid expression', () => {
+    it('throws on invalid expression', async () => {
         expect(() => parseCron('* *')).toThrow('expected 5 fields');
         expect(() => parseCron('too many * * * * * *')).toThrow('expected 5 fields');
     });
@@ -139,14 +139,14 @@ describe('parseCron', () => {
 // ============================================================================
 
 describe('nextCronTime', () => {
-    it('returns next minute for * * * * *', () => {
+    it('returns next minute for * * * * *', async () => {
         const now = new Date(2026, 1, 18, 10, 30, 0); // Feb 18 2026 10:30 local
         const next = nextCronTime('* * * * *', now);
         expect(next).not.toBeNull();
         expect(next!.getMinutes()).toBe(31);
     });
 
-    it('returns correct time for 0 9 * * *', () => {
+    it('returns correct time for 0 9 * * *', async () => {
         const now = new Date('2026-02-18T08:00:00Z');
         const next = nextCronTime('0 9 * * *', now);
         expect(next).not.toBeNull();
@@ -154,7 +154,7 @@ describe('nextCronTime', () => {
         expect(next!.getMinutes()).toBe(0);
     });
 
-    it('returns next day when time has passed', () => {
+    it('returns next day when time has passed', async () => {
         const now = new Date(2026, 1, 18, 10, 0, 0); // Feb 18 2026 10:00 local
         const next = nextCronTime('0 9 * * *', now);
         expect(next).not.toBeNull();
@@ -162,7 +162,7 @@ describe('nextCronTime', () => {
         expect(next!.getHours()).toBe(9);
     });
 
-    it('handles step expressions', () => {
+    it('handles step expressions', async () => {
         const now = new Date(2026, 1, 18, 10, 0, 0); // Feb 18 2026 10:00 local
         const next = nextCronTime('*/30 * * * *', now);
         expect(next).not.toBeNull();
@@ -175,43 +175,43 @@ describe('nextCronTime', () => {
 // ============================================================================
 
 describe('describeCron', () => {
-    it('describes every minute', () => {
+    it('describes every minute', async () => {
         expect(describeCron('* * * * *')).toBe('Every minute');
     });
 
-    it('describes minute intervals', () => {
+    it('describes minute intervals', async () => {
         expect(describeCron('*/15 * * * *')).toBe('Every 15 minutes');
     });
 
-    it('describes hour intervals', () => {
+    it('describes hour intervals', async () => {
         expect(describeCron('0 */2 * * *')).toBe('Every 2 hours');
     });
 
-    it('describes daily at time', () => {
+    it('describes daily at time', async () => {
         expect(describeCron('0 9 * * *')).toBe('Every day at 09:00');
     });
 
-    it('describes weekly', () => {
+    it('describes weekly', async () => {
         expect(describeCron('0 10 * * 1')).toBe('Mon at 10:00');
     });
 
-    it('returns raw expr for complex expressions', () => {
+    it('returns raw expr for complex expressions', async () => {
         expect(describeCron('0 9-17 * * 1-5')).toBe('0 9-17 * * 1-5');
     });
 
-    it('describes multiple hours daily', () => {
+    it('describes multiple hours daily', async () => {
         expect(describeCron('0 1,13 * * *')).toBe('Every day at 01:00, 13:00');
     });
 
-    it('describes multiple hours daily (four times)', () => {
+    it('describes multiple hours daily (four times)', async () => {
         expect(describeCron('0 0,6,12,18 * * *')).toBe('Every day at 00:00, 06:00, 12:00, 18:00');
     });
 
-    it('describes multiple hours on specific days of week', () => {
+    it('describes multiple hours on specific days of week', async () => {
         expect(describeCron('30 8,17 * * 1,5')).toBe('Mon, Fri at 08:30, 17:30');
     });
 
-    it('sorts hours numerically in output', () => {
+    it('sorts hours numerically in output', async () => {
         expect(describeCron('0 13,1 * * *')).toBe('Every day at 01:00, 13:00');
     });
 });
@@ -239,8 +239,8 @@ describe('ScheduleManager', () => {
     const REPO_ID = 'test-repo-id';
 
     describe('addSchedule', () => {
-        it('creates a schedule with generated ID', () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+        it('creates a schedule with generated ID', async () => {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Test',
                 target: 'pipelines/test.yaml',
                 cron: '0 9 * * *',
@@ -254,8 +254,8 @@ describe('ScheduleManager', () => {
             expect(schedule.createdAt).toBeDefined();
         });
 
-        it('persists the schedule', () => {
-            manager.addSchedule(REPO_ID, {
+        it('persists the schedule', async () => {
+            await manager.addSchedule(REPO_ID, {
                 name: 'Persistent',
                 target: 'pipelines/test.yaml',
                 cron: '0 9 * * *',
@@ -270,16 +270,16 @@ describe('ScheduleManager', () => {
             expect(yamlFiles).toHaveLength(1);
 
             // loadAll() still returns the schedule
-            const loaded = persistence.loadAll();
+            const loaded = await persistence.loadAll();
             expect(loaded.get(REPO_ID)).toHaveLength(1);
             expect(loaded.get(REPO_ID)![0].name).toBe('Persistent');
         });
 
-        it('emits schedule-added event', () => {
+        it('emits schedule-added event', async () => {
             const events: any[] = [];
             manager.on('change', (e: any) => events.push(e));
 
-            manager.addSchedule(REPO_ID, {
+            await manager.addSchedule(REPO_ID, {
                 name: 'Test',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -293,26 +293,26 @@ describe('ScheduleManager', () => {
             expect(events[0].repoId).toBe(REPO_ID);
         });
 
-        it('rejects invalid cron', () => {
-            expect(() => manager.addSchedule(REPO_ID, {
+        it('rejects invalid cron', async () => {
+            await expect(manager.addSchedule(REPO_ID, {
                 name: 'Test',
                 target: 'test.yaml',
                 cron: 'invalid',
                 params: {},
                 onFailure: 'notify',
                 status: 'active',
-            })).toThrow();
+            })).rejects.toThrow();
         });
     });
 
     describe('getSchedules', () => {
-        it('returns empty array for unknown repo', () => {
+        it('returns empty array for unknown repo', async () => {
             expect(manager.getSchedules('unknown')).toEqual([]);
         });
 
-        it('returns all schedules for a repo', () => {
-            manager.addSchedule(REPO_ID, { name: 'A', target: 'a.yaml', cron: '0 9 * * *', params: {}, onFailure: 'notify', status: 'active' });
-            manager.addSchedule(REPO_ID, { name: 'B', target: 'b.yaml', cron: '0 10 * * *', params: {}, onFailure: 'notify', status: 'active' });
+        it('returns all schedules for a repo', async () => {
+            await manager.addSchedule(REPO_ID, { name: 'A', target: 'a.yaml', cron: '0 9 * * *', params: {}, onFailure: 'notify', status: 'active' });
+            await manager.addSchedule(REPO_ID, { name: 'B', target: 'b.yaml', cron: '0 10 * * *', params: {}, onFailure: 'notify', status: 'active' });
 
             expect(manager.getSchedules(REPO_ID)).toHaveLength(2);
         });
@@ -320,7 +320,7 @@ describe('ScheduleManager', () => {
 
     describe('updateSchedule', () => {
         it('updates schedule properties', async () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Original',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -341,7 +341,7 @@ describe('ScheduleManager', () => {
         });
 
         it('emits schedule-updated event', async () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Test',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -360,8 +360,8 @@ describe('ScheduleManager', () => {
     });
 
     describe('removeSchedule', () => {
-        it('removes a schedule', () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+        it('removes a schedule', async () => {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'To Remove',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -370,17 +370,17 @@ describe('ScheduleManager', () => {
                 status: 'active',
             });
 
-            const result = manager.removeSchedule(REPO_ID, schedule.id);
+            const result = await manager.removeSchedule(REPO_ID, schedule.id);
             expect(result).toBe(true);
             expect(manager.getSchedules(REPO_ID)).toHaveLength(0);
         });
 
-        it('returns false for non-existent schedule', () => {
-            expect(manager.removeSchedule(REPO_ID, 'nonexistent')).toBe(false);
+        it('returns false for non-existent schedule', async () => {
+            expect(await manager.removeSchedule(REPO_ID, 'nonexistent')).toBe(false);
         });
 
-        it('emits schedule-removed event', () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+        it('emits schedule-removed event', async () => {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Test',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -392,14 +392,14 @@ describe('ScheduleManager', () => {
             const events: any[] = [];
             manager.on('change', (e: any) => events.push(e));
 
-            manager.removeSchedule(REPO_ID, schedule.id);
+            await manager.removeSchedule(REPO_ID, schedule.id);
             expect(events.some(e => e.type === 'schedule-removed')).toBe(true);
         });
     });
 
     describe('triggerRun', () => {
         it('creates a run record', async () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Trigger Test',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -415,7 +415,7 @@ describe('ScheduleManager', () => {
         });
 
         it('adds to run history', async () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'History Test',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -434,7 +434,7 @@ describe('ScheduleManager', () => {
         });
 
         it('emits schedule-triggered and schedule-run-complete events', async () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Event Test',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -457,7 +457,7 @@ describe('ScheduleManager', () => {
             const events: any[] = [];
             mgr.on('change', (e: any) => events.push(e));
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Deferred Queue',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -498,7 +498,7 @@ describe('ScheduleManager', () => {
             const events: any[] = [];
             mgr.on('change', (e: any) => events.push(e));
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Deferred Failure',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -532,7 +532,7 @@ describe('ScheduleManager', () => {
             const events: any[] = [];
             mgr.on('change', (e: any) => events.push(e));
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Scheduled Ralph',
                 target: 'goal.md',
                 cron: '0 9 * * *',
@@ -585,7 +585,7 @@ describe('ScheduleManager', () => {
             const events: any[] = [];
             mgr.on('change', (e: any) => events.push(e));
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Scheduled Ralph Failure',
                 target: 'goal.md',
                 cron: '0 9 * * *',
@@ -631,7 +631,7 @@ describe('ScheduleManager', () => {
             };
             const mgr = new ScheduleManager(persistence, queue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Enqueue Failure',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -661,7 +661,7 @@ describe('ScheduleManager', () => {
             mgr.on('change', (e: any) => events.push(e));
 
             try {
-                const schedule = mgr.addSchedule(REPO_ID, {
+                const schedule = await mgr.addSchedule(REPO_ID, {
                     name: 'Overlap Schedule',
                     target: 'test.yaml',
                     cron: '* * * * *',
@@ -709,9 +709,9 @@ describe('ScheduleManager', () => {
     });
 
     describe('restore', () => {
-        it('restores schedules from persistence', () => {
+        it('restores schedules from persistence', async () => {
             // Create a schedule, save, dispose, then restore in a new manager
-            manager.addSchedule(REPO_ID, {
+            await manager.addSchedule(REPO_ID, {
                 name: 'Restored Schedule',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -723,7 +723,7 @@ describe('ScheduleManager', () => {
             manager.dispose();
 
             const newManager = new ScheduleManager(persistence);
-            newManager.restore();
+            await newManager.restore();
 
             const schedules = newManager.getSchedules(REPO_ID);
             expect(schedules).toHaveLength(1);
@@ -737,8 +737,8 @@ describe('ScheduleManager', () => {
     });
 
     describe('dispose', () => {
-        it('cancels all timers', () => {
-            manager.addSchedule(REPO_ID, {
+        it('cancels all timers', async () => {
+            await manager.addSchedule(REPO_ID, {
                 name: 'Timed',
                 target: 'test.yaml',
                 cron: '* * * * *',
@@ -754,7 +754,7 @@ describe('ScheduleManager', () => {
 
     describe('run history limit', () => {
         it('caps run history at 100 entries', async () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'History Limit',
                 target: 'test.yaml',
                 cron: '0 9 * * *',
@@ -778,7 +778,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_1'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Prompt Schedule',
                 target: 'my-prompt.md',
                 cron: '0 9 * * *',
@@ -805,7 +805,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_2'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Explicit Prompt',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -831,7 +831,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_3'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'My Script',
                 target: 'echo hello',
                 cron: '0 9 * * *',
@@ -858,7 +858,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_4'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'My Script Job',
                 target: 'echo abc',
                 cron: '0 9 * * *',
@@ -880,7 +880,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_5'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'No WorkDir',
                 target: 'node -e "1"',
                 cron: '0 9 * * *',
@@ -901,7 +901,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (_task: any) => 'mytaskid' };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Script PID',
                 target: 'echo x',
                 cron: '0 9 * * *',
@@ -919,8 +919,8 @@ describe('ScheduleManager', () => {
     });
 
     describe('targetType field', () => {
-        it('targetType is undefined when not provided (treated as prompt)', () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+        it('targetType is undefined when not provided (treated as prompt)', async () => {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'No TargetType',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -932,8 +932,8 @@ describe('ScheduleManager', () => {
             expect(schedule.targetType).toBeUndefined();
         });
 
-        it('accepts targetType: prompt explicitly', () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+        it('accepts targetType: prompt explicitly', async () => {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Explicit Prompt',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -946,8 +946,8 @@ describe('ScheduleManager', () => {
             expect(schedule.targetType).toBe('prompt');
         });
 
-        it('accepts targetType: script', () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+        it('accepts targetType: script', async () => {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Script Schedule',
                 target: 'echo hello',
                 cron: '0 9 * * *',
@@ -960,8 +960,8 @@ describe('ScheduleManager', () => {
             expect(schedule.targetType).toBe('script');
         });
 
-        it('persists and restores targetType correctly', () => {
-            manager.addSchedule(REPO_ID, {
+        it('persists and restores targetType correctly', async () => {
+            await manager.addSchedule(REPO_ID, {
                 name: 'Script Persisted',
                 target: 'echo hi',
                 cron: '0 9 * * *',
@@ -974,7 +974,7 @@ describe('ScheduleManager', () => {
             manager.dispose();
 
             const newManager = new ScheduleManager(persistence);
-            newManager.restore();
+            await newManager.restore();
 
             const schedules = newManager.getSchedules(REPO_ID);
             expect(schedules).toHaveLength(1);
@@ -985,8 +985,8 @@ describe('ScheduleManager', () => {
     });
 
     describe('outputFolder field', () => {
-        it('is undefined when not provided', () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+        it('is undefined when not provided', async () => {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'No Output Folder',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -998,8 +998,8 @@ describe('ScheduleManager', () => {
             expect(schedule.outputFolder).toBeUndefined();
         });
 
-        it('stores and returns outputFolder when provided', () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+        it('stores and returns outputFolder when provided', async () => {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'With Output Folder',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1013,7 +1013,7 @@ describe('ScheduleManager', () => {
         });
 
         it('can be updated via updateSchedule', async () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Update Output Folder',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1026,8 +1026,8 @@ describe('ScheduleManager', () => {
             expect(updated!.outputFolder).toBe('/new/output');
         });
 
-        it('persists and restores outputFolder', () => {
-            manager.addSchedule(REPO_ID, {
+        it('persists and restores outputFolder', async () => {
+            await manager.addSchedule(REPO_ID, {
                 name: 'Persisted Output Folder',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1040,7 +1040,7 @@ describe('ScheduleManager', () => {
             manager.dispose();
 
             const newManager = new ScheduleManager(persistence);
-            newManager.restore();
+            await newManager.restore();
 
             const schedules = newManager.getSchedules(REPO_ID);
             expect(schedules[0].outputFolder).toBe('~/.coc/repos/test/tasks');
@@ -1053,7 +1053,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_of'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Output Folder Prompt',
                 target: 'my-task.md',
                 cron: '0 9 * * *',
@@ -1078,7 +1078,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_nof'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'No Output Folder Prompt',
                 target: 'my-task.md',
                 cron: '0 9 * * *',
@@ -1101,7 +1101,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_script'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Script With Output Folder',
                 target: 'echo hello',
                 cron: '0 9 * * *',
@@ -1123,8 +1123,8 @@ describe('ScheduleManager', () => {
     });
 
     describe('model field', () => {
-        it('is undefined when not provided', () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+        it('is undefined when not provided', async () => {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'No Model',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1136,8 +1136,8 @@ describe('ScheduleManager', () => {
             expect(schedule.model).toBeUndefined();
         });
 
-        it('stores and returns model when provided', () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+        it('stores and returns model when provided', async () => {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'With Model',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1151,7 +1151,7 @@ describe('ScheduleManager', () => {
         });
 
         it('can be updated via updateSchedule', async () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Update Model',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1164,8 +1164,8 @@ describe('ScheduleManager', () => {
             expect(updated!.model).toBe('gpt-5.2');
         });
 
-        it('persists and restores model', () => {
-            manager.addSchedule(REPO_ID, {
+        it('persists and restores model', async () => {
+            await manager.addSchedule(REPO_ID, {
                 name: 'Persisted Model',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1178,7 +1178,7 @@ describe('ScheduleManager', () => {
             manager.dispose();
 
             const newManager = new ScheduleManager(persistence);
-            newManager.restore();
+            await newManager.restore();
 
             const schedules = newManager.getSchedules(REPO_ID);
             expect(schedules[0].model).toBe('claude-sonnet-4.6');
@@ -1191,7 +1191,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_model'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Model Forwarded',
                 target: 'my-task.md',
                 cron: '0 9 * * *',
@@ -1214,7 +1214,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_nomodel'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'No Model Forwarded',
                 target: 'my-task.md',
                 cron: '0 9 * * *',
@@ -1232,8 +1232,8 @@ describe('ScheduleManager', () => {
     });
 
     describe('mode field', () => {
-        it('is undefined when not provided', () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+        it('is undefined when not provided', async () => {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'No Mode',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1245,8 +1245,8 @@ describe('ScheduleManager', () => {
             expect(schedule.mode).toBeUndefined();
         });
 
-        it('stores and returns mode when provided', () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+        it('stores and returns mode when provided', async () => {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'With Mode',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1260,7 +1260,7 @@ describe('ScheduleManager', () => {
         });
 
         it('can be updated via updateSchedule', async () => {
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Update Mode',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1273,8 +1273,8 @@ describe('ScheduleManager', () => {
             expect(updated!.mode).toBe('ask');
         });
 
-        it('persists and restores mode', () => {
-            manager.addSchedule(REPO_ID, {
+        it('persists and restores mode', async () => {
+            await manager.addSchedule(REPO_ID, {
                 name: 'Persisted Mode',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1287,7 +1287,7 @@ describe('ScheduleManager', () => {
             manager.dispose();
 
             const newManager = new ScheduleManager(persistence);
-            newManager.restore();
+            await newManager.restore();
 
             const schedules = newManager.getSchedules(REPO_ID);
             expect(schedules[0].mode).toBe('ask');
@@ -1300,7 +1300,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_mode_ask'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Ask Mode Schedule',
                 target: 'my-task.md',
                 cron: '0 9 * * *',
@@ -1323,7 +1323,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_mode_plan'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Legacy Plan Mode Schedule',
                 target: 'my-task.md',
                 cron: '0 9 * * *',
@@ -1345,7 +1345,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_mode_default'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Default Mode',
                 target: 'my-task.md',
                 cron: '0 9 * * *',
@@ -1366,7 +1366,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_script_mode'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Script With Mode Field',
                 target: 'echo hello',
                 cron: '0 9 * * *',
@@ -1391,7 +1391,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (_task: any) => 'my_task_id_abc' };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Task ID Test',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1411,7 +1411,7 @@ describe('ScheduleManager', () => {
             const mockQueue = { enqueue: (_task: any) => 'script_task_xyz' };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'Script Task ID Test',
                 target: 'echo hello',
                 cron: '0 9 * * *',
@@ -1431,7 +1431,7 @@ describe('ScheduleManager', () => {
         it('taskId is undefined when queueManager is absent', async () => {
             const mgr = new ScheduleManager(persistence, null);
 
-            const schedule = mgr.addSchedule(REPO_ID, {
+            const schedule = await mgr.addSchedule(REPO_ID, {
                 name: 'No Queue',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1457,7 +1457,7 @@ describe('ScheduleManager', () => {
             initializeDatabase(db);
             const runPersistence = new SqliteScheduleRunPersistence(db);
 
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'History Restore',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1473,7 +1473,7 @@ describe('ScheduleManager', () => {
 
             // New manager restores history
             const newManager = new ScheduleManager(persistence);
-            newManager.restore();
+            await newManager.restore();
             newManager.restoreRunHistory(runPersistence);
 
             const history = newManager.getRunHistory(schedule.id);
@@ -1492,7 +1492,7 @@ describe('ScheduleManager', () => {
             initializeDatabase(db);
             const runPersistence = new SqliteScheduleRunPersistence(db);
 
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'No Persist',
                 target: 'prompt.md',
                 cron: '0 9 * * *',
@@ -1507,7 +1507,7 @@ describe('ScheduleManager', () => {
 
             // New manager restores but gets no history since nothing was persisted
             const newManager = new ScheduleManager(persistence);
-            newManager.restore();
+            await newManager.restore();
             newManager.restoreRunHistory(runPersistence);
 
             const history = newManager.getRunHistory(schedule.id);

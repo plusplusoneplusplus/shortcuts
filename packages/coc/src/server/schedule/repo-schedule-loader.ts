@@ -17,6 +17,7 @@ import type { ScheduleEntry, ScheduleStatus, ScheduleOnFailure } from './schedul
 import type { TargetType, ChatMode } from '../tasks/task-types';
 import { normalizeChatMode } from '../tasks/task-types';
 import type { RepoScheduleOverrides } from './repo-schedule-overrides';
+import { getServerLogger } from '../logging/server-logger';
 
 // ============================================================================
 // Public API
@@ -40,22 +41,22 @@ export function idFromScheduleFilename(filename: string): string {
 /**
  * Load all repo-defined schedules from <workspaceRoot>/.github/schedules/.
  * Applies runtime status overrides (pause/resume state) on top of the file defaults.
- * Returns an empty array if the directory does not exist or is unreadable.
+ * Returns an empty array if the directory does not exist. Directory scan
+ * failures reject so callers can keep their previous in-memory schedules.
  */
-export function loadRepoSchedules(
+export async function loadRepoSchedulesAsync(
     workspaceRoot: string,
     overrides: RepoScheduleOverrides = {},
-): ScheduleEntry[] {
+): Promise<ScheduleEntry[]> {
     const scheduleDir = getRepoScheduleDir(workspaceRoot);
 
     let files: string[];
     try {
-        if (!fs.existsSync(scheduleDir)) return [];
-        files = fs
-            .readdirSync(scheduleDir)
+        files = (await fs.promises.readdir(scheduleDir))
             .filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
-    } catch {
-        return [];
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw err;
     }
 
     const result: ScheduleEntry[] = [];
@@ -63,7 +64,7 @@ export function loadRepoSchedules(
     for (const file of files.sort()) {
         const filePath = path.join(scheduleDir, file);
         try {
-            const raw = fs.readFileSync(filePath, 'utf-8');
+            const raw = await fs.promises.readFile(filePath, 'utf-8');
             const parsed = yaml.load(raw) as Record<string, unknown>;
             if (!parsed || typeof parsed !== 'object') continue;
             // name and cron are required
@@ -94,8 +95,11 @@ export function loadRepoSchedules(
                 source: 'repo',
             };
             result.push(entry);
-        } catch {
-            process.stderr.write(`[RepoScheduleLoader] Failed to parse ${filePath}\n`);
+        } catch (err) {
+            getServerLogger().warn(
+                { err, filePath },
+                '[RepoScheduleLoader] Failed to parse repo schedule YAML',
+            );
         }
     }
 

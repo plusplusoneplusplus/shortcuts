@@ -25,7 +25,7 @@ import { getErrorMessage } from '../shared/fs-utils';
 import { getServerLogger } from '../logging/server-logger';
 import { ScheduleYamlPersistence } from './schedule-yaml-persistence';
 import type { SqliteScheduleRunPersistence } from './sqlite-schedule-run-persistence';
-import { loadRepoSchedules, getRepoScheduleDir } from './repo-schedule-loader';
+import { loadRepoSchedulesAsync, getRepoScheduleDir } from './repo-schedule-loader';
 import type { RepoScheduleOverrideStore } from './repo-schedule-overrides';
 import { parseCron, nextCronTime, slugifyName } from './cron-utils';
 import { ScheduleTimerRegistry } from './schedule-timer-registry';
@@ -41,6 +41,11 @@ import type {
 
 type ScheduleMutableFields = Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType' | 'outputFolder' | 'model' | 'mode'>;
 type ScheduleUpdates = Partial<ScheduleMutableFields>;
+export interface RepoScheduleReloadResult {
+    ok: boolean;
+    loaded: number;
+    error?: string;
+}
 
 function normalizeScheduleMode(mode: unknown): ScheduleEntry['mode'] {
     return normalizeChatMode(mode);
@@ -81,6 +86,7 @@ export class ScheduleManager extends EventEmitter {
     // Dependencies
     private readonly persistence: ScheduleYamlPersistence;
     private readonly overrideStore: RepoScheduleOverrideStore | null;
+    private readonly repoReloadQueues = new Map<string, Promise<RepoScheduleReloadResult>>();
     private disposed = false;
 
     constructor(
@@ -104,8 +110,8 @@ export class ScheduleManager extends EventEmitter {
     /**
      * Restore schedules from persistence and start timers for active ones.
      */
-    restore(): void {
-        const allSchedules = this.persistence.loadAll();
+    async restore(): Promise<void> {
+        const allSchedules = await this.persistence.loadAll();
         let total = 0;
         for (const [repoId, entries] of allSchedules) {
             const map = new Map<string, ScheduleEntry>();
@@ -159,7 +165,7 @@ export class ScheduleManager extends EventEmitter {
     /**
      * Create a new schedule.
      */
-    addSchedule(repoId: string, entry: Omit<ScheduleEntry, 'id' | 'createdAt'>): ScheduleEntry {
+    async addSchedule(repoId: string, entry: Omit<ScheduleEntry, 'id' | 'createdAt'>): Promise<ScheduleEntry> {
         // Validate cron
         parseCron(entry.cron);
 
@@ -174,7 +180,7 @@ export class ScheduleManager extends EventEmitter {
             this.schedules.set(repoId, new Map());
         }
         this.schedules.get(repoId)!.set(schedule.id, schedule);
-        this.persist(repoId);
+        await this.persist(repoId);
 
         if (schedule.status === 'active') {
             this.scheduleNextRun(repoId, schedule);
@@ -194,7 +200,7 @@ export class ScheduleManager extends EventEmitter {
      * Create or replace a deterministic user schedule.
      * Used for server-managed schedules whose IDs must survive restart.
      */
-    setSchedule(repoId: string, entry: ScheduleEntry): ScheduleEntry {
+    async setSchedule(repoId: string, entry: ScheduleEntry): Promise<ScheduleEntry> {
         parseCron(entry.cron);
 
         const existing = this.schedules.get(repoId)?.get(entry.id);
@@ -210,7 +216,7 @@ export class ScheduleManager extends EventEmitter {
         this.schedules.get(repoId)!.set(schedule.id, schedule);
 
         this.timers.cancel(schedule.id);
-        this.persist(repoId);
+        await this.persist(repoId);
         if (schedule.status === 'active') {
             this.scheduleNextRun(repoId, schedule);
         }
@@ -283,7 +289,7 @@ export class ScheduleManager extends EventEmitter {
             this.scheduleNextRun(repoId, schedule);
         }
 
-        this.persist(repoId);
+        await this.persist(repoId);
 
         this.emit('change', {
             type: 'schedule-updated',
@@ -299,7 +305,7 @@ export class ScheduleManager extends EventEmitter {
      * Remove a user schedule.
      * For repo schedules, use removeRepoSchedule() instead.
      */
-    removeSchedule(repoId: string, scheduleId: string): boolean {
+    async removeSchedule(repoId: string, scheduleId: string): Promise<boolean> {
         // Block removal of repo schedules — use removeRepoSchedule() instead
         if (this.repoSchedules.get(repoId)?.has(scheduleId)) return false;
 
@@ -312,9 +318,9 @@ export class ScheduleManager extends EventEmitter {
 
         if (map.size === 0) {
             this.schedules.delete(repoId);
-            this.persistence.deleteRepo(repoId);
+            await this.persistence.deleteRepo(repoId);
         } else {
-            this.persist(repoId);
+            await this.persist(repoId);
         }
 
         this.emit('change', {
@@ -367,7 +373,7 @@ export class ScheduleManager extends EventEmitter {
         // Unregister from in-memory map and cancel timer
         this.timers.cancel(scheduleId);
         this.history.delete(scheduleId);
-        this.reloadRepoSchedules(repoId);
+        await this.reloadRepoSchedules(repoId);
 
         this.emit('change', {
             type: 'schedule-removed',
@@ -496,14 +502,14 @@ export class ScheduleManager extends EventEmitter {
             map.delete(entry.id);
             if (map.size === 0) {
                 this.schedules.delete(repoId);
-                this.persistence.deleteRepo(repoId);
+                await this.persistence.deleteRepo(repoId);
             } else {
-                this.persist(repoId);
+                await this.persist(repoId);
             }
         }
 
         // Reload repo schedules so the new file is picked up
-        this.reloadRepoSchedules(repoId);
+        await this.reloadRepoSchedules(repoId);
 
         const newEntry = this.repoSchedules.get(repoId)?.get(`repo:${finalSlug}`);
         if (!newEntry) {
@@ -527,7 +533,7 @@ export class ScheduleManager extends EventEmitter {
 
     private async moveRepoToUser(repoId: string, entry: ScheduleEntry, rootPath: string): Promise<ScheduleEntry> {
         // Create a new user schedule (addSchedule strips source)
-        const newEntry = this.addSchedule(repoId, {
+        const newEntry = await this.addSchedule(repoId, {
             name: entry.name,
             target: entry.target,
             cron: entry.cron,
@@ -556,7 +562,7 @@ export class ScheduleManager extends EventEmitter {
 
         // Cancel timer for old repo schedule and reload
         this.timers.cancel(entry.id);
-        this.reloadRepoSchedules(repoId);
+        await this.reloadRepoSchedules(repoId);
 
         return newEntry;
     }
@@ -624,14 +630,19 @@ export class ScheduleManager extends EventEmitter {
         if (!schedule) return;
         schedule.status = 'stopped';
         this.timers.cancel(scheduleId);
-        this.persist(repoId);
+        this.persist(repoId).catch(err => {
+            getServerLogger().warn(
+                { err, repoId, scheduleId },
+                'ScheduleManager: failed to persist stopped schedule after failure',
+            );
+        });
     }
 
-    private persist(repoId: string): void {
+    private async persist(repoId: string): Promise<void> {
         // Only persist user-managed schedules (not repo-sourced ones)
         const map = this.schedules.get(repoId);
         const schedules = map ? Array.from(map.values()) : [];
-        this.persistence.saveRepo(repoId, schedules);
+        await this.persistence.saveRepo(repoId, schedules);
     }
 
     // ========================================================================
@@ -643,26 +654,53 @@ export class ScheduleManager extends EventEmitter {
      * from <rootPath>/.github/schedules/.  Sets up a file watcher for live reload.
      * Safe to call multiple times (idempotent — re-registers path and refreshes).
      */
-    registerWorkspacePath(repoId: string, rootPath: string): void {
+    async registerWorkspacePath(repoId: string, rootPath: string): Promise<RepoScheduleReloadResult> {
         this.workspacePaths.set(repoId, rootPath);
-        this.reloadRepoSchedules(repoId);
+        const result = await this.reloadRepoSchedules(repoId);
         const scheduleDir = getRepoScheduleDir(rootPath);
         // Fire-and-forget: watch() handles missing dirs and unsupported platforms gracefully.
-        this.watcher.watch(repoId, scheduleDir, () => this.reloadRepoSchedules(repoId)).catch(err => {
+        this.watcher.watch(repoId, scheduleDir, async () => { await this.reloadRepoSchedules(repoId); }).catch(err => {
             getServerLogger().warn({ err, repoId }, 'ScheduleManager: failed to watch repo schedule dir');
         });
+        return result;
     }
 
     /**
      * Reload repo-defined schedules for a workspace from disk.
      * Called automatically by the file watcher.
      */
-    reloadRepoSchedules(repoId: string): void {
+    async reloadRepoSchedules(repoId: string): Promise<RepoScheduleReloadResult> {
+        const previous = this.repoReloadQueues.get(repoId);
+        const current = (previous ?? Promise.resolve({ ok: true, loaded: 0 }))
+            .catch(() => ({ ok: false, loaded: this.repoSchedules.get(repoId)?.size ?? 0 }))
+            .then(() => this.reloadRepoSchedulesNow(repoId));
+        this.repoReloadQueues.set(repoId, current);
+        void current.finally(() => {
+            if (this.repoReloadQueues.get(repoId) === current) {
+                this.repoReloadQueues.delete(repoId);
+            }
+        });
+        return current;
+    }
+
+    private async reloadRepoSchedulesNow(repoId: string): Promise<RepoScheduleReloadResult> {
         const rootPath = this.workspacePaths.get(repoId);
-        if (!rootPath) return;
+        if (!rootPath) return { ok: true, loaded: 0 };
 
         const overrides = this.overrideStore?.load(repoId) ?? {};
-        const entries = loadRepoSchedules(rootPath, overrides);
+        let entries: ScheduleEntry[];
+        try {
+            entries = await loadRepoSchedulesAsync(rootPath, overrides);
+        } catch (err) {
+            const loaded = this.repoSchedules.get(repoId)?.size ?? 0;
+            const message = getErrorMessage(err, 'Failed to reload repo schedules');
+            getServerLogger().warn(
+                { err, repoId, rootPath, preserved: loaded },
+                'ScheduleManager: failed to reload repo schedules; preserving previous schedules',
+            );
+            return { ok: false, loaded, error: message };
+        }
+
         const newMap = new Map<string, ScheduleEntry>();
         for (const entry of entries) {
             newMap.set(entry.id, entry);
@@ -694,6 +732,8 @@ export class ScheduleManager extends EventEmitter {
                 this.scheduleNextRun(repoId, entry);
             }
         }
+
+        return { ok: true, loaded: newMap.size };
     }
 }
 

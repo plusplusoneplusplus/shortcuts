@@ -119,7 +119,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
         manager = new ScheduleManager(persistence, queueManager);
         manager.restoreRunHistory(runPersistence);
 
-        const schedule = manager.addSchedule(REPO_ID, {
+        const schedule = await manager.addSchedule(REPO_ID, {
             name: 'Test',
             target: 'pipelines/test.yaml',
             cron: '0 9 * * *',
@@ -154,7 +154,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
             } as any;
             manager = new ScheduleManager(persistence, queueManager);
 
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Test',
                 target: 'pipelines/test.yaml',
                 cron: '* * * * *', // every minute
@@ -181,7 +181,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
         const queueManager = { enqueue: vi.fn(() => 'task_1') } as any;
         manager = new ScheduleManager(persistence, queueManager);
 
-        const schedule = manager.addSchedule(REPO_ID, {
+        const schedule = await manager.addSchedule(REPO_ID, {
             name: 'Test',
             target: 'pipelines/test.yaml',
             cron: '0 9 * * *',
@@ -214,7 +214,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
             } as any;
             manager = new ScheduleManager(persistence, queueManager);
 
-            const schedule = manager.addSchedule(REPO_ID, {
+            const schedule = await manager.addSchedule(REPO_ID, {
                 name: 'Test',
                 target: 'pipelines/test.yaml',
                 cron: '* * * * *', // every minute
@@ -251,7 +251,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
         } as any;
         manager = new ScheduleManager(persistence, queueManager);
 
-        const schedule = manager.addSchedule(REPO_ID, {
+        const schedule = await manager.addSchedule(REPO_ID, {
             name: 'Test',
             target: 'pipelines/old.yaml',
             cron: '0 9 * * *',

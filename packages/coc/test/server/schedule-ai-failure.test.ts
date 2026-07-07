@@ -122,7 +122,7 @@ describe('Schedule AI Failure (unit — direct ScheduleManager)', () => {
         manager = new ScheduleManager(persistence, queueManager);
         manager.restoreRunHistory(runPersistence);
 
-        const schedule = manager.addSchedule(REPO_ID, makeScheduleInput());
+        const schedule = await manager.addSchedule(REPO_ID, makeScheduleInput());
         const run = await manager.triggerRun(REPO_ID, schedule.id);
 
         expect(run.status).toBe('failed');
@@ -134,7 +134,7 @@ describe('Schedule AI Failure (unit — direct ScheduleManager)', () => {
         manager = new ScheduleManager(persistence, queueManager);
         manager.restoreRunHistory(runPersistence);
 
-        const schedule = manager.addSchedule(REPO_ID, makeScheduleInput());
+        const schedule = await manager.addSchedule(REPO_ID, makeScheduleInput());
         const run = await manager.triggerRun(REPO_ID, schedule.id);
 
         expect(run.error).toContain(errMsg);
@@ -145,7 +145,7 @@ describe('Schedule AI Failure (unit — direct ScheduleManager)', () => {
         manager = new ScheduleManager(persistence, queueManager);
         manager.restoreRunHistory(runPersistence);
 
-        const schedule = manager.addSchedule(REPO_ID, makeScheduleInput());
+        const schedule = await manager.addSchedule(REPO_ID, makeScheduleInput());
         const run = await manager.triggerRun(REPO_ID, schedule.id);
 
         expect(run.completedAt).toBeDefined();
@@ -157,7 +157,7 @@ describe('Schedule AI Failure (unit — direct ScheduleManager)', () => {
         manager = new ScheduleManager(persistence, queueManager);
         manager.restoreRunHistory(runPersistence);
 
-        const schedule = manager.addSchedule(REPO_ID, makeScheduleInput());
+        const schedule = await manager.addSchedule(REPO_ID, makeScheduleInput());
         await manager.triggerRun(REPO_ID, schedule.id);
 
         const history = manager.getRunHistory(schedule.id);
@@ -169,7 +169,7 @@ describe('Schedule AI Failure (unit — direct ScheduleManager)', () => {
         const queueManager = createThrowingQueueManager(new Error('AI error'));
         manager = new ScheduleManager(persistence, queueManager);
 
-        const schedule = manager.addSchedule(REPO_ID, makeScheduleInput({ onFailure: 'notify' }));
+        const schedule = await manager.addSchedule(REPO_ID, makeScheduleInput({ onFailure: 'notify' }));
         await manager.triggerRun(REPO_ID, schedule.id);
 
         const reloaded = manager.getSchedule(REPO_ID, schedule.id);
@@ -180,7 +180,7 @@ describe('Schedule AI Failure (unit — direct ScheduleManager)', () => {
         const queueManager = createThrowingQueueManager(new Error('AI error'));
         manager = new ScheduleManager(persistence, queueManager);
 
-        const schedule = manager.addSchedule(REPO_ID, makeScheduleInput({ onFailure: 'stop' }));
+        const schedule = await manager.addSchedule(REPO_ID, makeScheduleInput({ onFailure: 'stop' }));
         await manager.triggerRun(REPO_ID, schedule.id);
 
         const reloaded = manager.getSchedule(REPO_ID, schedule.id);
@@ -199,7 +199,7 @@ describe('Schedule AI Failure (unit — direct ScheduleManager)', () => {
         manager = new ScheduleManager(persistence, queueManager);
         manager.restoreRunHistory(runPersistence);
 
-        const schedule = manager.addSchedule(REPO_ID, makeScheduleInput());
+        const schedule = await manager.addSchedule(REPO_ID, makeScheduleInput());
 
         const run1 = await manager.triggerRun(REPO_ID, schedule.id);
         expect(run1.status).toBe('failed');
@@ -213,7 +213,7 @@ describe('Schedule AI Failure (unit — direct ScheduleManager)', () => {
         manager = new ScheduleManager(persistence, queueManager);
         manager.restoreRunHistory(runPersistence);
 
-        const schedule = manager.addSchedule(REPO_ID, makeScheduleInput());
+        const schedule = await manager.addSchedule(REPO_ID, makeScheduleInput());
 
         await manager.triggerRun(REPO_ID, schedule.id);
         await manager.triggerRun(REPO_ID, schedule.id);
@@ -228,7 +228,7 @@ describe('Schedule AI Failure (unit — direct ScheduleManager)', () => {
         manager = new ScheduleManager(persistence, null); // no queue manager
         manager.restoreRunHistory(runPersistence);
 
-        const schedule = manager.addSchedule(REPO_ID, makeScheduleInput());
+        const schedule = await manager.addSchedule(REPO_ID, makeScheduleInput());
         const run = await manager.triggerRun(REPO_ID, schedule.id);
 
         expect(run.status).toBe('completed');

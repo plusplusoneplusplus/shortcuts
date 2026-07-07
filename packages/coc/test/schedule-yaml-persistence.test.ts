@@ -62,19 +62,19 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('save and load round-trip', () => {
-        it('saveSchedule + loadRepoSchedules returns same entry', () => {
+        it('saveSchedule + loadRepoSchedules returns same entry', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'abc123';
             const entry = createSchedule({ id: 'sch_aa1' });
 
-            persistence.saveSchedule(repoId, entry);
-            const loaded = persistence.loadRepoSchedules(repoId);
+            await persistence.saveSchedule(repoId, entry);
+            const loaded = await persistence.loadRepoSchedules(repoId);
 
             expect(loaded).toHaveLength(1);
             expect(loaded[0]).toEqual(entry);
         });
 
-        it('saveRepo + loadAll returns all entries', () => {
+        it('saveRepo + loadAll returns all entries', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'abc123def456';
             const schedules = [
@@ -82,9 +82,9 @@ describe('ScheduleYamlPersistence', () => {
                 createSchedule({ id: 'sch_2', name: 'Schedule B', status: 'paused' }),
             ];
 
-            persistence.saveRepo(repoId, schedules);
+            await persistence.saveRepo(repoId, schedules);
 
-            const loaded = persistence.loadAll();
+            const loaded = await persistence.loadAll();
             expect(loaded.size).toBe(1);
             expect(loaded.has(repoId)).toBe(true);
 
@@ -102,19 +102,19 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('file naming', () => {
-        it('YAML file is named <id>.yaml', () => {
+        it('YAML file is named <id>.yaml', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'repo-naming';
             const entry = createSchedule({ id: 'sch_abc' });
 
-            persistence.saveSchedule(repoId, entry);
+            await persistence.saveSchedule(repoId, entry);
 
             const expectedPath = getScheduleYamlPath(dataDir, repoId, 'sch_abc');
             expect(fs.existsSync(expectedPath)).toBe(true);
             expect(path.basename(expectedPath)).toBe('sch_abc.yaml');
         });
 
-        it('getScheduleYamlPath returns expected path', () => {
+        it('getScheduleYamlPath returns expected path', async () => {
             const result = getScheduleYamlPath(dataDir, 'my-repo', 'sch_123');
             const expected = path.join(dataDir, 'repos', 'my-repo', 'schedules', 'sch_123.yaml');
             expect(result).toBe(expected);
@@ -126,12 +126,12 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('YAML file content', () => {
-        it('writes valid YAML with all ScheduleEntry fields', () => {
+        it('writes valid YAML with all ScheduleEntry fields', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'repo-content';
             const entry = createSchedule({ id: 'sch_content' });
 
-            persistence.saveSchedule(repoId, entry);
+            await persistence.saveSchedule(repoId, entry);
 
             const filePath = getScheduleYamlPath(dataDir, repoId, 'sch_content');
             const raw = fs.readFileSync(filePath, 'utf-8');
@@ -152,16 +152,16 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('multiple repos', () => {
-        it('saves and loads schedules for multiple repos independently', () => {
+        it('saves and loads schedules for multiple repos independently', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
 
-            persistence.saveRepo('repo-aaa', [createSchedule({ id: 'sch_a', name: 'Repo A' })]);
-            persistence.saveRepo('repo-bbb', [
+            await persistence.saveRepo('repo-aaa', [createSchedule({ id: 'sch_a', name: 'Repo A' })]);
+            await persistence.saveRepo('repo-bbb', [
                 createSchedule({ id: 'sch_b1', name: 'Repo B 1' }),
                 createSchedule({ id: 'sch_b2', name: 'Repo B 2' }),
             ]);
 
-            const loaded = persistence.loadAll();
+            const loaded = await persistence.loadAll();
             expect(loaded.size).toBe(2);
             expect(loaded.get('repo-aaa')!).toHaveLength(1);
             expect(loaded.get('repo-bbb')!).toHaveLength(2);
@@ -173,11 +173,11 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('multiple schedules per repo', () => {
-        it('saves three entries, verifies three .yaml files and loadRepoSchedules returns all', () => {
+        it('saves three entries, verifies three .yaml files and loadRepoSchedules returns all', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'repo-multi';
 
-            persistence.saveRepo(repoId, [
+            await persistence.saveRepo(repoId, [
                 createSchedule({ id: 'sch_x1', name: 'X1' }),
                 createSchedule({ id: 'sch_x2', name: 'X2' }),
                 createSchedule({ id: 'sch_x3', name: 'X3' }),
@@ -187,7 +187,7 @@ describe('ScheduleYamlPersistence', () => {
             const yamlFiles = fs.readdirSync(dir).filter(f => f.endsWith('.yaml'));
             expect(yamlFiles).toHaveLength(3);
 
-            const loaded = persistence.loadRepoSchedules(repoId);
+            const loaded = await persistence.loadRepoSchedules(repoId);
             expect(loaded).toHaveLength(3);
         });
     });
@@ -197,15 +197,15 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('empty state', () => {
-        it('loadAll on fresh dataDir returns empty map', () => {
+        it('loadAll on fresh dataDir returns empty map', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
-            const loaded = persistence.loadAll();
+            const loaded = await persistence.loadAll();
             expect(loaded.size).toBe(0);
         });
 
-        it('loadRepoSchedules on missing dir returns []', () => {
+        it('loadRepoSchedules on missing dir returns []', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
-            const result = persistence.loadRepoSchedules('nonexistent-repo');
+            const result = await persistence.loadRepoSchedules('nonexistent-repo');
             expect(result).toEqual([]);
         });
     });
@@ -215,12 +215,12 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('empty schedules list', () => {
-        it('saveRepo(repoId, []) removes all files', () => {
+        it('saveRepo(repoId, []) removes all files', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'repo-empty';
 
-            persistence.saveRepo(repoId, [createSchedule({ id: 'sch_del' })]);
-            persistence.saveRepo(repoId, []);
+            await persistence.saveRepo(repoId, [createSchedule({ id: 'sch_del' })]);
+            await persistence.saveRepo(repoId, []);
 
             const dir = getScheduleYamlDir(dataDir, repoId);
             const yamlFiles = fs.existsSync(dir)
@@ -235,19 +235,19 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('deleteSchedule', () => {
-        it('removes file; loadRepoSchedules returns empty', () => {
+        it('removes file; loadRepoSchedules returns empty', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'repo-del-single';
             const entry = createSchedule({ id: 'sch_gone' });
 
-            persistence.saveSchedule(repoId, entry);
-            expect(persistence.loadRepoSchedules(repoId)).toHaveLength(1);
+            await persistence.saveSchedule(repoId, entry);
+            expect(await persistence.loadRepoSchedules(repoId)).toHaveLength(1);
 
-            persistence.deleteSchedule(repoId, 'sch_gone');
+            await persistence.deleteSchedule(repoId, 'sch_gone');
 
             const filePath = getScheduleYamlPath(dataDir, repoId, 'sch_gone');
             expect(fs.existsSync(filePath)).toBe(false);
-            expect(persistence.loadRepoSchedules(repoId)).toHaveLength(0);
+            expect(await persistence.loadRepoSchedules(repoId)).toHaveLength(0);
         });
     });
 
@@ -256,17 +256,17 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('deleteRepo', () => {
-        it('removes all YAML files', () => {
+        it('removes all YAML files', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'repo-del-all';
 
-            persistence.saveRepo(repoId, [
+            await persistence.saveRepo(repoId, [
                 createSchedule({ id: 'sch_r1' }),
                 createSchedule({ id: 'sch_r2' }),
                 createSchedule({ id: 'sch_r3' }),
             ]);
 
-            persistence.deleteRepo(repoId);
+            await persistence.deleteRepo(repoId);
 
             const dir = getScheduleYamlDir(dataDir, repoId);
             const yamlFiles = fs.existsSync(dir)
@@ -281,19 +281,35 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('orphan cleanup in saveRepo', () => {
-        it('saves A+B then saveRepo with only B; only B.yaml remains', () => {
+        it('saves A+B then saveRepo with only B; only B.yaml remains', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'repo-orphan';
             const schedA = createSchedule({ id: 'sch_orphan_a', name: 'A' });
             const schedB = createSchedule({ id: 'sch_orphan_b', name: 'B' });
 
-            persistence.saveRepo(repoId, [schedA, schedB]);
-            persistence.saveRepo(repoId, [schedB]);
+            await persistence.saveRepo(repoId, [schedA, schedB]);
+            await persistence.saveRepo(repoId, [schedB]);
 
             const dir = getScheduleYamlDir(dataDir, repoId);
             const yamlFiles = fs.readdirSync(dir).filter(f => f.endsWith('.yaml'));
             expect(yamlFiles).toHaveLength(1);
             expect(yamlFiles[0]).toBe('sch_orphan_b.yaml');
+        });
+
+        it('serializes concurrent saveRepo calls for the same repo', async () => {
+            const persistence = new ScheduleYamlPersistence(dataDir);
+            const repoId = 'repo-serialized';
+            const schedA = createSchedule({ id: 'sch_serial_a', name: 'A' });
+            const schedB = createSchedule({ id: 'sch_serial_b', name: 'B' });
+
+            await Promise.all([
+                persistence.saveRepo(repoId, [schedA]),
+                persistence.saveRepo(repoId, [schedB]),
+            ]);
+
+            const loaded = await persistence.loadRepoSchedules(repoId);
+            expect(loaded).toHaveLength(1);
+            expect(loaded[0].id).toBe('sch_serial_b');
         });
     });
 
@@ -302,18 +318,18 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('corrupt file handling', () => {
-        it('skips invalid YAML and returns other valid entries', () => {
+        it('skips invalid YAML and returns other valid entries', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'repo-corrupt';
 
             // Save a valid entry
-            persistence.saveSchedule(repoId, createSchedule({ id: 'sch_valid', name: 'Valid' }));
+            await persistence.saveSchedule(repoId, createSchedule({ id: 'sch_valid', name: 'Valid' }));
 
             // Write a corrupt file directly
             const dir = getScheduleYamlDir(dataDir, repoId);
             fs.writeFileSync(path.join(dir, 'sch_corrupt.yaml'), ': invalid: yaml: [[[', 'utf-8');
 
-            const loaded = persistence.loadRepoSchedules(repoId);
+            const loaded = await persistence.loadRepoSchedules(repoId);
             expect(loaded).toHaveLength(1);
             expect(loaded[0].id).toBe('sch_valid');
         });
@@ -324,7 +340,7 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('id mismatch guard', () => {
-        it('skips file where entry.id does not match filename stem', () => {
+        it('skips file where entry.id does not match filename stem', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'repo-mismatch';
 
@@ -338,7 +354,7 @@ describe('ScheduleYamlPersistence', () => {
                 'utf-8'
             );
 
-            const loaded = persistence.loadRepoSchedules(repoId);
+            const loaded = await persistence.loadRepoSchedules(repoId);
             expect(loaded).toHaveLength(0);
         });
     });
@@ -348,11 +364,11 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('atomic write safety', () => {
-        it('leaves no .tmp file after saveSchedule', () => {
+        it('leaves no .tmp file after saveSchedule', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'repo-atomic';
 
-            persistence.saveSchedule(repoId, createSchedule({ id: 'sch_atomic' }));
+            await persistence.saveSchedule(repoId, createSchedule({ id: 'sch_atomic' }));
 
             const dir = getScheduleYamlDir(dataDir, repoId);
             const tmpFiles = fs.readdirSync(dir).filter(f => f.endsWith('.tmp'));
@@ -365,7 +381,7 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('all ScheduleEntry fields round-trip', () => {
-        it('persists all optional fields correctly', () => {
+        it('persists all optional fields correctly', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
             const repoId = 'repo-full';
             const entry = createSchedule({
@@ -377,8 +393,8 @@ describe('ScheduleYamlPersistence', () => {
                 params: { env: 'prod', region: 'us-west' },
             });
 
-            persistence.saveSchedule(repoId, entry);
-            const loaded = persistence.loadRepoSchedules(repoId);
+            await persistence.saveSchedule(repoId, entry);
+            const loaded = await persistence.loadRepoSchedules(repoId);
 
             expect(loaded).toHaveLength(1);
             expect(loaded[0]).toEqual(entry);
@@ -395,7 +411,7 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('does not eagerly create directories', () => {
-        it('new ScheduleYamlPersistence does not create repos/ directory', () => {
+        it('new ScheduleYamlPersistence does not create repos/ directory', async () => {
             const freshDir = createTempDir();
             const reposDir = path.join(freshDir, 'repos');
             expect(fs.existsSync(reposDir)).toBe(false);
@@ -412,7 +428,7 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('getScheduleYamlPath helper', () => {
-        it('returns <dataDir>/repos/<repoId>/schedules/<id>.yaml', () => {
+        it('returns <dataDir>/repos/<repoId>/schedules/<id>.yaml', async () => {
             const result = getScheduleYamlPath('/base', 'my-repo', 'sch_999');
             const expected = path.join('/base', 'repos', 'my-repo', 'schedules', 'sch_999.yaml');
             expect(result).toBe(expected);
@@ -424,9 +440,9 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('deleteSchedule on non-existent id', () => {
-        it('does not throw', () => {
+        it('does not throw', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
-            expect(() => persistence.deleteSchedule('nonexistent-repo', 'sch_ghost')).not.toThrow();
+            await expect(persistence.deleteSchedule('nonexistent-repo', 'sch_ghost')).resolves.toBeUndefined();
         });
     });
 
@@ -435,9 +451,9 @@ describe('ScheduleYamlPersistence', () => {
     // ========================================================================
 
     describe('deleteRepo on non-existent repo', () => {
-        it('does not throw', () => {
+        it('does not throw', async () => {
             const persistence = new ScheduleYamlPersistence(dataDir);
-            expect(() => persistence.deleteRepo('nonexistent-repo')).not.toThrow();
+            await expect(persistence.deleteRepo('nonexistent-repo')).resolves.toBeUndefined();
         });
     });
 });

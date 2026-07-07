@@ -91,10 +91,10 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
         cleanupDir(dataDir);
     });
 
-    it('two schedules with same cron expression have independent IDs', () => {
+    it('two schedules with same cron expression have independent IDs', async () => {
         manager = new ScheduleManager(persistence, null);
 
-        const s1 = manager.addSchedule(REPO_ID, {
+        const s1 = await manager.addSchedule(REPO_ID, {
             name: 'Schedule A',
             target: 'pipelines/a.yaml',
             cron: '* * * * *',
@@ -102,7 +102,7 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
             onFailure: 'notify',
             status: 'active',
         });
-        const s2 = manager.addSchedule(REPO_ID, {
+        const s2 = await manager.addSchedule(REPO_ID, {
             name: 'Schedule B',
             target: 'pipelines/b.yaml',
             cron: '* * * * *',
@@ -116,10 +116,10 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
         expect(s2.id).toMatch(/^sch_/);
     });
 
-    it('both schedules appear in getSchedules list', () => {
+    it('both schedules appear in getSchedules list', async () => {
         manager = new ScheduleManager(persistence, null);
 
-        manager.addSchedule(REPO_ID, {
+        await manager.addSchedule(REPO_ID, {
             name: 'Schedule A',
             target: 'pipelines/a.yaml',
             cron: '* * * * *',
@@ -127,7 +127,7 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
             onFailure: 'notify',
             status: 'active',
         });
-        manager.addSchedule(REPO_ID, {
+        await manager.addSchedule(REPO_ID, {
             name: 'Schedule B',
             target: 'pipelines/b.yaml',
             cron: '* * * * *',
@@ -156,7 +156,7 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
             } as any;
             manager = new ScheduleManager(persistence, queueManager);
 
-            const s1 = manager.addSchedule(REPO_ID, {
+            const s1 = await manager.addSchedule(REPO_ID, {
                 name: 'Schedule A',
                 target: 'pipelines/a.yaml',
                 cron: '* * * * *',
@@ -164,7 +164,7 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
                 onFailure: 'notify',
                 status: 'active',
             });
-            const s2 = manager.addSchedule(REPO_ID, {
+            const s2 = await manager.addSchedule(REPO_ID, {
                 name: 'Schedule B',
                 target: 'pipelines/b.yaml',
                 cron: '* * * * *',
@@ -188,7 +188,7 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
         manager = new ScheduleManager(persistence, { enqueue: vi.fn(() => 'task_1') } as any);
         manager.restoreRunHistory(runPersistence);
 
-        const s1 = manager.addSchedule(REPO_ID, {
+        const s1 = await manager.addSchedule(REPO_ID, {
             name: 'Schedule A',
             target: 'pipelines/a.yaml',
             cron: '* * * * *',
@@ -196,7 +196,7 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
             onFailure: 'notify',
             status: 'active',
         });
-        const s2 = manager.addSchedule(REPO_ID, {
+        const s2 = await manager.addSchedule(REPO_ID, {
             name: 'Schedule B',
             target: 'pipelines/b.yaml',
             cron: '* * * * *',
@@ -228,7 +228,7 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
             } as any;
             manager = new ScheduleManager(persistence, queueManager);
 
-            const s1 = manager.addSchedule(REPO_ID, {
+            const s1 = await manager.addSchedule(REPO_ID, {
                 name: 'Active Schedule',
                 target: 'pipelines/a.yaml',
                 cron: '* * * * *',
@@ -236,7 +236,7 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
                 onFailure: 'notify',
                 status: 'active',
             });
-            const s2 = manager.addSchedule(REPO_ID, {
+            const s2 = await manager.addSchedule(REPO_ID, {
                 name: 'Paused Schedule',
                 target: 'pipelines/b.yaml',
                 cron: '* * * * *',

@@ -79,7 +79,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `workspaces/` | global-workspace, my-work, my-life, workspace-summary |
 | `processes/` | in-memory store, output-file-manager, stale-task-detector, pin/archive, seen-state, turn-actions, history, resume |
 | `queue/` | queue-handler, executor-bridge, multi-repo-router, image-blob-store, partitioner |
-| `schedule/` | cron-utils, schedule-handler/manager/executor, run-persistence, yaml-persistence, repo-schedule-loader/overrides. Schedule run records stay `running` after enqueue and finalize from queue terminal events; scheduled Ralph runs finalize from the full `ralphSessionComplete` lifecycle, including final checks and gap-fix loops. Overlapping timer fires are recorded as `missed` and the next timer is armed after the active run finishes. |
+| `schedule/` | cron-utils, schedule-handler/manager/executor, run-persistence, async yaml-persistence, repo-schedule-loader/overrides. User schedules are stored as per-entry YAML files under each repo data directory, JSON schedule files migrate during schedule infrastructure initialization, and writes/deletes serialize per repo. Repo-defined schedule reloads use async filesystem scans, serialize per repo, and preserve the previous loaded repo schedules when a scan fails. Schedule run records stay `running` after enqueue and finalize from queue terminal events; scheduled Ralph runs finalize from the full `ralphSessionComplete` lifecycle, including final checks and gap-fix loops. Overlapping timer fires are recorded as `missed` and the next timer is armed after the active run finishes. |
 | `tasks/` | task-types, cache, watcher, migration, root-resolver, generation, read/write handlers, comments/ |
 | `notes/` | read/write/comments/AI/file-preview/image/edits handlers, git/ sub-module, notes-root-resolver (multi-root), notes-roots-handler (roots CRUD API) |
 | `workflows/` | constants, utils, watcher, read/write handlers |
@@ -244,7 +244,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 - `skills/` — global skill definitions
 
 **Per-repo (`~/.coc/repos/<workspaceId>/`) and per-origin (`~/.coc/repos/<originId>/`):**
-- `queues.json`, `schedules.json`, `git-ops.json`, `preferences.json`
+- `queues.json`, `schedules/<scheduleId>.yaml`, legacy `schedules.json` migration source, `git-ops.json`, `preferences.json`
 - `recent-opened-pull-requests/index.json`, `pr-coworker-roster/index.json`, `review-progress/<prId>.json`, `classifications/<prId>_<headSha>.json(.pending)`, `pr-review-history.json`, and `pr-suggestions-cache.json` under canonical origin directories — Pull Requests tab recent-opened entries, Team roster entries, reviewer progress, focused-diff classification result/pending state, review-history cache, and AI-ranked suggestions shared by same-origin clones; legacy workspace/repo tuple files migrate into the origin files on first access
 - `work-items/` under canonical origin directories (`~/.coc/repos/<originId>/work-items/`) — Work Item JSON files, index, counter, and plan versions shared by same-origin clones; workspace directories migrate into the origin directory on first store access
 - `tasks/` — task and plan files

@@ -104,6 +104,13 @@ all have their own `references/*.md`.
 - **Loop ticks** must route completion through
   `ProcessLifecycleRunner → onLoopTickComplete → LoopExecutor.onTickComplete`;
   bookkeeping errors must never mask the follow-up's actual result.
+- **Schedule persistence and reloads** are async. User schedules live as
+  per-entry YAML files under `getRepoDataPath(dataDir, repoId, 'schedules')`;
+  `ScheduleManager.restore`, `addSchedule`, `setSchedule`, `removeSchedule`,
+  `registerWorkspacePath`, and `reloadRepoSchedules` must be awaited by
+  startup, route handlers, and tests. User schedule writes/deletes serialize per
+  repo, and repo schedule scan failures preserve the previous loaded repo
+  schedules rather than replacing them with an empty set.
 - **Dreams analyzer/critic AI work** must run through
   `DreamInternalProcessExecutor`/`ProcessLifecycleRunner` so analyzer and critic
   prompts/responses are persisted as read-only internal processes. Do not add
