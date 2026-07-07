@@ -101,17 +101,32 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
 
     useEffect(() => { fetchSchedules(); }, [fetchSchedules]);
 
-    // Live-refresh the underlying list on schedule mutations (create/run/pause).
+    // Refresh the open detail's run history in place. Keeps the currently
+    // visible history on a transient failure (unlike the initial load, which
+    // resets when the selected schedule changes) so a live WS refresh never
+    // blanks the list. No-op when no schedule is selected (create / bare).
+    const fetchHistory = useCallback(async () => {
+        if (!selectedId) return;
+        try {
+            setHistory(await client.schedules.history(workspaceId, selectedId));
+        } catch { /* keep prior history */ }
+    }, [selectedId, workspaceId, client]);
+
+    // Live-refresh the sidebar list AND the open detail's run history on
+    // schedule mutations (create / run start-finish / pause) broadcast over the
+    // WS. An open edit form keeps its own field state (PromptScheduleForm seeds
+    // from props once via useState initializers), so refreshing the list /
+    // history never clobbers unsaved edits.
     useEffect(() => {
-        const handler = () => fetchSchedules();
+        const handler = () => { fetchSchedules(); fetchHistory(); };
         window.addEventListener('schedule-changed', handler);
         return () => window.removeEventListener('schedule-changed', handler);
-    }, [fetchSchedules]);
+    }, [fetchSchedules, fetchHistory]);
 
     // Reset any inline-edit state when the route target changes.
     useEffect(() => { setEditingId(null); }, [route.kind, selectedId]);
 
-    // Fetch run history for the selected schedule.
+    // Load run history when the selected schedule changes (resets on switch).
     useEffect(() => {
         if (!selectedId) { setHistory([]); return; }
         let cancelled = false;
@@ -149,10 +164,8 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
     const handleRunNow = useCallback(async (scheduleId: string) => {
         await client.schedules.run(workspaceId, scheduleId);
         fetchSchedules();
-        if (selectedId === scheduleId) {
-            try { setHistory(await client.schedules.history(workspaceId, scheduleId)); } catch { /* keep prior */ }
-        }
-    }, [client, workspaceId, fetchSchedules, selectedId]);
+        if (selectedId === scheduleId) await fetchHistory();
+    }, [client, workspaceId, fetchSchedules, fetchHistory, selectedId]);
 
     const handlePauseResume = useCallback(async (schedule: Schedule) => {
         if (schedule.status === 'active') {

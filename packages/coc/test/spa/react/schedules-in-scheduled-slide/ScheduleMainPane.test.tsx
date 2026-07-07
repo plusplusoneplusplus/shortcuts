@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import {
@@ -513,5 +513,49 @@ describe('ScheduleMainPane — dirty guard on navigate-away', () => {
         await waitFor(() => expect(screen.queryByTestId('prompt-schedule-form')).toBeNull());
         expect(screen.getByTestId('schedule-detail')).toBeTruthy();
         confirmSpy.mockRestore();
+    });
+});
+
+describe('ScheduleMainPane — live refresh on schedule-changed (AC-03)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        location.hash = '';
+    });
+
+    it('refreshes the open detail run history when a schedule-changed event fires', async () => {
+        // Detail opens with no runs yet.
+        await renderPane({ kind: 'detail', scheduleId: 'sched-my-prompt' });
+        await waitFor(() => expect(screen.getByTestId('schedule-detail')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('no-runs-empty')).toBeTruthy());
+
+        // A run starts/finishes elsewhere → the WS broadcast should live-refresh
+        // the history without any user action in this pane.
+        mockSchedulesClient.history.mockResolvedValue([
+            { id: 'run-1', status: 'success', startedAt: '2026-07-07T10:00:00.000Z' },
+        ]);
+        await act(async () => {
+            window.dispatchEvent(new CustomEvent('schedule-changed', { detail: {} }));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('run-row-run-1')).toBeTruthy());
+    });
+
+    it('does not clobber an open dirty editor when a schedule-changed event fires', async () => {
+        await renderPane({ kind: 'detail', scheduleId: 'sched-my-prompt' });
+        await waitFor(() => expect(screen.getByTestId('schedule-detail')).toBeTruthy());
+
+        // Enter edit mode and dirty the name field.
+        fireEvent.click(screen.getByTestId('edit-btn'));
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+        fireEvent.change(screen.getByTestId('prompt-name-input'), { target: { value: 'wip edit' } });
+
+        // A concurrent WS refresh re-lists the (unchanged) schedule; the in-progress
+        // edit must survive.
+        await act(async () => {
+            window.dispatchEvent(new CustomEvent('schedule-changed', { detail: {} }));
+        });
+
+        expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy();
+        expect((screen.getByTestId('prompt-name-input') as HTMLInputElement).value).toBe('wip edit');
     });
 });
