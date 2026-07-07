@@ -161,3 +161,56 @@ describe('computeVisibleSubTabs — splitWorkspacePanel flag', () => {
         expect(tabs.find(t => t.key === 'chats')?.label).toBe('Workspace');
     });
 });
+
+// AC-04: when the schedulesInScheduledSlide flag is on, schedule management
+// moves into the chat-list "Scheduled" slide + main pane, so the standalone
+// `schedules` sub-tab is retired from the strip. Off by default; the off-path
+// is a strict no-op. The old tab code is not deleted — only hidden here.
+describe('computeVisibleSubTabs — schedulesInScheduledSlide flag', () => {
+    it('off by default: omitting the option keeps schedules visible ("Jobs" in dev-workflow)', () => {
+        const tabs = computeVisibleSubTabs(allOn);
+        expect(tabs.find(t => t.key === 'schedules')?.label).toBe('Jobs');
+    });
+
+    it('off by default: omitting the option keeps schedules visible ("Schedules" in classic)', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic' });
+        expect(tabs.find(t => t.key === 'schedules')?.label).toBe('Schedules');
+    });
+
+    it('explicit false is a no-op (equals baseline in both modes)', () => {
+        for (const uiLayoutMode of ['classic', 'dev-workflow'] as const) {
+            const off = computeVisibleSubTabs({ ...allOn, uiLayoutMode, schedulesInScheduledSlideEnabled: false });
+            const baseline = computeVisibleSubTabs({ ...allOn, uiLayoutMode });
+            expect(off).toEqual(baseline);
+            expect(off.find(t => t.key === 'schedules')).toBeDefined();
+        }
+    });
+
+    it('flag on hides the schedules sub-tab (dev-workflow)', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'dev-workflow', schedulesInScheduledSlideEnabled: true });
+        expect(tabs.find(t => t.key === 'schedules')).toBeUndefined();
+    });
+
+    it('flag on hides the schedules sub-tab (classic)', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic', schedulesInScheduledSlideEnabled: true });
+        expect(tabs.find(t => t.key === 'schedules')).toBeUndefined();
+    });
+
+    it('flag on hides ONLY schedules — neighbouring group tabs (explorer, workflows) survive', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, schedulesInScheduledSlideEnabled: true });
+        expect(tabs.find(t => t.key === 'schedules')).toBeUndefined();
+        expect(tabs.find(t => t.key === 'explorer')).toBeDefined();
+        expect(tabs.find(t => t.key === 'workflows')).toBeDefined();
+        expect(tabs.find(t => t.key === 'work-items')).toBeDefined();
+    });
+
+    it('composes with the splitWorkspacePanel flag (both on → git and schedules both hidden)', () => {
+        const tabs = computeVisibleSubTabs({
+            ...allOn, splitWorkspacePanelEnabled: true, schedulesInScheduledSlideEnabled: true,
+        });
+        expect(tabs.find(t => t.key === 'git')).toBeUndefined();
+        expect(tabs.find(t => t.key === 'schedules')).toBeUndefined();
+        // Unrelated tabs remain.
+        expect(tabs.find(t => t.key === 'work-items')).toBeDefined();
+    });
+});

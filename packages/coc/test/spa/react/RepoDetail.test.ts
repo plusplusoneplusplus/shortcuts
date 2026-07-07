@@ -154,7 +154,7 @@ describe('RepoDetail Dreams tab feature gating', () => {
     });
 
     it('visibleSubTabs depends on dreamsEnabled', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled]');
+        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled, schedulesInScheduledSlideEnabled]');
     });
 
     it('redirects away from dreams when the feature is disabled (via the visibility guard)', () => {

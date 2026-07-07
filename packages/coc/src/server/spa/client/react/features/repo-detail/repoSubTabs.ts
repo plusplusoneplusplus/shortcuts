@@ -71,6 +71,17 @@ export interface VisibleSubTabOptions {
      * callers, which don't host the split panel, keep today's behavior.
      */
     splitWorkspacePanelEnabled?: boolean;
+    /**
+     * When true (feature flag `schedulesInScheduledSlide`, default off), the
+     * standalone `schedules` sub-tab is hidden. Schedule management moves into
+     * the chat-list "Scheduled" slide + main pane (AC-01/02/03), so keeping the
+     * tab would leave two entry points. The old `RepoSchedulesTab` code is NOT
+     * deleted (deferred follow-up) — it is simply unreachable from the strip
+     * while the flag is ON, and schedule deep-links keep the chat surface
+     * mounted instead (Router). Optional so the remote-shell callers, which
+     * don't host the Scheduled slide, keep today's Schedules tab.
+     */
+    schedulesInScheduledSlideEnabled?: boolean;
 }
 
 /**
@@ -85,6 +96,7 @@ export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
         splitWorkspacePanelEnabled = false,
+        schedulesInScheduledSlideEnabled = false,
     } = opts;
 
     let tabs: SubTabDef[] = VISIBLE_SUB_TABS;
@@ -96,6 +108,10 @@ export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
     if (!pullRequestsEnabled) tabs = tabs.filter(t => t.key !== 'pull-requests');
     if (!dreamsEnabled) tabs = tabs.filter(t => t.key !== 'dreams');
     if (!nativeCliSessionsEnabled) tabs = tabs.filter(t => t.key !== 'cli-sessions' && t.key !== 'copilot-sessions');
+    // Schedules tab retirement (AC-04): when the schedules-in-slide flag is ON,
+    // hide the standalone `schedules` sub-tab. Applied before the layout
+    // relabel/reorder so the dev-workflow "Jobs" rename has nothing to act on.
+    if (schedulesInScheduledSlideEnabled) tabs = tabs.filter(t => t.key !== 'schedules');
 
     if (uiLayoutMode === 'classic') {
         // Classic: replace Chats with Activity, relabel Tasks as Plans

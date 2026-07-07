@@ -45,6 +45,7 @@ import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
+import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
 import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
 import { TAB_GROUP_INDEX, computeVisibleSubTabs } from './repoSubTabs';
@@ -136,6 +137,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
     const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
+    const schedulesInScheduledSlideEnabled = useSchedulesInScheduledSlideEnabled();
     // Split "Workspace" panel (behind the `splitWorkspacePanel` flag): which of the
     // two left lists last drove the shared detail pane, plus the detail-slot DOM
     // node both tabs portal their detail into. State-backed (not a plain ref) so
@@ -170,8 +172,8 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const visibleSubTabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
-        splitWorkspacePanelEnabled,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled]);
+        splitWorkspacePanelEnabled, schedulesInScheduledSlideEnabled,
+    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled, schedulesInScheduledSlideEnabled]);
 
     // Redirect only after the capability set for this workspace has resolved.
     // Route memory is kept separately in AppContext, so this display fallback

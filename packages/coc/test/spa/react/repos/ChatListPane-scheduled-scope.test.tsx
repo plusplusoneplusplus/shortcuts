@@ -30,6 +30,11 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isMapReduceEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
     isCommitChatLensEnabled: () => false,
+    // ChatListPane renders ScheduledSlideSchedules, whose flag hook imports both
+    // of these from utils/config — a full-replacement mock must include them or
+    // useSchedulesInScheduledSlideEnabled() throws at mount.
+    isSchedulesInScheduledSlideEnabled: () => false,
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
 }));
 
 vi.mock('../../../../src/server/spa/client/react/queue/hooks/useQueueDragDrop', () => ({
