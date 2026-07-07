@@ -259,9 +259,13 @@ export function InitialChatComposer({
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
     const composerWidth = useContainerWidth(composerRootRef);
+    // Responsive layout compacts as soon as the composer is no longer `wide`
+    // (<700px): the full chip row (provider · mode · model/effort · tools ·
+    // send) stops fitting well before the 500px `narrow` tier, and wrapping
+    // the toolbar onto a second line is worse than the compact settings chip.
     const effectiveSettingsLayout: Exclude<InitialChatComposerSettingsLayout, 'responsive'> =
         settingsLayout === 'responsive'
-            ? (composerWidth.width > 0 && composerWidth.isNarrow ? 'compact' : 'full')
+            ? (composerWidth.width > 0 && !composerWidth.isWide ? 'compact' : 'full')
             : settingsLayout;
     const compactSettingsEditorPlacement =
         composerWidth.width > 0 && composerWidth.width < COMPACT_SETTINGS_POPOVER_MIN_CONTAINER_WIDTH

@@ -5,9 +5,13 @@
  *
  * Unlike the viewport-driven (`lg:` / `sm:`) compaction covered by
  * FollowUpInputArea-compact-toolbar.test.tsx, these behaviours fire when the
- * toolbar measures its OWN width below the `narrow` threshold (<500px) via the
- * `useContainerWidth` hook — so the footer compacts when the composer pane is
- * narrow even on a wide browser window (reference/note panel open beside it).
+ * toolbar measures its OWN width via the `useContainerWidth` hook — so the
+ * footer compacts when the composer pane is narrow even on a wide browser
+ * window (reference/note panel open beside it). The toolbar passes a raised
+ * `wideThreshold` (820px) and compacts whenever it is NOT `wide` — full labels
+ * need ~820px, so waiting for the 500px `narrow` tier used to leave a
+ * 500–820px dead zone where the toolbar wrapped onto a second line instead of
+ * compacting.
  *
  * Covers:
  *  - AC-01: the container-width signal drives compaction; full layout when wide.
@@ -16,6 +20,9 @@
  *  - AC-02: the cwd chip collapses to the last folder name (basename) with the
  *    full path in its title, driven by the same container-narrow signal threaded
  *    down into ComposerMetaStrip.
+ *  - Single-line regression: compaction already fires in the `medium` tier, and
+ *    the meta strip lives inside a flex-basis-0 middle so it can never wrap the
+ *    toolbar onto a second row.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -195,6 +202,43 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
             render(<FollowUpInputArea {...defaultProps()} />);
             // width 0 is "not yet measured" → full layout despite the narrow tier.
             expect(screen.getByTestId('model-picker-chip-label')).toBeTruthy();
+        });
+
+        it('compacts already in the medium tier (regression: 500–820px used to wrap instead)', () => {
+            setContainerWidth('medium', 600);
+            render(<FollowUpInputArea {...defaultProps({
+                workingDirectory: '/Users/yihengtao/Documents/Projects/nanochat',
+            })} />);
+            // Anything below `wide` compacts: model chip icon-only + cwd basename.
+            expect(screen.queryByTestId('model-picker-chip-label')).toBeNull();
+            expect(screen.getByTestId('composer-cwd-path').textContent).toBe('nanochat');
+        });
+    });
+
+    describe('Single-line toolbar – meta strip cannot force a wrap', () => {
+        it('hosts the meta strip inside the flex-basis-0 flexible middle', () => {
+            setContainerWidth('wide', 900);
+            render(<FollowUpInputArea {...defaultProps({
+                workingDirectory: '/Users/yihengtao/Documents/Projects/nanochat',
+            })} />);
+            const middle = screen.getByTestId('chat-toolbar-flex-middle');
+            // basis-0 keeps the strip's hypothetical size at 0 so flex wrapping
+            // never sees it as an overflowing item; flex-1 + min-w-0 make it
+            // grow into free space and shrink by truncating the cwd path.
+            expect(middle.className).toContain('flex-1');
+            expect(middle.className).toContain('basis-0');
+            expect(middle.className).toContain('min-w-0');
+            const strip = screen.getByTestId('composer-meta-strip');
+            expect(middle.contains(strip)).toBe(true);
+        });
+
+        it('keeps the flexible middle as a spacer when no meta content is present', () => {
+            setContainerWidth('wide', 900);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            // No cwd/ctx → the strip renders nothing, but the middle div still
+            // exists to push the tools/send zone to the right edge.
+            expect(screen.getByTestId('chat-toolbar-flex-middle')).toBeTruthy();
+            expect(screen.queryByTestId('composer-meta-strip')).toBeNull();
         });
     });
 
