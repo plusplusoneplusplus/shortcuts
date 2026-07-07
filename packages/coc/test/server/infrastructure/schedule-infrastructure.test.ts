@@ -57,41 +57,41 @@ describe('createScheduleInfrastructure', () => {
         db.close();
     });
 
-    it('returns scheduleManager and scheduleRunPersistence', () => {
+    it('returns scheduleManager and scheduleRunPersistence', async () => {
         const queueFacade = makeQueueFacade();
-        const result = createScheduleInfrastructure(dataDir, queueFacade, makeStubStore());
+        const result = await createScheduleInfrastructure(dataDir, queueFacade, makeStubStore());
 
         expect(result.scheduleManager).toBeInstanceOf(ScheduleManager);
         expect(result.scheduleRunPersistence).toBeInstanceOf(SqliteScheduleRunPersistence);
     });
 
-    it('scheduleManager has restore and dispose methods', () => {
+    it('scheduleManager has restore and dispose methods', async () => {
         const queueFacade = makeQueueFacade();
-        const { scheduleManager } = createScheduleInfrastructure(dataDir, queueFacade, makeStubStore());
+        const { scheduleManager } = await createScheduleInfrastructure(dataDir, queueFacade, makeStubStore());
 
         expect(typeof scheduleManager.restore).toBe('function');
         expect(typeof scheduleManager.dispose).toBe('function');
     });
 
-    it('works with a fresh empty dataDir', () => {
+    it('works with a fresh empty dataDir', async () => {
         const queueFacade = makeQueueFacade();
-        expect(() => createScheduleInfrastructure(dataDir, queueFacade, makeStubStore())).not.toThrow();
+        await expect(createScheduleInfrastructure(dataDir, queueFacade, makeStubStore())).resolves.toBeDefined();
     });
 
-    it('migrates existing JSON schedules during construction', () => {
+    it('migrates existing JSON schedules during construction', async () => {
         // Create a legacy JSON schedules file so migrateAllFromJson has something to process
         const repoId = 'test-repo';
         const reposDir = path.join(dataDir, 'repos', repoId);
         fs.mkdirSync(reposDir, { recursive: true });
 
         const queueFacade = makeQueueFacade();
-        expect(() => createScheduleInfrastructure(dataDir, queueFacade, makeStubStore())).not.toThrow();
+        await expect(createScheduleInfrastructure(dataDir, queueFacade, makeStubStore())).resolves.toBeDefined();
     });
 
-    it('restoreRunHistory is called with scheduleRunPersistence', () => {
+    it('restoreRunHistory is called with scheduleRunPersistence', async () => {
         const queueFacade = makeQueueFacade();
         // Just verify restoreRunHistory doesn't throw when called with an empty store
-        const { scheduleManager, scheduleRunPersistence } = createScheduleInfrastructure(
+        const { scheduleManager, scheduleRunPersistence } = await createScheduleInfrastructure(
             dataDir,
             queueFacade,
             makeStubStore(),

@@ -128,7 +128,7 @@ export function registerScheduleRoutes(
         if (!getWorkspacePath) return;
         const rootPath = await getWorkspacePath(repoId);
         if (rootPath) {
-            manager.registerWorkspacePath(repoId, rootPath);
+            await manager.registerWorkspacePath(repoId, rootPath);
         }
     }
 
@@ -163,7 +163,7 @@ export function registerScheduleRoutes(
             }
 
             try {
-                const schedule = manager.addSchedule(repoId, {
+                const schedule = await manager.addSchedule(repoId, {
                     name: body.name.trim(),
                     target: body.target.trim(),
                     cron: body.cron.trim(),
@@ -333,7 +333,7 @@ export function registerScheduleRoutes(
                     return sendError(res, status, msg);
                 }
             } else {
-                const removed = manager.removeSchedule(repoId, scheduleId);
+                const removed = await manager.removeSchedule(repoId, scheduleId);
                 if (!removed) {
                     return sendError(res, 404, 'Schedule not found');
                 }

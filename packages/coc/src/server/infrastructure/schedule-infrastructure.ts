@@ -43,11 +43,11 @@ export interface ScheduleInfrastructure {
  *                      enqueue triggered jobs.
  * @param store       - Process store instance (SQLite DB is extracted from SqliteProcessStore).
  */
-export function createScheduleInfrastructure(
+export async function createScheduleInfrastructure(
     dataDir: string,
     queueFacade: TaskQueueManager,
     store: ProcessStore,
-): ScheduleInfrastructure {
+): Promise<ScheduleInfrastructure> {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or open processes.db in dataDir.
     let db: Database.Database;
     let ownsDb = false;
@@ -63,7 +63,7 @@ export function createScheduleInfrastructure(
     }
 
     const schedulePersistence = new ScheduleYamlPersistence(dataDir);
-    schedulePersistence.migrateAllFromJson(); // non-destructive, idempotent
+    await schedulePersistence.migrateAllFromJson(); // non-destructive, idempotent
     const scheduleRunPersistence = new SqliteScheduleRunPersistence(db);
     const scheduleOverrideStore = new RepoScheduleOverrideStore(dataDir);
     const scheduleManager = new ScheduleManager(
@@ -72,7 +72,7 @@ export function createScheduleInfrastructure(
         scheduleOverrideStore,
         dataDir,
     );
-    scheduleManager.restore();
+    await scheduleManager.restore();
     scheduleManager.restoreRunHistory(scheduleRunPersistence);
 
     const dispose = () => {

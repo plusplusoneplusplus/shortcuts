@@ -6944,7 +6944,7 @@ describe('createQueueExecutorBridge scheduled Ralph session completion', () => {
         });
 
         try {
-            const schedule = manager.addSchedule(workspaceId, {
+            const schedule = await manager.addSchedule(workspaceId, {
                 name: 'Scheduled Ralph Gap Loop',
                 target: 'goal.md',
                 cron: '0 9 * * *',

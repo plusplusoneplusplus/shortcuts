@@ -66,7 +66,7 @@ describe('Schedule Early-Fire Guard', () => {
         const enqueueSpy = vi.fn(() => 'task_1');
         manager = new ScheduleManager(persistence, { enqueue: enqueueSpy } as any);
 
-        manager.addSchedule(REPO_ID, { name: 'Job', ...SCHEDULE_OPTS });
+        await manager.addSchedule(REPO_ID, { name: 'Job', ...SCHEDULE_OPTS });
 
         // Next fire at +60s. Mock Date.now to return 500ms before target
         // so the early-fire guard triggers inside the timer callback.
@@ -93,7 +93,7 @@ describe('Schedule Early-Fire Guard', () => {
         const enqueueSpy = vi.fn(() => 'task_1');
         manager = new ScheduleManager(persistence, { enqueue: enqueueSpy } as any);
 
-        manager.addSchedule(REPO_ID, { name: 'Job', ...SCHEDULE_OPTS });
+        await manager.addSchedule(REPO_ID, { name: 'Job', ...SCHEDULE_OPTS });
 
         // Advance past the next minute boundary
         await vi.advanceTimersByTimeAsync(65_000);
@@ -108,7 +108,7 @@ describe('Schedule Early-Fire Guard', () => {
         const enqueueSpy = vi.fn(() => 'task_1');
         manager = new ScheduleManager(persistence, { enqueue: enqueueSpy } as any);
 
-        manager.addSchedule(REPO_ID, { name: 'Job', ...SCHEDULE_OPTS });
+        await manager.addSchedule(REPO_ID, { name: 'Job', ...SCHEDULE_OPTS });
 
         // Advance well past the target (2 minutes; fires once at +60s)
         await vi.advanceTimersByTimeAsync(120_000);
@@ -124,7 +124,7 @@ describe('Schedule Early-Fire Guard', () => {
         const enqueueSpy = vi.fn(() => 'task_1');
         manager = new ScheduleManager(persistence, { enqueue: enqueueSpy } as any);
 
-        manager.addSchedule(REPO_ID, { name: 'Job', ...SCHEDULE_OPTS });
+        await manager.addSchedule(REPO_ID, { name: 'Job', ...SCHEDULE_OPTS });
 
         // Simulate early fire: mock Date.now to be 1s before target
         const target = Date.now() + 60_000;
@@ -149,7 +149,7 @@ describe('Schedule Early-Fire Guard', () => {
         const enqueueSpy = vi.fn(() => `task_${Date.now()}`);
         manager = new ScheduleManager(persistence, { enqueue: enqueueSpy } as any);
 
-        manager.addSchedule(REPO_ID, { name: 'Every Minute', ...SCHEDULE_OPTS });
+        await manager.addSchedule(REPO_ID, { name: 'Every Minute', ...SCHEDULE_OPTS });
 
         // Advance 5 minutes — should fire exactly 5 times (once per minute)
         await vi.advanceTimersByTimeAsync(5 * 60_000);

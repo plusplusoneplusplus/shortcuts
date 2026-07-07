@@ -417,7 +417,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // Non-fatal — startup must not be blocked by resume re-enqueue failures.
     }
 
-    const { scheduleManager, dispose: scheduleInfraDispose } = createScheduleInfrastructure(dataDir, queueFacade, store);
+    const { scheduleManager, dispose: scheduleInfraDispose } = await createScheduleInfrastructure(dataDir, queueFacade, store);
 
     const loopsEnabled = resolvedConfig.loops?.enabled ?? false;
 
@@ -593,7 +593,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // schedules start timers immediately — not lazily on first HTTP request.
     const allWorkspaces = await store.getWorkspaces();
     for (const ws of allWorkspaces) {
-        scheduleManager.registerWorkspacePath(ws.id, ws.rootPath);
+        await scheduleManager.registerWorkspacePath(ws.id, ws.rootPath);
     }
 
     const aiInvoker = createCLIAIInvoker({ approvePermissions: true, aiService: resolvedAiService });

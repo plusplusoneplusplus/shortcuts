@@ -46,15 +46,15 @@ describe('ScheduleManager — repo schedules', () => {
         fs.rmSync(workspaceRoot, { recursive: true, force: true });
     });
 
-    it('getSchedules returns empty array when no workspace registered', () => {
+    it('getSchedules returns empty array when no workspace registered', async () => {
         expect(manager.getSchedules(REPO_ID)).toEqual([]);
     });
 
-    it('getSchedules merges user and repo schedules', () => {
+    it('getSchedules merges user and repo schedules', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
-        const userSchedule = manager.addSchedule(REPO_ID, {
+        const userSchedule = await manager.addSchedule(REPO_ID, {
             name: 'User Schedule',
             target: 'test.yaml',
             cron: '0 9 * * *',
@@ -73,9 +73,9 @@ describe('ScheduleManager — repo schedules', () => {
         expect(sources).toContain(undefined); // user schedules have no source tag
     });
 
-    it('repo schedules have source: "repo"', () => {
+    it('repo schedules have source: "repo"', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         const schedules = manager.getSchedules(REPO_ID);
         const repoSchedule = schedules.find(s => s.source === 'repo');
@@ -84,29 +84,29 @@ describe('ScheduleManager — repo schedules', () => {
         expect(repoSchedule!.name).toBe('Daily');
     });
 
-    it('normalizes legacy repo schedule mode: plan to ask at load time', () => {
+    it('normalizes legacy repo schedule mode: plan to ask at load time', async () => {
         writeScheduleFile(scheduleDir, 'legacy-plan.yaml', 'name: Legacy Plan\ncron: "0 0 * * *"\nmode: plan');
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         const schedule = manager.getSchedule(REPO_ID, 'repo:legacy-plan');
         expect(schedule).toBeDefined();
         expect(schedule!.mode).toBe('ask');
     });
 
-    it('getSchedule finds repo schedule by ID', () => {
+    it('getSchedule finds repo schedule by ID', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         const found = manager.getSchedule(REPO_ID, 'repo:daily');
         expect(found).toBeDefined();
         expect(found!.source).toBe('repo');
     });
 
-    it('removeSchedule returns false for repo schedules', () => {
+    it('removeSchedule returns false for repo schedules', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
-        const result = manager.removeSchedule(REPO_ID, 'repo:daily');
+        const result = await manager.removeSchedule(REPO_ID, 'repo:daily');
         expect(result).toBe(false);
 
         // Schedule should still be present
@@ -115,7 +115,7 @@ describe('ScheduleManager — repo schedules', () => {
 
     it('updateSchedule allows status change for repo schedule', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         const updated = await manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'active' });
         expect(updated).toBeDefined();
@@ -125,7 +125,7 @@ describe('ScheduleManager — repo schedules', () => {
     it('updateSchedule persists status override for repo schedules', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
         const overrideStore = new RepoScheduleOverrideStore(dataDir);
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         await manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'active' });
 
@@ -135,7 +135,7 @@ describe('ScheduleManager — repo schedules', () => {
 
     it('updateSchedule ignores non-status fields for repo schedules', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         const original = manager.getSchedule(REPO_ID, 'repo:daily');
         const updated = await manager.updateSchedule(REPO_ID, 'repo:daily', {
@@ -149,8 +149,8 @@ describe('ScheduleManager — repo schedules', () => {
         expect(updated!.name).toBe(original!.name);
     });
 
-    it('user schedules are not persisted to repo-schedule-overrides', () => {
-        const userSchedule = manager.addSchedule(REPO_ID, {
+    it('user schedules are not persisted to repo-schedule-overrides', async () => {
+        const userSchedule = await manager.addSchedule(REPO_ID, {
             name: 'User',
             target: 'test.yaml',
             cron: '0 9 * * *',
@@ -167,29 +167,54 @@ describe('ScheduleManager — repo schedules', () => {
         expect(userSchedule.source).toBeUndefined();
     });
 
-    it('registerWorkspacePath is idempotent', () => {
+    it('registerWorkspacePath is idempotent', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         const schedules = manager.getSchedules(REPO_ID);
         const repoSchedules = schedules.filter(s => s.source === 'repo');
         expect(repoSchedules).toHaveLength(1);
     });
 
-    it('reloadRepoSchedules picks up new files', () => {
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+    it('reloadRepoSchedules picks up new files', async () => {
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
         expect(manager.getSchedules(REPO_ID)).toHaveLength(0);
 
         writeScheduleFile(scheduleDir, 'new.yaml', 'name: New\ncron: "0 0 * * *"');
-        manager.reloadRepoSchedules(REPO_ID);
+        await manager.reloadRepoSchedules(REPO_ID);
 
         const schedules = manager.getSchedules(REPO_ID);
         expect(schedules).toHaveLength(1);
         expect(schedules[0].source).toBe('repo');
     });
 
-    it('dispose cleans up without error even if no workspace registered', () => {
+    it('reloadRepoSchedules preserves previous schedules when directory scan fails', async () => {
+        writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        expect(manager.getSchedule(REPO_ID, 'repo:daily')).toBeDefined();
+
+        const originalReaddir = fs.promises.readdir.bind(fs.promises) as typeof fs.promises.readdir;
+        const readdirSpy = vi.spyOn(fs.promises, 'readdir').mockImplementation((async (target: fs.PathLike, options?: any) => {
+            if (String(target) === scheduleDir) {
+                const error = new Error('scan failed') as NodeJS.ErrnoException;
+                error.code = 'EACCES';
+                throw error;
+            }
+            return originalReaddir(target as any, options as any) as any;
+        }) as typeof fs.promises.readdir);
+
+        try {
+            const result = await manager.reloadRepoSchedules(REPO_ID);
+            expect(result.ok).toBe(false);
+            expect(result.loaded).toBe(1);
+            expect(manager.getSchedule(REPO_ID, 'repo:daily')).toBeDefined();
+        } finally {
+            readdirSpy.mockRestore();
+        }
+    });
+
+    it('dispose cleans up without error even if no workspace registered', async () => {
         expect(() => manager.dispose()).not.toThrow();
     });
 
@@ -202,7 +227,7 @@ describe('ScheduleManager — repo schedules', () => {
 
             // Simulate what index.ts now does at startup for all persisted workspaces —
             // registerWorkspacePath is called eagerly rather than waiting for an HTTP request.
-            manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+            await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
             // Schedule must be active immediately (no HTTP request needed)
             expect(manager.getSchedule(REPO_ID, 'repo:every-min')!.status).toBe('active');
@@ -217,30 +242,30 @@ describe('ScheduleManager — repo schedules', () => {
         }
     });
 
-    it('repo schedule defaults to paused when YAML has no status field', () => {
+    it('repo schedule defaults to paused when YAML has no status field', async () => {
         writeScheduleFile(scheduleDir, 'nightly.yaml', 'name: Nightly\ncron: "0 2 * * *"');
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         const schedule = manager.getSchedule(REPO_ID, 'repo:nightly');
         expect(schedule).toBeDefined();
         expect(schedule!.status).toBe('paused');
     });
 
-    it('repo schedule defaults to paused even when YAML has status: active', () => {
+    it('repo schedule defaults to paused even when YAML has status: active', async () => {
         writeScheduleFile(scheduleDir, 'active.yaml', 'name: Active\ncron: "0 3 * * *"\nstatus: active');
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         const schedule = manager.getSchedule(REPO_ID, 'repo:active');
         expect(schedule).toBeDefined();
         expect(schedule!.status).toBe('paused');
     });
 
-    it('override in repo-schedule-overrides.json activates a paused repo schedule', () => {
+    it('override in repo-schedule-overrides.json activates a paused repo schedule', async () => {
         writeScheduleFile(scheduleDir, 'deploy.yaml', 'name: Deploy\ncron: "0 4 * * *"');
         const overrideStore = new RepoScheduleOverrideStore(dataDir);
         overrideStore.save(REPO_ID, { 'repo:deploy': { status: 'active' } });
 
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         const schedule = manager.getSchedule(REPO_ID, 'repo:deploy');
         expect(schedule).toBeDefined();
@@ -249,13 +274,13 @@ describe('ScheduleManager — repo schedules', () => {
 
     it('repo schedule override status is applied on reload', async () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
-        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+        await manager.registerWorkspacePath(REPO_ID, workspaceRoot);
 
         // Pause the schedule (saves override)
         await manager.updateSchedule(REPO_ID, 'repo:daily', { status: 'paused' });
 
         // Reload — override should still apply
-        manager.reloadRepoSchedules(REPO_ID);
+        await manager.reloadRepoSchedules(REPO_ID);
         const schedule = manager.getSchedule(REPO_ID, 'repo:daily');
         expect(schedule!.status).toBe('paused');
     });

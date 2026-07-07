@@ -62,19 +62,19 @@ const WORKSPACE_ID = 'test-workspace-move';
 // ============================================================================
 
 describe('slugifyName', () => {
-    it('converts to lowercase and replaces non-alphanum with hyphens', () => {
+    it('converts to lowercase and replaces non-alphanum with hyphens', async () => {
         expect(slugifyName('Daily Cleanup')).toBe('daily-cleanup');
     });
 
-    it('trims leading/trailing hyphens', () => {
+    it('trims leading/trailing hyphens', async () => {
         expect(slugifyName('  --Hello World--  ')).toBe('hello-world');
     });
 
-    it('collapses consecutive non-alphanum chars', () => {
+    it('collapses consecutive non-alphanum chars', async () => {
         expect(slugifyName('test___multiple!!!chars')).toBe('test-multiple-chars');
     });
 
-    it('returns "schedule" for empty/whitespace input', () => {
+    it('returns "schedule" for empty/whitespace input', async () => {
         expect(slugifyName('')).toBe('schedule');
         expect(slugifyName('   ')).toBe('schedule');
         expect(slugifyName('---')).toBe('schedule');
@@ -111,10 +111,10 @@ describe('ScheduleManager.moveSchedule', () => {
 
     it('moves a user schedule to repo (creates YAML, removes user entry)', async () => {
         const repoId = 'repo1';
-        manager.registerWorkspacePath(repoId, workspaceRoot);
+        await manager.registerWorkspacePath(repoId, workspaceRoot);
 
         // Create a user schedule
-        const sched = manager.addSchedule(repoId, {
+        const sched = await manager.addSchedule(repoId, {
             name: 'My Schedule',
             target: 'test.yaml',
             cron: '0 9 * * *',
@@ -142,7 +142,7 @@ describe('ScheduleManager.moveSchedule', () => {
     it('moves a repo schedule to user (creates user entry, deletes YAML)', async () => {
         const repoId = 'repo1';
         writeRepoSchedule('daily.yaml', 'name: Daily\ncron: "0 0 * * *"\ntarget: tasks/daily.md');
-        manager.registerWorkspacePath(repoId, workspaceRoot);
+        await manager.registerWorkspacePath(repoId, workspaceRoot);
 
         const result = await manager.moveSchedule(repoId, 'repo:daily', 'user');
 
@@ -160,9 +160,9 @@ describe('ScheduleManager.moveSchedule', () => {
         const repoId = 'repo1';
         // Pre-create a repo schedule with the same slug
         writeRepoSchedule('my-schedule.yaml', 'name: Existing\ncron: "0 0 * * *"');
-        manager.registerWorkspacePath(repoId, workspaceRoot);
+        await manager.registerWorkspacePath(repoId, workspaceRoot);
 
-        const sched = manager.addSchedule(repoId, {
+        const sched = await manager.addSchedule(repoId, {
             name: 'My Schedule',
             target: 'test.yaml',
             cron: '0 9 * * *',
@@ -177,7 +177,7 @@ describe('ScheduleManager.moveSchedule', () => {
 
     it('throws when moving user→repo without workspace path', async () => {
         const repoId = 'no-workspace';
-        const sched = manager.addSchedule(repoId, {
+        const sched = await manager.addSchedule(repoId, {
             name: 'Test',
             target: 'test.yaml',
             cron: '0 9 * * *',
@@ -192,8 +192,8 @@ describe('ScheduleManager.moveSchedule', () => {
 
     it('throws when moving user schedule to user (already user)', async () => {
         const repoId = 'repo1';
-        manager.registerWorkspacePath(repoId, workspaceRoot);
-        const sched = manager.addSchedule(repoId, {
+        await manager.registerWorkspacePath(repoId, workspaceRoot);
+        const sched = await manager.addSchedule(repoId, {
             name: 'Test',
             target: 'test.yaml',
             cron: '0 9 * * *',
@@ -209,7 +209,7 @@ describe('ScheduleManager.moveSchedule', () => {
     it('throws when moving repo schedule to repo (already repo)', async () => {
         const repoId = 'repo1';
         writeRepoSchedule('daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
-        manager.registerWorkspacePath(repoId, workspaceRoot);
+        await manager.registerWorkspacePath(repoId, workspaceRoot);
 
         await expect(manager.moveSchedule(repoId, 'repo:daily', 'repo'))
             .rejects.toThrow('already a repo schedule');
@@ -217,9 +217,9 @@ describe('ScheduleManager.moveSchedule', () => {
 
     it('moveUserToRepo YAML output does not contain a status field', async () => {
         const repoId = 'repo1';
-        manager.registerWorkspacePath(repoId, workspaceRoot);
+        await manager.registerWorkspacePath(repoId, workspaceRoot);
 
-        const sched = manager.addSchedule(repoId, {
+        const sched = await manager.addSchedule(repoId, {
             name: 'No Status',
             target: 'test.yaml',
             cron: '0 9 * * *',
@@ -237,9 +237,9 @@ describe('ScheduleManager.moveSchedule', () => {
 
     it('strips default outputFolder when moving user schedule to repo', async () => {
         const repoId = 'repo1';
-        manager.registerWorkspacePath(repoId, workspaceRoot);
+        await manager.registerWorkspacePath(repoId, workspaceRoot);
 
-        const sched = manager.addSchedule(repoId, {
+        const sched = await manager.addSchedule(repoId, {
             name: 'Default Output',
             target: 'task.md',
             cron: '0 9 * * *',
@@ -258,9 +258,9 @@ describe('ScheduleManager.moveSchedule', () => {
 
     it('preserves custom outputFolder when moving user schedule to repo', async () => {
         const repoId = 'repo1';
-        manager.registerWorkspacePath(repoId, workspaceRoot);
+        await manager.registerWorkspacePath(repoId, workspaceRoot);
 
-        const sched = manager.addSchedule(repoId, {
+        const sched = await manager.addSchedule(repoId, {
             name: 'Custom Output',
             target: 'task.md',
             cron: '0 9 * * *',
@@ -277,8 +277,8 @@ describe('ScheduleManager.moveSchedule', () => {
         expect(content).toMatch(/outputFolder: \/my\/custom\/path/);
     });
 
-    it('getWorkspacePath returns registered path', () => {
-        manager.registerWorkspacePath('r1', '/some/path');
+    it('getWorkspacePath returns registered path', async () => {
+        await manager.registerWorkspacePath('r1', '/some/path');
         expect(manager.getWorkspacePath('r1')).toBe('/some/path');
         expect(manager.getWorkspacePath('nonexistent')).toBeUndefined();
     });

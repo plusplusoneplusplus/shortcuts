@@ -385,7 +385,7 @@ export interface UpdateCheckOptions {
     currentVersion: string;
     /** Target platform; defaults to `process.platform`. */
     platform?: NodeJS.Platform;
-    /** Fetch implementation; defaults to global `fetch`. */
+    /** Fetch implementation; defaults to global `fetch` when omitted. */
     fetchFn?: typeof fetch;
     /** Releases list endpoint; defaults to {@link RELEASES_LIST_API}. */
     apiUrl?: string;
@@ -413,7 +413,9 @@ export interface UpdateCheckResult {
  */
 export async function checkForUpdate(opts: UpdateCheckOptions): Promise<UpdateCheckResult> {
     const platform = opts.platform ?? process.platform;
-    const fetchFn = opts.fetchFn ?? globalThis.fetch;
+    const fetchFn = Object.prototype.hasOwnProperty.call(opts, 'fetchFn')
+        ? opts.fetchFn
+        : globalThis.fetch;
     const apiUrl = opts.apiUrl ?? RELEASES_LIST_API;
     const channel = opts.channel ?? inferChannel(opts.currentVersion);
     const miss = (reason: UpdateCheckReason): UpdateCheckResult => ({

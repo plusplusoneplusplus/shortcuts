@@ -59,7 +59,7 @@ describe('ScheduleYamlPersistence.migrateAllFromJson', () => {
         cleanupDir(dataDir);
     });
 
-    it('migrates a v3 schedules.json to YAML files', () => {
+    it('migrates a v3 schedules.json to YAML files', async () => {
         writeSchedulesJson(dataDir, 'repo-a', {
             version: 3,
             savedAt: new Date().toISOString(),
@@ -67,7 +67,7 @@ describe('ScheduleYamlPersistence.migrateAllFromJson', () => {
             schedules: [makeEntry('sch_001'), makeEntry('sch_002')],
         });
 
-        new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
+        await new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
 
         const schedDir = path.join(dataDir, 'repos', 'repo-a', 'schedules');
         expect(fs.existsSync(schedDir)).toBe(true);
@@ -78,11 +78,11 @@ describe('ScheduleYamlPersistence.migrateAllFromJson', () => {
         expect(fs.existsSync(path.join(dataDir, 'repos', 'repo-a', 'schedules.json'))).toBe(false);
 
         // loadAll() returns the same two entries
-        const loaded = new ScheduleYamlPersistence(dataDir).loadAll();
+        const loaded = await new ScheduleYamlPersistence(dataDir).loadAll();
         expect(loaded.get('repo-a')).toHaveLength(2);
     });
 
-    it('migrates a v1 schedules.json and back-fills targetType + mode', () => {
+    it('migrates a v1 schedules.json and back-fills targetType + mode', async () => {
         const entry = makeEntry('sch_v1');
         // v1 entries have no targetType or mode
         delete (entry as any).targetType;
@@ -95,16 +95,16 @@ describe('ScheduleYamlPersistence.migrateAllFromJson', () => {
             schedules: [entry],
         });
 
-        new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
+        await new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
 
-        const loaded = new ScheduleYamlPersistence(dataDir).loadAll();
+        const loaded = await new ScheduleYamlPersistence(dataDir).loadAll();
         const entries = loaded.get('repo-v1');
         expect(entries).toHaveLength(1);
         expect(entries![0].targetType).toBe('prompt');
         expect(entries![0].mode).toBe('autopilot');
     });
 
-    it('migrates a v2 schedules.json and back-fills mode', () => {
+    it('migrates a v2 schedules.json and back-fills mode', async () => {
         const entry = makeEntry('sch_v2', { targetType: 'prompt' });
         delete (entry as any).mode;
 
@@ -115,15 +115,15 @@ describe('ScheduleYamlPersistence.migrateAllFromJson', () => {
             schedules: [entry],
         });
 
-        new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
+        await new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
 
-        const loaded = new ScheduleYamlPersistence(dataDir).loadAll();
+        const loaded = await new ScheduleYamlPersistence(dataDir).loadAll();
         const entries = loaded.get('repo-v2');
         expect(entries).toHaveLength(1);
         expect(entries![0].mode).toBe('autopilot');
     });
 
-    it('migration is idempotent (safe to run twice)', () => {
+    it('migration is idempotent (safe to run twice)', async () => {
         const state = {
             version: 3,
             savedAt: new Date().toISOString(),
@@ -133,17 +133,17 @@ describe('ScheduleYamlPersistence.migrateAllFromJson', () => {
 
         // First run
         writeSchedulesJson(dataDir, 'repo-idem', state);
-        new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
+        await new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
 
         // Simulate retry: write JSON again
         writeSchedulesJson(dataDir, 'repo-idem', state);
-        new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
+        await new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
 
-        const loaded = new ScheduleYamlPersistence(dataDir).loadAll();
+        const loaded = await new ScheduleYamlPersistence(dataDir).loadAll();
         expect(loaded.get('repo-idem')).toHaveLength(1);
     });
 
-    it('only deletes schedules.json after all YAML writes succeed', () => {
+    it('only deletes schedules.json after all YAML writes succeed', async () => {
         writeSchedulesJson(dataDir, 'repo-b', {
             version: 3,
             savedAt: new Date().toISOString(),
@@ -151,7 +151,7 @@ describe('ScheduleYamlPersistence.migrateAllFromJson', () => {
             schedules: [makeEntry('sch_b1')],
         });
 
-        new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
+        await new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
 
         // schedules.json is gone after success
         expect(fs.existsSync(path.join(dataDir, 'repos', 'repo-b', 'schedules.json'))).toBe(false);
@@ -161,7 +161,7 @@ describe('ScheduleYamlPersistence.migrateAllFromJson', () => {
         expect(fs.readdirSync(schedDir).filter(f => f.endsWith('.yaml'))).toHaveLength(1);
     });
 
-    it('skips repos with no schedules.json', () => {
+    it('skips repos with no schedules.json', async () => {
         // Create repo with a YAML file already (no schedules.json)
         const schedDir = path.join(dataDir, 'repos', 'repo-yaml-only', 'schedules');
         fs.mkdirSync(schedDir, { recursive: true });
@@ -169,26 +169,26 @@ describe('ScheduleYamlPersistence.migrateAllFromJson', () => {
         const yaml = `id: sch_existing\nname: "Schedule sch_existing"\ntarget: pipelines/test.yaml\ncron: "0 9 * * *"\nparams: {}\nonFailure: notify\nstatus: active\ncreatedAt: "2024-01-01T00:00:00.000Z"\n`;
         fs.writeFileSync(path.join(schedDir, 'sch_existing.yaml'), yaml, 'utf-8');
 
-        // Should not throw
-        expect(() => new ScheduleYamlPersistence(dataDir).migrateAllFromJson()).not.toThrow();
+        // Should not reject
+        await expect(new ScheduleYamlPersistence(dataDir).migrateAllFromJson()).resolves.toBeUndefined();
 
         // Existing YAML unchanged
         expect(fs.existsSync(path.join(schedDir, 'sch_existing.yaml'))).toBe(true);
     });
 
-    it('handles corrupt schedules.json gracefully', () => {
+    it('handles corrupt schedules.json gracefully', async () => {
         const repoDir = path.join(dataDir, 'repos', 'repo-corrupt');
         fs.mkdirSync(repoDir, { recursive: true });
         fs.writeFileSync(path.join(repoDir, 'schedules.json'), '{ not valid json }', 'utf-8');
 
-        // Should not throw
-        expect(() => new ScheduleYamlPersistence(dataDir).migrateAllFromJson()).not.toThrow();
+        // Should not reject
+        await expect(new ScheduleYamlPersistence(dataDir).migrateAllFromJson()).resolves.toBeUndefined();
 
         // schedules.json still present (not deleted on failure)
         expect(fs.existsSync(path.join(repoDir, 'schedules.json'))).toBe(true);
     });
 
-    it('skips schedules.json with unknown version', () => {
+    it('skips schedules.json with unknown version', async () => {
         writeSchedulesJson(dataDir, 'repo-future', {
             version: 99,
             savedAt: new Date().toISOString(),
@@ -196,7 +196,7 @@ describe('ScheduleYamlPersistence.migrateAllFromJson', () => {
             schedules: [makeEntry('sch_future')],
         });
 
-        expect(() => new ScheduleYamlPersistence(dataDir).migrateAllFromJson()).not.toThrow();
+        await expect(new ScheduleYamlPersistence(dataDir).migrateAllFromJson()).resolves.toBeUndefined();
 
         // schedules.json still present
         expect(fs.existsSync(path.join(dataDir, 'repos', 'repo-future', 'schedules.json'))).toBe(true);
@@ -206,7 +206,7 @@ describe('ScheduleYamlPersistence.migrateAllFromJson', () => {
         expect(fs.existsSync(schedDir)).toBe(false);
     });
 
-    it('handles multiple repos in one pass', () => {
+    it('handles multiple repos in one pass', async () => {
         writeSchedulesJson(dataDir, 'repo-x', {
             version: 3,
             savedAt: new Date().toISOString(),
@@ -220,13 +220,13 @@ describe('ScheduleYamlPersistence.migrateAllFromJson', () => {
             schedules: [makeEntry('sch_y1')],
         });
 
-        new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
+        await new ScheduleYamlPersistence(dataDir).migrateAllFromJson();
 
         // Both repos migrated
         expect(fs.existsSync(path.join(dataDir, 'repos', 'repo-x', 'schedules.json'))).toBe(false);
         expect(fs.existsSync(path.join(dataDir, 'repos', 'repo-y', 'schedules.json'))).toBe(false);
 
-        const loaded = new ScheduleYamlPersistence(dataDir).loadAll();
+        const loaded = await new ScheduleYamlPersistence(dataDir).loadAll();
         expect(loaded.get('repo-x')).toHaveLength(2);
         expect(loaded.get('repo-y')).toHaveLength(1);
     });
