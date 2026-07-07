@@ -1,6 +1,8 @@
 export { RepoSchedulesTab } from './RepoSchedulesTab';
 export { ScheduleListPanel } from './ScheduleListPanel';
 export { ScheduledSlideSchedules } from './ScheduledSlideSchedules';
+export { ScheduleMainPane, parseScheduleMainPaneRoute } from './ScheduleMainPane';
+export type { ScheduleMainPaneRoute } from './ScheduleMainPane';
 export { ScheduleDetail } from './ScheduleDetail';
 export type { ScheduleDetailProps } from './ScheduleDetail';
 export { StatusDot, StatusBadge, failureLabel } from './ScheduleStatusBadge';

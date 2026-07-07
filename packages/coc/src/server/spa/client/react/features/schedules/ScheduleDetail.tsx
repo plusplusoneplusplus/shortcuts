@@ -20,6 +20,12 @@ export interface ScheduleDetailProps {
     onDelete: (scheduleId: string) => void;
     onCancelEdit: () => void;
     onSaved: () => void;
+    /**
+     * Whether to render the "Duplicate" action. Defaults to `true` (Repo ▸
+     * Schedules tab). The Scheduled-slide main pane passes `false` — duplicate
+     * is intentionally out of scope for that surface (this pass).
+     */
+    showDuplicate?: boolean;
 }
 
 function computeSuccessRate(history: RunRecord[]): number | null {
@@ -122,7 +128,7 @@ function HeaderIcon({ schedule }: { schedule: Schedule }) {
     return <PromptIcon className={className} />;
 }
 
-export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRunNow, onPauseResume, onEdit, onDuplicate, onDelete, onCancelEdit, onSaved }: ScheduleDetailProps) {
+export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRunNow, onPauseResume, onEdit, onDuplicate, onDelete, onCancelEdit, onSaved, showDuplicate = true }: ScheduleDetailProps) {
     const targetBasename = schedule.target.split(/[/\\]/).pop() ?? schedule.target;
     const paramEntries = Object.entries(schedule.params ?? {});
     const [showCommitReminder, setShowCommitReminder] = useState(false);
@@ -285,16 +291,18 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             <EditIcon />
                             Edit
                         </Button>
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onDuplicate(schedule)}
-                            aria-label="Duplicate schedule"
-                            data-testid="duplicate-btn"
-                        >
-                            <CopyIcon />
-                            Duplicate
-                        </Button>
+                        {showDuplicate && (
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => onDuplicate(schedule)}
+                                aria-label="Duplicate schedule"
+                                data-testid="duplicate-btn"
+                            >
+                                <CopyIcon />
+                                Duplicate
+                            </Button>
+                        )}
                         <span className="flex-1" />
                         <Button
                             variant="danger"

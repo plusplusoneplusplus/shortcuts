@@ -51,7 +51,14 @@ function hasNonDefaultOptions(vals: PromptScheduleFormValues | undefined, worksp
 
 export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvanced, mode: formMode = 'create', scheduleId, initialValues }: {
     workspaceId: string;
-    onCreated: () => void;
+    /**
+     * Called after a successful create or edit. On create the newly-created
+     * schedule (`{ id }`) is passed so callers can navigate to its detail;
+     * on edit it is called with no argument. The optional parameter keeps the
+     * existing `() => void` callers (Repo ▸ Schedules tab, ScheduleDetail edit)
+     * source-compatible.
+     */
+    onCreated: (created?: { id?: string }) => void;
     onCancel: () => void;
     /** Switch to the full CreateScheduleForm for workflow/script/notes. */
     onAdvanced?: () => void;
@@ -172,13 +179,17 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
             };
             if (formMode === 'edit' && scheduleId) {
                 await cloneClient.schedules.update(workspaceId, scheduleId, payload);
+                onCreated();
             } else {
                 const result = await cloneClient.schedules.create(workspaceId, payload);
-                if (shouldPause && result?.id) {
-                    try { await cloneClient.schedules.disable(workspaceId, result.id); } catch { /* best effort */ }
+                // `create` resolves to `{ schedule }`, so the new id lives at
+                // `result.schedule.id` (not `result.id`).
+                const createdId = result?.schedule?.id;
+                if (shouldPause && createdId) {
+                    try { await cloneClient.schedules.disable(workspaceId, createdId); } catch { /* best effort */ }
                 }
+                onCreated(createdId ? { id: createdId } : undefined);
             }
-            onCreated();
         } catch (err) {
             setError(err instanceof Error ? err.message : `Failed to ${formMode === 'edit' ? 'update' : 'create'} schedule`);
         } finally {

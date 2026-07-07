@@ -18,6 +18,9 @@ import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
+import { ScheduleMainPane, parseScheduleMainPaneRoute } from '../schedules/ScheduleMainPane';
+import type { ScheduleMainPaneRoute } from '../schedules/ScheduleMainPane';
+import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
 import { RalphWorkflowPaneContainer } from './RalphWorkflowPaneContainer';
 import { ForEachRunPane } from './ForEachRunPane';
 import { MapReduceRunPane } from './MapReduceRunPane';
@@ -732,6 +735,36 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
     const [selectedForEachRunId, setSelectedForEachRunId] = useState<string | null>(null);
     const [selectedMapReduceRunId, setSelectedMapReduceRunId] = useState<string | null>(null);
 
+    // Schedules-in-Scheduled-slide (flag `schedulesInScheduledSlide`, default
+    // off): when a `#repos/{ws}/schedules/{id|new}` route is active, the main
+    // pane hosts the schedule editor / detail (AC-02/03) instead of a chat.
+    // Parsed straight from the hash so it is deep-linkable and survives reload;
+    // no-op (null) when the flag is off, so the flag-off path is unchanged.
+    const schedulesInSlideEnabled = useSchedulesInScheduledSlideEnabled();
+    const [scheduleRoute, setScheduleRoute] = useState<ScheduleMainPaneRoute | null>(
+        () => schedulesInSlideEnabled ? parseScheduleMainPaneRoute(location.hash, workspaceId) : null,
+    );
+    useEffect(() => {
+        if (!schedulesInSlideEnabled) {
+            setScheduleRoute(prev => (prev === null ? prev : null));
+            return;
+        }
+        const apply = () => {
+            const next = parseScheduleMainPaneRoute(location.hash, workspaceId);
+            setScheduleRoute(prev => {
+                if (prev === next) return prev;
+                if (prev && next && prev.kind === next.kind
+                    && (prev.kind !== 'detail' || (next.kind === 'detail' && prev.scheduleId === next.scheduleId))) {
+                    return prev;
+                }
+                return next;
+            });
+        };
+        apply();
+        window.addEventListener('hashchange', apply);
+        return () => window.removeEventListener('hashchange', apply);
+    }, [schedulesInSlideEnabled, workspaceId]);
+
     // When a chat task is selected, drop any active parent-run selection so
     // the right pane consistently reflects the user's most recent click.
     useEffect(() => {
@@ -1004,10 +1037,14 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
         />
     );
 
-    // The detail pane content (last-clicked chat / Ralph / for-each / map-reduce).
-    // Shared by the desktop two-pane layout and the split-workspace portal below,
-    // so the routing lives in one place.
-    const detailPaneContent = selectedRalphSessionId ? (
+    // The detail pane content (schedule host / last-clicked chat / Ralph /
+    // for-each / map-reduce). Shared by the desktop two-pane layout and the
+    // split-workspace portal below, so the routing lives in one place. The
+    // schedule host takes precedence when a `/schedules/{id|new}` route is
+    // active + flag on (AC-02/03); otherwise the existing chat routing applies.
+    const detailPaneContent = (schedulesInSlideEnabled && scheduleRoute) ? (
+        <ScheduleMainPane workspaceId={workspaceId} route={scheduleRoute} />
+    ) : selectedRalphSessionId ? (
         <RalphWorkflowPaneContainer
             workspaceId={workspaceId}
             sessionId={selectedRalphSessionId}

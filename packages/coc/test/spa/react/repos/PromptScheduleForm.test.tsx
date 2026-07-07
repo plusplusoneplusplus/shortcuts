@@ -65,7 +65,9 @@ async function renderPromptForm(overrides: Partial<Parameters<typeof import('../
 
 beforeEach(() => {
     vi.clearAllMocks();
-    mockSchedulesClient.create.mockResolvedValue({ id: 'new-sched-1' });
+    // `create` resolves to `{ schedule }` (matches the coc-client contract), so
+    // the new id is at `result.schedule.id`.
+    mockSchedulesClient.create.mockResolvedValue({ schedule: { id: 'new-sched-1' } });
     mockSchedulesClient.update.mockResolvedValue({});
     mockSchedulesClient.disable.mockResolvedValue({});
     mockSchedulesClient.refine.mockResolvedValue({ refined: 'Review all open PRs and report blockers.' });

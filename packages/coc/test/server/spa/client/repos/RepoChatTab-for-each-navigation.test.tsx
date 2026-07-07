@@ -26,6 +26,8 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     isForEachEnabled: () => mocks.forEachEnabled,
     isMapReduceEnabled: () => false,
+    isSchedulesInScheduledSlideEnabled: () => false,
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
