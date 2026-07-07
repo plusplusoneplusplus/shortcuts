@@ -9,7 +9,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/forge';
-import { BaseExecutor, type ProcessSessionState } from '../../../src/server/executors/base-executor';
+import { BaseExecutor, type StreamingTurnState } from '../../../src/server/executors/base-executor';
+import type { RalphGrillProcessState } from '../../../src/server/ralph/grill-planning';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 
 // ============================================================================
@@ -19,11 +20,26 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 /** Minimal concrete executor that exposes all protected members for testing. */
 class TestExecutor extends BaseExecutor {
     // Expose protected members for white-box testing
-    public getOrCreateSessionPublic(processId: string): ProcessSessionState {
-        return this.getOrCreateSession(processId);
+    public getStreamingStatePublic(processId: string): StreamingTurnState {
+        return this.getOrCreateStreamingState(processId);
     }
     public cleanupSessionPublic(processId: string): void {
         return this.cleanupSession(processId);
+    }
+    public getRalphGrillStatePublic(processId: string): RalphGrillProcessState | undefined {
+        return this.getRalphGrillState(processId);
+    }
+    public setRalphGrillStatePublic(processId: string, state: RalphGrillProcessState): void {
+        this.setRalphGrillState(processId, state);
+    }
+    public getTurnWriteChainPublic(processId: string): Promise<void> {
+        return this.sessions.getTurnWrite(processId).chain;
+    }
+    public setTurnWriteChainPublic(processId: string, chain: Promise<void>): void {
+        this.sessions.getTurnWrite(processId).chain = chain;
+    }
+    public getPendingSuggestionsPublic(processId: string): string[] | undefined {
+        return this.getPendingSuggestions(processId);
     }
     public appendTimelineItemPublic(processId: string, item: any): void {
         return this.appendTimelineItem(processId, item);
@@ -89,31 +105,31 @@ describe('BaseExecutor', () => {
 
     describe('session lifecycle', () => {
         it('creates a fresh session with empty state on first access', () => {
-            const session = executor.getOrCreateSessionPublic('proc-1');
+            const session = executor.getStreamingStatePublic('proc-1');
             expect(session.outputBuffer).toBe('');
             expect(session.timelineBuffer).toEqual([]);
-            expect(session.pendingSuggestions).toBeUndefined();
             expect(session.throttleState.chunksSinceLastFlush).toBe(0);
+            expect(executor.getPendingSuggestionsPublic('proc-1')).toBeUndefined();
         });
 
-        it('returns the same session object on subsequent calls', () => {
-            const a = executor.getOrCreateSessionPublic('proc-1');
-            const b = executor.getOrCreateSessionPublic('proc-1');
+        it('returns the same streaming state object on subsequent calls', () => {
+            const a = executor.getStreamingStatePublic('proc-1');
+            const b = executor.getStreamingStatePublic('proc-1');
             expect(a).toBe(b);
         });
 
         it('creates independent sessions for different process IDs', () => {
-            const a = executor.getOrCreateSessionPublic('proc-a');
-            const b = executor.getOrCreateSessionPublic('proc-b');
+            const a = executor.getStreamingStatePublic('proc-a');
+            const b = executor.getStreamingStatePublic('proc-b');
             a.outputBuffer = 'hello';
             expect(b.outputBuffer).toBe('');
         });
 
         it('cleanupSession removes the session', () => {
-            executor.getOrCreateSessionPublic('proc-del');
+            executor.getStreamingStatePublic('proc-del');
             executor.cleanupSessionPublic('proc-del');
             // After cleanup a new fresh session is created
-            const fresh = executor.getOrCreateSessionPublic('proc-del');
+            const fresh = executor.getStreamingStatePublic('proc-del');
             expect(fresh.outputBuffer).toBe('');
         });
 
@@ -122,8 +138,8 @@ describe('BaseExecutor', () => {
         });
 
         it('cleanupSession retains Ralph grill state with fresh turn lifecycle fields', async () => {
-            const session = executor.getOrCreateSessionPublic('proc-ralph-grill');
-            const ralphGrill: NonNullable<ProcessSessionState['ralphGrill']> = {
+            const session = executor.getStreamingStatePublic('proc-ralph-grill');
+            const ralphGrill: RalphGrillProcessState = {
                 roundsRun: 1,
                 maxRounds: 3,
                 terminal: false,
@@ -134,19 +150,20 @@ describe('BaseExecutor', () => {
             session.outputBuffer = 'stale output';
             session.timelineBuffer = [{ type: 'content', content: 'stale output', timestamp: new Date() }];
             session.turnFinalized = true;
-            session.turnWriteChain = Promise.reject(new Error('stale chain'));
-            session.turnWriteChain.catch(() => undefined);
-            session.ralphGrill = ralphGrill;
+            const staleChain = Promise.reject(new Error('stale chain'));
+            staleChain.catch(() => undefined);
+            executor.setTurnWriteChainPublic('proc-ralph-grill', staleChain);
+            executor.setRalphGrillStatePublic('proc-ralph-grill', ralphGrill);
 
             executor.cleanupSessionPublic('proc-ralph-grill');
 
-            const retained = executor.getOrCreateSessionPublic('proc-ralph-grill');
+            const retained = executor.getStreamingStatePublic('proc-ralph-grill');
             expect(retained).not.toBe(session);
             expect(retained.outputBuffer).toBe('');
             expect(retained.timelineBuffer).toEqual([]);
             expect(retained.turnFinalized).toBe(false);
-            expect(retained.ralphGrill).toBe(ralphGrill);
-            await expect(retained.turnWriteChain).resolves.toBeUndefined();
+            expect(executor.getRalphGrillStatePublic('proc-ralph-grill')).toBe(ralphGrill);
+            await expect(executor.getTurnWriteChainPublic('proc-ralph-grill')).resolves.toBeUndefined();
         });
     });
 
@@ -157,7 +174,7 @@ describe('BaseExecutor', () => {
     describe('appendTimelineItem', () => {
         it('appends a non-content item to the buffer', () => {
             executor.appendTimelineItemPublic('proc-1', { type: 'tool-start', timestamp: new Date(), toolCall: { id: 't1', name: 'read_file', status: 'running', startTime: new Date(), args: {} } });
-            const session = executor.getOrCreateSessionPublic('proc-1');
+            const session = executor.getStreamingStatePublic('proc-1');
             expect(session.timelineBuffer).toHaveLength(1);
             expect(session.timelineBuffer[0].type).toBe('tool-start');
         });
@@ -165,7 +182,7 @@ describe('BaseExecutor', () => {
         it('merges consecutive content items', () => {
             executor.appendTimelineItemPublic('proc-1', { type: 'content', timestamp: new Date(), content: 'Hello ' });
             executor.appendTimelineItemPublic('proc-1', { type: 'content', timestamp: new Date(), content: 'World' });
-            const session = executor.getOrCreateSessionPublic('proc-1');
+            const session = executor.getStreamingStatePublic('proc-1');
             expect(session.timelineBuffer).toHaveLength(1);
             expect(session.timelineBuffer[0].content).toBe('Hello World');
         });
@@ -174,7 +191,7 @@ describe('BaseExecutor', () => {
             executor.appendTimelineItemPublic('proc-1', { type: 'content', timestamp: new Date(), content: 'A' });
             executor.appendTimelineItemPublic('proc-1', { type: 'tool-start', timestamp: new Date(), toolCall: { id: 't1', name: 'tool', status: 'running', startTime: new Date(), args: {} } });
             executor.appendTimelineItemPublic('proc-1', { type: 'content', timestamp: new Date(), content: 'B' });
-            const session = executor.getOrCreateSessionPublic('proc-1');
+            const session = executor.getStreamingStatePublic('proc-1');
             expect(session.timelineBuffer).toHaveLength(3);
         });
     });
@@ -186,7 +203,7 @@ describe('BaseExecutor', () => {
     describe('checkThrottleAndFlush', () => {
         it('increments chunksSinceLastFlush on each call', () => {
             // Initialize lastFlushTime to now so time-based flush doesn't fire
-            const session = executor.getOrCreateSessionPublic('proc-t');
+            const session = executor.getStreamingStatePublic('proc-t');
             session.throttleState.lastFlushTime = Date.now();
             executor.checkThrottleAndFlushPublic('proc-t');
             executor.checkThrottleAndFlushPublic('proc-t');
@@ -198,7 +215,7 @@ describe('BaseExecutor', () => {
             const processId = 'proc-throttle';
             const proc = createTestProcess(processId);
             await store.addProcess(proc);
-            const session = executor.getOrCreateSessionPublic(processId);
+            const session = executor.getStreamingStatePublic(processId);
             session.outputBuffer = 'data';
             // Prevent time-based flush from firing during count-based test
             session.throttleState.lastFlushTime = Date.now();
@@ -208,18 +225,18 @@ describe('BaseExecutor', () => {
             for (let i = 0; i < count - 1; i++) {
                 executor.checkThrottleAndFlushPublic(processId);
             }
-            const beforeFlush = executor.getOrCreateSessionPublic(processId).throttleState.chunksSinceLastFlush;
+            const beforeFlush = executor.getStreamingStatePublic(processId).throttleState.chunksSinceLastFlush;
             expect(beforeFlush).toBe(count - 1);
 
             // One more chunk triggers flush
             executor.checkThrottleAndFlushPublic(processId);
-            const afterFlush = executor.getOrCreateSessionPublic(processId).throttleState.chunksSinceLastFlush;
+            const afterFlush = executor.getStreamingStatePublic(processId).throttleState.chunksSinceLastFlush;
             expect(afterFlush).toBe(0);
         });
 
         it('resets counter and triggers flush when time threshold is exceeded', () => {
             const processId = 'proc-time';
-            const session = executor.getOrCreateSessionPublic(processId);
+            const session = executor.getStreamingStatePublic(processId);
             // Set lastFlushTime far in the past
             session.throttleState.lastFlushTime = Date.now() - TestExecutor.THROTTLE_TIME_MS_PUBLIC - 1000;
             session.throttleState.chunksSinceLastFlush = 1;
@@ -248,7 +265,7 @@ describe('BaseExecutor', () => {
             ]);
             await store.addProcess(proc);
 
-            const session = executor.getOrCreateSessionPublic(processId);
+            const session = executor.getStreamingStatePublic(processId);
             session.outputBuffer = 'partial response';
 
             await executor.flushConversationTurnPublic(processId, true);
@@ -269,7 +286,7 @@ describe('BaseExecutor', () => {
             ]);
             await store.addProcess(proc);
 
-            const session = executor.getOrCreateSessionPublic(processId);
+            const session = executor.getStreamingStatePublic(processId);
             session.outputBuffer = 'updated partial';
 
             await executor.flushConversationTurnPublic(processId, true);
@@ -291,7 +308,7 @@ describe('BaseExecutor', () => {
             ]);
             await store.addProcess(proc);
 
-            const session = executor.getOrCreateSessionPublic(processId);
+            const session = executor.getStreamingStatePublic(processId);
             session.outputBuffer = 'updated streaming content';
 
             await executor.flushConversationTurnPublic(processId, true);
@@ -308,7 +325,7 @@ describe('BaseExecutor', () => {
         });
 
         it('is a no-op when process does not exist in store', async () => {
-            const session = executor.getOrCreateSessionPublic('proc-missing');
+            const session = executor.getStreamingStatePublic('proc-missing');
             session.outputBuffer = 'data';
 
             await executor.flushConversationTurnPublic('proc-missing', true);
@@ -348,7 +365,7 @@ describe('BaseExecutor', () => {
                 parameters: { path: '/foo' },
             } as any);
 
-            const session = executor.getOrCreateSessionPublic('proc-tool');
+            const session = executor.getStreamingStatePublic('proc-tool');
             expect(session.timelineBuffer).toHaveLength(1);
             expect(session.timelineBuffer[0].type).toBe('tool-start');
         });
@@ -363,7 +380,7 @@ describe('BaseExecutor', () => {
                 result: 'ok',
             } as any);
 
-            const session = executor.getOrCreateSessionPublic('proc-tool-c');
+            const session = executor.getStreamingStatePublic('proc-tool-c');
             expect(session.timelineBuffer[0].type).toBe('tool-complete');
         });
 
@@ -381,7 +398,7 @@ describe('BaseExecutor', () => {
                 }),
             } as any);
 
-            const session = executor.getOrCreateSessionPublic('proc-memory-capture');
+            const session = executor.getStreamingStatePublic('proc-memory-capture');
             expect(session.timelineBuffer).toHaveLength(1);
             expect(session.timelineBuffer[0]).toEqual(expect.objectContaining({
                 type: 'tool-complete',
@@ -423,8 +440,7 @@ describe('BaseExecutor', () => {
                 result: JSON.stringify({ suggestions: ['Do X', 'Do Y', 'Do Z'] }),
             } as any);
 
-            const session = executor.getOrCreateSessionPublic('proc-sugg');
-            expect(session.pendingSuggestions).toEqual(['Do X', 'Do Y', 'Do Z']);
+            expect(executor.getPendingSuggestionsPublic('proc-sugg')).toEqual(['Do X', 'Do Y', 'Do Z']);
             expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-sugg', expect.objectContaining({
                 type: 'suggestions',
                 suggestions: ['Do X', 'Do Y', 'Do Z'],

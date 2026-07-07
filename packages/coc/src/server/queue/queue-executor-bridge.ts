@@ -208,6 +208,13 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
     private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void { this.titleGenerationService.generateIfNeeded(processId, turns); }
 
+    private getQueueExecutorForControl(method: string): QueueExecutor | undefined {
+        if (this.queueManager && !this.queueExecutor) {
+            throw new Error(`${method} cannot run before the queue executor is wired`);
+        }
+        return this.queueExecutor;
+    }
+
     private async resolveWorkspaceIdForPath(rootPath: string): Promise<string> {
         const ws = (await this.store.getWorkspaces())
             .find(w => pathsReferToSameWorkspace(w.rootPath, rootPath));
@@ -432,8 +439,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         const taskId = toTaskId(processId);
         // Route through QueueExecutor so both cancelledTasks sets are updated
         // and the queue slot is freed once the SDK abort propagates
-        if (this.queueExecutor) {
-            this.queueExecutor.cancelTask(taskId);
+        const queueExecutor = this.getQueueExecutorForControl('cancelProcess');
+        if (queueExecutor) {
+            queueExecutor.cancelTask(taskId);
         } else {
             this.cancelledTasks.add(taskId);
         }
@@ -728,7 +736,17 @@ export function defaultIsExclusive(task: QueuedTask): boolean {
 export function createQueueExecutorBridge(queueManager: TaskQueueManager, store: ProcessStore, options: QueueExecutorBridgeOptions = {}): { executor: QueueExecutor; bridge: QueueExecutorBridge } {
     const bridge = new CLITaskExecutor(store, options);
     bridge.setQueueManager(queueManager);
-    const executor = createQueueExecutor(queueManager, bridge, { sharedConcurrency: options.sharedConcurrency ?? 5, exclusiveConcurrency: options.exclusiveConcurrency ?? 1, isExclusive: options.isExclusive ?? defaultIsExclusive, autoStart: options.autoStart !== false, initialDelayMs: options.initialDelayMs });
+    const shouldAutoStart = options.autoStart !== false;
+    const executor = createQueueExecutor(queueManager, bridge, {
+        sharedConcurrency: options.sharedConcurrency ?? 5,
+        exclusiveConcurrency: options.exclusiveConcurrency ?? 1,
+        isExclusive: options.isExclusive ?? defaultIsExclusive,
+        autoStart: false,
+        initialDelayMs: options.initialDelayMs,
+    });
     bridge.setQueueExecutor(executor);
+    if (shouldAutoStart) {
+        executor.start();
+    }
     return { executor, bridge };
 }

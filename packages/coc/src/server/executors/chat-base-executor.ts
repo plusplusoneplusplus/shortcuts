@@ -512,14 +512,13 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 },
             },
         });
-        const session = this.getOrCreateSession(processId);
-        session.pendingAskUser = {
+        this.setAskUserHandles(processId, {
             answerQuestion: ctx.askUser!.answerQuestion,
             skipQuestion: ctx.askUser!.skipQuestion,
             answerQuestions: ctx.askUser!.answerQuestions,
             cancelAll: ctx.askUser!.cancelAll,
             hasPending: ctx.askUser!.hasPending,
-        };
+        });
 
         const isGrilling = payload.context?.ralph?.phase === 'grilling';
         const workItemGoalGrilling = payload.context?.workItemGoalGrilling;
@@ -614,7 +613,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
         this.persistSystemPromptAsync(processId, task.type, systemMessage?.content);
 
-        this.getOrCreateSession(processId).outputBuffer = '';
+        this.resetSessionStreamingState(processId);
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
         // Rehydrate externalized images from blob store before image decoding
@@ -754,7 +753,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     processId,
                     buildRalphGrillPlanningStartedProgress(
                         ralphGrillPlanning.setup,
-                        this.getOrCreateSession(processId).ralphGrill,
+                        this.getRalphGrillState(processId),
                     ),
                 );
                 const questionPlan = await planRalphGrillCandidateQuestions(
@@ -773,15 +772,14 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                         timeoutMs,
                         skillDirectories,
                         disabledSkills,
-                        previousState: this.getOrCreateSession(processId).ralphGrill,
+                        previousState: this.getRalphGrillState(processId),
                     },
                 );
                 ralphGrillPlanning.state.plan = questionPlan;
-                const sessionState = this.getOrCreateSession(processId);
-                sessionState.ralphGrill = buildRalphGrillProcessStateFromPlan(
+                this.setRalphGrillState(processId, buildRalphGrillProcessStateFromPlan(
                     questionPlan,
-                    sessionState.ralphGrill,
-                );
+                    this.getRalphGrillState(processId),
+                ));
                 this.emitRalphGrillPlanningProgress(
                     processId,
                     buildRalphGrillPlanningCompletedProgress(questionPlan),
@@ -792,7 +790,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 }
                 if (questionPlan.terminal) {
                     tools = tools.filter(tool => tool.name !== 'ask_user');
-                    this.getOrCreateSession(processId).pendingAskUser = undefined;
+                    this.clearAskUserHandles(processId);
                 }
             }
 
@@ -837,7 +835,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     });
                 },
                 onStreamingChunk: (chunk: string) => {
-                    this.getOrCreateSession(processId).outputBuffer += chunk;
+                    this.appendOutputChunk(processId, chunk);
                     this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
                     try {
                         this.store.emitProcessOutput(processId, chunk);
@@ -908,9 +906,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // Capture session state BEFORE the finally block runs cleanup.
             // (return value expressions are evaluated before finally executes)
             const finalTimeline = mergeConsecutiveContentItems(
-                this.sessions.get(processId)?.timelineBuffer ?? [],
+                this.getTimelineBuffer(processId) ?? [],
             );
-            const pendingSuggestions = this.sessions.get(processId)?.pendingSuggestions;
+            const pendingSuggestions = this.getPendingSuggestions(processId);
 
             return {
                 response: result.response || '(Task completed via tool execution — no text response produced)',
@@ -922,12 +920,12 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 effectiveModel: result.effectiveModel ?? reasoningSelection.modelId,
             };
         } catch (err) {
-            const session = this.sessions.get(processId);
-            const partialContent = session?.outputBuffer ?? '';
-            const partialTimeline = session?.timelineBuffer
-                ? mergeConsecutiveContentItems([...session.timelineBuffer])
+            const partialContent = this.getOutputBuffer(processId);
+            const timelineBuffer = this.getTimelineBuffer(processId);
+            const partialTimeline = timelineBuffer
+                ? mergeConsecutiveContentItems([...timelineBuffer])
                 : [];
-            const partialSuggestions = session?.pendingSuggestions;
+            const partialSuggestions = this.getPendingSuggestions(processId);
             const hasPartial = partialContent.length > 0 || partialTimeline.length > 0;
 
             if (hasPartial) {
@@ -960,7 +958,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             if (pasteCleanup) { pasteCleanup(); }
             modeDispose?.();
             // Cancel any pending ask-user questions before cleanup
-            this.sessions.get(processId)?.pendingAskUser?.cancelAll();
+            this.cancelAskUserHandles(processId);
             try {
                 await this.clearPendingAskUser(processId);
             } catch (err) {
@@ -969,7 +967,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     `[ChatModeExecutor] Failed to clear pending ask-user for ${processId}: ${err instanceof Error ? err.message : String(err)}`,
                 );
             }
-            const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
+            const buffer = this.getOutputBuffer(processId);
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);
             await this.persistOutput(processId, buffer, payload.workspaceId);

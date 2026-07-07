@@ -15,7 +15,7 @@ import { createStubStore } from '../../../src/server/processes/in-memory-process
 
 class TestExecutor extends BaseExecutor {
     seedBuffer(processId: string, content: string): void {
-        this.getOrCreateSession(processId).outputBuffer = content;
+        this.getOrCreateStreamingState(processId).outputBuffer = content;
     }
 
     flush(processId: string, streaming: boolean): Promise<void> {

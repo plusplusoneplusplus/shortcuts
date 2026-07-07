@@ -3,12 +3,12 @@
  * turn-end teardown.
  *
  * A `scheduleWakeup` tool call arms a one-shot timer in the loop
- * infrastructure's ScheduleTimerRegistry (keyed `wakeup:<id>`). The per-turn
- * executor session is a *separate* structure: both executor `finally` blocks
- * (FollowUpExecutor, process-lifecycle-runner) tear the turn down through
- * `BaseExecutor.cleanupSession`, which only touches the `sessions` map. These
- * tests lock in that the teardown never disarms a pending wakeup, so a wakeup
- * scheduled mid-turn still fires after the turn completes.
+ * infrastructure's ScheduleTimerRegistry (keyed `wakeup:<id>`). Executor
+ * per-turn state is separate: both executor `finally` blocks (FollowUpExecutor,
+ * process-lifecycle-runner) tear the turn down through
+ * `BaseExecutor.cleanupSession`, which only clears executor-owned session
+ * state. These tests lock in that the teardown never disarms a pending wakeup,
+ * so a wakeup scheduled mid-turn still fires after the turn completes.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -25,7 +25,7 @@ import '../../../src/server/executors/follow-up-mode';
 /** Concrete executor exposing the protected turn-lifecycle hooks for the test. */
 class TestExecutor extends BaseExecutor {
     public startTurn(processId: string): void {
-        this.getOrCreateSession(processId);
+        this.getOrCreateStreamingState(processId);
     }
     /** Mirror what both executor `finally` blocks run at turn end. */
     public endTurn(processId: string): void {

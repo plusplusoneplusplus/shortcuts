@@ -649,7 +649,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             const responseText = (result as any)?.response ?? '';
 
             const finalTimeline = (result as any)?.timeline
-                ?? mergeConsecutiveContentItems(this.sessions.get(processId)?.timelineBuffer || []);
+                ?? mergeConsecutiveContentItems(this.getTimelineBuffer(processId) || []);
 
             try {
                 const tokenUsage = (result as any)?.tokenUsage;
@@ -665,7 +665,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                             turnIndex,
                             toolCalls: (result as any)?.toolCalls || undefined,
                             timeline: finalTimeline,
-                            suggestions: (result as any)?.pendingSuggestions ?? this.sessions.get(processId)?.pendingSuggestions,
+                            suggestions: (result as any)?.pendingSuggestions ?? this.getPendingSuggestions(processId),
                             ...(effectiveModel ? { model: effectiveModel } : {}),
                             ...(tokenUsage ? { tokenUsage } : {}),
                         };
@@ -877,12 +877,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     // turns a hard timeout (e.g. SDK idle timeout after an
                     // hour of streaming) from a silent data-loss event into
                     // a recoverable conversation turn.
-                    const session = this.sessions.get(processId);
-                    const partialContent = session?.outputBuffer ?? '';
-                    const partialTimeline = session?.timelineBuffer
-                        ? mergeConsecutiveContentItems([...session.timelineBuffer])
+                    const partialContent = this.getOutputBuffer(processId);
+                    const timelineBuffer = this.getTimelineBuffer(processId);
+                    const partialTimeline = timelineBuffer
+                        ? mergeConsecutiveContentItems([...timelineBuffer])
                         : [];
-                    const partialSuggestions = session?.pendingSuggestions;
+                    const partialSuggestions = this.getPendingSuggestions(processId);
 
                     const hasPartial = partialContent.length > 0 || partialTimeline.length > 0;
 
@@ -954,7 +954,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 }
             }
 
-            const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
+            const buffer = this.getOutputBuffer(processId);
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);
             await this.persistOutput(processId, buffer, (task.payload as any)?.workspaceId);
