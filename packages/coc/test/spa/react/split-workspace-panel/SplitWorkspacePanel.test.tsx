@@ -418,3 +418,35 @@ describe('SplitWorkspacePanel git header extra slot', () => {
         expect(screen.queryByTestId('split-workspace-git-header-extra')).toBeNull();
     });
 });
+
+// The App shell's global status dock sizes itself to the left sidebar via this
+// CSS variable, so the panel must publish its live left-column width — and clear
+// it when the sidebar is gone (mobile / unmount) so the dock can fall back.
+describe('SplitWorkspacePanel — publishes left-column width for the global status dock', () => {
+    const VAR = '--workspace-left-col-width';
+    const readVar = () => document.documentElement.style.getPropertyValue(VAR);
+
+    beforeEach(() => {
+        localStorage.clear();
+        mockIsMobile = false;
+        document.documentElement.style.removeProperty(VAR);
+    });
+
+    it('sets the CSS variable to the default left-column width on desktop', () => {
+        renderPanel();
+        expect(readVar()).toBe('360px');
+    });
+
+    it('does not publish a width on the mobile single-column fallback', () => {
+        mockIsMobile = true;
+        renderPanel();
+        expect(readVar()).toBe('');
+    });
+
+    it('clears the CSS variable on unmount so the dock falls back', () => {
+        const { unmount } = renderPanel();
+        expect(readVar()).toBe('360px');
+        unmount();
+        expect(readVar()).toBe('');
+    });
+});

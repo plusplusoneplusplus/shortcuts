@@ -224,6 +224,21 @@ export function SplitWorkspacePanel({
     const [chatCollapsed, toggleChat] = useCollapsedState(splitWorkspaceChatCollapsedStorageKey(workspaceId));
     const [gitCollapsed, toggleGit] = useCollapsedState(splitWorkspaceGitCollapsedStorageKey(workspaceId));
 
+    // Publish the live left-column width so the App shell's global status dock
+    // (`GlobalStatusDock`) can match this sidebar's width. Cleared on unmount /
+    // mobile so the dock falls back to its default width where no split sidebar
+    // is on screen.
+    useEffect(() => {
+        if (isMobile) {
+            document.documentElement.style.removeProperty('--workspace-left-col-width');
+            return;
+        }
+        document.documentElement.style.setProperty('--workspace-left-col-width', `${leftColumn.width}px`);
+        return () => {
+            document.documentElement.style.removeProperty('--workspace-left-col-width');
+        };
+    }, [isMobile, leftColumn.width]);
+
     // Narrow / mobile fallback: single scrolling column, no split, no dividers.
     // Each reused tab keeps its own single-column behavior; we just stack the
     // slots so the split + detail never render side-by-side on a small screen.

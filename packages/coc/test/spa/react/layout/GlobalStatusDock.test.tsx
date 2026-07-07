@@ -43,6 +43,15 @@ describe('GlobalStatusDock', () => {
         expect(dock.getAttribute('data-variant')).toBe('sidebar');
     });
 
+    it('constrains its width to the left sidebar column (not full width)', () => {
+        render(<GlobalStatusDock />);
+        const wrapper = screen.getByTestId('global-status-dock');
+        // Tracks the live left-column width, falling back to the panel default.
+        expect(wrapper.style.width).toContain('--workspace-left-col-width');
+        expect(wrapper.style.width).toContain('360px');
+        expect(wrapper.className).toContain('flex-shrink-0');
+    });
+
     it('forwards onAdminOpen to StatusActions', () => {
         const onAdminOpen = vi.fn();
         render(<GlobalStatusDock onAdminOpen={onAdminOpen} />);

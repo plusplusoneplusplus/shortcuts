@@ -417,8 +417,9 @@ function AppInner() {
                         <Router />
                     </main>
                     {/* Remote-first shell: the status cluster docks in a bottom
-                        status bar spanning every tab (desktop only). Renders null
-                        otherwise; TopBar keeps the top-right cluster then. */}
+                        bar the width of the left sidebar, on every tab (desktop
+                        only). Renders null otherwise; TopBar keeps the top-right
+                        cluster then. */}
                     <GlobalStatusDock onAdminOpen={handleAdminOpen} />
                 </div>
                 <FloatingChatManager />

@@ -3,10 +3,15 @@
  *
  * In the remote-first shell the status/action cluster (connection /
  * notifications / quota / admin / theme) lives in a docked bar pinned to the
- * bottom of the app on EVERY tab, instead of the historic top-right topbar
- * cluster. It renders the shared `StatusActions` sidebar variant full-width — a
- * VS Code-style status bar with the controls at the left and the connection
- * pill pushed to the right edge.
+ * bottom-left of the app on EVERY tab, instead of the historic top-right topbar
+ * cluster. It renders the shared `StatusActions` sidebar variant, but only as
+ * wide as the workspace's left sidebar column — the controls sit at the left
+ * and the connection pill is pushed to the right edge of that column, leaving
+ * the detail pane / composer to its right clear.
+ *
+ * The width tracks the live left-column width published by `SplitWorkspacePanel`
+ * via the `--workspace-left-col-width` CSS variable, falling back to the panel's
+ * default width where no split sidebar is mounted (e.g. the terminal tab).
  *
  * Rendered once at the App shell level as a flex sibling below `<main>`, so it
  * reserves its own height and never overlaps tab content. Gated to
@@ -22,6 +27,9 @@ import { StatusActions } from './StatusActions';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 
+/** Fallback width when no split sidebar is mounted (matches the panel default). */
+const DEFAULT_LEFT_COL_WIDTH = 360;
+
 export interface GlobalStatusDockProps {
     /** Admin-open handler, forwarded to the docked admin button. */
     onAdminOpen?: () => void;
@@ -31,5 +39,13 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
     const remoteShell = useRemoteShellEnabled();
     const { isMobile } = useBreakpoint();
     if (!remoteShell || isMobile) return null;
-    return <StatusActions variant="sidebar" onAdminOpen={onAdminOpen} />;
+    return (
+        <div
+            className="flex-shrink-0"
+            style={{ width: `var(--workspace-left-col-width, ${DEFAULT_LEFT_COL_WIDTH}px)` }}
+            data-testid="global-status-dock"
+        >
+            <StatusActions variant="sidebar" onAdminOpen={onAdminOpen} />
+        </div>
+    );
 }
