@@ -17,6 +17,7 @@ import { GitReviewPopOutProvider } from './contexts/GitReviewPopOutContext';
 import { FloatingChatsProvider } from './contexts/FloatingChatsContext';
 import { ThemeProvider } from './layout/ThemeProvider';
 import { TopBar } from './layout/TopBar';
+import { GlobalStatusDock } from './layout/GlobalStatusDock';
 import { SecurityBanner } from './layout/SecurityBanner';
 import { BottomNav } from './layout/BottomNav';
 import { Router } from './layout/Router';
@@ -415,6 +416,10 @@ function AppInner() {
                     <main className="flex-1 overflow-hidden min-h-0 pt-[var(--bottom-nav-height,0px)] md:pt-0">
                         <Router />
                     </main>
+                    {/* Remote-first shell: the status cluster docks in a bottom
+                        status bar spanning every tab (desktop only). Renders null
+                        otherwise; TopBar keeps the top-right cluster then. */}
+                    <GlobalStatusDock onAdminOpen={handleAdminOpen} />
                 </div>
                 <FloatingChatManager />
                 <BottomNav />

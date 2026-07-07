@@ -4,10 +4,10 @@
  * Right-side layout (the cluster itself lives in `StatusActions`):
  *   [+ New?] [Connected pill] [NotificationBell] [Quota] [Admin] [Theme]
  *
- * In the remote-first shell, the cluster moves to a docked footer at the bottom
- * of the left sidebar (see `StatusActions` variant="sidebar", mounted by
- * `SplitWorkspacePanel`), so it is hidden here whenever that footer is on screen
- * (`statusInSidebar`).
+ * In the remote-first shell (desktop), the cluster moves to a global bottom
+ * status bar spanning every tab (see `GlobalStatusDock` → `StatusActions`
+ * variant="sidebar", mounted by the App shell), so it is hidden here whenever
+ * that dock is on screen (`statusInDock`).
  *
  * The Skills / Logs / Usage / Models / Servers nav targets now live in
  * the Admin page's left-panel "Tools" group — see `AdminPanel.tsx`. They
@@ -23,7 +23,6 @@ import { StatusActions } from './StatusActions';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
 import { RemoteShellHeader } from '../features/remote-shell/RemoteShellHeader';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
-import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../repos/MyLifeView';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
@@ -60,7 +59,6 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
     const remoteShell = useRemoteShellEnabled();
-    const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
     const [popoverOpen, setPopoverOpen] = useState(false);
     const hostname = getHostname();
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
@@ -130,13 +128,12 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const showRemoteHeader = remoteShell && isOnReposTab && !!selectedRepo && !isMobile;
 
     // In the remote-first shell the status cluster (connection / notifications /
-    // quota / admin / theme) moves to a docked footer at the bottom of the left
-    // sidebar — but that footer only exists in the split "Workspace" left column,
-    // which renders on the chat/activity sub-tab. Hide the topbar cluster exactly
-    // when that footer is on screen so the two never both show (and controls
-    // never vanish on other tabs/sub-tabs, where the footer is absent).
-    const onChatSubTab = state.activeRepoSubTab === 'chats' || state.activeRepoSubTab === 'activity';
-    const statusInSidebar = showRemoteHeader && splitWorkspacePanelEnabled && onChatSubTab;
+    // quota / admin / theme) moves to a global bottom status bar
+    // (`GlobalStatusDock`) that spans every tab on desktop. Hide the topbar
+    // cluster exactly when that dock is on screen so the two never both show —
+    // and, on mobile / classic mode where the dock is absent, keep it here so
+    // the controls never vanish. Must match GlobalStatusDock's own gate.
+    const statusInDock = remoteShell && !isMobile;
 
     return (
         <>
@@ -256,9 +253,9 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         <span>New</span>
                     </button>
                 )}
-                {/* Status cluster — hidden here when it lives in the sidebar
-                    footer (remote-first shell chat/activity view). */}
-                {!statusInSidebar && (
+                {/* Status cluster — hidden here when it lives in the global
+                    bottom status bar (remote-first shell, desktop). */}
+                {!statusInDock && (
                     <StatusActions variant="topbar" onAdminOpen={onAdminOpen} />
                 )}
             </div>

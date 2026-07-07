@@ -1,11 +1,14 @@
 /**
  * TopBar — status cluster placement for the remote-first shell.
  *
- * When the remote shell + split "Workspace" panel are on and the chat/activity
- * sub-tab is showing, the status cluster (connection / notifications / quota /
- * admin / theme) moves to a docked footer in the left sidebar, so the topbar
- * hides it. In every other case it must stay in the topbar — otherwise the
- * controls would vanish entirely (regression guard).
+ * In the remote-first shell on desktop the status cluster (connection /
+ * notifications / quota / admin / theme) moves to a global bottom status bar
+ * (`GlobalStatusDock`) spanning every tab, so the topbar hides its own cluster
+ * on EVERY tab and sub-tab — not just the chat/activity view. In classic
+ * (non-remote) mode or on mobile the dock is absent, so the cluster must stay
+ * in the topbar (otherwise the controls would vanish entirely — regression
+ * guard). This must mirror `GlobalStatusDock`'s own `remoteShell && !isMobile`
+ * gate so the two never both show and never both hide.
  *
  * @vitest-environment jsdom
  */
@@ -13,7 +16,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 let mockRemoteShell = true;
-let mockSplitPanel = true;
 let mockAppState: any = {
     activeTab: 'repos',
     activeRepoSubTab: 'chats',
@@ -56,9 +58,6 @@ vi.mock('../../../../src/server/spa/client/react/features/remote-shell/RemoteShe
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
     useRemoteShellEnabled: () => mockRemoteShell,
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
-    useSplitWorkspacePanelEnabled: () => mockSplitPanel,
-}));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEnabled', () => ({
     useMyWorkEnabled: () => false,
 }));
@@ -85,7 +84,6 @@ function clusterPresent(): boolean {
 
 beforeEach(() => {
     mockRemoteShell = true;
-    mockSplitPanel = true;
     mockIsMobile = false;
     mockRepos = [repo('a', 'shortcuts')];
     mockAppState = {
@@ -101,7 +99,7 @@ beforeEach(() => {
 });
 
 describe('TopBar status cluster placement', () => {
-    it('hides the topbar cluster when the sidebar footer hosts it (remote shell + split + chat sub-tab)', () => {
+    it('hides the topbar cluster in the remote-first shell on desktop (chat sub-tab)', () => {
         render(<TopBar />);
         expect(clusterPresent()).toBe(false);
         // The topbar still shows the remote header + New button.
@@ -109,39 +107,33 @@ describe('TopBar status cluster placement', () => {
         expect(screen.getByTestId('header-new-btn')).toBeTruthy();
     });
 
-    it('keeps the topbar cluster on a non-chat repo sub-tab (footer absent there)', () => {
+    it('hides the topbar cluster on every repo sub-tab, not just chat/activity (dock is global)', () => {
         mockAppState = { ...mockAppState, activeRepoSubTab: 'work-items' };
         render(<TopBar />);
-        expect(clusterPresent()).toBe(true);
+        expect(clusterPresent()).toBe(false);
     });
 
-    it('keeps the topbar cluster when the split workspace panel is disabled (no footer to move into)', () => {
-        mockSplitPanel = false;
+    it('hides the topbar cluster off the repos tab too (dock spans every tab)', () => {
+        mockAppState = { ...mockAppState, activeTab: 'wiki' };
         render(<TopBar />);
-        expect(clusterPresent()).toBe(true);
+        expect(clusterPresent()).toBe(false);
     });
 
-    it('keeps the topbar cluster when the remote shell is off', () => {
+    it('still hides on the classic activity sub-tab', () => {
+        mockAppState = { ...mockAppState, activeRepoSubTab: 'activity' };
+        render(<TopBar />);
+        expect(clusterPresent()).toBe(false);
+    });
+
+    it('keeps the topbar cluster when the remote shell is off (classic mode)', () => {
         mockRemoteShell = false;
         render(<TopBar />);
         expect(clusterPresent()).toBe(true);
     });
 
-    it('keeps the topbar cluster off the repos tab', () => {
-        mockAppState = { ...mockAppState, activeTab: 'wiki' };
-        render(<TopBar />);
-        expect(clusterPresent()).toBe(true);
-    });
-
-    it('keeps the topbar cluster on mobile (no remote sidebar footer there)', () => {
+    it('keeps the topbar cluster on mobile (no room for a bottom status bar)', () => {
         mockIsMobile = true;
         render(<TopBar />);
         expect(clusterPresent()).toBe(true);
-    });
-
-    it('accepts the classic activity sub-tab as the chat view too', () => {
-        mockAppState = { ...mockAppState, activeRepoSubTab: 'activity' };
-        render(<TopBar />);
-        expect(clusterPresent()).toBe(false);
     });
 });

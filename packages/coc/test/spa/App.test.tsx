@@ -114,6 +114,10 @@ vi.mock('../../src/server/spa/client/react/layout/TopBar', () => ({
     TopBar: () => null,
 }));
 
+vi.mock('../../src/server/spa/client/react/layout/GlobalStatusDock', () => ({
+    GlobalStatusDock: () => null,
+}));
+
 vi.mock('../../src/server/spa/client/react/layout/BottomNav', () => ({
     BottomNav: () => null,
 }));
