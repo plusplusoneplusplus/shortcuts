@@ -2934,7 +2934,7 @@ export function ChatListPane({
                 {activeTab === 'chats' && chatGroups && (
                     <>
                         <div
-                            className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-2 md:py-4 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
+                            className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-1.5 md:py-2 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
                             data-testid="chat-list-fixed-header"
                         >
                         <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className={cn("self-start", isMobile && "hidden")} data-testid="new-chat-btn">
@@ -3171,7 +3171,7 @@ export function ChatListPane({
                 {activeTab !== 'chats' && (
                     <React.Fragment>
                 <div
-                    className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-2 md:py-4 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
+                    className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-1.5 md:py-2 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
                     data-testid="chat-list-fixed-header"
                 >
                 {isPaused && (

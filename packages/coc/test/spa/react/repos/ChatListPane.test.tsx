@@ -561,6 +561,15 @@ describe('ChatListPane', () => {
 
             expect(fixedHeader.className).toContain('sticky');
             expect(fixedHeader.className).toContain('top-0');
+            // Compact top/bottom padding: the sticky header uses a tight
+            // vertical rhythm (`py-1.5 md:py-2`) rather than the looser
+            // `py-2 md:py-4`, keeping the New chat + scope controls close to
+            // the section edges.
+            const fixedHeaderClasses = fixedHeader.className.split(/\s+/);
+            expect(fixedHeaderClasses).toContain('py-1.5');
+            expect(fixedHeaderClasses).toContain('md:py-2');
+            expect(fixedHeaderClasses).not.toContain('py-2');
+            expect(fixedHeaderClasses).not.toContain('md:py-4');
             // The sticky header full-bleeds to the scroll container's horizontal
             // edges (`-mx-*`). Regression guard for the "gap above the New chat
             // panel": the scroll container must NOT carry TOP padding, because a
