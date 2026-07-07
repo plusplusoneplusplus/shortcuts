@@ -59,6 +59,17 @@ describe('SourceCanvasPanel', () => {
         );
     });
 
+    it('lays the file name and path out inline on a single header row', () => {
+        const { getByTestId } = render(
+            <SourceCanvasPanel fileRef={fileRef} wsId="ws1" onClose={() => {}} />,
+        );
+        const group = getByTestId('source-canvas-header-titles');
+        // Both the bold name and the muted path share one flex row (not stacked).
+        expect(group.className).toContain('flex');
+        expect(group.contains(getByTestId('source-canvas-filename'))).toBe(true);
+        expect(group.contains(getByTestId('source-canvas-path'))).toBe(true);
+    });
+
     it('renders a project-relative header path with the absolute path as tooltip', () => {
         const { getByTestId } = render(
             <SourceCanvasPanel
