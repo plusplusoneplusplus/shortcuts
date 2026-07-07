@@ -149,6 +149,12 @@ interface RepoGitTabProps {
     detailActive?: boolean;
     /** Fired when the user clicks in the git list, so the parent marks git last-clicked. */
     onActivateDetail?: () => void;
+    /**
+     * Portal target inside the split panel's "Git" section header. When set
+     * (split-workspace only), the compact `GitPanelHeader` toolbar renders
+     * there instead of as its own row, saving the toolbar's full height.
+     */
+    headerToolbarContainer?: HTMLElement | null;
 }
 
 type RightPanelView =
@@ -161,8 +167,11 @@ type RightPanelView =
     | { type: 'branch-range-comments' }
     | { type: 'multi-commit'; commits: GitCommitItem[] };
 
-export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive, onActivateDetail }: RepoGitTabProps) {
+export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
+    // Hoist the toolbar into the split panel's section header when a portal
+    // target exists; everything in the list pane then uses the compact skin.
+    const headerHoisted = isSplitWorkspace && !!headerToolbarContainer;
     // AC-07: ALL Git tab data (commit list, branch range, fetch/pull/push/reset,
     // operations, per-repo prefs, enqueue) targets the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
@@ -1790,26 +1799,34 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                 {!isSplitWorkspace && (
                     <style>{`@media (min-width: 1024px) { [data-testid="git-commit-list-panel"] { width: ${sidebarWidth}px !important; } }`}</style>
                 )}
-                <GitPanelHeader
-                    branch={branchName || 'HEAD'}
-                    ahead={ahead}
-                    behind={behind}
-                    refreshing={refreshing}
-                    onRefresh={refreshAll}
-                    onBranchClick={() => setBranchPickerOpen(true)}
-                    onFetch={handleFetch}
-                    onPull={handlePull}
-                    onPush={handlePush}
-                    onRebaseAutosquash={handleRebaseAutosquash}
-                    fetching={fetching}
-                    pulling={pulling}
-                    pushing={pushing}
-                    rebasing={rebasing}
-                    lastRefreshedAt={lastRefreshedAt}
-                />
+                {(() => {
+                    const panelHeader = (
+                        <GitPanelHeader
+                            branch={branchName || 'HEAD'}
+                            ahead={ahead}
+                            behind={behind}
+                            refreshing={refreshing}
+                            onRefresh={refreshAll}
+                            onBranchClick={() => setBranchPickerOpen(true)}
+                            onFetch={handleFetch}
+                            onPull={handlePull}
+                            onPush={handlePush}
+                            onRebaseAutosquash={handleRebaseAutosquash}
+                            fetching={fetching}
+                            pulling={pulling}
+                            pushing={pushing}
+                            rebasing={rebasing}
+                            lastRefreshedAt={lastRefreshedAt}
+                            compact={headerHoisted}
+                        />
+                    );
+                    return headerHoisted && headerToolbarContainer
+                        ? createPortal(panelHeader, headerToolbarContainer)
+                        : panelHeader;
+                })()}
                 {/* Search input (filter-bar style: subtle background card containing a bordered search box) */}
                 <div
-                    className="px-2.5 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526]"
+                    className={`${isSplitWorkspace ? 'px-2 py-1' : 'px-2.5 py-1.5'} border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526]`}
                     data-testid="git-search-bar"
                 >
                     <div className={`flex items-center gap-1.5 px-2 py-[3px] rounded-md border bg-white dark:bg-[#2d2d2d] focus-within:border-[#0078d4] focus-within:ring-2 focus-within:ring-[#0078d4]/20 ${searchQuery ? 'border-[#0078d4]' : 'border-[#d0d0d0] dark:border-[#3c3c3c]'}`}>
@@ -1837,8 +1854,8 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                                     void handleCommitLookup(searchQuery.trim());
                                 }
                             }}
-                            placeholder="Search subject, hash, author, path…"
-                            className="flex-1 bg-transparent outline-none text-[13px] leading-5 text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#999] min-w-0 py-px"
+                            placeholder={isSplitWorkspace ? 'Search commits…' : 'Search subject, hash, author, path…'}
+                            className={`flex-1 bg-transparent outline-none leading-5 text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#999] min-w-0 py-px ${isSplitWorkspace ? 'text-[12px]' : 'text-[13px]'}`}
                             data-testid="git-search-input"
                             aria-label="Search commits by subject, hash, author, or path"
                         />
@@ -1895,7 +1912,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                     </div>
                 )}
                 <div
-                    className="repo-sections grid gap-2 px-2 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
+                    className={`repo-sections grid ${isSplitWorkspace ? 'gap-1 px-1.5 py-1' : 'gap-2 px-2 py-2'} border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]`}
                     data-testid="git-repo-sections"
                 >
                     <BranchChanges
@@ -1907,6 +1924,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                         selectedFile={selectedBranchFile}
                         onBranchContextMenu={handleBranchContextMenu}
                         onBranchRangeSelect={handleBranchRangeSelect}
+                        compact={isSplitWorkspace}
                     />
                     <WorkingTree
                         workspaceId={workspaceId}
@@ -1915,6 +1933,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                         selectedFilePath={selectedWorkingTreeFile}
                         refreshKey={workingChangesRefreshKey}
                         onAllCommentsClick={handleAllWorkingCommentsClick}
+                        compact={isSplitWorkspace}
                     />
                 </div>
                 {repoState && repoState.operation !== 'none' && (

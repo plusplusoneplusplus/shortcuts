@@ -24,11 +24,18 @@ interface GitPanelHeaderProps {
     pushing?: boolean;
     rebasing?: boolean;
     lastRefreshedAt?: number | null;
+    /**
+     * Slim single-row variant for when the toolbar is hoisted into the
+     * split-workspace "Git" section header: drops the strip's own
+     * background/border/sticky chrome, shrinks the pills and buttons to fit a
+     * 22px header row, and shortens the relative timestamp ("5m" not "5m ago").
+     */
+    compact?: boolean;
 }
 
 const spinKeyframes = `@keyframes gitRefreshSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .git-refresh-spin { animation: gitRefreshSpin 1s linear infinite; }`;
 
-export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onBranchClick, onFetch, onPull, onPush, onRebaseAutosquash, fetching, pulling, pushing, rebasing, lastRefreshedAt }: GitPanelHeaderProps) {
+export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onBranchClick, onFetch, onPull, onPush, onRebaseAutosquash, fetching, pulling, pushing, rebasing, lastRefreshedAt, compact }: GitPanelHeaderProps) {
     const hasAheadBehind = ahead > 0 || behind > 0;
     const hasAnyAction = onFetch || onPull || onPush || onRebaseAutosquash;
     const isActioning = fetching || pulling || pushing || rebasing;
@@ -64,12 +71,14 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
         <>
             <style>{spinKeyframes}</style>
             <div
-            className="git-panel-header flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] sticky top-0 z-20 min-h-[38px]"
+            className={compact
+                ? 'git-panel-header git-panel-header--compact flex flex-1 items-center gap-1 min-w-0 px-1'
+                : 'git-panel-header flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] sticky top-0 z-20 min-h-[38px]'}
             data-testid="git-panel-header"
         >
             {/* Branch pill */}
             <button
-                className={`inline-flex items-center gap-1.5 px-2 py-[2px] text-[11px] leading-[18px] font-mono font-semibold border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white/70 dark:bg-[#2d2d2d]/70 text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate max-w-[360px] ${onBranchClick ? 'cursor-pointer hover:bg-white hover:border-[#0078d4] dark:hover:bg-[#2d2d2d] focus:outline-none focus:ring-2 focus:ring-[#0078d4]' : 'cursor-default'}`}
+                className={`inline-flex items-center font-mono font-semibold border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white/70 dark:bg-[#2d2d2d]/70 text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate ${compact ? 'gap-1 px-1.5 py-0 text-[10px] leading-[15px] max-w-[160px]' : 'gap-1.5 px-2 py-[2px] text-[11px] leading-[18px] max-w-[360px]'} ${onBranchClick ? 'cursor-pointer hover:bg-white hover:border-[#0078d4] dark:hover:bg-[#2d2d2d] focus:outline-none focus:ring-2 focus:ring-[#0078d4]' : 'cursor-default'}`}
                 title={branch}
                 data-testid="git-branch-pill"
                 onClick={onBranchClick}
@@ -85,7 +94,7 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
             {/* Ahead/behind badge */}
             {hasAheadBehind && (
                 <span
-                    className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold leading-[18px] text-[#616161] dark:text-[#999] tabular-nums whitespace-nowrap"
+                    className={`inline-flex items-center gap-1 font-mono font-semibold text-[#616161] dark:text-[#999] tabular-nums whitespace-nowrap ${compact ? 'text-[10px] leading-[15px]' : 'text-[11px] leading-[18px]'}`}
                     data-testid="git-ahead-behind-badge"
                 >
                     {ahead > 0 && <span className="text-[#16825d]" data-testid="git-ahead-count">↑{ahead}</span>}
@@ -103,10 +112,10 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
                     ref={dropdownRef}
                     data-testid="git-sync-split-btn"
                 >
-                    <div className="flex items-stretch h-6 rounded-md overflow-hidden border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d]">
+                    <div className={`flex items-stretch rounded-md overflow-hidden border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] ${compact ? 'h-[18px]' : 'h-6'}`}>
                         {/* Primary action: Pull */}
                         <button
-                            className="git-action-btn flex items-center gap-1 px-1.5 text-[11px] leading-[22px] hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50"
+                            className={`git-action-btn flex items-center gap-1 hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50 ${compact ? 'px-1 text-[10px] leading-[16px]' : 'px-1.5 text-[11px] leading-[22px]'}`}
                             onClick={() => handleAction(onPull)}
                             disabled={!!isActioning}
                             title="Pull --rebase from remote"
@@ -127,7 +136,7 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
 
                         {/* Chevron toggle */}
                         <button
-                            className="git-action-btn flex items-center px-1 text-[11px] leading-[22px] border-l border-[#e0e0e0] dark:border-[#3c3c3c] hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50"
+                            className={`git-action-btn flex items-center px-1 border-l border-[#e0e0e0] dark:border-[#3c3c3c] hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50 ${compact ? 'text-[10px] leading-[16px]' : 'text-[11px] leading-[22px]'}`}
                             onClick={() => setDropdownOpen(prev => !prev)}
                             disabled={!!isActioning}
                             title="More git actions"
@@ -217,17 +226,19 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
             {/* Last refreshed timestamp */}
             {lastRefreshedAt != null && (
                 <span
-                    className="text-[11px] text-[#999] dark:text-[#777] whitespace-nowrap hidden sm:inline tabular-nums"
+                    className={`text-[#999] dark:text-[#777] whitespace-nowrap hidden sm:inline tabular-nums ${compact ? 'text-[10px]' : 'text-[11px]'}`}
                     title={new Date(lastRefreshedAt).toLocaleString()}
                     data-testid="git-last-refreshed"
                 >
-                    {formatRelativeTime(new Date(lastRefreshedAt).toISOString())}
+                    {compact
+                        ? formatRelativeTime(new Date(lastRefreshedAt).toISOString()).replace(/\s+ago$/, '')
+                        : formatRelativeTime(new Date(lastRefreshedAt).toISOString())}
                 </span>
             )}
 
             {/* Refresh button */}
             <button
-                className="git-refresh-btn flex items-center justify-center w-6 h-6 rounded-md hover:bg-white dark:hover:bg-[#2d2d2d] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50"
+                className={`git-refresh-btn flex items-center justify-center rounded-md hover:bg-white dark:hover:bg-[#2d2d2d] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50 ${compact ? 'w-[18px] h-[18px]' : 'w-6 h-6'}`}
                 onClick={onRefresh}
                 disabled={refreshing}
                 title="Refresh git data"

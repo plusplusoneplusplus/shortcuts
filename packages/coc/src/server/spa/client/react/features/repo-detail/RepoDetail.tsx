@@ -143,6 +143,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // AC-04 (single shared detail pane, last-selection-wins).
     const [splitLastClicked, setSplitLastClicked] = useState<'chat' | 'git'>('chat');
     const [splitDetailNode, setSplitDetailNode] = useState<HTMLDivElement | null>(null);
+    // Portal host inside the split panel's "Git" section header — RepoGitTab
+    // portals its compact toolbar here so it shares the 22px header row.
+    const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(ws.id, sessionContextAttachmentsEnabled);
     const [headerContextDropTarget, setHeaderContextDropTarget] = useState<'task' | 'ask' | null>(null);
@@ -759,8 +762,16 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             detailContainer={splitDetailNode}
                                             detailActive={splitLastClicked === 'git'}
                                             onActivateDetail={() => setSplitLastClicked('git')}
+                                            headerToolbarContainer={splitGitHeaderNode}
                                         />
                                     ) : null}
+                                    gitHeaderExtra={isGitRepo ? (
+                                        <div
+                                            ref={setSplitGitHeaderNode}
+                                            className="flex min-w-0 flex-1 items-center"
+                                            data-testid="split-workspace-git-header-toolbar"
+                                        />
+                                    ) : undefined}
                                     detail={
                                         <div
                                             ref={setSplitDetailNode}

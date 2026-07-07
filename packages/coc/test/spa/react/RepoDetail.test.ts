@@ -856,7 +856,7 @@ describe('RepoDetail split-workspace panel wiring', () => {
     it('feeds the chat list into the panel as a split-workspace RepoChatTab (AC-03/04)', () => {
         const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
         expect(anchor).toBeGreaterThan(-1);
-        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 2000);
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 3000);
         expect(block).toContain('chatList={');
         expect(block).toContain('<RepoChatTab');
         expect(block).toContain('key={`${ws.id}-split-chat`}');
@@ -865,14 +865,27 @@ describe('RepoDetail split-workspace panel wiring', () => {
 
     it('feeds the git list into the panel as a split-workspace RepoGitTab, git-gated (AC-05)', () => {
         const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
-        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 2000);
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 3000);
         expect(block).toContain('gitList={isGitRepo ? (');
         expect(block).toContain('key={`${ws.id}-split-git`}');
     });
 
+    it('hoists the git toolbar into the section header via a portal host, git-gated', () => {
+        // A dedicated state node mirrors the splitDetailNode pattern.
+        expect(REPO_DETAIL_SOURCE).toContain('const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null)');
+        const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 3000);
+        // RepoGitTab portals its compact toolbar into the header host node...
+        expect(block).toContain('headerToolbarContainer={splitGitHeaderNode}');
+        // ...which RepoDetail renders inside the panel's git header slot.
+        expect(block).toContain('gitHeaderExtra={isGitRepo ? (');
+        expect(block).toContain('ref={setSplitGitHeaderNode}');
+        expect(block).toContain('data-testid="split-workspace-git-header-toolbar"');
+    });
+
     it('points BOTH tabs at the SAME shared detail container (AC-04 single pane)', () => {
         const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
-        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 2000);
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 3000);
         // Both tabs receive detailContainer={splitDetailNode}; the detail slot is the
         // single ref target both portal into.
         const containerRefs = block.match(/detailContainer=\{splitDetailNode\}/g) ?? [];
@@ -882,7 +895,7 @@ describe('RepoDetail split-workspace panel wiring', () => {
 
     it('routes last-selection-wins: chat active vs git active are mirror opposites (AC-04)', () => {
         const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
-        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 2000);
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 3000);
         expect(block).toContain("detailActive={splitLastClicked === 'chat'}");
         expect(block).toContain("onActivateDetail={() => setSplitLastClicked('chat')}");
         expect(block).toContain("detailActive={splitLastClicked === 'git'}");

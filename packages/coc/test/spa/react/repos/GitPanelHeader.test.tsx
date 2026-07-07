@@ -314,3 +314,65 @@ describe('last refreshed timestamp', () => {
         expect(el.textContent).toBe('5m ago');
     });
 });
+
+// ── Compact variant (toolbar hoisted into the split-workspace header) ─────────
+
+describe('compact variant', () => {
+    it('root swaps the strip chrome for the slim single-row skin', () => {
+        renderHeader({ compact: true });
+        const root = screen.getByTestId('git-panel-header');
+        expect(root.className).toContain('git-panel-header--compact');
+        expect(root.className).not.toContain('sticky');
+        expect(root.className).not.toContain('min-h-[38px]');
+        expect(root.className).not.toContain('border-b');
+    });
+
+    it('default rendering keeps the full strip chrome (regression)', () => {
+        renderHeader();
+        const root = screen.getByTestId('git-panel-header');
+        expect(root.className).not.toContain('git-panel-header--compact');
+        expect(root.className).toContain('sticky');
+        expect(root.className).toContain('min-h-[38px]');
+    });
+
+    it('keeps every control reachable in compact: pill, ahead badge, sync split, refresh', () => {
+        renderHeader({ compact: true, ahead: 8, onPull: vi.fn(), onFetch: vi.fn() });
+        expect(screen.getByTestId('git-branch-pill').textContent).toContain('main');
+        expect(screen.getByTestId('git-ahead-count').textContent).toBe('↑8');
+        expect(screen.getByTestId('git-sync-split-btn')).toBeTruthy();
+        expect(screen.getByTestId('git-refresh-btn')).toBeTruthy();
+    });
+
+    it('shortens the relative timestamp in compact ("5m", not "5m ago"), tooltip keeps the full datetime', () => {
+        vi.useFakeTimers();
+        try {
+            vi.setSystemTime(new Date('2026-04-02T12:00:00Z'));
+            const ts = Date.now() - 5 * 60_000;
+            renderHeader({ compact: true, lastRefreshedAt: ts });
+            const el = screen.getByTestId('git-last-refreshed');
+            expect(el.textContent).toBe('5m');
+            expect(el.getAttribute('title')).toBe(new Date(ts).toLocaleString());
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('leaves non-suffixed relative times ("just now") untouched in compact', () => {
+        vi.useFakeTimers();
+        try {
+            vi.setSystemTime(new Date('2026-04-02T12:00:00Z'));
+            renderHeader({ compact: true, lastRefreshedAt: Date.now() - 5_000 });
+            expect(screen.getByTestId('git-last-refreshed').textContent).toBe('just now');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('dropdown still opens from the compact split button', () => {
+        renderHeader({ compact: true, onPull: vi.fn(), onFetch: vi.fn(), onPush: vi.fn() });
+        fireEvent.click(screen.getByTestId('git-sync-dropdown-toggle'));
+        expect(screen.getByTestId('git-sync-dropdown')).toBeTruthy();
+        expect(screen.getByTestId('git-fetch-btn')).toBeTruthy();
+        expect(screen.getByTestId('git-push-btn')).toBeTruthy();
+    });
+});

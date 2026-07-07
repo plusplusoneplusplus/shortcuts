@@ -1285,6 +1285,20 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   under `split-workspace:{workspaceId}:chat-collapsed` and
   `split-workspace:{workspaceId}:git-collapsed`, written only on an explicit
   user toggle (never on mount or workspace switch).
+- The git half uses a dense skin to save vertical space. `SplitWorkspacePanel`
+  exposes a `gitHeaderExtra` slot on the git section header (rendered right of
+  the chevron+label toggle; its clicks don't toggle; stays visible while
+  collapsed, with the collapsed half switching to `overflow-visible` so
+  dropdowns aren't clipped). `RepoDetail` fills the slot with a portal host div
+  (`splitGitHeaderNode`, mirroring the `splitDetailNode` pattern) and passes it
+  to `RepoGitTab` as `headerToolbarContainer`; `RepoGitTab` portals a
+  `compact` `GitPanelHeader` (slim pills/buttons, timestamp without " ago")
+  into it instead of rendering the 38px toolbar strip. In split layout the
+  search bar also slims (placeholder `Search commits…`, full hint kept in
+  `aria-label`), the `git-repo-sections` grid tightens, and `BranchChanges` /
+  `WorkingTree` render their `compact` variant: flat left-accent rows instead
+  of rounded cards, `Range`/`Local` tags, shortened summaries and `{n}f`
+  file-count badges with the full text preserved in `title` tooltips.
 - For Each parent run group rows render in Activity Chats and All, but not in
   Activity Automations or Loops; loop-linked child chats can still appear in
   Loops independently of the hidden parent group row.

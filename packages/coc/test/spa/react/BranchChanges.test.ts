@@ -534,4 +534,36 @@ describe('BranchChanges', () => {
             expect(source).toContain('onBranchContextMenu?.(e)');
         });
     });
+
+    describe('compact split-workspace variant', () => {
+        it('accepts optional compact prop', () => {
+            expect(source).toContain('compact?: boolean');
+        });
+
+        it('destructures compact in the function signature', () => {
+            expect(source).toContain('onBranchRangeSelect, compact }: BranchChangesProps');
+        });
+
+        it('drops the card border/rounding in compact but keeps the left accent', () => {
+            expect(source).toContain("'branch-changes border-l-[3px] border-l-[#0078d4] dark:border-l-[#3794ff] bg-white dark:bg-[#1e1e1e] overflow-hidden'");
+        });
+
+        it('shortens the tag to Range in compact', () => {
+            expect(source).toContain("{compact ? 'Range' : 'Branch Range'}");
+        });
+
+        it('shortens the file-count badge in compact, keeping the full text in a tooltip', () => {
+            expect(source).toContain('{compact ? `${rangeInfo.fileCount}f` : `${rangeInfo.fileCount} files`}');
+            expect(source).toContain('title={`${rangeInfo.fileCount} files`}');
+        });
+
+        it('tightens the header padding in compact', () => {
+            expect(source).toContain("compact ? 'gap-1.5 px-1.5 py-0.5' : 'gap-2 px-2.5 py-1'");
+        });
+
+        it('RepoGitTab drives compact from the split-workspace layout', () => {
+            const gitTab = fs.readFileSync(REPO_GIT_TAB_PATH, 'utf-8');
+            expect(gitTab).toContain('compact={isSplitWorkspace}');
+        });
+    });
 });

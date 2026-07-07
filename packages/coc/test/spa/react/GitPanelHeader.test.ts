@@ -414,4 +414,31 @@ describe('GitPanelHeader', () => {
             expect(headerIdx).toBeLessThan(branchIdx);
         });
     });
+
+    describe('compact variant (split-workspace header hoist)', () => {
+        it('accepts optional compact prop', () => {
+            expect(source).toContain('compact?: boolean');
+        });
+
+        it('destructures compact in the function signature', () => {
+            expect(source).toContain('lastRefreshedAt, compact }: GitPanelHeaderProps');
+        });
+
+        it('compact root drops the strip chrome (border/bg/sticky/min-height) for the 22px header row', () => {
+            expect(source).toContain("'git-panel-header git-panel-header--compact flex flex-1 items-center gap-1 min-w-0 px-1'");
+        });
+
+        it('default root keeps the full-height strip chrome', () => {
+            expect(source).toContain("'git-panel-header flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] sticky top-0 z-20 min-h-[38px]'");
+        });
+
+        it('shortens the relative timestamp in compact (strips the " ago" suffix)', () => {
+            expect(source).toContain(".replace(/\\s+ago$/, '')");
+        });
+
+        it('shrinks the split-action button and refresh button in compact', () => {
+            expect(source).toContain("compact ? 'h-[18px]' : 'h-6'");
+            expect(source).toContain("compact ? 'w-[18px] h-[18px]' : 'w-6 h-6'");
+        });
+    });
 });
