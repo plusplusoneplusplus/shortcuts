@@ -932,6 +932,15 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
         onEnterList: () => setMobileShowDetail(false),
     });
 
+    // Focus the detail wrapper on pointer-down over non-interactive content so
+    // Ctrl+F originates from [data-pane="detail"] and ChatListPane's guard lets
+    // native find-in-page handle it instead of opening the list search.
+    const handleDetailPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+        const target = e.target as Element;
+        if (target.closest('input, textarea, button, select, a[href], [tabindex]:not([tabindex="-1"])')) return;
+        e.currentTarget.focus({ preventScroll: true });
+    }, []);
+
     if (loading) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
@@ -1059,7 +1068,18 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
                     {listPane}
                 </div>
                 {detailActive && detailContainer
-                    ? createPortal(detailPaneContent, detailContainer)
+                    ? createPortal(
+                        <div
+                            ref={detailContainerRef}
+                            tabIndex={-1}
+                            data-pane="detail"
+                            className="flex flex-col h-full min-h-0 overflow-hidden outline-none"
+                            onPointerDown={handleDetailPointerDown}
+                        >
+                            {detailPaneContent}
+                        </div>,
+                        detailContainer,
+                    )
                     : null}
             </ChatPreferencesProvider>
         );
@@ -1083,6 +1103,7 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
                             )}
                             data-testid="activity-detail-panel"
                             data-pane="detail"
+                            onPointerDown={handleDetailPointerDown}
                         >
                             {selectedRalphSessionId ? (
                                 <RalphWorkflowPaneContainer
@@ -1275,6 +1296,7 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
                 )}
                 data-testid="activity-detail-panel"
                 data-pane="detail"
+                onPointerDown={handleDetailPointerDown}
             >
                 {detailPaneContent}
             </div>

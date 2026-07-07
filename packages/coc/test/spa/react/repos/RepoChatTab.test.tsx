@@ -408,6 +408,15 @@ describe('RepoChatTab: layout', () => {
         expect(screen.getByTestId('activity-detail-panel').getAttribute('data-pane')).toBe('detail');
     });
 
+    it('pointer-down on non-interactive detail content focuses the detail wrapper', async () => {
+        await renderTab();
+        const panel = screen.getByTestId('activity-detail-panel');
+        await act(async () => {
+            fireEvent.pointerDown(panel, { target: panel });
+        });
+        expect(document.activeElement).toBe(panel);
+    });
+
     it('applies inline width to left panel from useResizablePanel', async () => {
         await renderTab();
         const panel = screen.getByTestId('activity-list-panel');
@@ -2177,6 +2186,55 @@ describe('RepoChatTab: split-workspace layout (portal seam)', () => {
         });
         // The chat detail pane is replaced, not shown alongside (one shared pane).
         expect(host.querySelector('[data-testid="mock-detail-pane"]')).toBeNull();
+    });
+
+    it('portaled detail is wrapped with [data-pane="detail"] so Ctrl+F guard can identify it', async () => {
+        setupFetchMock();
+        const host = await renderSplitTab({ detailActive: true });
+        // The portal wrapper must carry the marker that ChatListPane's isWithinDetailPane() checks.
+        expect(host.querySelector('[data-pane="detail"]')).toBeTruthy();
+        // The mocked detail pane content must be inside that wrapper.
+        expect(host.querySelector('[data-pane="detail"] [data-testid="mock-detail-pane"]')).toBeTruthy();
+    });
+
+    it('portaled detail wrapper is focusable (tabIndex=-1) for pointer-based focus tracking', async () => {
+        setupFetchMock();
+        const host = await renderSplitTab({ detailActive: true });
+        const wrapper = host.querySelector('[data-pane="detail"]') as HTMLElement | null;
+        expect(wrapper).toBeTruthy();
+        expect(wrapper!.getAttribute('tabindex')).toBe('-1');
+    });
+
+    it('pointer-down on non-interactive portaled content focuses the detail wrapper', async () => {
+        setupFetchMock();
+        const host = await renderSplitTab({ detailActive: true });
+        const wrapper = host.querySelector('[data-pane="detail"]') as HTMLElement;
+
+        // Simulate clicking on the readable text inside the detail (a non-interactive target).
+        await act(async () => {
+            fireEvent.pointerDown(wrapper, { target: wrapper });
+        });
+
+        expect(document.activeElement).toBe(wrapper);
+    });
+
+    it('pointer-down on a button inside the portaled detail does NOT steal focus to the wrapper', async () => {
+        setupFetchMock();
+        const host = await renderSplitTab({ detailActive: true });
+        const wrapper = host.querySelector('[data-pane="detail"]') as HTMLElement;
+        // The mock detail pane contains a "Back" button.
+        const btn = host.querySelector('button') as HTMLButtonElement | null;
+        if (!btn) return; // guard: no button rendered in this mock config
+
+        btn.focus();
+        const focusedBefore = document.activeElement;
+
+        await act(async () => {
+            fireEvent.pointerDown(wrapper, { target: btn });
+        });
+
+        // Button focus must be preserved; wrapper must not have stolen it.
+        expect(document.activeElement).toBe(focusedBefore);
     });
 
     it('default layout (no split-workspace) is unchanged — renders its own detail pane, no portal seam', async () => {
