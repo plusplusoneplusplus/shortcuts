@@ -25,6 +25,9 @@ import { ScheduleDetail } from './ScheduleDetail';
 import { PromptScheduleForm } from './PromptScheduleForm';
 import type { Schedule, RunRecord } from './scheduleTypes';
 
+/** Confirm text shown when navigating away from a form with unsaved edits. */
+const DISCARD_CONFIRM = 'Discard changes? Your unsaved edits will be lost.';
+
 /**
  * Parsed schedule main-pane route:
  *  - `new`    → `#repos/{ws}/schedules/new`   (create form)
@@ -80,6 +83,9 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
     // Id of a schedule just created into the repo store — drives the
     // "commit to share" reminder shown once on its fresh detail view.
     const [commitReminderId, setCommitReminderId] = useState<string | null>(null);
+    // True while the open create/edit form has unsaved edits — gates the
+    // "Discard changes?" prompt on navigate-away (Close / Cancel / Esc).
+    const [formDirty, setFormDirty] = useState(false);
 
     const selectedId = route.kind === 'detail' ? route.scheduleId : null;
     const scheduleBase = '#repos/' + encodeURIComponent(workspaceId) + '/schedules';
@@ -117,11 +123,28 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
 
     const navigate = useCallback((hash: string) => { location.hash = hash; }, []);
 
-    const closeToSlide = useCallback(() => {
+    // Navigate back to the Scheduled slide, discarding any form state. The
+    // unguarded variant used after a successful create/delete (no prompt).
+    const doCloseToSlide = useCallback(() => {
+        setFormDirty(false);
         setCommitReminderId(null);
         dispatch({ type: 'SET_SELECTED_SCHEDULE', id: null });
         navigate(scheduleBase);
     }, [dispatch, navigate, scheduleBase]);
+
+    // Close control (header "← Schedules" / create Cancel): prompt before
+    // leaving a dirty form; silent when clean.
+    const closeToSlide = useCallback(() => {
+        if (formDirty && !confirm(DISCARD_CONFIRM)) return;
+        doCloseToSlide();
+    }, [formDirty, doCloseToSlide]);
+
+    // Leave inline edit back to the read view, guarding a dirty editor.
+    const cancelEdit = useCallback(() => {
+        if (formDirty && !confirm(DISCARD_CONFIRM)) return;
+        setFormDirty(false);
+        setEditingId(null);
+    }, [formDirty]);
 
     const handleRunNow = useCallback(async (scheduleId: string) => {
         await client.schedules.run(workspaceId, scheduleId);
@@ -149,8 +172,22 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
         if (!confirm(message)) return;
         await client.schedules.delete(workspaceId, scheduleId);
         fetchSchedules();
-        closeToSlide();
-    }, [schedules, client, workspaceId, fetchSchedules, closeToSlide]);
+        doCloseToSlide();
+    }, [schedules, client, workspaceId, fetchSchedules, doCloseToSlide]);
+
+    // Esc closes an open form (create → back to slide; edit → back to read
+    // view), routed through the same dirty guard.
+    const formOpen = route.kind === 'new' || (route.kind === 'detail' && editingId != null && editingId === selectedId);
+    useEffect(() => {
+        if (!formOpen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape') return;
+            if (route.kind === 'new') closeToSlide();
+            else cancelEdit();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [formOpen, route.kind, closeToSlide, cancelEdit]);
 
     // ── Create ────────────────────────────────────────────────────────────
     if (route.kind === 'new') {
@@ -166,14 +203,16 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
                         workspaceId={workspaceId}
                         mode="create"
                         storePicker
+                        onDirtyChange={setFormDirty}
                         onCreated={(created) => {
+                            setFormDirty(false);
                             fetchSchedules();
                             if (created?.id) {
                                 if (created.source === 'repo') setCommitReminderId(created.id);
                                 dispatch({ type: 'SET_SELECTED_SCHEDULE', id: created.id });
                                 navigate(scheduleBase + '/' + encodeURIComponent(created.id));
                             } else {
-                                closeToSlide();
+                                doCloseToSlide();
                             }
                         }}
                         onCancel={closeToSlide}
@@ -221,13 +260,14 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
                         editingId={editingId}
                         showDuplicate={false}
                         disableNonPromptEdit={true}
+                        onEditDirtyChange={setFormDirty}
                         onRunNow={handleRunNow}
                         onPauseResume={handlePauseResume}
                         onEdit={(id) => setEditingId(id)}
                         onDuplicate={() => { /* out of scope for the Scheduled-slide main pane */ }}
                         onDelete={handleDelete}
-                        onCancelEdit={() => setEditingId(null)}
-                        onSaved={() => { setEditingId(null); fetchSchedules(); }}
+                        onCancelEdit={cancelEdit}
+                        onSaved={() => { setFormDirty(false); setEditingId(null); fetchSchedules(); }}
                     />
                 ) : !loaded ? (
                     <div className="p-6 text-sm text-[#656d76] dark:text-[#848484]" data-testid="schedule-main-pane-loading">

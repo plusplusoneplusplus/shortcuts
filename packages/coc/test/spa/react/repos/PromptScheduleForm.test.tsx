@@ -522,3 +522,58 @@ describe('PromptScheduleForm — store picker (My/Repo)', () => {
         expect(onCreated).toHaveBeenCalledWith({ id: 'repo:new-sched-1', source: 'repo' });
     });
 });
+
+describe('PromptScheduleForm — onDirtyChange', () => {
+    it('reports dirty=true once a field diverges from its initial value and false when reverted', async () => {
+        const user = userEvent.setup();
+        const onDirtyChange = vi.fn();
+        await renderPromptForm({ onDirtyChange });
+
+        // Fires once on mount with the clean baseline.
+        await waitFor(() => expect(onDirtyChange).toHaveBeenCalledWith(false));
+        onDirtyChange.mockClear();
+
+        await user.type(screen.getByTestId('prompt-name-input'), 'x');
+        await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+
+        await user.clear(screen.getByTestId('prompt-name-input'));
+        await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+    });
+
+    it('stays clean (dirty=false) in edit mode until a field changes', async () => {
+        const user = userEvent.setup();
+        const onDirtyChange = vi.fn();
+        await renderPromptForm({
+            mode: 'edit',
+            scheduleId: 'sched-1',
+            onDirtyChange,
+            initialValues: {
+                name: 'daily-review',
+                target: 'review PRs',
+                cron: '0 9 * * *',
+                chatMode: 'ask',
+                onFailure: 'notify',
+            },
+        });
+
+        // Prefilled edit form is not dirty on mount.
+        await waitFor(() => expect(onDirtyChange).toHaveBeenCalledWith(false));
+        expect(onDirtyChange).not.toHaveBeenCalledWith(true);
+
+        await user.type(screen.getByTestId('prompt-instructions-input'), '!');
+        await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    });
+
+    it('reports dirty=false on unmount', async () => {
+        const user = userEvent.setup();
+        const onDirtyChange = vi.fn();
+        const { unmount } = await renderPromptForm({ onDirtyChange });
+
+        await user.type(screen.getByTestId('prompt-name-input'), 'wip');
+        await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+
+        onDirtyChange.mockClear();
+        unmount();
+        expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    });
+});

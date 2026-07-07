@@ -5,7 +5,7 @@
  * Advanced automation (workflow/script/notes) stays in CreateScheduleForm.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button, cn } from '../../ui';
 import { SegmentedControl } from '../../ui/SegmentedControl';
 import { getSpaCocClient } from '../../api/cocClient';
@@ -49,7 +49,7 @@ function hasNonDefaultOptions(vals: PromptScheduleFormValues | undefined, worksp
     );
 }
 
-export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvanced, mode: formMode = 'create', scheduleId, initialValues, storePicker = false }: {
+export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvanced, mode: formMode = 'create', scheduleId, initialValues, storePicker = false, onDirtyChange }: {
     workspaceId: string;
     /**
      * Called after a successful create or edit. On create the newly-created
@@ -72,6 +72,14 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
      * tab (which manages the My/Repo split at the list level) is unchanged.
      */
     storePicker?: boolean;
+    /**
+     * Notified whenever the form's dirty state changes — `true` once any field
+     * differs from its initial value, `false` when it matches (and once on
+     * unmount). Lets a host (the Scheduled-slide main pane) guard navigate-away
+     * with a "Discard changes?" prompt. Optional, so the classic Repo ▸
+     * Schedules tab is unaffected.
+     */
+    onDirtyChange?: (dirty: boolean) => void;
 }) {
     // AC-07: schedule create/update/disable target the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
@@ -102,6 +110,51 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
     // Where a newly-created schedule is stored (create mode + `storePicker`
     // only). 'user' → schedules.json; 'repo' → .github/schedules/ via a move.
     const [store, setStore] = useState<'user' | 'repo'>('user');
+
+    // Baseline snapshot of every editable field (mirrors the useState
+    // initializers above). The form is "dirty" when any current value diverges
+    // from this — used to gate a "Discard changes?" prompt on navigate-away.
+    const initial = {
+        name: initialValues?.name ?? '',
+        instructions: initialValues?.target ?? '',
+        chatMode: normalizePromptScheduleMode(initialValues?.chatMode, 'ask'),
+        model: initialValues?.model ?? '',
+        outputFolder: initialValues?.outputFolder ?? defaultOutputFolder(workspaceId),
+        onFailure: initialValues?.onFailure ?? 'notify',
+        preset: inferred?.preset ?? ('daily' as PromptSchedulePreset),
+        hour: inferred?.hour ?? 9,
+        minute: inferred?.minute ?? 0,
+        dayOfWeek: inferred?.dayOfWeek ?? '1',
+        customTimingMode: 'cron' as 'interval' | 'cron',
+        customCron: initialValues?.cron ?? '0 9 * * *',
+        customIntervalValue: '1',
+        customIntervalUnit: 'hours',
+        store: 'user' as 'user' | 'repo',
+    };
+
+    const dirty =
+        name !== initial.name
+        || instructions !== initial.instructions
+        || chatMode !== initial.chatMode
+        || model !== initial.model
+        || outputFolder !== initial.outputFolder
+        || onFailure !== initial.onFailure
+        || preset !== initial.preset
+        || hour !== initial.hour
+        || minute !== initial.minute
+        || dayOfWeek !== initial.dayOfWeek
+        || customTimingMode !== initial.customTimingMode
+        || customCron !== initial.customCron
+        || customIntervalValue !== initial.customIntervalValue
+        || customIntervalUnit !== initial.customIntervalUnit
+        || store !== initial.store;
+
+    // Report dirty transitions (ref-guarded so an unstable `onDirtyChange`
+    // identity does not churn the effect); always reset to clean on unmount.
+    const onDirtyChangeRef = useRef(onDirtyChange);
+    onDirtyChangeRef.current = onDirtyChange;
+    useEffect(() => { onDirtyChangeRef.current?.(dirty); }, [dirty]);
+    useEffect(() => () => { onDirtyChangeRef.current?.(false); }, []);
 
     // Ask AI to rewrite the rough instructions into a clearer prompt. Routed to
     // the selected clone's server and scoped to this workspace; respects the

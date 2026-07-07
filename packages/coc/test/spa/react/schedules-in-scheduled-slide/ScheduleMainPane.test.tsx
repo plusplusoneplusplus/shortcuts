@@ -376,6 +376,7 @@ describe('ScheduleMainPane — Edit disabled for non-prompt schedules', () => {
 // renders ScheduleDetail WITHOUT `disableNonPromptEdit`, so Edit must stay
 // enabled for non-prompt schedules (advanced editing continues via that tab).
 describe('ScheduleDetail — Edit enabled by default (classic Schedules tab)', () => {
+
     beforeEach(() => {
         vi.clearAllMocks();
         location.hash = '';
@@ -403,5 +404,114 @@ describe('ScheduleDetail — Edit enabled by default (classic Schedules tab)', (
         const editBtn = screen.getByTestId('edit-btn') as HTMLButtonElement;
         expect(editBtn.disabled).toBe(false);
         expect(editBtn.getAttribute('title')).toBeNull();
+    });
+});
+
+// AC-02 / AC-03 dirty guard: navigating away from a create/edit form with
+// unsaved edits prompts "Discard changes?"; a clean form leaves silently.
+describe('ScheduleMainPane — dirty guard on navigate-away', () => {
+    const DISCARD = 'Discard changes? Your unsaved edits will be lost.';
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        location.hash = '';
+    });
+
+    it('closing a clean create form does not prompt and returns to the slide', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        await renderPane({ kind: 'new' }, []);
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('schedule-main-pane-close'));
+
+        expect(confirmSpy).not.toHaveBeenCalled();
+        expect(location.hash).toBe('#repos/ws-1/schedules');
+        confirmSpy.mockRestore();
+    });
+
+    it('closing a dirty create form prompts; declining keeps the form and does not navigate', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        await renderPane({ kind: 'new' }, []);
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+
+        fireEvent.change(screen.getByTestId('prompt-name-input'), { target: { value: 'wip' } });
+        fireEvent.click(screen.getByTestId('schedule-main-pane-close'));
+
+        expect(confirmSpy).toHaveBeenCalledWith(DISCARD);
+        expect(location.hash).toBe('');
+        expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy();
+        confirmSpy.mockRestore();
+    });
+
+    it('closing a dirty create form and confirming navigates back to the slide', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        await renderPane({ kind: 'new' }, []);
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+
+        fireEvent.change(screen.getByTestId('prompt-name-input'), { target: { value: 'wip' } });
+        fireEvent.click(screen.getByTestId('schedule-main-pane-close'));
+
+        expect(confirmSpy).toHaveBeenCalledWith(DISCARD);
+        expect(location.hash).toBe('#repos/ws-1/schedules');
+        confirmSpy.mockRestore();
+    });
+
+    it('pressing Escape on a dirty create form prompts before leaving', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        await renderPane({ kind: 'new' }, []);
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+
+        fireEvent.change(screen.getByTestId('prompt-name-input'), { target: { value: 'wip' } });
+        fireEvent.keyDown(document.body, { key: 'Escape' });
+
+        expect(confirmSpy).toHaveBeenCalledWith(DISCARD);
+        expect(location.hash).toBe('#repos/ws-1/schedules');
+        confirmSpy.mockRestore();
+    });
+
+    it('cancelling a dirty inline edit prompts; confirming returns to the read view', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        await renderPane({ kind: 'detail', scheduleId: 'sched-my-prompt' });
+        await waitFor(() => expect(screen.getByTestId('schedule-detail')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('edit-btn'));
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+        fireEvent.change(screen.getByTestId('prompt-name-input'), { target: { value: 'changed name' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+        expect(confirmSpy).toHaveBeenCalledWith(DISCARD);
+        await waitFor(() => expect(screen.queryByTestId('prompt-schedule-form')).toBeNull());
+        expect(screen.getByTestId('schedule-detail')).toBeTruthy();
+        confirmSpy.mockRestore();
+    });
+
+    it('declining the discard prompt keeps the dirty inline editor open', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        await renderPane({ kind: 'detail', scheduleId: 'sched-my-prompt' });
+        await waitFor(() => expect(screen.getByTestId('schedule-detail')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('edit-btn'));
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+        fireEvent.change(screen.getByTestId('prompt-name-input'), { target: { value: 'changed name' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+        expect(confirmSpy).toHaveBeenCalledWith(DISCARD);
+        expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy();
+        confirmSpy.mockRestore();
+    });
+
+    it('cancelling a clean inline edit returns to the read view without prompting', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        await renderPane({ kind: 'detail', scheduleId: 'sched-my-prompt' });
+        await waitFor(() => expect(screen.getByTestId('schedule-detail')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('edit-btn'));
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+        expect(confirmSpy).not.toHaveBeenCalled();
+        await waitFor(() => expect(screen.queryByTestId('prompt-schedule-form')).toBeNull());
+        expect(screen.getByTestId('schedule-detail')).toBeTruthy();
+        confirmSpy.mockRestore();
     });
 });

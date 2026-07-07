@@ -34,6 +34,12 @@ export interface ScheduleDetailProps {
      * Schedules tab (which leaves this `false` and keeps `CreateScheduleForm`).
      */
     disableNonPromptEdit?: boolean;
+    /**
+     * Forwarded to the inline edit `PromptScheduleForm`'s `onDirtyChange`, so a
+     * host can guard navigate-away while editing. Optional — the classic Repo ▸
+     * Schedules tab leaves it unset (no guard).
+     */
+    onEditDirtyChange?: (dirty: boolean) => void;
 }
 
 /**
@@ -151,7 +157,7 @@ function HeaderIcon({ schedule }: { schedule: Schedule }) {
     return <PromptIcon className={className} />;
 }
 
-export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRunNow, onPauseResume, onEdit, onDuplicate, onDelete, onCancelEdit, onSaved, showDuplicate = true, disableNonPromptEdit = false }: ScheduleDetailProps) {
+export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRunNow, onPauseResume, onEdit, onDuplicate, onDelete, onCancelEdit, onSaved, showDuplicate = true, disableNonPromptEdit = false, onEditDirtyChange }: ScheduleDetailProps) {
     const targetBasename = schedule.target.split(/[/\\]/).pop() ?? schedule.target;
     const paramEntries = Object.entries(schedule.params ?? {});
     const [showCommitReminder, setShowCommitReminder] = useState(false);
@@ -191,6 +197,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                         }}
                         onCreated={handleSaved}
                         onCancel={onCancelEdit}
+                        onDirtyChange={onEditDirtyChange}
                     />
                 ) : (
                     <CreateScheduleForm
