@@ -178,6 +178,7 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
                         history={history}
                         editingId={editingId}
                         showDuplicate={false}
+                        disableNonPromptEdit={true}
                         onRunNow={handleRunNow}
                         onPauseResume={handlePauseResume}
                         onEdit={(id) => setEditingId(id)}

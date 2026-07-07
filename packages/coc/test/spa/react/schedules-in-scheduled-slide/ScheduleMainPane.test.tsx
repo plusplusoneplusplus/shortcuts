@@ -11,7 +11,10 @@
  *  - route `detail` → renders ScheduleDetail for the matched schedule, with the
  *    Duplicate action hidden (out of scope for this surface);
  *  - detail actions (Run now / Pause / Delete) call the schedules client;
- *  - an unknown id after load shows the "not found" state.
+ *  - an unknown id after load shows the "not found" state;
+ *  - Edit is disabled with a hint for non-prompt (script / workflow) schedules
+ *    in this prompt-only host, while the classic Schedules tab (no
+ *    `disableNonPromptEdit`) keeps Edit enabled for them.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -23,6 +26,11 @@ import {
     parseScheduleMainPaneRoute,
     type ScheduleMainPaneRoute,
 } from '../../../../src/server/spa/client/react/features/schedules/ScheduleMainPane';
+import {
+    ScheduleDetail,
+    isPromptEditableSchedule,
+    NON_PROMPT_EDIT_HINT,
+} from '../../../../src/server/spa/client/react/features/schedules/ScheduleDetail';
 
 const { mockSchedulesClient } = vi.hoisted(() => ({
     mockSchedulesClient: {
@@ -61,6 +69,26 @@ const MY_PROMPT = {
     createdAt: '2026-07-01T00:00:00.000Z',
     mode: 'ask' as const,
     source: 'user' as const,
+};
+
+// A script schedule — not editable with the Prompt form.
+const MY_SCRIPT = {
+    ...MY_PROMPT,
+    id: 'sched-script',
+    name: 'Nightly backup',
+    targetType: 'script' as const,
+    target: 'scripts/backup.sh',
+    params: {},
+};
+
+// A workflow schedule (targetType 'prompt' but carries a `pipeline` param) —
+// also not editable with the Prompt form.
+const MY_WORKFLOW = {
+    ...MY_PROMPT,
+    id: 'sched-workflow',
+    name: 'Weekly report',
+    targetType: 'prompt' as const,
+    params: { pipeline: 'pipelines/report/pipeline.yaml' },
 };
 
 function Wrap({ children }: { children: ReactNode }) {
@@ -182,5 +210,94 @@ describe('ScheduleMainPane — detail route', () => {
     it('shows a not-found state for an unknown schedule id after load', async () => {
         await renderPane({ kind: 'detail', scheduleId: 'does-not-exist' }, [MY_PROMPT]);
         await waitFor(() => expect(screen.getByTestId('schedule-main-pane-not-found')).toBeTruthy());
+    });
+});
+
+describe('isPromptEditableSchedule', () => {
+    it('is true for a prompt schedule with no pipeline param', () => {
+        expect(isPromptEditableSchedule(MY_PROMPT)).toBe(true);
+    });
+    it('is true when targetType is undefined (legacy prompt schedule)', () => {
+        expect(isPromptEditableSchedule({ ...MY_PROMPT, targetType: undefined })).toBe(true);
+    });
+    it('is false for a script schedule', () => {
+        expect(isPromptEditableSchedule(MY_SCRIPT)).toBe(false);
+    });
+    it('is false for a workflow schedule (pipeline param) even when targetType is prompt', () => {
+        expect(isPromptEditableSchedule(MY_WORKFLOW)).toBe(false);
+    });
+});
+
+describe('ScheduleMainPane — Edit disabled for non-prompt schedules', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        location.hash = '';
+    });
+
+    it('leaves Edit enabled (no hint) for a prompt schedule', async () => {
+        await renderPane({ kind: 'detail', scheduleId: 'sched-my-prompt' });
+        await waitFor(() => expect(screen.getByTestId('schedule-detail')).toBeTruthy());
+        const editBtn = screen.getByTestId('edit-btn') as HTMLButtonElement;
+        expect(editBtn.disabled).toBe(false);
+        expect(editBtn.getAttribute('title')).toBeNull();
+    });
+
+    it('disables Edit with a hint for a script schedule', async () => {
+        await renderPane({ kind: 'detail', scheduleId: 'sched-script' }, [MY_SCRIPT]);
+        await waitFor(() => expect(screen.getByTestId('schedule-detail')).toBeTruthy());
+        const editBtn = screen.getByTestId('edit-btn') as HTMLButtonElement;
+        expect(editBtn.disabled).toBe(true);
+        expect(editBtn.getAttribute('title')).toBe(NON_PROMPT_EDIT_HINT);
+    });
+
+    it('disables Edit with a hint for a workflow (pipeline param) schedule', async () => {
+        await renderPane({ kind: 'detail', scheduleId: 'sched-workflow' }, [MY_WORKFLOW]);
+        await waitFor(() => expect(screen.getByTestId('schedule-detail')).toBeTruthy());
+        const editBtn = screen.getByTestId('edit-btn') as HTMLButtonElement;
+        expect(editBtn.disabled).toBe(true);
+        expect(editBtn.getAttribute('title')).toBe(NON_PROMPT_EDIT_HINT);
+    });
+
+    it('clicking the disabled Edit does not switch into an edit form', async () => {
+        await renderPane({ kind: 'detail', scheduleId: 'sched-script' }, [MY_SCRIPT]);
+        await waitFor(() => expect(screen.getByTestId('schedule-detail')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('edit-btn'));
+        // Stays on the read view — neither the prompt nor the advanced form mounts.
+        expect(screen.queryByTestId('prompt-schedule-form')).toBeNull();
+        expect(screen.getByTestId('schedule-detail')).toBeTruthy();
+    });
+});
+
+// Regression guard for the classic Repo ▸ Schedules tab path (flag OFF): it
+// renders ScheduleDetail WITHOUT `disableNonPromptEdit`, so Edit must stay
+// enabled for non-prompt schedules (advanced editing continues via that tab).
+describe('ScheduleDetail — Edit enabled by default (classic Schedules tab)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        location.hash = '';
+    });
+
+    it('keeps Edit enabled for a script schedule when disableNonPromptEdit is unset', async () => {
+        render(
+            <Wrap>
+                <ScheduleDetail
+                    schedule={MY_SCRIPT}
+                    workspaceId="ws-1"
+                    history={[]}
+                    editingId={null}
+                    onRunNow={vi.fn()}
+                    onPauseResume={vi.fn()}
+                    onEdit={vi.fn()}
+                    onDuplicate={vi.fn()}
+                    onDelete={vi.fn()}
+                    onCancelEdit={vi.fn()}
+                    onSaved={vi.fn()}
+                />
+            </Wrap>,
+        );
+        await waitFor(() => expect(screen.getByTestId('schedule-detail')).toBeTruthy());
+        const editBtn = screen.getByTestId('edit-btn') as HTMLButtonElement;
+        expect(editBtn.disabled).toBe(false);
+        expect(editBtn.getAttribute('title')).toBeNull();
     });
 });
