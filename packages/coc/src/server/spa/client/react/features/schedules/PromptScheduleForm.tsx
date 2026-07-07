@@ -49,22 +49,29 @@ function hasNonDefaultOptions(vals: PromptScheduleFormValues | undefined, worksp
     );
 }
 
-export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvanced, mode: formMode = 'create', scheduleId, initialValues }: {
+export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvanced, mode: formMode = 'create', scheduleId, initialValues, storePicker = false }: {
     workspaceId: string;
     /**
      * Called after a successful create or edit. On create the newly-created
-     * schedule (`{ id }`) is passed so callers can navigate to its detail;
-     * on edit it is called with no argument. The optional parameter keeps the
-     * existing `() => void` callers (Repo ▸ Schedules tab, ScheduleDetail edit)
-     * source-compatible.
+     * schedule (`{ id, source }`) is passed so callers can navigate to its
+     * detail and react to the chosen store; on edit it is called with no
+     * argument. The optional parameter keeps the existing `() => void` callers
+     * (Repo ▸ Schedules tab, ScheduleDetail edit) source-compatible.
      */
-    onCreated: (created?: { id?: string }) => void;
+    onCreated: (created?: { id?: string; source?: 'user' | 'repo' }) => void;
     onCancel: () => void;
     /** Switch to the full CreateScheduleForm for workflow/script/notes. */
     onAdvanced?: () => void;
     mode?: 'create' | 'edit';
     scheduleId?: string;
     initialValues?: PromptScheduleFormValues;
+    /**
+     * When `true` (create mode only), render a "Store in: My / Repo" picker.
+     * Choosing Repo creates the schedule in the user store and then moves it to
+     * `.github/schedules/`. Defaults to `false` so the classic Repo ▸ Schedules
+     * tab (which manages the My/Repo split at the list level) is unchanged.
+     */
+    storePicker?: boolean;
 }) {
     // AC-07: schedule create/update/disable target the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
@@ -92,6 +99,9 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [refineOpen, setRefineOpen] = useState(false);
+    // Where a newly-created schedule is stored (create mode + `storePicker`
+    // only). 'user' → schedules.json; 'repo' → .github/schedules/ via a move.
+    const [store, setStore] = useState<'user' | 'repo'>('user');
 
     // Ask AI to rewrite the rough instructions into a clearer prompt. Routed to
     // the selected clone's server and scoped to this workspace; respects the
@@ -184,11 +194,20 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
                 const result = await cloneClient.schedules.create(workspaceId, payload);
                 // `create` resolves to `{ schedule }`, so the new id lives at
                 // `result.schedule.id` (not `result.id`).
-                const createdId = result?.schedule?.id;
+                let createdId = result?.schedule?.id;
+                let createdSource: 'user' | 'repo' = 'user';
+                // Store=Repo: create lands in the user store, then move it to
+                // `.github/schedules/`. The move re-keys the schedule (repo ids
+                // are `repo:<slug>`), so navigate to the moved id.
+                if (store === 'repo' && createdId) {
+                    const moved = await cloneClient.schedules.move(workspaceId, createdId, 'repo');
+                    createdId = moved?.schedule?.id ?? createdId;
+                    createdSource = 'repo';
+                }
                 if (shouldPause && createdId) {
                     try { await cloneClient.schedules.disable(workspaceId, createdId); } catch { /* best effort */ }
                 }
-                onCreated(createdId ? { id: createdId } : undefined);
+                onCreated(createdId ? { id: createdId, source: createdSource } : undefined);
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : `Failed to ${formMode === 'edit' ? 'update' : 'create'} schedule`);
@@ -204,6 +223,26 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
                 <span className="flex-shrink-0 mt-0.5">🕐</span>
                 <span>Local schedules only run while this CoC server is awake.</span>
             </div>
+
+            {/* Store picker (create-in-slide only) */}
+            {storePicker && formMode === 'create' && (
+                <div className="flex flex-col gap-1" data-testid="prompt-store-picker">
+                    <SegmentedControl
+                        label="Store in"
+                        value={store}
+                        onChange={setStore}
+                        options={[
+                            { value: 'user', label: 'My', testId: 'prompt-store-my' },
+                            { value: 'repo', label: 'Repo', testId: 'prompt-store-repo' },
+                        ] as const}
+                    />
+                    {store === 'repo' && (
+                        <span className="text-[10px] text-[#616161] dark:text-[#999]" data-testid="prompt-store-repo-hint">
+                            Saved to <code className="font-mono">.github/schedules/</code> — commit to share with your team.
+                        </span>
+                    )}
+                </div>
+            )}
 
             {/* Header */}
             <div className="flex items-center justify-between">

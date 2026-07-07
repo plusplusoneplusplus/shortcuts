@@ -43,6 +43,7 @@ const { mockSchedulesClient } = vi.hoisted(() => ({
         delete: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
+        move: vi.fn(),
         refine: vi.fn(),
     },
 }));
@@ -182,6 +183,87 @@ describe('ScheduleMainPane — create route', () => {
         await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
         fireEvent.click(screen.getByTestId('schedule-main-pane-close'));
         expect(location.hash).toBe('#repos/ws-1/schedules');
+    });
+});
+
+describe('ScheduleMainPane — create store picker + commit reminder', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        location.hash = '';
+        mockSchedulesClient.list.mockResolvedValue([]);
+        mockSchedulesClient.history.mockResolvedValue([]);
+    });
+
+    it('exposes the My/Repo store picker in the create form', async () => {
+        await renderPane({ kind: 'new' });
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+        expect(screen.getByTestId('prompt-store-picker')).toBeTruthy();
+        expect(screen.getByTestId('prompt-store-my')).toBeTruthy();
+        expect(screen.getByTestId('prompt-store-repo')).toBeTruthy();
+    });
+
+    it('creates into repo (create + move) and shows the commit-to-share reminder on the new detail', async () => {
+        mockSchedulesClient.create.mockResolvedValue({ schedule: { id: 'sched-new' } });
+        mockSchedulesClient.move.mockResolvedValue({ schedule: { id: 'repo:sched-new', source: 'repo' } });
+
+        const { rerender } = render(
+            <Wrap>
+                <ScheduleMainPane workspaceId="ws-1" route={{ kind: 'new' }} />
+            </Wrap>,
+        );
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('prompt-store-repo'));
+        fireEvent.change(screen.getByTestId('prompt-name-input'), { target: { value: 'Team routine' } });
+        fireEvent.change(screen.getByTestId('prompt-instructions-input'), { target: { value: 'shared work' } });
+        fireEvent.click(screen.getByTestId('prompt-submit-btn'));
+
+        await waitFor(() => expect(mockSchedulesClient.move).toHaveBeenCalledWith('ws-1', 'sched-new', 'repo'));
+        await waitFor(() => expect(location.hash).toBe('#repos/ws-1/schedules/repo%3Asched-new'));
+
+        // The parent navigates: re-render the SAME pane instance with the moved
+        // schedule's detail route. Pane state (commit-reminder id) persists.
+        mockSchedulesClient.list.mockResolvedValue([{ ...MY_PROMPT, id: 'repo:sched-new', source: 'repo' }]);
+        rerender(
+            <Wrap>
+                <ScheduleMainPane workspaceId="ws-1" route={{ kind: 'detail', scheduleId: 'repo:sched-new' }} />
+            </Wrap>,
+        );
+
+        await waitFor(() => expect(screen.getByTestId('schedule-main-pane-commit-reminder')).toBeTruthy());
+
+        // Dismissable.
+        fireEvent.click(screen.getByTestId('schedule-main-pane-commit-reminder-dismiss'));
+        await waitFor(() => expect(screen.queryByTestId('schedule-main-pane-commit-reminder')).toBeNull());
+    });
+
+    it('creating into the My store shows no commit reminder', async () => {
+        mockSchedulesClient.create.mockResolvedValue({ schedule: { id: 'sched-my' } });
+
+        const { rerender } = render(
+            <Wrap>
+                <ScheduleMainPane workspaceId="ws-1" route={{ kind: 'new' }} />
+            </Wrap>,
+        );
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+
+        fireEvent.change(screen.getByTestId('prompt-name-input'), { target: { value: 'My routine' } });
+        fireEvent.change(screen.getByTestId('prompt-instructions-input'), { target: { value: 'private work' } });
+        fireEvent.click(screen.getByTestId('prompt-submit-btn'));
+
+        await waitFor(() => expect(mockSchedulesClient.create).toHaveBeenCalledTimes(1));
+        expect(mockSchedulesClient.move).not.toHaveBeenCalled();
+        await waitFor(() => expect(location.hash).toBe('#repos/ws-1/schedules/sched-my'));
+
+        mockSchedulesClient.list.mockResolvedValue([{ ...MY_PROMPT, id: 'sched-my' }]);
+        rerender(
+            <Wrap>
+                <ScheduleMainPane workspaceId="ws-1" route={{ kind: 'detail', scheduleId: 'sched-my' }} />
+            </Wrap>,
+        );
+
+        await waitFor(() => expect(screen.getByTestId('schedule-main-pane')).toBeTruthy());
+        expect(screen.queryByTestId('schedule-main-pane-commit-reminder')).toBeNull();
     });
 });
 

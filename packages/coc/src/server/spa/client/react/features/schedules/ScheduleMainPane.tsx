@@ -77,6 +77,9 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
     const [loaded, setLoaded] = useState(false);
     const [history, setHistory] = useState<RunRecord[]>([]);
     const [editingId, setEditingId] = useState<string | null>(null);
+    // Id of a schedule just created into the repo store — drives the
+    // "commit to share" reminder shown once on its fresh detail view.
+    const [commitReminderId, setCommitReminderId] = useState<string | null>(null);
 
     const selectedId = route.kind === 'detail' ? route.scheduleId : null;
     const scheduleBase = '#repos/' + encodeURIComponent(workspaceId) + '/schedules';
@@ -115,6 +118,7 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
     const navigate = useCallback((hash: string) => { location.hash = hash; }, []);
 
     const closeToSlide = useCallback(() => {
+        setCommitReminderId(null);
         dispatch({ type: 'SET_SELECTED_SCHEDULE', id: null });
         navigate(scheduleBase);
     }, [dispatch, navigate, scheduleBase]);
@@ -161,9 +165,11 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
                     <PromptScheduleForm
                         workspaceId={workspaceId}
                         mode="create"
+                        storePicker
                         onCreated={(created) => {
                             fetchSchedules();
                             if (created?.id) {
+                                if (created.source === 'repo') setCommitReminderId(created.id);
                                 dispatch({ type: 'SET_SELECTED_SCHEDULE', id: created.id });
                                 navigate(scheduleBase + '/' + encodeURIComponent(created.id));
                             } else {
@@ -188,6 +194,25 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
         >
             <ScheduleMainPaneHeader title="Schedule" onClose={closeToSlide} />
             <div className="max-w-3xl w-full">
+                {commitReminderId != null && commitReminderId === selectedId && (
+                    <div
+                        className="mx-5 mt-3 px-3 py-2 rounded text-xs bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 flex items-start gap-2"
+                        data-testid="schedule-main-pane-commit-reminder"
+                    >
+                        <span className="flex-1">
+                            Schedule saved to <code className="font-mono">.github/schedules/</code> — commit to share with your team.
+                        </span>
+                        <button
+                            type="button"
+                            className="text-teal-500 hover:text-teal-700 dark:hover:text-teal-200 font-bold leading-none flex-shrink-0"
+                            onClick={() => setCommitReminderId(null)}
+                            aria-label="Dismiss reminder"
+                            data-testid="schedule-main-pane-commit-reminder-dismiss"
+                        >
+                            ×
+                        </button>
+                    </div>
+                )}
                 {selectedSchedule ? (
                     <ScheduleDetail
                         schedule={selectedSchedule}
