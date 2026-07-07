@@ -182,6 +182,7 @@ function SingleFileDiffBody({
                         diff={diffText}
                         fileName={fileName}
                         showLineNumbers
+                        hideFileHeaders
                         data-testid="whisper-diff-viewer"
                     />
                 </div>
@@ -231,6 +232,7 @@ function CombinedDiffBody({
                                     diff={section.diff}
                                     fileName={basename(relPath)}
                                     showLineNumbers
+                                    hideFileHeaders
                                     data-testid="whisper-diff-section-viewer"
                                 />
                             </div>

@@ -675,6 +675,49 @@ describe('UnifiedDiffViewer — diff prefix symbols hidden', () => {
 });
 
 // ============================================================================
+// UnifiedDiffViewer — hideFileHeaders
+// ============================================================================
+
+describe('UnifiedDiffViewer — hideFileHeaders', () => {
+    it('renders git file-header meta lines by default', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments data-testid="diff" />
+        );
+        const metaEls = container.querySelectorAll<HTMLElement>('[data-line-type="meta"]');
+        expect(metaEls.length).toBeGreaterThan(0);
+        expect(container.textContent).toContain('diff --git a/foo.ts b/foo.ts');
+    });
+
+    it('hides git file-header meta lines when hideFileHeaders is set', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments hideFileHeaders data-testid="diff" />
+        );
+        // No meta rows render at all.
+        expect(container.querySelector('[data-line-type="meta"]')).toBeNull();
+        // The raw git headers are gone from the text.
+        expect(container.textContent).not.toContain('diff --git');
+        expect(container.textContent).not.toContain('--- a/foo.ts');
+        expect(container.textContent).not.toContain('+++ b/foo.ts');
+        expect(container.textContent).not.toContain('index 0000000');
+        // Hunk header and change lines are preserved.
+        expect(container.querySelector('[data-line-type="hunk-header"]')).toBeTruthy();
+        expect(container.textContent).toContain('new line');
+        expect(container.textContent).toContain('old line');
+        expect(container.textContent).toContain('context line');
+    });
+
+    it('hides headers for every file in a multi-file diff', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={MULTI_FILE_DIFF} enableComments hideFileHeaders data-testid="diff" />
+        );
+        expect(container.querySelector('[data-line-type="meta"]')).toBeNull();
+        expect(container.textContent).not.toContain('diff --git');
+        expect(container.textContent).toContain('added in a');
+        expect(container.textContent).toContain('added in b');
+    });
+});
+
+// ============================================================================
 // UnifiedDiffViewer — word wrap default
 // ============================================================================
 
