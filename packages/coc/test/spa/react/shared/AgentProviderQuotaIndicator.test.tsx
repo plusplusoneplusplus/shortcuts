@@ -99,6 +99,8 @@ describe('AgentProviderQuotaIndicator', () => {
         expect(panel.getAttribute('data-placement')).toBe('down');
         expect(panel.className).toContain('top-full');
         expect(panel.className).not.toContain('bottom-full');
+        expect(panel.className).toContain('right-0');
+        expect(panel.className).not.toContain('left-0');
         unmount();
 
         render(<AgentProviderQuotaIndicator placement="up" />);
@@ -107,6 +109,8 @@ describe('AgentProviderQuotaIndicator', () => {
         expect(panel.getAttribute('data-placement')).toBe('up');
         expect(panel.className).toContain('bottom-full');
         expect(panel.className).not.toContain('top-full');
+        expect(panel.className).toContain('left-0');
+        expect(panel.className).not.toContain('right-0');
     });
 
     it('renders one dropdown row per enabled provider with every finite quota window', async () => {

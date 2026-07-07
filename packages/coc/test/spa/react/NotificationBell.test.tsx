@@ -106,22 +106,26 @@ describe('NotificationBell — panel', () => {
         expect(screen.queryByTestId('notification-panel')).toBeNull();
     });
 
-    it('opens downward by default', () => {
+    it('opens downward and right-aligns by default', () => {
         render(<NotificationBell />);
         act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
         const panel = screen.getByTestId('notification-panel');
         expect(panel.getAttribute('data-placement')).toBe('down');
         expect(panel.className).toContain('top-full');
         expect(panel.className).not.toContain('bottom-full');
+        expect(panel.className).toContain('right-0');
+        expect(panel.className).not.toContain('left-0');
     });
 
-    it('opens upward with placement="up" (bottom-docked sidebar footer)', () => {
+    it('opens upward and left-aligns with placement="up" (bottom-docked sidebar footer)', () => {
         render(<NotificationBell placement="up" />);
         act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
         const panel = screen.getByTestId('notification-panel');
         expect(panel.getAttribute('data-placement')).toBe('up');
         expect(panel.className).toContain('bottom-full');
         expect(panel.className).not.toContain('top-full');
+        expect(panel.className).toContain('left-0');
+        expect(panel.className).not.toContain('right-0');
     });
 
     it('outside click closes panel', () => {
