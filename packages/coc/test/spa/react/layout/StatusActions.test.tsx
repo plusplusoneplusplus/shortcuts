@@ -18,10 +18,14 @@ vi.mock('../../../../src/server/spa/client/react/layout/ThemeProvider', () => ({
     useTheme: () => ({ theme: 'light', toggleTheme: mockToggleTheme }),
 }));
 vi.mock('../../../../src/server/spa/client/react/shared/NotificationBell', () => ({
-    NotificationBell: () => <button aria-label="Notifications" data-testid="notification-bell" />,
+    NotificationBell: ({ placement }: { placement?: string }) => (
+        <button aria-label="Notifications" data-testid="notification-bell" data-placement={placement ?? 'down'} />
+    ),
 }));
 vi.mock('../../../../src/server/spa/client/react/shared/AgentProviderQuotaIndicator', () => ({
-    agentProviderQuotaIndicator: () => <button aria-label="Agent provider quota" data-testid="agent-provider-quota-indicator" />,
+    agentProviderQuotaIndicator: ({ placement }: { placement?: string } = {}) => (
+        <button aria-label="Agent provider quota" data-testid="agent-provider-quota-indicator" data-placement={placement ?? 'down'} />
+    ),
 }));
 
 import { StatusActions } from '../../../../src/server/spa/client/react/layout/StatusActions';
@@ -43,6 +47,9 @@ describe('StatusActions — topbar variant', () => {
         // Keeps the legacy ids the rest of the app/tests key on.
         expect(document.getElementById('admin-toggle')).toBeTruthy();
         expect(document.getElementById('theme-toggle')).toBeTruthy();
+        // Topbar popovers keep the historic downward placement.
+        expect(within(host).getByTestId('notification-bell').getAttribute('data-placement')).toBe('down');
+        expect(within(host).getByTestId('agent-provider-quota-indicator').getAttribute('data-placement')).toBe('down');
     });
 
     it('delegates admin to onAdminOpen and toggles theme', () => {
@@ -75,6 +82,12 @@ describe('StatusActions — sidebar variant', () => {
         expect(screen.queryByTestId('ws-status-indicator')).toBeNull();
         expect(screen.getByTestId('sidebar-admin-toggle')).toBeTruthy();
         expect(screen.getByTestId('sidebar-theme-toggle')).toBeTruthy();
+    });
+
+    it('opens the bell and quota popovers upward so they stay on-screen above the dock', () => {
+        render(<StatusActions variant="sidebar" />);
+        expect(screen.getByTestId('notification-bell').getAttribute('data-placement')).toBe('up');
+        expect(screen.getByTestId('agent-provider-quota-indicator').getAttribute('data-placement')).toBe('up');
     });
 
     it('defaults admin to navigating to #admin and toggles theme', () => {

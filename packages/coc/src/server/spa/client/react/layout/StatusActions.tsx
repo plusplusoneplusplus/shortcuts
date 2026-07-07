@@ -11,6 +11,8 @@
  *     the connection label and icon buttons out as a single row. It uses a
  *     soft blue-tinted background (distinct from the sidebar's neutral gray) so
  *     the dock reads as a separate strip rather than blending into the panel.
+ *     The bell/quota popovers open upward (`placement="up"`) since the dock
+ *     sits at the bottom edge of the viewport.
  *
  * The sidebar variant uses distinct `data-testid`s and drops the `id`
  * attributes so it never collides with the topbar cluster when both happen to
@@ -84,8 +86,8 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
                     <span className="truncate" data-testid="sidebar-ws-status-label">{wsConfig.label}</span>
                 </span>
                 <span className="flex items-center gap-0.5 flex-shrink-0">
-                    <NotificationBell />
-                    <AgentProviderQuotaIndicator />
+                    <NotificationBell placement="up" />
+                    <AgentProviderQuotaIndicator placement="up" />
                     <button
                         data-tab="admin"
                         className={

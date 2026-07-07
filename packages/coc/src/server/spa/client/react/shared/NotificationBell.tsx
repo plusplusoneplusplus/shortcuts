@@ -32,7 +32,14 @@ function parseRepoTag(title: string): { tag: string; rest: string } | null {
     return { tag: match[1], rest: match[2] };
 }
 
-export function NotificationBell() {
+export interface NotificationBellProps {
+    /** Which way the dropdown panel opens relative to the bell. `down` is the
+     *  historic topbar behavior; `up` is for bottom-docked placements (sidebar
+     *  footer) where a downward panel would overflow the viewport. */
+    placement?: 'down' | 'up';
+}
+
+export function NotificationBell({ placement = 'down' }: NotificationBellProps = {}) {
     const { notifications, unreadCount, markAllRead, clearAll } = useNotifications();
     const { dispatch } = useApp();
     const { floatChat } = useFloatingChats();
@@ -126,8 +133,12 @@ export function NotificationBell() {
             {open && (
                 <div
                     ref={panelRef}
-                    className="absolute right-0 top-full mt-1 w-[340px] max-h-[400px] flex flex-col rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg z-[10002]"
+                    className={cn(
+                        'absolute right-0 w-[340px] max-h-[400px] flex flex-col rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg z-[10002]',
+                        placement === 'up' ? 'bottom-full mb-1' : 'top-full mt-1',
+                    )}
                     data-testid="notification-panel"
+                    data-placement={placement}
                     role="dialog"
                     aria-label="Notifications panel"
                 >

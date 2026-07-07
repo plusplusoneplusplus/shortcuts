@@ -90,6 +90,25 @@ describe('AgentProviderQuotaIndicator', () => {
         expect(container.className).toContain('md:block');
     });
 
+    it('opens the dropdown downward by default and upward with placement="up"', async () => {
+        mocks.getAgentProvidersQuota.mockResolvedValue(quotaResponse());
+
+        const { unmount } = render(<AgentProviderQuotaIndicator />);
+        fireEvent.click(await screen.findByTestId('agent-provider-quota-indicator'));
+        let panel = await screen.findByTestId('agent-provider-quota-panel');
+        expect(panel.getAttribute('data-placement')).toBe('down');
+        expect(panel.className).toContain('top-full');
+        expect(panel.className).not.toContain('bottom-full');
+        unmount();
+
+        render(<AgentProviderQuotaIndicator placement="up" />);
+        fireEvent.click(await screen.findByTestId('agent-provider-quota-indicator'));
+        panel = await screen.findByTestId('agent-provider-quota-panel');
+        expect(panel.getAttribute('data-placement')).toBe('up');
+        expect(panel.className).toContain('bottom-full');
+        expect(panel.className).not.toContain('top-full');
+    });
+
     it('renders one dropdown row per enabled provider with every finite quota window', async () => {
         mocks.getAgentProvidersQuota.mockResolvedValue(quotaResponse({
             providers: [
