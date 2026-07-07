@@ -95,7 +95,11 @@ describe('RepoDetail terminal visibility gating', () => {
     });
 
     it('visibleSubTabs depends on terminalEnabled', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled]');
+        // Assert the two facts this test actually cares about rather than pinning
+        // the entire dependency array verbatim (which drifts every time an
+        // unrelated flag — e.g. schedulesInScheduledSlideEnabled — is added).
+        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled,');
+        expect(REPO_DETAIL_SOURCE).toContain('uiLayoutMode, splitWorkspacePanelEnabled');
     });
 });
 
