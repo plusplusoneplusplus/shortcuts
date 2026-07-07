@@ -146,12 +146,38 @@ describe('computeVisibleSubTabs — splitWorkspacePanel flag', () => {
         expect(tabs.find(t => t.key === 'activity')).toBeUndefined();
     });
 
-    it('flag on hides ONLY git — pull-requests and other tabs are untouched (parity of the rest)', () => {
+    // AC-02: with the flag on, git/terminal/explorer are all hidden (they move
+    // into the split panel + right dock); the remaining tabs are untouched.
+    it('flag on hides git, terminal, and explorer — other tabs are untouched (parity of the rest)', () => {
         const tabs = computeVisibleSubTabs({ ...allOn, splitWorkspacePanelEnabled: true });
         expect(tabs.find(t => t.key === 'git')).toBeUndefined();
+        expect(tabs.find(t => t.key === 'terminal')).toBeUndefined();
+        expect(tabs.find(t => t.key === 'explorer')).toBeUndefined();
         expect(tabs.find(t => t.key === 'pull-requests')).toBeDefined();
         expect(tabs.find(t => t.key === 'work-items')).toBeDefined();
-        expect(tabs.find(t => t.key === 'terminal')).toBeDefined();
+        expect(tabs.find(t => t.key === 'workflows')).toBeDefined();
+    });
+
+    // AC-02: terminal/explorer are filtered out iff the flag is on — in both
+    // layout modes — and remain visible when it is off.
+    it('flag on hides terminal and explorer in both layout modes', () => {
+        for (const uiLayoutMode of ['classic', 'dev-workflow'] as const) {
+            const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode, splitWorkspacePanelEnabled: true });
+            expect(tabs.find(t => t.key === 'terminal')).toBeUndefined();
+            expect(tabs.find(t => t.key === 'explorer')).toBeUndefined();
+        }
+    });
+
+    it('flag off keeps terminal and explorer visible in both layout modes', () => {
+        for (const uiLayoutMode of ['classic', 'dev-workflow'] as const) {
+            const off = computeVisibleSubTabs({ ...allOn, uiLayoutMode, splitWorkspacePanelEnabled: false });
+            expect(off.find(t => t.key === 'terminal')).toBeDefined();
+            expect(off.find(t => t.key === 'explorer')).toBeDefined();
+            // Parity with the default (option omitted) path.
+            const baseline = computeVisibleSubTabs({ ...allOn, uiLayoutMode });
+            expect(off.find(t => t.key === 'terminal')).toEqual(baseline.find(t => t.key === 'terminal'));
+            expect(off.find(t => t.key === 'explorer')).toEqual(baseline.find(t => t.key === 'explorer'));
+        }
     });
 
     it('flag on is idempotent with the non-git-repo path (git already hidden)', () => {
