@@ -77,6 +77,8 @@ interface DashboardConfig {
     remoteShellEnabled?: boolean;
     /** Whether the split "Workspace" left panel (chat top / git bottom + shared detail pane) is enabled. */
     splitWorkspacePanelEnabled?: boolean;
+    /** Whether schedule management lives in the chat-list "Scheduled" slide (definitions list + right-pane create/edit) instead of the Schedules tab. */
+    schedulesInScheduledSlideEnabled?: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
     prewarmDebounceMs?: number;
     /** Warm-client idle TTL (ms), resolved from env on the server. `0` means warming is disabled. */
@@ -353,6 +355,11 @@ export function isRemoteShellEnabled(): boolean {
 /** Returns true when the split "Workspace" left panel (chat top / git bottom + shared detail pane) is enabled. */
 export function isSplitWorkspacePanelEnabled(): boolean {
     return getConfig().splitWorkspacePanelEnabled === true;
+}
+
+/** Returns true when schedule management in the chat-list "Scheduled" slide is enabled. */
+export function isSchedulesInScheduledSlideEnabled(): boolean {
+    return getConfig().schedulesInScheduledSlideEnabled === true;
 }
 
 export function isExcalidrawEnabled(): boolean {

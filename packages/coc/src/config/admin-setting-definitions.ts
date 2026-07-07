@@ -769,6 +769,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.schedulesInScheduledSlide', default: false, runtime: 'live', runtimeFlag: 'schedulesInScheduledSlideEnabled',
+        ui: {
+            group: 'dashboard', order: 68, label: 'Schedules in Scheduled slide', badge: 'experimental',
+            hint: 'Moves schedule management (create/edit/run/pause/delete + run history) into the chat-list "Scheduled" slide, opening create and detail in the main pane and hiding the old Schedules tab. Disabled by default.',
+            testId: 'toggle-schedules-in-scheduled-slide-enabled',
+        },
+    }),
+    bool({
         key: 'features.ralphMultiAgentGrill', default: false, runtime: 'live', runtimeFlag: 'ralphMultiAgentGrillEnabled',
         ui: {
             group: 'aiModes', order: 15, label: 'Ralph Multi-Agent Grilling', badge: 'experimental',
