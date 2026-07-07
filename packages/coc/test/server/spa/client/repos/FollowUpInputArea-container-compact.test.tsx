@@ -61,8 +61,14 @@ vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     Button: ({ children, ...rest }: any) => <button {...rest}>{children}</button>,
     SuggestionChips: () => null,
     SendButton: () => <button data-testid="activity-chat-send-btn">Send</button>,
-    QueueFollowUpButton: ({ onSend }: any) => (
-        <button data-testid="activity-chat-send-btn" onClick={() => onSend('enqueue')}>Send</button>
+    QueueFollowUpButton: ({ onSend, iconOnly }: any) => (
+        <button
+            data-testid="activity-chat-send-btn"
+            data-icon-only={iconOnly ? 'true' : 'false'}
+            onClick={() => onSend('enqueue')}
+        >
+            Send
+        </button>
     ),
 }));
 
@@ -312,6 +318,67 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
             // Wide keeps the ellipsis-prefixed head-truncated form + the `cwd` label.
             expect(screen.getByTestId('composer-cwd-path').textContent?.startsWith('…')).toBe(true);
             expect(chip.querySelector('span[class*="uppercase"]')?.textContent).toBe('cwd');
+        });
+    });
+
+    describe('Tight tier (<500px) – mobile controls driven by the container signal', () => {
+        it('keeps the desktop controls at medium width (500–819px)', () => {
+            setContainerWidth('medium', 600);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.getByTestId('mode-selector')).toBeTruthy();
+            expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+            expect(screen.getByTestId('chat-toolbar-mention-btn')).toBeTruthy();
+            // The mobile fallbacks stay viewport-gated (hidden on lg+).
+            expect(screen.getByTestId('chat-toolbar-overflow').className).toContain('lg:hidden');
+            expect(screen.getByTestId('mode-cycle-btn-compact').className).toContain('lg:hidden');
+        });
+
+        it('swaps the mode pills for the cycle button when the pane is tight', () => {
+            setContainerWidth('narrow', 420);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.queryByTestId('mode-selector')).toBeNull();
+            // The cycle button loses its lg:hidden gate so it shows on desktop too.
+            expect(screen.getByTestId('mode-cycle-btn-compact').className).not.toContain('lg:hidden');
+        });
+
+        it('folds slash/mention/attach into the overflow menu when the pane is tight', () => {
+            setContainerWidth('narrow', 420);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.queryByTestId('chat-toolbar-slash-btn')).toBeNull();
+            expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
+            expect(screen.queryByTestId('follow-up-attach-btn')).toBeNull();
+            expect(screen.getByTestId('chat-toolbar-overflow').className).not.toContain('lg:hidden');
+            expect(screen.getByTestId('chat-toolbar-overflow-btn')).toBeTruthy();
+        });
+
+        it('keeps provider and Send labels down to 380px', () => {
+            setContainerWidth('narrow', 420);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.getByTestId('agent-selector-chip-label')).toBeTruthy();
+            expect(screen.getByTestId('activity-chat-send-btn').getAttribute('data-icon-only')).toBe('false');
+        });
+    });
+
+    describe('Minimal tier (<380px) – icon-only provider chip and Send', () => {
+        it('drops the provider label but keeps the accessible name', () => {
+            setContainerWidth('narrow', 320);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.queryByTestId('agent-selector-chip-label')).toBeNull();
+            expect(screen.getByTestId('agent-selector-chip-btn').getAttribute('aria-label')).toContain('Copilot');
+        });
+
+        it('sends the icon-only signal to the Send button', () => {
+            setContainerWidth('narrow', 320);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.getByTestId('activity-chat-send-btn').getAttribute('data-icon-only')).toBe('true');
+        });
+
+        it('keeps full labels when width is unmeasured (0)', () => {
+            setContainerWidth('narrow', 0);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.getByTestId('agent-selector-chip-label')).toBeTruthy();
+            expect(screen.getByTestId('mode-selector')).toBeTruthy();
+            expect(screen.getByTestId('activity-chat-send-btn').getAttribute('data-icon-only')).toBe('false');
         });
     });
 

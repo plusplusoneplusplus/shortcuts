@@ -290,10 +290,21 @@ export function FollowUpInputArea({
     // The full-label layout (provider · mode · model/effort · tools · cwd/ctx
     // · send) needs ~820px, so anything below the raised wide threshold
     // compacts — not just the 500px `narrow` tier — keeping the toolbar on a
-    // single line instead of wrapping.
+    // single line instead of wrapping. Three tiers of shedding:
+    //  - narrow (<820): drop text labels (model chip icon-only, cwd basename,
+    //    no "Effort:" prefix); the meta strip's container queries handle its
+    //    own fit independently.
+    //  - tight (<500): swap in the mobile controls — the segmented mode pills
+    //    become the tap-to-cycle button and slash/mention/attach fold into
+    //    the "⋯" overflow menu — so a narrow PANE gets the same treatment a
+    //    narrow VIEWPORT already does.
+    //  - minimal (<380): provider chip and Send go icon-only.
+    // Only below ~300px does the lg:flex-wrap fallback wrap to a second row.
     const toolbarRef = useRef<HTMLDivElement>(null);
     const toolbarWidth = useContainerWidth(toolbarRef, { wideThreshold: 820 });
     const isToolbarNarrow = toolbarWidth.width > 0 && !toolbarWidth.isWide;
+    const isToolbarTight = toolbarWidth.width > 0 && toolbarWidth.isNarrow;
+    const isToolbarMinimal = toolbarWidth.width > 0 && toolbarWidth.width < 380;
     const modHeld = useModifierKey(inputWrapperRef as RefObject<HTMLElement>);
     // Global (unscoped) detection so chips show the "send" state even when input isn't focused.
     const chipsCtrlHeld = useModifierKey();
@@ -989,10 +1000,14 @@ export function FollowUpInputArea({
                                 disabled={true}
                                 disabledReason="locked to this conversation"
                                 mobileTapTarget={true}
+                                iconOnly={isToolbarMinimal}
                             />
                             <span aria-hidden="true" data-testid="chat-toolbar-divider-provider" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
-                            {/* Mode pill selector — first in toolbar (desktop ≥1024px). */}
-                            {!hideModeSelector && (
+                            {/* Mode pill selector — desktop (≥1024px viewport) with
+                                 a pane wide enough for the segmented control. When
+                                 the toolbar's own container is tight, the pills give
+                                 way to the same cycle button phones use. */}
+                            {!hideModeSelector && !isToolbarTight && (
                                 <div data-testid="mode-selector" className="shrink-0 mr-0.5 hidden lg:flex">
                                     <ModePillSelector
                                         options={pillOptions}
@@ -1002,14 +1017,18 @@ export function FollowUpInputArea({
                                 </div>
                             )}
                             {/* Compact mode cycle button — mobile/tablet (≤1023px)
-                                 only. The segmented ModePillSelector is too wide for
-                                 a single row on phones, so it collapses to a single
+                                 or a container-tight pane on desktop. The segmented
+                                 ModePillSelector is too wide for a single row in
+                                 either case, so it collapses to a single
                                  tap-to-cycle button here. */}
                             {!hideModeSelector && (
                                 <button
                                     type="button"
                                     onClick={() => setSelectedMode(cycleMode(selectedMode, allowedModes))}
-                                    className="ctool lg:hidden shrink-0 inline-flex items-center gap-0.5 h-8 px-2 mr-0.5 rounded-sm border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                    className={cn(
+                                        'ctool shrink-0 inline-flex items-center gap-0.5 h-8 px-2 lg:h-[22px] lg:px-1.5 mr-0.5 rounded-sm border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors',
+                                        !isToolbarTight && 'lg:hidden',
+                                    )}
                                     data-testid="mode-cycle-btn-compact"
                                     aria-label={`Mode: ${selectedMode}. Tap to switch.`}
                                     title={MODE_TOOLTIPS[selectedMode] + ' (tap to cycle)'}
@@ -1172,13 +1191,14 @@ export function FollowUpInputArea({
                             {/* Tools zone — slash/mention/attach live on the
                                  right of the flexible middle (matches the OpenDesign
                                  composer ordering: mode · model · tools · send).
-                                 On mobile/tablet (≤1023px) these collapse into a
-                                 single overflow ("⋯") menu so the toolbar stays
-                                 on one row; on desktop (lg+) they render inline. */}
-                            <div ref={toolsMenuRef} className="relative shrink-0 lg:hidden" data-testid="chat-toolbar-overflow">
+                                 On mobile/tablet (≤1023px) or a container-tight pane
+                                 these collapse into a single overflow ("⋯") menu so
+                                 the toolbar stays on one row; otherwise they render
+                                 inline. */}
+                            <div ref={toolsMenuRef} className={cn('relative shrink-0', !isToolbarTight && 'lg:hidden')} data-testid="chat-toolbar-overflow">
                                 <button
                                     type="button"
-                                    className="ctool inline-flex items-center justify-center h-8 w-8 rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
+                                    className="ctool inline-flex items-center justify-center h-8 w-8 lg:h-[22px] lg:w-[22px] rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
                                     onClick={() => setToolsMenuOpen(o => !o)}
                                     aria-label="More actions"
                                     title="More actions (slash, mention, attach)"
@@ -1233,6 +1253,10 @@ export function FollowUpInputArea({
                                     </div>
                                 )}
                             </div>
+                            {/* Inline tool buttons — desktop only, and only while
+                                 the pane isn't container-tight (tight panes use the
+                                 overflow menu above instead). */}
+                            {!isToolbarTight && <>
                             <button
                                 type="button"
                                 className="ctool shrink-0 hidden lg:inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
@@ -1278,6 +1302,7 @@ export function FollowUpInputArea({
                                     />
                                 </svg>
                             </button>
+                            </>}
                             <span aria-hidden="true" data-testid="chat-toolbar-divider-send" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             <WarmIndicatorDot status={warmStatus} className="mr-1 self-center" />
                             {isActiveGeneration ? stopButton : (
@@ -1287,6 +1312,7 @@ export function FollowUpInputArea({
                                     onSend={(dm) => { void onSend(undefined, dm); }}
                                     label={selectedMode === 'ralph' ? 'Promote to Ralph' : 'Send'}
                                     mobileTapTarget={true}
+                                    iconOnly={isToolbarMinimal}
                                 />
                             )}
                         </div>
