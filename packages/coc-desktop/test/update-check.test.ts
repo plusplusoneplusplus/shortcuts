@@ -7,7 +7,7 @@
  */
 
 import * as path from 'path';
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
     normalizeVersion,
     compareVersions,
@@ -86,6 +86,10 @@ function fakeFetch(json: unknown, init: { ok?: boolean } = {}): typeof fetch {
         json: async () => json,
     })) as unknown as typeof fetch;
 }
+
+afterEach(() => {
+    vi.unstubAllGlobals();
+});
 
 describe('normalizeVersion', () => {
     it('strips a leading v (any case) and whitespace', () => {
@@ -522,6 +526,12 @@ describe('checkForUpdate', () => {
             fetchFn: undefined as unknown as typeof fetch,
         });
         expect(result.reason).toBe('error');
+    });
+
+    it('uses global fetch when fetchFn is omitted', async () => {
+        vi.stubGlobal('fetch', fakeFetch([ghPayload()]));
+        const result = await checkForUpdate({ currentVersion: '3.4.2' });
+        expect(result.reason).toBe('newer');
     });
 
     it('defaults to the releases list endpoint', async () => {
