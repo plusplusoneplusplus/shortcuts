@@ -559,3 +559,87 @@ describe('ScheduleMainPane — live refresh on schedule-changed (AC-03)', () => 
         expect((screen.getByTestId('prompt-name-input') as HTMLInputElement).value).toBe('wip edit');
     });
 });
+
+// AC-02 dirty guard for navigations that originate OUTSIDE the pane — clicking
+// another schedule row, clicking a chat, or the browser Back button. These all
+// change location.hash and fire `hashchange`; a dirty form must prompt, restore
+// its hash on decline, and let the navigation proceed on accept.
+describe('ScheduleMainPane — cross-route / browser-back dirty guard', () => {
+    const DISCARD = 'Discard changes? Your unsaved edits will be lost.';
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        location.hash = '';
+    });
+
+    it('prompts and restores the hash when an outside navigation leaves a dirty create form', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        location.hash = '#repos/ws-1/schedules/new';
+        await renderPane({ kind: 'new' }, []);
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+        fireEvent.change(screen.getByTestId('prompt-name-input'), { target: { value: 'wip' } });
+
+        // Simulate clicking a chat / another row / browser Back (all fire hashchange).
+        act(() => {
+            location.hash = '#repos/ws-1/chats';
+            window.dispatchEvent(new Event('hashchange'));
+        });
+
+        expect(confirmSpy).toHaveBeenCalledWith(DISCARD);
+        expect(location.hash).toBe('#repos/ws-1/schedules/new'); // restored on decline
+        confirmSpy.mockRestore();
+    });
+
+    it('confirming an outside navigation clears dirty and lets the navigation proceed', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        location.hash = '#repos/ws-1/schedules/new';
+        await renderPane({ kind: 'new' }, []);
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+        fireEvent.change(screen.getByTestId('prompt-name-input'), { target: { value: 'wip' } });
+
+        act(() => {
+            location.hash = '#repos/ws-1/chats';
+            window.dispatchEvent(new Event('hashchange'));
+        });
+
+        expect(confirmSpy).toHaveBeenCalledWith(DISCARD);
+        expect(location.hash).toBe('#repos/ws-1/chats'); // navigation allowed
+        confirmSpy.mockRestore();
+    });
+
+    it('does not prompt on an outside navigation when the create form is clean', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        location.hash = '#repos/ws-1/schedules/new';
+        await renderPane({ kind: 'new' }, []);
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+
+        act(() => {
+            location.hash = '#repos/ws-1/chats';
+            window.dispatchEvent(new Event('hashchange'));
+        });
+
+        expect(confirmSpy).not.toHaveBeenCalled();
+        expect(location.hash).toBe('#repos/ws-1/chats');
+        confirmSpy.mockRestore();
+    });
+
+    it('prompts and restores when navigating to another schedule row while the inline editor is dirty', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        location.hash = '#repos/ws-1/schedules/sched-my-prompt';
+        await renderPane({ kind: 'detail', scheduleId: 'sched-my-prompt' });
+        await waitFor(() => expect(screen.getByTestId('schedule-detail')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('edit-btn'));
+        await waitFor(() => expect(screen.getByTestId('prompt-schedule-form')).toBeTruthy());
+        fireEvent.change(screen.getByTestId('prompt-name-input'), { target: { value: 'changed' } });
+
+        act(() => {
+            location.hash = '#repos/ws-1/schedules/other-sched';
+            window.dispatchEvent(new Event('hashchange'));
+        });
+
+        expect(confirmSpy).toHaveBeenCalledWith(DISCARD);
+        expect(location.hash).toBe('#repos/ws-1/schedules/sched-my-prompt'); // restored on decline
+        confirmSpy.mockRestore();
+    });
+});

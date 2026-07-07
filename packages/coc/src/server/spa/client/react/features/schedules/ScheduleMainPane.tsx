@@ -18,7 +18,7 @@
  * Scheduled slide active.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCocClient } from '../../repos/cloneRouting';
 import { useApp } from '../../contexts/AppContext';
 import { ScheduleDetail } from './ScheduleDetail';
@@ -84,8 +84,15 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
     // "commit to share" reminder shown once on its fresh detail view.
     const [commitReminderId, setCommitReminderId] = useState<string | null>(null);
     // True while the open create/edit form has unsaved edits — gates the
-    // "Discard changes?" prompt on navigate-away (Close / Cancel / Esc).
+    // "Discard changes?" prompt on navigate-away (Close / Cancel / Esc, plus
+    // out-of-pane navigations intercepted via `hashchange` below).
     const [formDirty, setFormDirty] = useState(false);
+    // Mirror of `formDirty` for synchronous reads inside the `hashchange`
+    // interceptor. Kept fresh both by an effect (for keystroke-driven changes)
+    // and imperatively at every in-pane navigation, so a programmatic hash
+    // update never races the effect into a spurious prompt.
+    const formDirtyRef = useRef(false);
+    useEffect(() => { formDirtyRef.current = formDirty; }, [formDirty]);
 
     const selectedId = route.kind === 'detail' ? route.scheduleId : null;
     const scheduleBase = '#repos/' + encodeURIComponent(workspaceId) + '/schedules';
@@ -141,6 +148,7 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
     // Navigate back to the Scheduled slide, discarding any form state. The
     // unguarded variant used after a successful create/delete (no prompt).
     const doCloseToSlide = useCallback(() => {
+        formDirtyRef.current = false;
         setFormDirty(false);
         setCommitReminderId(null);
         dispatch({ type: 'SET_SELECTED_SCHEDULE', id: null });
@@ -157,6 +165,7 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
     // Leave inline edit back to the read view, guarding a dirty editor.
     const cancelEdit = useCallback(() => {
         if (formDirty && !confirm(DISCARD_CONFIRM)) return;
+        formDirtyRef.current = false;
         setFormDirty(false);
         setEditingId(null);
     }, [formDirty]);
@@ -202,6 +211,31 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
         return () => window.removeEventListener('keydown', onKey);
     }, [formOpen, route.kind, closeToSlide, cancelEdit]);
 
+    // Cross-route / browser-back dirty guard. Navigations that originate
+    // OUTSIDE this pane — clicking another schedule row, clicking a chat, or the
+    // browser Back button — all change `location.hash` and fire `hashchange`.
+    // While an open form is dirty and the hash moves away from the form's own
+    // hash, prompt to discard: on decline restore the form's hash so the edits
+    // survive; on accept clear the dirty flag and let the navigation proceed.
+    // In-pane controls (Close / Cancel / Esc / create-success / delete) clear
+    // `formDirtyRef` before they navigate, so this never double-prompts.
+    useEffect(() => {
+        if (!formOpen) return;
+        const formHash = location.hash;
+        const onHashChange = () => {
+            if (!formDirtyRef.current) return;
+            if (location.hash === formHash) return;
+            if (confirm(DISCARD_CONFIRM)) {
+                formDirtyRef.current = false;
+                setFormDirty(false);
+            } else {
+                location.hash = formHash;
+            }
+        };
+        window.addEventListener('hashchange', onHashChange);
+        return () => window.removeEventListener('hashchange', onHashChange);
+    }, [formOpen, route.kind, selectedId]);
+
     // ── Create ────────────────────────────────────────────────────────────
     if (route.kind === 'new') {
         return (
@@ -218,6 +252,7 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
                         storePicker
                         onDirtyChange={setFormDirty}
                         onCreated={(created) => {
+                            formDirtyRef.current = false;
                             setFormDirty(false);
                             fetchSchedules();
                             if (created?.id) {
@@ -280,7 +315,7 @@ export function ScheduleMainPane({ workspaceId, route }: ScheduleMainPaneProps) 
                         onDuplicate={() => { /* out of scope for the Scheduled-slide main pane */ }}
                         onDelete={handleDelete}
                         onCancelEdit={cancelEdit}
-                        onSaved={() => { setFormDirty(false); setEditingId(null); fetchSchedules(); }}
+                        onSaved={() => { formDirtyRef.current = false; setFormDirty(false); setEditingId(null); fetchSchedules(); }}
                     />
                 ) : !loaded ? (
                     <div className="p-6 text-sm text-[#656d76] dark:text-[#848484]" data-testid="schedule-main-pane-loading">
