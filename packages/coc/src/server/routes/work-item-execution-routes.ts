@@ -41,6 +41,7 @@ import {
     resolveWorkItemResponseCacheWorkspaceIds,
 } from '../work-items/work-item-response-cache';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
+import { parseWorktreeExecutionRequest } from '../worktree/worktree-request';
 
 const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
 const execFileAsync = promisify(execFile);
@@ -414,6 +415,13 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                         : undefined;
                 if (body.effortTier !== undefined && !effortTier) {
                     return handleAPIError(res, badRequest(`Invalid effortTier: '${body.effortTier}'`));
+                }
+                // Opt-in Git worktree request. Shape is validated here; the
+                // worktree itself is created by a later wiring step. Omitting it
+                // preserves existing behavior.
+                const worktree = parseWorktreeExecutionRequest(body.worktree);
+                if (!worktree.ok) {
+                    return handleAPIError(res, badRequest(worktree.error));
                 }
                 const requestedExecutionMode = body.executionMode;
                 if (requestedExecutionMode !== undefined && requestedExecutionMode !== 'one-shot' && requestedExecutionMode !== 'ralph') {

@@ -287,6 +287,48 @@ describe('POST /api/ralph-launch', () => {
     });
 
     // -----------------------------------------------------------------------
+    // Worktree request (AC-01)
+    // -----------------------------------------------------------------------
+
+    it('returns 400 for a malformed worktree request', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-1',
+            worktree: { enabled: 'yes' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/worktree\.enabled/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for an invalid worktree baseRef', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-1',
+            worktree: { enabled: true, baseRef: '--evil' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/baseRef/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('accepts a valid worktree request without changing the enqueued base payload', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-1',
+            worktree: { enabled: true, baseRef: 'main' },
+        });
+
+        expect(res.status).toBe(200);
+        expect(mockEnqueue).toHaveBeenCalledOnce();
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.context.ralph.currentIteration).toBe(1);
+        expect(enqueueArg.repoId).toBe('ws-1');
+    });
+
+    // -----------------------------------------------------------------------
     // Optional fields
     // -----------------------------------------------------------------------
 

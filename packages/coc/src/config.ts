@@ -276,6 +276,8 @@ export interface CLIConfig {
         splitWorkspacePanel?: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide?: boolean;
+        /** Isolated Git worktree execution for Work Item / Ralph launches. Disabled by default. */
+        gitWorktreeExecution?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -594,6 +596,8 @@ export interface ResolvedCLIConfig {
         splitWorkspacePanel: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide: boolean;
+        /** Isolated Git worktree execution for Work Item / Ralph launches. Disabled by default. */
+        gitWorktreeExecution: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -846,6 +850,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         remoteShell: true,
         splitWorkspacePanel: true,
         schedulesInScheduledSlide: true,
+        gitWorktreeExecution: false,
     },
     memoryPromotion: {
         batchSize: 50,

@@ -129,6 +129,36 @@ describe('Work Item Execution Routes', () => {
             expect(res.body.taskId).toBe('task-abc');
         });
 
+        it('rejects a malformed worktree request (AC-01)', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Worktree bad',
+            });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, { status: 'readyToExecute' });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                worktree: { enabled: true, baseRef: '--evil' },
+            });
+            expect(res.status).toBe(400);
+            expect(res.body.error).toMatch(/baseRef/i);
+        });
+
+        it('accepts a valid worktree request (AC-01)', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Worktree ok',
+            });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, { status: 'readyToExecute' });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                worktree: { enabled: true, baseRef: 'main' },
+            });
+            expect(res.status).toBe(200);
+            expect(res.body.taskId).toBe('task-abc');
+        });
+
         it('rejects non-ready work items', async () => {
             await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
                 title: 'Not ready',

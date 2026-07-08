@@ -88,6 +88,22 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.defaultProvider).toBe('copilot');
         expect(result.features.workItemsSyncEnabled).toBe(false);
         expect(result.features.workItemsWorkflowEnabled).toBe(false);
+        expect(result.features.gitWorktreeExecutionEnabled).toBe(false);
+    });
+
+    it('reflects features.gitWorktreeExecution = true from config (AC-01 capability flag)', () => {
+        const svc = createMockRuntimeConfigService({
+            features: {
+                focusedDiff: false,
+                autoMemoryPromotion: false,
+                gitCommitLookup: false,
+                gitCrossCloneCherryPick: true,
+                sessionContextAttachments: false,
+                gitWorktreeExecution: true,
+            },
+        } as any);
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.gitWorktreeExecutionEnabled).toBe(true);
     });
 
     it('reflects features.autoAgentProviderRouting = true from config', () => {

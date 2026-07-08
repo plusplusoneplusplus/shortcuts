@@ -15,6 +15,7 @@ import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 import { parseRalphAiSelection } from './ralph-route-utils';
+import { parseWorktreeExecutionRequest } from '../worktree/worktree-request';
 
 export interface RalphLaunchRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -59,6 +60,14 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
                 return sendError(res, 400, aiSelection.error);
             }
             const { provider, model, reasoningEffort, effortTier, autoProviderRouting } = aiSelection.value;
+
+            // Opt-in Git worktree request. Shape is validated here; the worktree
+            // itself is created by a later wiring step. Omitting it preserves
+            // existing behavior.
+            const worktree = parseWorktreeExecutionRequest(body.worktree);
+            if (!worktree.ok) {
+                return sendError(res, 400, worktree.error);
+            }
 
             // Resolve max iterations: per-repo preference > hardcoded default.
             let prefMax: number | undefined;

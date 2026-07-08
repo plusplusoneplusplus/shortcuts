@@ -252,6 +252,61 @@ describe('POST /api/processes/:id/ralph-start', () => {
         expect(mockEnqueue).not.toHaveBeenCalled();
     });
 
+    it('returns 400 for a malformed worktree request (AC-01)', async () => {
+        await store.addProcess({
+            id: 'queue_grilling-worktree',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                context: { ralph: { phase: 'grilling', sessionId: 's-worktree' } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-worktree/ralph-start', {
+            goalSpec: '## Goal\nDo something',
+            worktree: { enabled: true, baseRef: 'a b' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/baseRef/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('accepts a valid worktree request on a grilling process (AC-01)', async () => {
+        await store.addProcess({
+            id: 'queue_grilling-worktree-ok',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                workspaceId: 'ws-wt',
+                workingDirectory: '/repos/myrepo',
+                context: { ralph: { phase: 'grilling', sessionId: 's-worktree-ok', maxIterations: 6 } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-worktree-ok/ralph-start', {
+            goalSpec: '## Goal\nDo something',
+            workspaceId: 'ws-wt',
+            worktree: { enabled: true, baseRef: 'main' },
+        });
+
+        expect(res.status).toBe(200);
+        expect(mockEnqueue).toHaveBeenCalledOnce();
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.context.ralph.sessionId).toBe('s-worktree-ok');
+        expect(enqueueArg.payload.context.ralph.currentIteration).toBe(1);
+    });
+
     it('initialises the per-session journal directory and session.json', async () => {
         await store.addProcess({
             id: 'queue_grilling-init',

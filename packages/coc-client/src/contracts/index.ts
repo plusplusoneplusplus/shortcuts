@@ -28,3 +28,4 @@ export * from './workflows';
 export * from './wiki';
 export * from './loops';
 export * from './triggers';
+export * from './worktree';

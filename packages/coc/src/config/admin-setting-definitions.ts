@@ -826,6 +826,15 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-effort-levels-enabled',
         },
     }),
+
+    bool({
+        key: 'features.gitWorktreeExecution', default: false, runtime: 'live', runtimeFlag: 'gitWorktreeExecutionEnabled',
+        ui: {
+            group: 'aiModes', order: 50, label: 'Git Worktree Execution', badge: 'experimental',
+            hint: 'Adds an opt-in "Use isolated Git worktree" option to Work Item and Ralph launches so autonomous coding runs in a per-run worktree while the workspace checkout stays untouched. Disabled by default.',
+            testId: 'toggle-git-worktree-execution-enabled',
+        },
+    }),
 ];
 
 // ── derived views ─────────────────────────────────────────────────────────────

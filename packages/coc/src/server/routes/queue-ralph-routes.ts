@@ -16,6 +16,7 @@ import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 import { parseRalphAiSelection } from './ralph-route-utils';
+import { parseWorktreeExecutionRequest } from '../worktree/worktree-request';
 
 export interface QueueRalphRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -61,6 +62,14 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
                 return sendError(res, 400, aiSelection.error);
             }
             const { provider, model, reasoningEffort, effortTier, autoProviderRouting } = aiSelection.value;
+
+            // Opt-in Git worktree request. Shape is validated here; the worktree
+            // itself is created by a later wiring step. Omitting it preserves
+            // existing behavior.
+            const worktree = parseWorktreeExecutionRequest(body.worktree);
+            if (!worktree.ok) {
+                return sendError(res, 400, worktree.error);
+            }
 
             // Resolve process (handle queue_ prefix vs bare UUID)
             let proc = await store.getProcess(rawId, workspaceId);
