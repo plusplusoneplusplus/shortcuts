@@ -188,6 +188,43 @@ for Work Item completion hooks, and records `ralphSessionId`, selected content
 version, execution mode, skills, and AI settings in the Work Item execution
 history.
 
+## Worktree Execution Mode
+
+Ralph launches can opt into running inside an isolated per-run Git worktree so
+autonomous coding never touches the workspace's current checkout. The mode is
+gated by the disabled-by-default `features.gitWorktreeExecution` flag; when off,
+every path below is bypassed and behavior is unchanged.
+
+The opt-in travels as `worktree: { enabled: true, baseRef? }` on
+`POST /api/ralph-launch`, `POST /api/processes/:id/ralph-start`, and the Work
+Item `execute` route with `executionMode='ralph'`. The shared helper
+`packages/coc/src/server/ralph/ralph-worktree-launch.ts`
+(`createRalphLaunchWorktree` + `attachWorktreeToRalphSession`) flag-gates,
+resolves the **target server's own** workspace checkout root
+(`processStore.getWorkspaces().find(id).rootPath` — the server always creates the
+worktree for its own repo; remoteness is a client routing concern gated by the
+runtime capability flag), and calls `GitWorktreeService.createWorktree` **before**
+`initSession`/enqueue so a Git failure (bad `baseRef`, non-Git folder) aborts the
+launch before the first iteration is queued and before any session state changes.
+Default base is the checkout's current `HEAD`; a supplied `baseRef` must resolve
+locally. Uncommitted source changes are excluded and surfaced as a warning.
+
+The resolved `WorktreeMetadata` is persisted onto the Ralph session record
+(`RalphSessionRecord.worktree`), carried in the dependency-free `coc-workflow`
+package as the structural mirror `RalphWorktreeMetadata`. The first iteration's
+task is enqueued with `payload.workingDirectory` set to the worktree path; the
+queue-executor bridge threads that directory into every later iteration and the
+final check automatically. Resume/continue/new-loop recover it through
+`recoverIterationPaths` in `ralph-route-utils.ts`, which **prefers**
+`record.worktree.path` when `status === 'active'` so a stuck or extended session
+keeps running in the worktree rather than falling back to the source checkout.
+
+Cleanup is manual and non-destructive — see the worktree routes in
+[rest-api.md](rest-api.md#git-worktrees) and the chip/list UI in
+[dashboard-spa.md](dashboard-spa.md); the worktree is preserved after the session
+completes until the user explicitly removes it, and the generated branch is never
+deleted.
+
 ## Promote Ask-Mode Chat to Ralph
 
 A completed ask-mode chat can be promoted to a Ralph session in place via

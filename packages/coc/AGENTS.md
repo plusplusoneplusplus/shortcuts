@@ -101,6 +101,24 @@ all have their own `references/*.md`.
   from the current iteration's `progress.md` section (via `recentProgressSections`,
   which must include `iteration`). The inline token stays authoritative when
   present; `NO_SIGNAL` is terminal only when neither source carries a signal.
+- **Git worktree execution** (opt-in, `features.gitWorktreeExecution`, default
+  off) lives in `src/server/worktree/` (`GitWorktreeService` +
+  `WorktreeMetadataStore`) with Ralph wiring in
+  `src/server/ralph/ralph-worktree-launch.ts` and cleanup routes in
+  `src/server/routes/worktree-routes.ts` (see
+  [ralph.md](../../.github/skills/coc-knowledge/references/ralph.md) and
+  [rest-api.md](../../.github/skills/coc-knowledge/references/rest-api.md#git-worktrees)).
+  Invariants: all per-run data stays under
+  `~/.coc/repos/<workspaceId>/git-worktrees/` (never a new top-level `~/.coc`
+  dir); the target server only ever creates a worktree for its **own**
+  workspace checkout; worktrees are created from committed objects only
+  (`git worktree add -b <branch> <path> <baseSha>`) with **no** fetch/pull/push/
+  rebase/merge and **no** source-branch switch (`git checkout`/`switch`/
+  `reset --hard`); creation is fail-before-queue so an invalid ref/non-Git
+  folder aborts before any task is enqueued or status transitions; cleanup uses
+  `git worktree remove` **without** `--force`, never deletes the generated
+  branch, and surfaces the raw Git error (leaving the record intact) rather than
+  discarding a dirty worktree.
 - **Loop ticks** must route completion through
   `ProcessLifecycleRunner → onLoopTickComplete → LoopExecutor.onTickComplete`;
   bookkeeping errors must never mask the follow-up's actual result.
