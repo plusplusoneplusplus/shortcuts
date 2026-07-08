@@ -2391,6 +2391,15 @@ describe('CLITaskExecutor', () => {
             expect(result.error?.message).toContain('cancelled');
         });
 
+        it('cancelProcess rejects when queue manager is wired but queue executor is not ready', async () => {
+            const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+            executor.setQueueManager(new TaskQueueManager());
+
+            await expect(executor.cancelProcess('queue_task-half-wired')).rejects.toThrow(
+                'cancelProcess cannot run before the queue executor is wired',
+            );
+        });
+
         it('createQueueExecutorBridge wires QueueExecutor to CLITaskExecutor', async () => {
             const qm = new TaskQueueManager();
             const { executor: queueExecutor, bridge } = createQueueExecutorBridge(qm, store, { autoStart: false });

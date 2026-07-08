@@ -7,7 +7,7 @@ import { RALPH_GRILL_MAX_ROUNDS } from '../../../src/server/ralph/grill-planning
 
 class InspectableChatExecutor extends ChatExecutor {
     getRalphGrillState(processId: string) {
-        return this.sessions.get(processId)?.ralphGrill;
+        return super.getRalphGrillState(processId);
     }
 }
 

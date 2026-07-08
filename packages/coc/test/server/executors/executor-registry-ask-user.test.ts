@@ -1,11 +1,11 @@
 /**
  * ExecutorRegistry.getAskUserHandles — followUpExecutor regression
  *
- * Regression: ask-user questions raised during a follow-up turn lived in
- * followUpExecutor.sessions but getAskUserHandles only searched chatExecutor.
- * The fix adds followUpExecutor to the lookup chain so that
- * POST /api/processes/:id/ask-user-response returns 200 instead of 404 when
- * the user answers a question in a second (or later) turn.
+ * Ask-user questions raised during a follow-up turn are owned by the
+ * follow-up executor, so getAskUserHandles must search both ask-mode and
+ * follow-up executors. This keeps POST /api/processes/:id/ask-user-response
+ * returning 200 instead of 404 when the user answers a question in a second
+ * (or later) turn.
  */
 
 import { describe, it, expect, vi } from 'vitest';

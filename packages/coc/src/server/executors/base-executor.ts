@@ -17,46 +17,19 @@
 import type { ConversationTurn, GenericProcessMetadata, ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory, mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../processes/output-file-manager';
-import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
-import type { RalphGrillProcessState } from '../ralph/grill-planning';
+import {
+    ProcessSessionRegistry,
+    type InteractiveAskUserHandles,
+    type RalphGrillState,
+    type StreamingTurnState,
+    type TurnWriteState,
+} from './process-session-registry';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-/**
- * Consolidated per-process state held for the lifetime of a single task execution.
- * A single entry is created on first access. cleanupSession() clears per-turn
- * streaming state and retains only durable cross-turn state when needed.
- */
-export interface ProcessSessionState {
-    outputBuffer: string;
-    timelineBuffer: TimelineItem[];
-    throttleState: { chunksSinceLastFlush: number; lastFlushTime: number };
-    pendingSuggestions: string[] | undefined;
-    /**
-     * True once the turn's final assistant turn has been persisted. Blocks
-     * late streaming flushes (e.g. an SSE subscriber's requestFlush racing
-     * turn completion) from re-inserting the buffered content as a zombie
-     * streaming turn after the final append.
-     */
-    turnFinalized: boolean;
-    /**
-     * Serializes streaming-flush and final-append store writes for this
-     * process so they cannot interleave across async store implementations.
-     */
-    turnWriteChain: Promise<void>;
-    /** Pending ask-user tool instance for mid-turn user interaction. */
-    pendingAskUser?: {
-        answerQuestion: (questionId: string, answer: AskUserAnswerValue) => boolean;
-        skipQuestion: (questionId: string) => boolean;
-        answerQuestions: (responses: AskUserAnswerInput[]) => boolean;
-        cancelAll: () => void;
-        hasPending: () => boolean;
-    };
-    /** Multi-round Ralph grill agent state that survives across chat turns for this process. */
-    ralphGrill?: RalphGrillProcessState;
-}
+export type { InteractiveAskUserHandles, StreamingTurnState };
 
 // ============================================================================
 // BaseExecutor
@@ -69,8 +42,8 @@ export abstract class BaseExecutor {
     /** Set of task IDs that have been cancelled. */
     protected readonly cancelledTasks: Set<string> = new Set();
 
-    /** Consolidated per-process session state. */
-    protected readonly sessions = new Map<string, ProcessSessionState>();
+    /** Owns per-process executor session state with explicit cleanup policy. */
+    protected readonly sessions = new ProcessSessionRegistry();
 
     /** Time-based throttle: flush every N milliseconds. */
     protected static readonly THROTTLE_TIME_MS = 5000;
@@ -87,40 +60,14 @@ export abstract class BaseExecutor {
     // Session lifecycle
     // ========================================================================
 
-    /** Get or create the session state for a process. */
-    protected getOrCreateSession(processId: string): ProcessSessionState {
-        let session = this.sessions.get(processId);
-        if (!session) {
-            session = {
-                outputBuffer: '',
-                timelineBuffer: [],
-                throttleState: { chunksSinceLastFlush: 0, lastFlushTime: 0 },
-                pendingSuggestions: undefined,
-                turnFinalized: false,
-                turnWriteChain: Promise.resolve(),
-            };
-            this.sessions.set(processId, session);
-        }
-        return session;
+    /** Get or create per-turn streaming state for a process. */
+    protected getOrCreateStreamingState(processId: string): StreamingTurnState {
+        return this.sessions.getStreaming(processId);
     }
 
-    /** Clear per-turn session state, retaining cross-turn Ralph grill state when present. */
+    /** Clear per-turn state, retaining cross-turn Ralph grill state when present. */
     protected cleanupSession(processId: string): void {
-        const ralphGrill = this.sessions.get(processId)?.ralphGrill;
-        if (!ralphGrill) {
-            this.sessions.delete(processId);
-            return;
-        }
-
-        this.sessions.set(processId, {
-            outputBuffer: '',
-            timelineBuffer: [],
-            throttleState: { chunksSinceLastFlush: 0, lastFlushTime: 0 },
-            pendingSuggestions: undefined,
-            turnFinalized: false,
-            turnWriteChain: Promise.resolve(),
-            ralphGrill,
-        });
+        this.sessions.cleanupTurn(processId);
     }
 
     protected async clearPendingAskUser(processId: string): Promise<void> {
@@ -133,18 +80,48 @@ export abstract class BaseExecutor {
      * without deleting the session entry itself.
      */
     protected resetSessionStreamingState(processId: string): void {
-        const session = this.getOrCreateSession(processId);
-        session.outputBuffer = '';
-        session.timelineBuffer.length = 0;
-        session.pendingSuggestions = undefined;
-        session.throttleState.chunksSinceLastFlush = 0;
-        session.throttleState.lastFlushTime = 0;
-        session.turnFinalized = false;
+        this.sessions.resetStreaming(processId);
     }
 
     /** Look up the pending ask-user handles for a process (if any). */
-    getAskUserHandles(processId: string): ProcessSessionState['pendingAskUser'] | undefined {
-        return this.sessions.get(processId)?.pendingAskUser;
+    getAskUserHandles(processId: string): InteractiveAskUserHandles | undefined {
+        return this.sessions.getAskUserHandles(processId);
+    }
+
+    protected setAskUserHandles(processId: string, handles: InteractiveAskUserHandles): void {
+        this.sessions.setAskUserHandles(processId, handles);
+    }
+
+    protected clearAskUserHandles(processId: string): void {
+        this.sessions.clearAskUserHandles(processId);
+    }
+
+    protected cancelAskUserHandles(processId: string): void {
+        this.sessions.cancelAskUserHandles(processId);
+    }
+
+    protected getRalphGrillState(processId: string): RalphGrillState['current'] {
+        return this.sessions.getRalphGrillState(processId);
+    }
+
+    protected setRalphGrillState(processId: string, state: RalphGrillState['current']): void {
+        this.sessions.setRalphGrillState(processId, state);
+    }
+
+    protected getOutputBuffer(processId: string): string {
+        return this.sessions.getStreamingIfPresent(processId)?.outputBuffer ?? '';
+    }
+
+    protected appendOutputChunk(processId: string, chunk: string): void {
+        this.sessions.getStreaming(processId).outputBuffer += chunk;
+    }
+
+    protected getTimelineBuffer(processId: string): TimelineItem[] | undefined {
+        return this.sessions.getStreamingIfPresent(processId)?.timelineBuffer;
+    }
+
+    protected getPendingSuggestions(processId: string): string[] | undefined {
+        return this.sessions.getPendingSuggestions(processId);
     }
 
     /**
@@ -179,15 +156,15 @@ export abstract class BaseExecutor {
 
     /** Append a timeline item to the in-memory buffer for a process. */
     protected appendTimelineItem(processId: string, item: TimelineItem): void {
-        const session = this.getOrCreateSession(processId);
-        const last = session.timelineBuffer.length > 0
-            ? session.timelineBuffer[session.timelineBuffer.length - 1]
+        const streaming = this.sessions.getStreaming(processId);
+        const last = streaming.timelineBuffer.length > 0
+            ? streaming.timelineBuffer[streaming.timelineBuffer.length - 1]
             : undefined;
         // Merge consecutive content items to avoid word-per-line rendering
         if (last && last.type === 'content' && item.type === 'content') {
             last.content = (last.content ?? '') + (item.content ?? '');
         } else {
-            session.timelineBuffer.push(item);
+            streaming.timelineBuffer.push(item);
         }
     }
 
@@ -198,17 +175,17 @@ export abstract class BaseExecutor {
      * - Chunks since last flush >= THROTTLE_CHUNK_COUNT (50 chunks)
      */
     protected checkThrottleAndFlush(processId: string): void {
-        const session = this.getOrCreateSession(processId);
-        session.throttleState.chunksSinceLastFlush++;
+        const streaming = this.sessions.getStreaming(processId);
+        streaming.throttleState.chunksSinceLastFlush++;
 
-        const timeSinceFlush = Date.now() - session.throttleState.lastFlushTime;
+        const timeSinceFlush = Date.now() - streaming.throttleState.lastFlushTime;
         if (
-            session.throttleState.chunksSinceLastFlush >= BaseExecutor.THROTTLE_CHUNK_COUNT ||
+            streaming.throttleState.chunksSinceLastFlush >= BaseExecutor.THROTTLE_CHUNK_COUNT ||
             timeSinceFlush >= BaseExecutor.THROTTLE_TIME_MS
         ) {
             // Reset counters synchronously to prevent duplicate flushes
-            session.throttleState.chunksSinceLastFlush = 0;
-            session.throttleState.lastFlushTime = Date.now();
+            streaming.throttleState.chunksSinceLastFlush = 0;
+            streaming.throttleState.lastFlushTime = Date.now();
             this.flushConversationTurn(processId, true).catch(() => {
                 // Non-fatal: don't fail the task because of flush
             });
@@ -221,9 +198,9 @@ export abstract class BaseExecutor {
      * of how the underlying store schedules its writes.
      */
     private chainTurnWrite<T>(processId: string, op: () => Promise<T>): Promise<T> {
-        const session = this.getOrCreateSession(processId);
-        const result = session.turnWriteChain.then(op, op);
-        session.turnWriteChain = result.then(() => undefined, () => undefined);
+        const writeState: TurnWriteState = this.sessions.getTurnWrite(processId);
+        const result = writeState.chain.then(op, op);
+        writeState.chain = result.then(() => undefined, () => undefined);
         return result;
     }
 
@@ -238,21 +215,21 @@ export abstract class BaseExecutor {
      * permanent duplicate streaming turn.
      */
     protected async flushConversationTurn(processId: string, streaming: boolean): Promise<void> {
-        const session = this.sessions.get(processId);
-        if (!session || session.turnFinalized) return;
-        const buffer = session.outputBuffer;
-        const hasTimeline = session.timelineBuffer.length > 0;
+        const streamingState = this.sessions.getStreamingIfPresent(processId);
+        if (!streamingState || streamingState.turnFinalized) return;
+        const buffer = streamingState.outputBuffer;
+        const hasTimeline = streamingState.timelineBuffer.length > 0;
         if (buffer == null && !hasTimeline) return;
 
         // Snapshot buffer + timeline synchronously at call time so throttled
         // flushes persist progressively growing content; only the store write
         // itself is serialized through the chain.
-        const timelineSnapshot = mergeConsecutiveContentItems([...session.timelineBuffer]);
+        const timelineSnapshot = mergeConsecutiveContentItems([...streamingState.timelineBuffer]);
 
         return this.chainTurnWrite(processId, async () => {
             // Re-validate inside the chain: the turn may have been finalized
             // or the session cleaned up while this flush waited its turn.
-            if (session !== this.sessions.get(processId) || session.turnFinalized) return;
+            if (streamingState !== this.sessions.getStreamingIfPresent(processId) || streamingState.turnFinalized) return;
             try {
                 await this.store.upsertStreamingTurn(processId, buffer ?? '', streaming, timelineSnapshot);
             } catch {
@@ -275,8 +252,8 @@ export abstract class BaseExecutor {
         options?: Parameters<ProcessStore['appendConversationTurn']>[2],
     ): Promise<{ turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined> {
         return this.chainTurnWrite(processId, async () => {
-            const session = this.getOrCreateSession(processId);
-            session.turnFinalized = true;
+            const streaming = this.sessions.getStreaming(processId);
+            streaming.turnFinalized = true;
             return this.store.appendConversationTurn(processId, makeTurn, options);
         });
     }
@@ -302,7 +279,7 @@ export abstract class BaseExecutor {
                     const parsed = JSON.parse(event.result || '{}');
                     const suggestions: string[] = Array.isArray(parsed?.suggestions) ? parsed.suggestions : [];
                     if (suggestions.length > 0) {
-                        this.getOrCreateSession(processId).pendingSuggestions = suggestions;
+                        this.sessions.setPendingSuggestions(processId, suggestions);
                         this.store.emitProcessEvent(processId, {
                             type: 'suggestions',
                             suggestions,

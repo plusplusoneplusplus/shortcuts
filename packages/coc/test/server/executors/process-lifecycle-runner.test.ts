@@ -1150,8 +1150,8 @@ describe('ProcessLifecycleRunner — ralph onRalphNext callback', () => {
 // ============================================================================
 
 /**
- * Subclass that exposes the protected `getOrCreateSession` so tests can seed
- * the session buffers used by the error-recovery path. Mirrors what the
+ * Subclass that exposes the protected streaming state so tests can seed
+ * the buffers used by the error-recovery path. Mirrors what the
  * real streaming pipeline does on every chunk.
  */
 class TestableRunner extends ProcessLifecycleRunner {
@@ -1160,7 +1160,7 @@ class TestableRunner extends ProcessLifecycleRunner {
         outputBuffer: string,
         timeline: import('@plusplusoneplusplus/forge').TimelineItem[] = [],
     ): void {
-        const session = (this as any).getOrCreateSession(processId);
+        const session = (this as any).getOrCreateStreamingState(processId);
         session.outputBuffer = outputBuffer;
         session.timelineBuffer = timeline;
     }

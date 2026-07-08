@@ -332,7 +332,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             ? undefined
             : buildConversationHistoryContext(process.conversationTurns);
 
-        this.getOrCreateSession(processId).outputBuffer = '';
+        this.resetSessionStreamingState(processId);
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
         let chatCtx: ChatTurnContext | undefined;
@@ -400,14 +400,13 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 },
             });
             const filteredTools = chatCtx.tools;
-            const session = this.getOrCreateSession(processId);
-            session.pendingAskUser = {
+            this.setAskUserHandles(processId, {
                 answerQuestion: chatCtx.askUser!.answerQuestion,
                 skipQuestion: chatCtx.askUser!.skipQuestion,
                 answerQuestions: chatCtx.askUser!.answerQuestions,
                 cancelAll: chatCtx.askUser!.cancelAll,
                 hasPending: chatCtx.askUser!.hasPending,
-            };
+            });
 
             // Build the system message AFTER the tool bundle so the
             // tool-guidance prose lives in `systemMessage` (sent once at
@@ -535,7 +534,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     });
                 },
                 onStreamingChunk: (chunk: string) => {
-                    this.getOrCreateSession(processId).outputBuffer += chunk;
+                    this.appendOutputChunk(processId, chunk);
                     this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
                     try {
                         this.store.emitProcessOutput(processId, chunk);
@@ -562,7 +561,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[FollowUp] Completed for ${processId} in ${duration}ms`);
 
-            const followUpTimeline = mergeConsecutiveContentItems(this.sessions.get(processId)?.timelineBuffer || []);
+            const followUpTimeline = mergeConsecutiveContentItems(this.getTimelineBuffer(processId) || []);
 
             if (!result.success) {
                 throw new Error(result.error || 'Follow-up execution failed');
@@ -571,7 +570,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 throw new Error('Provider did not resume the stopped SDK session.');
             }
 
-            const pendingSuggestions = this.sessions.get(processId)?.pendingSuggestions;
+            const pendingSuggestions = this.getPendingSuggestions(processId);
             let assistantTurn: ConversationTurn;
             let allTurns: ConversationTurn[];
             let assistantTurnIndex = process.conversationTurns?.length ?? 0;
@@ -732,12 +731,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const failedAt = new Date();
             logger.error(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
 
-            const session = this.sessions.get(processId);
-            const partialContent = session?.outputBuffer ?? '';
-            const partialTimeline = session?.timelineBuffer
-                ? mergeConsecutiveContentItems([...session.timelineBuffer])
+            const partialContent = this.getOutputBuffer(processId);
+            const timelineBuffer = this.getTimelineBuffer(processId);
+            const partialTimeline = timelineBuffer
+                ? mergeConsecutiveContentItems([...timelineBuffer])
                 : [];
-            const partialSuggestions = session?.pendingSuggestions;
+            const partialSuggestions = this.getPendingSuggestions(processId);
             const hasPartial = partialContent.length > 0 || partialTimeline.length > 0;
 
             await this.appendFinalConversationTurn(
@@ -782,7 +781,16 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             }
         } finally {
             chatCtx?.dispose();
-            const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
+            this.cancelAskUserHandles(processId);
+            try {
+                await this.clearPendingAskUser(processId);
+            } catch (err) {
+                logger.debug(
+                    LogCategory.AI,
+                    `[FollowUp] Failed to clear pending ask-user for ${processId}: ${err instanceof Error ? err.message : String(err)}`,
+                );
+            }
+            const buffer = this.getOutputBuffer(processId);
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);
             await this.persistOutput(processId, buffer);
