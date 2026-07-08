@@ -42,6 +42,7 @@ import {
 } from '../work-items/work-item-response-cache';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 import { parseWorktreeExecutionRequest } from '../worktree/worktree-request';
+import { GitWorktreeService } from '../worktree/worktree-service';
 
 const VALID_EFFORT_TIERS = new Set(['very-low', 'low', 'medium', 'high']);
 const execFileAsync = promisify(execFile);
@@ -312,6 +313,8 @@ export interface WorkItemExecutionRouteContext {
     enqueue?: EnqueueFunction;
     getWsServer?: () => ProcessWebSocketServer;
     getWorkflowEnabled?: () => boolean;
+    /** Whether the opt-in Git worktree execution feature flag is enabled on this server. */
+    getGitWorktreeExecutionEnabled?: () => boolean;
     runCommand?: WorkItemCommandRunner;
     /** CoC data directory (e.g. ~/.coc). When provided, a placeholder task file is
      *  created in the workspace tasks folder as soon as execution is enqueued so that
@@ -320,7 +323,7 @@ export interface WorkItemExecutionRouteContext {
 }
 
 export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteContext): void {
-    const { routes, workItemStore, processStore, enqueue, getWsServer, dataDir, getWorkflowEnabled } = ctx;
+    const { routes, workItemStore, processStore, enqueue, getWsServer, dataDir, getWorkflowEnabled, getGitWorktreeExecutionEnabled } = ctx;
     const runCommand = ctx.runCommand ?? defaultCommandRunner;
 
     // POST /api/origins/:originId/work-items/:wid/execute — Execute work item
@@ -361,12 +364,15 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 return handleAPIError(res, badRequest(`Only WorkItem and Bug items can be executed. "${effectiveType}" is a planning container.`));
             }
 
-            // Capture git HEAD before execution for commit range tracking
+            // Capture git HEAD before execution for commit range tracking, and
+            // the source checkout path (used as the worktree base when requested).
             let headBefore: string | undefined;
+            let sourceRepoRoot: string | undefined;
             try {
                 const workspaces = await processStore.getWorkspaces();
                 const workspace = workspaces.find(w => w.id === repoId);
                 if (workspace?.rootPath) {
+                    sourceRepoRoot = workspace.rootPath;
                     headBefore = execGit(['rev-parse', 'HEAD'], workspace.rootPath);
                 }
             } catch { /* non-fatal — commit tracking will be skipped */ }
@@ -446,6 +452,23 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     ? readRepoPreferences(dataDir, repoId).maxRalphIterations ?? RALPH_DEFAULT_MAX_ITERATIONS
                     : undefined;
 
+                // Opt-in Git worktree execution: gate on the feature flag and
+                // resolve the source checkout before handing the service to the
+                // executor, which creates the worktree before queueing anything.
+                let worktreeService: GitWorktreeService | undefined;
+                if (worktree.value?.enabled) {
+                    if (getGitWorktreeExecutionEnabled?.() !== true) {
+                        return handleAPIError(res, badRequest('Git worktree execution is not enabled'));
+                    }
+                    if (!dataDir) {
+                        return handleAPIError(res, badRequest('Git worktree execution is not available on this server'));
+                    }
+                    if (!sourceRepoRoot) {
+                        return handleAPIError(res, badRequest('Workspace root is not available for worktree execution'));
+                    }
+                    worktreeService = new GitWorktreeService({ dataDir });
+                }
+
                 const result = await executeWorkItem(workItemId, workItemStore, enqueue, {
                     repoId: scope.storageRepoId,
                     workspaceId: repoId,
@@ -461,6 +484,9 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                     headBefore,
                     taskFilePath,
                     skillNames: skillNames?.length ? skillNames : undefined,
+                    worktree: worktree.value,
+                    worktreeService,
+                    sourceRepoRoot,
                 });
                 const updatedItem = await workItemStore.getWorkItem(workItemId, scope.storageRepoId);
                 if (updatedItem) {

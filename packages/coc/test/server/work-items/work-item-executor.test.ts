@@ -14,9 +14,41 @@ import {
     saveGoalGrillingSpecFromResponse,
 } from '../../../src/server/work-items/work-item-executor';
 import type { WorkItem } from '../../../src/server/work-items/types';
+import type { GitWorktreeService, CreateWorktreeResult } from '../../../src/server/worktree/worktree-service';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
+
+/**
+ * Minimal fake GitWorktreeService whose `createWorktree` echoes its input into a
+ * metadata record. Lets the executor tests assert worktree wiring without real
+ * Git. Pass `fail` to simulate a creation failure (invalid ref, non-Git folder).
+ */
+function makeFakeWorktreeService(opts: { fail?: Error; warning?: string } = {}): {
+    service: GitWorktreeService;
+    createWorktree: ReturnType<typeof vi.fn>;
+} {
+    const createWorktree = vi.fn(async (input: any): Promise<CreateWorktreeResult> => {
+        if (opts.fail) throw opts.fail;
+        return {
+            metadata: {
+                id: input.runId,
+                workspaceId: input.workspaceId,
+                path: `/tmp/coc-worktrees/${input.runId}`,
+                branch: `coc/slug-${input.runId}`,
+                ...(input.baseRef ? { baseRef: input.baseRef } : {}),
+                baseSha: 'deadbeefcafe',
+                createdAt: '2026-01-01T00:00:00.000Z',
+                sourceDirty: Boolean(opts.warning),
+                ...(opts.warning ? { sourceDirtyWarning: opts.warning } : {}),
+                ...(input.ralphSessionId ? { ralphSessionId: input.ralphSessionId } : {}),
+                status: 'active' as const,
+            },
+            ...(opts.warning ? { warning: opts.warning } : {}),
+        };
+    });
+    return { service: { createWorktree } as unknown as GitWorktreeService, createWorktree };
+}
 
 function makeWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
     return {
@@ -269,6 +301,146 @@ describe('executeWorkItem', () => {
 
         const call = enqueue.mock.calls[0][0];
         expect(call.payload.context).toBeUndefined();
+    });
+
+    // ── AC-03: Git worktree execution wiring ──
+    describe('worktree execution (AC-03)', () => {
+        it('one-shot: creates the worktree before queueing and runs in its path', async () => {
+            const item = makeWorkItem({ id: 'wi-wt-oneshot', title: 'Add feature X', status: 'readyToExecute' });
+            await store.addWorkItem(item);
+
+            const enqueue = vi.fn().mockResolvedValue('task-wt-1');
+            const { service, createWorktree } = makeFakeWorktreeService();
+
+            const result = await executeWorkItem('wi-wt-oneshot', store, enqueue, {
+                worktree: { enabled: true, baseRef: 'develop' },
+                worktreeService: service,
+                sourceRepoRoot: '/repos/src',
+            });
+
+            // Worktree is created before the task is enqueued.
+            expect(createWorktree).toHaveBeenCalledOnce();
+            expect(createWorktree.mock.invocationCallOrder[0]).toBeLessThan(enqueue.mock.invocationCallOrder[0]);
+            expect(createWorktree.mock.calls[0][0]).toMatchObject({
+                workspaceId: 'test-repo',
+                sourceRepoRoot: '/repos/src',
+                baseRef: 'develop',
+                slug: 'Add feature X',
+            });
+            expect(createWorktree.mock.calls[0][0].runId).toMatch(/^wt-/);
+
+            // The queued chat task runs in the worktree checkout.
+            const call = enqueue.mock.calls[0][0];
+            const worktreePath = result.worktree!.path;
+            expect(call.payload.workingDirectory).toBe(worktreePath);
+            expect(call.payload.folderPath).toBe(worktreePath);
+
+            // Execution history records the worktree metadata for later inspection/cleanup.
+            const updated = await store.getWorkItem('wi-wt-oneshot', 'test-repo');
+            expect(updated!.status).toBe('executing');
+            expect(updated!.executionHistory![0].worktree).toMatchObject({
+                path: worktreePath,
+                branch: result.worktree!.branch,
+                baseRef: 'develop',
+                status: 'active',
+            });
+            expect(result.worktree).toBeDefined();
+        });
+
+        it('ralph: keys the worktree by the ralph session id and runs iteration 1 in it', async () => {
+            const item = makeWorkItem({
+                id: 'goal-wt-ralph',
+                type: 'goal',
+                status: 'readyToExecute',
+                plan: { version: 1, currentVersion: 1, content: '## Goal\nShip', updatedAt: '' },
+                currentContentVersion: 1,
+                tracker: { kind: 'local-only' },
+            });
+            await store.addWorkItem(item);
+
+            const enqueue = vi.fn().mockResolvedValue('task-wt-ralph');
+            const { service, createWorktree } = makeFakeWorktreeService();
+
+            const result = await executeWorkItem('goal-wt-ralph', store, enqueue, {
+                dataDir: tmpDir,
+                maxRalphIterations: 5,
+                worktree: { enabled: true },
+                worktreeService: service,
+                sourceRepoRoot: '/repos/src',
+            });
+
+            // The worktree run id is the ralph session id, and the linkage is passed through.
+            expect(createWorktree.mock.calls[0][0].runId).toBe(result.ralphSessionId);
+            expect(createWorktree.mock.calls[0][0].ralphSessionId).toBe(result.ralphSessionId);
+
+            // Iteration 1 executes in the worktree path.
+            const call = enqueue.mock.calls[0][0];
+            expect(call.payload.workingDirectory).toBe(result.worktree!.path);
+            expect(call.payload.folderPath).toBe(result.worktree!.path);
+            expect(call.payload.mode).toBe('ralph');
+
+            const updated = await store.getWorkItem('goal-wt-ralph', 'test-repo');
+            expect(updated!.executionHistory![0].worktree!.ralphSessionId).toBe(result.ralphSessionId);
+        });
+
+        it('aborts the launch when worktree creation fails: no enqueue, no status change', async () => {
+            const item = makeWorkItem({ id: 'wi-wt-fail', status: 'readyToExecute' });
+            await store.addWorkItem(item);
+
+            const enqueue = vi.fn().mockResolvedValue('task-should-not-run');
+            const { service } = makeFakeWorktreeService({ fail: new Error('Base ref "nope" does not resolve to a commit in this repository') });
+
+            await expect(executeWorkItem('wi-wt-fail', store, enqueue, {
+                worktree: { enabled: true, baseRef: 'nope' },
+                worktreeService: service,
+                sourceRepoRoot: '/repos/src',
+            })).rejects.toThrow(/does not resolve to a commit/);
+
+            expect(enqueue).not.toHaveBeenCalled();
+            const unchanged = await store.getWorkItem('wi-wt-fail', 'test-repo');
+            expect(unchanged!.status).toBe('readyToExecute');
+            expect(unchanged!.executionHistory ?? []).toHaveLength(0);
+        });
+
+        it('throws when worktree is requested but no service/source root is supplied', async () => {
+            const item = makeWorkItem({ id: 'wi-wt-nosvc', status: 'readyToExecute' });
+            await store.addWorkItem(item);
+
+            const enqueue = vi.fn().mockResolvedValue('task-x');
+            await expect(executeWorkItem('wi-wt-nosvc', store, enqueue, {
+                worktree: { enabled: true },
+            })).rejects.toThrow(/not available/i);
+            expect(enqueue).not.toHaveBeenCalled();
+        });
+
+        it('surfaces the dirty-source warning from the worktree service', async () => {
+            const item = makeWorkItem({ id: 'wi-wt-dirty', status: 'readyToExecute' });
+            await store.addWorkItem(item);
+
+            const enqueue = vi.fn().mockResolvedValue('task-wt-dirty');
+            const { service } = makeFakeWorktreeService({ warning: 'source has uncommitted changes' });
+
+            const result = await executeWorkItem('wi-wt-dirty', store, enqueue, {
+                worktree: { enabled: true },
+                worktreeService: service,
+                sourceRepoRoot: '/repos/src',
+            });
+            expect(result.worktreeWarning).toBe('source has uncommitted changes');
+        });
+
+        it('leaves non-worktree launches unchanged (no workingDirectory override)', async () => {
+            const item = makeWorkItem({ id: 'wi-no-wt', status: 'readyToExecute' });
+            await store.addWorkItem(item);
+
+            const enqueue = vi.fn().mockResolvedValue('task-plain');
+            const result = await executeWorkItem('wi-no-wt', store, enqueue);
+
+            const call = enqueue.mock.calls[0][0];
+            expect(call.payload.workingDirectory).toBeUndefined();
+            expect(result.worktree).toBeUndefined();
+            const updated = await store.getWorkItem('wi-no-wt', 'test-repo');
+            expect(updated!.executionHistory![0].worktree).toBeUndefined();
+        });
     });
 });
 

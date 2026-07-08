@@ -1026,6 +1026,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getWorkItemsWorkflowEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.workflow?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.workflow?.enabled ?? false;
+    const getGitWorktreeExecutionEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.features?.gitWorktreeExecution ?? false
+        : () => opts.resolvedConfig?.features?.gitWorktreeExecution ?? false;
     // AI-draft route must be registered before generic /:workItemId routes to prevent "ai-draft" from matching as an ID
     const workItemAiGenerators = createWorkItemAiGenerators({ aiService: resolvedAiService });
     registerWorkItemAiRoutes({
@@ -1072,7 +1075,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
     });
     registerWorkItemPlanRoutes({ routes, workItemStore, processStore: store, getWsServer, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
-    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
+    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir, getWorkflowEnabled: getWorkItemsWorkflowEnabled, getGitWorktreeExecutionEnabled });
     registerWorkItemChangesRoutes({ routes, workItemStore, processStore: store, getWsServer });
 
     const activeWorkspaceBackgroundRefresher = new ActiveWorkspaceBackgroundRefresher({
