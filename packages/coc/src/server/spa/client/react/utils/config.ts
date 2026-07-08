@@ -67,6 +67,11 @@ interface DashboardConfig {
     gitCommitLookupEnabled?: boolean;
     /** Whether cross-clone cherry-pick transfer in the Git tab is enabled (feature flag). */
     gitCrossCloneCherryPickEnabled?: boolean;
+    /**
+     * Whether opt-in Git worktree execution is enabled (feature flag). Doubles
+     * as the target-server capability signal exposed via GET /api/config/runtime.
+     */
+    gitWorktreeExecutionEnabled?: boolean;
     /** Whether the Effort Tiers selector (Low/Medium/High) is enabled in the composer. Disabled by default. */
     effortLevelsEnabled?: boolean;
     /** Whether the read-only native CLI sessions tab is enabled (feature flag). */
@@ -437,6 +442,15 @@ export function isGitCommitLookupEnabled(): boolean {
 /** Returns true when cross-clone cherry-pick transfer in the Git tab is enabled. */
 export function isGitCrossCloneCherryPickEnabled(): boolean {
     return getConfig().gitCrossCloneCherryPickEnabled === true;
+}
+
+/**
+ * Returns true when opt-in Git worktree execution is enabled on the active
+ * server. Reads the same runtime flag the target server advertises as its
+ * worktree capability signal.
+ */
+export function isGitWorktreeExecutionEnabled(): boolean {
+    return getConfig().gitWorktreeExecutionEnabled === true;
 }
 
 /** Returns true when the Effort Tiers selector is enabled (replaces model picker + effort pill). */

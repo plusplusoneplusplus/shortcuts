@@ -24,6 +24,7 @@ import type {
 } from '@plusplusoneplusplus/coc-client';
 import { RalphWorkflowNode } from './RalphWorkflowNode';
 import { RalphFinalCheckNode } from './RalphFinalCheckNode';
+import { WorktreeChip } from '../../shared/WorktreeChip';
 import { useCocClient } from '../../repos/cloneRouting';
 import { RALPH_MULTI_LOOP } from '../../featureFlags';
 import { ModalJobAiControls, type ResolvedModalJobAiSelection, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
@@ -564,6 +565,11 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                             </button>
                         )}
                     </div>
+                    {record.worktree && (
+                        <div className="mt-1.5">
+                            <WorktreeChip worktree={record.worktree} testId="ralph-workflow-worktree-chip" />
+                        </div>
+                    )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                     {/* Cancel is a stub for now — wired in a later commit. */}

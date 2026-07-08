@@ -129,6 +129,34 @@ describe('RalphWorkflowPane', () => {
         expect(screen.getByText(/sess-not-found/)).toBeInTheDocument();
     });
 
+    it('renders a worktree chip when the session was launched into an isolated worktree (AC-05)', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                worktree: {
+                    id: 'sess-1',
+                    workspaceId: 'ws-1',
+                    path: '/root/.coc/repos/ws-1/git-worktrees/sess-1',
+                    branch: 'coc/build-dashboard-ab12cd34',
+                    baseSha: 'deadbeefcafebabe0123456789abcdef01234567',
+                    createdAt: new Date().toISOString(),
+                    sourceDirty: false,
+                    status: 'active',
+                },
+            }),
+            sections: [],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.getByTestId('ralph-workflow-worktree-chip')).toBeInTheDocument();
+        expect(screen.getByTestId('ralph-workflow-worktree-chip-branch').textContent)
+            .toBe('coc/build-dashboard-ab12cd34');
+    });
+
+    it('omits the worktree chip for a non-worktree session', () => {
+        const view: RalphSessionView = { record: makeRecord(), sections: [] };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-workflow-worktree-chip')).toBeNull();
+    });
+
     it('renders a live (executing) session header and one node per iteration', () => {
         const view: RalphSessionView = {
             record: makeRecord({

@@ -14,10 +14,12 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => true,
+    isGitWorktreeExecutionEnabled: () => mockWorktreeEnabled(),
 }));
 
-const { mockModalSelection } = vi.hoisted(() => ({
+const { mockModalSelection, mockWorktreeEnabled } = vi.hoisted(() => ({
     mockModalSelection: vi.fn(() => ({ resolved: { provider: 'copilot' } })),
+    mockWorktreeEnabled: vi.fn(() => false),
 }));
 
 const { mockUseRepos } = vi.hoisted(() => ({
@@ -89,6 +91,8 @@ describe('RalphStartPanel', () => {
         mockOnStarted.mockClear();
         mockModalSelection.mockReset();
         mockModalSelection.mockReturnValue({ resolved: { provider: 'copilot' } });
+        mockWorktreeEnabled.mockReset();
+        mockWorktreeEnabled.mockReturnValue(false);
         mockPatchMetadata.mockClear();
         mockPatchMetadata.mockResolvedValue({ process: {} });
         mockUseRalphSessionView.mockReset();
@@ -1054,5 +1058,69 @@ describe('RalphStartPanel', () => {
         expect(screen.queryByTestId('ralph-launched-status')).toBeNull();
         expect(screen.getByTestId('ralph-start-description')).toBeTruthy();
         expect(screen.getByTestId('ralph-start-btn')).toBeTruthy();
+    });
+
+    describe('worktree controls (AC-05)', () => {
+        function stubRuntimeAndStartFetch(processId: string) {
+            const mockFetch = vi.fn((url: string) => {
+                if (String(url).includes('/config/runtime')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: async () => ({ features: { gitWorktreeExecutionEnabled: true } }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: async () => ({ processId, sessionId: 'sess-wt' }) });
+            });
+            vi.stubGlobal('fetch', mockFetch);
+            return mockFetch;
+        }
+
+        it('hides the worktree control when the feature flag is off', async () => {
+            mockWorktreeEnabled.mockReturnValue(false);
+            vi.stubGlobal('fetch', vi.fn());
+            render(
+                <RalphStartPanel processId="queue_wt-off" workspaceId="ws-1" turns={GRILLING_TURNS} onStarted={mockOnStarted} />,
+            );
+            fireEvent.click(screen.getByTestId('ralph-start-btn'));
+            await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+            await waitForRepoSelector();
+            expect(screen.queryByTestId('ralph-start-worktree-controls')).toBeNull();
+        });
+
+        it('shows the worktree checkbox when the feature flag is on', async () => {
+            mockWorktreeEnabled.mockReturnValue(true);
+            stubRuntimeAndStartFetch('queue_wt-on');
+            render(
+                <RalphStartPanel processId="queue_wt-on" workspaceId="ws-1" turns={GRILLING_TURNS} onStarted={mockOnStarted} />,
+            );
+            fireEvent.click(screen.getByTestId('ralph-start-btn'));
+            await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+            await waitForRepoSelector();
+            expect(screen.getByTestId('ralph-start-worktree-checkbox')).toBeDefined();
+        });
+
+        it('sends the worktree request with a trimmed base ref on confirm', async () => {
+            mockWorktreeEnabled.mockReturnValue(true);
+            const mockFetch = stubRuntimeAndStartFetch('queue_wt-task');
+            render(
+                <RalphStartPanel processId="queue_wt-src" workspaceId="ws-1" turns={GRILLING_TURNS} onStarted={mockOnStarted} />,
+            );
+            fireEvent.click(screen.getByTestId('ralph-start-btn'));
+            await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+            await waitForRepoSelector();
+
+            fireEvent.click(screen.getByTestId('ralph-start-worktree-checkbox'));
+            fireEvent.change(screen.getByTestId('ralph-start-worktree-base-ref'), {
+                target: { value: ' feature/x ' },
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+            });
+
+            await waitFor(() => expect(mockOnStarted).toHaveBeenCalledWith('queue_wt-task', 'ws-1'));
+            const startCall = mockFetch.mock.calls.find(c => String(c[0]).includes('/ralph-start'))!;
+            const body = JSON.parse(startCall[1].body);
+            expect(body.worktree).toEqual({ enabled: true, baseRef: 'feature/x' });
+        });
     });
 });

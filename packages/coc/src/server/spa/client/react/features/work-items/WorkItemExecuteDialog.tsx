@@ -10,6 +10,14 @@ import { useCocClient } from '../../repos/cloneRouting';
 import { RunSkillPanel } from '../../shared/RunSkillPanel';
 import type { SkillItem } from '../../shared/RunSkillPanel';
 import { ModalJobAiControls, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
+import {
+    WorktreeLaunchControls,
+    useWorktreeLaunchControls,
+    useWorktreeCapability,
+} from '../../shared/WorktreeLaunchControls';
+import { isGitWorktreeExecutionEnabled } from '../../utils/config';
+import { cloneApiBase } from '../../repos/cloneRegistry';
+import { useReposOptional } from '../../contexts/ReposContext';
 import { resolveWorkItemOriginId } from './workItemOriginScope';
 
 type WorkItemExecutionMode = 'one-shot' | 'ralph';
@@ -49,6 +57,14 @@ export function WorkItemExecuteDialog({
     const [additionalInfo, setAdditionalInfo] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Opt-in Git worktree execution (AC-05). Feature-flag gated; capability is
+    // resolved from the clone's own server; git-repo state from the repos cache.
+    const worktreeFeatureEnabled = isGitWorktreeExecutionEnabled();
+    const worktree = useWorktreeLaunchControls({ open });
+    const worktreeSupported = useWorktreeCapability(cloneApiBase(workspaceId), { enabled: worktreeFeatureEnabled });
+    const reposCtx = useReposOptional();
+    const workspaceIsGitRepo = reposCtx?.repos.find(r => r.workspace?.id === workspaceId)?.gitInfo?.isGitRepo;
 
     // Fetch merged global+repo skills
     useEffect(() => {
@@ -96,6 +112,7 @@ export function WorkItemExecuteDialog({
                 ...(aiSelection.resolved.reasoningEffort ? { reasoningEffort: aiSelection.resolved.reasoningEffort } : {}),
                 ...(aiSelection.resolved.effortTier ? { effortTier: aiSelection.resolved.effortTier } : {}),
                 ...(aiSelection.resolved.autoProviderRouting ? { autoProviderRouting: true } : {}),
+                ...(worktree.request ? { worktree: worktree.request } : {}),
             }, { workspaceId });
 
             // Track skill usage (fire-and-forget)
@@ -111,7 +128,7 @@ export function WorkItemExecuteDialog({
         } finally {
             setSubmitting(false);
         }
-    }, [workspaceId, workItemOriginId, workItemId, allowExecutionModeSelection, executionMode, aiSelection.resolved, trackUsage, onExecuted, onClose, cloneClient]);
+    }, [workspaceId, workItemOriginId, workItemId, allowExecutionModeSelection, executionMode, aiSelection.resolved, worktree.request, trackUsage, onExecuted, onClose, cloneClient]);
 
     if (!open) return null;
 
@@ -172,6 +189,17 @@ export function WorkItemExecuteDialog({
                         </div>
                     </fieldset>
                 )}
+                <WorktreeLaunchControls
+                    available={worktreeFeatureEnabled}
+                    supported={worktreeSupported}
+                    isGitRepo={workspaceIsGitRepo}
+                    enabled={worktree.enabled}
+                    onEnabledChange={worktree.setEnabled}
+                    baseRef={worktree.baseRef}
+                    onBaseRefChange={worktree.setBaseRef}
+                    disabled={submitting}
+                    testIdPrefix="wi-exec"
+                />
                 <RunSkillPanel
                     skills={skills}
                     recentItems={recentItems}

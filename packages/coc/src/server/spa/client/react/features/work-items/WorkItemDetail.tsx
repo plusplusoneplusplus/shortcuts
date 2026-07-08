@@ -29,7 +29,9 @@ import {
     type WorkItemSyncConflictDetails,
     type WorkItemSyncConflictField,
     type WorkItemSyncConflictResolution,
+    type WorktreeMetadata,
 } from '@plusplusoneplusplus/coc-client';
+import { WorktreeChip } from '../../shared/WorktreeChip';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import { WorkItemAiComposer } from './WorkItemAiComposer';
@@ -156,6 +158,7 @@ interface WorkItemFull {
         kind?: string;
         reviewedChangeId?: string;
         reviewedTaskId?: string;
+        worktree?: WorktreeMetadata;
     }>;
     tags?: string[];
     githubMirror?: WorkItemGitHubMirrorMetadata;
@@ -1664,6 +1667,11 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                                                         <span className="truncate">{chip.label}</span>
                                                     </span>
                                                 ))}
+                                            </div>
+                                        )}
+                                        {exec.worktree && (
+                                            <div className="px-3 pb-1.5">
+                                                <WorktreeChip worktree={exec.worktree} testId={`exec-worktree-chip-${i}`} />
                                             </div>
                                         )}
                                         <div className="px-3 pb-1.5 flex items-center gap-2 flex-wrap">
