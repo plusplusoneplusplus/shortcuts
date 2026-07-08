@@ -88,7 +88,7 @@ Chat canvas side panel (gated by `canvas.enabled`, default off). Markdown or cod
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/processes` | List processes (with search/filter) |
-| GET | `/api/processes/:id` | Process detail |
+| GET | `/api/processes/:id` | Process detail. For a `queue_<taskId>` id whose task is still queued (no process record yet), returns a synthetic process; its `metadata` mirrors the real record's `{ type, queueTaskId, mode, workspaceId }` so the SPA can resolve the chat mode before the executor starts |
 | PATCH | `/api/processes/:id` | Partial process update. Full `metadata` still replaces the stored metadata object; callers that only need to add/remove metadata fields should send `metadataPatch: { set?: object, unset?: string[] }`, which the server merges into current stored metadata. `metadata` and `metadataPatch` are mutually exclusive. |
 | DELETE | `/api/processes/:id` | Delete process |
 | POST | `/api/processes/:id/message` | Follow-up message. Body accepts `content`, optional `mode` (`ask` or `autopilot`; legacy `plan` is accepted as Ask), `deliveryMode`, `images`, `skillNames`, `model`, and `reasoningEffort` (`'low'\|'medium'\|'high'\|'xhigh'`) for a per-turn override. A stopped chat in `cancelled` status is accepted only when it has a saved `sdkSessionId`; the queued continuation is bound to that session for strict resume and otherwise returns `409 SESSION_NOT_RESUMABLE` instead of starting a fresh session. A process with `metadata.stoppedChatResume.resumable === false` also returns `409 SESSION_NOT_RESUMABLE`, so a failed strict resume cannot be retried or converted into a fresh-session follow-up. |

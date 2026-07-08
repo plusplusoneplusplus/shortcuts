@@ -240,6 +240,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const followUpInputRef = useRef<string>('');
     const richTextRef = useRef<RichTextInputHandle>(null);
     const selectedModeRef = useRef<ChatMode>('ask');
+    // True once the mode selector has been synced from the loaded task (or the
+    // user has picked a mode). Lets the sync effect re-run across task
+    // snapshots — the first snapshot of a freshly enqueued chat can be a
+    // synthetic process without a mode — while never clobbering a user pick.
+    const modeSyncDoneRef = useRef(false);
+    const setSelectedModeFromUser = useCallback((mode: ChatMode) => {
+        modeSyncDoneRef.current = true;
+        setSelectedMode(mode);
+    }, []);
 
     const loadCounterRef = useRef(0);
     const conversationContainerRef = useRef<HTMLDivElement>(null);
@@ -1125,7 +1134,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         // recomputes (the chat now has a ralph context) and the Ralph pill
         // disappears; reset the selector to a value that still exists so we
         // don't show a "selected pill that no longer exists" UI glitch.
-        onPromotedToRalph: () => setSelectedMode('ask'),
+        onPromotedToRalph: () => setSelectedModeFromUser('ask'),
         // `/compact` surfaces its result (or error) as a transient toast; the
         // displayed transcript is never rewritten.
         notifyCompact: addToast,
@@ -1744,20 +1753,27 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         };
     }, [client, taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Sync mode selector with the loaded task's mode
+    // Sync mode selector with the loaded task's mode. Depends on the task
+    // object (not just its id): a freshly enqueued chat's first snapshot may
+    // be a synthetic process with no mode yet, so the sync must retry when a
+    // later snapshot (real process / queue refresh) delivers the mode.
+    // `modeSyncDoneRef` makes the sync one-shot so it never overrides a mode
+    // the user picked in the composer.
     useEffect(() => {
-        if (!task) {
+        if (!task || modeSyncDoneRef.current) {
             return;
         }
         const draft = getDraft(taskId);
         if (normalizeChatMode(draft?.mode)) {
+            modeSyncDoneRef.current = true;
             return;
         }
         const taskMode = resolveLoadedTaskMode(task);
         if (taskMode) {
+            modeSyncDoneRef.current = true;
             setSelectedMode(taskMode);
         }
-    }, [task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [task]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Re-fetch conversation when user re-clicks the already-selected task
     // (REFRESH_SELECTED_QUEUE_TASK bumps refreshVersion).
@@ -2452,7 +2468,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             followUpInput={followUpInput}
                             setFollowUpInput={setFollowUpInput}
                             selectedMode={selectedMode}
-                            setSelectedMode={setSelectedMode}
+                            setSelectedMode={setSelectedModeFromUser}
                             onSend={sendFollowUpWithPrefix}
                             onRetry={retryLastMessage}
                             onStop={handleStop}
@@ -2595,7 +2611,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     followUpInput={followUpInput}
                     setFollowUpInput={setFollowUpInput}
                     selectedMode={selectedMode}
-                    setSelectedMode={setSelectedMode}
+                    setSelectedMode={setSelectedModeFromUser}
                     onSend={sendFollowUpWithPrefix}
                     onRetry={retryLastMessage}
                     onStop={handleStop}
