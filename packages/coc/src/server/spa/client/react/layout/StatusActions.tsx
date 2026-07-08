@@ -28,6 +28,7 @@ import { useTheme } from './ThemeProvider';
 import { useApp } from '../contexts/AppContext';
 import { NotificationBell } from '../shared/NotificationBell';
 import { agentProviderQuotaIndicator as AgentProviderQuotaIndicator } from '../shared/AgentProviderQuotaIndicator';
+import { getBackendEndpointInfo } from '../utils/config';
 import type { WsStatus } from '../hooks/useWebSocket';
 
 const themeEmoji: Record<string, string> = {
@@ -44,6 +45,18 @@ export const wsStatusConfig: Record<WsStatus, { color: string; label: string; pu
     closed: { color: 'bg-[#f14c4c] dark:bg-[#f48771]', label: 'Disconnected', pulse: false },
 };
 
+/**
+ * Compose the connection pill tooltip: the status label plus the backend
+ * endpoints (host:port, REST API, WebSocket) the SPA is connected to, so
+ * hovering reveals which server and port is behind "Connected". Falls back to
+ * the bare label when the endpoint can't be resolved (e.g. no browser location).
+ */
+export function connectionTooltip(label: string): string {
+    const endpoint = getBackendEndpointInfo();
+    if (!endpoint) return label;
+    return `${label}\n${endpoint.host}\nAPI ${endpoint.apiUrl}\nWS ${endpoint.wsUrl}`;
+}
+
 export interface StatusActionsProps {
     variant?: 'topbar' | 'sidebar';
     /** Admin-open handler for the topbar variant. The sidebar variant defaults
@@ -57,6 +70,7 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
 
     const wsStatus: WsStatus = state.wsStatus ?? 'closed';
     const wsConfig = wsStatusConfig[wsStatus];
+    const wsTooltip = connectionTooltip(wsConfig.label);
 
     // The admin shell hosts `admin` itself plus the embedded tool routes
     // (skills/logs/stats/servers). Reflect "user is in the admin shell" in the
@@ -102,7 +116,7 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
                 </span>
                 <span
                     className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[11px] font-medium text-[#656d76] dark:text-[#999] min-w-0"
-                    title={wsConfig.label}
+                    title={wsTooltip}
                     aria-label={`Connection: ${wsConfig.label}`}
                     data-testid="sidebar-ws-status-indicator"
                     data-ws-status={wsStatus}
@@ -123,7 +137,7 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
             {/* WS status — pill on desktop, bare dot on mobile to save space */}
             <span
                 className="hidden md:inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-xs font-medium text-[#656d76] dark:text-[#999]"
-                title={wsConfig.label}
+                title={wsTooltip}
                 aria-label={`Connection: ${wsConfig.label}`}
                 data-testid="ws-status-indicator"
                 data-ws-status={wsStatus}
@@ -136,7 +150,7 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
             </span>
             <span
                 className="md:hidden inline-flex items-center justify-center h-7 w-7"
-                title={wsConfig.label}
+                title={wsTooltip}
                 aria-label={`Connection: ${wsConfig.label}`}
                 data-testid="ws-status-indicator-mobile"
                 data-ws-status={wsStatus}

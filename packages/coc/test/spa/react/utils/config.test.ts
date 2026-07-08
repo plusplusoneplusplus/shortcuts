@@ -3,6 +3,8 @@ import {
     DASHBOARD_CONFIG_UPDATED_EVENT,
     _resetRuntimeConfig,
     applyRuntimeConfigPatch,
+    composeBackendEndpointInfo,
+    getBackendEndpointInfo,
     getConfiguredDefaultProvider,
     getDefaultProvider,
     getCommitChatLensDormantMode,
@@ -143,5 +145,40 @@ describe('default provider helpers', () => {
         expect(getConfiguredDefaultProvider()).toBe('copilot');
         expect(getDefaultProvider()).toBe('copilot');
         expect(isAutoAgentProviderRoutingEnabled()).toBe(true);
+    });
+});
+
+describe('composeBackendEndpointInfo', () => {
+    it('builds host:port, API and ws:// endpoints for an http origin', () => {
+        const info = composeBackendEndpointInfo('http://127.0.0.1:3000', '127.0.0.1:3000', 'http:', '/api', '/ws');
+        expect(info).toEqual({
+            host: '127.0.0.1:3000',
+            apiUrl: 'http://127.0.0.1:3000/api',
+            wsUrl: 'ws://127.0.0.1:3000/ws',
+        });
+    });
+
+    it('upgrades to wss:// for an https origin', () => {
+        const info = composeBackendEndpointInfo('https://coc.example.com', 'coc.example.com', 'https:', '/api', '/ws');
+        expect(info.wsUrl).toBe('wss://coc.example.com/ws');
+        expect(info.apiUrl).toBe('https://coc.example.com/api');
+    });
+
+    it('honors non-default API base and ws paths', () => {
+        const info = composeBackendEndpointInfo('http://host:8080', 'host:8080', 'http:', '/base/api', '/socket');
+        expect(info.apiUrl).toBe('http://host:8080/base/api');
+        expect(info.wsUrl).toBe('ws://host:8080/socket');
+    });
+});
+
+describe('getBackendEndpointInfo', () => {
+    it('resolves endpoints from window.location and config paths', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws' };
+        const info = getBackendEndpointInfo();
+        expect(info).toBeDefined();
+        expect(info!.host).toBe(window.location.host);
+        expect(info!.apiUrl).toBe(`${window.location.origin}/api`);
+        const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        expect(info!.wsUrl).toBe(`${scheme}//${window.location.host}/ws`);
     });
 });
