@@ -31,6 +31,12 @@ export interface CurrentRepoRef {
     workingDirectory?: string;
     /** Git remote URL of the current repo; drives the same-origin scoping. */
     remoteUrl?: string | null;
+    /** True when the current workspace is a remote clone (not owned by this server). */
+    isRemote?: boolean;
+    /** Remote routing base URL of the current workspace, when known. */
+    baseUrl?: string;
+    /** Remote server label of the current workspace, when known. */
+    serverLabel?: string;
 }
 
 /** True when an aggregated remote clone is currently online and reachable (AC-02). */
@@ -110,11 +116,16 @@ export function buildImplementTargets(
     if (current.workspaceId) {
         const idx = targets.findIndex(t => t.workspaceId === current.workspaceId);
         if (idx === -1) {
+            // Carry the caller-supplied remote identity: hardcoding isRemote:false
+            // here made a remote-sourced plan look local, leaking its machine-local
+            // path into a task enqueued on the wrong server.
             targets.unshift({
                 workspaceId: current.workspaceId,
                 label: current.label || current.workspaceId,
+                serverLabel: current.isRemote ? current.serverLabel : undefined,
                 workingDirectory: current.workingDirectory,
-                isRemote: false,
+                baseUrl: current.isRemote ? current.baseUrl : undefined,
+                isRemote: !!current.isRemote,
             });
         } else if (idx > 0) {
             const [cur] = targets.splice(idx, 1);

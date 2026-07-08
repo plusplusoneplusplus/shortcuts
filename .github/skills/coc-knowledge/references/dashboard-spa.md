@@ -651,6 +651,17 @@ the current repo or in an already-registered, **online** remote clone:
   `context.files`, and enqueues on the **target** repo's routed CoC client (a
   `{ id, baseUrl, remote: {} }` `CloneRef` through `useCocClient`). A failed
   source read surfaces an inline error and never enqueues.
+- **Remote-sourced plan** → when the *source* workspace itself is a remote clone
+  (`sourceIsRemote`/`sourceBaseUrl` props, derived by `ChatDetail` from the
+  aggregated repo entry → `lookupCloneBaseUrl` → membership in this server's own
+  workspace list), the plan content is always inlined regardless of what the
+  target list claims, and both the source read and the fallback enqueue route to
+  the source server's baseUrl explicitly. This prevents a remote machine's plan
+  path from being enqueued as a path-reference task on the local server (which
+  the executor would rewrite to `Follow the instruction <path>.` via
+  `context.files`). `buildImplementTargets` carries the caller-supplied
+  `isRemote`/`baseUrl`/`serverLabel` when it synthesizes the missing current
+  repo instead of hardcoding a local target.
 
 Each run records an `ImplementationRecord` (process id, plan path, enqueue time,
 plus target identity: `targetWorkspaceId`, `targetLabel`, `targetServerLabel`,

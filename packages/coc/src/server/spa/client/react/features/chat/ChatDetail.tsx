@@ -11,7 +11,8 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { CanvasSummary } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
-import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
+import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import { getConversationTurns } from './conversation/chatConversationUtils';
 import { getSessionIdFromProcess } from './conversation/ConversationMetadataPopover';
 import { useQueue } from '../../contexts/QueueContext';
@@ -366,6 +367,24 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
         return typeof workspace?.name === 'string' ? workspace.name : undefined;
     }, [appState.workspaces, workspaceId]);
+    // Remote identity of the SOURCE workspace (where the plan file lives). The
+    // implement card must never treat a remote-sourced plan as local: its plan
+    // path only exists on the source machine. Resolution order: aggregated repo
+    // entry (authoritative remote marker + baseUrl) → clone registry (remote
+    // tabs register id→baseUrl without a ReposProvider) → membership in this
+    // server's own workspace list (an id this server does not own is not local).
+    const sourceRemoteInfo = useMemo(() => {
+        const none = { isRemote: false, baseUrl: undefined as string | undefined, serverLabel: undefined as string | undefined };
+        if (!workspaceId) return none;
+        const repoWs = reposCtx?.repos?.find((r: any) => r?.workspace?.id === workspaceId)?.workspace;
+        if (repoWs && isRemoteWorkspace(repoWs)) {
+            return { isRemote: true, baseUrl: repoWs.baseUrl, serverLabel: repoWs.remote.serverLabel };
+        }
+        const baseUrl = lookupCloneBaseUrl(workspaceId);
+        if (baseUrl) return { isRemote: true, baseUrl, serverLabel: undefined };
+        const knownLocal = appState.workspaces.some((ws: any) => ws?.id === workspaceId);
+        return { ...none, isRemote: appState.workspaces.length > 0 && !knownLocal };
+    }, [reposCtx?.repos, appState.workspaces, workspaceId]);
     const implementTargets = useMemo(() => {
         if (!isRemoteShellEnabled() || !reposCtx) return undefined;
         return buildImplementTargets(reposCtx.repos, {
@@ -373,8 +392,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             label: workspaceName,
             workingDirectory: workspaceRootPath || undefined,
             remoteUrl: workspaceRemoteUrl,
+            isRemote: sourceRemoteInfo.isRemote,
+            baseUrl: sourceRemoteInfo.baseUrl,
+            serverLabel: sourceRemoteInfo.serverLabel,
         });
-    }, [reposCtx, reposCtx?.repos, workspaceId, workspaceName, workspaceRootPath, workspaceRemoteUrl]);
+    }, [reposCtx, reposCtx?.repos, workspaceId, workspaceName, workspaceRootPath, workspaceRemoteUrl, sourceRemoteInfo]);
 
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
@@ -2417,6 +2439,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             planCanvasId={effectivePlanCanvasId}
                             workspaceId={workspaceId}
                             workingDirectory={workingDirectory}
+                            sourceIsRemote={sourceRemoteInfo.isRemote}
+                            sourceBaseUrl={sourceRemoteInfo.baseUrl}
                             existingRuns={resolvedRuns}
                             availableTargets={implementTargets}
                             sourceProcessId={processId ?? undefined}

@@ -13,6 +13,12 @@
  *  • Remote target → reads the plan content on the initiating server, embeds it
  *    in the prompt, and enqueues on the target repo's routed CoC client, because
  *    the remote machine cannot read the initiating machine's local plan path.
+ *
+ * The path-based prompt is only safe when the plan verifiably lives on the
+ * server that runs the task. When the SOURCE workspace is itself a remote clone
+ * (`sourceIsRemote`), the plan content is always read from the source server and
+ * embedded inline — regardless of what the target list claims — so a remote
+ * machine's plan path can never leak into a task on the wrong server.
  * The selector is gated entirely by the targets the caller supplies (which come
  * from existing remote repo/server availability), so installs without remote
  * support keep the unchanged local-only UI.
@@ -93,6 +99,15 @@ export interface ImplementPlanCardProps {
     planCanvasId?: string;
     workspaceId?: string;
     workingDirectory?: string;
+    /**
+     * True when the source workspace (where the plan file lives) is NOT a local
+     * workspace of this dashboard's server — a remote clone, or a workspace id
+     * this server does not own. Forces the inline-content prompt so a
+     * machine-local plan path never leaks into a task on another server.
+     */
+    sourceIsRemote?: boolean;
+    /** Remote routing base URL of the source workspace, when known. */
+    sourceBaseUrl?: string;
     onImplemented: (newProcessId: string) => void;
     /** Existing implementation runs with resolved live status. */
     existingRuns?: ExistingRun[];
@@ -170,10 +185,24 @@ function planFileBasename(filePath: string): string {
     return idx >= 0 ? normalized.slice(idx + 1) : normalized;
 }
 
-/** Resolve a target to a CocClient routing ref: remote → object marker, local → id. */
-function toCloneRef(target: ImplementTarget | undefined, fallbackId: string | undefined): CloneRef | undefined {
+/**
+ * Resolve the enqueue routing ref. An explicit remote target routes via its own
+ * baseUrl. When the run falls back to the source workspace and that workspace is
+ * a remote clone with a known baseUrl, route to the source server explicitly — a
+ * bare remote workspace id silently resolves to the LOCAL client when the clone
+ * registry does not know it. Everything else routes by id.
+ */
+function toCloneRef(
+    target: ImplementTarget | undefined,
+    fallbackId: string | undefined,
+    source?: { isRemote?: boolean; baseUrl?: string },
+): CloneRef | undefined {
     if (target?.isRemote && target.baseUrl) {
         return { id: target.workspaceId, baseUrl: target.baseUrl, remote: {} };
+    }
+    const targetIsSource = !target || target.workspaceId === fallbackId;
+    if (targetIsSource && source?.isRemote && source.baseUrl) {
+        return { id: fallbackId ?? '', baseUrl: source.baseUrl, remote: {} };
     }
     return target?.workspaceId ?? fallbackId;
 }
@@ -186,6 +215,8 @@ export function ImplementPlanCard({
     planCanvasId,
     workspaceId,
     workingDirectory,
+    sourceIsRemote,
+    sourceBaseUrl,
     onImplemented,
     existingRuns = [],
     onViewRun,
@@ -209,8 +240,16 @@ export function ImplementPlanCard({
 
     // AC-07/AC-03: the source client (initiating server) persists the record and
     // reads the plan; the target client routes the enqueue to the chosen repo.
-    const sourceClient = useCocClient(workspaceId);
-    const targetClient = useCocClient(toCloneRef(selectedTarget, workspaceId));
+    // When the source workspace is a remote clone with a known baseUrl, route
+    // both explicitly — bare-id resolution falls back to the local client when
+    // the clone registry does not know the workspace.
+    const sourceRef: CloneRef | undefined = sourceIsRemote && sourceBaseUrl
+        ? { id: workspaceId ?? '', baseUrl: sourceBaseUrl, remote: {} }
+        : workspaceId;
+    const sourceClient = useCocClient(sourceRef);
+    const targetClient = useCocClient(
+        toCloneRef(selectedTarget, workspaceId, { isRemote: sourceIsRemote, baseUrl: sourceBaseUrl }),
+    );
 
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
@@ -271,6 +310,11 @@ export function ImplementPlanCard({
         setError(null);
         try {
             const isRemote = !!selectedTarget?.isRemote;
+            const targetIsSource = !selectedTarget || selectedTarget.workspaceId === workspaceId;
+            // A run that stays on the source workspace inherits the source's
+            // remote-ness: the target list may omit or mislabel the current
+            // workspace (repos still loading, offline clone, no ReposProvider).
+            const runsRemotely = isRemote || (targetIsSource && !!sourceIsRemote);
             const targetWorkspaceId = selectedTarget?.workspaceId ?? workspaceId;
             const targetWorkingDirectory = selectedTarget?.workingDirectory ?? workingDirectory;
 
@@ -278,14 +322,15 @@ export function ImplementPlanCard({
             // content from the source server and embed it inline (local or remote).
             // File-based plans keep the existing convention: local runs reference
             // the path, remote runs embed the file content read from the source
-            // server (AC-04).
+            // server (AC-04). A remote-sourced plan is always embedded — its path
+            // only exists on the source machine.
             let prompt: string;
             let context: { files: string[] } | undefined;
             if (planCanvasId) {
                 const planContent = await readSourceCanvasContent(planCanvasId);
                 prompt = buildCanvasPrompt(activePlanFilePath, planContent);
                 context = undefined;
-            } else if (isRemote) {
+            } else if (isRemote || sourceIsRemote) {
                 const planContent = await readSourcePlanContent();
                 prompt = buildRemotePrompt(activePlanFilePath, planContent);
                 context = undefined;
@@ -320,7 +365,7 @@ export function ImplementPlanCard({
                     targetWorkspaceId,
                     targetLabel: selectedTarget?.label,
                     targetServerLabel: isRemote ? selectedTarget?.serverLabel : undefined,
-                    isRemoteTarget: isRemote,
+                    isRemoteTarget: runsRemotely,
                 };
                 const prevImpls = Array.isArray(sourceMetadata?.implementations)
                     ? (sourceMetadata!.implementations as ImplementationRecord[])

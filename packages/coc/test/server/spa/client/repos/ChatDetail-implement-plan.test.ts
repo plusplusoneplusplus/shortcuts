@@ -114,6 +114,32 @@ describe('ChatDetail implement-plan handoff', () => {
         expect(between.split('\n').length).toBeLessThanOrEqual(3);
     });
 
+    // Regression: a remote report's plan path used to be enqueued on the LOCAL
+    // server as "Follow the instruction /home/.../x.plan.md." because the card
+    // never learned the source workspace was remote.
+    it('passes the source workspace remote identity to the card', () => {
+        const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
+        expect(cardBlock).not.toBeNull();
+        const block = cardBlock![0];
+        expect(block).toContain('sourceIsRemote={sourceRemoteInfo.isRemote}');
+        expect(block).toContain('sourceBaseUrl={sourceRemoteInfo.baseUrl}');
+    });
+
+    it('derives source remote identity from repos, clone registry, and local workspace membership', () => {
+        expect(source).toContain('const sourceRemoteInfo = useMemo(');
+        expect(source).toContain('isRemoteWorkspace(repoWs)');
+        expect(source).toContain('lookupCloneBaseUrl(workspaceId)');
+        expect(source).toMatch(/appState\.workspaces\.some\(\(ws: any\) => ws\?\.id === workspaceId\)/);
+    });
+
+    it('feeds the current workspace remote identity into buildImplementTargets', () => {
+        const call = source.match(/buildImplementTargets\(reposCtx\.repos,\s*\{[\s\S]*?\}\)/);
+        expect(call).not.toBeNull();
+        expect(call![0]).toContain('isRemote: sourceRemoteInfo.isRemote');
+        expect(call![0]).toContain('baseUrl: sourceRemoteInfo.baseUrl');
+        expect(call![0]).toContain('serverLabel: sourceRemoteInfo.serverLabel');
+    });
+
     it('resolves implementation runs from task metadata', () => {
         expect(source).toContain('rawImplementations');
         expect(source).toContain('task?.metadata?.implementations');

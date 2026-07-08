@@ -569,6 +569,145 @@ describe('ImplementPlanCard', () => {
         await waitFor(() => expect(onImplemented).toHaveBeenCalledWith('queue_task-remote'));
     });
 
+    // ── Remote-sourced plans (regression: remote plan path leaked into a ──
+    // ── local task as "Follow the instruction /home/.../x.plan.md.") ─────
+
+    it('inlines a remote-sourced plan and routes to the source server when no targets are supplied', async () => {
+        mockRemoteReadTrustedBlob.mockResolvedValue({
+            content: '# Plan\nRemote-sourced work.',
+            encoding: 'utf-8',
+            mimeType: 'text/markdown',
+        });
+        mockRemoteEnqueue.mockResolvedValue({ task: { id: 'task-src-remote' } });
+
+        render(
+            <ImplementPlanCard
+                planFilePath="/home/remote-user/.coc/repos/ws-remote/notes/x.plan.md"
+                workspaceId="ws-remote"
+                workingDirectory="/home/remote-user/repo"
+                sourceIsRemote
+                sourceBaseUrl="http://127.0.0.1:4000"
+                onImplemented={onImplemented}
+            />,
+        );
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-plan-card-btn'));
+        });
+
+        // Plan read and enqueue both route to the source's remote server.
+        await waitFor(() => expect(mockRemoteReadTrustedBlob).toHaveBeenCalledWith('/home/remote-user/.coc/repos/ws-remote/notes/x.plan.md'));
+        await waitFor(() => expect(mockRemoteEnqueue).toHaveBeenCalledTimes(1));
+        // The local client is never touched — no phantom local task.
+        expect(mockEnqueue).not.toHaveBeenCalled();
+        expect(mockReadTrustedBlob).not.toHaveBeenCalled();
+
+        const payload = mockRemoteEnqueue.mock.calls[0][0];
+        expect(payload.payload.workspaceId).toBe('ws-remote');
+        expect(payload.payload.workingDirectory).toBe('/home/remote-user/repo');
+        // Content is inlined; no machine-local file reference in the payload.
+        expect(payload.payload.context).toBeUndefined();
+        expect(payload.payload.prompt).toContain('Remote-sourced work.');
+        expect(payload.payload.prompt).toContain('BEGIN PLAN');
+    });
+
+    it('inlines a remote-sourced plan even when the target list mislabels the source as local', async () => {
+        // Shape produced by the old buildImplementTargets fallback: the current
+        // (remote) workspace re-added with isRemote:false and no baseUrl.
+        const mislabeledSource: ImplementTarget = {
+            workspaceId: 'ws-remote',
+            label: 'my-app',
+            isRemote: false,
+            workingDirectory: '/home/remote-user/repo',
+        };
+        mockRemoteReadTrustedBlob.mockResolvedValue({ content: 'plan body', encoding: 'utf-8', mimeType: 'text/markdown' });
+        mockRemoteEnqueue.mockResolvedValue({ task: { id: 'task-mislabeled' } });
+        mockProcessUpdate.mockResolvedValue({ process: {} });
+
+        render(
+            <ImplementPlanCard
+                planFilePath="/home/remote-user/notes/x.plan.md"
+                workspaceId="ws-remote"
+                workingDirectory="/home/remote-user/repo"
+                sourceIsRemote
+                sourceBaseUrl="http://127.0.0.1:4000"
+                onImplemented={onImplemented}
+                sourceProcessId="queue_source-1"
+                sourceMetadata={{ type: 'chat' }}
+                onRecordPersisted={onRecordPersisted}
+                availableTargets={[mislabeledSource]}
+            />,
+        );
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-plan-card-btn'));
+        });
+
+        await waitFor(() => expect(mockRemoteEnqueue).toHaveBeenCalledTimes(1));
+        expect(mockEnqueue).not.toHaveBeenCalled();
+
+        const payload = mockRemoteEnqueue.mock.calls[0][0];
+        expect(payload.payload.context).toBeUndefined();
+        expect(payload.payload.prompt).toContain('BEGIN PLAN');
+
+        // The run stays on the source's remote server, so the record marks it remote.
+        await waitFor(() => expect(mockRemoteUpdate).toHaveBeenCalledTimes(1));
+        const rec = mockRemoteUpdate.mock.calls[0][1].set.implementations[0];
+        expect(rec.isRemoteTarget).toBe(true);
+    });
+
+    it('fails loudly instead of enqueuing when a remote-sourced plan cannot be read', async () => {
+        // Source is remote but no baseUrl is known (unreachable/unregistered), so
+        // the source read falls back to the local client and fails — previously
+        // this silently enqueued a broken path-reference task on the local server.
+        mockReadTrustedBlob.mockRejectedValue(new Error('File does not exist'));
+
+        render(
+            <ImplementPlanCard
+                planFilePath="/home/remote-user/notes/x.plan.md"
+                workspaceId="ws-remote"
+                workingDirectory="/home/remote-user/repo"
+                sourceIsRemote
+                onImplemented={onImplemented}
+            />,
+        );
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-plan-card-btn'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('implement-plan-card-error').textContent)
+                .toContain('Could not read the plan file');
+        });
+        expect(mockEnqueue).not.toHaveBeenCalled();
+        expect(mockRemoteEnqueue).not.toHaveBeenCalled();
+        expect(onImplemented).not.toHaveBeenCalled();
+    });
+
+    it('keeps the path-based local enqueue when sourceIsRemote is false', async () => {
+        mockEnqueue.mockResolvedValue({ task: { id: 'task-local' } });
+
+        render(
+            <ImplementPlanCard
+                planFilePath="/repo/plan.md"
+                workspaceId="ws-local"
+                workingDirectory="/repo"
+                sourceIsRemote={false}
+                onImplemented={onImplemented}
+            />,
+        );
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-plan-card-btn'));
+        });
+
+        await waitFor(() => expect(mockEnqueue).toHaveBeenCalledTimes(1));
+        const payload = mockEnqueue.mock.calls[0][0];
+        expect(payload.payload.context.files).toEqual(['/repo/plan.md']);
+        expect(payload.payload.prompt).toBe('Read and implement the plan file at /repo/plan.md');
+    });
+
     // ── Canvas-backed plans (purpose: 'plan') ───────────────────────────
 
     it('reads the canvas content and embeds it inline for a local run', async () => {
