@@ -20,6 +20,13 @@ export interface UnifiedDiffViewerProps {
     'data-testid'?: string;
     enableComments?: boolean;
     showLineNumbers?: boolean;
+    /**
+     * Hide git file-header metadata lines (`diff --git`, `index`, `--- `,
+     * `+++ `, `new file`, `deleted file`, `rename`). The file path is shown by
+     * the host chrome in these surfaces, so the raw headers are pure noise.
+     * Hunk headers (`@@`) and change lines are unaffected.
+     */
+    hideFileHeaders?: boolean;
     onLinesReady?: (lines: DiffLine[]) => void;
     comments?: DiffComment[];
     onAddComment?: (
@@ -824,7 +831,7 @@ function getScrollableAncestor(el: HTMLElement): HTMLElement {
     return document.documentElement as HTMLElement;
 }
 
-export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, onLinesReady, onAddComment, onAskAI, onCopyAsContext, comments, onCommentClick, filePath, getHunkClassification, activeFilters }, ref) {
+export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, hideFileHeaders, onLinesReady, onAddComment, onAskAI, onCopyAsContext, comments, onCommentClick, filePath, getHunkClassification, activeFilters }, ref) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
@@ -1230,6 +1237,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                 const line = lines[i];
                 const { type, oldLine, newLine } = diffLines[i];
                 if (skipIndices.has(i)) return null;
+                if (hideFileHeaders && type === 'meta') return null;
                 const collapsedHunk = collapsedByStart.get(i);
                 if (collapsedHunk && collapsedHunk.classification) {
                     return <CollapsedHunkSummary key={i} hunk={collapsedHunk} onExpand={expandHunk} />;

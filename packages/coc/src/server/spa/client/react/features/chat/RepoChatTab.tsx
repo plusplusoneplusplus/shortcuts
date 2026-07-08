@@ -18,6 +18,9 @@ import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
+import { ScheduleMainPane, parseScheduleMainPaneRoute, isSchedulesRoute } from '../schedules/ScheduleMainPane';
+import type { ScheduleMainPaneRoute } from '../schedules/ScheduleMainPane';
+import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
 import { RalphWorkflowPaneContainer } from './RalphWorkflowPaneContainer';
 import { ForEachRunPane } from './ForEachRunPane';
 import { MapReduceRunPane } from './MapReduceRunPane';
@@ -31,6 +34,7 @@ import { adaptSearchResults } from '../../utils/search-adapter';
 import type { ForEachRunSummary, MapReduceRunSummary, ProcessGroupPin, ProcessGroupPinType, ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
+import { mergeCompactingConversations, isCompactingProcess } from './compacting-conversations';
 import { parseForEachRunDeepLink, parseMapReduceRunDeepLink, parseRalphSessionDeepLink } from '../../layout/Router';
 
 export interface RepoChatTabProps {
@@ -530,6 +534,51 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
     }, [appState.processes, running]);
     const { markReadByProcessId } = useNotifications();
 
+    // Chat-list feed: bucket a mid-`/compact` conversation into RUNNING TASKS.
+    //
+    // When a user runs `/compact` on an already-completed conversation, the
+    // compact route flips the process-store status to `running` +
+    // `metadata.compaction.state='running'` (restoring the prior terminal status
+    // on settle) and broadcasts `process-updated`. That conversation finished
+    // long ago, so it is NOT in the in-memory task queue that feeds the `running`
+    // bucket — without this merge it stays in `history` and renders under
+    // COMPLETED TASKS the whole time. Scope the process index to THIS workspace
+    // (it is the global index) so a compaction in another workspace never
+    // surfaces here, then let the pure, provider-agnostic helper promote matching
+    // rows into `running` (and out of `history`). Returns the same references
+    // when nothing is compacting, so the ChatListPane props stay stable.
+    const workspaceProcesses = useMemo(
+        () => (Array.isArray(appState.processes) ? appState.processes : [])
+            .filter((p: any) => p?.workspaceId === workspaceId),
+        [appState.processes, workspaceId],
+    );
+    const { running: mergedRunning, history: mergedHistory } = useMemo(
+        () => mergeCompactingConversations({ running, history, processes: workspaceProcesses as any }),
+        [running, history, workspaceProcesses],
+    );
+
+    // On settle, pull the restored terminal row back into history. The
+    // terminal-only history endpoint excludes a `running` process, so a reload
+    // mid-compaction (or a compaction that started in another tab) leaves the
+    // conversation absent from local `history` and shown only via a synthesized
+    // running row. When it settles it is no longer promoted into `running`, so
+    // without a refetch it would vanish entirely — refetch history so the
+    // now-terminal row reappears under COMPLETED. Idempotent (and cheap) for the
+    // common case where the row was already in local history.
+    const prevCompactingIdsRef = useRef<Set<string>>(new Set());
+    useEffect(() => {
+        const current = new Set<string>();
+        for (const proc of workspaceProcesses as any[]) {
+            if (isCompactingProcess(proc)) current.add(proc.id);
+        }
+        let settled = false;
+        for (const id of prevCompactingIdsRef.current) {
+            if (!current.has(id)) { settled = true; break; }
+        }
+        prevCompactingIdsRef.current = current;
+        if (settled) fetchHistory();
+    }, [workspaceProcesses, fetchHistory]);
+
     // Wrap seen-state mutations to refresh badge counts after debounced API flush
     const scheduleUnseenRefresh = useCallback(() => {
         setTimeout(() => refreshUnseenCounts([workspaceId]), 300);
@@ -685,6 +734,62 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
     const [selectedRalphFileName, setSelectedRalphFileName] = useState<string | null>(null);
     const [selectedForEachRunId, setSelectedForEachRunId] = useState<string | null>(null);
     const [selectedMapReduceRunId, setSelectedMapReduceRunId] = useState<string | null>(null);
+
+    // Schedules-in-Scheduled-slide (flag `schedulesInScheduledSlide`, default
+    // off): when a `#repos/{ws}/schedules/{id|new}` route is active, the main
+    // pane hosts the schedule editor / detail (AC-02/03) instead of a chat.
+    // Parsed straight from the hash so it is deep-linkable and survives reload;
+    // no-op (null) when the flag is off, so the flag-off path is unchanged.
+    const schedulesInSlideEnabled = useSchedulesInScheduledSlideEnabled();
+    const [scheduleRoute, setScheduleRoute] = useState<ScheduleMainPaneRoute | null>(
+        () => schedulesInSlideEnabled ? parseScheduleMainPaneRoute(location.hash, workspaceId) : null,
+    );
+    // Whether the active hash is *any* `#repos/{ws}/schedules...` route (bare
+    // landing hash included, unlike `scheduleRoute`). Drives forcing the
+    // chat-list "Scheduled" slide active so a deep-linked / redirected schedule
+    // surface lands on the right sidebar segment (AC-03 deep-link / AC-04).
+    const [scheduleScopeActive, setScheduleScopeActive] = useState<boolean>(
+        () => schedulesInSlideEnabled ? isSchedulesRoute(location.hash, workspaceId) : false,
+    );
+    useEffect(() => {
+        if (!schedulesInSlideEnabled) {
+            setScheduleRoute(prev => (prev === null ? prev : null));
+            setScheduleScopeActive(prev => (prev ? false : prev));
+            return;
+        }
+        const apply = () => {
+            const next = parseScheduleMainPaneRoute(location.hash, workspaceId);
+            setScheduleRoute(prev => {
+                if (prev === next) return prev;
+                if (prev && next && prev.kind === next.kind
+                    && (prev.kind !== 'detail' || (next.kind === 'detail' && prev.scheduleId === next.scheduleId))) {
+                    return prev;
+                }
+                return next;
+            });
+            const scopeActive = isSchedulesRoute(location.hash, workspaceId);
+            setScheduleScopeActive(prev => (prev === scopeActive ? prev : scopeActive));
+        };
+        apply();
+        window.addEventListener('hashchange', apply);
+        return () => window.removeEventListener('hashchange', apply);
+    }, [schedulesInSlideEnabled, workspaceId]);
+
+    // On mobile the list/detail share one column (`mobileShowDetail`). An active
+    // schedule route (create / detail) takes over the detail pane, so opening a
+    // schedule must flip to detail and closing it (route → null) must drop back
+    // to the list. Reacts only to schedule-route transitions so it never fights
+    // the chat-selection flow that otherwise owns `mobileShowDetail`; a no-op
+    // when the flag is off (scheduleRoute stays null), keeping mobile unchanged.
+    const prevScheduleRouteActiveRef = useRef(scheduleRoute !== null);
+    useEffect(() => {
+        const active = scheduleRoute !== null;
+        const wasActive = prevScheduleRouteActiveRef.current;
+        prevScheduleRouteActiveRef.current = active;
+        if (!isMobile) return;
+        if (active) setMobileShowDetail(true);
+        else if (wasActive) setMobileShowDetail(false);
+    }, [isMobile, scheduleRoute]);
 
     // When a chat task is selected, drop any active parent-run selection so
     // the right pane consistently reflects the user's most recent click.
@@ -886,6 +991,15 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
         onEnterList: () => setMobileShowDetail(false),
     });
 
+    // Focus the detail wrapper on pointer-down over non-interactive content so
+    // Ctrl+F originates from [data-pane="detail"] and ChatListPane's guard lets
+    // native find-in-page handle it instead of opening the list search.
+    const handleDetailPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+        const target = e.target as Element;
+        if (target.closest('input, textarea, button, select, a[href], [tabindex]:not([tabindex="-1"])')) return;
+        e.currentTarget.focus({ preventScroll: true });
+    }, []);
+
     if (loading) {
         return (
             <ChatPreferencesProvider workspaceId={workspaceId}>
@@ -897,9 +1011,9 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
 
     const listPane = (
         <ChatListPane
-            running={running}
+            running={mergedRunning}
             queued={queued}
-            history={history}
+            history={mergedHistory}
             isPaused={isPaused}
             isPauseResumeLoading={isPauseResumeLoading}
             isRefreshing={isRefreshing}
@@ -946,13 +1060,18 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
             onSelectMapReduceRun={handleOpenMapReduceRun}
             cursorTaskId={cursorTaskId}
             onNewChat={handleNewChat}
+            forceScope={scheduleScopeActive ? 'loops' : undefined}
         />
     );
 
-    // The detail pane content (last-clicked chat / Ralph / for-each / map-reduce).
-    // Shared by the desktop two-pane layout and the split-workspace portal below,
-    // so the routing lives in one place.
-    const detailPaneContent = selectedRalphSessionId ? (
+    // The detail pane content (schedule host / last-clicked chat / Ralph /
+    // for-each / map-reduce). Shared by the desktop two-pane layout and the
+    // split-workspace portal below, so the routing lives in one place. The
+    // schedule host takes precedence when a `/schedules/{id|new}` route is
+    // active + flag on (AC-02/03); otherwise the existing chat routing applies.
+    const detailPaneContent = (schedulesInSlideEnabled && scheduleRoute) ? (
+        <ScheduleMainPane workspaceId={workspaceId} route={scheduleRoute} />
+    ) : selectedRalphSessionId ? (
         <RalphWorkflowPaneContainer
             workspaceId={workspaceId}
             sessionId={selectedRalphSessionId}
@@ -988,6 +1107,7 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
             readOnly={mode === 'tasks'}
             onOpenForEachRun={handleOpenForEachRun}
             onOpenMapReduceRun={handleOpenMapReduceRun}
+            searchHighlightQuery={searchQuery}
         />
     );
 
@@ -1012,7 +1132,18 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
                     {listPane}
                 </div>
                 {detailActive && detailContainer
-                    ? createPortal(detailPaneContent, detailContainer)
+                    ? createPortal(
+                        <div
+                            ref={detailContainerRef}
+                            tabIndex={-1}
+                            data-pane="detail"
+                            className="flex flex-col h-full min-h-0 overflow-hidden outline-none"
+                            onPointerDown={handleDetailPointerDown}
+                        >
+                            {detailPaneContent}
+                        </div>,
+                        detailContainer,
+                    )
                     : null}
             </ChatPreferencesProvider>
         );
@@ -1036,8 +1167,11 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
                             )}
                             data-testid="activity-detail-panel"
                             data-pane="detail"
+                            onPointerDown={handleDetailPointerDown}
                         >
-                            {selectedRalphSessionId ? (
+                            {(schedulesInSlideEnabled && scheduleRoute) ? (
+                                <ScheduleMainPane workspaceId={workspaceId} route={scheduleRoute} />
+                            ) : selectedRalphSessionId ? (
                                 <RalphWorkflowPaneContainer
                                     workspaceId={workspaceId}
                                     sessionId={selectedRalphSessionId}
@@ -1081,6 +1215,7 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
                                      readOnly={mode === 'tasks'}
                                      onOpenForEachRun={handleOpenForEachRun}
                                      onOpenMapReduceRun={handleOpenMapReduceRun}
+                                     searchHighlightQuery={searchQuery}
                                   />
                             )}
                         </div>
@@ -1227,6 +1362,7 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
                 )}
                 data-testid="activity-detail-panel"
                 data-pane="detail"
+                onPointerDown={handleDetailPointerDown}
             >
                 {detailPaneContent}
             </div>

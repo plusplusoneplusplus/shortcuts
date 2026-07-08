@@ -291,4 +291,36 @@ describe('WorkingTree', () => {
             expect(source).toContain('result.errors');
         });
     });
+
+    describe('compact split-workspace variant', () => {
+        it('accepts optional compact prop', () => {
+            expect(source).toContain('compact?: boolean');
+        });
+
+        it('destructures compact in the function signature', () => {
+            expect(source).toContain('onAllCommentsClick, compact }: WorkingTreeProps');
+        });
+
+        it('drops the card border/rounding in compact but keeps the left accent', () => {
+            expect(source).toContain("'working-tree border-l-[3px] border-l-[#16825d] dark:border-l-[#3fb950] bg-white dark:bg-[#1e1e1e] overflow-hidden'");
+        });
+
+        it('shortens the tag to Local in compact', () => {
+            expect(source).toContain("{compact ? 'Local' : 'Local Tree'}");
+        });
+
+        it('shortens the staged/modified/untracked summary in compact, keeping the full text in a tooltip', () => {
+            expect(source).toContain('`${staged.length}s · ${unstaged.length}m · ${untracked.length}u`');
+            expect(source).toContain('title={`${staged.length} staged · ${unstaged.length} modified · ${untracked.length} untracked`}');
+        });
+
+        it('shortens the file-count badge in compact, keeping the full text in a tooltip', () => {
+            expect(source).toContain('{compact ? `${totalCount}f` : `${totalCount} files`}');
+            expect(source).toContain('title={`${totalCount} files`}');
+        });
+
+        it('tightens the header padding in compact', () => {
+            expect(source).toContain("compact ? 'gap-1.5 px-1.5 py-0.5' : 'gap-2 px-2.5 py-1'");
+        });
+    });
 });

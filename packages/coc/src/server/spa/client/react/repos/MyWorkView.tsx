@@ -6,12 +6,13 @@
  * Activity reuses RepoChatTab; Notes reuses NotesView.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { NotesGitTab } from '../features/notes/NotesGitTab';
 import { RepoSchedulesTab } from '../features/schedules/RepoSchedulesTab';
 import { RepoSettingsTab } from '../features/repo-settings/RepoSettingsTab';
+import { useSchedulesInScheduledSlideEnabled } from '../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
 import { useApp } from '../contexts/AppContext';
 import { cn } from '../ui';
 import type { RepoSubTab } from '../types/dashboard';
@@ -38,8 +39,17 @@ export function MyWorkView() {
     const [generating, setGenerating] = useState(false);
     const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
-    // Default to 'notes' when the current sub-tab is not one of the My Work tabs
-    const activeTab = MY_WORK_TABS.some(t => t.key === state.activeRepoSubTab)
+    // Hide the standalone Schedules tab when schedule management has moved into
+    // the chat-list "Scheduled" slide (feature flag). The Activity tab reuses
+    // RepoChatTab, which hosts that slide, so nothing is stranded.
+    const schedulesInScheduledSlideEnabled = useSchedulesInScheduledSlideEnabled();
+    const visibleTabs = useMemo(
+        () => schedulesInScheduledSlideEnabled ? MY_WORK_TABS.filter(t => t.key !== 'schedules') : MY_WORK_TABS,
+        [schedulesInScheduledSlideEnabled],
+    );
+
+    // Default to 'notes' when the current sub-tab is not one of the visible My Work tabs
+    const activeTab = visibleTabs.some(t => t.key === state.activeRepoSubTab)
         ? state.activeRepoSubTab
         : 'notes';
 
@@ -90,7 +100,7 @@ export function MyWorkView() {
                 <span className="text-sm font-semibold text-[#333] dark:text-[#ccc] mr-2 flex-shrink-0">
                     📋 My Work
                 </span>
-                {MY_WORK_TABS.map(t => (
+                {visibleTabs.map(t => (
                     <button
                         key={t.key}
                         data-subtab={t.key}
@@ -156,9 +166,11 @@ export function MyWorkView() {
                 <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                     <NotesGitTab workspaceId={MY_WORK_WORKSPACE_ID} />
                 </div>
-                <div style={{ display: activeTab === 'schedules' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                    <RepoSchedulesTab workspaceId={MY_WORK_WORKSPACE_ID} />
-                </div>
+                {!schedulesInScheduledSlideEnabled && (
+                    <div style={{ display: activeTab === 'schedules' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                        <RepoSchedulesTab workspaceId={MY_WORK_WORKSPACE_ID} />
+                    </div>
+                )}
                 {activeTab === 'settings' && <RepoSettingsTab workspaceId={MY_WORK_WORKSPACE_ID} repo={VIRTUAL_REPO} />}
             </div>
         </div>

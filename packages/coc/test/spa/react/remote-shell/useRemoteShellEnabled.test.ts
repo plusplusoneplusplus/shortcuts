@@ -14,7 +14,7 @@ describe('remote-first shell feature flag', () => {
         applyRuntimeConfigPatch({ remoteShellEnabled: false });
     });
 
-    it('defaults to disabled', () => {
+    it('reads a disabled flag as off', () => {
         expect(isRemoteShellEnabled()).toBe(false);
     });
 

@@ -25,6 +25,7 @@ let mockAppState: any = {
 let mockRepos: any[] = [];
 let mockRemoteShell = true;
 let mockMyLifeEnabled = false;
+let mockSplitPanel = false;
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: mockAppState, dispatch: mockAppDispatch }),
@@ -62,6 +63,9 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEn
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyLifeEnabled', () => ({
     useMyLifeEnabled: () => mockMyLifeEnabled,
 }));
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
+    useSplitWorkspacePanelEnabled: () => mockSplitPanel,
+}));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
 }));
@@ -78,6 +82,8 @@ beforeEach(() => {
     mockQueueDispatch.mockReset();
     mockRemoteShell = true;
     mockMyLifeEnabled = false;
+    mockSplitPanel = false;
+    localStorage.clear();
     mockAppState = {
         activeTab: 'repos',
         selectedRepoId: 'a',
@@ -141,5 +147,47 @@ describe('TopBar remote-shell header', () => {
         expect(screen.queryByTestId('remote-shell-header')).toBeNull();
         expect(screen.queryByTestId('header-new-btn')).toBeNull();
         expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
+    });
+});
+
+describe('TopBar remote-shell — workspace dock toggle', () => {
+    it('renders the dock toggle immediately after + New when splitWorkspacePanel is on', () => {
+        mockSplitPanel = true;
+        render(<TopBar />);
+
+        const actions = screen.getByTestId('topbar-actions');
+        const kids = Array.from(actions.children).map(c => c.getAttribute('data-testid'));
+        // Order: [+ New][dock toggle][…status cluster]
+        expect(kids[0]).toBe('header-new-btn');
+        expect(kids[1]).toBe('workspace-dock-toggle');
+    });
+
+    it('toggles the shared open state (aria-pressed + persistence) for the active clone', () => {
+        mockSplitPanel = true;
+        render(<TopBar />);
+
+        const toggle = screen.getByTestId('workspace-dock-toggle');
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+
+        fireEvent.click(toggle);
+        expect(screen.getByTestId('workspace-dock-toggle').getAttribute('aria-pressed')).toBe('true');
+        // Persisted under the active clone's per-workspace key ('a').
+        expect(localStorage.getItem('split-workspace:a:dock-open')).toBe('1');
+    });
+
+    it('hides the dock toggle when splitWorkspacePanel is off', () => {
+        mockSplitPanel = false;
+        render(<TopBar />);
+        expect(screen.getByTestId('header-new-btn')).toBeTruthy();
+        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
+    });
+
+    it('hides the dock toggle outside the remote-first shell', () => {
+        mockSplitPanel = true;
+        mockRemoteShell = false;
+        render(<TopBar />);
+        // No remote header → no + New and no dock toggle in the TopBar (the classic
+        // shell keeps its dock toggle in RepoDetail's own header).
+        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
     });
 });

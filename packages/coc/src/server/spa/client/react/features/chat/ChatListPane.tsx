@@ -17,6 +17,7 @@ import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextM
 import { RenameDialog } from '../../ui/RenameDialog';
 import { useCocClient } from '../../repos/cloneRouting';
 import { useWorkflowProgress } from '../workflow/hooks/useWorkflowProgress';
+import { ScheduledSlideSchedules } from '../schedules/ScheduledSlideSchedules';
 import { getDraft } from './hooks/useDraftStore';
 import { useLongPress } from '../../hooks/ui/useLongPress';
 import { useChatPrefs } from '../../contexts/ChatPreferencesContext';
@@ -171,6 +172,18 @@ export function taskMatchesSearch(task: any, query: string): boolean {
     const prompt = (task.prompt || task.promptPreview || task.payload?.promptContent || task.payload?.prompt || '').toLowerCase();
     const lastMsg = (task.lastMessagePreview || '').toLowerCase();
     return title.includes(q) || prompt.includes(q) || lastMsg.includes(q);
+}
+
+/**
+ * Whether an event target sits inside the right conversation panel — the detail
+ * pane, marked with `data-pane="detail"`, which wraps both the reading area and
+ * the message composer. Ctrl+F uses this to decide, by keyboard focus (never
+ * mouse hover), whether to open the list search or yield to the native
+ * find-in-page (AC-01).
+ */
+export function isWithinDetailPane(target: EventTarget | null): boolean {
+    if (!(target instanceof Element)) return false;
+    return target.closest('[data-pane="detail"]') !== null;
 }
 
 /** Return a type-specific icon for a task, matching the chat mode selector icons. */
@@ -659,6 +672,15 @@ export interface ChatListPaneProps {
     onSelectMapReduceRun?: (runId: string) => void;
     /** Keyboard cursor highlight id from useChatPaneNavigation. May differ from selectedTaskId. */
     cursorTaskId?: string | null;
+    /**
+     * When set (schedules-in-slide flag ON + a `#repos/{ws}/schedules...` route
+     * is active), forces the "Scheduled" (`loops`) slide active so a
+     * deep-linked or redirected schedule surface lands on the right segment
+     * (AC-03 deep-link / AC-04 redirect). Applied once when it changes to a
+     * value, leaving the user free to switch segments afterward. Omitted (flag
+     * OFF / non-schedule routes) → the persisted scope is used unchanged.
+     */
+    forceScope?: ActivityScope;
 }
 
 function formatMetadataText(task: any): string {
@@ -780,6 +802,7 @@ export function ChatListPane({
     selectedMapReduceRunId,
     onSelectMapReduceRun,
     cursorTaskId,
+    forceScope,
 }: ChatListPaneProps) {
     const { state: queueState } = useQueue();
     const isTaskSubmitting = queueState.isTaskSubmitting;
@@ -878,6 +901,9 @@ export function ChatListPane({
      * Default is 'all' to preserve the pre-existing behavior of showing every task.
      */
     const [activeScope, setActiveScopeState] = useState<ActivityScope>(() => {
+        // A schedules route is the active surface on mount (deep-link / reload):
+        // land on the Scheduled slide instead of the persisted scope.
+        if (forceScope) return forceScope;
         if (typeof window === 'undefined') return 'all';
         try {
             const saved = localStorage.getItem('coc-activity-scope');
@@ -889,6 +915,16 @@ export function ChatListPane({
         setActiveScopeState(next);
         try { localStorage.setItem('coc-activity-scope', next); } catch { /* ignore */ }
     }, []);
+
+    // Force the "Scheduled" slide active when a schedules route becomes the
+    // active surface (deep-link / redirect). Keyed on `forceScope`, so it fires
+    // once when the value transitions (undefined → 'loops') and does NOT refire
+    // while staying on the schedules family — the user can still switch segments
+    // with a schedule open. No-op when `forceScope` is absent (flag OFF / other
+    // routes), preserving the persisted-scope behavior for every other caller.
+    useEffect(() => {
+        if (forceScope) setActiveScope(forceScope);
+    }, [forceScope, setActiveScope]);
 
     const setSearchQuery = useCallback((q: string) => {
         setSearchQueryRaw(q);
@@ -982,17 +1018,6 @@ export function ChatListPane({
         setSearchVisible(false);
     }, [workspaceId]);
 
-    const detailPaneFocusedRef = useRef(false);
-
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            const detailPane = document.querySelector('[data-pane="detail"]');
-            detailPaneFocusedRef.current = !!detailPane?.contains(e.target as Node);
-        };
-        document.addEventListener('mousedown', handler, true);
-        return () => document.removeEventListener('mousedown', handler, true);
-    }, []);
-
     useEffect(() => {
         const root = containerRef.current;
         if (!root) return;
@@ -1015,20 +1040,35 @@ export function ChatListPane({
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
+            // Focus tracking for the list shortcuts. `focusInList` is true when
+            // the keydown originates from inside the chat-list pane; `focusInDetail`
+            // is true when it originates from the right conversation panel (its
+            // reading area or message composer). Ctrl+N still gates on
+            // `focusElsewhereWithChatOpen`.
+            const target = e.target as Node | null;
+            const focusInList = !!(target && containerRef.current?.contains(target));
+            const focusInDetail = isWithinDetailPane(e.target);
+            const focusElsewhereWithChatOpen = !focusInList && !!selectedTaskId;
             if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
                 // Skip interception when this pane is hidden (display:none via parent).
                 if (!containerRef.current || containerRef.current.offsetParent === null) return;
-                if (detailPaneFocusedRef.current) return;
+                // AC-01: route Ctrl+F by which pane owns keyboard focus. When focus
+                // is inside the right conversation panel (reading area OR composer),
+                // leave Ctrl+F alone so it falls through to the native find-in-page
+                // (the desktop Electron overlay / the browser's built-in find).
+                // Focus in the list pane, or nowhere in particular (document.body),
+                // opens the list search.
+                if (focusInDetail) return;
                 e.preventDefault();
                 setSearchVisible(true);
                 setTimeout(() => searchInputRef.current?.focus(), 0);
             }
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n' && !e.shiftKey && !e.altKey) {
                 // ⌘N / Ctrl+N — primary "New chat" shortcut. Only intercept when
-                // the activity pane is visible and the detail pane isn't focused
-                // (so users editing a chat aren't disrupted).
+                // the activity pane is visible and focus isn't in an open
+                // conversation (so users editing a chat aren't disrupted).
                 if (!containerRef.current || containerRef.current.offsetParent === null) return;
-                if (detailPaneFocusedRef.current) return;
+                if (focusElsewhereWithChatOpen) return;
                 e.preventDefault();
                 (onNewChat ?? onOpenDialog)?.();
             }
@@ -1043,7 +1083,7 @@ export function ChatListPane({
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [searchVisible, onNewChat, onOpenDialog, selectedHistoryIds.size]);
+    }, [searchVisible, onNewChat, onOpenDialog, selectedHistoryIds.size, selectedTaskId]);
 
     const allTasks = useMemo(
         () => [...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history],
@@ -2918,14 +2958,15 @@ export function ChatListPane({
                 {activeTab === 'chats' && chatGroups && (
                     <>
                         <div
-                            className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-2 md:py-4 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
+                            className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-1.5 md:py-2 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
                             data-testid="chat-list-fixed-header"
                         >
                         <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className={cn("self-start", isMobile && "hidden")} data-testid="new-chat-btn">
                             💬 New Chat
                         </Button>
 
-                        {/* Search bar — magnifying glass + ⌘F kbd hint */}
+                        {/* Search bar — hidden by default; revealed with Ctrl+F / ⌘F (see the keydown handler). */}
+                        {searchVisible && (
                         <div className="relative">
                             <span className="absolute left-[7px] top-1/2 -translate-y-1/2 text-[#848484] dark:text-[#a0a0a0] pointer-events-none" aria-hidden="true">
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
@@ -2965,6 +3006,7 @@ export function ChatListPane({
                                 </div>
                             )}
                         </div>
+                        )}
 
                         {/* Filter chips: All / Running / Failed (chips with zero count auto-hide except All) */}
                         {!isServerSearchActive && (
@@ -3153,7 +3195,7 @@ export function ChatListPane({
                 {activeTab !== 'chats' && (
                     <React.Fragment>
                 <div
-                    className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-2 md:py-4 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
+                    className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-1.5 md:py-2 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
                     data-testid="chat-list-fixed-header"
                 >
                 {isPaused && (
@@ -3443,7 +3485,15 @@ export function ChatListPane({
                     </div>
                 )}
 
-                {/* Search bar — always visible on every tab to match the activity-compact reference. */}
+                {/* Scheduled slide: schedule-definitions section (feature-flagged, self-gating).
+                    Sits above the scheduled run instances ("Recent runs"), which keep
+                    rendering as the Running / Queued / History sections below. */}
+                {!activeTab && activeScope === 'loops' && workspaceId && (
+                    <ScheduledSlideSchedules workspaceId={workspaceId} />
+                )}
+
+                {/* Search bar — hidden by default; revealed with Ctrl+F / ⌘F (see the keydown handler). */}
+                {searchVisible && (
                 <div className="relative">
                     <span className="absolute left-[7px] top-1/2 -translate-y-1/2 text-[#848484] dark:text-[#a0a0a0] pointer-events-none" aria-hidden="true">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
@@ -3489,6 +3539,7 @@ export function ChatListPane({
                         </div>
                     )}
                 </div>
+                )}
                 </div>
                 </div>
 

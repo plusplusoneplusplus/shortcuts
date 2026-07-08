@@ -15,6 +15,7 @@ import * as path from 'path';
 import { test, expect } from '@playwright/test';
 import type { Page, WebSocketRoute } from '@playwright/test';
 import { safeRmSync } from '../helpers/safe-rm';
+import { E2E_SERVER_CONFIG_YAML } from './fixtures/e2e-server-config';
 
 // Import from compiled dist — Playwright doesn't transpile source TS
 const { createExecutionServer } = require('../../dist/server/index');
@@ -33,11 +34,17 @@ async function startServer(): Promise<{
 }> {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-e2e-ws-'));
     const store = new FileProcessStore({ dataDir });
+    // Pin the classic shell (see e2e-server-config.ts): remoteShell moves the
+    // ws-status-indicator into the sidebar footer, so the flags must stay off
+    // for this spec's own server the same way the shared fixture does.
+    const configPath = path.join(dataDir, 'config.yaml');
+    fs.writeFileSync(configPath, E2E_SERVER_CONFIG_YAML);
     const server = await createExecutionServer({
         store,
         port: 0,
         host: '127.0.0.1',
         dataDir,
+        configPath,
     });
     const cleanup = async () => {
         try { await server.close(); } catch { /* ignore */ }

@@ -146,9 +146,14 @@ export interface ChatDetailProps {
     onStartFreshSameContext?: () => Promise<boolean> | boolean | void;
     /** True while the embedding lens target is resetting its active chat binding. */
     startingFreshSameContext?: boolean;
+    /**
+     * Active chat-list search query (AC-04/AC-05). Threaded to ConversationArea
+     * to highlight matches across the rendered turns while the search box is open.
+     */
+    searchHighlightQuery?: string;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery }: ChatDetailProps) {
     // Per-clone REST client (AC-07): a remote clone's chat reads/writes go to its
     // own server; a local clone keeps the default origin client. All process/
     // queue/notes/canvas/skill calls below are scoped to this chat's workspace.
@@ -2331,6 +2336,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         postConversationContent={planReviewCards}
                         isCompacting={isCompacting}
                         compactInstructions={compactInstructions}
+                        searchHighlightQuery={searchHighlightQuery}
                     />
                     {variant !== 'floating' && !isMobile && (
                         <ConversationMiniMap

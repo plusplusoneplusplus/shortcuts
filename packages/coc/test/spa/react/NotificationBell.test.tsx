@@ -106,6 +106,27 @@ describe('NotificationBell — panel', () => {
         expect(screen.queryByTestId('notification-panel')).toBeNull();
     });
 
+    it('reflects placement "down" on the portaled panel by default', () => {
+        render(<NotificationBell />);
+        act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
+        const panel = screen.getByTestId('notification-panel');
+        expect(panel.getAttribute('data-placement')).toBe('down');
+        // Panel is portaled to <body> and fixed-positioned so it escapes the
+        // sidebar column's overflow clip instead of anchoring in-flow.
+        expect(panel.parentElement).toBe(document.body);
+        expect(panel.className).toContain('fixed');
+        expect(panel.className).not.toContain('absolute');
+    });
+
+    it('reflects placement "up" on the portaled panel (bottom-docked sidebar footer)', () => {
+        render(<NotificationBell placement="up" />);
+        act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
+        const panel = screen.getByTestId('notification-panel');
+        expect(panel.getAttribute('data-placement')).toBe('up');
+        expect(panel.parentElement).toBe(document.body);
+        expect(panel.className).toContain('fixed');
+    });
+
     it('outside click closes panel', () => {
         const { container } = render(<div><NotificationBell /><div data-testid="outside" /></div>);
         act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });

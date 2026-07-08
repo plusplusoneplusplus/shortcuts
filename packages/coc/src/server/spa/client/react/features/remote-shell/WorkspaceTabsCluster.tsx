@@ -10,6 +10,7 @@ import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
+import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { isHidden as isHiddenTask, useRepoQueueStats } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
@@ -63,6 +64,7 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
     const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
+    const schedulesInScheduledSlideEnabled = useSchedulesInScheduledSlideEnabled();
     const [uiLayoutMode] = useUiLayoutMode();
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
     const activeTab = state.activeRepoSubTab;
@@ -73,8 +75,8 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const tabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
-        splitWorkspacePanelEnabled,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled]);
+        splitWorkspacePanelEnabled, schedulesInScheduledSlideEnabled,
+    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled, schedulesInScheduledSlideEnabled]);
     const { clone: cloneTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
 
     const group = useMemo(() => {

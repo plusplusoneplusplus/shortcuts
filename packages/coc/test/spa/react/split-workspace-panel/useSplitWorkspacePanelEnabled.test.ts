@@ -14,7 +14,7 @@ describe('split Workspace panel feature flag', () => {
         applyRuntimeConfigPatch({ splitWorkspacePanelEnabled: false });
     });
 
-    it('defaults to disabled', () => {
+    it('reads a disabled flag as off', () => {
         expect(isSplitWorkspacePanelEnabled()).toBe(false);
     });
 

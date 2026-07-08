@@ -36,6 +36,21 @@ export interface SplitWorkspacePanelProps {
     chatLabel?: string;
     /** Label for the git section header. Defaults to `Git`. */
     gitLabel?: string;
+    /**
+     * Optional content rendered inside the git section header, right of the
+     * chevron+label toggle. Used to hoist the git toolbar (branch pill / sync /
+     * refresh) onto the 22px header row so it costs no extra vertical space.
+     * Stays visible while the section is collapsed. Desktop layout only — the
+     * narrow single-column fallback ignores it.
+     */
+    gitHeaderExtra?: ReactNode;
+    /**
+     * Optional docked footer pinned to the bottom of the left column, below the
+     * git half. Used by the remote-first shell to host the status/action cluster
+     * (connection / notifications / quota / admin / theme). Desktop layout only —
+     * the narrow single-column fallback ignores it. When absent, nothing renders.
+     */
+    footer?: ReactNode;
 }
 
 /** localStorage key for the left column's overall width, per workspace. */
@@ -81,8 +96,11 @@ function readCollapsed(storageKey: string): boolean {
  * an explicit user toggle (never on mount or on a workspace switch), so a
  * workspace with no collapse history keeps a clean localStorage. Re-syncs when
  * the key changes (workspace switch).
+ *
+ * Exported so the workspace right dock (`WorkspaceRightDock`) can reuse the exact
+ * same persisted-boolean semantics for its open/closed flag (AC-06).
  */
-function useCollapsedState(storageKey: string): [boolean, () => void] {
+export function useCollapsedState(storageKey: string): [boolean, () => void] {
     const [collapsed, setCollapsed] = useState(() => readCollapsed(storageKey));
     // Suppress the persist effect for the initial value and for values loaded on
     // a workspace switch — those are reads, not user intent.
@@ -114,44 +132,64 @@ interface SectionHeaderProps {
     collapsed: boolean;
     onToggle: () => void;
     testId: string;
+    /** Extra content (e.g. a hoisted toolbar) rendered right of the toggle. */
+    extra?: ReactNode;
 }
 
 /**
  * Compact VS Code-style collapsible section header. Kept intentionally short
  * (22px) so it costs almost no vertical space — a rotating chevron plus a small
- * uppercase label that acts as the whole click target.
+ * uppercase label that acts as the click target. When `extra` is given the
+ * label shrinks to its natural width and the extra content fills the rest of
+ * the row (its clicks do not toggle the section).
  */
-function SectionHeader({ label, collapsed, onToggle, testId }: SectionHeaderProps) {
+function SectionHeader({ label, collapsed, onToggle, testId, extra }: SectionHeaderProps) {
     return (
-        <button
-            type="button"
-            onClick={onToggle}
-            data-testid={testId}
-            aria-expanded={!collapsed}
-            title={collapsed ? `Expand ${label}` : `Collapse ${label}`}
+        <div
             className={cn(
-                'group flex h-[22px] w-full flex-shrink-0 items-center gap-1 px-1.5 text-left select-none',
-                'text-[10px] font-semibold uppercase tracking-wide leading-none',
-                'text-[#4d566b] dark:text-[#b6bcc9]',
+                'flex h-[22px] w-full flex-shrink-0 items-stretch',
                 // A cool blue-grey band so the header reads as a distinct
                 // divider against the white chat/git content below it.
-                'bg-[#e4e9f2] hover:bg-[#d7deec] dark:bg-[#2c303a] dark:hover:bg-[#353a46]',
+                'bg-[#e4e9f2] dark:bg-[#2c303a]',
                 'border-b border-[#cfd6e4] dark:border-[#3b414d]',
-                'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#007acc]',
-                'transition-colors',
             )}
         >
-            <span
-                aria-hidden="true"
+            <button
+                type="button"
+                onClick={onToggle}
+                data-testid={testId}
+                aria-expanded={!collapsed}
+                title={collapsed ? `Expand ${label}` : `Collapse ${label}`}
                 className={cn(
-                    'inline-block text-[8px] leading-none text-[#7883a0] transition-transform duration-150',
-                    collapsed && '-rotate-90',
+                    'group flex items-center gap-1 px-1.5 text-left select-none',
+                    extra ? 'flex-shrink-0' : 'w-full flex-1',
+                    'text-[10px] font-semibold uppercase tracking-wide leading-none',
+                    'text-[#4d566b] dark:text-[#b6bcc9]',
+                    'hover:bg-[#d7deec] dark:hover:bg-[#353a46]',
+                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#007acc]',
+                    'transition-colors',
                 )}
             >
-                ▾
-            </span>
-            <span className="truncate">{label}</span>
-        </button>
+                <span
+                    aria-hidden="true"
+                    className={cn(
+                        'inline-block text-[8px] leading-none text-[#7883a0] transition-transform duration-150',
+                        collapsed && '-rotate-90',
+                    )}
+                >
+                    ▾
+                </span>
+                <span className="truncate">{label}</span>
+            </button>
+            {extra && (
+                <div
+                    className="flex min-w-0 flex-1 items-center justify-end pr-0.5"
+                    data-testid={`${testId}-extra`}
+                >
+                    {extra}
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -162,6 +200,8 @@ export function SplitWorkspacePanel({
     detail,
     chatLabel = 'Chat',
     gitLabel = 'Git',
+    gitHeaderExtra,
+    footer,
 }: SplitWorkspacePanelProps) {
     const { isMobile } = useBreakpoint();
 
@@ -186,6 +226,21 @@ export function SplitWorkspacePanel({
 
     const [chatCollapsed, toggleChat] = useCollapsedState(splitWorkspaceChatCollapsedStorageKey(workspaceId));
     const [gitCollapsed, toggleGit] = useCollapsedState(splitWorkspaceGitCollapsedStorageKey(workspaceId));
+
+    // Publish the live left-column width so the App shell's global status dock
+    // (`GlobalStatusDock`) can match this sidebar's width. Cleared on unmount /
+    // mobile so the dock falls back to its default width where no split sidebar
+    // is on screen.
+    useEffect(() => {
+        if (isMobile) {
+            document.documentElement.style.removeProperty('--workspace-left-col-width');
+            return;
+        }
+        document.documentElement.style.setProperty('--workspace-left-col-width', `${leftColumn.width}px`);
+        return () => {
+            document.documentElement.style.removeProperty('--workspace-left-col-width');
+        };
+    }, [isMobile, leftColumn.width]);
 
     // Narrow / mobile fallback: single scrolling column, no split, no dividers.
     // Each reused tab keeps its own single-column behavior; we just stack the
@@ -274,8 +329,10 @@ export function SplitWorkspacePanel({
                     height whenever it is open. */}
                 <div
                     className={cn(
-                        'flex flex-col min-h-0 overflow-hidden',
-                        gitCollapsed ? 'flex-shrink-0' : 'flex-1',
+                        'flex flex-col min-h-0',
+                        // overflow-visible while collapsed so the hoisted
+                        // toolbar's dropdown isn't clipped to the 22px header.
+                        gitCollapsed ? 'flex-shrink-0 overflow-visible' : 'flex-1 overflow-hidden',
                     )}
                     data-testid="split-workspace-git"
                 >
@@ -284,6 +341,7 @@ export function SplitWorkspacePanel({
                         collapsed={gitCollapsed}
                         onToggle={toggleGit}
                         testId="split-workspace-git-header"
+                        extra={gitHeaderExtra}
                     />
                     <div
                         className={cn('flex-1 min-h-0 overflow-hidden', gitCollapsed && 'hidden')}
@@ -292,6 +350,14 @@ export function SplitWorkspacePanel({
                         {gitList}
                     </div>
                 </div>
+
+                {/* Docked footer pinned to the bottom of the left column (below
+                    the git half). Hosts the remote-first shell's status cluster. */}
+                {footer && (
+                    <div className="flex-shrink-0" data-testid="split-workspace-footer">
+                        {footer}
+                    </div>
+                )}
             </div>
 
             {/* Divider between the left column and the detail pane. */}

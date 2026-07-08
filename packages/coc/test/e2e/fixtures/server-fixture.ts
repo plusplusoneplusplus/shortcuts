@@ -19,6 +19,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createE2EMockSDKService, type E2EMockAIControls } from './mock-ai';
+import { E2E_SERVER_CONFIG_YAML } from './e2e-server-config';
 import { safeRmSync } from '../../helpers/safe-rm';
 export { safeRmSync } from '../../helpers/safe-rm';
 
@@ -147,10 +148,12 @@ export const test = base.extend<ServerFixture & { _context: ServerContext }>({
         // racy across parallel workers).
         const configPath = path.join(tmpDir, 'config.yaml');
 
-        // The deprecated Plans/Tasks repo sub-tab is gated behind showPlanDepTab
-        // (default off). Many E2E specs navigate to that `tasks` sub-tab (Miller
-        // columns, task CRUD, etc.), so enable it for the whole E2E server.
-        fs.writeFileSync(configPath, 'showPlanDepTab: true\n');
+        // Admin config the E2E server boots with — enables the deprecated
+        // Plans/Tasks sub-tab and pins the shell-reshaping feature flags off so
+        // the suite runs against the classic layout it targets. See
+        // e2e-server-config.ts for the full rationale; a vitest guard
+        // (test/config/e2e-server-config.test.ts) asserts the resolved flags.
+        fs.writeFileSync(configPath, E2E_SERVER_CONFIG_YAML);
 
         const server = await createExecutionServer({
             store,

@@ -167,6 +167,44 @@ describe('useContainerWidth', () => {
         expect(result.current).toBe(initial);
     });
 
+    describe('custom thresholds', () => {
+        it('applies a raised wideThreshold (composer toolbar: 820px)', () => {
+            const ref = createMockRef(800);
+            const { result } = renderHook(() => useContainerWidth(ref, { wideThreshold: 820 }));
+            // 800px is wide with default thresholds but medium with 820.
+            expect(result.current.tier).toBe('medium');
+            expect(result.current.isWide).toBe(false);
+        });
+
+        it('is wide at exactly the custom wideThreshold', () => {
+            const ref = createMockRef(820);
+            const { result } = renderHook(() => useContainerWidth(ref, { wideThreshold: 820 }));
+            expect(result.current.tier).toBe('wide');
+        });
+
+        it('applies a custom mediumThreshold', () => {
+            const ref = createMockRef(450);
+            const { result } = renderHook(() => useContainerWidth(ref, { mediumThreshold: 400 }));
+            expect(result.current.tier).toBe('medium');
+        });
+
+        it('accepts throttleMs via the options object', () => {
+            const ref = createMockRef(800);
+            const { result } = renderHook(() => useContainerWidth(ref, { throttleMs: 50 }));
+
+            Object.defineProperty(ref.current!, 'clientWidth', { value: 400, writable: true, configurable: true });
+            act(() => {
+                resizeCallback?.([] as any, {} as any);
+            });
+            expect(result.current.tier).toBe('wide');
+            act(() => {
+                vi.advanceTimersByTime(50);
+                vi.advanceTimersByTime(16);
+            });
+            expect(result.current.tier).toBe('narrow');
+        });
+    });
+
     it('handles missing ResizeObserver gracefully', () => {
         // @ts-expect-error testing missing API
         delete globalThis.ResizeObserver;

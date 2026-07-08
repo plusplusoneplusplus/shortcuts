@@ -3,8 +3,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import type { AgentProviderId, AgentProvidersQuotaResponse, ProviderQuotaResult, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { useAnchoredPanelPosition } from './useAnchoredPanelPosition';
 import {
     formatQuotaTypeLabel,
     getFiniteQuotaTypes,
@@ -193,7 +195,15 @@ function renderProviderQuotaRow(provider: ProviderQuotaResult) {
     );
 }
 
-export function agentProviderQuotaIndicator() {
+export interface AgentProviderQuotaIndicatorProps {
+    /** Which way the dropdown panel opens relative to the gauge. `down` is the
+     *  historic topbar behavior (right-aligned, opens downward); `up` is for
+     *  bottom-docked placements (sidebar footer) where the panel opens upward
+     *  and is left-aligned to avoid overflowing off-screen. */
+    placement?: 'down' | 'up';
+}
+
+export function agentProviderQuotaIndicator({ placement = 'down' }: AgentProviderQuotaIndicatorProps = {}) {
     const [open, setOpen] = useState(false);
     const [quotaData, setQuotaData] = useState<AgentProvidersQuotaResponse | null>(null);
     const [loading, setLoading] = useState(true);
@@ -203,6 +213,7 @@ export function agentProviderQuotaIndicator() {
     const panelRef = useRef<HTMLDivElement>(null);
     const mountedRef = useRef(false);
     const quotaDataRef = useRef<AgentProvidersQuotaResponse | null>(null);
+    const panelPos = useAnchoredPanelPosition({ open, placement, triggerRef: buttonRef, panelRef });
 
     useEffect(() => {
         quotaDataRef.current = quotaData;
@@ -322,11 +333,13 @@ export function agentProviderQuotaIndicator() {
                 {renderQuotaPie({ usedPercent, remainingPercent, testId: 'agent-provider-quota-gauge' })}
             </button>
 
-            {open && (
+            {open && ReactDOM.createPortal(
                 <div
                     ref={panelRef}
-                    className="absolute right-0 top-full mt-1 w-[360px] max-h-[440px] flex flex-col rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg z-[10002]"
+                    className="fixed w-[360px] max-h-[440px] flex flex-col rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg z-[10002]"
+                    style={{ top: panelPos.top, left: panelPos.left }}
                     data-testid="agent-provider-quota-panel"
+                    data-placement={placement}
                     role="dialog"
                     aria-label="Agent provider quota details"
                 >
@@ -380,7 +393,8 @@ export function agentProviderQuotaIndicator() {
                             Admin → AI Providers
                         </a>
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
         </div>
     );

@@ -753,19 +753,27 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.remoteShell', default: false, runtime: 'live', runtimeFlag: 'remoteShellEnabled',
+        key: 'features.remoteShell', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'remoteShellEnabled',
         ui: {
-            group: 'dashboard', order: 65, label: 'Remote-first shell', badge: 'experimental',
-            hint: 'Replace per-clone repo tabs with a remote-first shell: one entry per git remote, a clone switcher, and remote/clone-scoped sub-tabs. Desktop only. Disabled by default.',
+            group: 'dashboard', order: 65, label: 'Remote-first shell',
+            hint: 'Replace per-clone repo tabs with a remote-first shell: one entry per git remote, a clone switcher, and remote/clone-scoped sub-tabs. Desktop only. Enabled by default.',
             testId: 'toggle-remote-shell-enabled',
         },
     }),
     bool({
-        key: 'features.splitWorkspacePanel', default: false, runtime: 'live', runtimeFlag: 'splitWorkspacePanelEnabled',
+        key: 'features.splitWorkspacePanel', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'splitWorkspacePanelEnabled',
         ui: {
-            group: 'dashboard', order: 67, label: 'Split Workspace panel', badge: 'experimental',
-            hint: 'Replaces the Activity tab with a split "Workspace" view (chat list on top, git on the bottom) that feeds one shared detail pane, and hides the standalone Git tab. Disabled by default.',
+            group: 'dashboard', order: 67, label: 'Split Workspace panel',
+            hint: 'Replaces the Activity tab with a split "Workspace" view (chat list on top, git on the bottom) that feeds one shared detail pane, and hides the standalone Git tab. Enabled by default.',
             testId: 'toggle-split-workspace-panel-enabled',
+        },
+    }),
+    bool({
+        key: 'features.schedulesInScheduledSlide', default: false, runtime: 'live', runtimeFlag: 'schedulesInScheduledSlideEnabled',
+        ui: {
+            group: 'dashboard', order: 68, label: 'Schedules in Scheduled slide', badge: 'experimental',
+            hint: 'Moves schedule management (create/edit/run/pause/delete + run history) into the chat-list "Scheduled" slide, opening create and detail in the main pane and hiding the old Schedules tab. Disabled by default.',
+            testId: 'toggle-schedules-in-scheduled-slide-enabled',
         },
     }),
     bool({

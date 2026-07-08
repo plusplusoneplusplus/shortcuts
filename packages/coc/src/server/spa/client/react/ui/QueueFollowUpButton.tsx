@@ -12,6 +12,13 @@ export interface QueueFollowUpButtonProps {
     showShortcutHint?: boolean;
     /** Use a 32px mobile/tablet hit area while preserving the compact desktop size. */
     mobileTapTarget?: boolean;
+    /**
+     * Render icon-only at every viewport: drops the text label and the ⌘↵
+     * shortcut hint, keeping the label as the accessible name. Driven by the
+     * composer's container-width signal for very narrow panes (unlike
+     * `mobileTapTarget`, whose label hiding is viewport-gated via `sm:`).
+     */
+    iconOnly?: boolean;
     /** data-testid for the button. Default: "activity-chat-send-btn". */
     'data-testid'?: string;
 }
@@ -27,7 +34,7 @@ export interface QueueFollowUpButtonProps {
  * separated from the label by a thin vertical divider rather than a boxed kbd.
  */
 export function QueueFollowUpButton(props: QueueFollowUpButtonProps) {
-    const { disabled, ctrlHeld, onSend, label = 'Send', showShortcutHint = true, mobileTapTarget = false } = props;
+    const { disabled, ctrlHeld, onSend, label = 'Send', showShortcutHint = true, mobileTapTarget = false, iconOnly = false } = props;
     const testId = props['data-testid'] ?? 'activity-chat-send-btn';
     const steering = ctrlHeld;
     const buttonLabel = steering ? 'Steer' : label;
@@ -38,7 +45,9 @@ export function QueueFollowUpButton(props: QueueFollowUpButtonProps) {
             disabled={disabled}
             className={cn(
                 'shrink-0 inline-flex items-center gap-1 rounded-md text-[11px] font-medium -tracking-[0.005em] cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed',
-                mobileTapTarget ? 'h-8 w-8 justify-center px-0 sm:w-auto sm:pl-2.5 sm:pr-2 lg:h-[24px] lg:pl-2 lg:pr-1.5' : 'h-[24px] pl-2 pr-1.5',
+                iconOnly
+                    ? 'h-[24px] w-[26px] justify-center px-0'
+                    : mobileTapTarget ? 'h-8 w-8 justify-center px-0 sm:w-auto sm:pl-2.5 sm:pr-2 lg:h-[24px] lg:pl-2 lg:pr-1.5' : 'h-[24px] pl-2 pr-1.5',
                 steering
                     ? 'bg-[#e8912d] text-white hover:bg-[#c97a25] border border-transparent'
                     : 'bg-white dark:bg-[#1f1f1f] text-[#1e1e1e] dark:text-[#cccccc] border border-[#d0d0d0] dark:border-[#3c3c3c] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a]',
@@ -62,8 +71,10 @@ export function QueueFollowUpButton(props: QueueFollowUpButtonProps) {
                     />
                 </svg>
             )}
-            <span className={mobileTapTarget ? 'hidden sm:inline' : undefined}>{buttonLabel}</span>
-            {showShortcutHint && !steering && (
+            {!iconOnly && (
+                <span className={mobileTapTarget ? 'hidden sm:inline' : undefined}>{buttonLabel}</span>
+            )}
+            {showShortcutHint && !steering && !iconOnly && (
                 <span
                     aria-hidden="true"
                     className="hidden sm:inline-flex items-center pl-1.5 ml-1 border-l border-[#e0e0e0] dark:border-[#3c3c3c] text-[9px] text-[#848484] font-mono"

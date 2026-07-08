@@ -116,6 +116,17 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
 vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
     Button: (props: any) => <button {...props} />,
+    // Used by the WorkspaceRightDock segmented Terminal|Explorer switcher, which
+    // RepoDetail now imports (behind the split flag).
+    SegmentedControl: ({ options, value, onChange, ...rest }: any) => (
+        <div data-testid={rest['data-testid']}>
+            {options?.map((o: any) => (
+                <button key={o.value} data-testid={o.testId} aria-pressed={value === o.value} onClick={() => onChange?.(o.value)}>
+                    {o.label}
+                </button>
+            ))}
+        </div>
+    ),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/ui/ErrorBoundary', () => ({
@@ -144,6 +155,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isPullRequestsEnabled: () => false,
     isNativeCliSessionsEnabled: () => false,
     isSplitWorkspacePanelEnabled: () => mockSplitWorkspacePanelEnabled,
+    isSchedulesInScheduledSlideEnabled: () => false,
     getScratchpadLayout: () => 'horizontal',
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
 }));

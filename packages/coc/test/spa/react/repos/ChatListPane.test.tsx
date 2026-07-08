@@ -526,6 +526,8 @@ describe('ChatListPane', () => {
             });
             const newChatBtn = screen.getByTestId('toolbar-new-chat-btn');
             const scopeTabs = screen.getByTestId('activity-scope-tabs');
+            // The search input is hidden until Ctrl+F reveals it.
+            fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
             const searchInput = screen.getByTestId('queue-search-input');
 
             const actionBar = newChatBtn.parentElement!;
@@ -552,11 +554,22 @@ describe('ChatListPane', () => {
             const fixedHeader = screen.getByTestId('chat-list-fixed-header');
             const pane = screen.getByTestId('chat-list-pane');
             const newChatBtn = screen.getByTestId('toolbar-new-chat-btn');
+            // The search input is hidden until Ctrl+F reveals it.
+            fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
             const searchInput = screen.getByTestId('queue-search-input');
             const completedHeader = screen.getByText('Completed Tasks').closest('[data-section="completed"]');
 
             expect(fixedHeader.className).toContain('sticky');
             expect(fixedHeader.className).toContain('top-0');
+            // Compact top/bottom padding: the sticky header uses a tight
+            // vertical rhythm (`py-1.5 md:py-2`) rather than the looser
+            // `py-2 md:py-4`, keeping the New chat + scope controls close to
+            // the section edges.
+            const fixedHeaderClasses = fixedHeader.className.split(/\s+/);
+            expect(fixedHeaderClasses).toContain('py-1.5');
+            expect(fixedHeaderClasses).toContain('md:py-2');
+            expect(fixedHeaderClasses).not.toContain('py-2');
+            expect(fixedHeaderClasses).not.toContain('md:py-4');
             // The sticky header full-bleeds to the scroll container's horizontal
             // edges (`-mx-*`). Regression guard for the "gap above the New chat
             // panel": the scroll container must NOT carry TOP padding, because a
@@ -1956,8 +1969,14 @@ describe('ChatListPane', () => {
 
     // ── Search ─────────────────────────────────────────────────────────
     describe('Search', () => {
+        it('search input is hidden by default', () => {
+            renderPane({ history: [makeHistoryTask()] });
+            expect(screen.queryByTestId('queue-search-input')).toBeNull();
+        });
+
         it('Ctrl+F opens search bar', () => {
             renderPane({ history: [makeHistoryTask()] });
+            expect(screen.queryByTestId('queue-search-input')).toBeNull();
             fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
             expect(screen.getByTestId('queue-search-input')).toBeTruthy();
         });
@@ -2006,10 +2025,11 @@ describe('ChatListPane', () => {
             expect(searchBar.textContent).toContain('1');
         });
 
-        it('close button clears the query but keeps the search bar visible', () => {
-            // Activity-compact reference: search input is permanent. ✕ only clears
-            // the query (and is itself only visible while there *is* a query).
+        it('close button clears the query but keeps the search bar open', () => {
+            // ✕ only clears the query (and is itself only visible while there *is*
+            // a query); the search bar stays open so the user can type again.
             renderPane({ history: [makeHistoryTask({ id: 'h-1', displayName: 'Foo' })] });
+            fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
             const input = screen.getByTestId('queue-search-input');
             fireEvent.change(input, { target: { value: 'Foo' } });
             fireEvent.click(screen.getByTestId('queue-search-close'));
@@ -2017,14 +2037,14 @@ describe('ChatListPane', () => {
             expect(inputAfter.value).toBe('');
         });
 
-        it('Escape clears the query but keeps the search bar visible', () => {
+        it('Escape clears the query and hides the search bar', () => {
             renderPane({ history: [makeHistoryTask({ id: 'h-1', displayName: 'Foo' })] });
+            fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
             const input = screen.getByTestId('queue-search-input');
             fireEvent.change(input, { target: { value: 'Foo' } });
-            fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
             fireEvent.keyDown(document, { key: 'Escape' });
-            const inputAfter = screen.getByTestId('queue-search-input') as HTMLInputElement;
-            expect(inputAfter.value).toBe('');
+            // Escape both clears the query and closes the bar (hidden by default).
+            expect(screen.queryByTestId('queue-search-input')).toBeNull();
         });
     });
 

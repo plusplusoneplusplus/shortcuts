@@ -45,7 +45,7 @@ const EMPTY_TREE: SourceCanvasTreeState = {
 };
 
 const headerBtnClass =
-    'shrink-0 flex items-center justify-center w-8 h-8 rounded text-[#848484] ' +
+    'shrink-0 flex items-center justify-center w-7 h-7 rounded text-[#848484] ' +
     'hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 
 function CopyIcon() {
@@ -123,21 +123,30 @@ export function SourceCanvasPanel({
             className="flex flex-col h-full min-h-0 overflow-hidden bg-white dark:bg-[#1e1e1e]"
             data-testid="source-canvas-panel"
         >
-            <div className="px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                    <div
-                        className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate"
+            <div className="px-3 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] flex items-center justify-between gap-2">
+                <div
+                    className="min-w-0 flex items-baseline gap-1.5"
+                    data-testid="source-canvas-header-titles"
+                >
+                    <span
+                        className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] shrink-0"
                         data-testid="source-canvas-filename"
                     >
                         {fileName}
-                    </div>
-                    <div
-                        className="text-xs text-[#848484] truncate mt-0.5"
+                    </span>
+                    {/* Truncate from the FRONT (dir=rtl) so the low-signal
+                        `packages/coc/src/...` prefix is dropped and the meaningful
+                        tail (parent folders + file) stays visible. `<bdi>` keeps the
+                        path itself in normal left-to-right order. The full path is
+                        preserved in the DOM for the tooltip + copy-path action. */}
+                    <span
+                        className="text-[11px] text-[#848484] truncate min-w-0 text-left"
+                        dir="rtl"
                         title={fullPath}
                         data-testid="source-canvas-path"
                     >
-                        {path}
-                    </div>
+                        <bdi>{path}</bdi>
+                    </span>
                 </div>
                 <div className="flex items-center gap-0.5 shrink-0">
                     <button

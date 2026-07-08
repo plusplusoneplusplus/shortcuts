@@ -78,3 +78,9 @@ export type {
     UseModalJobAiSelectionOptions,
     UseModalJobAiSelectionResult,
 } from './ModalJobAiControls';
+export { useAnchoredPanelPosition } from './useAnchoredPanelPosition';
+export type {
+    AnchoredPanelPlacement,
+    AnchoredPanelPositionOptions,
+    AnchoredPanelPosition,
+} from './useAnchoredPanelPosition';

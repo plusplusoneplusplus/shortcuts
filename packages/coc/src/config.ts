@@ -270,10 +270,12 @@ export interface CLIConfig {
         ralphMultiAgentGrill?: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions?: boolean;
-        /** Remote-first dashboard shell (one tab per remote). Disabled by default. */
+        /** Remote-first dashboard shell (one tab per remote). Enabled by default. */
         remoteShell?: boolean;
-        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Disabled by default. */
+        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel?: boolean;
+        /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Disabled by default. */
+        schedulesInScheduledSlide?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -586,10 +588,12 @@ export interface ResolvedCLIConfig {
         ralphMultiAgentGrill: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions: boolean;
-        /** Remote-first dashboard shell (one tab per remote). Disabled by default. */
+        /** Remote-first dashboard shell (one tab per remote). Enabled by default. */
         remoteShell: boolean;
-        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Disabled by default. */
+        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel: boolean;
+        /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Disabled by default. */
+        schedulesInScheduledSlide: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -839,8 +843,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         autoAgentProviderRouting: false,
         ralphMultiAgentGrill: false,
         nativeCliSessions: false,
-        remoteShell: false,
-        splitWorkspacePanel: false,
+        remoteShell: true,
+        splitWorkspacePanel: true,
+        schedulesInScheduledSlide: false,
     },
     memoryPromotion: {
         batchSize: 50,

@@ -10,7 +10,7 @@ import { useQueue } from '../contexts/QueueContext';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { SHOW_WIKI_TAB } from './TopBar';
-import { isTerminalEnabled, isNotesEnabled, isDreamsEnabled } from '../utils/config';
+import { isTerminalEnabled, isNotesEnabled, isDreamsEnabled, isSchedulesInScheduledSlideEnabled } from '../utils/config';
 import { getUiLayoutMode } from '../hooks/preferences/useUiLayoutMode';
 import type { UiLayoutMode } from '../types/dashboard';
 import { lazy, Suspense } from 'react';
@@ -678,7 +678,17 @@ export function Router() {
                         dispatch({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId, suffix: '/' + parts.slice(2).join('/') });
                     }
                     if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
-                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: parts[2] as RepoSubTab });
+                        // When the schedules-in-slide flag is ON, schedule routes
+                        // (#repos/{id}/schedules/...) live in the chat-list
+                        // "Scheduled" slide + main pane, not the standalone
+                        // Schedules sub-tab. Keep the chat surface mounted so
+                        // RepoChatTab can host the schedule detail/editor in its
+                        // detail pane (AC-02/03). Flag OFF ⇒ unchanged.
+                        if (parts[2] === 'schedules' && isSchedulesInScheduledSlideEnabled()) {
+                            dispatch({ type: 'SET_REPO_SUB_TAB', tab: resolveChatSubTab(getUiLayoutMode()) });
+                        } else {
+                            dispatch({ type: 'SET_REPO_SUB_TAB', tab: parts[2] as RepoSubTab });
+                        }
                     }
                     // Workflow deep-link handling
                     if (parts[2] === 'workflows' && parts[3] === 'script-template' && parts[4]) {
@@ -710,8 +720,10 @@ export function Router() {
                         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
                         dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                     }
-                    // Schedule deep-link handling: #repos/{id}/schedules/{scheduleId}
-                    if (parts[2] === 'schedules' && parts[3]) {
+                    // Schedule deep-link handling: #repos/{id}/schedules/{scheduleId}.
+                    // `/schedules/new` is the create route (flag ON) — it carries
+                    // no selected id, so treat it like the bare list route here.
+                    if (parts[2] === 'schedules' && parts[3] && parts[3] !== 'new') {
                         dispatch({ type: 'SET_SELECTED_SCHEDULE', id: decodeURIComponent(parts[3]) });
                     } else if (parts[2] === 'schedules') {
                         dispatch({ type: 'SET_SELECTED_SCHEDULE', id: null });

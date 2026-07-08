@@ -42,6 +42,11 @@ interface WorkingTreeProps {
     refreshKey?: number;
     /** Callback when the "all comments" button is clicked in the header. */
     onAllCommentsClick?: () => void;
+    /**
+     * Dense split-workspace skin: flat row instead of a padded card, "Local"
+     * tag, shortened summary and file-count. Full text stays in the tooltips.
+     */
+    compact?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,7 +259,7 @@ function Section({ title, count, children, defaultExpanded = true, onStageAll, o
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFilePath, refreshKey, onAllCommentsClick }: WorkingTreeProps) {
+export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFilePath, refreshKey, onAllCommentsClick, compact }: WorkingTreeProps) {
     const [changes, setChanges] = useState<WorkingTreeChange[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -471,7 +476,9 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
 
     return (
         <section
-            className="working-tree rounded-md border border-[#16825d]/30 dark:border-[#3fb950]/35 border-l-[3px] border-l-[#16825d] dark:border-l-[#3fb950] bg-white dark:bg-[#1e1e1e] overflow-hidden"
+            className={compact
+                ? 'working-tree border-l-[3px] border-l-[#16825d] dark:border-l-[#3fb950] bg-white dark:bg-[#1e1e1e] overflow-hidden'
+                : 'working-tree rounded-md border border-[#16825d]/30 dark:border-[#3fb950]/35 border-l-[3px] border-l-[#16825d] dark:border-l-[#3fb950] bg-white dark:bg-[#1e1e1e] overflow-hidden'}
             data-testid="working-tree"
             aria-label="Working Changes"
         >
@@ -486,7 +493,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                     role="button"
                     tabIndex={0}
                     aria-expanded={workingChangesExpanded}
-                    className="w-full flex items-center gap-2 px-2.5 py-1 bg-[#16825d]/[0.05] dark:bg-[#3fb950]/[0.08] hover:bg-[#16825d]/[0.09] dark:hover:bg-[#3fb950]/[0.14] text-left cursor-pointer transition-colors"
+                    className={`w-full flex items-center text-left cursor-pointer transition-colors bg-[#16825d]/[0.05] dark:bg-[#3fb950]/[0.08] hover:bg-[#16825d]/[0.09] dark:hover:bg-[#3fb950]/[0.14] ${compact ? 'gap-1.5 px-1.5 py-0.5' : 'gap-2 px-2.5 py-1'}`}
                     onClick={() => setWorkingChangesExpanded(prev => !prev)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setWorkingChangesExpanded(prev => !prev); } }}
                     data-testid="working-changes-header"
@@ -497,21 +504,24 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                             className="inline-flex items-center px-1.5 py-px rounded-full font-mono font-semibold uppercase tracking-[0.06em] text-[9px] leading-[1.4] text-[#16825d] dark:text-[#3fb950] bg-[#dafbe1] dark:bg-[#3fb950]/15 border border-[#16825d]/30 dark:border-[#3fb950]/35 whitespace-nowrap flex-shrink-0"
                             data-testid="working-tree-badge"
                         >
-                            Local Tree
+                            {compact ? 'Local' : 'Local Tree'}
                         </span>
                         <span
                             className="text-[10.5px] text-[#616161] dark:text-[#999] truncate min-w-0"
                             data-testid="working-tree-summary"
                             title={`${staged.length} staged · ${unstaged.length} modified · ${untracked.length} untracked`}
                         >
-                            {staged.length} staged · {unstaged.length} modified · {untracked.length} untracked
+                            {compact
+                                ? `${staged.length}s · ${unstaged.length}m · ${untracked.length}u`
+                                : `${staged.length} staged · ${unstaged.length} modified · ${untracked.length} untracked`}
                         </span>
                     </span>
                     <span
-                        className="ml-auto inline-flex items-center justify-center min-w-[44px] px-1.5 py-0.5 rounded-full bg-white dark:bg-[#1e1e1e] border border-[#16825d]/35 dark:border-[#3fb950]/40 text-[#16825d] dark:text-[#3fb950] font-mono font-semibold text-[10px] tabular-nums whitespace-nowrap flex-shrink-0"
+                        className={`ml-auto inline-flex items-center justify-center rounded-full bg-white dark:bg-[#1e1e1e] border border-[#16825d]/35 dark:border-[#3fb950]/40 text-[#16825d] dark:text-[#3fb950] font-mono font-semibold text-[10px] tabular-nums whitespace-nowrap flex-shrink-0 ${compact ? 'px-1.5 py-0' : 'min-w-[44px] px-1.5 py-0.5'}`}
                         data-testid="working-tree-file-count"
+                        title={`${totalCount} files`}
                     >
-                        {totalCount} files
+                        {compact ? `${totalCount}f` : `${totalCount} files`}
                     </span>
                     {onAllCommentsClick && (
                         <button

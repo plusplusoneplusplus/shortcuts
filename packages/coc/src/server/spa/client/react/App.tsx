@@ -17,6 +17,7 @@ import { GitReviewPopOutProvider } from './contexts/GitReviewPopOutContext';
 import { FloatingChatsProvider } from './contexts/FloatingChatsContext';
 import { ThemeProvider } from './layout/ThemeProvider';
 import { TopBar } from './layout/TopBar';
+import { GlobalStatusDock } from './layout/GlobalStatusDock';
 import { SecurityBanner } from './layout/SecurityBanner';
 import { BottomNav } from './layout/BottomNav';
 import { Router } from './layout/Router';
@@ -409,12 +410,24 @@ function AppInner() {
                 {/* Mirror the global /ws event stream to every online remote clone
                     so their tasks transition RUNNING → COMPLETED live (renders null). */}
                 <RemoteCloneEventBridge onMessage={onMessage} />
-                <div className="flex flex-col h-full">
+                {/* Neutral app background so the strip to the right of the
+                    left-column-width GlobalStatusDock (which only spans the
+                    sidebar) paints the app background rather than the bare
+                    (black) window, matching the detail-pane fill on the chat
+                    view. */}
+                <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e]">
                     <SecurityBanner />
                     <TopBar onAdminOpen={handleAdminOpen} />
                     <main className="flex-1 overflow-hidden min-h-0 pt-[var(--bottom-nav-height,0px)] md:pt-0">
                         <Router />
                     </main>
+                    {/* Remote-first shell: the status cluster docks in a bottom
+                        bar the width of the left sidebar (desktop only). Covers
+                        every tab except the workspace chat/activity view, which
+                        docks it in its own left-column footer so the chat detail
+                        pane stays full height. Renders null in classic/mobile,
+                        where TopBar keeps the top-right cluster. */}
+                    <GlobalStatusDock onAdminOpen={handleAdminOpen} />
                 </div>
                 <FloatingChatManager />
                 <BottomNav />

@@ -464,6 +464,55 @@ describe('SqliteProcessStore — getProcessSummaries', () => {
         const { entries: cleared } = await store.getProcessSummaries!();
         expect(cleared.find(e => e.id === 'waiting')!.pendingAskUserCount).toBeUndefined();
     });
+
+    // Compaction state must reach the client via the summary payload so the
+    // chat-list sidebar can bucket a mid-`/compact` conversation as running,
+    // including across a page reload (the reload seed reads getProcessSummaries).
+    it('forwards in-flight compaction metadata in entries', async () => {
+        await store.addProcess(makeProcess('compacting', {
+            status: 'running',
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-test',
+                compaction: { state: 'running', priorStatus: 'completed', startedAt: '2026-06-01T10:00:00Z' },
+            },
+        }));
+        await store.addProcess(makeProcess('plain', { status: 'completed' }));
+
+        const { entries } = await store.getProcessSummaries!();
+        const byId = Object.fromEntries(entries.map(e => [e.id, e]));
+        expect(byId['compacting'].compaction?.state).toBe('running');
+        expect(byId['compacting'].compaction?.priorStatus).toBe('completed');
+        // A process that never ran /compact carries no compaction field.
+        expect(byId['plain'].compaction).toBeUndefined();
+    });
+
+    it('reflects the settled compaction state after the compact route restores prior status', async () => {
+        await store.addProcess(makeProcess('settling', {
+            status: 'running',
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-test',
+                compaction: { state: 'running', priorStatus: 'completed', startedAt: '2026-06-01T10:00:00Z' },
+            },
+        }));
+
+        // Simulate the compact route settling: restore prior terminal status and
+        // flip compaction.state to completed (metadata envelope is rebuilt).
+        await store.updateProcess('settling', {
+            status: 'completed',
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-test',
+                compaction: { state: 'completed', priorStatus: 'completed', startedAt: '2026-06-01T10:00:00Z', completedAt: '2026-06-01T10:00:05Z' },
+            },
+        });
+
+        const { entries } = await store.getProcessSummaries!();
+        const entry = entries.find(e => e.id === 'settling')!;
+        expect(entry.status).toBe('completed');
+        expect(entry.compaction?.state).toBe('completed');
+    });
 });
 
 // ============================================================================

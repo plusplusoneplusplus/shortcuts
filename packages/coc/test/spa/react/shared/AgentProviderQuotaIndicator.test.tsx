@@ -90,6 +90,28 @@ describe('AgentProviderQuotaIndicator', () => {
         expect(container.className).toContain('md:block');
     });
 
+    it('reflects placement on the portaled panel (down by default, up when requested)', async () => {
+        mocks.getAgentProvidersQuota.mockResolvedValue(quotaResponse());
+
+        const { unmount } = render(<AgentProviderQuotaIndicator />);
+        fireEvent.click(await screen.findByTestId('agent-provider-quota-indicator'));
+        let panel = await screen.findByTestId('agent-provider-quota-panel');
+        expect(panel.getAttribute('data-placement')).toBe('down');
+        // Panel is portaled to <body> and positioned with fixed coords so it
+        // escapes the sidebar column's overflow clip rather than anchoring in-flow.
+        expect(panel.parentElement).toBe(document.body);
+        expect(panel.className).toContain('fixed');
+        expect(panel.className).not.toContain('absolute');
+        unmount();
+
+        render(<AgentProviderQuotaIndicator placement="up" />);
+        fireEvent.click(await screen.findByTestId('agent-provider-quota-indicator'));
+        panel = await screen.findByTestId('agent-provider-quota-panel');
+        expect(panel.getAttribute('data-placement')).toBe('up');
+        expect(panel.parentElement).toBe(document.body);
+        expect(panel.className).toContain('fixed');
+    });
+
     it('renders one dropdown row per enabled provider with every finite quota window', async () => {
         mocks.getAgentProvidersQuota.mockResolvedValue(quotaResponse({
             providers: [

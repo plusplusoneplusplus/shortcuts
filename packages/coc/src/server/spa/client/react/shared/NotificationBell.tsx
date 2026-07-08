@@ -3,10 +3,12 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { useNotifications, type NotificationEntry } from '../contexts/NotificationContext';
 import { useApp } from '../contexts/AppContext';
 import { useFloatingChats } from '../contexts/FloatingChatsContext';
 import { cn } from '../ui/cn';
+import { useAnchoredPanelPosition } from './useAnchoredPanelPosition';
 
 const TYPE_ICONS: Record<NotificationEntry['type'], string> = {
     success: '✅',
@@ -32,13 +34,22 @@ function parseRepoTag(title: string): { tag: string; rest: string } | null {
     return { tag: match[1], rest: match[2] };
 }
 
-export function NotificationBell() {
+export interface NotificationBellProps {
+    /** Which way the dropdown panel opens relative to the bell. `down` is the
+     *  historic topbar behavior (right-aligned, opens downward); `up` is for
+     *  bottom-docked placements (sidebar footer) where the panel opens upward
+     *  and is left-aligned to avoid overflowing off-screen. */
+    placement?: 'down' | 'up';
+}
+
+export function NotificationBell({ placement = 'down' }: NotificationBellProps = {}) {
     const { notifications, unreadCount, markAllRead, clearAll } = useNotifications();
     const { dispatch } = useApp();
     const { floatChat } = useFloatingChats();
     const [open, setOpen] = useState(false);
     const bellRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
+    const panelPos = useAnchoredPanelPosition({ open, placement, triggerRef: bellRef, panelRef });
 
     const toggle = useCallback(() => setOpen(prev => !prev), []);
 
@@ -123,11 +134,13 @@ export function NotificationBell() {
                 )}
             </button>
 
-            {open && (
+            {open && ReactDOM.createPortal(
                 <div
                     ref={panelRef}
-                    className="absolute right-0 top-full mt-1 w-[340px] max-h-[400px] flex flex-col rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg z-[10002]"
+                    className="fixed w-[340px] max-h-[400px] flex flex-col rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg z-[10002]"
+                    style={{ top: panelPos.top, left: panelPos.left }}
                     data-testid="notification-panel"
+                    data-placement={placement}
                     role="dialog"
                     aria-label="Notifications panel"
                 >
@@ -228,7 +241,8 @@ export function NotificationBell() {
                             </button>
                         </div>
                     )}
-                </div>
+                </div>,
+                document.body,
             )}
         </div>
     );

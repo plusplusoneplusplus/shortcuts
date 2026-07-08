@@ -168,6 +168,31 @@ describe('SplitWorkspacePanel', () => {
         expect(keys.every((k) => allowed.has(k))).toBe(true);
     });
 
+    it('renders no docked footer when no footer prop is provided', () => {
+        renderPanel();
+        expect(screen.queryByTestId('split-workspace-footer')).toBeNull();
+    });
+
+    it('docks a footer at the bottom of the left column when provided', () => {
+        render(
+            <SplitWorkspacePanel
+                workspaceId="ws-footer"
+                chatList={<div data-testid="chat-content">chat</div>}
+                gitList={<div data-testid="git-content">git</div>}
+                detail={<div data-testid="detail-content">detail</div>}
+                footer={<div data-testid="my-footer">footer</div>}
+            />,
+        );
+        const footer = screen.getByTestId('split-workspace-footer');
+        expect(footer).toBeTruthy();
+        // It lives inside the left column (not the shared detail pane), pinned
+        // so it never scrolls or grows.
+        const leftColumn = screen.getByTestId('split-workspace-left');
+        expect(leftColumn.contains(footer)).toBe(true);
+        expect(footer.className).toContain('flex-shrink-0');
+        expect(screen.getByTestId('my-footer')).toHaveTextContent('footer');
+    });
+
     it('falls back to a single column with no dividers at narrow width (AC-07)', () => {
         mockIsMobile = true;
         renderPanel();
@@ -196,13 +221,14 @@ describe('SplitWorkspacePanel collapsible sections', () => {
         expect(chatHeader.getAttribute('aria-expanded')).toBe('true');
         expect(gitHeader.getAttribute('aria-expanded')).toBe('true');
         // Compact: a short fixed-height bar so the header barely costs vertical
-        // space (the explicit ask).
-        expect(chatHeader.className).toContain('h-[22px]');
-        expect(gitHeader.className).toContain('h-[22px]');
+        // space (the explicit ask). The height + tinted band live on the row
+        // wrapper (the toggle button stretches to fill it).
+        expect(chatHeader.parentElement!.className).toContain('h-[22px]');
+        expect(gitHeader.parentElement!.className).toContain('h-[22px]');
         // Distinct tinted band so the header is visually identifiable against
         // the white chat/git content below (not left-transparent/white).
-        expect(chatHeader.className).toContain('bg-[#e4e9f2]');
-        expect(gitHeader.className).toContain('bg-[#e4e9f2]');
+        expect(chatHeader.parentElement!.className).toContain('bg-[#e4e9f2]');
+        expect(gitHeader.parentElement!.className).toContain('bg-[#e4e9f2]');
         // Bodies are visible (not hidden) while expanded.
         expect(screen.getByTestId('split-workspace-chat-body').classList.contains('hidden')).toBe(false);
         expect(screen.getByTestId('split-workspace-git-body').classList.contains('hidden')).toBe(false);
@@ -314,5 +340,113 @@ describe('SplitWorkspacePanel collapsible sections', () => {
         expect(screen.getByTestId('split-workspace-git-header').getAttribute('aria-expanded')).toBe('true');
         // A collapsed chat on load means no rebalance divider.
         expect(screen.queryByTestId('split-workspace-divider')).toBeNull();
+    });
+});
+
+describe('SplitWorkspacePanel git header extra slot', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        mockIsMobile = false;
+    });
+
+    function renderWithExtra(workspaceId = 'ws-extra') {
+        return render(
+            <SplitWorkspacePanel
+                workspaceId={workspaceId}
+                chatList={<div>chat</div>}
+                gitList={<div>git</div>}
+                detail={<div>detail</div>}
+                gitHeaderExtra={<button data-testid="hoisted-toolbar">toolbar</button>}
+            />,
+        );
+    }
+
+    it('renders the extra content inside the git header row', () => {
+        renderWithExtra();
+        const slot = screen.getByTestId('split-workspace-git-header-extra');
+        expect(slot.querySelector('[data-testid="hoisted-toolbar"]')).toBeTruthy();
+        // Same 22px header row as the toggle button.
+        expect(slot.parentElement).toBe(screen.getByTestId('split-workspace-git-header').parentElement);
+    });
+
+    it('does not render an extra slot when the prop is absent, and the toggle spans the row', () => {
+        renderPanel();
+        expect(screen.queryByTestId('split-workspace-git-header-extra')).toBeNull();
+        expect(screen.getByTestId('split-workspace-git-header').className).toContain('w-full');
+    });
+
+    it('shrinks the toggle to natural width when extra is present', () => {
+        renderWithExtra();
+        const toggle = screen.getByTestId('split-workspace-git-header');
+        expect(toggle.className).toContain('flex-shrink-0');
+        expect(toggle.className).not.toContain('w-full');
+    });
+
+    it('clicking the extra content does NOT toggle the git section', () => {
+        renderWithExtra();
+        act(() => { fireEvent.click(screen.getByTestId('hoisted-toolbar')); });
+        expect(screen.getByTestId('split-workspace-git-header').getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByTestId('split-workspace-git-body').classList.contains('hidden')).toBe(false);
+    });
+
+    it('keeps the extra content visible while the git section is collapsed', () => {
+        renderWithExtra();
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-git-header')); });
+        expect(screen.getByTestId('split-workspace-git-body').classList.contains('hidden')).toBe(true);
+        expect(screen.getByTestId('hoisted-toolbar')).toBeTruthy();
+        // Collapsed git half switches to overflow-visible so dropdowns opened
+        // from the hoisted toolbar are not clipped to the 22px header.
+        expect(screen.getByTestId('split-workspace-git').className).toContain('overflow-visible');
+        expect(screen.getByTestId('split-workspace-git').className).not.toContain('overflow-hidden');
+    });
+
+    it('expanded git half keeps overflow containment', () => {
+        renderWithExtra();
+        expect(screen.getByTestId('split-workspace-git').className).toContain('overflow-hidden');
+    });
+
+    it('chat header never renders an extra slot', () => {
+        renderWithExtra();
+        expect(screen.queryByTestId('split-workspace-chat-header-extra')).toBeNull();
+        expect(screen.getByTestId('split-workspace-chat-header').className).toContain('w-full');
+    });
+
+    it('mobile single-column fallback ignores the extra slot (no section headers)', () => {
+        mockIsMobile = true;
+        renderWithExtra();
+        expect(screen.queryByTestId('split-workspace-git-header')).toBeNull();
+        expect(screen.queryByTestId('split-workspace-git-header-extra')).toBeNull();
+    });
+});
+
+// The App shell's global status dock sizes itself to the left sidebar via this
+// CSS variable, so the panel must publish its live left-column width — and clear
+// it when the sidebar is gone (mobile / unmount) so the dock can fall back.
+describe('SplitWorkspacePanel — publishes left-column width for the global status dock', () => {
+    const VAR = '--workspace-left-col-width';
+    const readVar = () => document.documentElement.style.getPropertyValue(VAR);
+
+    beforeEach(() => {
+        localStorage.clear();
+        mockIsMobile = false;
+        document.documentElement.style.removeProperty(VAR);
+    });
+
+    it('sets the CSS variable to the default left-column width on desktop', () => {
+        renderPanel();
+        expect(readVar()).toBe('360px');
+    });
+
+    it('does not publish a width on the mobile single-column fallback', () => {
+        mockIsMobile = true;
+        renderPanel();
+        expect(readVar()).toBe('');
+    });
+
+    it('clears the CSS variable on unmount so the dock falls back', () => {
+        const { unmount } = renderPanel();
+        expect(readVar()).toBe('360px');
+        unmount();
+        expect(readVar()).toBe('');
     });
 });

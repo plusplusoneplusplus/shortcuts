@@ -5,7 +5,7 @@
  * Advanced automation (workflow/script/notes) stays in CreateScheduleForm.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button, cn } from '../../ui';
 import { SegmentedControl } from '../../ui/SegmentedControl';
 import { getSpaCocClient } from '../../api/cocClient';
@@ -49,15 +49,37 @@ function hasNonDefaultOptions(vals: PromptScheduleFormValues | undefined, worksp
     );
 }
 
-export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvanced, mode: formMode = 'create', scheduleId, initialValues }: {
+export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvanced, mode: formMode = 'create', scheduleId, initialValues, storePicker = false, onDirtyChange }: {
     workspaceId: string;
-    onCreated: () => void;
+    /**
+     * Called after a successful create or edit. On create the newly-created
+     * schedule (`{ id, source }`) is passed so callers can navigate to its
+     * detail and react to the chosen store; on edit it is called with no
+     * argument. The optional parameter keeps the existing `() => void` callers
+     * (Repo ▸ Schedules tab, ScheduleDetail edit) source-compatible.
+     */
+    onCreated: (created?: { id?: string; source?: 'user' | 'repo' }) => void;
     onCancel: () => void;
     /** Switch to the full CreateScheduleForm for workflow/script/notes. */
     onAdvanced?: () => void;
     mode?: 'create' | 'edit';
     scheduleId?: string;
     initialValues?: PromptScheduleFormValues;
+    /**
+     * When `true` (create mode only), render a "Store in: My / Repo" picker.
+     * Choosing Repo creates the schedule in the user store and then moves it to
+     * `.github/schedules/`. Defaults to `false` so the classic Repo ▸ Schedules
+     * tab (which manages the My/Repo split at the list level) is unchanged.
+     */
+    storePicker?: boolean;
+    /**
+     * Notified whenever the form's dirty state changes — `true` once any field
+     * differs from its initial value, `false` when it matches (and once on
+     * unmount). Lets a host (the Scheduled-slide main pane) guard navigate-away
+     * with a "Discard changes?" prompt. Optional, so the classic Repo ▸
+     * Schedules tab is unaffected.
+     */
+    onDirtyChange?: (dirty: boolean) => void;
 }) {
     // AC-07: schedule create/update/disable target the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
@@ -85,6 +107,54 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [refineOpen, setRefineOpen] = useState(false);
+    // Where a newly-created schedule is stored (create mode + `storePicker`
+    // only). 'user' → schedules.json; 'repo' → .github/schedules/ via a move.
+    const [store, setStore] = useState<'user' | 'repo'>('user');
+
+    // Baseline snapshot of every editable field (mirrors the useState
+    // initializers above). The form is "dirty" when any current value diverges
+    // from this — used to gate a "Discard changes?" prompt on navigate-away.
+    const initial = {
+        name: initialValues?.name ?? '',
+        instructions: initialValues?.target ?? '',
+        chatMode: normalizePromptScheduleMode(initialValues?.chatMode, 'ask'),
+        model: initialValues?.model ?? '',
+        outputFolder: initialValues?.outputFolder ?? defaultOutputFolder(workspaceId),
+        onFailure: initialValues?.onFailure ?? 'notify',
+        preset: inferred?.preset ?? ('daily' as PromptSchedulePreset),
+        hour: inferred?.hour ?? 9,
+        minute: inferred?.minute ?? 0,
+        dayOfWeek: inferred?.dayOfWeek ?? '1',
+        customTimingMode: 'cron' as 'interval' | 'cron',
+        customCron: initialValues?.cron ?? '0 9 * * *',
+        customIntervalValue: '1',
+        customIntervalUnit: 'hours',
+        store: 'user' as 'user' | 'repo',
+    };
+
+    const dirty =
+        name !== initial.name
+        || instructions !== initial.instructions
+        || chatMode !== initial.chatMode
+        || model !== initial.model
+        || outputFolder !== initial.outputFolder
+        || onFailure !== initial.onFailure
+        || preset !== initial.preset
+        || hour !== initial.hour
+        || minute !== initial.minute
+        || dayOfWeek !== initial.dayOfWeek
+        || customTimingMode !== initial.customTimingMode
+        || customCron !== initial.customCron
+        || customIntervalValue !== initial.customIntervalValue
+        || customIntervalUnit !== initial.customIntervalUnit
+        || store !== initial.store;
+
+    // Report dirty transitions (ref-guarded so an unstable `onDirtyChange`
+    // identity does not churn the effect); always reset to clean on unmount.
+    const onDirtyChangeRef = useRef(onDirtyChange);
+    onDirtyChangeRef.current = onDirtyChange;
+    useEffect(() => { onDirtyChangeRef.current?.(dirty); }, [dirty]);
+    useEffect(() => () => { onDirtyChangeRef.current?.(false); }, []);
 
     // Ask AI to rewrite the rough instructions into a clearer prompt. Routed to
     // the selected clone's server and scoped to this workspace; respects the
@@ -172,13 +242,26 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
             };
             if (formMode === 'edit' && scheduleId) {
                 await cloneClient.schedules.update(workspaceId, scheduleId, payload);
+                onCreated();
             } else {
                 const result = await cloneClient.schedules.create(workspaceId, payload);
-                if (shouldPause && result?.id) {
-                    try { await cloneClient.schedules.disable(workspaceId, result.id); } catch { /* best effort */ }
+                // `create` resolves to `{ schedule }`, so the new id lives at
+                // `result.schedule.id` (not `result.id`).
+                let createdId = result?.schedule?.id;
+                let createdSource: 'user' | 'repo' = 'user';
+                // Store=Repo: create lands in the user store, then move it to
+                // `.github/schedules/`. The move re-keys the schedule (repo ids
+                // are `repo:<slug>`), so navigate to the moved id.
+                if (store === 'repo' && createdId) {
+                    const moved = await cloneClient.schedules.move(workspaceId, createdId, 'repo');
+                    createdId = moved?.schedule?.id ?? createdId;
+                    createdSource = 'repo';
                 }
+                if (shouldPause && createdId) {
+                    try { await cloneClient.schedules.disable(workspaceId, createdId); } catch { /* best effort */ }
+                }
+                onCreated(createdId ? { id: createdId, source: createdSource } : undefined);
             }
-            onCreated();
         } catch (err) {
             setError(err instanceof Error ? err.message : `Failed to ${formMode === 'edit' ? 'update' : 'create'} schedule`);
         } finally {
@@ -193,6 +276,26 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
                 <span className="flex-shrink-0 mt-0.5">🕐</span>
                 <span>Local schedules only run while this CoC server is awake.</span>
             </div>
+
+            {/* Store picker (create-in-slide only) */}
+            {storePicker && formMode === 'create' && (
+                <div className="flex flex-col gap-1" data-testid="prompt-store-picker">
+                    <SegmentedControl
+                        label="Store in"
+                        value={store}
+                        onChange={setStore}
+                        options={[
+                            { value: 'user', label: 'My', testId: 'prompt-store-my' },
+                            { value: 'repo', label: 'Repo', testId: 'prompt-store-repo' },
+                        ] as const}
+                    />
+                    {store === 'repo' && (
+                        <span className="text-[10px] text-[#616161] dark:text-[#999]" data-testid="prompt-store-repo-hint">
+                            Saved to <code className="font-mono">.github/schedules/</code> — commit to share with your team.
+                        </span>
+                    )}
+                </div>
+            )}
 
             {/* Header */}
             <div className="flex items-center justify-between">

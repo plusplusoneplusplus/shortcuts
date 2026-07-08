@@ -21,6 +21,13 @@ export interface AgentSelectorChipProps {
     disabled?: boolean;
     disabledReason?: string;
     mobileTapTarget?: boolean;
+    /**
+     * Render icon-only at every viewport: drops the provider name label,
+     * keeping it in the title/aria-label. Driven by the composer's
+     * container-width signal for very narrow panes (unlike `mobileTapTarget`,
+     * whose label hiding is viewport-gated via `sm:`).
+     */
+    iconOnly?: boolean;
 }
 
 /** Bot icon for Codex — small hexagon outline, matching the existing provider badge. */
@@ -77,7 +84,7 @@ function ProviderIcon({ id }: { id: string }) {
     return <CopilotIcon />;
 }
 
-export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, disabledReason, mobileTapTarget = false }: AgentSelectorChipProps) {
+export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, disabledReason, mobileTapTarget = false, iconOnly = false }: AgentSelectorChipProps) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -128,12 +135,17 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                 aria-label={title}
             >
                 <ProviderIcon id={selected} />
-                <span className={cn(
-                    'font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999] truncate',
-                    mobileTapTarget && 'hidden sm:inline',
-                )}>
-                    {selectedLabel}
-                </span>
+                {!iconOnly && (
+                    <span
+                        data-testid="agent-selector-chip-label"
+                        className={cn(
+                            'font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999] truncate',
+                            mobileTapTarget && 'hidden sm:inline',
+                        )}
+                    >
+                        {selectedLabel}
+                    </span>
+                )}
                 <svg
                     width="7" height="7"
                     viewBox="0 0 8 6"

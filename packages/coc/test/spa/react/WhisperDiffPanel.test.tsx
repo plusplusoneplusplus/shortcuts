@@ -15,8 +15,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 vi.mock('../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
-    UnifiedDiffViewer: ({ diff, fileName, 'data-testid': testId }: any) => (
-        <pre data-testid={testId} data-file-name={fileName}>{diff}</pre>
+    UnifiedDiffViewer: ({ diff, fileName, hideFileHeaders, 'data-testid': testId }: any) => (
+        <pre data-testid={testId} data-file-name={fileName} data-hide-file-headers={hideFileHeaders ? 'true' : 'false'}>{diff}</pre>
     ),
 }));
 
@@ -106,6 +106,7 @@ describe('WhisperDiffPanel', () => {
         const viewer = screen.getByTestId('whisper-diff-viewer');
         expect(viewer).toHaveTextContent('+added');
         expect(viewer).toHaveAttribute('data-file-name', 'bar.ts');
+        expect(viewer).toHaveAttribute('data-hide-file-headers', 'true');
         expect(screen.queryByTestId('whisper-diff-loading')).toBeNull();
         expect(screen.queryByTestId('whisper-diff-empty')).toBeNull();
         expect(screen.queryByTestId('whisper-diff-error')).toBeNull();
@@ -213,6 +214,8 @@ describe('WhisperDiffPanel — combined "All changes" mode (AC-03)', () => {
         expect(viewers).toHaveLength(2);
         expect(viewers[0]).toHaveTextContent('+A');
         expect(viewers[1]).toHaveTextContent('+B');
+        expect(viewers[0]).toHaveAttribute('data-hide-file-headers', 'true');
+        expect(viewers[1]).toHaveAttribute('data-hide-file-headers', 'true');
         // No empty message when there are reconstructable sections.
         expect(screen.queryByTestId('whisper-diff-empty')).toBeNull();
     });

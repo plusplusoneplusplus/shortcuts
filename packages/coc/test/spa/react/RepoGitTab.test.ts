@@ -568,7 +568,7 @@ describe('RepoGitTab', () => {
         });
 
         it('destructures the split-workspace props (default-absent ⇒ no-op)', () => {
-            expect(source).toContain('export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive, onActivateDetail }: RepoGitTabProps)');
+            expect(source).toContain('export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer }: RepoGitTabProps)');
         });
 
         it('derives isSplitWorkspace from the layout prop', () => {
@@ -595,6 +595,29 @@ describe('RepoGitTab', () => {
 
         it('marks git last-clicked via capture-phase click on the list wrapper (AC-04)', () => {
             expect(source).toContain('onClickCapture={() => onActivateDetail?.()}');
+        });
+
+        it('declares the optional headerToolbarContainer portal target', () => {
+            expect(source).toContain('headerToolbarContainer?: HTMLElement | null');
+        });
+
+        it('hoists the compact GitPanelHeader into the section header only when split + portal target exist', () => {
+            expect(source).toContain('const headerHoisted = isSplitWorkspace && !!headerToolbarContainer');
+            expect(source).toContain('createPortal(panelHeader, headerToolbarContainer)');
+            expect(source).toContain('compact={headerHoisted}');
+        });
+
+        it('slims the search bar in split mode (shorter placeholder, tighter padding), full hint kept in aria-label', () => {
+            expect(source).toContain("isSplitWorkspace ? 'Search commits…' : 'Search subject, hash, author, path…'");
+            expect(source).toContain("isSplitWorkspace ? 'px-2 py-1' : 'px-2.5 py-1.5'");
+            expect(source).toContain('aria-label="Search commits by subject, hash, author, or path"');
+        });
+
+        it('tightens the repo-sections grid and passes compact to both cards in split mode', () => {
+            expect(source).toContain("isSplitWorkspace ? 'gap-1 px-1.5 py-1' : 'gap-2 px-2 py-2'");
+            const compactPasses = source.match(/compact=\{isSplitWorkspace\}/g);
+            expect(compactPasses).toBeTruthy();
+            expect(compactPasses!.length).toBe(2);
         });
 
         it('portals the detail subtree into the parent container, gated on detailActive (AC-04 single shared pane)', () => {

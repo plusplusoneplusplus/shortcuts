@@ -130,4 +130,36 @@ describe('toProcessSummary — field completeness for notifications', () => {
         const summary = toProcessSummary(makeAIProcess({ pendingAskUser: [] }));
         expect(summary.pendingAskUserCount).toBe(0);
     });
+
+    // Compaction state must reach the client so the chat-list sidebar can bucket a
+    // mid-`/compact` conversation under RUNNING TASKS (compact-running-in-chat-list).
+    it('forwards in-flight compaction state from process metadata', () => {
+        const summary = toProcessSummary(makeAIProcess({
+            status: 'running',
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-abc',
+                compaction: { state: 'running', priorStatus: 'completed', startedAt: '2026-06-01T10:00:00Z' },
+            },
+        }));
+        expect(summary.compaction?.state).toBe('running');
+        expect(summary.compaction?.priorStatus).toBe('completed');
+    });
+
+    it('forwards settled compaction state (completed) so the client can release the running row', () => {
+        const summary = toProcessSummary(makeAIProcess({
+            status: 'completed',
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-abc',
+                compaction: { state: 'completed', priorStatus: 'completed', startedAt: '2026-06-01T10:00:00Z', completedAt: '2026-06-01T10:00:05Z' },
+            },
+        }));
+        expect(summary.compaction?.state).toBe('completed');
+    });
+
+    it('compaction is undefined when the process never ran /compact', () => {
+        const summary = toProcessSummary(makeAIProcess({ metadata: { type: 'chat', workspaceId: 'ws-abc' } }));
+        expect(summary.compaction).toBeUndefined();
+    });
 });

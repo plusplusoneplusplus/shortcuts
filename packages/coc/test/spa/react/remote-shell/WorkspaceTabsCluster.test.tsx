@@ -14,6 +14,7 @@ let mockQueueStats: any = { running: 0, queued: 0 };
 let mockGitInfo: any = { ahead: 0, behind: 0 };
 let mockUnseenCounts: Record<string, number> = {};
 let mockSplitWorkspacePanelEnabled = false;
+let mockSchedulesInScheduledSlideEnabled = false;
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
@@ -34,6 +35,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useDreamsEn
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useNativeCliSessionsEnabled', () => ({ useNativeCliSessionsEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useShowPlanDepTab', () => ({ useShowPlanDepTab: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({ useSplitWorkspacePanelEnabled: () => mockSplitWorkspacePanelEnabled }));
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({ useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled }));
 vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({ useUiLayoutMode: () => ['dev-workflow', vi.fn()] }));
 vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({ useRepoQueueStats: () => mockQueueStats, isHidden: () => false }));
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useGitInfo', () => ({ useGitInfo: () => mockGitInfo }));
@@ -62,6 +64,7 @@ beforeEach(() => {
     mockGitInfo = { ahead: 0, behind: 0 };
     mockUnseenCounts = {};
     mockSplitWorkspacePanelEnabled = false;
+    mockSchedulesInScheduledSlideEnabled = false;
 });
 
 describe('WorkspaceTabsCluster', () => {
@@ -94,6 +97,23 @@ describe('WorkspaceTabsCluster', () => {
         const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'git')!;
         fireEvent.click(git);
         expect(mockSwitchSubTab).toHaveBeenCalledWith('git');
+    });
+
+    it('shows the schedules tab by default (flag off)', () => {
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
+
+        const cloneTabs = screen.getAllByTestId('clone-scope-tab').map(el => el.getAttribute('data-subtab'));
+        expect(cloneTabs).toContain('schedules');
+    });
+
+    it('hides the standalone schedules tab when schedules-in-scheduled-slide is enabled', () => {
+        mockSchedulesInScheduledSlideEnabled = true;
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
+
+        const cloneTabs = screen.getAllByTestId('clone-scope-tab').map(el => el.getAttribute('data-subtab'));
+        expect(cloneTabs).not.toContain('schedules');
     });
 
     it('hides the standalone git tab when split workspace panel is enabled', () => {

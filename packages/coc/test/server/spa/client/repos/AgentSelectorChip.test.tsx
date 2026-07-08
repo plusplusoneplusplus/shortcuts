@@ -135,6 +135,35 @@ describe('AgentSelectorChip', () => {
             expect(label.className).toContain('hidden');
             expect(label.className).toContain('sm:inline');
         });
+
+        it('drops the label entirely when iconOnly is set, keeping the accessible name', () => {
+            render(
+                <AgentSelectorChip
+                    providers={[COPILOT, CODEX_ENABLED]}
+                    loading={false}
+                    selected="copilot"
+                    onChange={vi.fn()}
+                    iconOnly
+                />
+            );
+
+            const btn = screen.getByTestId('agent-selector-chip-btn');
+            expect(screen.queryByTestId('agent-selector-chip-label')).toBeNull();
+            expect(btn.textContent).not.toContain('Copilot');
+            expect(btn.getAttribute('aria-label')).toContain('Agent: Copilot');
+        });
+
+        it('renders the label by default (iconOnly unset)', () => {
+            render(
+                <AgentSelectorChip
+                    providers={[COPILOT, CODEX_ENABLED]}
+                    loading={false}
+                    selected="copilot"
+                    onChange={vi.fn()}
+                />
+            );
+            expect(screen.getByTestId('agent-selector-chip-label').textContent).toBe('Copilot');
+        });
     });
 
     describe('dropdown menu', () => {

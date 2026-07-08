@@ -20,6 +20,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import { E2E_SERVER_CONFIG_YAML } from './fixtures/e2e-server-config';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // ── Server Fixture ────────────────────────────────────────────────────────────
@@ -42,7 +43,12 @@ async function startTestServer(): Promise<TestServer> {
     const wsIdB = 'e2e-ws-b';
 
     const store = new FileProcessStore({ dataDir });
-    const server = await createExecutionServer({ port: 0, host: '127.0.0.1', store, dataDir });
+    // Pin the classic shell (see e2e-server-config.ts) so this own-server spec
+    // matches the shared fixture and the graduated default-on shell flags don't
+    // reshape the layout out from under it.
+    const configPath = path.join(dataDir, 'config.yaml');
+    fs.writeFileSync(configPath, E2E_SERVER_CONFIG_YAML);
+    const server = await createExecutionServer({ port: 0, host: '127.0.0.1', store, dataDir, configPath });
 
     // Register two workspaces via API
     await apiPost(server.url, '/api/workspaces', { id: wsIdA, name: 'Repo A', rootPath: wsDirA });

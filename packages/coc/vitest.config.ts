@@ -8,6 +8,13 @@ export default defineConfig({
     },
     resolve: {
         alias: {
+            // Redirect open-color to its CJS .js file to avoid the Node ≥ 24
+            // ERR_IMPORT_ATTRIBUTE_MISSING error. The open-color package sets
+            // "main": "open-color.json", but @excalidraw/excalidraw imports it
+            // as `import OpenColor from "open-color"` with no `with { type: "json" }`
+            // attribute. open-color.js (module.exports) is resolved by Vite via
+            // CJS→ESM interop and works on all Node versions.
+            'open-color': path.resolve(__dirname, '../../node_modules/open-color/open-color.js'),
             '@plusplusoneplusplus/coc-server': path.resolve(__dirname, 'src/server/index.ts'),
             '@plusplusoneplusplus/coc-agent-sdk/testing': path.resolve(__dirname, '../coc-agent-sdk/src/testing/index.ts'),
             '@plusplusoneplusplus/coc-client': path.resolve(__dirname, '../coc-client/src/index.ts'),

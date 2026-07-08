@@ -31,9 +31,14 @@ export interface ChatDetailPaneProps {
     onOpenForEachRun?: (runId: string) => void;
     /** Opens the existing Map Reduce run pane. */
     onOpenMapReduceRun?: (runId: string) => void;
+    /**
+     * Active chat-list search query (AC-04/AC-05) — forwarded to ChatDetail so
+     * the open conversation highlights matches while the search box is open.
+     */
+    searchHighlightQuery?: string;
 }
 
-export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector, onOpenForEachRun, onOpenMapReduceRun }: ChatDetailPaneProps) {
+export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector, onOpenForEachRun, onOpenMapReduceRun, searchHighlightQuery }: ChatDetailPaneProps) {
     const { poppedOutTasks, markRestored } = usePopOut();
     const { floatingChats, unfloatChat } = useFloatingChats();
 
@@ -87,5 +92,5 @@ export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, 
         );
     }
 
-    return <ChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} readOnly={readOnly} hideModeSelector={hideModeSelector} onOpenForEachRun={onOpenForEachRun} onOpenMapReduceRun={onOpenMapReduceRun} />;
+    return <ChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} readOnly={readOnly} hideModeSelector={hideModeSelector} onOpenForEachRun={onOpenForEachRun} onOpenMapReduceRun={onOpenMapReduceRun} searchHighlightQuery={searchHighlightQuery} />;
 }

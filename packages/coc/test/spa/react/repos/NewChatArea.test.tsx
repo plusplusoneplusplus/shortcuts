@@ -427,6 +427,18 @@ describe('NewChatArea', () => {
         expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy();
     });
 
+    it('compacts already at medium container width (regression: 500–700px used to wrap the toolbar)', async () => {
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(600);
+
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('new-chat-area').getAttribute('data-settings-layout')).toBe('compact');
+        });
+        expect(screen.getByTestId('compact-ai-settings-chip')).toBeTruthy();
+        expect(screen.queryByTestId('mode-selector')).toBeNull();
+    });
+
     it('send button is enabled after typing', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         const input = screen.getByTestId('new-chat-input') as HTMLInputElement;

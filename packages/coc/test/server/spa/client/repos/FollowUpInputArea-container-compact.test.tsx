@@ -5,9 +5,13 @@
  *
  * Unlike the viewport-driven (`lg:` / `sm:`) compaction covered by
  * FollowUpInputArea-compact-toolbar.test.tsx, these behaviours fire when the
- * toolbar measures its OWN width below the `narrow` threshold (<500px) via the
- * `useContainerWidth` hook — so the footer compacts when the composer pane is
- * narrow even on a wide browser window (reference/note panel open beside it).
+ * toolbar measures its OWN width via the `useContainerWidth` hook — so the
+ * footer compacts when the composer pane is narrow even on a wide browser
+ * window (reference/note panel open beside it). The toolbar passes a raised
+ * `wideThreshold` (820px) and compacts whenever it is NOT `wide` — full labels
+ * need ~820px, so waiting for the 500px `narrow` tier used to leave a
+ * 500–820px dead zone where the toolbar wrapped onto a second line instead of
+ * compacting.
  *
  * Covers:
  *  - AC-01: the container-width signal drives compaction; full layout when wide.
@@ -16,6 +20,9 @@
  *  - AC-02: the cwd chip collapses to the last folder name (basename) with the
  *    full path in its title, driven by the same container-narrow signal threaded
  *    down into ComposerMetaStrip.
+ *  - Single-line regression: compaction already fires in the `medium` tier, and
+ *    the meta strip lives inside a flex-basis-0 middle so it can never wrap the
+ *    toolbar onto a second row.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -54,8 +61,14 @@ vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     Button: ({ children, ...rest }: any) => <button {...rest}>{children}</button>,
     SuggestionChips: () => null,
     SendButton: () => <button data-testid="activity-chat-send-btn">Send</button>,
-    QueueFollowUpButton: ({ onSend }: any) => (
-        <button data-testid="activity-chat-send-btn" onClick={() => onSend('enqueue')}>Send</button>
+    QueueFollowUpButton: ({ onSend, iconOnly }: any) => (
+        <button
+            data-testid="activity-chat-send-btn"
+            data-icon-only={iconOnly ? 'true' : 'false'}
+            onClick={() => onSend('enqueue')}
+        >
+            Send
+        </button>
     ),
 }));
 
@@ -196,6 +209,66 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
             // width 0 is "not yet measured" → full layout despite the narrow tier.
             expect(screen.getByTestId('model-picker-chip-label')).toBeTruthy();
         });
+
+        it('compacts already in the medium tier (regression: 500–820px used to wrap instead)', () => {
+            setContainerWidth('medium', 600);
+            render(<FollowUpInputArea {...defaultProps({
+                workingDirectory: '/Users/yihengtao/Documents/Projects/nanochat',
+            })} />);
+            // Anything below `wide` compacts: model chip icon-only + cwd basename.
+            expect(screen.queryByTestId('model-picker-chip-label')).toBeNull();
+            expect(screen.getByTestId('composer-cwd-path').textContent).toBe('nanochat');
+        });
+    });
+
+    describe('Single-line toolbar – meta strip cannot force a wrap', () => {
+        it('hosts the meta strip inside the flex-basis-0 flexible middle', () => {
+            setContainerWidth('wide', 900);
+            render(<FollowUpInputArea {...defaultProps({
+                workingDirectory: '/Users/yihengtao/Documents/Projects/nanochat',
+            })} />);
+            const middle = screen.getByTestId('chat-toolbar-flex-middle');
+            // basis-0 keeps the strip's hypothetical size at 0 so flex wrapping
+            // never sees it as an overflowing item; flex-1 + min-w-0 make it
+            // grow into free space and shrink by truncating the cwd path.
+            expect(middle.className).toContain('flex-1');
+            expect(middle.className).toContain('basis-0');
+            expect(middle.className).toContain('min-w-0');
+            const strip = screen.getByTestId('composer-meta-strip');
+            expect(middle.contains(strip)).toBe(true);
+        });
+
+        it('hides the strip via container query instead of overlapping when free space runs out', () => {
+            setContainerWidth('wide', 900);
+            render(<FollowUpInputArea {...defaultProps({
+                workingDirectory: '/Users/yihengtao/Documents/Projects/nanochat',
+                sessionTokenLimit: 200_000,
+                sessionCurrentTokens: 28_000,
+            })} />);
+            // The middle is an inline-size @container whose width equals the
+            // toolbar's free space (basis-0). The strip's unshrinkable pieces
+            // hide via container queries below their fit widths — regression
+            // for the ctx gauge bleeding over the tools/send zone.
+            const middle = screen.getByTestId('chat-toolbar-flex-middle');
+            expect(middle.className).toContain('[container-type:inline-size]');
+            const fitGate = screen.getByTestId('chat-toolbar-meta-fit-gate');
+            expect(fitGate.className).toContain('[@container_(max-width:159px)]:hidden');
+            expect(fitGate.contains(screen.getByTestId('composer-meta-strip'))).toBe(true);
+            // The cwd group (chip + divider) is the first to go, keeping the
+            // ctx gauge; the divider hides together with the chip.
+            const cwdGroup = screen.getByTestId('composer-cwd-group');
+            expect(cwdGroup.className).toContain('[@container_(max-width:319px)]:hidden');
+            expect(cwdGroup.contains(screen.getByTestId('composer-cwd-chip'))).toBe(true);
+        });
+
+        it('keeps the flexible middle as a spacer when no meta content is present', () => {
+            setContainerWidth('wide', 900);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            // No cwd/ctx → the strip renders nothing, but the middle div still
+            // exists to push the tools/send zone to the right edge.
+            expect(screen.getByTestId('chat-toolbar-flex-middle')).toBeTruthy();
+            expect(screen.queryByTestId('composer-meta-strip')).toBeNull();
+        });
     });
 
     describe('AC-04 – model chip → icon only when narrow', () => {
@@ -245,6 +318,67 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
             // Wide keeps the ellipsis-prefixed head-truncated form + the `cwd` label.
             expect(screen.getByTestId('composer-cwd-path').textContent?.startsWith('…')).toBe(true);
             expect(chip.querySelector('span[class*="uppercase"]')?.textContent).toBe('cwd');
+        });
+    });
+
+    describe('Tight tier (<500px) – mobile controls driven by the container signal', () => {
+        it('keeps the desktop controls at medium width (500–819px)', () => {
+            setContainerWidth('medium', 600);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.getByTestId('mode-selector')).toBeTruthy();
+            expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+            expect(screen.getByTestId('chat-toolbar-mention-btn')).toBeTruthy();
+            // The mobile fallbacks stay viewport-gated (hidden on lg+).
+            expect(screen.getByTestId('chat-toolbar-overflow').className).toContain('lg:hidden');
+            expect(screen.getByTestId('mode-cycle-btn-compact').className).toContain('lg:hidden');
+        });
+
+        it('swaps the mode pills for the cycle button when the pane is tight', () => {
+            setContainerWidth('narrow', 420);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.queryByTestId('mode-selector')).toBeNull();
+            // The cycle button loses its lg:hidden gate so it shows on desktop too.
+            expect(screen.getByTestId('mode-cycle-btn-compact').className).not.toContain('lg:hidden');
+        });
+
+        it('folds slash/mention/attach into the overflow menu when the pane is tight', () => {
+            setContainerWidth('narrow', 420);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.queryByTestId('chat-toolbar-slash-btn')).toBeNull();
+            expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
+            expect(screen.queryByTestId('follow-up-attach-btn')).toBeNull();
+            expect(screen.getByTestId('chat-toolbar-overflow').className).not.toContain('lg:hidden');
+            expect(screen.getByTestId('chat-toolbar-overflow-btn')).toBeTruthy();
+        });
+
+        it('keeps provider and Send labels down to 380px', () => {
+            setContainerWidth('narrow', 420);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.getByTestId('agent-selector-chip-label')).toBeTruthy();
+            expect(screen.getByTestId('activity-chat-send-btn').getAttribute('data-icon-only')).toBe('false');
+        });
+    });
+
+    describe('Minimal tier (<380px) – icon-only provider chip and Send', () => {
+        it('drops the provider label but keeps the accessible name', () => {
+            setContainerWidth('narrow', 320);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.queryByTestId('agent-selector-chip-label')).toBeNull();
+            expect(screen.getByTestId('agent-selector-chip-btn').getAttribute('aria-label')).toContain('Copilot');
+        });
+
+        it('sends the icon-only signal to the Send button', () => {
+            setContainerWidth('narrow', 320);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.getByTestId('activity-chat-send-btn').getAttribute('data-icon-only')).toBe('true');
+        });
+
+        it('keeps full labels when width is unmeasured (0)', () => {
+            setContainerWidth('narrow', 0);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.getByTestId('agent-selector-chip-label')).toBeTruthy();
+            expect(screen.getByTestId('mode-selector')).toBeTruthy();
+            expect(screen.getByTestId('activity-chat-send-btn').getAttribute('data-icon-only')).toBe('false');
         });
     });
 

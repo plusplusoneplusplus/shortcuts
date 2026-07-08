@@ -13,6 +13,7 @@ const { mockSchedulesClient, mockModelsClient, mockAgentProvidersClient } = vi.h
         create: vi.fn(),
         update: vi.fn(),
         disable: vi.fn(),
+        move: vi.fn(),
         refine: vi.fn(),
     },
     mockModelsClient: {
@@ -65,9 +66,12 @@ async function renderPromptForm(overrides: Partial<Parameters<typeof import('../
 
 beforeEach(() => {
     vi.clearAllMocks();
-    mockSchedulesClient.create.mockResolvedValue({ id: 'new-sched-1' });
+    // `create` resolves to `{ schedule }` (matches the coc-client contract), so
+    // the new id is at `result.schedule.id`.
+    mockSchedulesClient.create.mockResolvedValue({ schedule: { id: 'new-sched-1' } });
     mockSchedulesClient.update.mockResolvedValue({});
     mockSchedulesClient.disable.mockResolvedValue({});
+    mockSchedulesClient.move.mockResolvedValue({ schedule: { id: 'repo:new-sched-1', source: 'repo' } });
     mockSchedulesClient.refine.mockResolvedValue({ refined: 'Review all open PRs and report blockers.' });
     mockModelsClient.list.mockResolvedValue([]);
     mockAgentProvidersClient.listModels.mockResolvedValue({ models: [] });
@@ -459,5 +463,117 @@ describe('PromptScheduleForm — additional options', () => {
 
         expect(screen.getByTestId('prompt-options-toggle').getAttribute('aria-expanded')).toBe('true');
         expect(screen.getByTestId('prompt-options-panel')).toBeTruthy();
+    });
+});
+
+describe('PromptScheduleForm — store picker (My/Repo)', () => {
+    it('hides the store picker by default (classic tab)', async () => {
+        await renderPromptForm();
+        expect(screen.queryByTestId('prompt-store-picker')).toBeNull();
+    });
+
+    it('hides the store picker in edit mode even when enabled', async () => {
+        await renderPromptForm({
+            storePicker: true,
+            mode: 'edit',
+            scheduleId: 'sched-1',
+            initialValues: { name: 'Existing', target: 'Do work', cron: '0 9 * * *' },
+        });
+        expect(screen.queryByTestId('prompt-store-picker')).toBeNull();
+    });
+
+    it('shows the store picker in create mode when enabled, defaulting to My', async () => {
+        await renderPromptForm({ storePicker: true });
+
+        expect(screen.getByTestId('prompt-store-picker')).toBeTruthy();
+        expect(screen.getByTestId('prompt-store-my').className).toContain('bg-[#0078d4]');
+        // Repo hint only appears once Repo is chosen.
+        expect(screen.queryByTestId('prompt-store-repo-hint')).toBeNull();
+    });
+
+    it('defaults to the user store — create only, no move', async () => {
+        const user = userEvent.setup();
+        const { onCreated } = await renderPromptForm({ storePicker: true });
+
+        await user.type(screen.getByTestId('prompt-name-input'), 'My Routine');
+        await user.type(screen.getByTestId('prompt-instructions-input'), 'Do the thing');
+        await user.click(screen.getByRole('button', { name: /create/i }));
+
+        await waitFor(() => expect(onCreated).toHaveBeenCalled());
+        expect(mockSchedulesClient.create).toHaveBeenCalled();
+        expect(mockSchedulesClient.move).not.toHaveBeenCalled();
+        expect(onCreated).toHaveBeenCalledWith({ id: 'new-sched-1', source: 'user' });
+    });
+
+    it('creates then moves to repo and reports the moved id + repo source', async () => {
+        const user = userEvent.setup();
+        const { onCreated } = await renderPromptForm({ storePicker: true });
+
+        await user.type(screen.getByTestId('prompt-name-input'), 'Repo Routine');
+        await user.type(screen.getByTestId('prompt-instructions-input'), 'Do team work');
+        await user.click(screen.getByTestId('prompt-store-repo'));
+        expect(screen.getByTestId('prompt-store-repo-hint')).toBeTruthy();
+        await user.click(screen.getByRole('button', { name: /create/i }));
+
+        await waitFor(() => expect(onCreated).toHaveBeenCalled());
+        expect(mockSchedulesClient.create).toHaveBeenCalled();
+        expect(mockSchedulesClient.move).toHaveBeenCalledWith('ws-test', 'new-sched-1', 'repo');
+        // The move re-keys the schedule (repo:<slug>); navigation uses the moved id.
+        expect(onCreated).toHaveBeenCalledWith({ id: 'repo:new-sched-1', source: 'repo' });
+    });
+});
+
+describe('PromptScheduleForm — onDirtyChange', () => {
+    it('reports dirty=true once a field diverges from its initial value and false when reverted', async () => {
+        const user = userEvent.setup();
+        const onDirtyChange = vi.fn();
+        await renderPromptForm({ onDirtyChange });
+
+        // Fires once on mount with the clean baseline.
+        await waitFor(() => expect(onDirtyChange).toHaveBeenCalledWith(false));
+        onDirtyChange.mockClear();
+
+        await user.type(screen.getByTestId('prompt-name-input'), 'x');
+        await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+
+        await user.clear(screen.getByTestId('prompt-name-input'));
+        await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+    });
+
+    it('stays clean (dirty=false) in edit mode until a field changes', async () => {
+        const user = userEvent.setup();
+        const onDirtyChange = vi.fn();
+        await renderPromptForm({
+            mode: 'edit',
+            scheduleId: 'sched-1',
+            onDirtyChange,
+            initialValues: {
+                name: 'daily-review',
+                target: 'review PRs',
+                cron: '0 9 * * *',
+                chatMode: 'ask',
+                onFailure: 'notify',
+            },
+        });
+
+        // Prefilled edit form is not dirty on mount.
+        await waitFor(() => expect(onDirtyChange).toHaveBeenCalledWith(false));
+        expect(onDirtyChange).not.toHaveBeenCalledWith(true);
+
+        await user.type(screen.getByTestId('prompt-instructions-input'), '!');
+        await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    });
+
+    it('reports dirty=false on unmount', async () => {
+        const user = userEvent.setup();
+        const onDirtyChange = vi.fn();
+        const { unmount } = await renderPromptForm({ onDirtyChange });
+
+        await user.type(screen.getByTestId('prompt-name-input'), 'wip');
+        await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+
+        onDirtyChange.mockClear();
+        unmount();
+        expect(onDirtyChange).toHaveBeenLastCalledWith(false);
     });
 });

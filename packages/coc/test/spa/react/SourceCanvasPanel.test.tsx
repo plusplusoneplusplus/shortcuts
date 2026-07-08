@@ -59,6 +59,29 @@ describe('SourceCanvasPanel', () => {
         );
     });
 
+    it('lays the file name and path out inline on a single header row', () => {
+        const { getByTestId } = render(
+            <SourceCanvasPanel fileRef={fileRef} wsId="ws1" onClose={() => {}} />,
+        );
+        const group = getByTestId('source-canvas-header-titles');
+        // Both the bold name and the muted path share one flex row (not stacked).
+        expect(group.className).toContain('flex');
+        expect(group.contains(getByTestId('source-canvas-filename'))).toBe(true);
+        expect(group.contains(getByTestId('source-canvas-path'))).toBe(true);
+    });
+
+    it('truncates the header path from the front (keeps the meaningful tail)', () => {
+        const { getByTestId } = render(
+            <SourceCanvasPanel fileRef={fileRef} wsId="ws1" onClose={() => {}} />,
+        );
+        const pathEl = getByTestId('source-canvas-path');
+        // dir=rtl drops the low-signal prefix (ellipsis on the left)…
+        expect(pathEl.getAttribute('dir')).toBe('rtl');
+        // …while the full path stays in the DOM for the tooltip + copy action.
+        expect(pathEl.textContent).toBe('/home/u/proj/src/foo.ts');
+        expect(pathEl.getAttribute('title')).toBe('/home/u/proj/src/foo.ts');
+    });
+
     it('renders a project-relative header path with the absolute path as tooltip', () => {
         const { getByTestId } = render(
             <SourceCanvasPanel

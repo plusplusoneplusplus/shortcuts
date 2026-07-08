@@ -721,7 +721,7 @@ describe('ChatListPane pinned chats', () => {
         it('prevents default browser find on Ctrl+F', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 600,
+                source.indexOf("e.key === 'f'") + 1000,
             );
             expect(handler).toContain('e.preventDefault()');
         });
@@ -729,36 +729,42 @@ describe('ChatListPane pinned chats', () => {
         it('sets searchVisible to true on Ctrl+F', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 600,
+                source.indexOf("e.key === 'f'") + 1000,
             );
             expect(handler).toContain('setSearchVisible(true)');
         });
 
-        it('skips interception when last click was inside detail pane', () => {
-            // Tracks last-clicked pane via mousedown listener
-            expect(source).toContain('detailPaneFocusedRef = useRef(false)');
-            expect(source).toContain("document.querySelector('[data-pane=\"detail\"]')");
-            expect(source).toContain('detailPane?.contains(e.target as Node)');
-            // mousedown listener uses capture phase
-            expect(source).toContain("document.addEventListener('mousedown', handler, true)");
+        it('tracks focus live against the list container instead of a cached flag', () => {
+            // Focus is compared live against the list container instead of a
+            // cached mousedown flag (which went stale when a chat was opened by
+            // clicking its list row). `focusElsewhereWithChatOpen` still gates
+            // Ctrl+N (don't open a new chat while working in a conversation).
+            expect(source).toContain('containerRef.current?.contains(target)');
+            expect(source).toContain('const focusElsewhereWithChatOpen = !focusInList && !!selectedTaskId');
         });
 
-        it('checks detailPaneFocusedRef before intercepting Ctrl+F', () => {
+        it('Ctrl+F yields to native find when focus is in the right conversation panel (AC-01)', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 600,
+                source.indexOf("e.key === 'f'") + 1000,
             );
-            expect(handler).toContain('if (detailPaneFocusedRef.current) return');
-            // The ref check must come before preventDefault
-            const refIdx = handler.indexOf('detailPaneFocusedRef.current');
+            // AC-01: Ctrl+F opens the list search unless keyboard focus is inside
+            // the right conversation panel (reading area OR composer), in which
+            // case it falls through to the native find-in-page. The routing is
+            // by owning pane, not by editable-target only. The guard must come
+            // before preventDefault.
+            expect(handler).toContain('if (focusInDetail) return');
+            expect(source).toContain('isWithinDetailPane');
+            expect(source).toContain(`target.closest('[data-pane="detail"]')`);
+            const guardIdx = handler.indexOf('if (focusInDetail) return');
             const preventIdx = handler.indexOf('e.preventDefault()');
-            expect(refIdx).toBeLessThan(preventIdx);
+            expect(guardIdx).toBeLessThan(preventIdx);
         });
 
         it('bails out when container is hidden (offsetParent === null)', () => {
             const handler = source.substring(
                 source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 600,
+                source.indexOf("e.key === 'f'") + 1000,
             );
             // Visibility guard must appear before preventDefault
             expect(handler).toContain('containerRef.current.offsetParent === null');
@@ -788,9 +794,9 @@ describe('ChatListPane pinned chats', () => {
         });
 
         it('clears the search query on ✕ button click', () => {
-            // The redesigned activity-compact list keeps the search bar always
-            // visible (matching the reference UI), so the close button only
-            // clears the query — it no longer hides the bar.
+            // The ✕ button only clears the query — it does not hide the search
+            // bar (Escape is the hide path). The ✕ is itself only shown while
+            // there is a query, so clearing leaves an empty, still-open bar.
             const closeBtnIdx = source.indexOf('queue-search-close');
             const closeBtn = source.substring(closeBtnIdx - 200, closeBtnIdx + 50);
             expect(closeBtn).toContain("setSearchQuery('')");
@@ -1511,18 +1517,20 @@ describe('ChatListPane: chat search', () => {
             expect(source).not.toContain("activeTab === 'tasks' && searchVisible && (");
         });
 
-        it('search bar is always visible on every tab (no searchVisible gate)', () => {
-            // The activity-compact reference shows the search input as a permanent
-            // part of the toolbar, so the per-tab `searchVisible` gate has been
-            // removed entirely. The chats branch and activity branch each render
-            // their own permanent search input.
+        it('search bar is hidden by default and gated behind searchVisible', () => {
+            // The search input is hidden until the user presses Ctrl+F / ⌘F,
+            // which flips `searchVisible`. Both the chats branch and the
+            // activity branch wrap their search input in a `{searchVisible && (`
+            // gate — not behind any `activeTab` check.
+            const gateCount = source.split('{searchVisible && (').length - 1;
+            expect(gateCount).toBeGreaterThanOrEqual(2);
+            expect(source).toContain('hidden by default');
             expect(source).not.toContain("activeTab === 'tasks') ? searchVisible : true");
-            expect(source).toContain('Search bar — always visible');
         });
 
-        it('search bar is always visible on chats tab', () => {
+        it('search input renders inside the chats-tab branch', () => {
             // The chats-tab search input lives inside the `activeTab === \'chats\'`
-            // branch and is unconditionally rendered.
+            // branch, gated behind `searchVisible`.
             expect(source).toContain('data-testid="queue-search-input"');
         });
     });
@@ -1615,7 +1623,7 @@ describe('ChatListPane: chat search', () => {
         it('Ctrl+F handler does not gate on activeTab', () => {
             const ctrlFBlock = source.substring(
                 source.indexOf("e.key === 'f'") - 100,
-                source.indexOf("e.key === 'f'") + 600,
+                source.indexOf("e.key === 'f'") + 1000,
             );
             // The Ctrl+F handler should set searchVisible and focus — no activeTab check
             expect(ctrlFBlock).toContain('setSearchVisible(true)');
@@ -1624,10 +1632,10 @@ describe('ChatListPane: chat search', () => {
     });
 
     describe('close button behavior per tab', () => {
-        it('close button never hides the always-visible search bar', () => {
-            // The activity-compact reference keeps the search bar always visible,
-            // so neither branch's close button toggles the legacy `searchVisible`
-            // gate from inside its onClick handler.
+        it('close button clears the query without hiding the bar (Escape is the hide path)', () => {
+            // The ✕ button only clears the query; hiding the search bar is done
+            // by Escape (which flips `searchVisible` back to false). So neither
+            // branch's close button toggles `searchVisible` from its onClick.
             const activityCloseIdx = source.indexOf('queue-search-close');
             const chatsCloseIdx = source.indexOf('chat-search-close');
             const activityClose = source.substring(activityCloseIdx - 200, activityCloseIdx);

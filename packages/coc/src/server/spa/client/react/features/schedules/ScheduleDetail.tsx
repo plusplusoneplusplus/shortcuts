@@ -20,7 +20,42 @@ export interface ScheduleDetailProps {
     onDelete: (scheduleId: string) => void;
     onCancelEdit: () => void;
     onSaved: () => void;
+    /**
+     * Whether to render the "Duplicate" action. Defaults to `true` (Repo ▸
+     * Schedules tab). The Scheduled-slide main pane passes `false` — duplicate
+     * is intentionally out of scope for that surface (this pass).
+     */
+    showDuplicate?: boolean;
+    /**
+     * When `true`, the "Edit" action is disabled (with a tooltip hint) for
+     * non-prompt schedules (script / workflow / pipeline). Defaults to `false`.
+     * The Scheduled-slide main pane sets this because it only hosts the common
+     * Prompt form this pass; editing advanced types continues via the classic
+     * Schedules tab (which leaves this `false` and keeps `CreateScheduleForm`).
+     */
+    disableNonPromptEdit?: boolean;
+    /**
+     * Forwarded to the inline edit `PromptScheduleForm`'s `onDirtyChange`, so a
+     * host can guard navigate-away while editing. Optional — the classic Repo ▸
+     * Schedules tab leaves it unset (no guard).
+     */
+    onEditDirtyChange?: (dirty: boolean) => void;
 }
+
+/**
+ * Whether a schedule can be edited with the common Prompt form. Non-prompt
+ * schedules — script / workflow (a `pipeline` param) types — need the advanced
+ * `CreateScheduleForm`, which is not brought into the Scheduled-slide main pane
+ * this pass. Hosts that only mount the Prompt form pass `disableNonPromptEdit`
+ * to grey out Edit for these.
+ */
+export function isPromptEditableSchedule(schedule: Schedule): boolean {
+    return (!schedule.targetType || schedule.targetType === 'prompt')
+        && !Object.keys(schedule.params ?? {}).some(k => k === 'pipeline');
+}
+
+/** Hint shown when Edit is disabled for a non-prompt schedule in a prompt-only host. */
+export const NON_PROMPT_EDIT_HINT = 'Edit workflow/script schedules from the Schedules tab';
 
 function computeSuccessRate(history: RunRecord[]): number | null {
     if (!history.length) return null;
@@ -122,10 +157,13 @@ function HeaderIcon({ schedule }: { schedule: Schedule }) {
     return <PromptIcon className={className} />;
 }
 
-export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRunNow, onPauseResume, onEdit, onDuplicate, onDelete, onCancelEdit, onSaved }: ScheduleDetailProps) {
+export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRunNow, onPauseResume, onEdit, onDuplicate, onDelete, onCancelEdit, onSaved, showDuplicate = true, disableNonPromptEdit = false, onEditDirtyChange }: ScheduleDetailProps) {
     const targetBasename = schedule.target.split(/[/\\]/).pop() ?? schedule.target;
     const paramEntries = Object.entries(schedule.params ?? {});
     const [showCommitReminder, setShowCommitReminder] = useState(false);
+    // Non-prompt schedules can't be edited with the Prompt form; a prompt-only
+    // host (the Scheduled-slide main pane) disables their Edit with a hint.
+    const editDisabledForType = disableNonPromptEdit && !isPromptEditableSchedule(schedule);
 
     const handleSaved = useCallback(() => {
         if (schedule.source === 'repo') {
@@ -143,7 +181,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
     return (
         <div className="flex flex-col gap-0" data-testid="schedule-detail">
             {editingId === schedule.id ? (
-                (!schedule.targetType || schedule.targetType === 'prompt') && !Object.keys(schedule.params ?? {}).some(k => k === 'pipeline') ? (
+                isPromptEditableSchedule(schedule) ? (
                     <PromptScheduleForm
                         workspaceId={workspaceId}
                         mode="edit"
@@ -159,6 +197,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                         }}
                         onCreated={handleSaved}
                         onCancel={onCancelEdit}
+                        onDirtyChange={onEditDirtyChange}
                     />
                 ) : (
                     <CreateScheduleForm
@@ -277,7 +316,8 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                         <Button
                             variant="secondary"
                             size="sm"
-                            disabled={schedule.isRunning}
+                            disabled={schedule.isRunning || editDisabledForType}
+                            title={editDisabledForType ? NON_PROMPT_EDIT_HINT : undefined}
                             onClick={() => onEdit(schedule.id)}
                             aria-label="Edit schedule"
                             data-testid="edit-btn"
@@ -285,16 +325,18 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             <EditIcon />
                             Edit
                         </Button>
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onDuplicate(schedule)}
-                            aria-label="Duplicate schedule"
-                            data-testid="duplicate-btn"
-                        >
-                            <CopyIcon />
-                            Duplicate
-                        </Button>
+                        {showDuplicate && (
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => onDuplicate(schedule)}
+                                aria-label="Duplicate schedule"
+                                data-testid="duplicate-btn"
+                            >
+                                <CopyIcon />
+                                Duplicate
+                            </Button>
+                        )}
                         <span className="flex-1" />
                         <Button
                             variant="danger"
