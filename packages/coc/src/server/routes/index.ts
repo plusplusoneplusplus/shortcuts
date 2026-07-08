@@ -742,13 +742,20 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         executeFollowUp: (processId, message) => bridge.executeFollowUp(processId, message),
     });
 
+    // Opt-in Git worktree execution feature flag getter (live when a runtime
+    // config service is available, else from the resolved config snapshot).
+    // Shared by Work Item execution and the Ralph launch/start routes.
+    const getGitWorktreeExecutionEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.features?.gitWorktreeExecution ?? false
+        : () => opts.resolvedConfig?.features?.gitWorktreeExecution ?? false;
+
     // Ralph routes
-    registerRalphRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+    registerRalphRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir, getGitWorktreeExecutionEnabled });
     registerRalphSessionRoutes(routes, { dataDir, store, bridge: bridgeWithResolvedDefaults });
     registerRalphContinueRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphNewLoopRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphPromoteRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
-    registerRalphLaunchRoutes(routes, { bridge: bridgeWithResolvedDefaults, dataDir });
+    registerRalphLaunchRoutes(routes, { bridge: bridgeWithResolvedDefaults, dataDir, store, getGitWorktreeExecutionEnabled });
     registerRalphResumeRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
 
     // For Each routes: dedicated reviewed item-plan mode. Routes are registered
@@ -1026,9 +1033,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getWorkItemsWorkflowEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.workflow?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.workflow?.enabled ?? false;
-    const getGitWorktreeExecutionEnabled = opts.runtimeConfigService
-        ? () => opts.runtimeConfigService!.config.features?.gitWorktreeExecution ?? false
-        : () => opts.resolvedConfig?.features?.gitWorktreeExecution ?? false;
+    // getGitWorktreeExecutionEnabled is defined earlier (near the Ralph routes)
+    // and shared with the Ralph launch/start routes.
     // AI-draft route must be registered before generic /:workItemId routes to prevent "ai-draft" from matching as an ID
     const workItemAiGenerators = createWorkItemAiGenerators({ aiService: resolvedAiService });
     registerWorkItemAiRoutes({

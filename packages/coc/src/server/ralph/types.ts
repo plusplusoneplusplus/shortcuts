@@ -17,4 +17,5 @@ export type {
     RalphSessionPhase,
     RalphSessionRecord,
     RalphTerminalReason,
+    RalphWorktreeMetadata,
 } from '@plusplusoneplusplus/coc-workflow/ralph';

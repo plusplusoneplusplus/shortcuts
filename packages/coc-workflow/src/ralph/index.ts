@@ -14,6 +14,7 @@ export type {
     RalphSessionRecord,
     RalphSignal,
     RalphTerminalReason,
+    RalphWorktreeMetadata,
 } from './types';
 
 export { appendProgress, parseRalphSignal } from './signal-parser';
