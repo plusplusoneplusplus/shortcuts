@@ -44,6 +44,82 @@ describe('detectPullRequestsInToolGroup', () => {
         expect(pullRequests[0].url).toBe('https://github.com/org/repo/pull/99');
     });
 
+    it('detects a GitHub PR when gh pr create is wrapped in bash -lc', () => {
+        // Regression (PR #484): some agent harnesses serialize every shell tool
+        // call as `/bin/bash -lc '<real command>'`. The real `gh pr create` then
+        // lives entirely inside the single-quoted payload, which the quote-strip
+        // used to erase — so the PR URL in the result was never detected.
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'shell',
+                args: {
+                    command:
+                        "/bin/bash -lc 'gh pr create --base main --head pr/7f5d8f2-make-schedule-persistence-async --fill'",
+                },
+                result: 'https://github.com/plusplusoneplusplus/shortcuts/pull/484',
+            },
+        ]);
+
+        expect(pullRequests).toEqual<DetectedPullRequest[]>([
+            {
+                number: 484,
+                url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/484',
+                provider: 'github',
+                owner: 'plusplusoneplusplus',
+                repo: 'shortcuts',
+                toolCallId: 'tool-1',
+            },
+        ]);
+    });
+
+    it('detects an ADO PR when az repos pr create is wrapped in sh -c', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'shell',
+                args: { command: 'sh -c "az repos pr create --title \\"feat\\""' },
+                result: 'https://dev.azure.com/myorg/MyProject/_git/MyRepo/pullrequest/12345',
+            },
+        ]);
+
+        expect(pullRequests).toHaveLength(1);
+        expect(pullRequests[0]).toMatchObject({
+            number: 12345,
+            provider: 'azure-devops',
+            organization: 'myorg',
+            project: 'MyProject',
+        });
+    });
+
+    it('ignores a wrapped command that only mentions gh pr create inside a search', () => {
+        // The wrapper unwrap must not re-introduce false positives: here the inner
+        // payload runs `rg`, and `gh pr create` is just its quoted search pattern.
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'shell',
+                args: { command: '/bin/bash -lc \'rg -n "gh pr create" packages/coc/test\'' },
+                result: 'https://github.com/org/repo/pull/99',
+            },
+        ]);
+
+        expect(pullRequests).toEqual([]);
+    });
+
+    it('ignores a read-only gh pr view wrapped in bash -lc', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'shell',
+                args: { command: "/bin/bash -lc 'gh pr view 99'" },
+                result: 'https://github.com/org/repo/pull/99',
+            },
+        ]);
+
+        expect(pullRequests).toEqual([]);
+    });
+
     it('ignores gh pr view output', () => {
         const pullRequests = detectPullRequestsInToolGroup([
             {
