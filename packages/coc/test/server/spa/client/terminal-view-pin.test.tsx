@@ -146,7 +146,16 @@ describe('TerminalView pin/unpin', () => {
         return { result, fetchMock };
     }
 
+    /** Terminal pin/close controls live in the compact picker dropdown; open it (idempotent). */
+    function openMenu() {
+        const btn = screen.getByTestId('terminal-picker-btn');
+        if (btn.getAttribute('data-menu-open') !== 'true') {
+            fireEvent.click(btn);
+        }
+    }
+
     async function waitForServerSession(tabId: string) {
+        openMenu();
         await waitFor(() => {
             expect(screen.getByTestId(`terminal-tab-pin-${tabId}`).title).toBe('Pin terminal');
         });
@@ -154,6 +163,7 @@ describe('TerminalView pin/unpin', () => {
 
     it('renders pin button on terminal tab', () => {
         renderAndCreate();
+        openMenu();
         const pinBtn = screen.getByTestId('terminal-tab-pin-test-uuid-1');
         expect(pinBtn).toBeTruthy();
         expect(pinBtn.textContent).toBe('📌');
@@ -207,6 +217,7 @@ describe('TerminalView pin/unpin', () => {
     it('ignores pin clicks until the tab has a server session id', () => {
         terminalPanelMockState.autoCreateSessions = false;
         const { fetchMock } = renderAndCreate();
+        openMenu();
 
         const pinBtn = screen.getByTestId('terminal-tab-pin-test-uuid-1');
         expect(pinBtn.title).toBe('Waiting for terminal session');
@@ -220,14 +231,15 @@ describe('TerminalView pin/unpin', () => {
         fireEvent.click(screen.getByTestId('terminal-new-btn'));
         await waitForServerSession('test-uuid-1');
 
-        expect(screen.getByTestId('terminal-tab-test-uuid-2').className).toContain('font-medium');
+        // The newest terminal (uuid-2) is the active one in the picker.
+        expect(screen.getByTestId('terminal-menu-item-test-uuid-2').getAttribute('aria-checked')).toBe('true');
 
         fireEvent.click(screen.getByTestId('terminal-tab-pin-test-uuid-1'));
 
         await waitFor(() => {
             expect(screen.getByTestId('terminal-tab-pin-test-uuid-1').className).toContain('opacity-80');
         });
-        expect(screen.getByTestId('terminal-tab-test-uuid-2').className).toContain('font-medium');
+        expect(screen.getByTestId('terminal-menu-item-test-uuid-2').getAttribute('aria-checked')).toBe('true');
     });
 
     it('multiple tabs can be pinned independently through their own server sessions', async () => {
@@ -254,7 +266,9 @@ describe('TerminalView pin/unpin', () => {
         mockTerminalFetch({ sessions: [makeSession('sess-pinned', true)] });
         render(<TerminalView workspaceId="ws1" />);
 
-        const hydratedPin = await screen.findByTestId('terminal-tab-pin-server-sess-pinned');
+        await screen.findByTestId('terminal-picker-btn');
+        openMenu();
+        const hydratedPin = screen.getByTestId('terminal-tab-pin-server-sess-pinned');
         expect(hydratedPin.className).toContain('opacity-80');
 
         fireEvent.click(hydratedPin);
