@@ -3,7 +3,32 @@ import { cn, SegmentedControl } from '../../ui';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { TerminalView } from '../terminal/TerminalView';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
-import { useCollapsedState } from './SplitWorkspacePanel';
+import {
+    DOCK_INITIAL_WIDTH,
+    DOCK_MAX_WIDTH,
+    DOCK_MIN_WIDTH,
+    useDockOpen,
+    workspaceDockOpenStorageKey,
+    workspaceDockViewStorageKey,
+    workspaceDockWidthStorageKey,
+    type WorkspaceDockView,
+} from './WorkspaceDockToggle';
+
+// Re-export the light toggle/store API so existing importers of this module keep
+// working (RepoDetail, tests). The TopBar imports `WorkspaceDockToggleButton`
+// straight from './WorkspaceDockToggle' to stay clear of the TerminalView /
+// ExplorerPanel (xterm / Monaco) graph that this module pulls in.
+export {
+    DOCK_INITIAL_WIDTH,
+    DOCK_MAX_WIDTH,
+    DOCK_MIN_WIDTH,
+    WorkspaceDockToggleButton,
+    useWorkspaceDockToggle,
+    workspaceDockOpenStorageKey,
+    workspaceDockViewStorageKey,
+    workspaceDockWidthStorageKey,
+} from './WorkspaceDockToggle';
+export type { WorkspaceDockView } from './WorkspaceDockToggle';
 
 /**
  * WorkspaceRightDock — a VS Code-style right-side dock at the workspace level
@@ -20,31 +45,13 @@ import { useCollapsedState } from './SplitWorkspacePanel';
  * and reopening the dock — never tears down the server-side terminal session.
  *
  * Open/closed state, the active view, and the dock width persist per-workspace to
- * localStorage via `useCollapsedState` and `useResizablePanel` (AC-06). The
- * header open/close toggle is owned by the caller (RepoDetail's header cluster)
- * and drives this same controller — see `useWorkspaceDock`.
+ * localStorage (AC-06). The open/close toggle lives outside the dock body: the
+ * classic chrome header owns it (RepoDetail), while the remote-first shell puts it
+ * in the global TopBar (`WorkspaceDockToggleButton`). Because those toggles sit in
+ * separate component subtrees from the body, the open flag is backed by a
+ * cross-tree store (`useDockOpen`, in `WorkspaceDockToggle`) so every consumer
+ * stays in sync — see `useWorkspaceDock` / `useWorkspaceDockToggle`.
  */
-
-export type WorkspaceDockView = 'terminal' | 'explorer';
-
-/** localStorage key for whether the dock is open, per workspace. */
-export function workspaceDockOpenStorageKey(workspaceId: string): string {
-    return `split-workspace:${workspaceId}:dock-open`;
-}
-
-/** localStorage key for the active dock view (terminal|explorer), per workspace. */
-export function workspaceDockViewStorageKey(workspaceId: string): string {
-    return `split-workspace:${workspaceId}:dock-view`;
-}
-
-/** localStorage key for the dock's width, per workspace. */
-export function workspaceDockWidthStorageKey(workspaceId: string): string {
-    return `split-workspace:${workspaceId}:dock-width`;
-}
-
-export const DOCK_MIN_WIDTH = 280;
-export const DOCK_MAX_WIDTH = 800;
-export const DOCK_INITIAL_WIDTH = 420;
 
 function readView(storageKey: string): WorkspaceDockView {
     try {
@@ -111,7 +118,7 @@ export interface WorkspaceDockController {
  * the header toggle.
  */
 export function useWorkspaceDock(workspaceId: string): WorkspaceDockController {
-    const [isOpen, toggleOpen] = useCollapsedState(workspaceDockOpenStorageKey(workspaceId));
+    const [isOpen, toggleOpen] = useDockOpen(workspaceDockOpenStorageKey(workspaceId));
     const [view, setView] = useDockView(workspaceDockViewStorageKey(workspaceId));
     const { width, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         direction: 'right',
@@ -138,7 +145,9 @@ export interface WorkspaceRightDockProps {
  * The dock body (right column). Rendered as the outermost-right column at the
  * workspace level. When closed the whole column is hidden with `display:none`,
  * which keeps the mounted views (and their live sessions) alive without taking
- * layout space. Callers gate this on `splitWorkspacePanel` + desktop breakpoint.
+ * layout space. The open/close toggle lives outside the body (see
+ * `WorkspaceDockToggleButton` / RepoDetail's header) and shares one cross-tree
+ * store. Callers gate this on `splitWorkspacePanel` + desktop breakpoint.
  */
 export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProps) {
     const { isOpen, view, setView, width, isDragging, handleMouseDown, handleTouchStart } = dock;

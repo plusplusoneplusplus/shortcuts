@@ -21,8 +21,10 @@ import { useRepos } from '../contexts/ReposContext';
 import { buildNoteHash } from './Router';
 import { StatusActions } from './StatusActions';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
+import { WorkspaceDockToggleButton } from '../features/repo-detail/WorkspaceDockToggle';
 import { RemoteShellHeader } from '../features/remote-shell/RemoteShellHeader';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
+import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../repos/MyLifeView';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
@@ -59,6 +61,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
     const remoteShell = useRemoteShellEnabled();
+    const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
     const [popoverOpen, setPopoverOpen] = useState(false);
     const hostname = getHostname();
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
@@ -252,6 +255,13 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         <span className="text-[#1f883d] dark:text-[#3fb950] text-[15px] leading-none">+</span>
                         <span>New</span>
                     </button>
+                )}
+                {/* Terminal + Explorer dock toggle — right of "+ New". The dock body
+                    renders in RepoDetail; this shares its open state via a cross-tree
+                    store. Only shown in the remote-first shell (the classic shell keeps
+                    its toggle in RepoDetail's own header). */}
+                {showRemoteHeader && selectedRepo && splitWorkspacePanelEnabled && (
+                    <WorkspaceDockToggleButton workspaceId={String(selectedRepo.workspace.id)} />
                 )}
                 {/* Status cluster — hidden here when it lives in the global
                     bottom status bar (remote-first shell, desktop). */}

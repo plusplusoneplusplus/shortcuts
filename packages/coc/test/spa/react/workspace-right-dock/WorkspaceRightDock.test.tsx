@@ -18,6 +18,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
 
 import {
     WorkspaceRightDock,
+    WorkspaceDockToggleButton,
     useWorkspaceDock,
     workspaceDockOpenStorageKey,
     workspaceDockViewStorageKey,
@@ -173,5 +174,78 @@ describe('WorkspaceRightDock', () => {
 
         render(<Harness workspaceId="ws-two" />);
         expect(screen.getByTestId('workspace-right-dock').style.display).toBe('none');
+    });
+
+    it('does not render a built-in toggle inside the dock body (the toggle lives outside)', () => {
+        render(<Harness />);
+        // The open/close control lives in RepoDetail's header or the TopBar — the
+        // dock body itself renders no toggle.
+        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
+    });
+});
+
+/**
+ * The remote-first shell renders the toggle up in the global TopBar
+ * (`WorkspaceDockToggleButton`) while the dock body renders in RepoDetail — two
+ * separate subtrees. This harness proves they share one open state via the
+ * cross-tree store, so the TopBar button opens the RepoDetail-side dock.
+ */
+function SplitHarness({ workspaceId = 'ws1' }: { workspaceId?: string }) {
+    const dock = useWorkspaceDock(workspaceId);
+    return (
+        <div>
+            {/* TopBar toggle — no shared React state with the body, only the store. */}
+            <WorkspaceDockToggleButton workspaceId={workspaceId} />
+            {/* Dock body, as RepoDetail mounts it. */}
+            <WorkspaceRightDock workspaceId={workspaceId} dock={dock} />
+        </div>
+    );
+}
+
+describe('WorkspaceDockToggleButton (remote-first / TopBar)', () => {
+    beforeEach(() => {
+        localStorage.clear();
+    });
+
+    function clickToggle() {
+        act(() => {
+            fireEvent.click(screen.getByTestId('workspace-dock-toggle'));
+        });
+    }
+
+    it('opens the separately-rendered dock body via the shared cross-tree store', () => {
+        render(<SplitHarness />);
+        // Closed: body column hidden, no views mounted, button not pressed.
+        expect(screen.getByTestId('workspace-right-dock').style.display).toBe('none');
+        expect(screen.getByTestId('workspace-dock-toggle').getAttribute('aria-pressed')).toBe('false');
+        expect(screen.queryByTestId('mock-terminal')).toBeNull();
+
+        clickToggle();
+
+        // The TopBar button toggled a store the body subscribes to → body opens.
+        expect(screen.getByTestId('workspace-right-dock').style.display).not.toBe('none');
+        expect(screen.getByTestId('workspace-dock-toggle').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('mock-terminal')).toBeTruthy();
+        expect(screen.getByTestId('workspace-dock-terminal').style.display).not.toBe('none');
+    });
+
+    it('reflects and persists open state, and stays keep-alive after closing', () => {
+        render(<SplitHarness workspaceId="ws-topbar" />);
+        clickToggle(); // open
+        expect(localStorage.getItem(workspaceDockOpenStorageKey('ws-topbar'))).toBe('1');
+        expect(screen.getByTestId('mock-terminal')).toBeTruthy();
+
+        clickToggle(); // close
+        expect(localStorage.getItem(workspaceDockOpenStorageKey('ws-topbar'))).toBe('0');
+        expect(screen.getByTestId('workspace-right-dock').style.display).toBe('none');
+        // Terminal stays mounted while hidden → PTY session survives.
+        expect(screen.getByTestId('mock-terminal')).toBeTruthy();
+    });
+
+    it('restores persisted open state on mount', () => {
+        localStorage.setItem(workspaceDockOpenStorageKey('ws-restore'), '1');
+        render(<SplitHarness workspaceId="ws-restore" />);
+        expect(screen.getByTestId('workspace-dock-toggle').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('workspace-right-dock').style.display).not.toBe('none');
     });
 });

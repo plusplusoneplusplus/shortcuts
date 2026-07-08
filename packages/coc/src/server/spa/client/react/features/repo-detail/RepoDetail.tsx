@@ -150,11 +150,13 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // portals its compact toolbar here so it shares the 22px header row.
     const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
     // Workspace right dock (Terminal + Explorer) — behind the same
-    // `splitWorkspacePanel` flag. One controller shared by the header toggle and
-    // the dock body. Rendered only on desktop with a chrome header (not the
-    // remote-first chromeless shell, whose header lives elsewhere).
+    // `splitWorkspacePanel` flag. Available on desktop in both shells; the chrome
+    // header owns the toggle when present, while the remote-first chromeless shell
+    // (whose header lives in the global TopBar) toggles it from there via
+    // WorkspaceDockToggleButton — both drive the same cross-tree open store.
     const dock = useWorkspaceDock(ws.id);
-    const showDock = splitWorkspacePanelEnabled && !isMobile && !chromeless;
+    const dockAvailable = splitWorkspacePanelEnabled && !isMobile;
+    const showHeaderDockToggle = dockAvailable && !chromeless;
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(ws.id, sessionContextAttachmentsEnabled);
     const [headerContextDropTarget, setHeaderContextDropTarget] = useState<'task' | 'ask' | null>(null);
@@ -535,8 +537,10 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         {/* Action buttons */}
                         <div ref={overflowContainerRef} className="flex items-center gap-1 flex-shrink-0 relative">
                             {/* Right-dock (Terminal + Explorer) open/close toggle. Reflects
-                                open state with active styling. Behind splitWorkspacePanel. */}
-                            {showDock && (
+                                open state with active styling. Behind splitWorkspacePanel.
+                                Chromeless shells have no header — they toggle the dock from
+                                the global TopBar (WorkspaceDockToggleButton) instead. */}
+                            {showHeaderDockToggle && (
                                 <button
                                     type="button"
                                     onClick={dock.toggleOpen}
@@ -863,7 +867,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     </div>
                 )}
             </div>
-            {showDock && <WorkspaceRightDock workspaceId={ws.id} dock={dock} />}
+            {dockAvailable && <WorkspaceRightDock workspaceId={ws.id} dock={dock} />}
             </div>
 
             {/* Generate Task with AI dialog */}
