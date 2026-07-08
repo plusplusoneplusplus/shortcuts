@@ -5,11 +5,12 @@
  * `features.remoteShell` / `features.splitWorkspacePanel` graduated to
  * default-on, the E2E server — which resolves its config through the normal
  * merge-with-DEFAULT_CONFIG path — started booting the SPA into the new shell,
- * hiding the standalone Git sub-tab and reshaping navigation. Shared helpers
- * (navigateToGitTab, etc.) then hung until every affected test timed out,
- * blowing past the 15-minute job budget.
+ * hiding the standalone Git sub-tab, moving the status cluster, and reshaping
+ * navigation. Shared helpers (navigateToGitTab, the ws-status-indicator wait,
+ * etc.) then hung until every affected test timed out, blowing past the
+ * 15-minute job budget.
  *
- * The fixture now pins both flags off via E2E_SERVER_CONFIG_YAML. This test
+ * The fixtures now pin both flags off via E2E_SERVER_CONFIG_YAML. This test
  * resolves that exact YAML through the real config path and asserts the runtime
  * flags the SPA would receive, so a future defaults change (or an accidental
  * removal of the pin) can't silently reshape the E2E layout again.
@@ -33,7 +34,8 @@ describe('E2E server boot config', () => {
             const runtime = buildRuntimeFeatures(resolved);
 
             // Shell-reshaping flags must stay off so navigateToGitTab & friends
-            // find the classic sub-tabs the specs click.
+            // find the classic sub-tabs the specs click, and the status cluster
+            // stays where the ws-status-indicator specs expect it.
             expect(runtime.remoteShellEnabled).toBe(false);
             expect(runtime.splitWorkspacePanelEnabled).toBe(false);
 
