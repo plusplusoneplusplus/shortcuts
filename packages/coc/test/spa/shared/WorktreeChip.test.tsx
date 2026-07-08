@@ -3,7 +3,7 @@
  *
  * Tests for WorktreeChip — the run-visibility chip for CoC-created worktrees.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { WorktreeChip } from '../../../src/server/spa/client/react/shared/WorktreeChip';
 import type { WorktreeMetadata } from '@plusplusoneplusplus/coc-client';
@@ -68,5 +68,67 @@ describe('WorktreeChip', () => {
         render(<WorktreeChip worktree={makeWorktree()} testId="exec-worktree-chip-0" />);
         expect(screen.getByTestId('exec-worktree-chip-0')).toBeDefined();
         expect(screen.getByTestId('exec-worktree-chip-0-branch')).toBeDefined();
+    });
+
+    describe('cleanup affordance', () => {
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
+        it('shows no cleanup button when onCleanup is not provided', () => {
+            render(<WorktreeChip worktree={makeWorktree()} />);
+            expect(screen.queryByTestId('worktree-chip-cleanup')).toBeNull();
+        });
+
+        it('shows no cleanup button for a cleaned worktree even with onCleanup', () => {
+            render(<WorktreeChip worktree={makeWorktree({ status: 'cleaned' })} onCleanup={vi.fn()} />);
+            expect(screen.queryByTestId('worktree-chip-cleanup')).toBeNull();
+        });
+
+        it('shows a cleanup button for an active worktree with onCleanup, and confirms before firing', () => {
+            const onCleanup = vi.fn();
+            const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+            render(<WorktreeChip worktree={makeWorktree()} onCleanup={onCleanup} />);
+            fireEvent.click(screen.getByTestId('worktree-chip-cleanup'));
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(onCleanup).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not call onCleanup when the confirm is dismissed', () => {
+            const onCleanup = vi.fn();
+            vi.spyOn(window, 'confirm').mockReturnValue(false);
+            render(<WorktreeChip worktree={makeWorktree()} onCleanup={onCleanup} />);
+            fireEvent.click(screen.getByTestId('worktree-chip-cleanup'));
+            expect(onCleanup).not.toHaveBeenCalled();
+        });
+
+        it('disables cleanup (and never fires) when canCleanup is false', () => {
+            const onCleanup = vi.fn();
+            const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+            render(<WorktreeChip worktree={makeWorktree()} onCleanup={onCleanup} canCleanup={false} />);
+            const btn = screen.getByTestId('worktree-chip-cleanup') as HTMLButtonElement;
+            expect(btn.disabled).toBe(true);
+            fireEvent.click(btn);
+            expect(confirmSpy).not.toHaveBeenCalled();
+            expect(onCleanup).not.toHaveBeenCalled();
+        });
+
+        it('shows an in-flight label and disables while cleaning', () => {
+            render(<WorktreeChip worktree={makeWorktree()} onCleanup={vi.fn()} cleaningUp />);
+            const btn = screen.getByTestId('worktree-chip-cleanup') as HTMLButtonElement;
+            expect(btn.textContent).toContain('Cleaning');
+            expect(btn.disabled).toBe(true);
+        });
+
+        it('surfaces a cleanup error inline', () => {
+            render(
+                <WorktreeChip
+                    worktree={makeWorktree()}
+                    onCleanup={vi.fn()}
+                    cleanupError="fatal: contains modified or untracked files"
+                />,
+            );
+            expect(screen.getByTestId('worktree-chip-cleanup-error').textContent).toContain('untracked files');
+        });
     });
 });

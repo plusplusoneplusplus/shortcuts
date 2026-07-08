@@ -7,6 +7,12 @@
  * lifecycle status, and the checkout path with a copy affordance. Kept purely
  * presentational so it renders identically from a Ralph session record, a Work
  * Item execution entry, or a launch response.
+ *
+ * Cleanup (AC-06) is opt-in and prop-driven: pass `onCleanup` and the chip shows
+ * a "Clean up" button (only while the worktree is still `active`) that confirms
+ * before firing. The parent owns the actual POST, the running/disabled decision
+ * (`canCleanup`), the in-flight flag (`cleaningUp`), and any error text
+ * (`cleanupError`) — the chip stays presentational.
  */
 import { useState } from 'react';
 import type { WorktreeMetadata } from '@plusplusoneplusplus/coc-client';
@@ -14,16 +20,44 @@ import type { WorktreeMetadata } from '@plusplusoneplusplus/coc-client';
 export interface WorktreeChipProps {
     worktree: WorktreeMetadata;
     testId?: string;
+    /**
+     * When provided (and the worktree is `active`), a "Clean up" button is shown.
+     * Called only after the user confirms. The parent owns the POST + refresh.
+     */
+    onCleanup?: () => void;
+    /**
+     * Whether cleanup is currently allowed. Defaults to `true`. Set `false` while
+     * the linked task/session is still running so the button is disabled; the
+     * server also enforces this (409) as the safety net.
+     */
+    canCleanup?: boolean;
+    /** Explanatory tooltip shown when the cleanup button is disabled. */
+    cleanupDisabledReason?: string;
+    /** True while a cleanup request for this worktree is in flight. */
+    cleaningUp?: boolean;
+    /** Error text from a failed/refused cleanup (e.g. a 409), shown inline. */
+    cleanupError?: string;
 }
 
 function shortSha(sha: string): string {
     return sha.length > 7 ? sha.slice(0, 7) : sha;
 }
 
-export function WorktreeChip({ worktree, testId = 'worktree-chip' }: WorktreeChipProps) {
+export function WorktreeChip({
+    worktree,
+    testId = 'worktree-chip',
+    onCleanup,
+    canCleanup = true,
+    cleanupDisabledReason,
+    cleaningUp = false,
+    cleanupError,
+}: WorktreeChipProps) {
     const [copied, setCopied] = useState(false);
     const cleaned = worktree.status === 'cleaned';
     const base = worktree.baseRef || shortSha(worktree.baseSha);
+    // Cleanup is only meaningful while the checkout still exists.
+    const showCleanup = !!onCleanup && !cleaned;
+    const cleanupDisabled = !canCleanup || cleaningUp;
 
     async function copyPath() {
         try {
@@ -35,7 +69,19 @@ export function WorktreeChip({ worktree, testId = 'worktree-chip' }: WorktreeChi
         }
     }
 
+    function handleCleanup() {
+        if (cleanupDisabled) return;
+        // Confirm before removing the checkout — the branch is preserved.
+        const ok = window.confirm(
+            `Remove the worktree checkout for branch "${worktree.branch}"?\n\n` +
+                'This runs "git worktree remove" on the checkout only — the branch and ' +
+                'its commits are kept, and nothing is force-removed or discarded.',
+        );
+        if (ok) onCleanup?.();
+    }
+
     return (
+        <div className="inline-flex max-w-full flex-col gap-0.5">
         <div
             data-testid={testId}
             className="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md border border-[#d0d7de] bg-[#f6f8fa] px-2 py-1 text-[11px] text-[#57606a] dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#999]"
@@ -71,6 +117,27 @@ export function WorktreeChip({ worktree, testId = 'worktree-chip' }: WorktreeChi
             >
                 {copied ? 'Copied!' : worktree.path}
             </button>
+            {showCleanup && (
+                <button
+                    type="button"
+                    onClick={handleCleanup}
+                    disabled={cleanupDisabled}
+                    data-testid={`${testId}-cleanup`}
+                    title={cleanupDisabled ? (cleanupDisabledReason || 'Cleanup unavailable') : 'Remove the worktree checkout (keeps the branch)'}
+                    className="rounded border border-[#d0d7de] px-1.5 py-px text-[#57606a] hover:border-[#cf222e] hover:text-[#cf222e] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[#d0d7de] disabled:hover:text-[#57606a] dark:border-[#3c3c3c] dark:text-[#999] dark:hover:border-[#f85149] dark:hover:text-[#f85149]"
+                >
+                    {cleaningUp ? 'Cleaning…' : 'Clean up'}
+                </button>
+            )}
+        </div>
+        {cleanupError && (
+            <span
+                data-testid={`${testId}-cleanup-error`}
+                className="text-[11px] text-[#cf222e] dark:text-[#f85149]"
+            >
+                {cleanupError}
+            </span>
+        )}
         </div>
     );
 }

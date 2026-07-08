@@ -30,6 +30,7 @@ import { FileDiffPanel } from './diff/FileDiffPanel';
 import { createCommitDiffSource, createBranchRangeDiffSource } from './diff/diffSource';
 import { GitPanelHeader } from './GitPanelHeader';
 import { WorkingTree } from './working-tree/WorkingTree';
+import { WorktreeList } from './working-tree/WorktreeList';
 import { WorkingTreeFileDiff } from './working-tree/WorkingTreeFileDiff';
 import { WorkingTreeAllComments } from './working-tree/WorkingTreeAllComments';
 import { BranchRangeAllComments } from './branches/BranchRangeAllComments';
@@ -1938,6 +1939,11 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                         selectedFilePath={selectedWorkingTreeFile}
                         refreshKey={workingChangesRefreshKey}
                         onAllCommentsClick={handleAllWorkingCommentsClick}
+                        compact={isSplitWorkspace}
+                    />
+                    <WorktreeList
+                        workspaceId={workspaceId}
+                        refreshKey={workingChangesRefreshKey}
                         compact={isSplitWorkspace}
                     />
                 </div>

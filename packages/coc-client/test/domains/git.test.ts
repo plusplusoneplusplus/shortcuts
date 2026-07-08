@@ -69,6 +69,22 @@ describe('GitClient', () => {
     expect(adapter.calls[17].options?.query).toEqual({ oldRef: 'abc^', newRef: 'abc', status: 'open,resolved' });
   });
 
+  it('routes worktree list/cleanup under /workspaces/:id/worktrees (not /git/) with encoded ids', async () => {
+    const adapter = createMockAdapter({ worktrees: [] });
+    const client = new GitClient(adapter);
+
+    await client.listWorktrees('repo/a');
+    await client.cleanupWorktree('repo/a', 'wt/1 space');
+
+    expect(adapter.calls.map(c => c.path)).toEqual([
+      '/workspaces/repo%2Fa/worktrees',
+      '/workspaces/repo%2Fa/worktrees/wt%2F1%20space/cleanup',
+    ]);
+    // List is a GET (no method); cleanup is a POST with no body.
+    expect(adapter.calls[0].options?.method).toBeUndefined();
+    expect(adapter.calls[1].options).toMatchObject({ method: 'POST' });
+  });
+
   it('exposes the commit diff route for cache-based SPA consumers', () => {
     const adapter = createMockAdapter({});
     const client = new GitClient(adapter);
