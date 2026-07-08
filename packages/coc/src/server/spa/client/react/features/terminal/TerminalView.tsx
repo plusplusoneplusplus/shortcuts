@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../../ui/cn';
 import { TerminalPanel } from './TerminalPanel';
 import { useCocClient } from '../../repos/cloneRouting';
@@ -14,6 +15,14 @@ import type { TerminalSessionInfo } from './hooks/useTerminalWebSocket';
 
 export interface TerminalViewProps {
     workspaceId: string;
+    /**
+     * When set, the toolbar (terminal picker + new-terminal action) renders into
+     * this element via a portal instead of inline. The workspace dock uses it to
+     * merge the toolbar into its single-row header next to the Terminal/Explorer
+     * tabs; standalone usage (the classic Terminal sub-tab) leaves it undefined
+     * and keeps the inline bordered toolbar.
+     */
+    toolbarPortalTarget?: HTMLElement | null;
 }
 
 interface TerminalTab {
@@ -26,7 +35,7 @@ interface TerminalTab {
 }
 
 
-export function TerminalView({ workspaceId }: TerminalViewProps) {
+export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewProps) {
     // Route terminal REST (list/pin) to the workspace's clone (AC-07). The PTY
     // socket itself is routed inside useTerminalWebSocket via the same registry.
     const client = useCocClient(workspaceId);
@@ -238,13 +247,20 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
 
     const activeTab = terminals.find(t => t.id === activeId) ?? null;
 
-    return (
-        <div className="flex flex-col h-full" data-testid="terminal-view">
-            {/* Toolbar: compact terminal picker + new-terminal action */}
-            <div
-                ref={toolbarRef}
-                className="flex items-center gap-1 px-2 py-1 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shrink-0"
-            >
+    // Toolbar: compact terminal picker + new-terminal action. Rendered inline by
+    // default; the workspace dock portals it into its single-row header so the
+    // Terminal/Explorer tabs and the picker share one bar (no bordered wrapper /
+    // background then — the header supplies those).
+    const toolbar = (
+        <div
+            ref={toolbarRef}
+            className={cn(
+                "flex items-center gap-1",
+                toolbarPortalTarget
+                    ? "h-full w-full px-1"
+                    : "px-2 py-1 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shrink-0",
+            )}
+        >
                 {terminals.length > 0 ? (
                     <div className="relative min-w-0">
                         {editingId && activeTab ? (
@@ -381,7 +397,12 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
                         {pinError}
                     </span>
                 ) : null}
-            </div>
+        </div>
+    );
+
+    return (
+        <div className="flex flex-col h-full" data-testid="terminal-view">
+            {toolbarPortalTarget ? createPortal(toolbar, toolbarPortalTarget) : toolbar}
 
             {/* Terminal panels — all rendered, visibility toggled */}
             <div className="flex-1 min-h-0 relative">
