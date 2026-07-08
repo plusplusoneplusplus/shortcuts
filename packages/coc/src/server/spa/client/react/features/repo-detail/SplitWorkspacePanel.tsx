@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
+import { usePublishWorkspaceLeftColWidth } from '../../hooks/ui/useWorkspaceLeftColWidth';
 
 /**
  * Layout shell for the split "Workspace" view (behind the `splitWorkspacePanel`
@@ -228,19 +229,10 @@ export function SplitWorkspacePanel({
     const [gitCollapsed, toggleGit] = useCollapsedState(splitWorkspaceGitCollapsedStorageKey(workspaceId));
 
     // Publish the live left-column width so the App shell's global status dock
-    // (`GlobalStatusDock`) can match this sidebar's width. Cleared on unmount /
-    // mobile so the dock falls back to its default width where no split sidebar
+    // (`GlobalStatusDock`) can match this sidebar's width. Cleared on mobile /
+    // unmount so the dock falls back to its default width where no split sidebar
     // is on screen.
-    useEffect(() => {
-        if (isMobile) {
-            document.documentElement.style.removeProperty('--workspace-left-col-width');
-            return;
-        }
-        document.documentElement.style.setProperty('--workspace-left-col-width', `${leftColumn.width}px`);
-        return () => {
-            document.documentElement.style.removeProperty('--workspace-left-col-width');
-        };
-    }, [isMobile, leftColumn.width]);
+    usePublishWorkspaceLeftColWidth(leftColumn.width, isMobile);
 
     // Narrow / mobile fallback: single scrolling column, no split, no dividers.
     // Each reused tab keeps its own single-column behavior; we just stack the
@@ -266,6 +258,10 @@ export function SplitWorkspacePanel({
     // Chat keeps its persisted fixed height when both are open; when git is
     // collapsed the chat half fills the remaining space instead.
     const chatFills = !chatCollapsed && gitCollapsed;
+    // When both halves are collapsed neither one carries `flex-1`, so nothing
+    // fills the column and the docked footer would ride up under the git header
+    // instead of staying pinned to the bottom-left. A spacer absorbs the slack.
+    const bothCollapsed = chatCollapsed && gitCollapsed;
 
     return (
         <div
@@ -350,6 +346,17 @@ export function SplitWorkspacePanel({
                         {gitList}
                     </div>
                 </div>
+
+                {/* Both halves collapsed: no half carries flex-1, so this
+                    spacer grows to fill the column and keeps the footer pinned
+                    to the bottom-left instead of riding up under the headers. */}
+                {bothCollapsed && (
+                    <div
+                        className="flex-1 min-h-0"
+                        aria-hidden="true"
+                        data-testid="split-workspace-spacer"
+                    />
+                )}
 
                 {/* Docked footer pinned to the bottom of the left column (below
                     the git half). Hosts the remote-first shell's status cluster. */}

@@ -161,6 +161,7 @@ export function MyWorkView() {
                         workspaceId={MY_WORK_WORKSPACE_ID}
                         initialNotePath={state.selectedNotePath}
                         defaultScope="per-workspace"
+                        active={activeTab === 'notes'}
                     />
                 </div>
                 <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">

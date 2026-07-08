@@ -122,6 +122,7 @@ function queuedTaskToProcess(task: QueuedTask): AIProcess {
     // QueueStatus is a subset of AIProcessStatus (no 'cancelling'), so a direct
     // assignment satisfies the synthesised AIProcess shape.
     const status: AIProcessStatus = task.status;
+    const payload = task.payload as any;
     return {
         id: toQueueProcessId(task.id),
         type: task.type || 'chat',
@@ -130,7 +131,17 @@ function queuedTaskToProcess(task: QueuedTask): AIProcess {
         fullPrompt: prompt,
         startTime: new Date(task.createdAt),
         title: task.displayName,
-        workingDirectory: task.folderPath ?? (task.payload as any)?.workingDirectory,
+        workingDirectory: task.folderPath ?? payload?.workingDirectory,
+        // Mirror the metadata the real process record will carry (see
+        // process-lifecycle-runner) so the SPA can resolve the chat mode
+        // before the executor starts — without it, a freshly enqueued
+        // autopilot chat renders its composer in the default ask mode.
+        metadata: {
+            type: task.type || 'chat',
+            queueTaskId: task.id,
+            mode: normalizeChatMode(payload?.mode),
+            workspaceId: payload?.workspaceId,
+        },
     };
 }
 

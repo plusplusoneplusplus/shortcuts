@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { cn, SegmentedControl } from '../../ui';
+import { cn } from '../../ui';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { TerminalView } from '../terminal/TerminalView';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
@@ -33,7 +33,9 @@ export type { WorkspaceDockView } from './WorkspaceDockToggle';
 /**
  * WorkspaceRightDock — a VS Code-style right-side dock at the workspace level
  * (behind the `splitWorkspacePanel` flag) that hosts the existing Terminal and
- * File Explorer, switchable via a segmented Terminal|Explorer control. It lives
+ * File Explorer, switchable via compact Terminal|Explorer tabs in a single-row
+ * header. The active terminal's toolbar (picker + new-terminal action) portals
+ * into that same header row so the whole bar reads as one control. It lives
  * to the right of everything and stays mounted across every sub-tab (chat, git,
  * notes, work-items, …) so the running PTY session and explorer state survive a
  * sub-tab change, a dock close, or a view switch.
@@ -131,10 +133,75 @@ export function useWorkspaceDock(workspaceId: string): WorkspaceDockController {
     return { isOpen, toggleOpen, view, setView, width, isDragging, handleMouseDown, handleTouchStart };
 }
 
-const DOCK_VIEW_OPTIONS: readonly { value: WorkspaceDockView; label: string; testId: string }[] = [
-    { value: 'terminal', label: 'Terminal', testId: 'workspace-dock-view-terminal' },
-    { value: 'explorer', label: 'Explorer', testId: 'workspace-dock-view-explorer' },
+const DOCK_VIEW_TABS: readonly {
+    value: WorkspaceDockView;
+    label: string;
+    testId: string;
+    icon: JSX.Element;
+}[] = [
+    {
+        value: 'terminal',
+        label: 'Terminal',
+        testId: 'workspace-dock-view-terminal',
+        icon: (
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="3,4 6,8 3,12" />
+                <line x1="8" y1="12" x2="13" y2="12" />
+            </svg>
+        ),
+    },
+    {
+        value: 'explorer',
+        label: 'Explorer',
+        testId: 'workspace-dock-view-explorer',
+        icon: (
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
+                <path d="M2 4.2h4l1.2 1.6H14v6.9H2z" />
+            </svg>
+        ),
+    },
 ];
+
+/**
+ * Compact Terminal | Explorer tabs for the dock's single-row header. Underline
+ * marks the active view; the terminal picker + new-terminal action portal into
+ * the same row to the right (see WorkspaceRightDock), so the header reads as one
+ * bar rather than a stack of a pill switcher over a separate terminal toolbar.
+ */
+function DockViewTabs({
+    view,
+    onChange,
+}: {
+    view: WorkspaceDockView;
+    onChange: (value: WorkspaceDockView) => void;
+}) {
+    return (
+        <div className="flex h-full flex-shrink-0 items-stretch" role="tablist" data-testid="workspace-dock-view-switcher">
+            {DOCK_VIEW_TABS.map(tab => {
+                const active = view === tab.value;
+                return (
+                    <button
+                        key={tab.value}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => onChange(tab.value)}
+                        data-testid={tab.testId}
+                        className={cn(
+                            'flex items-center gap-1.5 px-2.5 text-xs border-b-2 -mb-px transition-colors',
+                            active
+                                ? 'border-[#0078d4] text-[#1f1f1f] dark:text-white'
+                                : 'border-transparent text-[#616161] hover:text-[#1f1f1f] dark:text-[#9d9d9d] dark:hover:text-white',
+                        )}
+                    >
+                        <span className="opacity-80">{tab.icon}</span>
+                        {tab.label}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
 
 export interface WorkspaceRightDockProps {
     workspaceId: string;
@@ -159,6 +226,12 @@ export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProp
     useEffect(() => {
         if (isOpen) setEverOpened(true);
     }, [isOpen]);
+
+    // The terminal toolbar portals into this header slot so the Terminal/Explorer
+    // tabs and the terminal picker share one row. Only target it while the
+    // terminal view is active; on Explorer the toolbar falls back to rendering
+    // inline (hidden inside its display:none container).
+    const [pickerSlot, setPickerSlot] = useState<HTMLDivElement | null>(null);
 
     return (
         <div
@@ -188,22 +261,20 @@ export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProp
                 <span className="h-full w-px bg-[#c8c8c8] dark:bg-[#5a5a5a] group-hover:w-[2px] group-hover:bg-[#007acc] transition-all" />
             </div>
 
-            {/* Dock body: segmented switcher header + the two (keep-alive) views. */}
+            {/* Dock body: single-row header (view tabs + portaled terminal toolbar)
+                + the two (keep-alive) views. */}
             <div
                 className="flex min-h-0 flex-col overflow-hidden"
                 style={{ width }}
                 data-testid="workspace-dock-body"
             >
                 <div
-                    className="flex h-[30px] flex-shrink-0 items-center border-b border-[#e5e5e5] px-2 dark:border-[#333]"
+                    className="flex h-[35px] flex-shrink-0 items-center gap-1 border-b border-[#e5e5e5] pr-1 dark:border-[#333]"
                     data-testid="workspace-dock-header"
                 >
-                    <SegmentedControl
-                        options={DOCK_VIEW_OPTIONS}
-                        value={view}
-                        onChange={setView}
-                        data-testid="workspace-dock-view-switcher"
-                    />
+                    <DockViewTabs view={view} onChange={setView} />
+                    {/* Portal target for the active terminal's toolbar (picker + new). */}
+                    <div ref={setPickerSlot} className="flex min-w-0 flex-1 items-center" />
                 </div>
 
                 {everOpened && (
@@ -213,7 +284,11 @@ export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProp
                             style={{ display: view === 'terminal' ? undefined : 'none' }}
                             data-testid="workspace-dock-terminal"
                         >
-                            <TerminalView key={workspaceId} workspaceId={workspaceId} />
+                            <TerminalView
+                                key={workspaceId}
+                                workspaceId={workspaceId}
+                                toolbarPortalTarget={view === 'terminal' ? pickerSlot : null}
+                            />
                         </div>
                         <div
                             className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"

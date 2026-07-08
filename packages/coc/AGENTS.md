@@ -232,7 +232,16 @@ all have their own `references/*.md`.
   detects a `write_canvas` call with `purpose: 'plan'`, and `ChatDetail` passes
   the canvas id as `planCanvasId`. A canvas-backed plan has no on-disk path, so
   the card always reads the canvas content (`sourceClient.canvases.get`) and
-  inlines it in the prompt for both local and remote targets.
+  inlines it in the prompt for both local and remote targets. When the **source**
+  workspace is itself a remote clone (`sourceIsRemote`/`sourceBaseUrl` props,
+  derived in `ChatDetail` from the aggregated repo entry → `lookupCloneBaseUrl` →
+  local workspace-list membership), the plan is always content-embedded and the
+  source read / fallback enqueue route to the source server's baseUrl explicitly —
+  never enqueue a remote machine's plan path as a path-reference (`context.files`)
+  task, which the executor rewrites to `Follow the instruction <path>.` on the
+  wrong server. `buildImplementTargets` carries the caller's
+  `isRemote`/`baseUrl`/`serverLabel` when synthesizing the missing current repo
+  instead of hardcoding a local target.
 - **Copilot long-context tier** is automatic at the provider boundary: chat
   and follow-up executors derive `contextTier` only via
   `getCopilotContextTierForModel` (tiered billing metadata —

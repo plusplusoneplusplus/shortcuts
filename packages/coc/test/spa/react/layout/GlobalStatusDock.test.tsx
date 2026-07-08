@@ -65,6 +65,26 @@ describe('GlobalStatusDock', () => {
         expect(wrapper.className).toContain('flex-shrink-0');
     });
 
+    it('pins its width to the admin sidebar (248px) on the admin tab so it stays flush, not overhanging', () => {
+        mockAppState = { activeTab: 'admin', selectedRepoId: null, activeRepoSubTab: undefined };
+        render(<GlobalStatusDock />);
+        const wrapper = screen.getByTestId('global-status-dock');
+        // The admin shell renders its own fixed 248px sidebar and never publishes
+        // --workspace-left-col-width; using the (wider) workspace column here made
+        // the dock overhang past the sidebar into the content pane.
+        expect(wrapper.style.width).toBe('248px');
+        expect(wrapper.style.width).not.toContain('--workspace-left-col-width');
+    });
+
+    it('pins to the admin sidebar width on every tab that mounts the admin shell', () => {
+        for (const tab of ['admin', 'memory', 'skills', 'logs', 'stats', 'servers', 'dreams-admin']) {
+            mockAppState = { activeTab: tab, selectedRepoId: null, activeRepoSubTab: undefined };
+            const { unmount } = render(<GlobalStatusDock />);
+            expect(screen.getByTestId('global-status-dock').style.width).toBe('248px');
+            unmount();
+        }
+    });
+
     it('forwards onAdminOpen to StatusActions', () => {
         const onAdminOpen = vi.fn();
         render(<GlobalStatusDock onAdminOpen={onAdminOpen} />);

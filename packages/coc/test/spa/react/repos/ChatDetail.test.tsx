@@ -925,6 +925,106 @@ describe('ChatDetail', () => {
             expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
             expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('false');
         });
+
+        // Regression: a freshly enqueued autopilot chat's first /processes/
+        // snapshot is a synthetic queued process. If that snapshot carries no
+        // mode, the composer must still sync to autopilot when a later
+        // snapshot (queue refresh / real process record) delivers the mode —
+        // previously the sync only ran once per task id and the composer
+        // stayed stuck on the default ask mode.
+        it('syncs to autopilot when the mode only arrives on a later task snapshot', async () => {
+            const taskId = 'queue_task-fresh';
+            let processCalls = 0;
+            const syntheticProcess = {
+                id: taskId,
+                type: 'chat',
+                status: 'queued',
+                metadata: { type: 'chat', queueTaskId: 'task-fresh' },
+                conversationTurns: [],
+            };
+            const realProcess = makeProcess({
+                id: taskId,
+                status: 'running',
+                metadata: { mode: 'autopilot', sessionId: 'sess-fresh' },
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/': () => {
+                    processCalls += 1;
+                    const p = processCalls === 1 ? syntheticProcess : realProcess;
+                    return new Response(JSON.stringify({ process: p, children: [], total: 0 }), {
+                        status: 200,
+                        headers: { 'content-type': 'application/json' },
+                    });
+                },
+                '/models': { body: [] },
+            });
+
+            const refreshRef = createRef<() => void>();
+            function FreshChatHarness() {
+                const { dispatch } = useQueue();
+                useEffect(() => {
+                    (refreshRef as React.MutableRefObject<(() => void) | null>).current =
+                        () => dispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
+                }, [dispatch]);
+                return <ChatDetail taskId={taskId} />;
+            }
+            render(<Wrap><FreshChatHarness /></Wrap>);
+
+            // First snapshot (synthetic, no mode) loaded — chat is pending, no composer yet
+            await waitFor(() => {
+                expect(processCalls).toBeGreaterThanOrEqual(1);
+            });
+
+            // Second snapshot delivers the real process with metadata.mode
+            await act(async () => {
+                refreshRef.current?.();
+            });
+            await waitFor(() => {
+                expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('true');
+            });
+        });
+
+        it('does not clobber a user-picked mode when a later task snapshot repeats the task mode', async () => {
+            const taskId = 'queue_task-user-pick';
+            const proc = makeProcess({
+                id: taskId,
+                metadata: { mode: 'autopilot', sessionId: 'sess-user-pick' },
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/': { body: { process: proc, children: [], total: 0 } },
+                '/models': { body: [] },
+            });
+
+            const refreshRef = createRef<() => void>();
+            function UserPickHarness() {
+                const { dispatch } = useQueue();
+                useEffect(() => {
+                    (refreshRef as React.MutableRefObject<(() => void) | null>).current =
+                        () => dispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
+                }, [dispatch]);
+                return <ChatDetail taskId={taskId} />;
+            }
+            render(<Wrap><UserPickHarness /></Wrap>);
+
+            // Initial sync lands on autopilot from the loaded process
+            await waitFor(() => {
+                expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('true');
+            });
+
+            // User flips the composer to ask
+            fireEvent.click(screen.getByTestId('mode-pill-ask'));
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+
+            // A refresh re-delivers the same autopilot task — must NOT reset the pick
+            await act(async () => {
+                refreshRef.current?.();
+            });
+            await waitFor(() => {
+                expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+            });
+        });
     });
 
     // ── Follow-up send ─────────────────────────────────────────────────────

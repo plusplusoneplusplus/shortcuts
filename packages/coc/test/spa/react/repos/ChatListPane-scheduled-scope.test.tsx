@@ -251,8 +251,11 @@ describe('ChatListPane Scheduled scope', () => {
             render(<ChatListPane {...defaultProps} history={[makeTask()]} />);
         });
         const tab = screen.getByTestId('activity-scope-tab-loops');
-        expect(tab.textContent).toContain('Scheduled');
+        // Label is accessible via title and aria-label, not visible text content.
+        expect(tab.getAttribute('title')).toBe('Scheduled');
+        expect(tab.getAttribute('aria-label')).toContain('Scheduled');
         expect(tab.textContent).not.toContain('Loops');
+        expect(tab.textContent).not.toContain('Scheduled');
     });
 
     it('excludes scheduled runs from Chats count and includes them in Scheduled count', async () => {

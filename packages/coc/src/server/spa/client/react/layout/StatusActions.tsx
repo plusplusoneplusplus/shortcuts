@@ -10,9 +10,10 @@
  *     left sidebar (remote-first shell). It full-bleeds a top border and lays
  *     the icon buttons and connection label out as a single row, ordered
  *     left→right as [Admin] [NotificationBell] [Quota] [Theme] with the
- *     connection pill pushed to the right edge (`justify-between`). It uses a
- *     soft blue-tinted background (distinct from the sidebar's neutral gray) so
- *     the dock reads as a separate strip rather than blending into the panel.
+ *     connection pill pushed to the right edge (`justify-between`). It uses the
+ *     shell's neutral chrome background (matching the topbar/bottom-nav) with a
+ *     top border, so the dock reads as part of the shell chrome and is set off
+ *     from the sidebar body by the border rather than a colored tint.
  *     The bell/quota popovers open upward (`placement="up"`) since the dock
  *     sits at the bottom edge of the viewport.
  *
@@ -71,10 +72,10 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
     if (variant === 'sidebar') {
         return (
             <div
-                className="flex flex-shrink-0 items-center justify-between gap-1 px-2 py-1.5 border-t border-[#b9d2f2] dark:border-[#34496b] bg-[#dbe8fa] dark:bg-[#23324a]"
+                className="flex flex-shrink-0 items-center justify-between gap-1 px-2.5 py-1.5 border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
                 data-testid="sidebar-status-actions"
             >
-                <span className="flex items-center gap-0.5 flex-shrink-0">
+                <span className="flex items-center gap-1 flex-shrink-0">
                     <button
                         data-tab="admin"
                         className={

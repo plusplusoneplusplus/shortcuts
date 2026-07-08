@@ -14,6 +14,7 @@ import type { TextAnchor } from './editor/textAnchor';
 import { AddCommentDialog } from './editor/NotesDialogs';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
+import { usePublishWorkspaceLeftColWidth } from '../../hooks/ui/useWorkspaceLeftColWidth';
 import { useApp } from '../../contexts/AppContext';
 import { buildNoteHash } from '../../layout/Router';
 import { useNoteReferences } from './editor/useNoteReferences';
@@ -27,6 +28,12 @@ export interface NotesViewProps {
     initialNotePath?: string | null;
     /** Default chat scope for the NoteChatPanel. Defaults to 'per-workspace'. */
     defaultScope?: ChatScope;
+    /**
+     * Whether this Notes tab is the active/visible sub-tab. Views are kept
+     * mounted-but-hidden across tab switches, so only the active one publishes
+     * its sidebar width to the global status dock. Defaults to `true` for
+     * standalone use. */
+    active?: boolean;
 }
 
 const MAX_NAV_HISTORY = 50;
@@ -35,7 +42,7 @@ function getNotesChatLegacyOpenStorageKey(workspaceId: string): string {
     return `coc-notes-chat-panel-open-${workspaceId}`;
 }
 
-export function NotesView({ workspaceId, initialNotePath, defaultScope }: NotesViewProps) {
+export function NotesView({ workspaceId, initialNotePath, defaultScope, active = true }: NotesViewProps) {
     const { dispatch } = useApp();
     const [selectedPath, setSelectedPath] = useState<string | null>(initialNotePath ?? null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -113,6 +120,12 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope }: NotesV
         storageKey: 'coc.notesView.sidebarWidth',
         direction: 'left',
     });
+
+    // Keep the app-shell status dock flush under the notes tree sidebar (not the
+    // wider workspace default) by publishing this sidebar's live width — but only
+    // while this Notes tab is the active one, since the view stays mounted-hidden
+    // on other tabs. On mobile the sidebar is a drawer, so clear it.
+    usePublishWorkspaceLeftColWidth(sidebarResize.width, isMobile || !active);
 
     const commentsPanelResize = useResizablePanel({
         initialWidth: 288,

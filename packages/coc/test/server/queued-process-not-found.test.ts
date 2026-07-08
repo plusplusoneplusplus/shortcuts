@@ -140,6 +140,50 @@ describe('Queued process synthetic response', () => {
             const body = JSON.parse(res.body);
             expect(body.process.workingDirectory).toBe('/custom/path');
         });
+
+        it('should carry the chat mode in synthetic metadata so a fresh autopilot chat does not fall back to ask', async () => {
+            const mockBridge = createMockBridge({
+                getTask: vi.fn().mockReturnValue({
+                    id: 'task-autopilot',
+                    type: 'chat',
+                    status: 'queued',
+                    priority: 'normal',
+                    createdAt: 1700000000000,
+                    payload: { kind: 'chat', mode: 'autopilot', prompt: 'do it', workspaceId: 'ws-1' },
+                    config: {},
+                }),
+            });
+            await startWithBridge(mockBridge);
+
+            const res = await getJSON(`${baseUrl}/api/processes/queue_task-autopilot`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.process.metadata.mode).toBe('autopilot');
+            expect(body.process.metadata.workspaceId).toBe('ws-1');
+            expect(body.process.metadata.queueTaskId).toBe('task-autopilot');
+        });
+
+        it('should omit an invalid payload mode from synthetic metadata', async () => {
+            const mockBridge = createMockBridge({
+                getTask: vi.fn().mockReturnValue({
+                    id: 'task-badmode',
+                    type: 'chat',
+                    status: 'queued',
+                    priority: 'normal',
+                    createdAt: 1700000000000,
+                    payload: { kind: 'chat', mode: 'bogus', prompt: 'hi' },
+                    config: {},
+                }),
+            });
+            await startWithBridge(mockBridge);
+
+            const res = await getJSON(`${baseUrl}/api/processes/queue_task-badmode`);
+            expect(res.status).toBe(200);
+
+            const body = JSON.parse(res.body);
+            expect(body.process.metadata.mode).toBeUndefined();
+        });
     });
 
     describe('GET /api/processes/:id/output', () => {

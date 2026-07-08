@@ -147,6 +147,41 @@ describe('buildImplementTargets', () => {
         expect(targets.filter(t => t.workspaceId === 'ws-current')).toHaveLength(1);
     });
 
+    // Regression: the synthesized fallback used to hardcode isRemote:false, so a
+    // remote-sourced plan (current workspace = remote clone missing from the repo
+    // list) was treated as local and its machine-local path leaked into a task
+    // enqueued on the wrong server.
+    it('synthesizes a REMOTE current target when the caller marks the current workspace remote', () => {
+        const targets = buildImplementTargets([], {
+            workspaceId: 'ws-remote-current',
+            label: 'remote-app',
+            workingDirectory: '/home/user/repo',
+            isRemote: true,
+            baseUrl: 'http://127.0.0.1:4000',
+            serverLabel: 'dev-vm',
+        });
+        expect(targets[0]).toMatchObject({
+            workspaceId: 'ws-remote-current',
+            label: 'remote-app',
+            workingDirectory: '/home/user/repo',
+            isRemote: true,
+            baseUrl: 'http://127.0.0.1:4000',
+            serverLabel: 'dev-vm',
+        });
+    });
+
+    it('ignores remote routing metadata in the fallback when the current workspace is local', () => {
+        const targets = buildImplementTargets([], {
+            workspaceId: 'ws-current',
+            label: 'current-app',
+            baseUrl: 'http://127.0.0.1:4000',
+            serverLabel: 'dev-vm',
+        });
+        expect(targets[0]).toMatchObject({ workspaceId: 'ws-current', isRemote: false });
+        expect(targets[0].baseUrl).toBeUndefined();
+        expect(targets[0].serverLabel).toBeUndefined();
+    });
+
     describe('same-origin scoping', () => {
         const ORIGIN = 'https://github.com/acme/shortcuts.git';
 

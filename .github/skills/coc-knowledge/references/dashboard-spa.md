@@ -651,6 +651,17 @@ the current repo or in an already-registered, **online** remote clone:
   `context.files`, and enqueues on the **target** repo's routed CoC client (a
   `{ id, baseUrl, remote: {} }` `CloneRef` through `useCocClient`). A failed
   source read surfaces an inline error and never enqueues.
+- **Remote-sourced plan** → when the *source* workspace itself is a remote clone
+  (`sourceIsRemote`/`sourceBaseUrl` props, derived by `ChatDetail` from the
+  aggregated repo entry → `lookupCloneBaseUrl` → membership in this server's own
+  workspace list), the plan content is always inlined regardless of what the
+  target list claims, and both the source read and the fallback enqueue route to
+  the source server's baseUrl explicitly. This prevents a remote machine's plan
+  path from being enqueued as a path-reference task on the local server (which
+  the executor would rewrite to `Follow the instruction <path>.` via
+  `context.files`). `buildImplementTargets` carries the caller-supplied
+  `isRemote`/`baseUrl`/`serverLabel` when it synthesizes the missing current
+  repo instead of hardcoding a local target.
 
 Each run records an `ImplementationRecord` (process id, plan path, enqueue time,
 plus target identity: `targetWorkspaceId`, `targetLabel`, `targetServerLabel`,
@@ -1284,7 +1295,11 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   `hidden` so scroll/selection survive. Collapsed state persists per workspace
   under `split-workspace:{workspaceId}:chat-collapsed` and
   `split-workspace:{workspaceId}:git-collapsed`, written only on an explicit
-  user toggle (never on mount or workspace switch).
+  user toggle (never on mount or workspace switch). The optional docked `footer`
+  (the remote-first shell's status cluster) is pinned to the bottom-left of the
+  column; when both halves are collapsed neither carries `flex-1`, so a `flex-1`
+  spacer is rendered above the footer to keep it at the bottom instead of riding
+  up under the headers.
 - The git half uses a dense skin to save vertical space. `SplitWorkspacePanel`
   exposes a `gitHeaderExtra` slot on the git section header (rendered right of
   the chevron+label toggle; its clicks don't toggle; stays visible while
@@ -1293,7 +1308,11 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   (`splitGitHeaderNode`, mirroring the `splitDetailNode` pattern) and passes it
   to `RepoGitTab` as `headerToolbarContainer`; `RepoGitTab` portals a
   `compact` `GitPanelHeader` (slim pills/buttons, timestamp without " ago")
-  into it instead of rendering the 38px toolbar strip. In split layout the
+  into it instead of rendering the 38px toolbar strip. The hoisted portal is a
+  sibling OUTSIDE the git list's `onClickCapture` wrapper — portaled React
+  events bubble through the React tree, so nesting it would make toolbar clicks
+  (Pull/refresh) mark git last-clicked and steal the shared detail pane from
+  the chat. In split layout the
   search bar also slims (placeholder `Search commits…`, full hint kept in
   `aria-label`), the `git-repo-sections` grid tightens, and `BranchChanges` /
   `WorkingTree` render their `compact` variant: flat left-accent rows instead

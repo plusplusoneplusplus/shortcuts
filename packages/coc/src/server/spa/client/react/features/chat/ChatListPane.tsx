@@ -3449,7 +3449,20 @@ export function ChatListPane({
                                 ),
                                 hidden: false,
                             },
-                            { id: 'all' as const, label: 'All', count: scopeCounts.all, icon: null, hidden: false },
+                            {
+                                id: 'all' as const,
+                                label: 'All',
+                                count: scopeCounts.all,
+                                icon: (
+                                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+                                        <rect x="1.5" y="1.5" width="4" height="4" rx="0.5" />
+                                        <rect x="8.5" y="1.5" width="4" height="4" rx="0.5" />
+                                        <rect x="1.5" y="8.5" width="4" height="4" rx="0.5" />
+                                        <rect x="8.5" y="8.5" width="4" height="4" rx="0.5" />
+                                    </svg>
+                                ),
+                                hidden: false,
+                            },
                         ]).filter(s => !s.hidden).map(scope => {
                             const on = activeScope === scope.id;
                             return (
@@ -3458,9 +3471,11 @@ export function ChatListPane({
                                     type="button"
                                     role="tab"
                                     aria-selected={on}
+                                    aria-label={`${scope.label} (${scope.count})`}
+                                    title={scope.label}
                                     onClick={() => setActiveScope(scope.id)}
                                     className={cn(
-                                        'h-[26px] min-w-0 px-1.5 inline-flex items-center justify-center gap-1 text-[11.5px] leading-none font-medium rounded transition-[background-color,color,box-shadow] duration-100',
+                                        'h-[26px] min-w-0 px-1 inline-flex items-center justify-center gap-1 text-[11.5px] leading-none font-medium rounded transition-[background-color,color,box-shadow] duration-100',
                                         on
                                             ? 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] shadow-[0_1px_0_rgba(0,0,0,0.04),0_0_0_1px_rgba(224,224,224,0.7)] dark:shadow-[0_1px_0_rgba(0,0,0,0.20),0_0_0_1px_rgba(71,71,73,0.7)]'
                                             : 'text-[#606060] dark:text-[#9d9d9d] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
@@ -3468,8 +3483,7 @@ export function ChatListPane({
                                     data-testid={`activity-scope-tab-${scope.id}`}
                                     data-active={on || undefined}
                                 >
-                                    {scope.icon && <span className="opacity-80 flex-shrink-0">{scope.icon}</span>}
-                                    <span className="min-w-0 truncate whitespace-nowrap">{scope.label}</span>
+                                    <span className="opacity-80 flex-shrink-0">{scope.icon}</span>
                                     <span
                                         className={cn(
                                             'text-[10.5px] font-mono tabular-nums whitespace-nowrap flex-shrink-0',

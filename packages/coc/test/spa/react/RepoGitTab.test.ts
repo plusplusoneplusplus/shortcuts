@@ -607,6 +607,26 @@ describe('RepoGitTab', () => {
             expect(source).toContain('compact={headerHoisted}');
         });
 
+        // Regression: portaled React events still bubble through the REACT tree,
+        // so if the hoisted toolbar portal is a child of the onClickCapture list
+        // wrapper, clicking Pull/refresh in the section header marks git as
+        // last-clicked and steals the shared detail pane from the chat.
+        it('keeps the hoisted toolbar portal OUTSIDE the onClickCapture list wrapper', () => {
+            // Portal is built once, gated on the hoist condition.
+            expect(source).toContain('const hoistedHeaderPortal = headerHoisted && headerToolbarContainer');
+            // The list pane only renders the toolbar inline when NOT hoisted.
+            expect(source).toContain('{!headerHoisted && panelHeader}');
+            // The capture wrapper (git-split-workspace-list) must not contain the
+            // portal; it renders as a sibling after the wrapper closes.
+            const captureWrapper = source.match(/data-testid="git-split-workspace-list"[\s\S]*?\{listPane\}\s*<\/div>/);
+            expect(captureWrapper).toBeTruthy();
+            expect(captureWrapper![0]).not.toContain('hoistedHeaderPortal');
+            const splitBlock = source.match(/if \(isSplitWorkspace\) \{[\s\S]*?\n {4}\}/);
+            expect(splitBlock).toBeTruthy();
+            const wrapperEnd = splitBlock![0].indexOf('{listPane}');
+            expect(splitBlock![0].indexOf('{hoistedHeaderPortal}')).toBeGreaterThan(wrapperEnd);
+        });
+
         it('slims the search bar in split mode (shorter placeholder, tighter padding), full hint kept in aria-label', () => {
             expect(source).toContain("isSplitWorkspace ? 'Search commits…' : 'Search subject, hash, author, path…'");
             expect(source).toContain("isSplitWorkspace ? 'px-2 py-1' : 'px-2.5 py-1.5'");

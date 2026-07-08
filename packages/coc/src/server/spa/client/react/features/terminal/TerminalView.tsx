@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../../ui/cn';
 import { TerminalPanel } from './TerminalPanel';
 import { useCocClient } from '../../repos/cloneRouting';
@@ -14,6 +15,14 @@ import type { TerminalSessionInfo } from './hooks/useTerminalWebSocket';
 
 export interface TerminalViewProps {
     workspaceId: string;
+    /**
+     * When set, the toolbar (terminal picker + new-terminal action) renders into
+     * this element via a portal instead of inline. The workspace dock uses it to
+     * merge the toolbar into its single-row header next to the Terminal/Explorer
+     * tabs; standalone usage (the classic Terminal sub-tab) leaves it undefined
+     * and keeps the inline bordered toolbar.
+     */
+    toolbarPortalTarget?: HTMLElement | null;
 }
 
 interface TerminalTab {
@@ -26,7 +35,7 @@ interface TerminalTab {
 }
 
 
-export function TerminalView({ workspaceId }: TerminalViewProps) {
+export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewProps) {
     // Route terminal REST (list/pin) to the workspace's clone (AC-07). The PTY
     // socket itself is routed inside useTerminalWebSocket via the same registry.
     const client = useCocClient(workspaceId);
@@ -36,7 +45,11 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
     const [editValue, setEditValue] = useState('');
     const [pinningIds, setPinningIds] = useState<Set<string>>(() => new Set());
     const [pinError, setPinError] = useState<string | null>(null);
+    // Compact picker: the terminal list collapses into a "Terminal N ▾" dropdown
+    // so a narrow dock never overflows with a horizontal tab strip.
+    const [menuOpen, setMenuOpen] = useState(false);
     const editInputRef = useRef<HTMLInputElement>(null);
+    const toolbarRef = useRef<HTMLDivElement>(null);
     const counterRef = useRef(0);
 
     const createTerminal = useCallback(() => {
@@ -183,6 +196,7 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
     }, []);
 
     const startRename = useCallback((tab: TerminalTab) => {
+        setMenuOpen(false);
         setEditingId(tab.id);
         setEditValue(tab.title);
     }, []);
@@ -210,73 +224,164 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
         }
     }, [editingId]);
 
-    return (
-        <div className="flex flex-col h-full" data-testid="terminal-view">
-            {/* Toolbar */}
-            <div className="flex items-center gap-1 px-2 py-1 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shrink-0">
-                {/* Tab strip */}
-                <div className="flex items-center gap-0.5 overflow-x-auto flex-1 min-w-0">
-                    {terminals.map(tab => (
-                        <button
-                            key={tab.id}
-                            className={cn(
-                                "flex items-center gap-1.5 px-3 py-1 text-xs rounded-t whitespace-nowrap group",
-                                "hover:bg-gray-200 dark:hover:bg-gray-700",
-                                tab.id === activeId
-                                    ? "bg-white dark:bg-gray-800 border border-b-0 border-gray-200 dark:border-gray-700 font-medium"
-                                    : "text-gray-500 dark:text-gray-400"
-                            )}
-                            onClick={() => setActiveId(tab.id)}
-                            data-testid={`terminal-tab-${tab.id}`}
-                        >
-                            <span className="text-xs">⬛</span>
-                            {editingId === tab.id ? (
-                                <input
-                                    ref={editInputRef}
-                                    className="text-xs bg-transparent border border-blue-400 dark:border-blue-500 rounded px-1 py-0 outline-none w-24"
-                                    value={editValue}
-                                    onChange={(e) => setEditValue(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-                                        if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
-                                    }}
-                                    onBlur={commitRename}
-                                    onClick={(e) => e.stopPropagation()}
-                                    data-testid={`terminal-tab-rename-input-${tab.id}`}
-                                />
-                            ) : (
+    // Close the picker menu on outside click (anywhere below the toolbar) or Escape.
+    // The toolbar itself — including the "+" button — counts as "inside" so those
+    // clicks don't dismiss it mid-interaction.
+    useEffect(() => {
+        if (!menuOpen) return;
+        function handlePointerDown(event: MouseEvent) {
+            if (toolbarRef.current && !toolbarRef.current.contains(event.target as Node)) {
+                setMenuOpen(false);
+            }
+        }
+        function handleKeyDown(event: KeyboardEvent) {
+            if (event.key === 'Escape') setMenuOpen(false);
+        }
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [menuOpen]);
+
+    const activeTab = terminals.find(t => t.id === activeId) ?? null;
+
+    // Toolbar: compact terminal picker + new-terminal action. Rendered inline by
+    // default; the workspace dock portals it into its single-row header so the
+    // Terminal/Explorer tabs and the picker share one bar (no bordered wrapper /
+    // background then — the header supplies those).
+    const toolbar = (
+        <div
+            ref={toolbarRef}
+            className={cn(
+                "flex items-center gap-1",
+                toolbarPortalTarget
+                    ? "h-full w-full px-1"
+                    : "px-2 py-1 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shrink-0",
+            )}
+        >
+                {terminals.length > 0 ? (
+                    <div className="relative min-w-0">
+                        {editingId && activeTab ? (
+                            <input
+                                ref={editInputRef}
+                                className="text-xs bg-transparent border border-blue-400 dark:border-blue-500 rounded px-1.5 py-1 outline-none w-32"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+                                    if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+                                }}
+                                onBlur={commitRename}
+                                data-testid={`terminal-tab-rename-input-${activeTab.id}`}
+                            />
+                        ) : (
+                            <button
+                                type="button"
+                                className="flex items-center gap-1.5 px-2 py-1 max-w-[220px] text-xs rounded text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
+                                onClick={() => setMenuOpen(open => !open)}
+                                title="Switch terminal"
+                                aria-haspopup="menu"
+                                aria-expanded={menuOpen}
+                                data-menu-open={menuOpen ? 'true' : 'false'}
+                                data-testid="terminal-picker-btn"
+                            >
+                                <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" aria-hidden="true" />
                                 <span
-                                    onDoubleClick={(e) => { e.stopPropagation(); startRename(tab); }}
-                                    data-testid={`terminal-tab-title-${tab.id}`}
+                                    className="truncate"
+                                    onDoubleClick={(e) => { e.stopPropagation(); if (activeTab) startRename(activeTab); }}
+                                    data-testid={`terminal-tab-title-${activeTab?.id ?? ''}`}
                                 >
-                                    {tab.title}
+                                    {activeTab?.title ?? 'Terminal'}
                                 </span>
-                            )}
-                            <span
-                                className={cn(
-                                    "ml-0.5 cursor-pointer",
-                                    (!tab.serverSessionId || pinningIds.has(tab.id)) && "cursor-not-allowed opacity-40",
-                                    tab.pinned
-                                        ? "opacity-80 hover:opacity-100 text-blue-500 dark:text-blue-400"
-                                        : "opacity-0 group-hover:opacity-50 hover:!opacity-100"
-                                )}
-                                onClick={(e) => { e.stopPropagation(); void togglePin(tab.id); }}
-                                title={!tab.serverSessionId ? 'Waiting for terminal session' : tab.pinned ? 'Unpin terminal' : 'Pin terminal'}
-                                aria-disabled={!tab.serverSessionId || pinningIds.has(tab.id)}
-                                data-testid={`terminal-tab-pin-${tab.id}`}
+                                {terminals.length > 1 ? (
+                                    <span className="text-[10px] leading-none px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 shrink-0" data-testid="terminal-count-badge">
+                                        {terminals.length}
+                                    </span>
+                                ) : null}
+                                <svg className="w-3 h-3 shrink-0 opacity-60" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <polyline points="4,6 8,10 12,6" />
+                                </svg>
+                            </button>
+                        )}
+
+                        {menuOpen ? (
+                            <div
+                                className="absolute left-0 top-full z-20 mt-1 min-w-[200px] max-w-[280px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-1 shadow-lg"
+                                role="menu"
+                                data-testid="terminal-picker-menu"
                             >
-                                📌
-                            </span>
-                            <span
-                                className="ml-0.5 opacity-50 hover:opacity-100"
-                                onClick={(e) => { e.stopPropagation(); closeTerminal(tab.id); }}
-                                data-testid={`terminal-tab-close-${tab.id}`}
-                            >
-                                ✕
-                            </span>
-                        </button>
-                    ))}
-                </div>
+                                {terminals.map(tab => (
+                                    <div
+                                        key={tab.id}
+                                        role="menuitemradio"
+                                        aria-checked={tab.id === activeId}
+                                        className={cn(
+                                            "group mx-1 flex items-center gap-1.5 rounded px-2 py-1.5 text-xs cursor-pointer",
+                                            "hover:bg-gray-100 dark:hover:bg-gray-700",
+                                            tab.id === activeId
+                                                ? "bg-gray-100 dark:bg-gray-700/60 font-medium text-gray-800 dark:text-gray-100"
+                                                : "text-gray-600 dark:text-gray-300"
+                                        )}
+                                        onClick={() => { setActiveId(tab.id); setMenuOpen(false); }}
+                                        data-testid={`terminal-menu-item-${tab.id}`}
+                                    >
+                                        <span
+                                            className={cn(
+                                                "h-1.5 w-1.5 rounded-full shrink-0",
+                                                tab.id === activeId ? "bg-green-500" : "bg-gray-400 dark:bg-gray-500"
+                                            )}
+                                            aria-hidden="true"
+                                        />
+                                        <span className="flex-1 truncate" data-testid={`terminal-menu-title-${tab.id}`}>
+                                            {tab.title}
+                                        </span>
+                                        <span
+                                            className={cn(
+                                                "cursor-pointer",
+                                                (!tab.serverSessionId || pinningIds.has(tab.id)) && "cursor-not-allowed opacity-40",
+                                                tab.pinned
+                                                    ? "opacity-80 hover:opacity-100 text-blue-500 dark:text-blue-400"
+                                                    : "opacity-0 group-hover:opacity-50 hover:!opacity-100"
+                                            )}
+                                            onClick={(e) => { e.stopPropagation(); void togglePin(tab.id); }}
+                                            title={!tab.serverSessionId ? 'Waiting for terminal session' : tab.pinned ? 'Unpin terminal' : 'Pin terminal'}
+                                            aria-disabled={!tab.serverSessionId || pinningIds.has(tab.id)}
+                                            data-testid={`terminal-tab-pin-${tab.id}`}
+                                        >
+                                            📌
+                                        </span>
+                                        <span
+                                            className="opacity-50 hover:opacity-100"
+                                            onClick={(e) => { e.stopPropagation(); closeTerminal(tab.id); }}
+                                            title="Close terminal"
+                                            data-testid={`terminal-tab-close-${tab.id}`}
+                                        >
+                                            ✕
+                                        </span>
+                                    </div>
+                                ))}
+                                <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
+                                <button
+                                    type="button"
+                                    className="mx-1 flex w-[calc(100%-0.5rem)] items-center gap-1.5 rounded px-2 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                    onClick={() => { createTerminal(); setMenuOpen(false); }}
+                                    data-testid="terminal-menu-new"
+                                >
+                                    <span className="text-sm leading-none">+</span>
+                                    New terminal
+                                </button>
+                            </div>
+                        ) : null}
+                    </div>
+                ) : (
+                    <span className="px-1 text-xs text-gray-400 dark:text-gray-500 select-none">
+                        No terminals
+                    </span>
+                )}
+
+                <div className="min-w-0 flex-1" />
 
                 {/* New Terminal button */}
                 <button
@@ -292,7 +397,12 @@ export function TerminalView({ workspaceId }: TerminalViewProps) {
                         {pinError}
                     </span>
                 ) : null}
-            </div>
+        </div>
+    );
+
+    return (
+        <div className="flex flex-col h-full" data-testid="terminal-view">
+            {toolbarPortalTarget ? createPortal(toolbar, toolbarPortalTarget) : toolbar}
 
             {/* Terminal panels — all rendered, visibility toggled */}
             <div className="flex-1 min-h-0 relative">
