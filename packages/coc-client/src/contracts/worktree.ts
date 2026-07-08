@@ -73,3 +73,24 @@ export interface WorktreeMetadata {
     /** ISO timestamp when the checkout was removed via cleanup, if cleaned. */
     cleanedAt?: string;
 }
+
+/**
+ * Response of `GET /api/workspaces/:workspaceId/worktrees` — the CoC-created
+ * worktree records for a single workspace, newest first. Scoped strictly to the
+ * requested workspace (never mixes records across workspaces or remote targets).
+ */
+export interface ListWorktreesResponse {
+    worktrees: WorktreeMetadata[];
+}
+
+/**
+ * Response of `POST /api/workspaces/:workspaceId/worktrees/:id/cleanup` — the
+ * updated worktree record after a non-destructive `git worktree remove`. The
+ * generated branch is preserved; only the checkout is removed and the record is
+ * marked `cleaned`. `alreadyCleaned` is `true` when the record was cleaned
+ * already (idempotent no-op).
+ */
+export interface CleanupWorktreeResponse {
+    worktree: WorktreeMetadata;
+    alreadyCleaned: boolean;
+}
