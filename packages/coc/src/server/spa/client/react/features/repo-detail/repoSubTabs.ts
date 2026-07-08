@@ -80,8 +80,11 @@ export interface VisibleSubTabOptions {
      * tab would leave two entry points. The old `RepoSchedulesTab` code is NOT
      * deleted (deferred follow-up) — it is simply unreachable from the strip
      * while the flag is ON, and schedule deep-links keep the chat surface
-     * mounted instead (Router). Optional so the remote-shell callers, which
-     * don't host the Scheduled slide, keep today's Schedules tab.
+     * mounted instead (Router). The remote-first shell hosts the Scheduled slide
+     * too — its content is a chromeless `RepoDetail` whose `RepoChatTab` carries
+     * the slide — so `WorkspaceTabsCluster` passes this flag as well. Optional
+     * only because `RemoteScopeCluster` never renders the clone-scoped
+     * `schedules` tab, so the flag is a no-op there.
      */
     schedulesInScheduledSlideEnabled?: boolean;
 }

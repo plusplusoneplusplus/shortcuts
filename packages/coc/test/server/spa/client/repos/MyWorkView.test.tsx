@@ -9,6 +9,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 const mockDispatch = vi.fn();
 let mockActiveRepoSubTab = 'notes';
 let mockSelectedNotePath: string | null = null;
+let mockSchedulesInScheduledSlideEnabled = false;
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
@@ -77,6 +78,11 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-settings/RepoS
 // Stub repoGrouping — provide the RepoData type import
 vi.mock('../../../../../src/server/spa/client/react/repos/repoGrouping', () => ({}));
 
+// Feature flag: schedules-in-scheduled-slide (default off)
+vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({
+    useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled,
+}));
+
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from '../../../../../src/server/spa/client/react/repos/MyWorkView';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -92,6 +98,7 @@ describe('MyWorkView', () => {
         vi.clearAllMocks();
         mockActiveRepoSubTab = 'notes';
         mockSelectedNotePath = null;
+        mockSchedulesInScheduledSlideEnabled = false;
         mockDispatch.mockClear();
         repositoryServiceMocks.syncMyWork.mockResolvedValue({ actionItemCount: 0, followUpCount: 0 });
         repositoryServiceMocks.generateMyWorkSummary.mockResolvedValue({ path: 'Weekly/summary.md' });
@@ -336,6 +343,31 @@ describe('MyWorkView', () => {
 
             expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'schedules' });
             expect(location.hash).toBe('#repos/my_work/schedules');
+        });
+
+        describe('when schedules-in-scheduled-slide flag is enabled', () => {
+            beforeEach(() => {
+                mockSchedulesInScheduledSlideEnabled = true;
+            });
+
+            it('hides the Schedules tab button', () => {
+                renderView();
+                expect(screen.queryByTestId('my-work-tab-schedules')).toBeNull();
+            });
+
+            it('does not mount RepoSchedulesTab', () => {
+                renderView();
+                expect(screen.queryByTestId('repo-schedules-tab')).toBeNull();
+            });
+
+            it('does not mount RepoSchedulesTab even when the stale sub-tab is schedules', () => {
+                mockActiveRepoSubTab = 'schedules';
+                renderView();
+                expect(screen.queryByTestId('repo-schedules-tab')).toBeNull();
+                // Falls back to Notes content since schedules is no longer a visible tab
+                const notesContainer = screen.getByTestId('notes-view').parentElement!;
+                expect(notesContainer.style.display).not.toBe('none');
+            });
         });
     });
 
