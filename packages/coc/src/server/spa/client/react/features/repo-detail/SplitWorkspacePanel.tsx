@@ -266,6 +266,10 @@ export function SplitWorkspacePanel({
     // Chat keeps its persisted fixed height when both are open; when git is
     // collapsed the chat half fills the remaining space instead.
     const chatFills = !chatCollapsed && gitCollapsed;
+    // When both halves are collapsed neither one carries `flex-1`, so nothing
+    // fills the column and the docked footer would ride up under the git header
+    // instead of staying pinned to the bottom-left. A spacer absorbs the slack.
+    const bothCollapsed = chatCollapsed && gitCollapsed;
 
     return (
         <div
@@ -350,6 +354,17 @@ export function SplitWorkspacePanel({
                         {gitList}
                     </div>
                 </div>
+
+                {/* Both halves collapsed: no half carries flex-1, so this
+                    spacer grows to fill the column and keeps the footer pinned
+                    to the bottom-left instead of riding up under the headers. */}
+                {bothCollapsed && (
+                    <div
+                        className="flex-1 min-h-0"
+                        aria-hidden="true"
+                        data-testid="split-workspace-spacer"
+                    />
+                )}
 
                 {/* Docked footer pinned to the bottom of the left column (below
                     the git half). Hosts the remote-first shell's status cluster. */}

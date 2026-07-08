@@ -293,6 +293,38 @@ describe('SplitWorkspacePanel collapsible sections', () => {
         expect(screen.getByTestId('split-workspace-git-header')).toBeTruthy();
     });
 
+    it('grows a flex spacer only when both halves are collapsed, to keep the footer at the bottom', () => {
+        render(
+            <SplitWorkspacePanel
+                workspaceId="ws-spacer"
+                chatList={<div data-testid="chat-content">chat</div>}
+                gitList={<div data-testid="git-content">git</div>}
+                detail={<div data-testid="detail-content">detail</div>}
+                footer={<div data-testid="my-footer">footer</div>}
+            />,
+        );
+        // Both expanded: an open half already fills the column, so no spacer.
+        expect(screen.queryByTestId('split-workspace-spacer')).toBeNull();
+
+        // Collapse only chat: git still fills via flex-1 → still no spacer.
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-chat-header')); });
+        expect(screen.queryByTestId('split-workspace-spacer')).toBeNull();
+
+        // Collapse git too: now nothing carries flex-1, so the spacer appears
+        // to push the docked footer to the bottom-left, and sits above it.
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-git-header')); });
+        const spacer = screen.getByTestId('split-workspace-spacer');
+        expect(spacer.className).toContain('flex-1');
+        const left = screen.getByTestId('split-workspace-left');
+        const footer = screen.getByTestId('split-workspace-footer');
+        const children = Array.from(left.children);
+        expect(children.indexOf(spacer)).toBeLessThan(children.indexOf(footer));
+
+        // Re-expand git: the fill returns, so the spacer is dropped again.
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-git-header')); });
+        expect(screen.queryByTestId('split-workspace-spacer')).toBeNull();
+    });
+
     it('toggling a header expands it back and restores the divider and fixed height', () => {
         renderPanel();
         const chatHeader = () => screen.getByTestId('split-workspace-chat-header');

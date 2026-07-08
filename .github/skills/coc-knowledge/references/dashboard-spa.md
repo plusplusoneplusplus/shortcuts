@@ -1284,7 +1284,11 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   `hidden` so scroll/selection survive. Collapsed state persists per workspace
   under `split-workspace:{workspaceId}:chat-collapsed` and
   `split-workspace:{workspaceId}:git-collapsed`, written only on an explicit
-  user toggle (never on mount or workspace switch).
+  user toggle (never on mount or workspace switch). The optional docked `footer`
+  (the remote-first shell's status cluster) is pinned to the bottom-left of the
+  column; when both halves are collapsed neither carries `flex-1`, so a `flex-1`
+  spacer is rendered above the footer to keep it at the bottom instead of riding
+  up under the headers.
 - The git half uses a dense skin to save vertical space. `SplitWorkspacePanel`
   exposes a `gitHeaderExtra` slot on the git section header (rendered right of
   the chevron+label toggle; its clicks don't toggle; stays visible while
