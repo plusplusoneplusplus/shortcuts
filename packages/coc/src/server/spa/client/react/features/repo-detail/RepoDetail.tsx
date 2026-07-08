@@ -850,6 +850,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     workspaceId={ws.id}
                                     initialNotePath={state.selectedNotePath}
                                     defaultScope="per-note"
+                                    active={activeSubTab === 'notes'}
                                 />}
                             </div>
                         )}
