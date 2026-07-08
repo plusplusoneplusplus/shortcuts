@@ -22,3 +22,54 @@ export interface WorktreeExecutionRequest {
      */
     baseRef?: string;
 }
+
+/** Lifecycle status of a CoC-created worktree record. */
+export type WorktreeStatus =
+    /** The worktree checkout exists on disk and can back a run. */
+    | 'active'
+    /** The checkout was removed via cleanup; the record is kept for history. */
+    | 'cleaned';
+
+/**
+ * Persisted metadata describing a single CoC-created Git worktree.
+ *
+ * Recorded by the target server that created the worktree (under the repo-scoped
+ * data root) and echoed onto the linked queued process metadata and/or Ralph
+ * session record so resume/continue/final-check and the dashboard chip can
+ * recover the worktree without re-deriving it. The `branch` is never deleted
+ * automatically — cleanup only removes the checkout (`status: 'cleaned'`).
+ */
+export interface WorktreeMetadata {
+    /** Stable id for this worktree run (the session or task id it backs). */
+    id: string;
+    /** Workspace whose checkout this worktree was branched from. */
+    workspaceId: string;
+    /** Absolute path to the isolated worktree checkout on the target server. */
+    path: string;
+    /** Dedicated branch created for this run, e.g. `coc/<slug>-<short-id>`. */
+    branch: string;
+    /**
+     * The base ref/branch/SHA the user requested, if any. Omitted when the
+     * worktree was based on the workspace's current `HEAD`.
+     */
+    baseRef?: string;
+    /** Resolved commit SHA the worktree branch was created from. */
+    baseSha: string;
+    /** ISO timestamp when the worktree was created. */
+    createdAt: string;
+    /**
+     * Whether the source checkout had uncommitted changes when the worktree
+     * was created. Those changes are intentionally excluded from the worktree.
+     */
+    sourceDirty: boolean;
+    /** Human-facing warning surfaced when `sourceDirty` is true. */
+    sourceDirtyWarning?: string;
+    /** Linked queued process id, when the worktree backs a Work Item run. */
+    processId?: string;
+    /** Linked Ralph session id, when the worktree backs a Ralph session. */
+    ralphSessionId?: string;
+    /** Lifecycle status; `cleaned` once the checkout has been removed. */
+    status: WorktreeStatus;
+    /** ISO timestamp when the checkout was removed via cleanup, if cleaned. */
+    cleanedAt?: string;
+}
