@@ -1297,7 +1297,11 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   (`splitGitHeaderNode`, mirroring the `splitDetailNode` pattern) and passes it
   to `RepoGitTab` as `headerToolbarContainer`; `RepoGitTab` portals a
   `compact` `GitPanelHeader` (slim pills/buttons, timestamp without " ago")
-  into it instead of rendering the 38px toolbar strip. In split layout the
+  into it instead of rendering the 38px toolbar strip. The hoisted portal is a
+  sibling OUTSIDE the git list's `onClickCapture` wrapper — portaled React
+  events bubble through the React tree, so nesting it would make toolbar clicks
+  (Pull/refresh) mark git last-clicked and steal the shared detail pane from
+  the chat. In split layout the
   search bar also slims (placeholder `Search commits…`, full hint kept in
   `aria-label`), the `git-repo-sections` grid tightens, and `BranchChanges` /
   `WorkingTree` render their `compact` variant: flat left-accent rows instead

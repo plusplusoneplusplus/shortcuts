@@ -1783,6 +1783,35 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         </div>
     );
 
+    // Toolbar (branch pill + fetch/pull/push + refresh). Rendered inline at the
+    // top of the list pane normally; when the split panel provides a section
+    // header slot it's portaled there instead — as a sibling OUTSIDE the list's
+    // onClickCapture wrapper, so toolbar clicks (Pull/refresh/…) don't mark git
+    // last-clicked and steal the shared detail pane from the chat.
+    const panelHeader = (
+        <GitPanelHeader
+            branch={branchName || 'HEAD'}
+            ahead={ahead}
+            behind={behind}
+            refreshing={refreshing}
+            onRefresh={refreshAll}
+            onBranchClick={() => setBranchPickerOpen(true)}
+            onFetch={handleFetch}
+            onPull={handlePull}
+            onPush={handlePush}
+            onRebaseAutosquash={handleRebaseAutosquash}
+            fetching={fetching}
+            pulling={pulling}
+            pushing={pushing}
+            rebasing={rebasing}
+            lastRefreshedAt={lastRefreshedAt}
+            compact={headerHoisted}
+        />
+    );
+    const hoistedHeaderPortal = headerHoisted && headerToolbarContainer
+        ? createPortal(panelHeader, headerToolbarContainer)
+        : null;
+
     // Left panel — commit list + working tree + branch changes, including the
     // GitPanelHeader fetch/pull/push actions and inline stage/commit. Reused
     // verbatim by both the standalone layout and the split-workspace list slot;
@@ -1799,31 +1828,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                 {!isSplitWorkspace && (
                     <style>{`@media (min-width: 1024px) { [data-testid="git-commit-list-panel"] { width: ${sidebarWidth}px !important; } }`}</style>
                 )}
-                {(() => {
-                    const panelHeader = (
-                        <GitPanelHeader
-                            branch={branchName || 'HEAD'}
-                            ahead={ahead}
-                            behind={behind}
-                            refreshing={refreshing}
-                            onRefresh={refreshAll}
-                            onBranchClick={() => setBranchPickerOpen(true)}
-                            onFetch={handleFetch}
-                            onPull={handlePull}
-                            onPush={handlePush}
-                            onRebaseAutosquash={handleRebaseAutosquash}
-                            fetching={fetching}
-                            pulling={pulling}
-                            pushing={pushing}
-                            rebasing={rebasing}
-                            lastRefreshedAt={lastRefreshedAt}
-                            compact={headerHoisted}
-                        />
-                    );
-                    return headerHoisted && headerToolbarContainer
-                        ? createPortal(panelHeader, headerToolbarContainer)
-                        : panelHeader;
-                })()}
+                {!headerHoisted && panelHeader}
                 {/* Search input (filter-bar style: subtle background card containing a bordered search box) */}
                 <div
                     className={`${isSplitWorkspace ? 'px-2 py-1' : 'px-2.5 py-1.5'} border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526]`}
@@ -2173,6 +2178,10 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                 >
                     {listPane}
                 </div>
+                {/* Hoisted toolbar portal lives OUTSIDE the capture wrapper: portaled
+                    React events still bubble through the React tree, so keeping it
+                    inside made every Pull/refresh click steal the shared detail pane. */}
+                {hoistedHeaderPortal}
                 {detailActive && detailContainer
                     ? createPortal(
                         <div
