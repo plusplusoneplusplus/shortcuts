@@ -410,7 +410,12 @@ function AppInner() {
                 {/* Mirror the global /ws event stream to every online remote clone
                     so their tasks transition RUNNING → COMPLETED live (renders null). */}
                 <RemoteCloneEventBridge onMessage={onMessage} />
-                <div className="flex flex-col h-full">
+                {/* Neutral app background so the strip to the right of the
+                    left-column-width GlobalStatusDock (which only spans the
+                    sidebar) paints the app background rather than the bare
+                    (black) window, matching the detail-pane fill on the chat
+                    view. */}
+                <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e]">
                     <SecurityBanner />
                     <TopBar onAdminOpen={handleAdminOpen} />
                     <main className="flex-1 overflow-hidden min-h-0 pt-[var(--bottom-nav-height,0px)] md:pt-0">

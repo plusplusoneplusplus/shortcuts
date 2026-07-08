@@ -611,3 +611,34 @@ describe('App review dialog lifecycle', () => {
         expect(capturedReviewProps?.open).toBe(false);
     });
 });
+
+// ── Shell background ─────────────────────────────────────────────
+
+describe('App shell background', () => {
+    beforeEach(() => {
+        mockWsStatus = 'open';
+        mockAppState = makeAppState();
+        mockFetchApi.mockReset();
+        mockFetchApi.mockResolvedValue({});
+        mockWsConnect.mockClear();
+        mockQueueList.mockReset();
+        mockQueueList.mockResolvedValue({ queued: [], running: [] });
+        mockModelsList.mockReset();
+        mockModelsList.mockResolvedValue([]);
+        mockAgentProviderModelsList.mockReset();
+        mockAgentProviderModelsList.mockResolvedValue({ models: [] });
+        mockReportActiveWorkspace.mockReset();
+        mockReportActiveWorkspace.mockResolvedValue({ activeWorkspaceIds: [], clients: [] });
+    });
+
+    // Regression: the GlobalStatusDock only spans the left-sidebar column, so the
+    // shell root must paint a neutral background — otherwise the band to the right
+    // of the dock shows the bare (black) window instead of the app background.
+    it('paints a neutral background on the shell root so the docked status bar has no bare-window strip', () => {
+        const { container } = render(<App />);
+        const shellRoot = container.querySelector('.flex.flex-col.h-full');
+        expect(shellRoot).not.toBeNull();
+        expect(shellRoot?.className).toContain('bg-white');
+        expect(shellRoot?.className).toContain('dark:bg-[#1e1e1e]');
+    });
+});
