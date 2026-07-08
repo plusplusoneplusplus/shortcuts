@@ -120,16 +120,19 @@ describe('StatusActions — sidebar variant', () => {
         expect(screen.getByTestId('sidebar-admin-toggle').className).toContain('bg-[#0078d4]');
     });
 
-    it('uses a distinct blue-tinted dock background (not the sidebar gray)', () => {
+    it('uses the shell chrome background set off by a top border (no colored tint)', () => {
         render(<StatusActions variant="sidebar" />);
         const dock = screen.getByTestId('sidebar-status-actions');
-        // The dock must stand apart from the sidebar body, so it must NOT reuse
-        // the neutral panel gray and must carry its own tinted background/border.
-        expect(dock.className).not.toContain('bg-[#f3f3f3]');
-        expect(dock.className).not.toContain('dark:bg-[#252526]');
-        expect(dock.className).toContain('bg-[#dbe8fa]');
-        expect(dock.className).toContain('dark:bg-[#23324a]');
-        expect(dock.className).toContain('border-[#b9d2f2]');
-        expect(dock.className).toContain('dark:border-[#34496b]');
+        // The dock reads as part of the shell chrome: it reuses the neutral
+        // topbar/bottom-nav background and is separated from the sidebar body by
+        // a top border, not a blue tint that clashes with the dark theme.
+        expect(dock.className).toContain('bg-[#f3f3f3]');
+        expect(dock.className).toContain('dark:bg-[#252526]');
+        expect(dock.className).toContain('border-t');
+        expect(dock.className).toContain('border-[#e0e0e0]');
+        expect(dock.className).toContain('dark:border-[#3c3c3c]');
+        // The old blue-tinted fill/border must be gone.
+        expect(dock.className).not.toContain('bg-[#dbe8fa]');
+        expect(dock.className).not.toContain('dark:bg-[#23324a]');
     });
 });
