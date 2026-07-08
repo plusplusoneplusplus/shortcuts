@@ -78,6 +78,11 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-settings/RepoS
 // Stub repoGrouping — provide the RepoData type import
 vi.mock('../../../../../src/server/spa/client/react/repos/repoGrouping', () => ({}));
 
+// Stub the docked status footer — assert placement, not its internals.
+vi.mock('../../../../../src/server/spa/client/react/layout/DockedStatusFooter', () => ({
+    DockedStatusFooter: () => <div data-testid="docked-status-footer" />,
+}));
+
 // Feature flag: schedules-in-scheduled-slide (default off)
 vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({
     useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled,
@@ -220,6 +225,16 @@ describe('MyWorkView', () => {
 
     it('exports MY_WORK_WORKSPACE_ID constant', () => {
         expect(MY_WORK_WORKSPACE_ID).toBe('my_work');
+    });
+
+    it('docks the status cluster footer as the last child of the view body', () => {
+        renderView();
+        const view = screen.getByTestId('my-work-view');
+        const footer = screen.getByTestId('docked-status-footer');
+        // Lives inside the My Work chrome, pinned to the bottom (last child), so
+        // the app-wide GlobalStatusDock stands down and no empty strip is drawn.
+        expect(view.contains(footer)).toBe(true);
+        expect(view.lastElementChild).toBe(footer);
     });
 
     describe('chat toggle button (removed from header)', () => {

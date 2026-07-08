@@ -4,8 +4,9 @@
  * It renders the shared `StatusActions` sidebar variant across tabs, but only in
  * the remote-first shell on desktop, and only as wide as the left sidebar
  * column. Off (classic mode) or on mobile it renders nothing (topbar keeps the
- * cluster). On the workspace chat/activity sub-tab it also renders nothing —
- * that view docks the cluster in its own left-column footer instead.
+ * cluster). It also renders nothing on views that dock the cluster in their own
+ * left-column footer: the workspace chat/activity sub-tab, the admin shell, and
+ * the My Work workspace.
  *
  * @vitest-environment jsdom
  */
@@ -36,6 +37,11 @@ vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({
         return <div data-testid="status-actions" data-variant={String(props.variant)} />;
     },
 }));
+// Keep this suite lightweight — pull only the workspace-id constant, not the
+// heavy MyWorkView module (Notes editor, tiptap, monaco, …).
+vi.mock('../../../../src/server/spa/client/react/repos/MyWorkView', () => ({
+    MY_WORK_WORKSPACE_ID: 'my_work',
+}));
 
 import { GlobalStatusDock } from '../../../../src/server/spa/client/react/layout/GlobalStatusDock';
 
@@ -65,24 +71,38 @@ describe('GlobalStatusDock', () => {
         expect(wrapper.className).toContain('flex-shrink-0');
     });
 
-    it('pins its width to the admin sidebar (248px) on the admin tab so it stays flush, not overhanging', () => {
-        mockAppState = { activeTab: 'admin', selectedRepoId: null, activeRepoSubTab: undefined };
+    it('pins to the workspace left-column width on a non-admin, non-chat tab', () => {
+        mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: undefined };
         render(<GlobalStatusDock />);
         const wrapper = screen.getByTestId('global-status-dock');
-        // The admin shell renders its own fixed 248px sidebar and never publishes
-        // --workspace-left-col-width; using the (wider) workspace column here made
-        // the dock overhang past the sidebar into the content pane.
-        expect(wrapper.style.width).toBe('248px');
-        expect(wrapper.style.width).not.toContain('--workspace-left-col-width');
+        expect(wrapper.style.width).toContain('--workspace-left-col-width');
+        expect(wrapper.style.width).toContain('360px');
     });
 
-    it('pins to the admin sidebar width on every tab that mounts the admin shell', () => {
+    it('renders nothing on the admin tab (the admin sidebar hosts the cluster in its own footer)', () => {
+        mockAppState = { activeTab: 'admin', selectedRepoId: null, activeRepoSubTab: undefined };
+        const { container } = render(<GlobalStatusDock />);
+        // The admin shell renders its own sidebar and docks the status cluster in
+        // its footer (`DockedStatusFooter`), so the global bottom band stands down
+        // to avoid the empty partial-width strip beside it.
+        expect(screen.queryByTestId('status-actions')).toBeNull();
+        expect(container.firstChild).toBeNull();
+    });
+
+    it('renders nothing on every tab that mounts the admin shell', () => {
         for (const tab of ['admin', 'memory', 'skills', 'logs', 'stats', 'servers', 'dreams-admin']) {
             mockAppState = { activeTab: tab, selectedRepoId: null, activeRepoSubTab: undefined };
-            const { unmount } = render(<GlobalStatusDock />);
-            expect(screen.getByTestId('global-status-dock').style.width).toBe('248px');
+            const { container, unmount } = render(<GlobalStatusDock />);
+            expect(container.firstChild).toBeNull();
             unmount();
         }
+    });
+
+    it('renders nothing on the My Work workspace (its body footer hosts the cluster)', () => {
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'my_work', activeRepoSubTab: 'notes' };
+        const { container } = render(<GlobalStatusDock />);
+        expect(screen.queryByTestId('status-actions')).toBeNull();
+        expect(container.firstChild).toBeNull();
     });
 
     it('forwards onAdminOpen to StatusActions', () => {

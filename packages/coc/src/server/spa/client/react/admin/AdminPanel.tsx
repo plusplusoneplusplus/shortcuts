@@ -27,6 +27,7 @@ import { PromptsPanel } from './PromptsPanel';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { SettingsCard } from './SettingsCard';
 import { AdminInputSuffix, AdminRow, AdminSeg, AdminToggle, SourceBadge } from './adminControls';
+import { DockedStatusFooter } from '../layout/DockedStatusFooter';
 
 import { applyRuntimeConfigPatch, isContainerMode, isServersEnabled } from '../utils/config';
 import { AIProviderPage, normalizeAutoProviderRoutingConfig, type NormalizedAutoProviderRoutingConfig } from './AIProviderPage';
@@ -1316,6 +1317,12 @@ export function AdminPanel() {
                             {restarting ? <><Spinner size="sm" /> Restarting…</> : '↻ Restart Server'}
                         </button>
                     </div>
+
+                    {/* Remote-first shell: dock the status/action cluster in the
+                        admin sidebar's own footer so it lives in the left column
+                        (like the chat view) instead of the app-wide bottom band.
+                        No-ops in classic / mobile, where the topbar keeps it. */}
+                    <DockedStatusFooter />
                 </aside>
 
                 {/* ── Main pane ── */}

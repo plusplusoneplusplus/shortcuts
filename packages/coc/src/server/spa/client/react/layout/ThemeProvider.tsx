@@ -95,3 +95,13 @@ export function useTheme() {
     if (!ctx) throw new Error('useTheme must be used within ThemeProvider');
     return ctx;
 }
+
+/**
+ * Like {@link useTheme} but returns `null` instead of throwing when no
+ * `ThemeProvider` is mounted. Used by app-shell chrome (e.g. the docked status
+ * footer) that must degrade to a no-op when rendered outside the full provider
+ * tree, such as in isolated component tests.
+ */
+export function useThemeOptional(): ThemeContextValue | null {
+    return useContext(ThemeContext);
+}
