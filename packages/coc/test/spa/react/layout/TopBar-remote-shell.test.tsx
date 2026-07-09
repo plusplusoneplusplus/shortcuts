@@ -24,8 +24,10 @@ let mockAppState: any = {
 };
 let mockRepos: any[] = [];
 let mockRemoteShell = true;
+let mockMyWorkEnabled = false;
 let mockMyLifeEnabled = false;
 let mockSplitPanel = false;
+let mockIsMobile = false;
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: mockAppState, dispatch: mockAppDispatch }),
@@ -54,11 +56,16 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoTabStr
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/RemoteShellHeader', () => ({
     RemoteShellHeader: () => <div data-testid="remote-shell-header" />,
 }));
+vi.mock('../../../../src/server/spa/client/react/features/remote-shell/VirtualWorkspaceShellHeader', () => ({
+    VirtualWorkspaceShellHeader: (props: any) => (
+        <div data-testid="virtual-workspace-shell-header" data-workspace={props.config?.workspaceId} />
+    ),
+}));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
     useRemoteShellEnabled: () => mockRemoteShell,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEnabled', () => ({
-    useMyWorkEnabled: () => false,
+    useMyWorkEnabled: () => mockMyWorkEnabled,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyLifeEnabled', () => ({
     useMyLifeEnabled: () => mockMyLifeEnabled,
@@ -67,7 +74,12 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWor
     useSplitWorkspacePanelEnabled: () => mockSplitPanel,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
-    useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
+    useBreakpoint: () => ({
+        breakpoint: mockIsMobile ? 'mobile' : 'desktop',
+        isMobile: mockIsMobile,
+        isTablet: false,
+        isDesktop: !mockIsMobile,
+    }),
 }));
 
 import { TopBar } from '../../../../src/server/spa/client/react/layout/TopBar';
@@ -81,8 +93,10 @@ beforeEach(() => {
     mockAppDispatch.mockReset();
     mockQueueDispatch.mockReset();
     mockRemoteShell = true;
+    mockMyWorkEnabled = false;
     mockMyLifeEnabled = false;
     mockSplitPanel = false;
+    mockIsMobile = false;
     localStorage.clear();
     mockAppState = {
         activeTab: 'repos',
@@ -151,13 +165,57 @@ describe('TopBar remote-shell header', () => {
         expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
     });
 
-    it('falls back to the classic RepoTabStrip for the My Life virtual workspace', () => {
+    it('renders the virtual-workspace header for the My Work virtual workspace', () => {
+        mockMyWorkEnabled = true;
+        mockAppState = { ...mockAppState, selectedRepoId: 'my_work' };
+        render(<TopBar />);
+
+        const header = screen.getByTestId('virtual-workspace-shell-header');
+        expect(header).toBeTruthy();
+        expect(header.getAttribute('data-workspace')).toBe('my_work');
+        // Neither the repo strip nor the repo-scoped remote header / + New apply.
+        expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
+        expect(screen.queryByTestId('remote-shell-header')).toBeNull();
+        expect(screen.queryByTestId('header-new-btn')).toBeNull();
+    });
+
+    it('renders the virtual-workspace header for the My Life virtual workspace', () => {
         mockMyLifeEnabled = true;
         mockAppState = { ...mockAppState, selectedRepoId: 'my_life' };
         render(<TopBar />);
 
+        const header = screen.getByTestId('virtual-workspace-shell-header');
+        expect(header).toBeTruthy();
+        expect(header.getAttribute('data-workspace')).toBe('my_life');
+        expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
         expect(screen.queryByTestId('remote-shell-header')).toBeNull();
-        expect(screen.queryByTestId('header-new-btn')).toBeNull();
+    });
+
+    it('does not render the virtual header for My Work when it is disabled', () => {
+        mockMyWorkEnabled = false;
+        mockAppState = { ...mockAppState, selectedRepoId: 'my_work' };
+        render(<TopBar />);
+
+        expect(screen.queryByTestId('virtual-workspace-shell-header')).toBeNull();
+        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
+    });
+
+    it('falls back to the classic RepoTabStrip for My Work when remoteShell is off', () => {
+        mockMyWorkEnabled = true;
+        mockRemoteShell = false;
+        mockAppState = { ...mockAppState, selectedRepoId: 'my_work' };
+        render(<TopBar />);
+
+        expect(screen.queryByTestId('virtual-workspace-shell-header')).toBeNull();
+        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
+    });
+
+    it('does not render the virtual header off the repos tab (e.g. on Wiki)', () => {
+        mockMyWorkEnabled = true;
+        mockAppState = { ...mockAppState, activeTab: 'wiki', selectedRepoId: 'my_work' };
+        render(<TopBar />);
+
+        expect(screen.queryByTestId('virtual-workspace-shell-header')).toBeNull();
         expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
     });
 });

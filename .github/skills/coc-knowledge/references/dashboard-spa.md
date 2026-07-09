@@ -1065,13 +1065,27 @@ Enabled by default; desktop-only; takes effect on reload.
   `header-new-btn` as the first right-side action before the WebSocket status
   pill; it opens the enqueue dialog for the active clone. `ReposView` renders a
   `chromeless` `RepoDetail` for the active repo.
-- When `features.remoteShell` is on but no real repo can back
-  `RemoteShellHeader` (a fresh desktop window with no selection, a virtual
-  workspace such as `my_work` / `my_life`, or any tab other than Repos such as
-  Admin / Wiki), `TopBar` falls back to the classic `RepoTabStrip` so the top row
-  stays consistent across every page and repository navigation is always visible.
-  Only `RemoteShellHeader` (repos tab + real clone selected) replaces the strip;
-  everywhere else the strip renders.
+- **Virtual-workspace shell (`VirtualWorkspaceShellHeader`)** renders inside
+  `TopBar` when `remoteShellEnabled`, desktop, the active tab is `repos`, and the
+  selected workspace is a virtual one (`my_work` with My Work enabled, `my_life`
+  with My Life enabled). Virtual workspaces have no real repo/git context, so they
+  can't flow through `RemoteScopeCluster` / `WorkspaceTabsCluster`; instead they
+  describe themselves with a `VirtualWorkspaceHeaderConfig` (`MY_WORK_HEADER_CONFIG`
+  / `MY_LIFE_HEADER_CONFIG`, exported from `MyWorkView` / `MyLifeView`): identity
+  chip + sub-tabs (Notes/Activity/Git/Schedules/Settings) + action buttons
+  (Sync / Generate Summary). It mirrors `RemoteShellHeader`'s visual shell and
+  reuses `useVirtualWorkspaceHeader` for sub-tab visibility, active-tab, tab
+  navigation, and running the actions. The matching in-body variant
+  (`VirtualWorkspaceInlineHeader`) renders inside `MyWorkView` / `MyLifeView`
+  themselves in the classic shell and on mobile (where the TopBar header doesn't
+  apply); the view gates it on `!(remoteShell && !isMobile)`.
+- When `features.remoteShell` is on but neither a real repo nor a virtual
+  workspace can back a header (a fresh desktop window with no selection, or any
+  tab other than Repos such as Admin / Wiki), `TopBar` falls back to the classic
+  `RepoTabStrip` so the top row stays consistent across every page and repository
+  navigation is always visible. `RemoteShellHeader` (repos tab + real clone
+  selected) and `VirtualWorkspaceShellHeader` (repos tab + virtual workspace)
+  replace the strip; everywhere else the strip renders.
 - **Shared shell behavior** comes from `shellModel.ts` and `repoGrouping.ts`.
   Aggregated remote checkouts fold into the matching local origin's tab (by
   normalized git URL); a remote-only repo gets its own group. Group clones are

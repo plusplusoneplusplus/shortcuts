@@ -23,10 +23,11 @@ import { StatusActions } from './StatusActions';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
 import { WorkspaceDockToggleButton } from '../features/repo-detail/WorkspaceDockToggle';
 import { RemoteShellHeader } from '../features/remote-shell/RemoteShellHeader';
+import { VirtualWorkspaceShellHeader } from '../features/remote-shell/VirtualWorkspaceShellHeader';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
-import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
-import { MY_LIFE_WORKSPACE_ID } from '../repos/MyLifeView';
+import { MY_WORK_WORKSPACE_ID, MY_WORK_HEADER_CONFIG } from '../repos/MyWorkView';
+import { MY_LIFE_WORKSPACE_ID, MY_LIFE_HEADER_CONFIG } from '../repos/MyLifeView';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
@@ -131,6 +132,18 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     // to the RepoTabStrip so the header stays consistent across every page.
     const showRemoteHeader = remoteShell && isOnReposTab && !!selectedRepo && !isMobile;
 
+    // Virtual workspaces (My Work / My Life) have no real repo, so they never hit
+    // `showRemoteHeader`. Give them the same single-row shell via a dedicated
+    // header that renders their identity + sub-tabs + actions instead of the
+    // repo-picker / clone-switcher clusters.
+    const virtualHeaderConfig =
+        myWorkEnabled && isOnReposTab && state.selectedRepoId === MY_WORK_WORKSPACE_ID
+            ? MY_WORK_HEADER_CONFIG
+            : myLifeEnabled && isOnReposTab && state.selectedRepoId === MY_LIFE_WORKSPACE_ID
+                ? MY_LIFE_HEADER_CONFIG
+                : null;
+    const showVirtualHeader = remoteShell && !isMobile && !!virtualHeaderConfig;
+
     // In the remote-first shell the status cluster (connection / notifications /
     // quota / admin / theme) moves to a global bottom status bar
     // (`GlobalStatusDock`) that spans every tab on desktop. Hide the topbar
@@ -206,6 +219,8 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                 )}
                 {!isMobile && (showRemoteHeader && selectedRepo ? (
                     <RemoteShellHeader repo={selectedRepo} repos={repos} />
+                ) : showVirtualHeader && virtualHeaderConfig ? (
+                    <VirtualWorkspaceShellHeader config={virtualHeaderConfig} />
                 ) : (
                     <RepoTabStrip
                         repos={repos}

@@ -10,6 +10,8 @@ const mockDispatch = vi.fn();
 let mockActiveRepoSubTab = 'notes';
 let mockSelectedNotePath: string | null = null;
 let mockSchedulesInScheduledSlideEnabled = false;
+let mockRemoteShell = false;
+let mockIsMobile = false;
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
@@ -88,6 +90,20 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useSched
     useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled,
 }));
 
+// Remote-first shell gate — when on (desktop) the header lives in the TopBar so
+// the in-body header stands down. Defaults off so the in-body header renders.
+vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
+    useRemoteShellEnabled: () => mockRemoteShell,
+}));
+vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
+    useBreakpoint: () => ({
+        breakpoint: mockIsMobile ? 'mobile' : 'desktop',
+        isMobile: mockIsMobile,
+        isTablet: false,
+        isDesktop: !mockIsMobile,
+    }),
+}));
+
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from '../../../../../src/server/spa/client/react/repos/MyWorkView';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -104,6 +120,8 @@ describe('MyWorkView', () => {
         mockActiveRepoSubTab = 'notes';
         mockSelectedNotePath = null;
         mockSchedulesInScheduledSlideEnabled = false;
+        mockRemoteShell = false;
+        mockIsMobile = false;
         mockDispatch.mockClear();
         repositoryServiceMocks.syncMyWork.mockResolvedValue({ actionItemCount: 0, followUpCount: 0 });
         repositoryServiceMocks.generateMyWorkSummary.mockResolvedValue({ path: 'Weekly/summary.md' });
@@ -418,6 +436,34 @@ describe('MyWorkView', () => {
 
             expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
             expect(location.hash).toBe('#repos/my_work/settings');
+        });
+    });
+
+    describe('header placement (remote-first shell)', () => {
+        it('hides the in-body header on remote-first desktop (it lives in the TopBar)', () => {
+            mockRemoteShell = true;
+            mockIsMobile = false;
+            renderView();
+
+            expect(screen.queryByTestId('my-work-header')).toBeNull();
+            // Content still mounts, and the docked status footer stays put.
+            expect(screen.getByTestId('my-work-view')).toBeTruthy();
+            expect(screen.getByTestId('docked-status-footer')).toBeTruthy();
+        });
+
+        it('keeps the in-body header on remote-first mobile (no TopBar header there)', () => {
+            mockRemoteShell = true;
+            mockIsMobile = true;
+            renderView();
+
+            expect(screen.getByTestId('my-work-header')).toBeTruthy();
+        });
+
+        it('keeps the in-body header in the classic (non-remote) shell', () => {
+            mockRemoteShell = false;
+            renderView();
+
+            expect(screen.getByTestId('my-work-header')).toBeTruthy();
         });
     });
 });
