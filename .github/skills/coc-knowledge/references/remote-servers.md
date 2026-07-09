@@ -114,7 +114,7 @@ Health checks call:
 
 If no effective local endpoint is available, health is reported as offline.
 
-Direct URL servers have no managed connector, so their runtime `status` is the last health-probe result against the configured `url`, cached per server id by the routes layer: `online` when reachable, `offline` when not, and `idle` before the first probe. The probe runs on create, edit, and `GET /api/servers/:id/health`; `GET /api/servers` additionally refreshes URL reachability in the background (serve-stale-revalidate) so a reachable direct-URL server converges to `online` on subsequent polls and contributes its clones to the dashboard.
+Direct URL servers have no managed connector, so their runtime `status` is the last health-probe result against the configured `url`, cached per server id by `RemoteServerRuntimeService`: `online` when reachable, `offline` when not, and `idle` before the first probe. The probe runs on create, edit, and `GET /api/servers/:id/health`; `GET /api/servers` additionally refreshes URL reachability in the background (serve-stale-revalidate) so a reachable direct-URL server converges to `online` on subsequent polls and contributes its clones to the dashboard.
 
 ## API routes
 
@@ -178,7 +178,9 @@ Key files:
 - `scripts/config-devtunnel.sh`, `scripts/coc-serve-loop.sh`, `scripts/devtunnel-utils.sh` are the Linux/WSL equivalents of the host-side PowerShell scripts.
 - `packages\coc\src\server\servers\remote-server-store.ts` validates and persists remote server entries.
 - `packages\coc\src\server\servers\remote-server-health.ts` probes remote CoC health and metadata.
-- `packages\coc\src\server\servers\remote-server-routes.ts` exposes the REST API.
+- `packages\coc\src\server\servers\remote-server-runtime-service.ts` owns runtime decoration, direct-URL health caching, managed connector lifecycle side effects, health checks, and restart proxying.
+- `packages\coc\src\server\servers\cherry-pick-transfer-service.ts` validates and orchestrates cross-server cherry-pick transfers through patch export/apply APIs without exposing effective URLs or local paths.
+- `packages\coc\src\server\servers\remote-server-routes.ts` exposes the REST API as a thin HTTP adapter over the runtime and transfer services.
 - `packages\coc-client\src\domains\servers.ts` exposes the typed client methods.
 - `packages\coc\src\server\spa\client\react\features\servers\` contains the dashboard UI.
 - `packages\coccontainer\src\proxy\ssh-bridge.ts` container-specific SSH bridge wrapper using `SshConnector` from forge.
