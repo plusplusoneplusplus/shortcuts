@@ -122,12 +122,24 @@ describe('TopBar remote-shell header', () => {
         expect(screen.queryByTestId('header-new-btn')).toBeNull();
     });
 
-    it('renders no remote header off the repos tab', () => {
+    it('falls back to the RepoTabStrip off the repos tab so the header stays consistent', () => {
         mockAppState = { ...mockAppState, activeTab: 'wiki' };
+        render(<TopBar />);
+
+        // No workspace-specific remote header / + New off the repos tab...
+        expect(screen.queryByTestId('remote-shell-header')).toBeNull();
+        expect(screen.queryByTestId('header-new-btn')).toBeNull();
+        // ...but the repo strip still renders so the top row matches the default page.
+        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
+    });
+
+    it('renders the RepoTabStrip on the admin tab (consistent top row)', () => {
+        mockAppState = { ...mockAppState, activeTab: 'admin' };
         render(<TopBar />);
 
         expect(screen.queryByTestId('remote-shell-header')).toBeNull();
         expect(screen.queryByTestId('header-new-btn')).toBeNull();
+        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
     });
 
     it('falls back to the classic RepoTabStrip when no clone is selected', () => {

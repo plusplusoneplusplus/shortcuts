@@ -1066,10 +1066,12 @@ Enabled by default; desktop-only; takes effect on reload.
   pill; it opens the enqueue dialog for the active clone. `ReposView` renders a
   `chromeless` `RepoDetail` for the active repo.
 - When `features.remoteShell` is on but no real repo can back
-  `RemoteShellHeader` (for example a fresh desktop window with no selection, or a
-  virtual workspace such as `my_work` / `my_life`), `TopBar` falls back to the
-  classic `RepoTabStrip` while the user remains on the Repos tab, so repository
-  navigation stays visible.
+  `RemoteShellHeader` (a fresh desktop window with no selection, a virtual
+  workspace such as `my_work` / `my_life`, or any tab other than Repos such as
+  Admin / Wiki), `TopBar` falls back to the classic `RepoTabStrip` so the top row
+  stays consistent across every page and repository navigation is always visible.
+  Only `RemoteShellHeader` (repos tab + real clone selected) replaces the strip;
+  everywhere else the strip renders.
 - **Shared shell behavior** comes from `shellModel.ts` and `repoGrouping.ts`.
   Aggregated remote checkouts fold into the matching local origin's tab (by
   normalized git URL); a remote-only repo gets its own group. Group clones are

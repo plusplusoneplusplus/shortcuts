@@ -126,8 +126,9 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
         return findRepoBySelectionId(scopedRepos, state.selectedRepoId) || findRepoBySelectionId(repos, state.selectedRepoId);
     }, [repos, state.currentAgentId, state.selectedRepoId]);
     // Single-row remote header: the sole remote-repo layout when the remote
-    // shell is on (desktop, repos tab, a clone selected). No selection or off
-    // the repos tab → nothing renders in the remote slot.
+    // shell is on (desktop, repos tab, a clone selected). Anywhere else — no
+    // selection, or off the repos tab (Admin, Wiki, …) — the top row falls back
+    // to the RepoTabStrip so the header stays consistent across every page.
     const showRemoteHeader = remoteShell && isOnReposTab && !!selectedRepo && !isMobile;
 
     // In the remote-first shell the status cluster (connection / notifications /
@@ -203,18 +204,8 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         🏠
                     </button>
                 )}
-                {!isMobile && (remoteShell ? (
-                    showRemoteHeader && selectedRepo ? (
-                        <RemoteShellHeader repo={selectedRepo} repos={repos} />
-                    ) : isOnReposTab ? (
-                        <RepoTabStrip
-                            repos={repos}
-                            selectedRepoId={state.selectedRepoId}
-                            onSelect={selectRepo}
-                            unseenCounts={unseenCounts}
-                            onRefresh={fetchRepos}
-                        />
-                    ) : null
+                {!isMobile && (showRemoteHeader && selectedRepo ? (
+                    <RemoteShellHeader repo={selectedRepo} repos={repos} />
                 ) : (
                     <RepoTabStrip
                         repos={repos}
