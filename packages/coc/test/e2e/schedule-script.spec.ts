@@ -20,6 +20,16 @@ import { seedSchedule } from './fixtures/schedule-seed';
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
+async function disableSchedulesInScheduledSlide(serverUrl: string): Promise<void> {
+    const res = await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ 'features.schedulesInScheduledSlide': false }),
+    });
+    if (res.status !== 200) {
+        throw new Error(`Failed to disable schedules-in-slide feature: ${res.status} ${res.body}`);
+    }
+}
+
 /** Poll GET /api/queue/:id until status matches or timeout. */
 async function waitForTaskStatus(
     serverUrl: string,
@@ -47,6 +57,7 @@ async function waitForTaskStatus(
 
 /** Navigate to the Schedules sub-tab of the first workspace in the sidebar. */
 async function navigateToSchedules(page: Page, serverUrl: string): Promise<void> {
+    await disableSchedulesInScheduledSlide(serverUrl);
     // Pre-dismiss the welcome modal AND concept tour so neither blocks pointer events.
     await request(`${serverUrl}/api/preferences`, {
         method: 'PATCH',
