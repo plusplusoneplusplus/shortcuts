@@ -17,6 +17,12 @@
  *   `.repo-sub-tab[data-subtab="git"]`, or waiting on `ws-status-indicator`)
  *   hang until the test times out. Pin both off so the suite exercises the
  *   layout it targets.
+ * - `features.commitChatLens` also ships default-on, and it reroutes unpinned
+ *   commit/PR review chat into a bottom-right lens instead of the inline
+ *   `commit-chat-panel`. commit-chat-binding.spec.ts opens unpinned commit chat
+ *   via `toggle-chat-btn` and asserts the classic panel, so it hangs with the
+ *   lens on. Pin it off here; commit-chat-lens.spec.ts re-enables it per-test
+ *   through the live admin API.
  */
 export const E2E_SERVER_CONFIG_YAML =
-    'showPlanDepTab: true\nfeatures:\n  remoteShell: false\n  splitWorkspacePanel: false\n';
+    'showPlanDepTab: true\nfeatures:\n  remoteShell: false\n  splitWorkspacePanel: false\n  commitChatLens: false\n';

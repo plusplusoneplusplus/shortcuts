@@ -709,18 +709,18 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.sessionContextAttachments', default: false, runtime: 'live', runtimeFlag: 'sessionContextAttachmentsEnabled',
+        key: 'features.sessionContextAttachments', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'sessionContextAttachmentsEnabled',
         ui: {
             group: 'review', order: 30, label: 'Session context attachments', badge: 'experimental',
-            hint: 'Allow dragging existing same-workspace chat sessions into chat composers as pointer-only context. Disabled by default.',
+            hint: 'Allow dragging existing same-workspace chat sessions into chat composers as pointer-only context. Enabled by default.',
             testId: 'toggle-session-context-attachments-enabled',
         },
     }),
     bool({
-        key: 'features.commitChatLens', default: false, runtime: 'live', runtimeFlag: 'commitChatLensEnabled',
+        key: 'features.commitChatLens', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'commitChatLensEnabled',
         ui: {
             group: 'review', order: 40, label: 'Review chat lens', badge: 'experimental',
-            hint: 'Open unpinned commit and pull-request review chat as a desktop bottom-right lens instead of the side panel or drawer. Disabled by default.',
+            hint: 'Open unpinned commit and pull-request review chat as a desktop bottom-right lens instead of the side panel or drawer. Enabled by default.',
             testId: 'toggle-commit-chat-lens-enabled',
         },
     }),
