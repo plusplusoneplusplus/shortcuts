@@ -88,7 +88,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `prompts/` | prompt-handler, prompt-utils |
 | `servers/` | Remote CoC server registry, DevTunnel connector |
 | `git/` | git-cache, git-info-cache, repo-utils |
-| `storage/` | storage-migration, startup migrations, directory-history-importer, export/import/wiper |
+| `storage/` | storage-migration, startup migrations, directory-history-importer, export/import/wiper, and storage snapshot domains that keep admin backup, restore, and wipe behavior aligned across processes, workspaces, wikis, queues, image blobs, preferences, schedules, and git-op cleanup |
 | `llm-tools/` | AI tool factories (see [llm-tools.md](llm-tools.md)) |
 | `executors/` | AI chat execution layer (see Executors section below) |
 | `infrastructure/` | Server bootstrap (composition root) |
