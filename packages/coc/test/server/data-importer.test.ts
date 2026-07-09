@@ -619,6 +619,72 @@ describe('importData', () => {
             const raw = JSON.parse(fs.readFileSync(getRepoDataPath(dataDir, 'ws-prefs', 'preferences.json'), 'utf-8'));
             expect(raw.unknownField).toBeUndefined();
         });
+
+        it('merges per-repo preferences with the API PATCH merge policy', async () => {
+            writeJSON(getRepoDataPath(dataDir, 'ws-prefs', 'preferences.json'), {
+                lastSkills: { task: ['impl'], ask: ['go-deep'] },
+                lastModels: { task: 'gpt-4' },
+                defaultModel: 'gpt-4',
+                defaultModels: { task: 'gpt-4', ask: 'claude-3' },
+                activityFilters: { statusFilter: 'running' },
+                workItems: {
+                    sync: {
+                        github: {
+                            owner: 'plusplusoneplusplus',
+                            repo: 'shortcuts',
+                            pollingEnabled: true,
+                        },
+                    },
+                },
+                linkedRepoIds: ['ws-linked'],
+                disabledLlmTools: ['memory'],
+            });
+
+            const payload = buildPayload({
+                repoPreferences: [{
+                    repoId: 'ws-prefs',
+                    repoRootPath: '/repo',
+                    preferences: {
+                        lastSkills: { task: [] },
+                        lastModels: { ask: 'claude-3' },
+                        defaultModel: '',
+                        defaultModels: { task: '' },
+                        activityFilters: { typeFilter: 'chat' },
+                        workItems: {
+                            sync: {
+                                github: {
+                                    pollingEnabled: false,
+                                    pollIntervalMinutes: 10,
+                                },
+                            },
+                        },
+                        linkedRepoIds: [],
+                        disabledLlmTools: ['create_bug', 'ask_user'],
+                    },
+                }],
+            });
+
+            const result = await importData(payload, baseOptions({ mode: 'merge' }));
+
+            expect(result.importedRepoPreferenceFiles).toBe(1);
+            expect(readRepoPreferences(dataDir, 'ws-prefs')).toEqual({
+                lastSkills: { ask: ['go-deep'] },
+                lastModels: { task: 'gpt-4', ask: 'claude-3' },
+                defaultModels: { ask: 'claude-3' },
+                activityFilters: { statusFilter: 'running', typeFilter: 'chat' },
+                workItems: {
+                    sync: {
+                        github: {
+                            owner: 'plusplusoneplusplus',
+                            repo: 'shortcuts',
+                            pollingEnabled: false,
+                            pollIntervalMinutes: 10,
+                        },
+                    },
+                },
+                disabledLlmTools: ['ask_user'],
+            });
+        });
     });
 
     // ========================================================================

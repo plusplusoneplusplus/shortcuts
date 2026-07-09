@@ -29,12 +29,19 @@ import type {
 import { getRepoDataPath } from '../paths';
 import {
     PREFERENCES_FILE_NAME,
+    readPreferences,
     readRepoPreferences,
-    validateGlobalPreferences,
-    validatePerRepoPreferences,
     writePreferences,
     writeRepoPreferences,
-} from '../preferences-handler';
+} from '../preferences/repository';
+import {
+    validateGlobalPreferences,
+    validatePerRepoPreferences,
+} from '../preferences/schema';
+import {
+    applyGlobalPreferencesPatch,
+    applyRepoPreferencesPatch,
+} from '../preferences/merge-policy';
 import { atomicWriteJson } from '../shared/fs-utils';
 
 interface StorageSnapshotContext {
@@ -1049,7 +1056,7 @@ function writeGlobalPreferencesSnapshot(dataDir: string, preferences: Record<str
     try {
         const globalData: Record<string, unknown> = {};
         if ((preferences as Record<string, unknown> | undefined)?.global !== undefined) {
-            globalData.global = normalizeGlobalPreferenceSnapshot(preferences.global);
+            globalData.global = validateGlobalPreferences(preferences.global);
         }
         writePreferences(dataDir, globalData as any);
     } catch (err) {
@@ -1059,32 +1066,17 @@ function writeGlobalPreferencesSnapshot(dataDir: string, preferences: Record<str
 
 function mergeGlobalPreferencesSnapshot(dataDir: string, preferences: Record<string, unknown>, errors: string[]): void {
     try {
-        const prefFile = path.join(dataDir, PREFERENCES_FILE_NAME);
-        let existingGlobal: Record<string, unknown> = {};
-        if (fs.existsSync(prefFile)) {
-            existingGlobal = JSON.parse(fs.readFileSync(prefFile, 'utf-8')) as Record<string, unknown>;
-        }
         if ((preferences as Record<string, unknown> | undefined)?.global !== undefined) {
-            existingGlobal.global = {
-                ...((existingGlobal.global as Record<string, unknown> | undefined) ?? {}),
-                ...normalizeGlobalPreferenceSnapshot(preferences.global),
-            };
+            const existingGlobal = readPreferences(dataDir);
+            const { preferences: merged } = applyGlobalPreferencesPatch(
+                existingGlobal.global,
+                preferences.global,
+            );
+            writePreferences(dataDir, { ...existingGlobal, global: merged });
         }
-        writePreferences(dataDir, existingGlobal as any);
     } catch (err) {
         errors.push(`Failed to merge preferences: ${getErrorMessage(err)}`);
     }
-}
-
-function normalizeGlobalPreferenceSnapshot(raw: unknown): Record<string, unknown> {
-    if (typeof raw !== 'object' || raw === null) {
-        return validateGlobalPreferences(raw) as Record<string, unknown>;
-    }
-
-    return {
-        ...(raw as Record<string, unknown>),
-        ...validateGlobalPreferences(raw),
-    };
 }
 
 function readRepoPreferenceSnapshots(dataDir: string): { snapshots: RepoPreferencesSnapshot[]; warnings: string[] } {
@@ -1131,8 +1123,8 @@ function mergeRepoPreferenceSnapshots(dataDir: string, snapshots: RepoPreference
         if (!snap.repoId) { continue; }
         try {
             const existing = readRepoPreferences(dataDir, snap.repoId);
-            const incoming = validatePerRepoPreferences(snap.preferences);
-            writeRepoPreferences(dataDir, snap.repoId, { ...existing, ...incoming });
+            const { preferences: merged } = applyRepoPreferencesPatch(existing, snap.preferences);
+            writeRepoPreferences(dataDir, snap.repoId, merged);
             written++;
         } catch (err) {
             errors.push(`Failed to merge repo preferences for ${snap.repoId}: ${getErrorMessage(err)}`);

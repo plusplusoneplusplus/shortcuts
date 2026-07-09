@@ -96,6 +96,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `providers/` | Provider abstraction for AI/PRs |
 | `repos/` | Repository management endpoints |
 | `work-items/` | Work-items REST + executors |
+| `preferences/` | Server preferences subsystem: schemas/types, repo-scoped/global JSON repositories, pure PATCH/import merge policy, sync/work-item live effects, and HTTP route registration. `preferences-handler.ts` is a compatibility barrel for older imports |
 | `dreams/` | Workspace-scoped dream card/run types, deterministic candidate prefiltering, eligible conversation source selection, process-lifecycle-backed read-only analyzer/critic validation, lifecycle storage with provider/model/timeout run attribution and analyzer/critic process links, durable dedup/coverage history, queue-backed visible `dream-run` manual/idle orchestration with quiet-window readiness checks, periodic opt-in idle scheduling, and workspace Dreams REST routes |
 | `wiki/` | Wiki integration (manager, data, routes, context-builder, conversation-sessions) |
 | `terminal/` | WebSocket-based PTY (session-manager, routes, ws-server) |
