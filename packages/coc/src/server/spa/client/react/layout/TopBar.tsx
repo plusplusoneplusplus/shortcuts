@@ -23,10 +23,11 @@ import { StatusActions } from './StatusActions';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
 import { WorkspaceDockToggleButton } from '../features/repo-detail/WorkspaceDockToggle';
 import { RemoteShellHeader } from '../features/remote-shell/RemoteShellHeader';
+import { VirtualWorkspaceShellHeader } from '../features/remote-shell/VirtualWorkspaceShellHeader';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
-import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
-import { MY_LIFE_WORKSPACE_ID } from '../repos/MyLifeView';
+import { MY_WORK_WORKSPACE_ID, MY_WORK_HEADER_CONFIG } from '../repos/MyWorkView';
+import { MY_LIFE_WORKSPACE_ID, MY_LIFE_HEADER_CONFIG } from '../repos/MyLifeView';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
@@ -126,9 +127,24 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
         return findRepoBySelectionId(scopedRepos, state.selectedRepoId) || findRepoBySelectionId(repos, state.selectedRepoId);
     }, [repos, state.currentAgentId, state.selectedRepoId]);
     // Single-row remote header: the sole remote-repo layout when the remote
-    // shell is on (desktop, repos tab, a clone selected). No selection or off
-    // the repos tab → nothing renders in the remote slot.
-    const showRemoteHeader = remoteShell && isOnReposTab && !!selectedRepo && !isMobile;
+    // shell is on (desktop, a clone selected). It now renders on the top-level
+    // pages too (Admin / Settings / Wiki / …), not just the repos tab, so the
+    // header stays identical to the workspace views instead of collapsing to the
+    // plain RepoTabStrip. Only when no clone is selected does the top row fall
+    // back to the RepoTabStrip so it still isn't blank.
+    const showRemoteHeader = remoteShell && !!selectedRepo && !isMobile;
+
+    // Virtual workspaces (My Work / My Life) have no real repo, so they never hit
+    // `showRemoteHeader`. Give them the same single-row shell via a dedicated
+    // header that renders their identity + sub-tabs + actions instead of the
+    // repo-picker / clone-switcher clusters.
+    const virtualHeaderConfig =
+        myWorkEnabled && isOnReposTab && state.selectedRepoId === MY_WORK_WORKSPACE_ID
+            ? MY_WORK_HEADER_CONFIG
+            : myLifeEnabled && isOnReposTab && state.selectedRepoId === MY_LIFE_WORKSPACE_ID
+                ? MY_LIFE_HEADER_CONFIG
+                : null;
+    const showVirtualHeader = remoteShell && !isMobile && !!virtualHeaderConfig;
 
     // In the remote-first shell the status cluster (connection / notifications /
     // quota / admin / theme) moves to a global bottom status bar
@@ -203,18 +219,10 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         🏠
                     </button>
                 )}
-                {!isMobile && (remoteShell ? (
-                    showRemoteHeader && selectedRepo ? (
-                        <RemoteShellHeader repo={selectedRepo} repos={repos} />
-                    ) : isOnReposTab ? (
-                        <RepoTabStrip
-                            repos={repos}
-                            selectedRepoId={state.selectedRepoId}
-                            onSelect={selectRepo}
-                            unseenCounts={unseenCounts}
-                            onRefresh={fetchRepos}
-                        />
-                    ) : null
+                {!isMobile && (showRemoteHeader && selectedRepo ? (
+                    <RemoteShellHeader repo={selectedRepo} repos={repos} />
+                ) : showVirtualHeader && virtualHeaderConfig ? (
+                    <VirtualWorkspaceShellHeader config={virtualHeaderConfig} />
                 ) : (
                     <RepoTabStrip
                         repos={repos}

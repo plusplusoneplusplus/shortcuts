@@ -272,7 +272,9 @@ describe('TopBar — connection status indicator', () => {
     it('shows "Disconnected" label by default (initial wsStatus is closed)', () => {
         renderTopBar();
         const indicator = screen.getByTestId('ws-status-indicator');
-        expect(indicator.getAttribute('title')).toBe('Disconnected');
+        // The tooltip headlines with the status label, then appends the backend
+        // endpoint detail (host/API/WS), so match the leading label line.
+        expect((indicator.getAttribute('title') ?? '').split('\n')[0]).toBe('Disconnected');
         expect(indicator.getAttribute('aria-label')).toBe('Connection: Disconnected');
         expect(indicator.getAttribute('data-ws-status')).toBe('closed');
     });

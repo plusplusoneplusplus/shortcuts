@@ -11,6 +11,12 @@ import {
     RalphExecutionRepoSelector,
     useRalphExecutionRepoTargets,
 } from './RalphExecutionRepoSelector';
+import {
+    WorktreeLaunchControls,
+    useWorktreeLaunchControls,
+    useWorktreeCapability,
+} from './WorktreeLaunchControls';
+import { isGitWorktreeExecutionEnabled } from '../utils/config';
 
 export interface RalphLaunchDialogProps {
     open: boolean;
@@ -59,6 +65,12 @@ export function RalphLaunchDialog({
     const [launching, setLaunching] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [draftGoalSpec, setDraftGoalSpec] = useState(goalSpec);
+    const worktreeFeatureEnabled = isGitWorktreeExecutionEnabled();
+    const worktree = useWorktreeLaunchControls({ open });
+    const selectedTargetApiBase = repoSelection.selectedTarget
+        ? getRalphExecutionRepoApiBase(repoSelection.selectedTarget)
+        : undefined;
+    const worktreeSupported = useWorktreeCapability(selectedTargetApiBase, { enabled: worktreeFeatureEnabled });
 
     useEffect(() => {
         if (!open) return;
@@ -102,6 +114,7 @@ export function RalphLaunchDialog({
             if (sameTarget && folderPath) body.folderPath = folderPath;
             if (sameTarget && workingDirectory) body.workingDirectory = workingDirectory;
             if (Object.keys(config).length > 0) body.config = config;
+            if (worktree.request) body.worktree = worktree.request;
             const resp = await fetch(`${getRalphExecutionRepoApiBase(selectedTarget)}/ralph-launch`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -165,6 +178,18 @@ export function RalphLaunchDialog({
                         warnings={repoSelection.warnings}
                         selectedKey={repoSelection.selectedKey}
                         onSelectedKeyChange={repoSelection.setSelectedKey}
+                        disabled={launching}
+                        testIdPrefix="ralph-launch"
+                    />
+
+                    <WorktreeLaunchControls
+                        available={worktreeFeatureEnabled}
+                        supported={worktreeSupported}
+                        isGitRepo={repoSelection.selectedTarget?.isGitRepo}
+                        enabled={worktree.enabled}
+                        onEnabledChange={worktree.setEnabled}
+                        baseRef={worktree.baseRef}
+                        onBaseRefChange={worktree.setBaseRef}
                         disabled={launching}
                         testIdPrefix="ralph-launch"
                     />

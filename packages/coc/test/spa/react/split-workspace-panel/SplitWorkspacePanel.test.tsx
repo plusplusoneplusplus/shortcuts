@@ -56,7 +56,7 @@ describe('SplitWorkspacePanel', () => {
         expect(divider.getAttribute('role')).toBe('separator');
         expect(divider.getAttribute('aria-orientation')).toBe('horizontal');
         expect(divider.getAttribute('aria-valuemin')).toBe('120');
-        expect(divider.getAttribute('aria-valuemax')).toBe('800');
+        expect(divider.getAttribute('aria-valuemax')).toBe('1200');
         expect(divider.getAttribute('aria-valuenow')).toBe('320');
         expect(divider.className).toContain('h-2');
 
@@ -480,5 +480,84 @@ describe('SplitWorkspacePanel — publishes left-column width for the global sta
         expect(readVar()).toBe('360px');
         unmount();
         expect(readVar()).toBe('');
+    });
+});
+
+describe('SplitWorkspacePanel — proportional chat/git default', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        mockIsMobile = false;
+    });
+
+    afterEach(() => {
+        // Restore clientHeight mock if set.
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+            configurable: true,
+            get: function () { return 0; },
+        });
+    });
+
+    function mockLeftColHeight(px: number) {
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+            configurable: true,
+            get: function () {
+                // Only affect the left column; all other elements stay at 0.
+                return (this as HTMLElement).dataset['testid'] === 'split-workspace-left'
+                    ? px
+                    : 0;
+            },
+        });
+    }
+
+    it('sets chat height to ~2/3 of the column height when no persisted value exists', () => {
+        mockLeftColHeight(900);
+        renderPanel('ws-proportional');
+        // Chat = round(900 * 2/3) = 600; git gets ~1/3.
+        expect(screen.getByTestId('split-workspace-chat').style.height).toBe('600px');
+    });
+
+    it('git share is ~1/3 of the column height by default', () => {
+        mockLeftColHeight(900);
+        renderPanel('ws-git-third');
+        const chatHeight = parseInt(
+            screen.getByTestId('split-workspace-chat').style.height, 10
+        );
+        // Chat = 600, column = 900 → git = 300 ≈ 1/3 of 900.
+        expect(chatHeight).toBe(600);
+    });
+
+    it('clamps the computed default to CHAT_SPLIT_MIN_HEIGHT (120)', () => {
+        mockLeftColHeight(90); // 2/3 of 90 = 60, below min of 120.
+        renderPanel('ws-clamp-min');
+        expect(screen.getByTestId('split-workspace-chat').style.height).toBe('120px');
+    });
+
+    it('clamps the computed default to CHAT_SPLIT_MAX_HEIGHT (1200)', () => {
+        mockLeftColHeight(2100); // 2/3 of 2100 = 1400, above max of 1200.
+        renderPanel('ws-clamp-max');
+        expect(screen.getByTestId('split-workspace-chat').style.height).toBe('1200px');
+    });
+
+    it('falls back to 320px when the column height is zero (jsdom / unlaid-out)', () => {
+        // Default clientHeight in jsdom is 0 — no mock needed.
+        renderPanel('ws-jsdom-fallback');
+        expect(screen.getByTestId('split-workspace-chat').style.height).toBe('320px');
+    });
+
+    it('honours a previously persisted divider value and never overwrites it', () => {
+        localStorage.setItem(splitWorkspaceDividerStorageKey('ws-persisted'), '500');
+        mockLeftColHeight(900); // Would compute 600 without the persisted value.
+        renderPanel('ws-persisted');
+        // Persisted value wins.
+        expect(screen.getByTestId('split-workspace-chat').style.height).toBe('500px');
+    });
+
+    it('does not write to localStorage when applying the proportional default', async () => {
+        mockLeftColHeight(900);
+        renderPanel('ws-no-write');
+        const key = splitWorkspaceDividerStorageKey('ws-no-write');
+        // Allow effects to settle.
+        await act(async () => {});
+        expect(localStorage.getItem(key)).toBeNull();
     });
 });

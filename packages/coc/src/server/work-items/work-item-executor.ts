@@ -14,8 +14,10 @@ import { normalizeChatModeOrDefault } from '../tasks/task-types';
 import { buildRalphIterationTask, type RalphEffortTier } from '../ralph/enqueue-iteration';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { RALPH_DEFAULT_MAX_ITERATIONS } from '../preferences-handler';
+import type { GitWorktreeService } from '../worktree/worktree-service';
 
 import type { SessionCategory } from '@plusplusoneplusplus/forge';
+import type { WorktreeExecutionRequest, WorktreeMetadata } from '@plusplusoneplusplus/coc-client';
 
 export interface ExecuteWorkItemOptions {
     /** Model override for the AI task. */
@@ -53,6 +55,16 @@ export interface ExecuteWorkItemOptions {
     repoId?: string;
     /** Concrete workspace used for queue routing, workspace preferences, and filesystem actions. */
     workspaceId?: string;
+    /**
+     * Opt-in Git worktree request (validated shape). When `enabled`, the run
+     * executes in an isolated worktree created before the task is queued.
+     * Requires `worktreeService` and `sourceRepoRoot` to be supplied.
+     */
+    worktree?: WorktreeExecutionRequest;
+    /** Service used to create the isolated worktree when {@link worktree} is enabled. */
+    worktreeService?: GitWorktreeService;
+    /** Absolute source checkout path used as the worktree base (the target server's local checkout). */
+    sourceRepoRoot?: string;
 }
 
 export interface EnqueueFunction {
@@ -98,6 +110,11 @@ function mintRalphSessionId(): string {
     return `ralph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** Stable run id for a one-shot worktree (Ralph runs reuse their session id). */
+function mintWorktreeRunId(): string {
+    return `wt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function normalizeExecutionMode(item: WorkItem, value: unknown): WorkItemExecutionMode {
     if (value === 'ralph') return 'ralph';
     if (value === 'one-shot') return 'one-shot';
@@ -125,7 +142,7 @@ export async function executeWorkItem(
     store: WorkItemStore,
     enqueue: EnqueueFunction,
     options?: ExecuteWorkItemOptions,
-): Promise<{ taskId: string; ralphSessionId?: string }> {
+): Promise<{ taskId: string; ralphSessionId?: string; worktree?: WorktreeMetadata; worktreeWarning?: string }> {
     const item = await store.getWorkItem(workItemId, options?.repoId);
     if (!item) {
         throw new Error(`Work item not found: ${workItemId}`);
@@ -159,6 +176,33 @@ export async function executeWorkItem(
     const executionTitle = executionMode === 'ralph' ? 'Ralph Implement' : 'Code Implement';
     const displayName = `Run #${runNumber}: ${executionTitle}`;
     const priority = item.priority ?? 'normal';
+
+    // Opt-in isolated Git worktree. Created before the task is queued so a Git
+    // failure (non-repo folder, unresolvable base ref) aborts the launch without
+    // enqueuing anything or transitioning the work item out of readyToExecute.
+    // The run then executes in the worktree checkout instead of the source one.
+    let worktreeMetadata: WorktreeMetadata | undefined;
+    let worktreeWarning: string | undefined;
+    if (options?.worktree?.enabled) {
+        if (!options.worktreeService || !options.sourceRepoRoot) {
+            throw new Error('Git worktree execution is not available for this workspace');
+        }
+        // Ralph runs key the worktree by their session id so resume/continue can
+        // recover it; one-shot runs get a dedicated worktree run id.
+        const worktreeRunId = ralphSessionId ?? mintWorktreeRunId();
+        const created = await options.worktreeService.createWorktree({
+            workspaceId: executionWorkspaceId,
+            sourceRepoRoot: options.sourceRepoRoot,
+            runId: worktreeRunId,
+            baseRef: options.worktree.baseRef,
+            slug: item.title,
+            ...(ralphSessionId ? { ralphSessionId } : {}),
+        });
+        worktreeMetadata = created.metadata;
+        worktreeWarning = created.warning;
+    }
+    const worktreeWorkingDir = worktreeMetadata?.path;
+
     let taskId: string;
     if (executionMode === 'ralph') {
         const maxIterations = options?.maxRalphIterations ?? RALPH_DEFAULT_MAX_ITERATIONS;
@@ -180,6 +224,7 @@ export async function executeWorkItem(
         };
         const ralphTask = buildRalphIterationTask({
             workspaceId: executionWorkspaceId,
+            ...(worktreeWorkingDir ? { workingDirectory: worktreeWorkingDir, folderPath: worktreeWorkingDir } : {}),
             sessionId: ralphSessionId!,
             originalGoal: prompt,
             iteration: 1,
@@ -214,6 +259,7 @@ export async function executeWorkItem(
                 mode,
                 prompt,
                 workspaceId: executionWorkspaceId,
+                ...(worktreeWorkingDir ? { workingDirectory: worktreeWorkingDir, folderPath: worktreeWorkingDir } : {}),
                 sessionCategory: 'generating-code' satisfies SessionCategory,
                 workItemId: item.id,
                 workItemStorageRepoId: storageRepoId,
@@ -245,6 +291,7 @@ export async function executeWorkItem(
         sessionCategory: 'generating-code',
         title: executionTitle,
         ...(options?.autoReExecuted ? { autoReExecuted: true } : {}),
+        ...(worktreeMetadata ? { worktree: worktreeMetadata } : {}),
     };
     await store.addExecution(workItemId, execution, storageRepoId);
 
@@ -275,7 +322,12 @@ export async function executeWorkItem(
     // Transition to executing
     await store.updateWorkItem(workItemId, { status: 'executing' }, storageRepoId);
 
-    return { taskId, ...(ralphSessionId ? { ralphSessionId } : {}) };
+    return {
+        taskId,
+        ...(ralphSessionId ? { ralphSessionId } : {}),
+        ...(worktreeMetadata ? { worktree: worktreeMetadata } : {}),
+        ...(worktreeWarning ? { worktreeWarning } : {}),
+    };
 }
 
 // ============================================================================

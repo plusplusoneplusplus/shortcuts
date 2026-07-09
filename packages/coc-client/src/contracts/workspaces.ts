@@ -2,6 +2,7 @@ import type { ChatProvider, ReasoningEffort } from './common';
 import type { ForEachChildMode, ForEachItem } from './for-each';
 import type { MapReduceProcessContext } from './map-reduce';
 import type { EffortTierKey } from './queue';
+import type { WorktreeMetadata } from './worktree';
 
 export interface WorkspaceInfo {
   id: string;
@@ -417,6 +418,13 @@ export interface RalphSessionRecord {
   loops?: RalphLoopRecord[];
   /** Final-check automation records. Absent on legacy sessions. */
   finalChecks?: RalphFinalCheckRecord[];
+  /**
+   * Isolated Git worktree backing this session, when the launch opted into
+   * worktree execution. Persisted by the target server so resume/continue and
+   * the dashboard chip can recover the worktree checkout. Absent for
+   * non-worktree sessions.
+   */
+  worktree?: WorktreeMetadata;
 }
 
 // ============================================================================

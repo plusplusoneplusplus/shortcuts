@@ -11,6 +11,8 @@
  * for execution tracking.
  */
 
+import type { WorktreeMetadata } from '@plusplusoneplusplus/coc-client';
+
 // ============================================================================
 // Status & Source Enums
 // ============================================================================
@@ -360,6 +362,12 @@ export interface WorkItemExecution {
     reviewedChangeId?: string;
     /** Execution task reviewed by an optional AI review run. */
     reviewedTaskId?: string;
+    /**
+     * Metadata for the isolated Git worktree this run executed in, recorded when
+     * the run was launched with worktree mode. Absent for normal in-place runs.
+     * Lets execution history surface (and later clean up) the worktree.
+     */
+    worktree?: WorktreeMetadata;
 }
 
 // ============================================================================

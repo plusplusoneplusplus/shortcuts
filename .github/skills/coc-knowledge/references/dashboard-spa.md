@@ -1065,11 +1065,27 @@ Enabled by default; desktop-only; takes effect on reload.
   `header-new-btn` as the first right-side action before the WebSocket status
   pill; it opens the enqueue dialog for the active clone. `ReposView` renders a
   `chromeless` `RepoDetail` for the active repo.
-- When `features.remoteShell` is on but no real repo can back
-  `RemoteShellHeader` (for example a fresh desktop window with no selection, or a
-  virtual workspace such as `my_work` / `my_life`), `TopBar` falls back to the
-  classic `RepoTabStrip` while the user remains on the Repos tab, so repository
-  navigation stays visible.
+- **Virtual-workspace shell (`VirtualWorkspaceShellHeader`)** renders inside
+  `TopBar` when `remoteShellEnabled`, desktop, the active tab is `repos`, and the
+  selected workspace is a virtual one (`my_work` with My Work enabled, `my_life`
+  with My Life enabled). Virtual workspaces have no real repo/git context, so they
+  can't flow through `RemoteScopeCluster` / `WorkspaceTabsCluster`; instead they
+  describe themselves with a `VirtualWorkspaceHeaderConfig` (`MY_WORK_HEADER_CONFIG`
+  / `MY_LIFE_HEADER_CONFIG`, exported from `MyWorkView` / `MyLifeView`): identity
+  chip + sub-tabs (Notes/Activity/Git/Schedules/Settings) + action buttons
+  (Sync / Generate Summary). It mirrors `RemoteShellHeader`'s visual shell and
+  reuses `useVirtualWorkspaceHeader` for sub-tab visibility, active-tab, tab
+  navigation, and running the actions. The matching in-body variant
+  (`VirtualWorkspaceInlineHeader`) renders inside `MyWorkView` / `MyLifeView`
+  themselves in the classic shell and on mobile (where the TopBar header doesn't
+  apply); the view gates it on `!(remoteShell && !isMobile)`.
+- When `features.remoteShell` is on but neither a real repo nor a virtual
+  workspace can back a header (a fresh desktop window with no selection, or any
+  tab other than Repos such as Admin / Wiki), `TopBar` falls back to the classic
+  `RepoTabStrip` so the top row stays consistent across every page and repository
+  navigation is always visible. `RemoteShellHeader` (repos tab + real clone
+  selected) and `VirtualWorkspaceShellHeader` (repos tab + virtual workspace)
+  replace the strip; everywhere else the strip renders.
 - **Shared shell behavior** comes from `shellModel.ts` and `repoGrouping.ts`.
   Aggregated remote checkouts fold into the matching local origin's tab (by
   normalized git URL); a remote-only repo gets its own group. Group clones are
@@ -1263,14 +1279,22 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
 - Action bar: New chat + refresh + ALL/AP split pause pill
 - Scope segmented control: Chats / Loops (when `loops.enabled`) / Automations / All
 - Search box: hidden by default, gated behind `searchVisible`. Ctrl+F / ⌘F
-  routes by which pane owns keyboard focus (never mouse hover). When focus is
-  inside the right conversation panel — the detail pane, marked `data-pane="detail"`,
-  covering both the reading area and the message composer — Ctrl+F is left alone
-  (no `preventDefault`) so the native find-in-page takes over (`isWithinDetailPane`
-  detects this via `target.closest('[data-pane="detail"]')`). Focus in the chat
-  list, or nowhere in particular (`document.body`), reveals and focuses the list
-  search. ✕ clears the query but leaves the box open; Escape clears the query and
-  hides the box; a `workspaceId` change also resets `searchVisible`
+  routes by which pane owns keyboard focus (never mouse hover) through the shared
+  `useScopedFindShortcut(containerRef, onTrigger, opts)` hook
+  (`react/hooks/useScopedFindShortcut.ts`). Every search-owning panel (chat list,
+  git commit list, tasks, work items) uses it so none can fight over
+  `preventDefault` or swallow native find. The hook: skips when its container is
+  hidden (`offsetParent === null`, so a mounted-but-hidden keep-alive tab never
+  intercepts); yields when focus is in the detail pane (`data-pane="detail"`, via
+  the exported `isWithinDetailPane`) so native find-in-page (Electron overlay /
+  browser find) takes over — it only opens when `defaultPrevented` stays false;
+  handles when focus is inside the container; and, when focus is on
+  `document.body`/nothing, handles only if `claimsBodyFocus` is set (default true;
+  the git list passes `!isSplitWorkspace` so the chat list wins body focus in the
+  split-workspace layout). Panels are tagged with `data-find-scope` while mounted
+  so a sibling never steals Ctrl+F from a different focused panel. ✕ clears the
+  query but leaves the box open; Escape clears the query and hides the box; a
+  `workspaceId` change also resets `searchVisible`
 - Selection persists in `localStorage['coc-activity-scope']`
 - `ChatListPane` keeps the action/scope/search controls in a sticky
   `chat-list-fixed-header` block while the list rows scroll underneath. The
@@ -1346,7 +1370,36 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 ## Feature Flags
 
-`featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Most features gated by flags are disabled by default. Pull Requests Team auto-classification is gated by `pullRequests.autoClassifyTeam` / `pullRequestsAutoClassifyTeamEnabled` and is disabled by default. The Git tab's cross-clone cherry-pick UI is gated by `features.gitCrossCloneCherryPick` / `gitCrossCloneCherryPickEnabled` and is enabled by default. Chat composer drag/drop session-context attachments are gated by `features.sessionContextAttachments` / `sessionContextAttachmentsEnabled`; when enabled, same-workspace chat rows, process cards, queue/history process rows, process search result cards, Ralph session group rows, Work Item rows/cards, Git commit rows, Git branch-range headers, and Pull Request rows become copy-drag sources using custom pointer-only MIME payloads, and desktop repo-header Ask/Queue Task buttons become copy drop targets that seed queue-dialog chips. Single-session payloads contain workspace ID, process ID, title/preview, status, and last-activity metadata; Ralph group payloads contain workspace ID, Ralph session ID, phase/status, title/display label, last activity, and ordered child process IDs. Work Item, commit, range, and PR payloads contain stable IDs/references plus safe display metadata only.
+`featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Most features gated by flags are disabled by default. Pull Requests Team auto-classification is gated by `pullRequests.autoClassifyTeam` / `pullRequestsAutoClassifyTeamEnabled` and is disabled by default. The Git tab's cross-clone cherry-pick UI is gated by `features.gitCrossCloneCherryPick` / `gitCrossCloneCherryPickEnabled` and is enabled by default. Isolated Git worktree execution for Work Item and Ralph launches is gated by `features.gitWorktreeExecution` / `gitWorktreeExecutionEnabled` (disabled by default); the SPA reads it through the typed `isGitWorktreeExecutionEnabled()` accessor in `utils/config.ts`, and remote-target dialogs additionally fetch the selected server's `/config/runtime` `gitWorktreeExecutionEnabled` as a per-target capability signal. Chat composer drag/drop session-context attachments are gated by `features.sessionContextAttachments` / `sessionContextAttachmentsEnabled`; when enabled, same-workspace chat rows, process cards, queue/history process rows, process search result cards, Ralph session group rows, Work Item rows/cards, Git commit rows, Git branch-range headers, and Pull Request rows become copy-drag sources using custom pointer-only MIME payloads, and desktop repo-header Ask/Queue Task buttons become copy drop targets that seed queue-dialog chips. Single-session payloads contain workspace ID, process ID, title/preview, status, and last-activity metadata; Ralph group payloads contain workspace ID, Ralph session ID, phase/status, title/display label, last activity, and ordered child process IDs. Work Item, commit, range, and PR payloads contain stable IDs/references plus safe display metadata only.
+
+### Git worktree execution controls
+
+When `features.gitWorktreeExecution` is enabled, the launch dialogs
+(`shared/RalphLaunchDialog.tsx`, `features/chat/RalphStartPanel.tsx`,
+`features/work-items/WorkItemExecuteDialog.tsx`) render the shared
+`shared/WorktreeLaunchControls.tsx` — an "Use isolated Git worktree" checkbox and,
+when checked, an optional "Base ref/SHA" field (empty defaults to current `HEAD`)
+plus the uncommitted-source-changes-excluded warning. State lives in the
+`useWorktreeLaunchControls({ open })` hook; per-target support is resolved by
+`useWorktreeCapability(apiBase, { enabled })`, which fetches the target's
+`/config/runtime` so a remote target that does not advertise support disables the
+option with an explanatory message. The control renders nothing when the flag is
+off, the target lacks capability, or the workspace is not a Git repo, and when
+checked it adds `worktree: { enabled: true, baseRef? }` to the launch body.
+
+Post-launch visibility uses the presentational `shared/WorktreeChip.tsx` (branch,
+base, status, copyable path). It appears on the Ralph session detail
+(`RalphWorkflowPane` header, reading `session.worktree`) and the Work Item
+execution-history entry (`WorkItemDetail`, reading `execution.worktree`). The chip
+has an opt-in cleanup affordance (`onCleanup`/`canCleanup`/`cleanupError` props,
+shown only for `status === 'active'`, `window.confirm`-gated) driven by the shared
+`shared/useWorktreeCleanup.ts` hook. A repo-scoped
+`features/git/working-tree/WorktreeList.tsx` renders under the Git tab
+(`RepoGitTab`) — workspace-scoped, collapsible, only when the flag is on and ≥1
+record exists — listing each worktree with its linked task/session and a Cleanup
+action. Cleanup calls `client.git.cleanupWorktree`; success flips the row to
+`cleaned` locally, a `409` (dirty/running) surfaces the raw Git error inline and
+leaves the record active. The branch is never deleted from the UI.
 
 ## Work Items
 
@@ -1375,7 +1428,7 @@ The split Local/Remote tracker views do not show the legacy per-item preview/imp
 
 ## coc-client Integration
 
-The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2, skills, preferences, seen-state, work-items, agentProviders, git. The git domain includes commit/diff/branch helpers, operation history, and patch-transfer export/apply methods used by cross-clone cherry-pick flows. The Git tab treats async git operation responses with `jobId` as pending work, polling operation history until terminal status before refreshing; failed Drop Commit jobs render the tab-level action-error banner. Pull, rebase autosquash, drop commit, and reorder share the `useGitOperationPoller` hook (`features/git/hooks/`), which owns each poll's `setInterval` in a ref and clears it on unmount and repo switch, captures the workspace id plus a generation token per `start()` to drop stale ticks, and routes terminal jobs through per-operation `onSuccess`/`onFailure`/`onMissing`/`isComplete` callbacks (lifecycle in the hook, refresh/error semantics in the caller); pull additionally keeps its `pulling` flag and exposes the active job id to the WebSocket `git-changed` handler. The same-clone commit context menu opens `BranchPickerModal` as a local-branch selector for `Cherry-pick to branch…`, sends selected commit hashes oldest-first through `client.git.cherryPick(..., { hashes, targetBranch })`, shows server dirty/conflict errors in the tab action banner, refreshes on success, and keeps the user on the original branch after the server switches back. When enabled, both the single-commit and multi-commit Git context menus open `CrossCloneCherryPickModal` with a `commits[]` (multi-commit selections are ordered oldest-first via `orderOldestFirst`), which lists current-CoC registered workspaces plus online registered remote-CoC workspaces using typed workspace/git-info clients, groups targets by normalized remote URL, recommends same-remote clones, labels each target with its CoC server, requires explicit cross-remote confirmation, and requires explicit dirty-target stash opt-in. The modal exports the whole range as one concatenated `git am` mailbox and reports the applied count ("applied k of N", or a partial count with the conflicting commit on a mid-range conflict). Local targets call `git.exportCommitPatches` + `git.applyCommitPatch` directly; remote targets call the initiating server's `servers.cherryPickTransfer` orchestrator with `source.commitHashes`.
+The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2, skills, preferences, seen-state, work-items, agentProviders, git. The git domain includes commit/diff/branch helpers, operation history, patch-transfer export/apply methods used by cross-clone cherry-pick flows, and the worktree-execution `listWorktrees` / `cleanupWorktree` helpers. The Git tab treats async git operation responses with `jobId` as pending work, polling operation history until terminal status before refreshing; failed Drop Commit jobs render the tab-level action-error banner. Pull, rebase autosquash, drop commit, and reorder share the `useGitOperationPoller` hook (`features/git/hooks/`), which owns each poll's `setInterval` in a ref and clears it on unmount and repo switch, captures the workspace id plus a generation token per `start()` to drop stale ticks, and routes terminal jobs through per-operation `onSuccess`/`onFailure`/`onMissing`/`isComplete` callbacks (lifecycle in the hook, refresh/error semantics in the caller); pull additionally keeps its `pulling` flag and exposes the active job id to the WebSocket `git-changed` handler. The same-clone commit context menu opens `BranchPickerModal` as a local-branch selector for `Cherry-pick to branch…`, sends selected commit hashes oldest-first through `client.git.cherryPick(..., { hashes, targetBranch })`, shows server dirty/conflict errors in the tab action banner, refreshes on success, and keeps the user on the original branch after the server switches back. When enabled, both the single-commit and multi-commit Git context menus open `CrossCloneCherryPickModal` with a `commits[]` (multi-commit selections are ordered oldest-first via `orderOldestFirst`), which lists current-CoC registered workspaces plus online registered remote-CoC workspaces using typed workspace/git-info clients, groups targets by normalized remote URL, recommends same-remote clones, labels each target with its CoC server, requires explicit cross-remote confirmation, and requires explicit dirty-target stash opt-in. The modal exports the whole range as one concatenated `git am` mailbox and reports the applied count ("applied k of N", or a partial count with the conflicting commit on a mid-range conflict). Local targets call `git.exportCommitPatches` + `git.applyCommitPatch` directly; remote targets call the initiating server's `servers.cherryPickTransfer` orchestrator with `source.commitHashes`.
 
 Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client for React state management.
 

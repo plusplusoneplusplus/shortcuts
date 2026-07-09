@@ -105,7 +105,7 @@ export function WorkItemSection({ workspaceId, originId, onSelectWorkItem, selec
     const items = state.workItemsByRepo[workItemOriginId] || [];
     const pagination = state.paginationByRepo[workItemOriginId];
     const isLoading = state.loading[workItemOriginId] ?? false;
-    const { searchInput, searchQuery, searchInputRef, onSearchChange, onSearchClear } = useWorkItemSearch();
+    const { searchInput, searchQuery, searchInputRef, containerRef, onSearchChange, onSearchClear } = useWorkItemSearch();
     const prevSearchRef = useRef(searchQuery);
     const loadingStatusesRef = useRef(new Set<string>());
     const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
@@ -303,7 +303,7 @@ export function WorkItemSection({ workspaceId, originId, onSelectWorkItem, selec
     if (shouldHideEmptySection) return null;
 
     return (
-        <div data-testid="work-items-section">
+        <div ref={containerRef} data-testid="work-items-section">
             {/* Top-level header */}
             <div className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium mb-2">
                 <span>Work Items</span>

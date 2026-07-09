@@ -8,7 +8,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 const mockSelectClone = vi.fn();
 const mockSwitchSubTab = vi.fn();
-let mockAppState: any = { activeRepoSubTab: 'chats' };
+let mockAppState: any = { activeTab: 'repos', activeRepoSubTab: 'chats' };
 let mockQueueState: any = { repoQueueMap: {} };
 let mockQueueStats: any = { running: 0, queued: 0 };
 let mockGitInfo: any = { ahead: 0, behind: 0 };
@@ -58,7 +58,7 @@ beforeEach(() => {
     cleanup();
     mockSelectClone.mockReset();
     mockSwitchSubTab.mockReset();
-    mockAppState = { activeRepoSubTab: 'chats' };
+    mockAppState = { activeTab: 'repos', activeRepoSubTab: 'chats' };
     mockQueueState = { repoQueueMap: {} };
     mockQueueStats = { running: 0, queued: 0 };
     mockGitInfo = { ahead: 0, behind: 0 };
@@ -97,6 +97,26 @@ describe('WorkspaceTabsCluster', () => {
         const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'git')!;
         fireEvent.click(git);
         expect(mockSwitchSubTab).toHaveBeenCalledWith('git');
+    });
+
+    it('highlights the active clone sub-tab on the repos tab', () => {
+        mockAppState = { activeTab: 'repos', activeRepoSubTab: 'git' };
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
+
+        const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'git')!;
+        expect(git.getAttribute('data-active')).toBe('true');
+    });
+
+    it('does not highlight any sub-tab off the repos tab (e.g. Admin)', () => {
+        // The header still renders on the top-level pages, but no workspace sub-tab
+        // is being viewed there — so none should show as active.
+        mockAppState = { activeTab: 'admin', activeRepoSubTab: 'git' };
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
+
+        const active = screen.getAllByTestId('clone-scope-tab').filter(el => el.getAttribute('data-active') === 'true');
+        expect(active).toHaveLength(0);
     });
 
     it('shows the schedules tab by default (flag off)', () => {

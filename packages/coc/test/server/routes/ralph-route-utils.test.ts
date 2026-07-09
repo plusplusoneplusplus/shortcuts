@@ -172,8 +172,78 @@ describe('ralph-route-utils', () => {
                 folderPath: undefined,
             });
         });
+
+        // ── AC-04: worktree-backed sessions recover the worktree checkout ──
+        it('prefers an active worktree path over the recovered process payload path', async () => {
+            const store = {
+                getProcess: vi.fn(async () => ({
+                    id: 'proc-new',
+                    type: 'clarification',
+                    promptPreview: 'test',
+                    fullPrompt: 'test',
+                    status: 'completed',
+                    startTime: new Date(),
+                    payload: { workingDirectory: 'payload-working-directory' },
+                })),
+            } as unknown as ProcessStore;
+
+            const record = withWorktree(makeRecord([{ iteration: 2, processId: 'proc-new' }]), {
+                status: 'active',
+                path: '/wt/active-checkout',
+            });
+            const paths = await recoverIterationPaths(record, store, 'ws-1');
+            expect(paths.workingDirectory).toBe('/wt/active-checkout');
+        });
+
+        it('uses the active worktree path when the session has no recorded iterations', async () => {
+            const store = { getProcess: vi.fn() } as unknown as ProcessStore;
+            const record = withWorktree(makeRecord([]), { status: 'active', path: '/wt/fresh-checkout' });
+            const paths = await recoverIterationPaths(record, store, 'ws-1');
+            expect(paths.workingDirectory).toBe('/wt/fresh-checkout');
+            expect(store.getProcess).not.toHaveBeenCalled();
+        });
+
+        it('does not use a cleaned worktree path; falls back to the process payload', async () => {
+            const store = {
+                getProcess: vi.fn(async () => ({
+                    id: 'proc-new',
+                    type: 'clarification',
+                    promptPreview: 'test',
+                    fullPrompt: 'test',
+                    status: 'completed',
+                    startTime: new Date(),
+                    payload: { workingDirectory: 'payload-working-directory' },
+                })),
+            } as unknown as ProcessStore;
+
+            const record = withWorktree(makeRecord([{ iteration: 2, processId: 'proc-new' }]), {
+                status: 'cleaned',
+                path: '/wt/removed-checkout',
+            });
+            const paths = await recoverIterationPaths(record, store, 'ws-1');
+            expect(paths.workingDirectory).toBe('payload-working-directory');
+        });
     });
 });
+
+function withWorktree(
+    record: RalphSessionRecord,
+    worktree: { status: 'active' | 'cleaned'; path: string },
+): RalphSessionRecord {
+    return {
+        ...record,
+        worktree: {
+            id: record.sessionId,
+            workspaceId: record.workspaceId,
+            path: worktree.path,
+            branch: 'coc/test-abcdef12',
+            baseSha: 'deadbeef',
+            createdAt: '2026-05-29T00:00:00.000Z',
+            sourceDirty: false,
+            status: worktree.status,
+        },
+    };
+}
 
 function makeBridge(tasks: QueuedTask[]): MultiRepoQueueRouter {
     return {

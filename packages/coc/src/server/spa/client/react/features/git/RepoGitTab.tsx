@@ -30,6 +30,7 @@ import { FileDiffPanel } from './diff/FileDiffPanel';
 import { createCommitDiffSource, createBranchRangeDiffSource } from './diff/diffSource';
 import { GitPanelHeader } from './GitPanelHeader';
 import { WorkingTree } from './working-tree/WorkingTree';
+import { WorktreeList } from './working-tree/WorktreeList';
 import { WorkingTreeFileDiff } from './working-tree/WorkingTreeFileDiff';
 import { WorkingTreeAllComments } from './working-tree/WorkingTreeAllComments';
 import { BranchRangeAllComments } from './branches/BranchRangeAllComments';
@@ -53,6 +54,7 @@ import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControl
 import { mergeAutoProviderRoutingContext } from '../../utils/providerSelection';
 import { useCommitClassificationStatus } from './hooks/useCommitClassificationStatus';
 import { useGitOperationPoller } from './hooks/useGitOperationPoller';
+import { useScopedFindShortcut } from '../../hooks/useScopedFindShortcut';
 
 /**
  * Best-effort rebind of commit-chat binding when a hash changes.
@@ -212,8 +214,10 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
     const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>();
     const [workingChangesRefreshKey, setWorkingChangesRefreshKey] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
+    const [searchVisible, setSearchVisible] = useState(false);
     const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const panelRef = useRef<HTMLElement>(null);
 
     // Commit lookup state (feature-gated: gitCommitLookup)
     const [commitLookupLoading, setCommitLookupLoading] = useState(false);
@@ -1610,10 +1614,36 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         return items;
     }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleOpenCherryPickToBranch, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, handleOpenCrossCloneCherryPick, handleOpenCrossCloneCherryPickMulti, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect, handleDropCommit]);
 
+    // Reveal (if hidden) + focus the commit search box. Shared by the `/`
+    // panel shortcut and the Ctrl+F find shortcut.
+    const revealSearch = useCallback((select = false) => {
+        setSearchVisible(true);
+        setTimeout(() => {
+            searchInputRef.current?.focus();
+            if (select) searchInputRef.current?.select();
+        }, 0);
+    }, []);
+
+    // Hide the search bar and clear its query.
+    const hideSearch = useCallback(() => {
+        setSearchVisible(false);
+        setSearchQuery('');
+    }, []);
+
+    // AC-02: Ctrl+F / Cmd+F reveals + focuses the (hidden-by-default) commit
+    // search box, routed by keyboard focus through the shared helper. A
+    // document-level listener also catches focus on `document.body` while the
+    // git tab is active (the panel-scoped `onKeyDown` below misses body focus).
+    // In the split-workspace layout the chat list owns body focus, so this
+    // panel only claims it when standalone.
+    useScopedFindShortcut(panelRef, () => revealSearch(true), { claimsBodyFocus: !isSplitWorkspace });
+
     // Keyboard shortcuts:
     //   - R: refresh
-    //   - /: focus the commit search input
-    // Both ignored when typing in inputs/textareas.
+    //   - /: reveal + focus the commit search input
+    //   - Escape: hide + clear the search when the bar is open
+    // Ignored when typing in inputs/textareas (except Escape from the search box,
+    // which is handled on the input itself).
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {
         const isTextField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
         if (isTextField) return;
@@ -1624,10 +1654,14 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         }
         if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
             e.preventDefault();
-            searchInputRef.current?.focus();
-            searchInputRef.current?.select();
+            revealSearch(true);
+            return;
         }
-    }, [refreshAll]);
+        if (e.key === 'Escape' && searchVisible) {
+            e.preventDefault();
+            hideSearch();
+        }
+    }, [refreshAll, revealSearch, hideSearch, searchVisible]);
 
     if (loading) {
         return (
@@ -1819,6 +1853,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
     // per-panel width style or mobile hide-toggle there — AC-05 parity via reuse).
     const listPane = (
             <aside
+                ref={panelRef}
                 className={isSplitWorkspace
                     ? 'w-full flex-1 min-h-0 overflow-y-auto bg-[#f3f3f3] dark:bg-[#252526]'
                     : `w-full lg:shrink-0 overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]${rightPanelView ? ' hidden lg:block' : ''}`}
@@ -1829,7 +1864,11 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                     <style>{`@media (min-width: 1024px) { [data-testid="git-commit-list-panel"] { width: ${sidebarWidth}px !important; } }`}</style>
                 )}
                 {!headerHoisted && panelHeader}
-                {/* Search input (filter-bar style: subtle background card containing a bordered search box) */}
+                {/* Search input (hidden by default; revealed by Ctrl+F or `/`).
+                    Kept mounted whenever a query is set so filtered results stay
+                    visible even if the bar was toggled. Filter-bar style: subtle
+                    background card containing a bordered search box. */}
+                {(searchVisible || searchQuery) && (
                 <div
                     className={`${isSplitWorkspace ? 'px-2 py-1' : 'px-2.5 py-1.5'} border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526]`}
                     data-testid="git-search-bar"
@@ -1846,11 +1885,9 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                             onKeyDown={e => {
                                 if (e.key === 'Escape') {
                                     e.preventDefault();
-                                    if (searchQuery) {
-                                        setSearchQuery('');
-                                    } else {
-                                        searchInputRef.current?.blur();
-                                    }
+                                    // AC-02: Escape hides + clears the search bar.
+                                    searchInputRef.current?.blur();
+                                    hideSearch();
                                     return;
                                 }
                                 // SHA lookup on Enter (feature-gated)
@@ -1884,7 +1921,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                                     )
                                 )}
                                 <button
-                                    onClick={() => { setSearchQuery(''); setCommitLookupError(null); }}
+                                    onClick={() => { hideSearch(); setCommitLookupError(null); }}
                                     className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] leading-none px-1"
                                     data-testid="git-search-clear"
                                     aria-label="Clear search"
@@ -1905,6 +1942,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                         )}
                     </div>
                 </div>
+                )}
                 {scenarioBanner}
                 {refreshError && (
                     <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="git-refresh-error">
@@ -1938,6 +1976,11 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                         selectedFilePath={selectedWorkingTreeFile}
                         refreshKey={workingChangesRefreshKey}
                         onAllCommentsClick={handleAllWorkingCommentsClick}
+                        compact={isSplitWorkspace}
+                    />
+                    <WorktreeList
+                        workspaceId={workspaceId}
+                        refreshKey={workingChangesRefreshKey}
                         compact={isSplitWorkspace}
                     />
                 </div>

@@ -3,6 +3,7 @@ import * as http from 'http';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 import type { Route } from '../../../src/server/types';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-routes';
@@ -21,7 +22,7 @@ const mockProcessStore = {
 } as any;
 let workspaces: any[] = [];
 
-function makeServer(enqueue?: any, opts: { dataDir?: string; workflowEnabled?: boolean; runCommand?: any } = {}): http.Server {
+function makeServer(enqueue?: any, opts: { dataDir?: string; workflowEnabled?: boolean; gitWorktreeEnabled?: boolean; runCommand?: any } = {}): http.Server {
     const routes: Route[] = [];
     registerWorkItemRoutes({ routes, workItemStore: store, processStore: mockProcessStore, enqueue });
     registerWorkItemExecutionRoutes({
@@ -31,6 +32,7 @@ function makeServer(enqueue?: any, opts: { dataDir?: string; workflowEnabled?: b
         enqueue,
         dataDir: opts.dataDir,
         getWorkflowEnabled: () => opts.workflowEnabled === true,
+        getGitWorktreeExecutionEnabled: () => opts.gitWorktreeEnabled === true,
         runCommand: opts.runCommand,
     });
     const handler = createRouter({ routes, spaHtml: '' });
@@ -129,6 +131,56 @@ describe('Work Item Execution Routes', () => {
             expect(res.body.taskId).toBe('task-abc');
         });
 
+        it('rejects a malformed worktree request (AC-01)', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Worktree bad',
+            });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, { status: 'readyToExecute' });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                worktree: { enabled: true, baseRef: '--evil' },
+            });
+            expect(res.status).toBe(400);
+            expect(res.body.error).toMatch(/baseRef/i);
+        });
+
+        it('rejects a valid-shape worktree request when the feature is disabled (AC-03)', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Worktree flag off',
+            });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, { status: 'readyToExecute' });
+
+            // The default makeServer leaves the feature flag off: a shape-valid
+            // worktree request must be refused, not silently executed in-place.
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                worktree: { enabled: true, baseRef: 'main' },
+            });
+            expect(res.status).toBe(400);
+            expect(res.body.error).toMatch(/not enabled/i);
+
+            const after = await store.getWorkItem(id, REPO_ID);
+            expect(after!.status).toBe('readyToExecute');
+        });
+
+        it('ignores an opted-out worktree request even when the flag is off (AC-03)', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Worktree opted out',
+            });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, { status: 'readyToExecute' });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                worktree: { enabled: false },
+            });
+            expect(res.status).toBe(200);
+            expect(res.body.taskId).toBe('task-abc');
+        });
+
         it('rejects non-ready work items', async () => {
             await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
                 title: 'Not ready',
@@ -183,6 +235,162 @@ describe('Work Item Execution Routes', () => {
             const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${pbiId}/execute`, {});
             expect(res.status).toBe(400);
             expect(res.body.error).toContain('planning container');
+        });
+    });
+
+    // ── AC-03: worktree execution wiring with the feature flag enabled ──
+    describe('POST /execute with Git worktree (AC-03)', () => {
+        let sourceRepo: string;
+        let enqueueMock: ReturnType<typeof vi.fn>;
+        let seq = 0;
+
+        function git(dir: string, ...args: string[]): string {
+            return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf-8' }).replace(/\r?\n$/, '');
+        }
+
+        // Seed a ready-to-execute item directly. When a workspace is registered
+        // with a rootPath, route scope resolves to the workspace's canonical
+        // origin id, so the scope-aware store keeps create/read consistent.
+        async function seedReadyItem(title = 'Worktree run'): Promise<string> {
+            const id = `wi-wt-${seq++}`;
+            const now = new Date().toISOString();
+            await store.addWorkItem({
+                id,
+                repoId: REPO_ID,
+                title,
+                description: '',
+                status: 'readyToExecute',
+                type: 'work-item',
+                source: 'manual',
+                tracker: { kind: 'local-only' },
+                createdAt: now,
+                updatedAt: now,
+                plan: { version: 1, currentVersion: 1, content: '## Plan\nShip it', updatedAt: now },
+                currentContentVersion: 1,
+            });
+            return id;
+        }
+
+        beforeEach(async () => {
+            tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-exec-wt-'));
+            store = new FileWorkItemStore({
+                dataDir: tmpDir,
+                scopeResolver: createWorkItemStorageScopeResolver(mockProcessStore),
+            });
+            sourceRepo = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-exec-wt-src-'));
+            git(sourceRepo, 'init', '-q');
+            git(sourceRepo, 'config', 'user.email', 'test@test.com');
+            git(sourceRepo, 'config', 'user.name', 'Test');
+            git(sourceRepo, 'config', 'commit.gpgsign', 'false');
+            await fs.writeFile(path.join(sourceRepo, 'README.md'), 'hi\n');
+            git(sourceRepo, 'add', '-A');
+            git(sourceRepo, 'commit', '-q', '-m', 'init');
+            workspaces = [{ id: REPO_ID, rootPath: sourceRepo }];
+
+            enqueueMock = vi.fn().mockResolvedValue('task-wt');
+            server = makeServer(enqueueMock, { dataDir: tmpDir, gitWorktreeEnabled: true });
+            await startServer();
+        });
+
+        afterEach(async () => {
+            await stopServer();
+            try { git(sourceRepo, 'worktree', 'prune'); } catch { /* ignore */ }
+            await fs.rm(tmpDir, { recursive: true, force: true });
+            await fs.rm(sourceRepo, { recursive: true, force: true });
+        });
+
+        it('creates the worktree and runs the queued task in it', async () => {
+            const id = await seedReadyItem();
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                worktree: { enabled: true },
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.worktree).toBeDefined();
+            const worktreePath = res.body.worktree.path;
+            expect(worktreePath).toContain('git-worktrees');
+            // The worktree checkout actually exists on disk.
+            await expect(fs.stat(worktreePath)).resolves.toBeDefined();
+
+            // The queued task runs in the worktree, not the source checkout.
+            const call = enqueueMock.mock.calls[0][0];
+            expect(call.payload.workingDirectory).toBe(worktreePath);
+
+            // Source checkout HEAD is not moved onto the worktree branch.
+            expect(git(sourceRepo, 'rev-parse', '--abbrev-ref', 'HEAD')).not.toBe(res.body.worktree.branch);
+
+            // Execution history records the worktree metadata.
+            const item = await store.getWorkItem(id, REPO_ID);
+            expect(item!.status).toBe('executing');
+            expect(item!.executionHistory![0].worktree!.path).toBe(worktreePath);
+        });
+
+        it('creates the worktree from a valid base ref', async () => {
+            const id = await seedReadyItem();
+            const headSha = git(sourceRepo, 'rev-parse', 'HEAD');
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                worktree: { enabled: true, baseRef: headSha },
+            });
+            expect(res.status).toBe(200);
+            expect(res.body.worktree.baseSha).toBe(headSha);
+            expect(res.body.worktree.baseRef).toBe(headSha);
+        });
+
+        it('rejects an invalid base ref before queueing and leaves the item ready', async () => {
+            const id = await seedReadyItem();
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                worktree: { enabled: true, baseRef: 'no-such-ref' },
+            });
+            expect(res.status).toBe(400);
+            expect(res.body.error).toMatch(/does not resolve/i);
+            expect(enqueueMock).not.toHaveBeenCalled();
+
+            const item = await store.getWorkItem(id, REPO_ID);
+            expect(item!.status).toBe('readyToExecute');
+            expect(item!.executionHistory ?? []).toHaveLength(0);
+        });
+
+        it('fails clearly for a non-Git workspace and does not queue or transition', async () => {
+            const nonGit = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-exec-nongit-'));
+            workspaces = [{ id: REPO_ID, rootPath: nonGit }];
+            const id = await seedReadyItem();
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                worktree: { enabled: true },
+            });
+            expect(res.status).toBe(400);
+            expect(res.body.error).toMatch(/not a git repository/i);
+            expect(enqueueMock).not.toHaveBeenCalled();
+
+            const item = await store.getWorkItem(id, REPO_ID);
+            expect(item!.status).toBe('readyToExecute');
+            await fs.rm(nonGit, { recursive: true, force: true });
+        });
+
+        it('rejects when the workspace root cannot be resolved', async () => {
+            // No registered workspace → route resolves storage under REPO_ID.
+            workspaces = [];
+            const id = await seedReadyItem();
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                worktree: { enabled: true },
+            });
+            expect(res.status).toBe(400);
+            expect(res.body.error).toMatch(/workspace root is not available/i);
+            expect(enqueueMock).not.toHaveBeenCalled();
+        });
+
+        it('runs a normal in-place execution when no worktree is requested', async () => {
+            const id = await seedReadyItem();
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {});
+            expect(res.status).toBe(200);
+            expect(res.body.worktree).toBeUndefined();
+            const call = enqueueMock.mock.calls[0][0];
+            expect(call.payload.workingDirectory).toBeUndefined();
         });
     });
 

@@ -122,6 +122,7 @@ export interface AdminResolvedConfig {
     autoAgentProviderRouting?: boolean;
     ralphMultiAgentGrill?: boolean;
     nativeCliSessions?: boolean;
+    gitWorktreeExecution?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean }; workflow?: { enabled?: boolean } };
   effortLevels?: { enabled?: boolean };
@@ -205,6 +206,7 @@ export interface AdminConfigUpdate {
   'features.commitChatLensDormantMode'?: 'ghost' | 'pill';
   'features.autoAgentProviderRouting'?: boolean;
   'features.nativeCliSessions'?: boolean;
+  'features.gitWorktreeExecution'?: boolean;
   'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
 }
@@ -258,6 +260,11 @@ export interface RuntimeDashboardConfig {
     remoteShellEnabled: boolean;
     singleRowShellEnabled: boolean;
     splitWorkspacePanelEnabled: boolean;
+    /**
+     * Whether this CoC server supports isolated Git worktree execution for Work
+     * Item / Ralph launches. Doubles as the remote-target capability signal.
+     */
+    gitWorktreeExecutionEnabled: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
     prewarmDebounceMs: number;
     /** Warm-client idle TTL (ms), resolved from env on the server. `0` means warming is disabled. */

@@ -50,6 +50,42 @@ export interface RalphIterationRecord {
     exitSignal?: RalphExitSignal;
 }
 
+/**
+ * Portable mirror of the CoC-server `WorktreeMetadata` contract (which lives in
+ * `@plusplusoneplusplus/coc-client`). Duplicated here so the dependency-free
+ * portable Ralph record can carry the worktree that backs a session without
+ * coupling `coc-workflow` to the client package. Structurally compatible: the
+ * server assigns its `WorktreeMetadata` straight into this field.
+ */
+export interface RalphWorktreeMetadata {
+    /** Stable id for this worktree run (usually the Ralph session id). */
+    id: string;
+    /** Workspace whose checkout this worktree was branched from. */
+    workspaceId: string;
+    /** Absolute path to the isolated worktree checkout on the target server. */
+    path: string;
+    /** Dedicated branch created for this run, e.g. `coc/<slug>-<short-id>`. */
+    branch: string;
+    /** Requested base ref/branch/SHA, if any; omitted when based on `HEAD`. */
+    baseRef?: string;
+    /** Resolved commit SHA the worktree branch was created from. */
+    baseSha: string;
+    /** ISO timestamp when the worktree was created. */
+    createdAt: string;
+    /** Whether the source checkout had uncommitted changes at creation time. */
+    sourceDirty: boolean;
+    /** Human-facing warning surfaced when `sourceDirty` is true. */
+    sourceDirtyWarning?: string;
+    /** Linked queued process id, when known. */
+    processId?: string;
+    /** Linked Ralph session id, when the worktree backs a Ralph session. */
+    ralphSessionId?: string;
+    /** Lifecycle status; `cleaned` once the checkout has been removed. */
+    status: 'active' | 'cleaned';
+    /** ISO timestamp when the checkout was removed via cleanup, if cleaned. */
+    cleanedAt?: string;
+}
+
 /** Metadata for a single goal-phase (loop) within a Ralph session. */
 export interface RalphLoopRecord {
     /** 1-based loop index. */
@@ -77,6 +113,13 @@ export interface RalphSessionRecord {
     loops?: RalphLoopRecord[];
     /** Final-check automation records. Absent on legacy sessions. */
     finalChecks?: RalphFinalCheckRecord[];
+    /**
+     * The isolated Git worktree backing this session, when the session was
+     * launched with opt-in worktree execution. Lets resume/continue/final-check
+     * and the dashboard chip recover the worktree without re-deriving it.
+     * Absent on non-worktree sessions.
+     */
+    worktree?: RalphWorktreeMetadata;
 }
 
 export interface ParsedProgressSection {

@@ -134,6 +134,19 @@ describe('TreeNode', () => {
             expect(source).toContain('dark:bg-[#3794ff]/10');
         });
 
+        it('applies an explicit legible foreground for unselected rows (dark-mode readability)', () => {
+            // Regression: without an explicit color the row inherits the near-black
+            // app default, which is invisible on the dark sidebar background.
+            expect(source).toContain('text-[#1e1e1e] dark:text-[#cccccc]');
+        });
+
+        it('does not stack two text-color classes on selected rows (cn has no tailwind-merge)', () => {
+            // The base foreground must be gated behind the unselected branch so a
+            // selected row carries only the accent color, not both.
+            expect(source).not.toMatch(/text-\[#1e1e1e\] dark:text-\[#cccccc\][^']*text-\[#0078d4\]/);
+            expect(source).toContain("? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10 text-[#0078d4] dark:text-[#3794ff]'");
+        });
+
         it('applies hover styling', () => {
             expect(source).toContain('hover:bg-black/[0.04]');
             expect(source).toContain('dark:hover:bg-white/[0.04]');

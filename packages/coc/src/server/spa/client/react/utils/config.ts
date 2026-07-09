@@ -67,6 +67,11 @@ interface DashboardConfig {
     gitCommitLookupEnabled?: boolean;
     /** Whether cross-clone cherry-pick transfer in the Git tab is enabled (feature flag). */
     gitCrossCloneCherryPickEnabled?: boolean;
+    /**
+     * Whether opt-in Git worktree execution is enabled (feature flag). Doubles
+     * as the target-server capability signal exposed via GET /api/config/runtime.
+     */
+    gitWorktreeExecutionEnabled?: boolean;
     /** Whether the Effort Tiers selector (Low/Medium/High) is enabled in the composer. Disabled by default. */
     effortLevelsEnabled?: boolean;
     /** Whether the read-only native CLI sessions tab is enabled (feature flag). */
@@ -235,6 +240,48 @@ export function getWsPath(): string {
 
 export function getHostname(): string | undefined {
     return getConfig().hostname;
+}
+
+/** Reachable backend endpoints for the current origin. */
+export interface BackendEndpointInfo {
+    /** host:port the browser is connected to, e.g. "127.0.0.1:3000". */
+    host: string;
+    /** Full REST API base URL, e.g. "http://127.0.0.1:3000/api". */
+    apiUrl: string;
+    /** Full WebSocket URL, e.g. "ws://127.0.0.1:3000/ws". */
+    wsUrl: string;
+}
+
+/**
+ * Pure composer for {@link BackendEndpointInfo}. Kept DOM-free so it can be unit
+ * tested without a browser. `protocol` is the page protocol (e.g. "https:") and
+ * decides the ws/wss scheme.
+ */
+export function composeBackendEndpointInfo(
+    origin: string,
+    host: string,
+    protocol: string,
+    apiBasePath: string,
+    wsPath: string,
+): BackendEndpointInfo {
+    const wsScheme = protocol === 'https:' ? 'wss:' : 'ws:';
+    return {
+        host,
+        apiUrl: `${origin}${apiBasePath}`,
+        wsUrl: `${wsScheme}//${host}${wsPath}`,
+    };
+}
+
+/**
+ * Resolve the backend endpoints the SPA is actually connected to. Host/port
+ * come from `window.location` (the address the browser dialed), combined with
+ * the raw API base and WS path from config. Returns undefined outside a browser
+ * (e.g. SSR/test contexts without a location).
+ */
+export function getBackendEndpointInfo(): BackendEndpointInfo | undefined {
+    const loc = (globalThis as typeof globalThis & { window?: Window }).window?.location;
+    if (!loc || !loc.host) return undefined;
+    return composeBackendEndpointInfo(loc.origin, loc.host, loc.protocol, getRawApiBase(), getWsPath());
 }
 
 export function isTerminalEnabled(): boolean {
@@ -437,6 +484,15 @@ export function isGitCommitLookupEnabled(): boolean {
 /** Returns true when cross-clone cherry-pick transfer in the Git tab is enabled. */
 export function isGitCrossCloneCherryPickEnabled(): boolean {
     return getConfig().gitCrossCloneCherryPickEnabled === true;
+}
+
+/**
+ * Returns true when opt-in Git worktree execution is enabled on the active
+ * server. Reads the same runtime flag the target server advertises as its
+ * worktree capability signal.
+ */
+export function isGitWorktreeExecutionEnabled(): boolean {
+    return getConfig().gitWorktreeExecutionEnabled === true;
 }
 
 /** Returns true when the Effort Tiers selector is enabled (replaces model picker + effort pill). */

@@ -105,6 +105,7 @@ import { registerRalphNewLoopRoutes } from './ralph-new-loop-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
 import { registerRalphResumeRoutes } from './ralph-resume-routes';
+import { registerWorktreeRoutes } from './worktree-routes';
 import { registerForEachRoutes } from './for-each-routes';
 import { FileForEachRunStore } from '../for-each/for-each-run-store';
 import { createForEachPlanGenerator } from '../for-each/for-each-plan-generator';
@@ -742,14 +743,25 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         executeFollowUp: (processId, message) => bridge.executeFollowUp(processId, message),
     });
 
+    // Opt-in Git worktree execution feature flag getter (live when a runtime
+    // config service is available, else from the resolved config snapshot).
+    // Shared by Work Item execution and the Ralph launch/start routes.
+    const getGitWorktreeExecutionEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.features?.gitWorktreeExecution ?? false
+        : () => opts.resolvedConfig?.features?.gitWorktreeExecution ?? false;
+
     // Ralph routes
-    registerRalphRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+    registerRalphRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir, getGitWorktreeExecutionEnabled });
     registerRalphSessionRoutes(routes, { dataDir, store, bridge: bridgeWithResolvedDefaults });
     registerRalphContinueRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphNewLoopRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphPromoteRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
-    registerRalphLaunchRoutes(routes, { bridge: bridgeWithResolvedDefaults, dataDir });
+    registerRalphLaunchRoutes(routes, { bridge: bridgeWithResolvedDefaults, dataDir, store, getGitWorktreeExecutionEnabled });
     registerRalphResumeRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+
+    // Git worktree management routes (AC-06 cleanup): list + non-destructive
+    // cleanup of CoC-created worktrees, scoped per workspace.
+    registerWorktreeRoutes(routes, { store, dataDir, getGitWorktreeExecutionEnabled });
 
     // For Each routes: dedicated reviewed item-plan mode. Routes are registered
     // with a live feature guard so admin toggles take effect without restart.
@@ -1026,6 +1038,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getWorkItemsWorkflowEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.workflow?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.workflow?.enabled ?? false;
+    // getGitWorktreeExecutionEnabled is defined earlier (near the Ralph routes)
+    // and shared with the Ralph launch/start routes.
     // AI-draft route must be registered before generic /:workItemId routes to prevent "ai-draft" from matching as an ID
     const workItemAiGenerators = createWorkItemAiGenerators({ aiService: resolvedAiService });
     registerWorkItemAiRoutes({
@@ -1072,7 +1086,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
     });
     registerWorkItemPlanRoutes({ routes, workItemStore, processStore: store, getWsServer, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
-    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir, getWorkflowEnabled: getWorkItemsWorkflowEnabled });
+    registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir, getWorkflowEnabled: getWorkItemsWorkflowEnabled, getGitWorktreeExecutionEnabled });
     registerWorkItemChangesRoutes({ routes, workItemStore, processStore: store, getWsServer });
 
     const activeWorkspaceBackgroundRefresher = new ActiveWorkspaceBackgroundRefresher({

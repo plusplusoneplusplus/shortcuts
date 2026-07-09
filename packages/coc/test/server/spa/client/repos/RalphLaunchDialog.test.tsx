@@ -17,6 +17,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getDefaultProvider: () => 'copilot',
     getConfiguredDefaultProvider: () => 'copilot',
     isAutoAgentProviderRoutingEnabled: () => false,
+    isGitWorktreeExecutionEnabled: () => mockWorktreeEnabled(),
 }));
 
 const {
@@ -25,6 +26,7 @@ const {
     mockAgentProviders,
     mockModalSelection,
     mockUseRepos,
+    mockWorktreeEnabled,
 } = vi.hoisted(() => ({
     mockGetRepoPreferences: vi.fn().mockResolvedValue({}),
     mockPatchRepoPreferences: vi.fn().mockResolvedValue({}),
@@ -35,6 +37,7 @@ const {
     ],
     mockModalSelection: vi.fn(() => ({ resolved: { provider: 'copilot' } })),
     mockUseRepos: vi.fn(),
+    mockWorktreeEnabled: vi.fn(() => false),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -105,6 +108,8 @@ describe('RalphLaunchDialog', () => {
         mockPatchRepoPreferences.mockResolvedValue({});
         mockModalSelection.mockReset();
         mockModalSelection.mockReturnValue({ resolved: { provider: 'copilot' } });
+        mockWorktreeEnabled.mockReset();
+        mockWorktreeEnabled.mockReturnValue(false);
         mockUseRepos.mockReset();
         mockUseRepos.mockReturnValue({
             repos: [
@@ -470,5 +475,71 @@ describe('RalphLaunchDialog', () => {
         const optionValues = [...select.options].map(o => o.value);
         expect(optionValues).not.toContain('srv-offline:offline-ws');
         expect(optionValues).toContain('local:ws-123');
+    });
+
+    describe('worktree controls (AC-05)', () => {
+        function stubRuntimeAndLaunchFetch(processId: string) {
+            const mockFetch = vi.fn((url: string) => {
+                if (String(url).includes('/config/runtime')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ features: { gitWorktreeExecutionEnabled: true } }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ processId }) });
+            });
+            vi.stubGlobal('fetch', mockFetch);
+            return mockFetch;
+        }
+
+        it('hides the worktree control when the feature flag is off', async () => {
+            mockWorktreeEnabled.mockReturnValue(false);
+            render(<RalphLaunchDialog {...defaultProps} />);
+            await waitForRepoSelector();
+            expect(screen.queryByTestId('ralph-launch-worktree-controls')).toBeNull();
+        });
+
+        it('shows the worktree checkbox when the feature flag is on', async () => {
+            mockWorktreeEnabled.mockReturnValue(true);
+            stubRuntimeAndLaunchFetch('pid-wt');
+            render(<RalphLaunchDialog {...defaultProps} />);
+            await waitForRepoSelector();
+            expect(screen.getByTestId('ralph-launch-worktree-checkbox')).toBeDefined();
+        });
+
+        it('sends the worktree request with a trimmed base ref on launch', async () => {
+            mockWorktreeEnabled.mockReturnValue(true);
+            const mockFetch = stubRuntimeAndLaunchFetch('pid-wt');
+            render(<RalphLaunchDialog {...defaultProps} />);
+            await waitForRepoSelector();
+
+            fireEvent.click(screen.getByTestId('ralph-launch-worktree-checkbox'));
+            fireEvent.change(screen.getByTestId('ralph-launch-worktree-base-ref'), {
+                target: { value: '  release/1.2  ' },
+            });
+            fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
+
+            await waitFor(() => {
+                expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-wt', 'ws-123');
+            });
+            const launchCall = mockFetch.mock.calls.find(c => String(c[0]).endsWith('/ralph-launch'))!;
+            const body = JSON.parse(launchCall[1].body);
+            expect(body.worktree).toEqual({ enabled: true, baseRef: 'release/1.2' });
+        });
+
+        it('omits the worktree request when the option is left unchecked', async () => {
+            mockWorktreeEnabled.mockReturnValue(true);
+            const mockFetch = stubRuntimeAndLaunchFetch('pid-plain');
+            render(<RalphLaunchDialog {...defaultProps} />);
+            await waitForRepoSelector();
+            fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
+
+            await waitFor(() => {
+                expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-plain', 'ws-123');
+            });
+            const launchCall = mockFetch.mock.calls.find(c => String(c[0]).endsWith('/ralph-launch'))!;
+            const body = JSON.parse(launchCall[1].body);
+            expect(body.worktree).toBeUndefined();
+        });
     });
 });

@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const { mockModalSelection } = vi.hoisted(() => ({
@@ -127,6 +127,122 @@ describe('RalphWorkflowPane', () => {
         render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-not-found" view={null} />);
         expect(screen.getByTestId('ralph-workflow-pane-empty')).toBeInTheDocument();
         expect(screen.getByText(/sess-not-found/)).toBeInTheDocument();
+    });
+
+    it('renders a worktree chip when the session was launched into an isolated worktree (AC-05)', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                worktree: {
+                    id: 'sess-1',
+                    workspaceId: 'ws-1',
+                    path: '/root/.coc/repos/ws-1/git-worktrees/sess-1',
+                    branch: 'coc/build-dashboard-ab12cd34',
+                    baseSha: 'deadbeefcafebabe0123456789abcdef01234567',
+                    createdAt: new Date().toISOString(),
+                    sourceDirty: false,
+                    status: 'active',
+                },
+            }),
+            sections: [],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.getByTestId('ralph-workflow-worktree-chip')).toBeInTheDocument();
+        expect(screen.getByTestId('ralph-workflow-worktree-chip-branch').textContent)
+            .toBe('coc/build-dashboard-ab12cd34');
+    });
+
+    it('omits the worktree chip for a non-worktree session', () => {
+        const view: RalphSessionView = { record: makeRecord(), sections: [] };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-workflow-worktree-chip')).toBeNull();
+    });
+
+    describe('worktree cleanup (AC-06)', () => {
+        function worktreeView(recordOverrides: Partial<RalphSessionRecord>, hasInFlightTask?: boolean): RalphSessionView {
+            return {
+                record: makeRecord({
+                    worktree: {
+                        id: 'sess-1',
+                        workspaceId: 'ws-1',
+                        path: '/root/.coc/repos/ws-1/git-worktrees/sess-1',
+                        branch: 'coc/build-dashboard-ab12cd34',
+                        baseSha: 'deadbeefcafebabe0123456789abcdef01234567',
+                        createdAt: new Date().toISOString(),
+                        sourceDirty: false,
+                        status: 'active',
+                    },
+                    ...recordOverrides,
+                }),
+                sections: [],
+                hasInFlightTask,
+            };
+        }
+
+        it('cleans up from the chip on a completed session and flips the chip to cleaned', async () => {
+            const onCleanupWorktree = vi.fn().mockResolvedValue({
+                worktree: {
+                    id: 'sess-1', workspaceId: 'ws-1', path: '/root/.coc/repos/ws-1/git-worktrees/sess-1',
+                    branch: 'coc/build-dashboard-ab12cd34', baseSha: 'deadbeefcafebabe0123456789abcdef01234567',
+                    createdAt: new Date().toISOString(), sourceDirty: false, status: 'cleaned',
+                    cleanedAt: new Date().toISOString(),
+                },
+                alreadyCleaned: false,
+            });
+            vi.spyOn(window, 'confirm').mockReturnValue(true);
+            const view = worktreeView({ phase: 'complete', terminalReason: 'RALPH_COMPLETE' }, false);
+            render(
+                <RalphWorkflowPane
+                    workspaceId="ws-1"
+                    sessionId="sess-1"
+                    view={view}
+                    onCleanupWorktree={onCleanupWorktree}
+                />,
+            );
+            const btn = screen.getByTestId('ralph-workflow-worktree-chip-cleanup') as HTMLButtonElement;
+            expect(btn.disabled).toBe(false);
+            fireEvent.click(btn);
+            await waitFor(() => expect(onCleanupWorktree).toHaveBeenCalledWith('sess-1'));
+            await waitFor(() =>
+                expect(screen.getByTestId('ralph-workflow-worktree-chip-status').textContent).toBe('cleaned'),
+            );
+        });
+
+        it('disables cleanup while the session is still running', () => {
+            const onCleanupWorktree = vi.fn();
+            const view = worktreeView({ phase: 'executing' }, true);
+            render(
+                <RalphWorkflowPane
+                    workspaceId="ws-1"
+                    sessionId="sess-1"
+                    view={view}
+                    onCleanupWorktree={onCleanupWorktree}
+                />,
+            );
+            const btn = screen.getByTestId('ralph-workflow-worktree-chip-cleanup') as HTMLButtonElement;
+            expect(btn.disabled).toBe(true);
+        });
+
+        it('surfaces a refused-cleanup error and leaves the chip active', async () => {
+            const onCleanupWorktree = vi.fn().mockRejectedValue(
+                new Error("fatal: contains modified or untracked files, use --force to delete it"),
+            );
+            vi.spyOn(window, 'confirm').mockReturnValue(true);
+            const view = worktreeView({ phase: 'complete', terminalReason: 'RALPH_COMPLETE' }, false);
+            render(
+                <RalphWorkflowPane
+                    workspaceId="ws-1"
+                    sessionId="sess-1"
+                    view={view}
+                    onCleanupWorktree={onCleanupWorktree}
+                />,
+            );
+            fireEvent.click(screen.getByTestId('ralph-workflow-worktree-chip-cleanup'));
+            await waitFor(() =>
+                expect(screen.getByTestId('ralph-workflow-worktree-chip-cleanup-error').textContent)
+                    .toContain('untracked files'),
+            );
+            expect(screen.getByTestId('ralph-workflow-worktree-chip-status').textContent).toBe('active');
+        });
     });
 
     it('renders a live (executing) session header and one node per iteration', () => {

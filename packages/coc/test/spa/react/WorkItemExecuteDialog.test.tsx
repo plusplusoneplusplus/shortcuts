@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { WorkItemExecuteDialog } from '../../../src/server/spa/client/react/features/work-items/WorkItemExecuteDialog';
 
@@ -113,5 +113,65 @@ describe('WorkItemExecuteDialog', () => {
         expect(mocks.trackUsage).toHaveBeenCalledWith('impl');
         expect(onExecuted).toHaveBeenCalled();
         expect(onClose).toHaveBeenCalled();
+    });
+
+    describe('worktree controls (AC-05)', () => {
+        beforeEach(() => {
+            (window as unknown as { __DASHBOARD_CONFIG__?: unknown }).__DASHBOARD_CONFIG__ = {
+                apiBasePath: '/api',
+                wsPath: '/ws',
+                gitWorktreeExecutionEnabled: true,
+            };
+            // Capability probe hits the clone server's /config/runtime.
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve({ features: { gitWorktreeExecutionEnabled: true } }),
+            }));
+        });
+
+        afterEach(() => {
+            delete (window as unknown as { __DASHBOARD_CONFIG__?: unknown }).__DASHBOARD_CONFIG__;
+            vi.unstubAllGlobals();
+        });
+
+        it('is hidden when the feature flag is off', async () => {
+            (window as unknown as { __DASHBOARD_CONFIG__?: unknown }).__DASHBOARD_CONFIG__ = {
+                apiBasePath: '/api',
+                wsPath: '/ws',
+                gitWorktreeExecutionEnabled: false,
+            };
+            await act(async () => {
+                render(
+                    <WorkItemExecuteDialog open workspaceId="ws-1" workItemId="wi-1" workItemTitle="Implement auth" onClose={vi.fn()} onExecuted={vi.fn()} />,
+                );
+            });
+            expect(screen.queryByTestId('wi-exec-worktree-controls')).toBeNull();
+        });
+
+        it('sends the worktree request with the execute payload when opted in', async () => {
+            await act(async () => {
+                render(
+                    <WorkItemExecuteDialog open workspaceId="ws-1" workItemId="wi-1" workItemTitle="Implement auth" onClose={vi.fn()} onExecuted={vi.fn()} />,
+                );
+            });
+
+            await waitFor(() => expect(screen.getByText('impl')).toBeDefined());
+            fireEvent.click(screen.getByText('impl'));
+            fireEvent.click(screen.getByTestId('wi-exec-worktree-checkbox'));
+            fireEvent.change(screen.getByTestId('wi-exec-worktree-base-ref'), {
+                target: { value: ' main ' },
+            });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('wi-execute-submit'));
+            });
+
+            expect(mocks.execute).toHaveBeenCalledWith(
+                'local_ws-1',
+                'wi-1',
+                expect.objectContaining({ worktree: { enabled: true, baseRef: 'main' } }),
+                { workspaceId: 'ws-1' },
+            );
+        });
     });
 });

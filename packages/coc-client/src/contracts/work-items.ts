@@ -1,5 +1,6 @@
 import type { ChatProvider, JsonObject, ReasoningEffort } from './common';
 import type { EffortTierKey } from './queue';
+import type { WorktreeExecutionRequest, WorktreeMetadata } from './worktree';
 
 export type KnownWorkItemStatus =
   | 'created'
@@ -445,11 +446,21 @@ export interface ExecuteWorkItemRequest extends JsonObject {
   executionMode?: 'one-shot' | 'ralph';
   mode?: string;
   skillNames?: string[];
+  /**
+   * Opt-in Git worktree execution. When present, the target server runs the
+   * implementation inside an isolated worktree instead of the workspace's
+   * current checkout. Omitting it preserves existing behavior.
+   */
+  worktree?: WorktreeExecutionRequest;
 }
 
 export interface ExecuteWorkItemResponse {
   taskId: string;
   ralphSessionId?: string;
+  /** Metadata for the created worktree, when worktree execution was requested. */
+  worktree?: WorktreeMetadata;
+  /** Warning surfaced when the source checkout had uncommitted changes. */
+  worktreeWarning?: string;
 }
 
 export interface RequestWorkItemChangesRequest extends JsonObject {

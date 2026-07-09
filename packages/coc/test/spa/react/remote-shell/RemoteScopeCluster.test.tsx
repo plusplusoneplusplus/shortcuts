@@ -10,7 +10,7 @@ const mockSelectClone = vi.fn();
 const mockSwitchSubTab = vi.fn();
 const mockWorkItemDispatch = vi.fn();
 const mockPatchGlobal = vi.fn().mockResolvedValue({});
-let mockAppState: any = { selectedRepoId: 'a', activeRepoSubTab: 'chats' };
+let mockAppState: any = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab: 'chats' };
 let mockQueueState: any = { repoQueueMap: {} };
 let mockWorkItemState: any = { unseenByRepo: {} };
 let mockRepos: any[] = [];
@@ -76,7 +76,7 @@ beforeEach(() => {
     mockSwitchSubTab.mockReset();
     mockWorkItemDispatch.mockReset();
     mockPatchGlobal.mockClear();
-    mockAppState = { selectedRepoId: 'a', activeRepoSubTab: 'chats' };
+    mockAppState = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab: 'chats' };
     mockQueueState = { repoQueueMap: {} };
     mockWorkItemState = { unseenByRepo: {} };
     mockRepos = [repo('a', 'shortcuts', SHORTCUTS), repo('b', 'shortcuts-2', SHORTCUTS), repo('c', 'forge', FORGE)];
@@ -168,5 +168,23 @@ describe('RemoteScopeCluster', () => {
 
         expect(mockWorkItemDispatch).toHaveBeenCalledWith({ type: 'MARK_WORK_ITEMS_SEEN', repoId: 'gh_acme_shortcuts' });
         expect(mockSwitchSubTab).toHaveBeenCalledWith('work-items');
+    });
+
+    it('highlights the active remote sub-tab on the repos tab', () => {
+        mockAppState = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab: 'work-items' };
+        render(<RemoteScopeCluster repo={mockRepos[0]} repos={mockRepos} />);
+
+        const workItems = screen.getAllByTestId('remote-scope-tab').find(el => el.getAttribute('data-subtab') === 'work-items')!;
+        expect(workItems.getAttribute('data-active')).toBe('true');
+    });
+
+    it('does not highlight WI/PR off the repos tab (e.g. Admin)', () => {
+        // The header still renders on the top-level pages, but no workspace sub-tab
+        // is being viewed there — so WI/PR must not show as active.
+        mockAppState = { selectedRepoId: 'a', activeTab: 'admin', activeRepoSubTab: 'work-items' };
+        render(<RemoteScopeCluster repo={mockRepos[0]} repos={mockRepos} />);
+
+        const active = screen.getAllByTestId('remote-scope-tab').filter(el => el.getAttribute('data-active') === 'true');
+        expect(active).toHaveLength(0);
     });
 });

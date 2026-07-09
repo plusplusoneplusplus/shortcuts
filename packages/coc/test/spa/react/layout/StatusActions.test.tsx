@@ -67,6 +67,18 @@ describe('StatusActions — topbar variant', () => {
         expect(screen.getByTestId('ws-status-label').textContent).toBe('Disconnected');
         expect(screen.getByTestId('ws-status-indicator').getAttribute('data-ws-status')).toBe('closed');
     });
+
+    it('exposes the backend endpoint and port in the connection tooltip', () => {
+        render(<StatusActions variant="topbar" />);
+        const title = screen.getByTestId('ws-status-indicator').getAttribute('title') ?? '';
+        // Status label headlines the tooltip, followed by the reachable endpoints.
+        expect(title.startsWith('Connected')).toBe(true);
+        expect(title).toContain(location.host); // host:port the browser dialed
+        expect(title).toContain(`API ${location.origin}/api`);
+        expect(title).toContain(`WS ws://${location.host}/ws`);
+        // The mobile bare-dot indicator carries the same detail.
+        expect(screen.getByTestId('ws-status-indicator-mobile').getAttribute('title')).toBe(title);
+    });
 });
 
 describe('StatusActions — sidebar variant', () => {
@@ -118,6 +130,15 @@ describe('StatusActions — sidebar variant', () => {
         mockActiveTab = 'logs';
         render(<StatusActions variant="sidebar" />);
         expect(screen.getByTestId('sidebar-admin-toggle').className).toContain('bg-[#0078d4]');
+    });
+
+    it('exposes the backend endpoint and port in the docked connection tooltip', () => {
+        render(<StatusActions variant="sidebar" />);
+        const title = screen.getByTestId('sidebar-ws-status-indicator').getAttribute('title') ?? '';
+        expect(title.startsWith('Connected')).toBe(true);
+        expect(title).toContain(location.host);
+        expect(title).toContain(`API ${location.origin}/api`);
+        expect(title).toContain(`WS ws://${location.host}/ws`);
     });
 
     it('uses the shell chrome background set off by a top border (no colored tint)', () => {

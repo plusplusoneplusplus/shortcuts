@@ -2081,12 +2081,24 @@ describe('TasksPanel — keyboard shortcuts', () => {
         vi.restoreAllMocks();
     });
 
+    // The scoped find/Escape handlers only fire while the panel container is
+    // visible. jsdom reports offsetParent === null for everything, so force a
+    // truthy offsetParent on the panel container (tagged with data-find-scope
+    // by useScopedFindShortcut) to emulate a visible panel.
+    function markPanelVisible() {
+        const container = document.querySelector('[data-find-scope]') as HTMLElement | null;
+        if (container) {
+            Object.defineProperty(container, 'offsetParent', { get: () => document.body, configurable: true });
+        }
+    }
+
     it('Ctrl+F focuses the search input', async () => {
         setupFetch();
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
             expect(screen.getByTestId('task-tree')).toBeTruthy();
         });
+        markPanelVisible();
         const input = screen.getByTestId('task-search-input') as HTMLInputElement;
         expect(document.activeElement).not.toBe(input);
         fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
@@ -2099,6 +2111,7 @@ describe('TasksPanel — keyboard shortcuts', () => {
         await waitFor(() => {
             expect(screen.getByTestId('task-tree')).toBeTruthy();
         });
+        markPanelVisible();
         const input = screen.getByTestId('task-search-input') as HTMLInputElement;
         fireEvent.keyDown(document, { key: 'f', metaKey: true });
         expect(document.activeElement).toBe(input);
@@ -2110,6 +2123,7 @@ describe('TasksPanel — keyboard shortcuts', () => {
         await waitFor(() => {
             expect(screen.getByTestId('task-tree')).toBeTruthy();
         });
+        markPanelVisible();
         const input = screen.getByTestId('task-search-input') as HTMLInputElement;
         fireEvent.change(input, { target: { value: 'task1' } });
         await waitFor(() => {
@@ -2130,6 +2144,7 @@ describe('TasksPanel — keyboard shortcuts', () => {
         await waitFor(() => {
             expect(screen.getByTestId('task-tree')).toBeTruthy();
         });
+        markPanelVisible();
         const input = screen.getByTestId('task-search-input') as HTMLInputElement;
         expect(input.value).toBe('');
         // Fire Escape — should not throw or change state

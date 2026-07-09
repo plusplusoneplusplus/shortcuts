@@ -12,6 +12,7 @@ import { formatRelativeTime } from '../../utils/format';
 import { MarkdownView } from '../../shared/MarkdownView';
 import { renderMarkdownToHtml } from '../../../diff/markdown-renderer';
 import type {
+    CleanupWorktreeResponse,
     ParsedProgressSection,
     RalphContinueRequest,
     RalphFinalCheckRecord,
@@ -21,10 +22,13 @@ import type {
     RalphSessionFile,
     RalphSessionRecord,
     RalphTerminalReason,
+    WorktreeMetadata,
 } from '@plusplusoneplusplus/coc-client';
 import { RalphWorkflowNode } from './RalphWorkflowNode';
 import { RalphFinalCheckNode } from './RalphFinalCheckNode';
+import { WorktreeChip } from '../../shared/WorktreeChip';
 import { useCocClient } from '../../repos/cloneRouting';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { RALPH_MULTI_LOOP } from '../../featureFlags';
 import { ModalJobAiControls, type ResolvedModalJobAiSelection, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
 
@@ -68,6 +72,11 @@ export interface RalphWorkflowPaneProps {
     selectedFileName?: string;
     /** Called when the user selects a session file. Router wiring is owned by the deep-link slice. */
     onSelectFile?: (fileName: string) => void;
+    /**
+     * Override the worktree cleanup handler (used by tests). When omitted, the
+     * pane calls `git.cleanupWorktree` on the selected clone's server directly.
+     */
+    onCleanupWorktree?: (worktreeId: string) => Promise<CleanupWorktreeResponse>;
 }
 
 const PHASE_BADGE: Record<RalphSessionRecord['phase'], { label: string; cls: string }> = {
@@ -285,6 +294,7 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         onResume,
         selectedFileName,
         onSelectFile,
+        onCleanupWorktree,
     } = props;
 
     // AC-07: Ralph continue/new-loop/resume target the selected clone's server.
@@ -292,6 +302,13 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
 
     const [continueState, setContinueState] = useState<'idle' | 'confirm' | 'submitting'>('idle');
     const [continueError, setContinueError] = useState<string | null>(null);
+
+    // AC-06: worktree cleanup from the run-visibility chip. `worktreeCleaned`
+    // holds the updated record after a successful cleanup so the chip flips to
+    // `cleaned` without a refetch.
+    const [worktreeCleaned, setWorktreeCleaned] = useState<WorktreeMetadata | null>(null);
+    const [cleaningWorktree, setCleaningWorktree] = useState(false);
+    const [worktreeCleanupError, setWorktreeCleanupError] = useState<string | null>(null);
 
     const [newLoopState, setNewLoopState] = useState<'idle' | 'confirm' | 'submitting'>('idle');
     const [newLoopGoal, setNewLoopGoal] = useState('');
@@ -564,6 +581,44 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                             </button>
                         )}
                     </div>
+                    {record.worktree && (() => {
+                        const worktree = worktreeCleaned ?? record.worktree;
+                        // Mirror the server's cleanup guard: a session is still
+                        // "running" (so cleanup is refused) while it has an
+                        // in-flight task or has not reached a terminal state.
+                        const worktreeRunning =
+                            view.hasInFlightTask === true ||
+                            (record.phase !== 'complete' && !record.terminalReason);
+                        const handleCleanupWorktree = async () => {
+                            setCleaningWorktree(true);
+                            setWorktreeCleanupError(null);
+                            try {
+                                const res = onCleanupWorktree
+                                    ? await onCleanupWorktree(worktree.id)
+                                    : await cloneClient.git.cleanupWorktree(workspaceId, worktree.id);
+                                setWorktreeCleaned(res.worktree);
+                            } catch (err) {
+                                setWorktreeCleanupError(
+                                    getSpaCocClientErrorMessage(err, 'Failed to clean up worktree'),
+                                );
+                            } finally {
+                                setCleaningWorktree(false);
+                            }
+                        };
+                        return (
+                            <div className="mt-1.5">
+                                <WorktreeChip
+                                    worktree={worktree}
+                                    testId="ralph-workflow-worktree-chip"
+                                    onCleanup={handleCleanupWorktree}
+                                    canCleanup={!worktreeRunning}
+                                    cleanupDisabledReason="This Ralph session is still running."
+                                    cleaningUp={cleaningWorktree}
+                                    cleanupError={worktreeCleanupError ?? undefined}
+                                />
+                            </div>
+                        );
+                    })()}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                     {/* Cancel is a stub for now — wired in a later commit. */}

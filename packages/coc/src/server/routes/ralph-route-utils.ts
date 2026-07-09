@@ -149,10 +149,17 @@ export async function recoverIterationPaths(
     store: ProcessStore,
     workspaceId: string | undefined,
 ): Promise<RecoveredIterationPaths> {
+    // When the session was launched with an isolated worktree that still exists,
+    // its checkout is the authoritative working directory for resume/continue/
+    // new-loop — never fall back to the source workspace path for such sessions.
+    const activeWorktreePath = record.worktree && record.worktree.status === 'active'
+        ? record.worktree.path
+        : undefined;
+
     const lastIter = [...record.iterations].sort((a, b) => b.iteration - a.iteration)[0];
     if (!lastIter?.processId) {
         return {
-            workingDirectory: undefined,
+            workingDirectory: activeWorktreePath,
             folderPath: undefined,
             provider: undefined,
             model: undefined,
@@ -168,7 +175,8 @@ export async function recoverIterationPaths(
         const payloadWorkingDirectory = asString(payload?.workingDirectory);
         const payloadFolderPath = asString(payload?.folderPath);
         return {
-            workingDirectory: payloadWorkingDirectory
+            workingDirectory: activeWorktreePath
+                ?? payloadWorkingDirectory
                 ?? payloadFolderPath
                 ?? procWithPayload?.workingDirectory,
             folderPath: payloadFolderPath,
@@ -178,7 +186,7 @@ export async function recoverIterationPaths(
         };
     } catch {
         return {
-            workingDirectory: undefined,
+            workingDirectory: activeWorktreePath,
             folderPath: undefined,
             provider: undefined,
             model: undefined,

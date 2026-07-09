@@ -93,7 +93,11 @@ export function TreeNode({
                 className={cn(
                     'flex items-center gap-1.5 px-3 py-2 lg:py-1 cursor-pointer text-sm lg:text-xs transition-colors',
                     'hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
-                    selectedPath === entry.path && 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10 text-[#0078d4] dark:text-[#3794ff]',
+                    // Explicit foreground so rows don't inherit the near-black app default,
+                    // which is invisible on the dark sidebar. Selected rows use the accent color.
+                    selectedPath === entry.path
+                        ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10 text-[#0078d4] dark:text-[#3794ff]'
+                        : 'text-[#1e1e1e] dark:text-[#cccccc]',
                     isFocused && 'ring-1 ring-[#0078d4]/50 dark:ring-[#3794ff]/50',
                 )}
                 style={{ paddingLeft: `${12 + depth * 16}px` }}

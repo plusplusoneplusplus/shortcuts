@@ -4,6 +4,10 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import * as http from 'http';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as pathMod from 'path';
+import { execFileSync } from 'child_process';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerRalphRoutes } from '../../../src/server/routes/queue-ralph-routes';
 import type { Route } from '../../../src/server/types';
@@ -252,6 +256,92 @@ describe('POST /api/processes/:id/ralph-start', () => {
         expect(mockEnqueue).not.toHaveBeenCalled();
     });
 
+    it('returns 400 for a malformed worktree request (AC-01)', async () => {
+        await store.addProcess({
+            id: 'queue_grilling-worktree',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                context: { ralph: { phase: 'grilling', sessionId: 's-worktree' } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-worktree/ralph-start', {
+            goalSpec: '## Goal\nDo something',
+            worktree: { enabled: true, baseRef: 'a b' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/baseRef/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for an enabled worktree request when the feature flag is off (AC-04)', async () => {
+        // This suite registers the route without a getGitWorktreeExecutionEnabled
+        // getter, so the flag is off: an enabled request is refused.
+        await store.addProcess({
+            id: 'queue_grilling-worktree-off',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                workspaceId: 'ws-wt',
+                workingDirectory: '/repos/myrepo',
+                context: { ralph: { phase: 'grilling', sessionId: 's-worktree-off', maxIterations: 6 } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-worktree-off/ralph-start', {
+            goalSpec: '## Goal\nDo something',
+            workspaceId: 'ws-wt',
+            worktree: { enabled: true, baseRef: 'main' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/not enabled/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('ignores an opted-out worktree request even when the flag is off (AC-04)', async () => {
+        await store.addProcess({
+            id: 'queue_grilling-worktree-optout',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                workspaceId: 'ws-wt',
+                workingDirectory: '/repos/myrepo',
+                context: { ralph: { phase: 'grilling', sessionId: 's-worktree-optout', maxIterations: 6 } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-worktree-optout/ralph-start', {
+            goalSpec: '## Goal\nDo something',
+            workspaceId: 'ws-wt',
+            worktree: { enabled: false },
+        });
+
+        expect(res.status).toBe(200);
+        expect(mockEnqueue).toHaveBeenCalledOnce();
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.context.ralph.sessionId).toBe('s-worktree-optout');
+        expect(enqueueArg.payload.context.ralph.currentIteration).toBe(1);
+        expect(res.json().worktree).toBeUndefined();
+    });
+
     it('initialises the per-session journal directory and session.json', async () => {
         await store.addProcess({
             id: 'queue_grilling-init',
@@ -485,5 +575,142 @@ describe('POST /api/processes/:id/ralph-start', () => {
         expect(res.status).toBe(200);
         const enqueueArg = mockEnqueue.mock.calls.at(-1)![0];
         expect(enqueueArg.payload.context.ralph.maxIterations).toBe(20);
+    });
+});
+
+// ============================================================================
+// AC-04: worktree execution wiring with the feature flag enabled
+// ============================================================================
+
+describe('POST /api/processes/:id/ralph-start with Git worktree (AC-04)', () => {
+    const REPO_ID = 'ws-wt';
+    let server: http.Server;
+    let baseUrl: string;
+    let store: MockProcessStore;
+    let mockEnqueue: ReturnType<typeof vi.fn>;
+    let dataDir: string;
+    let sourceRepo: string;
+
+    function git(dir: string, ...args: string[]): string {
+        return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf-8' }).replace(/\r?\n$/, '');
+    }
+
+    beforeAll(async () => {
+        store = createMockProcessStore();
+        mockEnqueue = vi.fn().mockResolvedValue('new-task-id');
+        dataDir = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'ralph-start-wt-data-'));
+        sourceRepo = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'ralph-start-wt-src-'));
+        git(sourceRepo, 'init', '-q');
+        git(sourceRepo, 'config', 'user.email', 'test@test.com');
+        git(sourceRepo, 'config', 'user.name', 'Test');
+        git(sourceRepo, 'config', 'commit.gpgsign', 'false');
+        fs.writeFileSync(pathMod.join(sourceRepo, 'README.md'), 'hello\n', 'utf-8');
+        git(sourceRepo, 'add', '-A');
+        git(sourceRepo, 'commit', '-q', '-m', 'init');
+        await store.registerWorkspace({ id: REPO_ID, rootPath: sourceRepo } as any);
+
+        const routes: Route[] = [];
+        registerRalphRoutes(routes, {
+            bridge: { enqueue: mockEnqueue } as any,
+            store,
+            dataDir,
+            getGitWorktreeExecutionEnabled: () => true,
+        });
+        const router = createRouter({ routes, spaHtml: '' });
+        server = http.createServer(router);
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+        const addr = server.address() as { port: number };
+        baseUrl = `http://127.0.0.1:${addr.port}`;
+    });
+
+    afterAll(async () => {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        try { git(sourceRepo, 'worktree', 'prune'); } catch { /* ignore */ }
+        try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* ignore */ }
+        try { fs.rmSync(sourceRepo, { recursive: true, force: true }); } catch { /* ignore */ }
+    });
+
+    beforeEach(() => {
+        store.processes.clear();
+        mockEnqueue.mockClear();
+    });
+
+    async function addGrilling(id: string, sessionId: string): Promise<void> {
+        await store.addProcess({
+            id,
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                workspaceId: REPO_ID,
+                workingDirectory: sourceRepo,
+                context: { ralph: { phase: 'grilling', sessionId, maxIterations: 6 } },
+            },
+        } as any);
+    }
+
+    it('creates the worktree keyed by the session id and runs iteration 1 in it', async () => {
+        await addGrilling('queue_grilling-wt-1', 's-wt-run');
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-wt-1/ralph-start', {
+            goalSpec: '## Goal\nDo something',
+            workspaceId: REPO_ID,
+            worktree: { enabled: true },
+        });
+
+        expect(res.status).toBe(200);
+        const data = res.json();
+        expect(data.worktree).toBeDefined();
+        const worktreePath = data.worktree.path;
+        expect(worktreePath).toContain('git-worktrees');
+        expect(fs.existsSync(worktreePath)).toBe(true);
+        expect(data.worktree.id).toBe('s-wt-run');
+        expect(data.worktree.ralphSessionId).toBe('s-wt-run');
+
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.workingDirectory).toBe(worktreePath);
+        expect(enqueueArg.payload.context.ralph.sessionId).toBe('s-wt-run');
+
+        // Source checkout HEAD is not moved onto the worktree branch.
+        expect(git(sourceRepo, 'rev-parse', '--abbrev-ref', 'HEAD')).not.toBe(data.worktree.branch);
+
+        // Worktree metadata persisted on the session record for recovery.
+        const recordRaw = fs.readFileSync(
+            pathMod.join(dataDir, 'repos', REPO_ID, 'ralph-sessions', 's-wt-run', 'session.json'),
+            'utf-8',
+        );
+        expect(JSON.parse(recordRaw).worktree.path).toBe(worktreePath);
+    });
+
+    it('returns 400 and does not enqueue when the base ref does not resolve', async () => {
+        await addGrilling('queue_grilling-wt-badref', 's-wt-badref');
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-wt-badref/ralph-start', {
+            goalSpec: '## Goal\nDo something',
+            workspaceId: REPO_ID,
+            worktree: { enabled: true, baseRef: 'no-such-ref' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/does not resolve/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('runs a normal in-place start when no worktree is requested', async () => {
+        await addGrilling('queue_grilling-wt-none', 's-wt-none');
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-wt-none/ralph-start', {
+            goalSpec: '## Goal\nDo something',
+            workspaceId: REPO_ID,
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.json().worktree).toBeUndefined();
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.workingDirectory).toBe(sourceRepo);
     });
 });

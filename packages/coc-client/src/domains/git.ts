@@ -28,6 +28,8 @@ import type {
   GitOperationResult,
   GitRepoState,
   GitWorkingTreeChangesResponse,
+  ListWorktreesResponse,
+  CleanupWorktreeResponse,
 } from '../contracts';
 import type { CocRequestOptions, QueryPrimitive, RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
@@ -402,6 +404,29 @@ export class GitClient {
 
   getWorkingTreeChanges(workspaceId: string): Promise<GitWorkingTreeChangesResponse> {
     return this.transport.request<GitWorkingTreeChangesResponse>(workspaceGitPath(workspaceId, '/changes'));
+  }
+
+  /**
+   * List the CoC-created Git worktree records for a workspace, newest first.
+   * Strictly workspace-scoped (never mixes records across workspaces/targets);
+   * returns an empty list when the feature flag is off on the target server.
+   * Routed under `/workspaces/:id/worktrees` (not `/git/`).
+   */
+  listWorktrees(workspaceId: string): Promise<ListWorktreesResponse> {
+    return this.transport.request<ListWorktreesResponse>(workspacePath(workspaceId, '/worktrees'));
+  }
+
+  /**
+   * Remove a CoC-created worktree checkout (`git worktree remove`, never
+   * `--force`) and mark the record `cleaned`. The generated branch is
+   * preserved. Rejects (409) while a linked task/session is still running or
+   * when Git refuses removal (e.g. a dirty worktree) — the record stays intact.
+   */
+  cleanupWorktree(workspaceId: string, worktreeId: string): Promise<CleanupWorktreeResponse> {
+    return this.transport.request<CleanupWorktreeResponse>(
+      workspacePath(workspaceId, `/worktrees/${encodePathSegment(worktreeId)}/cleanup`),
+      { method: 'POST' },
+    );
   }
 
   stageFile(workspaceId: string, filePath: string): Promise<GitOperationResult> {

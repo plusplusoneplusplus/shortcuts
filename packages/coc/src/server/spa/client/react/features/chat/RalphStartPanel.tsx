@@ -30,6 +30,12 @@ import {
     RalphExecutionRepoSelector,
     useRalphExecutionRepoTargets,
 } from '../../shared/RalphExecutionRepoSelector';
+import {
+    WorktreeLaunchControls,
+    useWorktreeLaunchControls,
+    useWorktreeCapability,
+} from '../../shared/WorktreeLaunchControls';
+import { isGitWorktreeExecutionEnabled } from '../../utils/config';
 import { useRalphSessionView } from './useRalphSessionView';
 
 /**
@@ -122,6 +128,12 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
     const [starting, setStarting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [loadingFile, setLoadingFile] = useState(false);
+    const worktreeFeatureEnabled = isGitWorktreeExecutionEnabled();
+    const worktree = useWorktreeLaunchControls({ open });
+    const selectedTargetApiBase = repoSelection.selectedTarget
+        ? getRalphExecutionRepoApiBase(repoSelection.selectedTarget)
+        : undefined;
+    const worktreeSupported = useWorktreeCapability(selectedTargetApiBase, { enabled: worktreeFeatureEnabled });
 
     // Remote-safe client for the SOURCE chat's own server — where the launched
     // pointer is persisted (the same pattern as ImplementPlanCard).
@@ -189,6 +201,7 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
             if (resolvedAi.provider) body.provider = resolvedAi.provider;
             if (resolvedAi.autoProviderRouting) body.autoProviderRouting = true;
             if (Object.keys(config).length > 0) body.config = config;
+            if (worktree.request) body.worktree = worktree.request;
             const resp = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -350,6 +363,17 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
                     />
                 </div>
             </div>
+            <WorktreeLaunchControls
+                available={worktreeFeatureEnabled}
+                supported={worktreeSupported}
+                isGitRepo={repoSelection.selectedTarget?.isGitRepo}
+                enabled={worktree.enabled}
+                onEnabledChange={worktree.setEnabled}
+                baseRef={worktree.baseRef}
+                onBaseRefChange={worktree.setBaseRef}
+                disabled={starting || loadingFile}
+                testIdPrefix="ralph-start"
+            />
             <textarea
                 data-testid="ralph-goal-spec-input"
                 value={goalSpec}

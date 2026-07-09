@@ -18,6 +18,8 @@ export interface RalphExecutionRepoTarget {
     serverLabel: string;
     local: boolean;
     baseUrl?: string;
+    /** Whether the target workspace is a Git repository (gates worktree mode). */
+    isGitRepo?: boolean;
 }
 
 export interface RalphExecutionRepoTargetGroup {
@@ -181,7 +183,7 @@ function buildGroupsFromRepos(repos: RepoData[]): RalphExecutionRepoTargetGroup[
 
     const localTargets = repos
         .filter(r => !isRemoteWorkspace(r.workspace) && !r.workspace.virtual)
-        .map(r => workspaceToLocalTarget(r.workspace));
+        .map(r => workspaceToLocalTarget(r.workspace, resolveIsGitRepo(r)));
     if (localTargets.length > 0) {
         groups.push({ key: LOCAL_SERVER_ID, label: LOCAL_SERVER_LABEL, local: true, targets: localTargets });
     }
@@ -194,7 +196,7 @@ function buildGroupsFromRepos(repos: RepoData[]): RalphExecutionRepoTargetGroup[
         const { serverId, serverLabel, baseUrl } = ws.remote;
         if (!byServer.has(serverId)) byServer.set(serverId, { label: serverLabel, targets: [] });
         byServer.get(serverId)!.targets.push(
-            workspaceToRemoteTarget(ws, { id: serverId, label: serverLabel }, baseUrl),
+            workspaceToRemoteTarget(ws, { id: serverId, label: serverLabel }, baseUrl, resolveIsGitRepo(r)),
         );
     }
     for (const [key, g] of byServer) {
@@ -205,7 +207,14 @@ function buildGroupsFromRepos(repos: RepoData[]): RalphExecutionRepoTargetGroup[
     return groups;
 }
 
-function workspaceToLocalTarget(workspace: WorkspaceInfo): RalphExecutionRepoTarget {
+/** Resolve whether a repo row is a Git repository from git info or the workspace flag. */
+function resolveIsGitRepo(repo: RepoData): boolean | undefined {
+    if (typeof repo.gitInfo?.isGitRepo === 'boolean') return repo.gitInfo.isGitRepo;
+    const flag = (repo.workspace as { isGitRepo?: unknown }).isGitRepo;
+    return typeof flag === 'boolean' ? flag : undefined;
+}
+
+function workspaceToLocalTarget(workspace: WorkspaceInfo, isGitRepo?: boolean): RalphExecutionRepoTarget {
     return {
         key: getRalphExecutionRepoTargetKey(LOCAL_SERVER_ID, workspace.id),
         workspaceId: workspace.id,
@@ -214,6 +223,7 @@ function workspaceToLocalTarget(workspace: WorkspaceInfo): RalphExecutionRepoTar
         serverId: LOCAL_SERVER_ID,
         serverLabel: LOCAL_SERVER_LABEL,
         local: true,
+        isGitRepo,
     };
 }
 
@@ -221,6 +231,7 @@ function workspaceToRemoteTarget(
     workspace: WorkspaceInfo,
     server: { id: string; label?: string },
     baseUrl: string,
+    isGitRepo?: boolean,
 ): RalphExecutionRepoTarget {
     const serverLabel = server.label || server.id;
     return {
@@ -232,6 +243,7 @@ function workspaceToRemoteTarget(
         serverLabel,
         local: false,
         baseUrl,
+        isGitRepo,
     };
 }
 

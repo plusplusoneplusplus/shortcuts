@@ -38,6 +38,12 @@ export interface UseResizablePanelReturn {
     handleTouchStart: (e: React.TouchEvent) => void;
     /** Reset width to initial value. */
     resetWidth: () => void;
+    /**
+     * Apply a size in px without persisting to localStorage. Clamps to min/max.
+     * Intended for computed defaults (e.g. proportional layout on first mount)
+     * that should display immediately but not be treated as a user intent.
+     */
+    applySize: (px: number) => void;
 }
 
 function loadPersistedWidth(key: string | undefined, fallback: number): number {
@@ -73,6 +79,14 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
     const startCoordRef = useRef(0);
     const startWidthRef = useRef(0);
     const skipNextPersistRef = useRef(false);
+    // Set by applySize to tell the sync effect not to overwrite the computed
+    // default on the same render cycle.
+    const applySizeSkipSyncRef = useRef(false);
+    // Set by applySize; blocks all localStorage writes until the user starts a
+    // real drag. This prevents the persist effect from writing on the
+    // multiple effect runs that can fire between a useLayoutEffect-triggered
+    // state update and the first user interaction.
+    const persistingDisabledRef = useRef(false);
 
     // `top`/`bottom` panels resize along the Y axis; `left`/`right` along X.
     const isVertical = direction === 'top' || direction === 'bottom';
@@ -94,6 +108,13 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
 
     useEffect(() => {
         if (isDragging) return;
+        if (applySizeSkipSyncRef.current) {
+            applySizeSkipSyncRef.current = false;
+            return;
+        }
+        // Loading from storage (workspace switch or initial load) — allow
+        // normal persistence going forward (overrides any pending applySize).
+        persistingDisabledRef.current = false;
         skipNextPersistRef.current = true;
         const persisted = loadPersistedWidth(storageKey, initialWidth);
         setWidth(clampWidth(persisted, minWidth, maxWidth));
@@ -101,6 +122,9 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
 
     // Persist width when dragging ends
     useEffect(() => {
+        // While a computed default is active (set by applySize), never write to
+        // localStorage. The flag is cleared when the user starts a real drag.
+        if (persistingDisabledRef.current) return;
         if (skipNextPersistRef.current) {
             skipNextPersistRef.current = false;
             return;
@@ -159,6 +183,7 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
+        persistingDisabledRef.current = false; // User is dragging; allow persistence
         startCoordRef.current = isVertical ? e.clientY : e.clientX;
         startWidthRef.current = width;
         setIsDragging(true);
@@ -166,6 +191,7 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
 
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
         if (e.touches.length !== 1) return;
+        persistingDisabledRef.current = false; // User is dragging; allow persistence
         startCoordRef.current = isVertical ? e.touches[0].clientY : e.touches[0].clientX;
         startWidthRef.current = width;
         setIsDragging(true);
@@ -178,5 +204,11 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
         }
     }, [initialWidth, storageKey]);
 
-    return { width, isDragging, handleMouseDown, handleTouchStart, resetWidth };
+    const applySize = useCallback((px: number) => {
+        applySizeSkipSyncRef.current = true;
+        persistingDisabledRef.current = true;
+        setWidth(clampWidth(px, minWidth, maxWidth));
+    }, [minWidth, maxWidth]);
+
+    return { width, isDragging, handleMouseDown, handleTouchStart, resetWidth, applySize };
 }

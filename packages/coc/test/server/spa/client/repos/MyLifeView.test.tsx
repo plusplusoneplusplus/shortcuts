@@ -10,6 +10,8 @@ const mockDispatch = vi.fn();
 let mockActiveRepoSubTab = 'notes';
 let mockSelectedNotePath: string | null = null;
 let mockSchedulesInScheduledSlideEnabled = false;
+let mockRemoteShell = false;
+let mockIsMobile = false;
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
@@ -77,6 +79,20 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useSched
     useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled,
 }));
 
+// Remote-first shell gate — when on (desktop) the header lives in the TopBar so
+// the in-body header stands down. Defaults off so the in-body header renders.
+vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
+    useRemoteShellEnabled: () => mockRemoteShell,
+}));
+vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
+    useBreakpoint: () => ({
+        breakpoint: mockIsMobile ? 'mobile' : 'desktop',
+        isMobile: mockIsMobile,
+        isTablet: false,
+        isDesktop: !mockIsMobile,
+    }),
+}));
+
 import { MyLifeView, MY_LIFE_WORKSPACE_ID } from '../../../../../src/server/spa/client/react/repos/MyLifeView';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -93,6 +109,8 @@ describe('MyLifeView', () => {
         mockActiveRepoSubTab = 'notes';
         mockSelectedNotePath = null;
         mockSchedulesInScheduledSlideEnabled = false;
+        mockRemoteShell = false;
+        mockIsMobile = false;
         mockDispatch.mockClear();
         repositoryServiceMocks.syncMyLife.mockResolvedValue({ goalCount: 0, entryCount: 0 });
         repositoryServiceMocks.generateMyLifeSummary.mockResolvedValue({ path: 'Weekly/summary.md' });
@@ -368,6 +386,32 @@ describe('MyLifeView', () => {
 
             expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
             expect(location.hash).toBe('#repos/my_life/settings');
+        });
+    });
+
+    describe('header placement (remote-first shell)', () => {
+        it('hides the in-body header on remote-first desktop (it lives in the TopBar)', () => {
+            mockRemoteShell = true;
+            mockIsMobile = false;
+            renderView();
+
+            expect(screen.queryByTestId('my-life-header')).toBeNull();
+            expect(screen.getByTestId('my-life-view')).toBeTruthy();
+        });
+
+        it('keeps the in-body header on remote-first mobile (no TopBar header there)', () => {
+            mockRemoteShell = true;
+            mockIsMobile = true;
+            renderView();
+
+            expect(screen.getByTestId('my-life-header')).toBeTruthy();
+        });
+
+        it('keeps the in-body header in the classic (non-remote) shell', () => {
+            mockRemoteShell = false;
+            renderView();
+
+            expect(screen.getByTestId('my-life-header')).toBeTruthy();
         });
     });
 });

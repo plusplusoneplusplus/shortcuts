@@ -7,9 +7,11 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as pathMod from 'path';
+import { execFileSync } from 'child_process';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerRalphLaunchRoutes } from '../../../src/server/routes/ralph-launch-routes';
 import type { Route } from '../../../src/server/types';
+import { createMockProcessStore } from '../helpers/mock-process-store';
 
 // ============================================================================
 // Helpers
@@ -287,6 +289,64 @@ describe('POST /api/ralph-launch', () => {
     });
 
     // -----------------------------------------------------------------------
+    // Worktree request (AC-01)
+    // -----------------------------------------------------------------------
+
+    it('returns 400 for a malformed worktree request', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-1',
+            worktree: { enabled: 'yes' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/worktree\.enabled/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for an invalid worktree baseRef', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-1',
+            worktree: { enabled: true, baseRef: '--evil' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/baseRef/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for an enabled worktree request when the feature flag is off (AC-04)', async () => {
+        // This suite registers the route without a getGitWorktreeExecutionEnabled
+        // getter, so the flag is treated as off: an enabled request is refused,
+        // not silently run in-place.
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-1',
+            worktree: { enabled: true, baseRef: 'main' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/not enabled/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('ignores an opted-out worktree request even when the flag is off (AC-04)', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-1',
+            worktree: { enabled: false },
+        });
+
+        expect(res.status).toBe(200);
+        expect(mockEnqueue).toHaveBeenCalledOnce();
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.context.ralph.currentIteration).toBe(1);
+        expect(enqueueArg.repoId).toBe('ws-1');
+        expect(res.json().worktree).toBeUndefined();
+    });
+
+    // -----------------------------------------------------------------------
     // Optional fields
     // -----------------------------------------------------------------------
 
@@ -299,5 +359,146 @@ describe('POST /api/ralph-launch', () => {
         expect(mockEnqueue).toHaveBeenCalledOnce();
         const enqueueArg = mockEnqueue.mock.calls[0][0];
         expect(enqueueArg.repoId).toBeUndefined();
+    });
+});
+
+// ============================================================================
+// AC-04: worktree execution wiring with the feature flag enabled
+// ============================================================================
+
+describe('POST /api/ralph-launch with Git worktree (AC-04)', () => {
+    const REPO_ID = 'ws-wt';
+    let server: http.Server;
+    let baseUrl: string;
+    let mockEnqueue: ReturnType<typeof vi.fn>;
+    let store: ReturnType<typeof createMockProcessStore>;
+    let dataDir: string;
+    let sourceRepo: string;
+
+    function git(dir: string, ...args: string[]): string {
+        return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf-8' }).replace(/\r?\n$/, '');
+    }
+
+    beforeAll(async () => {
+        mockEnqueue = vi.fn().mockResolvedValue('new-task-id');
+        store = createMockProcessStore();
+        dataDir = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'ralph-launch-wt-data-'));
+        sourceRepo = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'ralph-launch-wt-src-'));
+        git(sourceRepo, 'init', '-q');
+        git(sourceRepo, 'config', 'user.email', 'test@test.com');
+        git(sourceRepo, 'config', 'user.name', 'Test');
+        git(sourceRepo, 'config', 'commit.gpgsign', 'false');
+        fs.writeFileSync(pathMod.join(sourceRepo, 'README.md'), 'hello\n', 'utf-8');
+        git(sourceRepo, 'add', '-A');
+        git(sourceRepo, 'commit', '-q', '-m', 'init');
+        await store.registerWorkspace({ id: REPO_ID, rootPath: sourceRepo } as any);
+
+        const routes: Route[] = [];
+        registerRalphLaunchRoutes(routes, {
+            bridge: { enqueue: mockEnqueue } as any,
+            dataDir,
+            store,
+            getGitWorktreeExecutionEnabled: () => true,
+        });
+        const router = createRouter({ routes, spaHtml: '' });
+        server = http.createServer(router);
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+        const addr = server.address() as { port: number };
+        baseUrl = `http://127.0.0.1:${addr.port}`;
+    });
+
+    afterAll(async () => {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        try { git(sourceRepo, 'worktree', 'prune'); } catch { /* ignore */ }
+        try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* ignore */ }
+        try { fs.rmSync(sourceRepo, { recursive: true, force: true }); } catch { /* ignore */ }
+    });
+
+    beforeEach(() => {
+        mockEnqueue.mockClear();
+    });
+
+    it('creates the worktree, runs iteration 1 in it, and persists metadata on the session record', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: '## Goal\nBuild a feature',
+            workspaceId: REPO_ID,
+            worktree: { enabled: true },
+        });
+
+        expect(res.status).toBe(200);
+        const data = res.json();
+        expect(data.worktree).toBeDefined();
+        const worktreePath = data.worktree.path;
+        expect(worktreePath).toContain('git-worktrees');
+        expect(fs.existsSync(worktreePath)).toBe(true);
+        expect(data.worktree.ralphSessionId).toBe(data.sessionId);
+
+        // Iteration 1 runs in the worktree, not the source checkout.
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.workingDirectory).toBe(worktreePath);
+
+        // Source checkout HEAD is not moved onto the worktree branch.
+        expect(git(sourceRepo, 'rev-parse', '--abbrev-ref', 'HEAD')).not.toBe(data.worktree.branch);
+
+        // Worktree metadata is persisted on the session record for recovery/chip.
+        const recordRaw = fs.readFileSync(
+            pathMod.join(dataDir, 'repos', REPO_ID, 'ralph-sessions', data.sessionId, 'session.json'),
+            'utf-8',
+        );
+        const record = JSON.parse(recordRaw);
+        expect(record.worktree.path).toBe(worktreePath);
+        expect(record.worktree.status).toBe('active');
+    });
+
+    it('creates the worktree from a valid base ref', async () => {
+        const headSha = git(sourceRepo, 'rev-parse', 'HEAD');
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: REPO_ID,
+            worktree: { enabled: true, baseRef: headSha },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.json().worktree.baseSha).toBe(headSha);
+        expect(res.json().worktree.baseRef).toBe(headSha);
+    });
+
+    it('returns 400 and does not enqueue when the base ref does not resolve', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: REPO_ID,
+            worktree: { enabled: true, baseRef: 'no-such-ref' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/does not resolve/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for a non-Git workspace folder', async () => {
+        const nonGit = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'ralph-launch-nongit-'));
+        await store.registerWorkspace({ id: 'ws-nongit', rootPath: nonGit } as any);
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-nongit',
+            worktree: { enabled: true },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/not a git repository/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+        try { fs.rmSync(nonGit, { recursive: true, force: true }); } catch { /* ignore */ }
+    });
+
+    it('runs a normal in-place launch when no worktree is requested', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: REPO_ID,
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.json().worktree).toBeUndefined();
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.workingDirectory).toBeUndefined();
     });
 });
