@@ -161,13 +161,13 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
             'very-low': { model: 'gpt-5.4-mini',     reasoningEffort: 'low',   source: 'default' },
             low:    { model: 'claude-sonnet-5',   reasoningEffort: 'high',  source: 'default' },
             medium: { model: 'claude-opus-4.8',   reasoningEffort: null,    source: 'default' },
-            high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh', source: 'default' },
+            high:   { model: 'gpt-5.6-sol',       reasoningEffort: 'xhigh', source: 'default' },
         });
         expect(data.defaults).toEqual({
             'very-low': { model: 'gpt-5.4-mini',     reasoningEffort: 'low'   },
             low:    { model: 'claude-sonnet-5',   reasoningEffort: 'high'  },
             medium: { model: 'claude-opus-4.8',   reasoningEffort: null    },
-            high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh' },
+            high:   { model: 'gpt-5.6-sol',       reasoningEffort: 'xhigh' },
         });
     });
 
