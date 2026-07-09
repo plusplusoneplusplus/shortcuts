@@ -36,6 +36,26 @@ function git(repoRoot: string, ...args: string[]): string {
     return gitRunner(args, repoRoot);
 }
 
+/**
+ * Normalize an absolute path for cross-platform comparison against git output.
+ * `git worktree list --porcelain` prints POSIX separators and the canonical
+ * (long) name, while Windows temp dirs can surface 8.3 short names (RUNNER~1)
+ * and OS-native backslashes — realpath + forward slashes reconcile both, and
+ * Windows paths compare case-insensitively.
+ */
+function normalizePath(p: string): string {
+    const real = fs.realpathSync.native(p).replace(/\\/g, '/');
+    return process.platform === 'win32' ? real.toLowerCase() : real;
+}
+
+/** Absolute worktree paths registered in a repo's `worktree list` output. */
+function listedWorktreePaths(repoRoot: string): string[] {
+    return git(repoRoot, 'worktree', 'list', '--porcelain')
+        .split(/\r?\n/)
+        .filter(line => line.startsWith('worktree '))
+        .map(line => normalizePath(line.slice('worktree '.length)));
+}
+
 function initRepo(dir: string): void {
     git(dir, 'init', '-q');
     git(dir, 'config', 'user.email', 'test@test.com');
@@ -107,8 +127,7 @@ describe('GitWorktreeService', () => {
             expect(fs.existsSync(path.join(metadata.path, 'README.md'))).toBe(true);
 
             // Registered as a worktree of the source repo.
-            const list = git(sourceRepo, 'worktree', 'list', '--porcelain');
-            expect(list).toContain(metadata.path);
+            expect(listedWorktreePaths(sourceRepo)).toContain(normalizePath(metadata.path));
 
             // Persisted to the index.
             const stored = await service.getWorktree('ws-a', 'run-1');
