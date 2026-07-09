@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
 import { ResponsiveSidebar } from '../../ui/ResponsiveSidebar';
+import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 import { NotesSidebar } from './editor/NotesSidebar';
 import { NoteEditor } from './editor/NoteEditor';
 import type { NoteViewMode } from './editor/NoteEditor';
@@ -34,6 +35,15 @@ export interface NotesViewProps {
      * its sidebar width to the global status dock. Defaults to `true` for
      * standalone use. */
     active?: boolean;
+    /**
+     * When true, dock the shared status/action cluster in this view's own
+     * NotesSidebar footer (remote-first shell). Hosts that already provide a
+     * body-level `DockedStatusFooter` for all their sub-tabs (My Work) leave
+     * this off to avoid double-docking; those that don't (regular repos, My
+     * Life) set it so the note editor keeps full height instead of the app-wide
+     * `GlobalStatusDock` painting a partial-width band beside it. No-ops in
+     * classic / mobile via `DockedStatusFooter`'s own gate. */
+    dockStatusFooter?: boolean;
 }
 
 const MAX_NAV_HISTORY = 50;
@@ -42,7 +52,7 @@ function getNotesChatLegacyOpenStorageKey(workspaceId: string): string {
     return `coc-notes-chat-panel-open-${workspaceId}`;
 }
 
-export function NotesView({ workspaceId, initialNotePath, defaultScope, active = true }: NotesViewProps) {
+export function NotesView({ workspaceId, initialNotePath, defaultScope, active = true, dockStatusFooter = false }: NotesViewProps) {
     const { dispatch } = useApp();
     const [selectedPath, setSelectedPath] = useState<string | null>(initialNotePath ?? null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -448,6 +458,7 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
                     roots={roots}
                     onSelectRoot={selectRoot}
                     onRootsChanged={refreshRoots}
+                    footer={dockStatusFooter ? <DockedStatusFooter /> : undefined}
                 />
             </ResponsiveSidebar>
 

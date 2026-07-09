@@ -12,7 +12,8 @@
  * band is painted beneath it:
  *   - the workspace chat/activity sub-tab (`SplitWorkspacePanel` `footer`),
  *   - the Admin shell (its `.ar-sidebar` hosts `DockedStatusFooter`),
- *   - the My Work view (its body hosts `DockedStatusFooter`).
+ *   - the My Work view (its body hosts `DockedStatusFooter`),
+ *   - the workspace notes sub-tab (`NotesView`'s own `NotesSidebar` footer).
  * This global dock covers every OTHER tab/sub-tab, so it renders null on those
  * views to avoid double-docking. Together they hide the topbar cluster on every
  * desktop remote-shell tab (`TopBar`'s `statusInDock`).
@@ -76,6 +77,17 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
         !!state.selectedRepoId &&
         (state.activeRepoSubTab === 'chats' || state.activeRepoSubTab === 'activity');
     if (inPanelFooter) return null;
+
+    // The notes sub-tab hosts the cluster in `NotesView`'s own left-column
+    // footer (the `NotesSidebar` `DockedStatusFooter`), so the note editor pane
+    // keeps full height. Don't paint a second partial-width band — with an empty
+    // strip beside it — beneath the editor. Applies to regular repos and My Life
+    // here; My Work already stands down above (it docks a body-level footer).
+    const inNotesSidebarFooter =
+        state.activeTab === 'repos' &&
+        !!state.selectedRepoId &&
+        state.activeRepoSubTab === 'notes';
+    if (inNotesSidebarFooter) return null;
 
     // Tracks the resizable workspace left column (or the panel default when no
     // split sidebar is mounted) so the band stays flush under that column.

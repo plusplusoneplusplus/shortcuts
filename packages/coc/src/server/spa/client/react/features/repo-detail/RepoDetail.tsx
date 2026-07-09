@@ -851,6 +851,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     initialNotePath={state.selectedNotePath}
                                     defaultScope="per-note"
                                     active={activeSubTab === 'notes'}
+                                    dockStatusFooter
                                 />}
                             </div>
                         )}

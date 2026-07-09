@@ -161,6 +161,7 @@ export function MyLifeView() {
                         workspaceId={MY_LIFE_WORKSPACE_ID}
                         initialNotePath={state.selectedNotePath}
                         active={activeTab === 'notes'}
+                        dockStatusFooter
                     />
                 </div>
                 <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">

@@ -5,8 +5,8 @@
  * the remote-first shell on desktop, and only as wide as the left sidebar
  * column. Off (classic mode) or on mobile it renders nothing (topbar keeps the
  * cluster). It also renders nothing on views that dock the cluster in their own
- * left-column footer: the workspace chat/activity sub-tab, the admin shell, and
- * the My Work workspace.
+ * left-column footer: the workspace chat/activity sub-tab, the admin shell, the
+ * My Work workspace, and the workspace notes sub-tab.
  *
  * @vitest-environment jsdom
  */
@@ -103,6 +103,25 @@ describe('GlobalStatusDock', () => {
         const { container } = render(<GlobalStatusDock />);
         expect(screen.queryByTestId('status-actions')).toBeNull();
         expect(container.firstChild).toBeNull();
+    });
+
+    it('renders nothing on the workspace notes sub-tab (NotesView docks the cluster in its own sidebar footer)', () => {
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'notes' };
+        const { container } = render(<GlobalStatusDock />);
+        // NotesView hosts the cluster in its own NotesSidebar footer, so the
+        // global band stands down — otherwise a partial-width band paints an
+        // empty white strip beside the note editor.
+        expect(screen.queryByTestId('status-actions')).toBeNull();
+        expect(container.firstChild).toBeNull();
+    });
+
+    it('still renders when a stale notes sub-tab lingers but the active tab is not a workspace', () => {
+        // `activeRepoSubTab` can retain 'notes' after leaving the repos tab; the
+        // notes stand-down is scoped to activeTab === 'repos' + a selected repo
+        // so the cluster does not vanish on e.g. the wiki tab.
+        mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: 'notes' };
+        render(<GlobalStatusDock />);
+        expect(screen.getByTestId('status-actions')).toBeTruthy();
     });
 
     it('forwards onAdminOpen to StatusActions', () => {

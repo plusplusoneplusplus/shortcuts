@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import type { NoteTreeNode } from '../notesApi';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
@@ -154,9 +154,16 @@ export interface NotesSidebarProps {
     onSelectRoot?: (rootId: string) => void;
     /** Callback after root configuration changes so the parent can refresh useNotesRoots state. */
     onRootsChanged?: () => void | Promise<void>;
+    /**
+     * Optional element pinned to the very bottom of the sidebar column (below
+     * the note tree). Used by the remote-first shell to dock the status/action
+     * cluster here so the note editor pane keeps full height instead of the
+     * app-wide `GlobalStatusDock` painting a partial-width band beside it.
+     */
+    footer?: ReactNode;
 }
 
-export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, selectedRootLabel, roots, onSelectRoot, onRootsChanged }: NotesSidebarProps) {
+export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, selectedRootLabel, roots, onSelectRoot, onRootsChanged, footer }: NotesSidebarProps) {
     const { addToast } = useGlobalToast();
     const rootParam = selectedRootId && selectedRootId !== 'default' ? selectedRootId : undefined;
     const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId, rootParam);
@@ -995,6 +1002,10 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                     </button>
                 </div>
             )}
+
+            {/* Docked status/action cluster (remote-first shell). No-ops in
+                classic / mobile via DockedStatusFooter's own gate. */}
+            {footer}
 
             {/* Context menu */}
             {ctxMenu && (
