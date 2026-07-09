@@ -84,3 +84,14 @@ export type {
     AnchoredPanelPositionOptions,
     AnchoredPanelPosition,
 } from './useAnchoredPanelPosition';
+export { WorktreeChip } from './WorktreeChip';
+export type { WorktreeChipProps } from './WorktreeChip';
+export {
+    buildWorktreeRequest,
+    useWorktreeLaunchControls,
+    useWorktreeCapability,
+    WorktreeLaunchControls,
+} from './WorktreeLaunchControls';
+export type { WorktreeLaunchState, WorktreeLaunchControlsProps } from './WorktreeLaunchControls';
+export { useWorktreeCleanup } from './useWorktreeCleanup';
+export type { WorktreeCleanupState } from './useWorktreeCleanup';

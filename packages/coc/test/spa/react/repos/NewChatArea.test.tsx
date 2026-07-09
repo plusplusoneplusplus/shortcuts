@@ -120,6 +120,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => mockEffortLevelsEnabled.value,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled.value,
+    isGitWorktreeExecutionEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
