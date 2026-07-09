@@ -18,6 +18,7 @@ import { cn } from '../ui';
 import type { RepoSubTab } from '../types/dashboard';
 import type { RepoData } from './repoGrouping';
 import { generateMyWorkSummary, syncMyWork } from './repositoryService';
+import { DockedStatusFooter } from '../layout/DockedStatusFooter';
 
 export const MY_WORK_WORKSPACE_ID = 'my_work';
 
@@ -174,6 +175,12 @@ export function MyWorkView() {
                 )}
                 {activeTab === 'settings' && <RepoSettingsTab workspaceId={MY_WORK_WORKSPACE_ID} repo={VIRTUAL_REPO} />}
             </div>
+
+            {/* Remote-first shell: dock the status/action cluster at the bottom
+                of the My Work body so it lives in this view's own chrome instead
+                of the app-wide bottom band. No-ops in classic / mobile, where the
+                topbar keeps the cluster. */}
+            <DockedStatusFooter />
         </div>
     );
 }
