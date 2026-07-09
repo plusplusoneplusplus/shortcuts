@@ -26,7 +26,7 @@ import { useRecentRemotes } from './useRecentRemotes';
 import { useShellNavigation } from './useShellNavigation';
 
 export interface RemoteScopeClusterProps {
-    repo: RepoData;
+    repo?: RepoData;
     repos: RepoData[];
 }
 
@@ -80,7 +80,7 @@ function groupMatchesSearch(group: RepoGroup, query: string): boolean {
 }
 
 export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
-    const cloneId = getRepoSelectionId(repo);
+    const cloneId = repo ? getRepoSelectionId(repo) : '';
     const { state } = useApp();
     const { state: queueState } = useQueue();
     const { state: workItemState, dispatch: workItemDispatch } = useWorkItems();
@@ -95,7 +95,7 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
     const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
     const [uiLayoutMode] = useUiLayoutMode();
-    const isGitRepo = !!repo.gitInfo?.isGitRepo;
+    const isGitRepo = !!repo?.gitInfo?.isGitRepo;
     // Only reflect an active sub-tab when we're actually on the repos tab. The
     // header also renders on the top-level pages (Admin / Settings / Wiki), where
     // no workspace sub-tab is being viewed — so WI/PR shouldn't highlight there.
@@ -147,8 +147,8 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
         pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
     }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode]);
     const { remote: remoteTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
-    const workItemOriginId = useMemo(() => resolveRepoWorkItemOriginScope(repo).originId, [repo]);
-    const unseenWorkItemCount = (workItemState.unseenByRepo[workItemOriginId] || []).length;
+    const workItemOriginId = useMemo(() => repo ? resolveRepoWorkItemOriginScope(repo).originId : '', [repo]);
+    const unseenWorkItemCount = repo ? (workItemState.unseenByRepo[workItemOriginId] || []).length : 0;
 
     const chooseGroup = useCallback((group: RepoGroup) => {
         const key = groupKey(group);
@@ -261,7 +261,7 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
                 data-remote-key={activeGroupKey ?? ''}
                 aria-haspopup="menu"
                 aria-expanded={open}
-                title={activeGroup?.label ?? repo.workspace.name}
+                title={activeGroup?.label ?? (repo?.workspace.name ?? 'Select repository')}
                 onClick={() => setOpen(o => !o)}
                 className="relative inline-flex items-center gap-1.5 h-[26px] px-2 rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] max-w-[190px]"
             >
@@ -271,7 +271,7 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
                     testId="remote-provider-badge"
                     className="hidden xl:inline-flex items-center text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#848484] dark:text-[#777]"
                 />
-                <span className="truncate">{activeSummary?.name ?? repo.workspace.name}</span>
+                <span className="truncate">{activeSummary?.name ?? (repo?.workspace.name ?? 'Select repository')}</span>
                 {activeSummary && activeSummary.cloneCount > 1 && (
                     <span className="hidden lg:inline-flex items-center gap-0.5 h-[16px] px-1.5 rounded-full text-[10px] font-semibold leading-none bg-black/[0.06] dark:bg-white/[0.10] text-[#555] dark:text-[#bbb]">
                         <CloneGlyph />
@@ -281,7 +281,7 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
                 <Chevron />
             </button>
 
-            {remoteTabs.map(renderRemoteTab)}
+            {repo && remoteTabs.map(renderRemoteTab)}
 
             {open && (
                 <div
