@@ -27,7 +27,7 @@
     "test:run": "vitest run"
   },
   "peerDependencies": {
-    "@github/copilot-sdk": "^1.0.0",
+    "@github/copilot-sdk": "^1.0.6",
     "@openai/codex-sdk": ">=0.1.0",
     "@anthropic-ai/claude-agent-sdk": ">=0.3.0",
     "@opencode-ai/sdk": ">=0.1.0"
