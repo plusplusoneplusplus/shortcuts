@@ -1003,14 +1003,15 @@ test.describe('Hash Navigation — Remaining Sub-tabs', () => {
         await expect(page.locator('button[data-subtab="tasks"]')).toHaveClass(/active/);
     });
 
-    test('hash navigation to #repos/<id>/schedules selects Schedules sub-tab', async ({ page, serverUrl }) => {
+    test('hash navigation to #repos/<id>/schedules opens Activity when the Schedules sub-tab is hidden', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-hash-sched', 'hash-schedules-repo', '/tmp/hash-sched-repo');
 
         await page.goto(`${serverUrl}/#repos/ws-hash-sched/schedules`);
 
         await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
-        await expect(page.locator('button[data-subtab="schedules"]')).toHaveClass(/active/);
+        await expect(page.locator('button[data-subtab="activity"]')).toHaveClass(/active/);
+        await expect(page.locator('button[data-subtab="schedules"]')).toHaveCount(0);
     });
 });
 

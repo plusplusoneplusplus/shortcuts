@@ -769,10 +769,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.schedulesInScheduledSlide', default: false, runtime: 'live', runtimeFlag: 'schedulesInScheduledSlideEnabled',
+        key: 'features.schedulesInScheduledSlide', default: true, runtime: 'live', runtimeFlag: 'schedulesInScheduledSlideEnabled',
         ui: {
             group: 'dashboard', order: 68, label: 'Schedules in Scheduled slide', badge: 'experimental',
-            hint: 'Moves schedule management (create/edit/run/pause/delete + run history) into the chat-list "Scheduled" slide, opening create and detail in the main pane and hiding the old Schedules tab. Disabled by default.',
+            hint: 'Moves schedule management (create/edit/run/pause/delete + run history) into the chat-list "Scheduled" slide, opening create and detail in the main pane and hiding the old Schedules tab. Enabled by default.',
             testId: 'toggle-schedules-in-scheduled-slide-enabled',
         },
     }),
