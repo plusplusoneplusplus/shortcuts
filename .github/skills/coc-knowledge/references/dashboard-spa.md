@@ -1265,14 +1265,22 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
 - Action bar: New chat + refresh + ALL/AP split pause pill
 - Scope segmented control: Chats / Loops (when `loops.enabled`) / Automations / All
 - Search box: hidden by default, gated behind `searchVisible`. Ctrl+F / ⌘F
-  routes by which pane owns keyboard focus (never mouse hover). When focus is
-  inside the right conversation panel — the detail pane, marked `data-pane="detail"`,
-  covering both the reading area and the message composer — Ctrl+F is left alone
-  (no `preventDefault`) so the native find-in-page takes over (`isWithinDetailPane`
-  detects this via `target.closest('[data-pane="detail"]')`). Focus in the chat
-  list, or nowhere in particular (`document.body`), reveals and focuses the list
-  search. ✕ clears the query but leaves the box open; Escape clears the query and
-  hides the box; a `workspaceId` change also resets `searchVisible`
+  routes by which pane owns keyboard focus (never mouse hover) through the shared
+  `useScopedFindShortcut(containerRef, onTrigger, opts)` hook
+  (`react/hooks/useScopedFindShortcut.ts`). Every search-owning panel (chat list,
+  git commit list, tasks, work items) uses it so none can fight over
+  `preventDefault` or swallow native find. The hook: skips when its container is
+  hidden (`offsetParent === null`, so a mounted-but-hidden keep-alive tab never
+  intercepts); yields when focus is in the detail pane (`data-pane="detail"`, via
+  the exported `isWithinDetailPane`) so native find-in-page (Electron overlay /
+  browser find) takes over — it only opens when `defaultPrevented` stays false;
+  handles when focus is inside the container; and, when focus is on
+  `document.body`/nothing, handles only if `claimsBodyFocus` is set (default true;
+  the git list passes `!isSplitWorkspace` so the chat list wins body focus in the
+  split-workspace layout). Panels are tagged with `data-find-scope` while mounted
+  so a sibling never steals Ctrl+F from a different focused panel. ✕ clears the
+  query but leaves the box open; Escape clears the query and hides the box; a
+  `workspaceId` change also resets `searchVisible`
 - Selection persists in `localStorage['coc-activity-scope']`
 - `ChatListPane` keeps the action/scope/search controls in a sticky
   `chat-list-fixed-header` block while the list rows scroll underneath. The

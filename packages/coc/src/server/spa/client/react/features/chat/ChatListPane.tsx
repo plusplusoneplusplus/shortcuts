@@ -24,6 +24,7 @@ import { useChatPrefs } from '../../contexts/ChatPreferencesContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { useDisplaySettings } from '../../hooks/preferences/useDisplaySettings';
+import { useScopedFindShortcut, isWithinDetailPane } from '../../hooks/useScopedFindShortcut';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
 import { groupHistoryByPlanFile, type HistoryGroup } from '../git/history-grouping';
@@ -179,12 +180,10 @@ export function taskMatchesSearch(task: any, query: string): boolean {
  * pane, marked with `data-pane="detail"`, which wraps both the reading area and
  * the message composer. Ctrl+F uses this to decide, by keyboard focus (never
  * mouse hover), whether to open the list search or yield to the native
- * find-in-page (AC-01).
+ * find-in-page (AC-01). Re-exported from the shared find-shortcut hook so all
+ * search-owning panels share one detail-pane test.
  */
-export function isWithinDetailPane(target: EventTarget | null): boolean {
-    if (!(target instanceof Element)) return false;
-    return target.closest('[data-pane="detail"]') !== null;
-}
+export { isWithinDetailPane };
 
 /** Return a type-specific icon for a task, matching the chat mode selector icons. */
 export function getTaskTypeIcon(task: any): string {
@@ -1038,31 +1037,22 @@ export function ChatListPane({
         target.classList.add('outline', 'outline-1', 'outline-[#0078d4]/60');
     }, [cursorTaskId, running, queued, history, searchResults]);
 
+    // AC-01: Ctrl+F opens the list search, routed by keyboard focus through the
+    // shared helper (yields to native find in the detail pane, bails when this
+    // pane is hidden, and never steals focus from another visible search panel).
+    useScopedFindShortcut(containerRef, () => {
+        setSearchVisible(true);
+        setTimeout(() => searchInputRef.current?.focus(), 0);
+    });
+
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             // Focus tracking for the list shortcuts. `focusInList` is true when
-            // the keydown originates from inside the chat-list pane; `focusInDetail`
-            // is true when it originates from the right conversation panel (its
-            // reading area or message composer). Ctrl+N still gates on
-            // `focusElsewhereWithChatOpen`.
+            // the keydown originates from inside the chat-list pane; Ctrl+N gates
+            // on `focusElsewhereWithChatOpen`.
             const target = e.target as Node | null;
             const focusInList = !!(target && containerRef.current?.contains(target));
-            const focusInDetail = isWithinDetailPane(e.target);
             const focusElsewhereWithChatOpen = !focusInList && !!selectedTaskId;
-            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-                // Skip interception when this pane is hidden (display:none via parent).
-                if (!containerRef.current || containerRef.current.offsetParent === null) return;
-                // AC-01: route Ctrl+F by which pane owns keyboard focus. When focus
-                // is inside the right conversation panel (reading area OR composer),
-                // leave Ctrl+F alone so it falls through to the native find-in-page
-                // (the desktop Electron overlay / the browser's built-in find).
-                // Focus in the list pane, or nowhere in particular (document.body),
-                // opens the list search.
-                if (focusInDetail) return;
-                e.preventDefault();
-                setSearchVisible(true);
-                setTimeout(() => searchInputRef.current?.focus(), 0);
-            }
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n' && !e.shiftKey && !e.altKey) {
                 // ⌘N / Ctrl+N — primary "New chat" shortcut. Only intercept when
                 // the activity pane is visible and focus isn't in an open

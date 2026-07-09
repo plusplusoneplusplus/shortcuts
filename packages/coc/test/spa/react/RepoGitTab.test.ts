@@ -2070,8 +2070,46 @@ describe('RepoGitTab', () => {
             expect(source).toMatch(/e\.key === '\/'[\s\S]*?!e\.metaKey[\s\S]*?!e\.ctrlKey[\s\S]*?!e\.altKey/);
         });
 
-        it('Escape in the search input clears the query (or blurs when empty)', () => {
-            expect(source).toMatch(/onKeyDown=\{e =>[\s\S]*?e\.key === 'Escape'[\s\S]*?setSearchQuery\(''\)[\s\S]*?searchInputRef\.current\?\.blur\(\)/);
+        it('Escape in the search input hides and clears the search bar', () => {
+            expect(source).toMatch(/onKeyDown=\{e =>[\s\S]*?e\.key === 'Escape'[\s\S]*?searchInputRef\.current\?\.blur\(\)[\s\S]*?hideSearch\(\)/);
+        });
+
+        it('search bar is hidden by default and revealed on demand (searchVisible state)', () => {
+            expect(source).toContain('const [searchVisible, setSearchVisible] = useState(false)');
+            // The bar only mounts when explicitly revealed or a query is active.
+            expect(source).toMatch(/\(searchVisible \|\| searchQuery\) && \(\s*<div[\s\S]*?data-testid="git-search-bar"/);
+        });
+
+        it('Ctrl+F reveals + focuses the commit search via the shared find helper', () => {
+            expect(source).toContain("import { useScopedFindShortcut } from '../../hooks/useScopedFindShortcut'");
+            expect(source).toContain('useScopedFindShortcut(panelRef, () => revealSearch(true)');
+            // Secondary panel: the chat list owns body focus in split-workspace.
+            expect(source).toContain('claimsBodyFocus: !isSplitWorkspace');
+        });
+
+        it('revealSearch shows the bar then focuses the input', () => {
+            const block = source.match(/const revealSearch = useCallback[\s\S]*?\}, \[\]\);/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('setSearchVisible(true)');
+            expect(block![0]).toContain('searchInputRef.current?.focus()');
+        });
+
+        it('hideSearch clears the query and hides the bar', () => {
+            const block = source.match(/const hideSearch = useCallback[\s\S]*?\}, \[\]\);/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('setSearchVisible(false)');
+            expect(block![0]).toContain("setSearchQuery('')");
+        });
+
+        it('the panel ref is attached to the list <aside> for focus-scoped Ctrl+F', () => {
+            expect(source).toContain('const panelRef = useRef<HTMLElement>(null)');
+            expect(source).toMatch(/<aside\s*\n\s*ref=\{panelRef\}/);
+        });
+
+        it('Escape on the panel (not the input) also hides the search bar', () => {
+            const block = source.match(/const handlePanelKeyDown = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toMatch(/e\.key === 'Escape' && searchVisible[\s\S]*?hideSearch\(\)/);
         });
 
         it('search box uses rounded-md border with focus ring styling', () => {

@@ -129,7 +129,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog, initialNavState, o
         return normalizeRemoteUrl(currentUrl) === normalizeRemoteUrl(candidateUrl);
     });
 
-    const { searchInput, searchQuery, searchResults, searchInputRef, onSearchChange, onSearchClear } = useTaskSearch(tree ?? null, { isPreviewOpen: !!openFilePath });
+    const { searchInput, searchQuery, searchResults, searchInputRef, containerRef, onSearchChange, onSearchClear } = useTaskSearch(tree ?? null, { isPreviewOpen: !!openFilePath });
 
     const filteredTree = useMemo(() => {
         if (!tree || statusFilter.length === 0) return tree;
@@ -227,7 +227,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog, initialNavState, o
     const resolvedActiveFolder = activeFolder ?? tree;
 
     return (
-        <div className="flex flex-col h-full">
+        <div ref={containerRef} className="flex flex-col h-full">
             <TasksToolbar
                 isMobile={isMobile}
                 onNewTask={() => folderDlg.setFolderDialog({ action: 'create-task', folder: resolvedActiveFolder, submitting: false })}

@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useScopedFindShortcut } from '../../../hooks/useScopedFindShortcut';
 
 export function useWorkItemSearch(options?: { isPreviewOpen?: boolean }) {
     const isPreviewOpen = options?.isPreviewOpen ?? false;
@@ -11,6 +12,7 @@ export function useWorkItemSearch(options?: { isPreviewOpen?: boolean }) {
     const [searchInput, setSearchInput] = useState('');
     const debounceRef = useRef<ReturnType<typeof setTimeout>>();
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     const onSearchChange = useCallback((value: string) => {
         setSearchInput(value);
@@ -30,25 +32,28 @@ export function useWorkItemSearch(options?: { isPreviewOpen?: boolean }) {
         if (debounceRef.current) clearTimeout(debounceRef.current);
     }, []);
 
-    // Keyboard shortcuts: Ctrl+F / Cmd+F → focus search, Escape → clear
+    // Ctrl+F / Cmd+F → focus search, routed by keyboard focus through the shared
+    // helper so a hidden Work Items tab never swallows native find (the old
+    // unconditional preventDefault broke the Electron/browser find).
+    useScopedFindShortcut(containerRef, () => {
+        searchInputRef.current?.focus();
+    }, { enabled: !isPreviewOpen });
+
+    // Escape clears the search, but only while this panel is actually visible.
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
-                if (isPreviewOpen) return;
-                e.preventDefault();
-                searchInputRef.current?.focus();
-            }
-            if (e.key === 'Escape') {
-                if (searchInput || searchQuery) {
-                    setSearchInput('');
-                    setSearchQuery('');
-                    searchInputRef.current?.blur();
-                }
+            if (e.key !== 'Escape') return;
+            const container = containerRef.current;
+            if (!container || container.offsetParent === null) return;
+            if (searchInput || searchQuery) {
+                setSearchInput('');
+                setSearchQuery('');
+                searchInputRef.current?.blur();
             }
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [searchInput, searchQuery, isPreviewOpen]);
+    }, [searchInput, searchQuery]);
 
-    return { searchInput, searchQuery, searchInputRef, onSearchChange, onSearchClear };
+    return { searchInput, searchQuery, searchInputRef, containerRef, onSearchChange, onSearchClear };
 }

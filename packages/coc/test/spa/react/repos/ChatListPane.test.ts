@@ -714,24 +714,23 @@ describe('ChatListPane pinned chats', () => {
             expect(workspaceEffect).toContain('setSearchVisible(false)');
         });
 
-        it('adds Ctrl+F / Cmd+F keydown listener on document', () => {
-            expect(source).toContain("(e.ctrlKey || e.metaKey) && e.key === 'f'");
+        it('delegates Ctrl+F to the shared scoped-find helper', () => {
+            // AC-01: the Ctrl+F routing (visibility gate, detail-pane yield,
+            // focus ownership) now lives in useScopedFindShortcut so every
+            // search-owning panel shares one gating implementation and they
+            // can't fight over preventDefault. The list handler just reveals +
+            // focuses its search box.
+            expect(source).toContain("import { useScopedFindShortcut, isWithinDetailPane } from '../../hooks/useScopedFindShortcut'");
+            const call = source.substring(
+                source.indexOf('useScopedFindShortcut(containerRef'),
+                source.indexOf('useScopedFindShortcut(containerRef') + 200,
+            );
+            expect(call).toContain('setSearchVisible(true)');
+            expect(call).toContain('searchInputRef.current?.focus()');
         });
 
-        it('prevents default browser find on Ctrl+F', () => {
-            const handler = source.substring(
-                source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 1000,
-            );
-            expect(handler).toContain('e.preventDefault()');
-        });
-
-        it('sets searchVisible to true on Ctrl+F', () => {
-            const handler = source.substring(
-                source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 1000,
-            );
-            expect(handler).toContain('setSearchVisible(true)');
+        it('re-exports the shared detail-pane test', () => {
+            expect(source).toContain('export { isWithinDetailPane }');
         });
 
         it('tracks focus live against the list container instead of a cached flag', () => {
@@ -743,34 +742,13 @@ describe('ChatListPane pinned chats', () => {
             expect(source).toContain('const focusElsewhereWithChatOpen = !focusInList && !!selectedTaskId');
         });
 
-        it('Ctrl+F yields to native find when focus is in the right conversation panel (AC-01)', () => {
+        it('Ctrl+N still bails out when the container is hidden (offsetParent === null)', () => {
+            // The New-chat shortcut keeps its own visibility guard.
             const handler = source.substring(
-                source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 1000,
+                source.indexOf("e.key.toLowerCase() === 'n'"),
+                source.indexOf("e.key.toLowerCase() === 'n'") + 400,
             );
-            // AC-01: Ctrl+F opens the list search unless keyboard focus is inside
-            // the right conversation panel (reading area OR composer), in which
-            // case it falls through to the native find-in-page. The routing is
-            // by owning pane, not by editable-target only. The guard must come
-            // before preventDefault.
-            expect(handler).toContain('if (focusInDetail) return');
-            expect(source).toContain('isWithinDetailPane');
-            expect(source).toContain(`target.closest('[data-pane="detail"]')`);
-            const guardIdx = handler.indexOf('if (focusInDetail) return');
-            const preventIdx = handler.indexOf('e.preventDefault()');
-            expect(guardIdx).toBeLessThan(preventIdx);
-        });
-
-        it('bails out when container is hidden (offsetParent === null)', () => {
-            const handler = source.substring(
-                source.indexOf("e.key === 'f'"),
-                source.indexOf("e.key === 'f'") + 1000,
-            );
-            // Visibility guard must appear before preventDefault
             expect(handler).toContain('containerRef.current.offsetParent === null');
-            const visIdx = handler.indexOf('offsetParent === null');
-            const preventIdx = handler.indexOf('e.preventDefault()');
-            expect(visIdx).toBeLessThan(preventIdx);
         });
 
         it('Escape key closes search when visible', () => {
@@ -1622,8 +1600,8 @@ describe('ChatListPane: chat search', () => {
     describe('Ctrl+F activates search on chats tab', () => {
         it('Ctrl+F handler does not gate on activeTab', () => {
             const ctrlFBlock = source.substring(
-                source.indexOf("e.key === 'f'") - 100,
-                source.indexOf("e.key === 'f'") + 1000,
+                source.indexOf('useScopedFindShortcut(containerRef'),
+                source.indexOf('useScopedFindShortcut(containerRef') + 200,
             );
             // The Ctrl+F handler should set searchVisible and focus — no activeTab check
             expect(ctrlFBlock).toContain('setSearchVisible(true)');

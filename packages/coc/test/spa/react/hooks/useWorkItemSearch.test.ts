@@ -8,7 +8,22 @@ import { useWorkItemSearch } from '../../../../src/server/spa/client/react/featu
 
 describe('useWorkItemSearch', () => {
     beforeEach(() => { vi.useFakeTimers(); });
-    afterEach(() => { vi.useRealTimers(); });
+    afterEach(() => {
+        vi.useRealTimers();
+        document.body.innerHTML = '';
+    });
+
+    // The scoped find/Escape handlers only fire while the panel container is
+    // mounted and visible. jsdom reports offsetParent === null for everything,
+    // so mount a container and force a truthy offsetParent to emulate a visible
+    // panel.
+    function attachVisibleContainer(containerRef: { current: HTMLElement | null }) {
+        const el = document.createElement('div');
+        Object.defineProperty(el, 'offsetParent', { get: () => document.body, configurable: true });
+        document.body.appendChild(el);
+        containerRef.current = el;
+        return el;
+    }
 
     it('starts with empty searchInput and searchQuery', () => {
         const { result } = renderHook(() => useWorkItemSearch());
@@ -61,6 +76,7 @@ describe('useWorkItemSearch', () => {
 
     it('Escape key clears search when there is an active query', () => {
         const { result } = renderHook(() => useWorkItemSearch());
+        act(() => { attachVisibleContainer(result.current.containerRef); });
         act(() => { result.current.onSearchChange('test'); });
         act(() => { vi.advanceTimersByTime(150); });
         expect(result.current.searchQuery).toBe('test');
@@ -74,8 +90,24 @@ describe('useWorkItemSearch', () => {
         expect(result.current.searchQuery).toBe('');
     });
 
+    it('Escape does nothing while the panel container is hidden', () => {
+        const { result } = renderHook(() => useWorkItemSearch());
+        // No visible container attached → container.offsetParent === null.
+        act(() => { result.current.onSearchChange('test'); });
+        act(() => { vi.advanceTimersByTime(150); });
+        expect(result.current.searchQuery).toBe('test');
+
+        act(() => {
+            document.dispatchEvent(
+                new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+            );
+        });
+        expect(result.current.searchQuery).toBe('test');
+    });
+
     it('Ctrl+F focuses search input', () => {
         const { result } = renderHook(() => useWorkItemSearch());
+        act(() => { attachVisibleContainer(result.current.containerRef); });
         const focusSpy = vi.fn();
         Object.defineProperty(result.current.searchInputRef, 'current', {
             value: { focus: focusSpy, blur: vi.fn() },
@@ -91,6 +123,7 @@ describe('useWorkItemSearch', () => {
 
     it('Ctrl+F does not focus search when isPreviewOpen is true', () => {
         const { result } = renderHook(() => useWorkItemSearch({ isPreviewOpen: true }));
+        act(() => { attachVisibleContainer(result.current.containerRef); });
         const focusSpy = vi.fn();
         Object.defineProperty(result.current.searchInputRef, 'current', {
             value: { focus: focusSpy, blur: vi.fn() },
@@ -108,6 +141,7 @@ describe('useWorkItemSearch', () => {
 
     it('Ctrl+F focuses search when isPreviewOpen is false', () => {
         const { result } = renderHook(() => useWorkItemSearch({ isPreviewOpen: false }));
+        act(() => { attachVisibleContainer(result.current.containerRef); });
         const focusSpy = vi.fn();
         Object.defineProperty(result.current.searchInputRef, 'current', {
             value: { focus: focusSpy, blur: vi.fn() },
@@ -121,8 +155,26 @@ describe('useWorkItemSearch', () => {
         expect(focusSpy).toHaveBeenCalled();
     });
 
+    it('Ctrl+F does not focus search while the panel container is hidden', () => {
+        const { result } = renderHook(() => useWorkItemSearch());
+        const focusSpy = vi.fn();
+        Object.defineProperty(result.current.searchInputRef, 'current', {
+            value: { focus: focusSpy, blur: vi.fn() },
+            writable: true,
+        });
+
+        const event = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true });
+        const preventSpy = vi.spyOn(event, 'preventDefault');
+
+        act(() => { document.dispatchEvent(event); });
+
+        expect(focusSpy).not.toHaveBeenCalled();
+        expect(preventSpy).not.toHaveBeenCalled();
+    });
+
     it('Escape still clears search when isPreviewOpen is true', () => {
         const { result } = renderHook(() => useWorkItemSearch({ isPreviewOpen: true }));
+        act(() => { attachVisibleContainer(result.current.containerRef); });
         act(() => { result.current.onSearchChange('test'); });
         act(() => { vi.advanceTimersByTime(150); });
         expect(result.current.searchQuery).toBe('test');
@@ -139,6 +191,11 @@ describe('useWorkItemSearch', () => {
     it('exposes searchInputRef', () => {
         const { result } = renderHook(() => useWorkItemSearch());
         expect(result.current.searchInputRef).toBeDefined();
+    });
+
+    it('exposes containerRef', () => {
+        const { result } = renderHook(() => useWorkItemSearch());
+        expect(result.current.containerRef).toBeDefined();
     });
 
     it('removes keydown listener on unmount', () => {
