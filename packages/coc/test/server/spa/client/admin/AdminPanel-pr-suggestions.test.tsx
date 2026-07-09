@@ -11,10 +11,12 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 vi.mock('@plusplusoneplusplus/forge', () => ({}));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
     isServersEnabled: () => false,
+    isRemoteShellEnabled: () => false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
