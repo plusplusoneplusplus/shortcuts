@@ -217,6 +217,73 @@ describe('useResizablePanel', () => {
         // re-write the new width — the key point is the width is reset
     });
 
+    describe('applySize', () => {
+        it('updates the width to the clamped value', () => {
+            const { result } = renderHook(() =>
+                useResizablePanel({ initialWidth: 300, minWidth: 100, maxWidth: 500 })
+            );
+
+            act(() => { result.current.applySize(400); });
+            expect(result.current.width).toBe(400);
+        });
+
+        it('clamps to minWidth', () => {
+            const { result } = renderHook(() =>
+                useResizablePanel({ initialWidth: 300, minWidth: 100, maxWidth: 500 })
+            );
+
+            act(() => { result.current.applySize(50); });
+            expect(result.current.width).toBe(100);
+        });
+
+        it('clamps to maxWidth', () => {
+            const { result } = renderHook(() =>
+                useResizablePanel({ initialWidth: 300, minWidth: 100, maxWidth: 500 })
+            );
+
+            act(() => { result.current.applySize(800); });
+            expect(result.current.width).toBe(500);
+        });
+
+        it('does not write to localStorage (non-persisting)', async () => {
+            const key = 'test-apply-size-no-persist';
+            const { result } = renderHook(() =>
+                useResizablePanel({ initialWidth: 300, minWidth: 100, maxWidth: 500, storageKey: key })
+            );
+
+            act(() => { result.current.applySize(400); });
+
+            // Wait for effects to settle
+            await waitFor(() => expect(result.current.width).toBe(400));
+            expect(localStorage.getItem(key)).toBeNull();
+        });
+
+        it('does not write to localStorage even when a drag follows immediately after applySize', async () => {
+            const key = 'test-apply-size-then-drag';
+            const { result } = renderHook(() =>
+                useResizablePanel({ initialWidth: 300, minWidth: 100, maxWidth: 600, storageKey: key })
+            );
+
+            act(() => { result.current.applySize(400); });
+
+            // A subsequent real drag should still persist normally.
+            act(() => {
+                result.current.handleMouseDown({
+                    preventDefault: vi.fn(),
+                    clientX: 400,
+                } as unknown as React.MouseEvent);
+            });
+            act(() => {
+                document.dispatchEvent(new MouseEvent('mousemove', { clientX: 450 }));
+            });
+            act(() => {
+                document.dispatchEvent(new MouseEvent('mouseup'));
+            });
+
+            await waitFor(() => expect(localStorage.getItem(key)).toBe('450'));
+        });
+    });
+
     it('handles touch start and touch end', () => {
         const { result } = renderHook(() =>
             useResizablePanel({ initialWidth: 300, minWidth: 100, maxWidth: 500 })

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
@@ -78,11 +78,14 @@ const DIVIDER_CLASS =
     'group relative flex items-center justify-center hover:bg-[#007acc]/15 active:bg-[#007acc]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/40 transition-colors flex-shrink-0';
 
 const CHAT_SPLIT_MIN_HEIGHT = 120;
-const CHAT_SPLIT_MAX_HEIGHT = 800;
+const CHAT_SPLIT_MAX_HEIGHT = 1200;
 const CHAT_SPLIT_INITIAL_HEIGHT = 320;
 const LEFT_COLUMN_MIN_WIDTH = 240;
 const LEFT_COLUMN_MAX_WIDTH = 640;
 const LEFT_COLUMN_INITIAL_WIDTH = 360;
+
+/** Fraction of the left column height that the Git section occupies by default (~1/3). */
+const GIT_DEFAULT_FRACTION = 1 / 3;
 
 function readCollapsed(storageKey: string): boolean {
     try {
@@ -206,6 +209,8 @@ export function SplitWorkspacePanel({
 }: SplitWorkspacePanelProps) {
     const { isMobile } = useBreakpoint();
 
+    const leftColRef = useRef<HTMLDivElement>(null);
+
     // Vertical divider between the chat (top) and git (bottom) halves. The chat
     // half is a top-anchored panel whose height is the persisted "ratio".
     const chatHalf = useResizablePanel({
@@ -227,6 +232,23 @@ export function SplitWorkspacePanel({
 
     const [chatCollapsed, toggleChat] = useCollapsedState(splitWorkspaceChatCollapsedStorageKey(workspaceId));
     const [gitCollapsed, toggleGit] = useCollapsedState(splitWorkspaceGitCollapsedStorageKey(workspaceId));
+
+    // Apply a proportional default chat height (chat = ~2/3, git = ~1/3) only
+    // when the user has no persisted divider value for this workspace. The
+    // computed height is never written to localStorage — only a real user drag
+    // triggers a persist. Guards on a real measured height so jsdom (height = 0)
+    // and degenerate mounts fall back to the 320px constant.
+    useLayoutEffect(() => {
+        const storageKey = splitWorkspaceDividerStorageKey(workspaceId);
+        if (localStorage.getItem(storageKey) !== null) return;
+        const colHeight = leftColRef.current?.clientHeight ?? 0;
+        if (colHeight > 10) {
+            chatHalf.applySize(Math.round(colHeight * (1 - GIT_DEFAULT_FRACTION)));
+        }
+        // chatHalf.applySize is stable (useCallback with no deps that change);
+        // workspaceId is the intentional trigger for a recompute on workspace switch.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [workspaceId]);
 
     // Publish the live left-column width so the App shell's global status dock
     // (`GlobalStatusDock`) can match this sidebar's width. Cleared on mobile /
@@ -270,6 +292,7 @@ export function SplitWorkspacePanel({
         >
             {/* LEFT COLUMN — chat list (top) + git list (bottom), fixed width. */}
             <div
+                ref={leftColRef}
                 className="flex flex-col min-h-0 overflow-hidden flex-shrink-0 border-r border-[#e5e5e5] dark:border-[#333]"
                 style={{ width: leftColumn.width }}
                 data-testid="split-workspace-left"
