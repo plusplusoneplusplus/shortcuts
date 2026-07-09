@@ -1268,7 +1268,7 @@ timeout: 300
                     "nativeCliSessions": false,
                     "ralphMultiAgentGrill": false,
                     "remoteShell": true,
-                    "schedulesInScheduledSlide": false,
+                    "schedulesInScheduledSlide": true,
                     "sessionContextAttachments": false,
                     "splitWorkspacePanel": true,
                   },

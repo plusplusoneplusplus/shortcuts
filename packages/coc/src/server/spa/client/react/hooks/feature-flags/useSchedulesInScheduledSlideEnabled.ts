@@ -9,7 +9,7 @@ import { DASHBOARD_CONFIG_UPDATED_EVENT, isSchedulesInScheduledSlideEnabled } fr
  * schedule definitions with create/edit/run/pause/delete + run history opening in
  * the main pane — and the standalone Schedules tab is hidden and redirected.
  * Global admin setting; applies to the whole deployment and takes effect on
- * reload. Disabled by default.
+ * reload. Enabled by default.
  */
 export function useSchedulesInScheduledSlideEnabled(): boolean {
     const [enabled, setEnabled] = useState(isSchedulesInScheduledSlideEnabled());

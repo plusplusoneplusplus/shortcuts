@@ -274,7 +274,7 @@ export interface CLIConfig {
         remoteShell?: boolean;
         /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel?: boolean;
-        /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Disabled by default. */
+        /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide?: boolean;
     };
     /** Memory promotion configuration */
@@ -592,7 +592,7 @@ export interface ResolvedCLIConfig {
         remoteShell: boolean;
         /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel: boolean;
-        /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Disabled by default. */
+        /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide: boolean;
     };
     /** Memory promotion configuration */
@@ -845,7 +845,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         nativeCliSessions: false,
         remoteShell: true,
         splitWorkspacePanel: true,
-        schedulesInScheduledSlide: false,
+        schedulesInScheduledSlide: true,
     },
     memoryPromotion: {
         batchSize: 50,
