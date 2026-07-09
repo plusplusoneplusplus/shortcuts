@@ -127,10 +127,12 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
         return findRepoBySelectionId(scopedRepos, state.selectedRepoId) || findRepoBySelectionId(repos, state.selectedRepoId);
     }, [repos, state.currentAgentId, state.selectedRepoId]);
     // Single-row remote header: the sole remote-repo layout when the remote
-    // shell is on (desktop, repos tab, a clone selected). Anywhere else — no
-    // selection, or off the repos tab (Admin, Wiki, …) — the top row falls back
-    // to the RepoTabStrip so the header stays consistent across every page.
-    const showRemoteHeader = remoteShell && isOnReposTab && !!selectedRepo && !isMobile;
+    // shell is on (desktop, a clone selected). It now renders on the top-level
+    // pages too (Admin / Settings / Wiki / …), not just the repos tab, so the
+    // header stays identical to the workspace views instead of collapsing to the
+    // plain RepoTabStrip. Only when no clone is selected does the top row fall
+    // back to the RepoTabStrip so it still isn't blank.
+    const showRemoteHeader = remoteShell && !!selectedRepo && !isMobile;
 
     // Virtual workspaces (My Work / My Life) have no real repo, so they never hit
     // `showRemoteHeader`. Give them the same single-row shell via a dedicated

@@ -67,7 +67,10 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const schedulesInScheduledSlideEnabled = useSchedulesInScheduledSlideEnabled();
     const [uiLayoutMode] = useUiLayoutMode();
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
-    const activeTab = state.activeRepoSubTab;
+    // Only reflect an active sub-tab when we're actually on the repos tab. The
+    // header also renders on the top-level pages (Admin / Settings / Wiki), where
+    // no workspace sub-tab is being viewed — so none of them should highlight.
+    const activeTab = state.activeTab === 'repos' ? state.activeRepoSubTab : null;
 
     const { running: runningCount, queued: queuedCount } = useRepoQueueStats(cloneId);
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(cloneId);

@@ -1,10 +1,12 @@
 /**
  * TopBar remote-shell header tests.
  *
- * The remote-first shell is now a single header row: when features.remoteShell
- * is on (desktop, repos tab, a clone selected), the TopBar renders
- * RemoteShellHeader. When there is no concrete clone selected (cold start or a
- * virtual workspace), it falls back to the normal repo strip.
+ * The remote-first shell is a single header row: when features.remoteShell is on
+ * (desktop, a clone selected), the TopBar renders RemoteShellHeader — including
+ * on the top-level pages (Admin / Settings / Wiki), so the header stays identical
+ * to the workspace views instead of collapsing to the plain RepoTabStrip. When
+ * there is no concrete clone selected (cold start or a virtual workspace), it
+ * falls back to the normal repo strip so the top row still isn't blank.
  *
  * @vitest-environment jsdom
  */
@@ -136,30 +138,42 @@ describe('TopBar remote-shell header', () => {
         expect(screen.queryByTestId('header-new-btn')).toBeNull();
     });
 
-    it('falls back to the RepoTabStrip off the repos tab so the header stays consistent', () => {
+    it('keeps the RemoteShellHeader off the repos tab (e.g. Wiki) when a clone is selected', () => {
         mockAppState = { ...mockAppState, activeTab: 'wiki' };
         render(<TopBar />);
 
-        // No workspace-specific remote header / + New off the repos tab...
-        expect(screen.queryByTestId('remote-shell-header')).toBeNull();
-        expect(screen.queryByTestId('header-new-btn')).toBeNull();
-        // ...but the repo strip still renders so the top row matches the default page.
-        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
+        // The workspace-specific header (and its + New) stay put on the top-level
+        // pages so the top row matches the workspace views...
+        expect(screen.getByTestId('remote-shell-header')).toBeTruthy();
+        expect(screen.getByTestId('header-new-btn')).toBeTruthy();
+        // ...and the plain repo strip does not take over.
+        expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
     });
 
-    it('renders the RepoTabStrip on the admin tab (consistent top row)', () => {
+    it('keeps the RemoteShellHeader on the admin tab when a clone is selected', () => {
         mockAppState = { ...mockAppState, activeTab: 'admin' };
         render(<TopBar />);
 
-        expect(screen.queryByTestId('remote-shell-header')).toBeNull();
-        expect(screen.queryByTestId('header-new-btn')).toBeNull();
-        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
+        expect(screen.getByTestId('remote-shell-header')).toBeTruthy();
+        expect(screen.getByTestId('header-new-btn')).toBeTruthy();
+        expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
     });
 
     it('falls back to the classic RepoTabStrip when no clone is selected', () => {
         mockAppState = { ...mockAppState, selectedRepoId: null };
         render(<TopBar />);
 
+        expect(screen.queryByTestId('remote-shell-header')).toBeNull();
+        expect(screen.queryByTestId('header-new-btn')).toBeNull();
+        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
+    });
+
+    it('falls back to the RepoTabStrip off the repos tab when no clone is selected', () => {
+        mockAppState = { ...mockAppState, activeTab: 'admin', selectedRepoId: null };
+        render(<TopBar />);
+
+        // No selection → no workspace header even on a top-level page, so the
+        // strip fills the row instead of leaving it blank.
         expect(screen.queryByTestId('remote-shell-header')).toBeNull();
         expect(screen.queryByTestId('header-new-btn')).toBeNull();
         expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
