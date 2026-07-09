@@ -126,13 +126,12 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
         const scopedRepos = repos.filter(r => !state.currentAgentId || !r.workspace.agentId || r.workspace.agentId === state.currentAgentId);
         return findRepoBySelectionId(scopedRepos, state.selectedRepoId) || findRepoBySelectionId(repos, state.selectedRepoId);
     }, [repos, state.currentAgentId, state.selectedRepoId]);
-    // Single-row remote header: the sole remote-repo layout when the remote
-    // shell is on (desktop, a clone selected). It now renders on the top-level
-    // pages too (Admin / Settings / Wiki / …), not just the repos tab, so the
-    // header stays identical to the workspace views instead of collapsing to the
-    // plain RepoTabStrip. Only when no clone is selected does the top row fall
-    // back to the RepoTabStrip so it still isn't blank.
-    const showRemoteHeader = remoteShell && !!selectedRepo && !isMobile;
+    // Remote-shell visual gate: enabled on any desktop page when the remote-first
+    // shell is on, regardless of whether a concrete repository is selected. The
+    // header design stays stable across cold loads and the Admin page; repository
+    // selection controls what is rendered *inside* the header (full clusters vs.
+    // the unselected picker), not which header system is shown.
+    const showRemoteHeader = remoteShell && !isMobile;
 
     // Virtual workspaces (My Work / My Life) have no real repo, so they never hit
     // `showRemoteHeader`. Give them the same single-row shell via a dedicated
@@ -219,10 +218,12 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         🏠
                     </button>
                 )}
-                {!isMobile && (showRemoteHeader && selectedRepo ? (
-                    <RemoteShellHeader repo={selectedRepo} repos={repos} />
-                ) : showVirtualHeader && virtualHeaderConfig ? (
+                {!isMobile && (showVirtualHeader && virtualHeaderConfig ? (
                     <VirtualWorkspaceShellHeader config={virtualHeaderConfig} />
+                ) : showRemoteHeader ? (
+                    // Remote-first shell: always rendered; repo may be undefined
+                    // (unselected state shows a "Select repository" picker).
+                    <RemoteShellHeader repo={selectedRepo} repos={repos} />
                 ) : (
                     <RepoTabStrip
                         repos={repos}
@@ -253,7 +254,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                 )}
             </div>
             <div className="flex flex-shrink-0 items-center gap-1.5" data-testid="topbar-actions">
-                {showRemoteHeader && selectedRepo && (
+                {showRemoteHeader && !!selectedRepo && (
                     <button
                         data-testid="header-new-btn"
                         title={`Queue a task on ${selectedRepo.workspace.name}`}
@@ -266,9 +267,9 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                 )}
                 {/* Terminal + Explorer dock toggle — right of "+ New". The dock body
                     renders in RepoDetail; this shares its open state via a cross-tree
-                    store. Only shown in the remote-first shell (the classic shell keeps
-                    its toggle in RepoDetail's own header). */}
-                {showRemoteHeader && selectedRepo && splitWorkspacePanelEnabled && (
+                    store. Only shown in the remote-first shell with a concrete clone
+                    selected (the classic shell keeps its toggle in RepoDetail's header). */}
+                {showRemoteHeader && !!selectedRepo && splitWorkspacePanelEnabled && (
                     <WorkspaceDockToggleButton workspaceId={String(selectedRepo.workspace.id)} />
                 )}
                 {/* Status cluster — hidden here when it lives in the global

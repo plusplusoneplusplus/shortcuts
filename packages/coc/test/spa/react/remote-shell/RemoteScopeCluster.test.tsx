@@ -188,3 +188,47 @@ describe('RemoteScopeCluster', () => {
         expect(active).toHaveLength(0);
     });
 });
+
+describe('RemoteScopeCluster — unselected (no repo)', () => {
+    it('shows "Select repository" in the chip when no repo is provided', () => {
+        render(<RemoteScopeCluster repos={mockRepos} />);
+
+        expect(screen.getByTestId('remote-chip').textContent).toContain('Select repository');
+    });
+
+    it('omits remote-scope tabs (WI/PR) when no repo is provided', () => {
+        render(<RemoteScopeCluster repos={mockRepos} />);
+
+        expect(screen.queryAllByTestId('remote-scope-tab')).toHaveLength(0);
+    });
+
+    it('opens the dropdown with search and add/clone actions when no repo is provided', () => {
+        render(<RemoteScopeCluster repos={mockRepos} />);
+
+        fireEvent.click(screen.getByTestId('remote-chip'));
+        expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
+        expect(screen.getByTestId('remote-search-input')).toBeTruthy();
+        expect(screen.getByTestId('remote-add-folder-option')).toBeTruthy();
+        expect(screen.getByTestId('remote-add-repo-option')).toBeTruthy();
+        expect(screen.getByTestId('remote-clone-repo-option')).toBeTruthy();
+    });
+
+    it('lists available remote groups in the dropdown when no repo is provided', () => {
+        render(<RemoteScopeCluster repos={mockRepos} />);
+
+        fireEvent.click(screen.getByTestId('remote-chip'));
+        const items = screen.getAllByTestId('remote-dropdown-item');
+        // mockRepos has github.com/acme/shortcuts (2 clones) and github.com/acme/forge
+        expect(items.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('navigates to a chosen group when selected from the unselected picker', () => {
+        render(<RemoteScopeCluster repos={mockRepos} />);
+
+        fireEvent.click(screen.getByTestId('remote-chip'));
+        const forge = screen.getAllByTestId('remote-dropdown-item').find(el => el.textContent?.includes('forge'))!;
+        fireEvent.click(forge);
+
+        expect(mockSelectClone).toHaveBeenCalledWith('c');
+    });
+});

@@ -1,12 +1,12 @@
 /**
  * TopBar remote-shell header tests.
  *
- * The remote-first shell is a single header row: when features.remoteShell is on
- * (desktop, a clone selected), the TopBar renders RemoteShellHeader — including
- * on the top-level pages (Admin / Settings / Wiki), so the header stays identical
- * to the workspace views instead of collapsing to the plain RepoTabStrip. When
- * there is no concrete clone selected (cold start or a virtual workspace), it
- * falls back to the normal repo strip so the top row still isn't blank.
+ * The remote-first shell is the visual system gate: when features.remoteShell is
+ * on (desktop), TopBar always renders RemoteShellHeader — including on top-level
+ * pages (Admin / Settings / Wiki) and cold loads with no repository selected.
+ * Repository selection controls what appears *inside* the header (full clusters
+ * vs. the unselected "Select repository" picker), not which header system is shown.
+ * RepoTabStrip is only rendered in classic mode (remoteShell off).
  *
  * @vitest-environment jsdom
  */
@@ -159,24 +159,26 @@ describe('TopBar remote-shell header', () => {
         expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
     });
 
-    it('falls back to the classic RepoTabStrip when no clone is selected', () => {
+    it('renders the unselected remote picker (not RepoTabStrip) when no clone is selected', () => {
         mockAppState = { ...mockAppState, selectedRepoId: null };
         render(<TopBar />);
 
-        expect(screen.queryByTestId('remote-shell-header')).toBeNull();
+        // Remote shell is on — the header stays in the remote-first design even
+        // without a concrete clone; the unselected picker fills the left cluster.
+        expect(screen.getByTestId('remote-shell-header')).toBeTruthy();
+        expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
+        // + New and dock toggle require a concrete clone.
         expect(screen.queryByTestId('header-new-btn')).toBeNull();
-        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
     });
 
-    it('falls back to the RepoTabStrip off the repos tab when no clone is selected', () => {
+    it('renders the unselected remote picker on Admin cold load (no clone selected)', () => {
         mockAppState = { ...mockAppState, activeTab: 'admin', selectedRepoId: null };
         render(<TopBar />);
 
-        // No selection → no workspace header even on a top-level page, so the
-        // strip fills the row instead of leaving it blank.
-        expect(screen.queryByTestId('remote-shell-header')).toBeNull();
+        // No selection + Admin tab → remote-first shell still holds; no strip swap.
+        expect(screen.getByTestId('remote-shell-header')).toBeTruthy();
+        expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
         expect(screen.queryByTestId('header-new-btn')).toBeNull();
-        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
     });
 
     it('renders the virtual-workspace header for the My Work virtual workspace', () => {
@@ -211,7 +213,10 @@ describe('TopBar remote-shell header', () => {
         render(<TopBar />);
 
         expect(screen.queryByTestId('virtual-workspace-shell-header')).toBeNull();
-        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
+        // Remote shell is on; no real clone resolves for 'my_work', so the
+        // unselected remote picker is shown — not the classic strip.
+        expect(screen.getByTestId('remote-shell-header')).toBeTruthy();
+        expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
     });
 
     it('falls back to the classic RepoTabStrip for My Work when remoteShell is off', () => {
@@ -229,8 +234,11 @@ describe('TopBar remote-shell header', () => {
         mockAppState = { ...mockAppState, activeTab: 'wiki', selectedRepoId: 'my_work' };
         render(<TopBar />);
 
+        // Virtual header requires isOnReposTab; off that tab the remote-first shell
+        // renders instead (not the classic strip).
         expect(screen.queryByTestId('virtual-workspace-shell-header')).toBeNull();
-        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
+        expect(screen.getByTestId('remote-shell-header')).toBeTruthy();
+        expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
     });
 });
 
