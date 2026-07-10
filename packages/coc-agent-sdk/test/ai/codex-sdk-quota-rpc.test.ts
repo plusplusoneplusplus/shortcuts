@@ -15,6 +15,7 @@ import { EventEmitter } from 'events';
 import { PassThrough, Writable } from 'stream';
 import { CodexSDKService } from '../../src/codex-sdk-service';
 import { execFileAsync } from '../../src/internal/exec-utils';
+import { resolveCodexExecutablePath } from '../../src/codex-exec-path';
 
 vi.mock('child_process', () => ({
     spawn: vi.fn(),
@@ -24,12 +25,18 @@ vi.mock('../../src/internal/exec-utils', () => ({
     execFileAsync: vi.fn(),
 }));
 
+vi.mock('../../src/codex-exec-path', () => ({
+    resolveCodexExecutablePath: vi.fn(),
+}));
+
 const mockSpawn = vi.mocked(spawn);
 const mockExecFileAsync = vi.mocked(execFileAsync);
+const mockResolveCodexExec = vi.mocked(resolveCodexExecutablePath);
 
 /** Minimal stand-in for the spawned `codex app-server --listen stdio://` child process. */
 class MockCodexAppServerChild extends EventEmitter {
     public readonly stdout = new PassThrough();
+    public readonly stderr = new PassThrough();
     public readonly stdinWrites: string[] = [];
     public readonly stdin: Writable;
     public readonly kill = vi.fn(() => true);
@@ -79,6 +86,10 @@ describe('CodexSDKService.getAccountQuota — app-server stdio RPC', () => {
         mockSpawn.mockReset();
         mockExecFileAsync.mockReset();
         mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+        mockResolveCodexExec.mockReset();
+        // Default: no unpacked native binary (dev / global install) → the code
+        // falls back to `<node> codex.js`. Tests override for packaged builds.
+        mockResolveCodexExec.mockReturnValue(undefined);
     });
 
     it('starts the app-server over stdio and returns mapped quota without daemon start', async () => {
@@ -142,5 +153,62 @@ describe('CodexSDKService.getAccountQuota — app-server stdio RPC', () => {
         child.emit('exit', 0);
 
         await expect(promise).rejects.toThrow(/app-server stdio exited before returning rate limits/);
+    });
+
+    it('spawns the unpacked native codex binary directly when available (packaged desktop)', async () => {
+        // Regression: the quota path must not run the `@openai/codex/bin/codex.js`
+        // launcher via `process.execPath` (the Electron binary in packaged builds,
+        // and the launcher path lands inside `app.asar` which cannot be spawned).
+        mockResolveCodexExec.mockReturnValue('/app/app.asar.unpacked/vendor/aarch64-apple-darwin/bin/codex');
+        const child = new MockCodexAppServerChild();
+        mockSpawn.mockReturnValueOnce(child as never);
+
+        const svc = new CodexSDKService();
+        const promise = svc.getAccountQuota();
+        await flushMicrotasks();
+
+        const [command, args] = mockSpawn.mock.calls[0] as [string, string[]];
+        expect(command).toBe('/app/app.asar.unpacked/vendor/aarch64-apple-darwin/bin/codex');
+        expect(args).toEqual(['app-server', '--listen', 'stdio://']);
+
+        child.writeStdoutLine(JSON.stringify({ jsonrpc: '2.0', id: 2, result: RATE_LIMITS_RESULT }));
+        await promise;
+    });
+
+    it('falls back to <node> codex.js when no native binary resolves (dev / global install)', async () => {
+        mockResolveCodexExec.mockReturnValue(undefined);
+        const child = new MockCodexAppServerChild();
+        mockSpawn.mockReturnValueOnce(child as never);
+
+        const svc = new CodexSDKService();
+        const promise = svc.getAccountQuota();
+        await flushMicrotasks();
+
+        const [command, args] = mockSpawn.mock.calls[0] as [string, string[]];
+        expect(command).toBe(process.execPath);
+        expect(args[0]).toMatch(/codex\.js$/);
+        expect(args.slice(-3)).toEqual(['app-server', '--listen', 'stdio://']);
+
+        child.writeStdoutLine(JSON.stringify({ jsonrpc: '2.0', id: 2, result: RATE_LIMITS_RESULT }));
+        await promise;
+    });
+
+    it('includes captured stderr and exit code when the app-server exits early', async () => {
+        // Regression: stderr must be captured (not discarded) so a packaged-desktop
+        // launch failure surfaces its real reason instead of a bare message.
+        const child = new MockCodexAppServerChild();
+        mockSpawn.mockReturnValueOnce(child as never);
+
+        const svc = new CodexSDKService();
+        const promise = svc.getAccountQuota();
+        await flushMicrotasks();
+
+        child.stderr.write('error: unexpected argument --listen found\n');
+        await new Promise(resolve => setImmediate(resolve));
+        child.emit('exit', 1);
+
+        await expect(promise).rejects.toThrow(
+            /exited before returning rate limits \(exit code 1\): error: unexpected argument --listen found/,
+        );
     });
 });

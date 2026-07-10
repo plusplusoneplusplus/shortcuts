@@ -819,8 +819,7 @@ export class CodexSDKService implements ISDKService {
     public async getAccountQuota(): Promise<IAccountQuotaResult> {
         if (this.disposed) throw new Error('CodexSDKService has been disposed');
 
-        const codexBinPath = this.resolveCodexBinPath();
-        const rpcResult = await this.fetchRateLimitsViaRpc(codexBinPath);
+        const rpcResult = await this.fetchRateLimitsViaRpc();
         return this.mapRateLimitsToQuota(rpcResult);
     }
 
@@ -859,15 +858,35 @@ export class CodexSDKService implements ISDKService {
     }
 
     /**
-     * Run the bundled Codex CLI (`codex <args>`) as a child of the current Node
-     * runtime, resolving with its captured stdio. Shared by the model-catalog
-     * and quota RPCs so every Codex CLI invocation uses the same robust spawn
-     * pattern (Node runtime + resolved `codex.js` path, rather than relying on a
-     * `codex` binary on PATH).
+     * Resolve how to launch the bundled Codex CLI as `{ command, prefixArgs }`,
+     * so `spawn(command, [...prefixArgs, ...codexArgs])` runs `codex <args>`.
+     *
+     * Prefer the unpacked native binary, spawned directly (no Node): in packaged
+     * desktop builds `process.execPath` is the Electron binary and the
+     * `@openai/codex/bin/codex.js` launcher lives inside `app.asar`, so the
+     * Node-launcher route fails to start (and its stderr is easy to lose). The
+     * native binary is unpacked to `app.asar.unpacked` and is directly spawnable.
+     * Falls back to `<node> codex.js` for a normal CLI / global install and for
+     * dev-from-source, where `resolveCodexExecutablePath()` returns `undefined`
+     * or a plain on-disk path.
+     */
+    private resolveCodexSpawn(): { command: string; prefixArgs: string[] } {
+        const nativeBinary = resolveCodexExecutablePath();
+        if (nativeBinary) {
+            return { command: nativeBinary, prefixArgs: [] };
+        }
+        return { command: process.execPath, prefixArgs: [this.resolveCodexBinPath()] };
+    }
+
+    /**
+     * Run the bundled Codex CLI (`codex <args>`) as a child process, resolving
+     * with its captured stdio. Shared by the model-catalog and quota RPCs so
+     * every Codex CLI invocation uses the same robust spawn pattern (see
+     * {@link resolveCodexSpawn}), rather than relying on a `codex` binary on PATH.
      */
     private runCodexCli(args: string[], options: { timeout: number }): Promise<{ stdout: string; stderr: string }> {
-        const codexBinPath = this.resolveCodexBinPath();
-        return execFileAsync(process.execPath, [codexBinPath, ...args], {
+        const { command, prefixArgs } = this.resolveCodexSpawn();
+        return execFileAsync(command, [...prefixArgs, ...args], {
             timeout: options.timeout,
             maxBuffer: 50 * 1024 * 1024,
         });
@@ -882,16 +901,25 @@ export class CodexSDKService implements ISDKService {
      * managed standalone Codex path, while stdio works with the SDK-bundled CLI
      * that CoC already resolves for protocol compatibility.
      */
-    private async fetchRateLimitsViaRpc(codexBinPath: string): Promise<CodexRateLimitsResult> {
-        return this.readRateLimitsViaStdioAppServer(codexBinPath);
+    private async fetchRateLimitsViaRpc(): Promise<CodexRateLimitsResult> {
+        return this.readRateLimitsViaStdioAppServer();
     }
 
     /** Spawn `codex app-server --listen stdio://`, send RPC messages, and return rate limits. */
-    private readRateLimitsViaStdioAppServer(codexBinPath: string): Promise<CodexRateLimitsResult> {
+    private readRateLimitsViaStdioAppServer(): Promise<CodexRateLimitsResult> {
         return new Promise<CodexRateLimitsResult>((resolve, reject) => {
-            const child = spawn(process.execPath, [codexBinPath, 'app-server', '--listen', 'stdio://'], {
-                stdio: ['pipe', 'pipe', 'ignore'],
+            const { command, prefixArgs } = this.resolveCodexSpawn();
+            const child = spawn(command, [...prefixArgs, 'app-server', '--listen', 'stdio://'], {
+                stdio: ['pipe', 'pipe', 'pipe'],
                 windowsHide: true,
+            });
+
+            // Capture stderr so a packaged-desktop launch failure (wrong runtime,
+            // an `app.asar` path, missing auth) surfaces its real reason instead
+            // of a bare "exited before returning rate limits".
+            let stderr = '';
+            child.stderr?.on('data', (chunk: Buffer | string) => {
+                if (stderr.length < 8192) stderr += chunk.toString();
             });
 
             const rl = readline.createInterface({ input: child.stdout! });
@@ -915,11 +943,16 @@ export class CodexSDKService implements ISDKService {
                 reject(err);
             });
 
-            child.on('exit', () => {
+            child.on('exit', (code) => {
                 clearTimeout(timer);
                 if (!settled) {
                     settled = true;
-                    reject(new Error('Codex app-server stdio exited before returning rate limits'));
+                    const detail = stderr.trim();
+                    reject(new Error(
+                        'Codex app-server stdio exited before returning rate limits'
+                        + (code != null ? ` (exit code ${code})` : '')
+                        + (detail ? `: ${detail.slice(0, 500)}` : ''),
+                    ));
                 }
             });
 

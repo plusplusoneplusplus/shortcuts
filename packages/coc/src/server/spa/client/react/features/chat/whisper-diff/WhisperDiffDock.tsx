@@ -1,5 +1,5 @@
 /**
- * WhisperDiffDock — host layout for the transient read-only whisper diff panel
+ * WhisperDiffDock — host layout for the converged read-only whisper diff panel
  * (AC-03).
  *
  * Picks the surface for the single `WhisperDiffPanel` slot, mirroring
@@ -8,24 +8,23 @@
  *    bottom-sheet style).
  *  - desktop → a resizable, full-height sibling column with a drag handle.
  *
- * The panel chrome + state-driven body live in `WhisperDiffPanel`; this
- * component only owns the mobile-vs-desktop shell + resizing.
+ * The panel chrome (header dropdown selector + state-driven body) lives in
+ * `WhisperDiffPanel`; the per-file selection is internal to the panel, so this
+ * host only owns the mobile-vs-desktop shell + resizing and titles the mobile
+ * sheet with the whole-group file count.
  */
 import { BottomSheet } from '../../../ui/BottomSheet';
 import { WhisperDiffPanel } from './WhisperDiffPanel';
-import type { FileEdit } from '../conversation/tool-calls/toolGroupUtils';
 import type { WhisperDiffState } from './useWhisperDiffState';
 import type { UseResizablePanelReturn } from '../../../hooks/ui/useResizablePanel';
 
-function sheetTitle(file: FileEdit | null | undefined, state: WhisperDiffState): string {
-    // Combined ("All changes") mode has no single file — title the whole-group view.
-    if (state.combined) return 'All changes';
-    return file ? file.path.replace(/\\/g, '/').split('/').pop() || 'Diff' : 'Diff';
+/** Whole-group title for the mobile sheet chrome (the dropdown inside is authoritative). */
+function sheetTitle(state: WhisperDiffState): string {
+    const n = state.view.fileCount;
+    return n > 0 ? `${n} file${n !== 1 ? 's' : ''} changed` : 'Changes';
 }
 
 export interface WhisperDiffDockProps {
-    /** The clicked file's edit summary — drives the single-file header. Absent in combined mode. */
-    file?: FileEdit | null;
     /** Renderable diff state from `useWhisperDiffState`. */
     state: WhisperDiffState;
     /** Current workspace root, used to show a project-relative path in the header. */
@@ -39,7 +38,6 @@ export interface WhisperDiffDockProps {
 }
 
 export function WhisperDiffDock({
-    file,
     state,
     workspaceRootPath,
     isMobile,
@@ -51,11 +49,10 @@ export function WhisperDiffDock({
             <BottomSheet
                 isOpen
                 onClose={onClose}
-                title={sheetTitle(file, state)}
+                title={sheetTitle(state)}
                 height={90}
             >
                 <WhisperDiffPanel
-                    file={file}
                     state={state}
                     workspaceRootPath={workspaceRootPath}
                     onClose={onClose}
@@ -80,7 +77,6 @@ export function WhisperDiffDock({
                 data-testid="whisper-diff-column"
             >
                 <WhisperDiffPanel
-                    file={file}
                     state={state}
                     workspaceRootPath={workspaceRootPath}
                     onClose={onClose}
