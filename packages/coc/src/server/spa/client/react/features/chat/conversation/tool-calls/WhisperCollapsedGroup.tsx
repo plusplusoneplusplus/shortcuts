@@ -26,51 +26,36 @@ import { clampPopoverPosition, useHoverPopover, HoverSummarySpan } from './hover
 import { buildWhisperGroupModel, collectGroupToolCalls } from './whisperGroupModel';
 
 /**
- * Context emitted when a user clicks an active changed-file row in the whisper
- * files popover. Carries everything the diff panel needs to render that file's
- * edits: the file summary, the group's reconstructable tool calls (primary diff
- * source), and the group's detected commits + workspace routing (commit-diff
- * fallback). See `buildWhisperFileDiff` for how `toolCalls` is replayed.
+ * Context emitted when a user opens the whisper diff panel from the files
+ * popover — either the whole-group combined diff (the "N files" footer) or a
+ * single focused file (a file row). Both entry points carry the SAME payload;
+ * they differ only by `focusPath`, which the panel uses to pick the initial
+ * dropdown selection. The panel is a filterable whole-group view: it always
+ * reconstructs every file synchronously via `buildWhisperCombinedDiff`, then
+ * shows the stacked "All files" view or narrows to one file by selection.
+ *
+ * It rides the window CustomEvent bridge (`whisperDiffEvent`) into the single
+ * docked panel slot; opening one replaces whatever the dock currently shows.
  */
-export interface WhisperFileDiffContext {
-    /** The clicked file's edit summary (path, isCreate, isDeleted, stats). */
-    file: FileEdit;
-    /** Reconstructable edit/create/apply_patch calls captured in this group. */
-    toolCalls: WhisperDiffToolCall[];
-    /** Commits detected in this group, for the commit-diff fallback. */
-    commits: DetectedCommit[];
-    /** Workspace/clone routing id for any commit fallback fetch. */
-    workspaceId?: string;
-}
-
-/**
- * Context emitted when a user opens the *combined* whole-group diff from the
- * files popover footer (AC-02). Unlike the per-file context, it carries the
- * group's full ordered file list; the panel reconstructs every reconstructable
- * file synchronously via `buildWhisperCombinedDiff`. It rides the same window
- * CustomEvent bridge and single docked panel slot as the per-file flow.
- */
-export interface WhisperCombinedDiffContext {
-    /** Discriminator: this is the whole-group combined diff, not a single file. */
-    combined: true;
+export interface WhisperDiffOpenContext {
     /** Every file in the group, in popover / group order (deleted ones included). */
     files: FileEdit[];
     /** Reconstructable edit/create/apply_patch calls captured in this group. */
     toolCalls: WhisperDiffToolCall[];
-    /** Commits detected in this group; carried for parity (unused in the combined path). */
+    /**
+     * Commits detected in this group. Carried for parity with the header/popover
+     * flows; the converged panel reconstructs from `toolCalls` only and never
+     * fetches a commit diff, so this is currently unused by the panel.
+     */
     commits: DetectedCommit[];
-    /** Workspace/clone routing id, carried unchanged from the single-file flow. */
+    /** Workspace/clone routing id, carried for parity (currently unused by the panel). */
     workspaceId?: string;
-}
-
-/** Either a single clicked file or the whole-group combined diff. */
-export type WhisperDiffOpenContext = WhisperFileDiffContext | WhisperCombinedDiffContext;
-
-/** Type guard: true when the open context is the whole-group combined diff. */
-export function isCombinedWhisperDiffContext(
-    ctx: WhisperDiffOpenContext,
-): ctx is WhisperCombinedDiffContext {
-    return (ctx as WhisperCombinedDiffContext).combined === true;
+    /**
+     * When set, the panel opens focused on this file's diff (a popover file-row
+     * entry). Absent → the panel opens on the stacked "All files" view (the
+     * footer entry). Thereafter the selection is user-driven inside the panel.
+     */
+    focusPath?: string;
 }
 
 interface ToolLike {
@@ -928,28 +913,30 @@ export function WhisperCollapsedGroup({
         [precedingChunks, toolById],
     );
 
+    // A file row opens the converged panel focused on that file (its dropdown
+    // selection is pre-set via `focusPath`). Same whole-group payload as the
+    // footer — the builder surfaces deleted/non-reconstructable files downstream,
+    // so the full ordered list is carried through unchanged.
     const handleFileClick = useCallback(
         (file: FileEdit) => {
             if (!onOpenFileDiff) return;
             onOpenFileDiff({
-                file,
+                files: summary.fileEdits ?? [],
                 toolCalls: groupToolCalls,
                 commits: summary.commits ?? [],
                 workspaceId,
+                focusPath: file.path,
             });
         },
-        [onOpenFileDiff, groupToolCalls, summary.commits, workspaceId],
+        [onOpenFileDiff, summary.fileEdits, groupToolCalls, summary.commits, workspaceId],
     );
     const onFileClick = onOpenFileDiff ? handleFileClick : undefined;
 
-    // Opens the whole-group combined diff (every reconstructable file in one
-    // scroll). Built from the same captured tool calls + ordered fileEdits the
-    // popover shows; deleted/non-reconstructable files are surfaced by the
-    // builder downstream, so the full list is carried through unchanged.
+    // The multi-file footer opens the SAME converged panel with no `focusPath`,
+    // so it lands on the stacked "All files" view.
     const handleOpenCombined = useCallback(() => {
         if (!onOpenFileDiff) return;
         onOpenFileDiff({
-            combined: true,
             files: summary.fileEdits ?? [],
             toolCalls: groupToolCalls,
             commits: summary.commits ?? [],

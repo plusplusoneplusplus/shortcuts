@@ -40,7 +40,6 @@ import { SourceCanvasDock, useSourceCanvasState, useSourceCanvasContent, useSour
 import { readCanvasClosed, writeCanvasClosed } from './canvasClosedPreference';
 import { deriveOpenCanvasMemory, type OpenCanvasMemory } from './openCanvasMemory';
 import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER_DIFF_EVENT } from './whisper-diff';
-import { isCombinedWhisperDiffContext } from './conversation/tool-calls/WhisperCollapsedGroup';
 import type { WhisperDiffOpenContext } from './conversation/tool-calls/WhisperCollapsedGroup';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
@@ -449,10 +448,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     useEffect(() => {
         const handler = (event: Event) => {
             const detail = (event as CustomEvent).detail as WhisperDiffOpenContext | undefined;
-            if (!detail) return;
-            // Combined contexts carry `files[]` (no `.file`); single-file contexts
-            // must carry a `.file`. Reject anything that is neither.
-            if (!isCombinedWhisperDiffContext(detail) && !detail.file) return;
+            // Every converged context carries the group's ordered `files[]`; reject
+            // anything malformed. `focusPath` (a file-row entry) is optional.
+            if (!detail || !Array.isArray(detail.files)) return;
             openWhisperDiff(detail);
         };
         window.addEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
@@ -1481,7 +1479,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // canvas + source canvas above (only one right column is non-null at once).
     const whisperDiffColumn = (whisperDiff.isOpen && whisperDiff.ctx) ? (
         <WhisperDiffDock
-            file={isCombinedWhisperDiffContext(whisperDiff.ctx) ? undefined : whisperDiff.ctx.file}
             state={whisperDiffState}
             workspaceRootPath={workspaceRootPath}
             isMobile={isMobile}

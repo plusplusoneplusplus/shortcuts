@@ -1,6 +1,6 @@
 /**
- * Tests for WhisperDiffDock — the mobile-vs-desktop host shell for the
- * transient read-only whisper diff panel (AC-03).
+ * Tests for WhisperDiffDock — the mobile-vs-desktop host shell for the converged
+ * read-only whisper diff panel (AC-03).
  *
  * Mobile (`isMobile`) → the panel renders inside a `BottomSheet` (the existing
  * source-canvas bottom-sheet style). Desktop → a resizable sibling column with
@@ -34,8 +34,15 @@ const file: FileEdit = {
 
 const successState: WhisperDiffState = {
     status: 'success',
-    diffText: 'diff --git a/foo b/foo\n+x',
-    file,
+    view: {
+        sections: [{ file, diff: 'diff --git a/foo b/foo\n+x' }],
+        deletedFiles: [],
+        nonReconstructableFiles: [],
+        fileCount: 1,
+        totalInsertions: 1,
+        totalDeletions: 0,
+    },
+    files: [file],
     error: '',
 };
 
@@ -45,7 +52,6 @@ describe('WhisperDiffDock', () => {
     it('hosts the panel inside a BottomSheet at the mobile breakpoint', () => {
         render(
             <WhisperDiffDock
-                file={file}
                 state={successState}
                 workspaceRootPath="/home/u/proj"
                 isMobile
@@ -64,7 +70,6 @@ describe('WhisperDiffDock', () => {
     it('uses the resizable desktop column (not a BottomSheet) when not mobile', () => {
         render(
             <WhisperDiffDock
-                file={file}
                 state={successState}
                 workspaceRootPath="/home/u/proj"
                 isMobile={false}
@@ -83,7 +88,6 @@ describe('WhisperDiffDock', () => {
     it('forwards resize handlers from the desktop drag handle', () => {
         render(
             <WhisperDiffDock
-                file={file}
                 state={successState}
                 isMobile={false}
                 onClose={() => {}}
@@ -94,46 +98,29 @@ describe('WhisperDiffDock', () => {
         expect(resize.handleMouseDown).toHaveBeenCalled();
     });
 
-    it('titles the mobile sheet with the file basename', () => {
+    it('titles the mobile sheet with the whole-group file count and defaults to "All files"', () => {
         render(
             <WhisperDiffDock
-                file={file}
                 state={successState}
                 isMobile
                 onClose={() => {}}
                 resize={resize}
             />,
         );
-        // The basename shows in both the sheet title chrome and the panel header.
-        expect(screen.getAllByText('foo.ts').length).toBeGreaterThanOrEqual(2);
-        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('foo.ts');
+        // Sheet chrome shows the group count; the panel header dropdown defaults
+        // to the stacked "All files" view.
+        expect(screen.getByText('1 file changed')).toBeInTheDocument();
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('All files');
     });
 
-    it('hosts the combined "All changes" view with no single file', () => {
-        const combinedState: WhisperDiffState = {
-            status: 'success',
-            diffText: 'diff --git a/foo b/foo\n+x',
-            file: null,
-            error: '',
-            combined: {
-                sections: [{ file, diff: 'diff --git a/foo b/foo\n+x' }],
-                deletedFiles: [],
-                nonReconstructableFiles: [],
-                fileCount: 1,
-                totalInsertions: 1,
-                totalDeletions: 0,
-            },
+    it('pluralizes the sheet title for a multi-file group', () => {
+        const multi: WhisperDiffState = {
+            ...successState,
+            view: { ...successState.view, fileCount: 3 },
         };
         render(
-            <WhisperDiffDock
-                state={combinedState}
-                isMobile
-                onClose={() => {}}
-                resize={resize}
-            />,
+            <WhisperDiffDock state={multi} isMobile onClose={() => {}} resize={resize} />,
         );
-        // The sheet title and header both read "All changes" even with no `file` prop.
-        expect(screen.getAllByText('All changes').length).toBeGreaterThanOrEqual(2);
-        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('All changes');
+        expect(screen.getByText('3 files changed')).toBeInTheDocument();
     });
 });

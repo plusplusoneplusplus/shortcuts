@@ -1,10 +1,11 @@
+/* @vitest-environment jsdom */
 /**
- * AC-02 — Open the combined diff from the files-popover footer.
+ * AC-02/03 — Open the converged whisper diff panel from the files popover.
  *
- * The multi-file popover summary footer ("N files +X −Y") becomes an interactive
- * control: activating it (click / Enter / Space) dispatches the open event with a
- * *combined* context (all files + the group's tool calls + workspaceId). Per-file
- * rows keep their single-file behavior unchanged, and single-file groups never
+ * Both popover triggers dispatch the SAME whole-group context (all files + the
+ * group's tool calls + workspaceId): the multi-file summary footer ("N files +X
+ * −Y") opens it with no `focusPath` (the "All files" view), while a per-file row
+ * opens it focused on that file (`focusPath` set). Single-file groups never
  * render the footer at all.
  */
 
@@ -119,7 +120,7 @@ describe('WhisperCollapsedGroup — combined-diff footer (AC-02)', () => {
         expect(getFooter()).toBeNull();
     });
 
-    it('dispatches a combined context (all files + tool calls + workspaceId) on click', () => {
+    it('dispatches the whole-group context (all files + tool calls + workspaceId, no focus) on click', () => {
         const onOpenFileDiff = vi.fn();
         const toolById = new Map<string, unknown>([
             ['t1', { toolName: 'edit', args: { path: 'src/a.ts', old_str: 'old', new_str: 'new' } }],
@@ -135,15 +136,14 @@ describe('WhisperCollapsedGroup — combined-diff footer (AC-02)', () => {
 
         expect(onOpenFileDiff).toHaveBeenCalledTimes(1);
         const ctx = onOpenFileDiff.mock.calls[0][0];
-        expect(ctx.combined).toBe(true);
         expect(ctx.workspaceId).toBe('test-ws');
         expect(ctx.files.map((f: FileEdit) => f.path)).toEqual(['src/a.ts', 'src/b.ts']);
         expect(ctx.toolCalls).toEqual([
             { toolName: 'edit', args: { path: 'src/a.ts', old_str: 'old', new_str: 'new' } },
             { toolName: 'create', args: { path: 'src/b.ts', file_text: 'hello\nworld' } },
         ]);
-        // The combined context is not a single-file context.
-        expect(ctx.file).toBeUndefined();
+        // The footer opens the "All files" view — no focused file.
+        expect(ctx.focusPath).toBeUndefined();
     });
 
     it('activates the footer on Enter and Space keys', () => {
@@ -153,7 +153,9 @@ describe('WhisperCollapsedGroup — combined-diff footer (AC-02)', () => {
         fireEvent.keyDown(footer, { key: 'Enter' });
         fireEvent.keyDown(footer, { key: ' ' });
         expect(onOpenFileDiff).toHaveBeenCalledTimes(2);
-        expect(onOpenFileDiff.mock.calls.every((c) => c[0].combined === true)).toBe(true);
+        // Footer entries never carry a focus target (they open on "All files").
+        expect(onOpenFileDiff.mock.calls.every((c) => c[0].focusPath === undefined)).toBe(true);
+        expect(onOpenFileDiff.mock.calls.every((c) => Array.isArray(c[0].files))).toBe(true);
     });
 
     it('carries deleted files through in the combined context (the builder lists them as "not shown")', () => {
@@ -166,16 +168,17 @@ describe('WhisperCollapsedGroup — combined-diff footer (AC-02)', () => {
         expect(ctx.files.find((f: FileEdit) => f.path === 'src/gone.ts').isDeleted).toBe(true);
     });
 
-    it('per-file rows still dispatch the single-file context unchanged', () => {
+    it('per-file rows dispatch the same whole-group context, focused on the clicked file', () => {
         const onOpenFileDiff = vi.fn();
         renderGroup(TWO_FILES, { onOpenFileDiff });
         const row = document.body.querySelector('[data-testid="file-popover-row"]') as HTMLElement;
         fireEvent.click(row);
         expect(onOpenFileDiff).toHaveBeenCalledTimes(1);
         const ctx = onOpenFileDiff.mock.calls[0][0];
-        expect(ctx.combined).toBeUndefined();
-        expect(ctx.file.path).toBe('src/a.ts');
-        expect(ctx.files).toBeUndefined();
+        // Same converged payload as the footer, but with the clicked file focused.
+        expect(ctx.files.map((f: FileEdit) => f.path)).toEqual(['src/a.ts', 'src/b.ts']);
+        expect(ctx.focusPath).toBe('src/a.ts');
+        expect(ctx.file).toBeUndefined();
     });
 
     it('activating the footer opens the combined diff without expanding the group', () => {

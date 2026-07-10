@@ -334,7 +334,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/whisper-diff', as
         WHISPER_DIFF_EVENT: 'coc-open-whisper-diff',
         WhisperDiffDock: (props: any) => R.createElement('div', {
             'data-testid': 'whisper-diff-dock',
-            'data-path': props.file?.path ?? '',
+            'data-path': props.state?.focusPath ?? props.state?.files?.[0]?.path ?? '',
         }, R.createElement('button', { 'data-testid': 'whisper-diff-close', onClick: props.onClose }, 'Close')),
         useWhisperDiffPanelState: (opts: any) => {
             const [ctx, setCtx] = R.useState<any>(null);
@@ -347,7 +347,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/whisper-diff', as
             const close = R.useCallback(() => setCtx(null), []);
             return { open, close, isOpen: !!ctx, ctx };
         },
-        useWhisperDiffState: () => null,
+        useWhisperDiffState: (ctx: any) => ctx,
     };
 });
 
@@ -578,7 +578,7 @@ describe('ChatDetail — restore open canvas on chat switch', () => {
     function openWhisperDiff(path: string) {
         act(() => {
             window.dispatchEvent(new CustomEvent('coc-open-whisper-diff', {
-                detail: { file: { path }, toolCalls: [], commits: [] },
+                detail: { files: [{ path }], toolCalls: [], commits: [], focusPath: path },
             }));
         });
     }

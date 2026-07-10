@@ -8,22 +8,25 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useWhisperDiffPanelState } from '../../../src/server/spa/client/react/features/chat/whisper-diff/useWhisperDiffPanelState';
-import type { WhisperFileDiffContext } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup';
+import type { WhisperDiffOpenContext } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup';
 
-function makeCtx(path: string): WhisperFileDiffContext {
+function makeCtx(path: string): WhisperDiffOpenContext {
     return {
-        file: {
-            path,
-            insertions: 1,
-            deletions: 0,
-            netInsertions: 1,
-            netDeletions: 0,
-            isCreate: false,
-            isDeleted: false,
-        },
+        files: [
+            {
+                path,
+                insertions: 1,
+                deletions: 0,
+                netInsertions: 1,
+                netDeletions: 0,
+                isCreate: false,
+                isDeleted: false,
+            },
+        ],
         toolCalls: [],
         commits: [],
         workspaceId: 'ws1',
+        focusPath: path,
     };
 }
 

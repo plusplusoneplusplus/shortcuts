@@ -1,3 +1,4 @@
+/* @vitest-environment jsdom */
 /**
  * Tests for WhisperCollapsedGroup — commit count in collapsed header.
  */
@@ -943,14 +944,18 @@ describe('WhisperCollapsedGroup — actionable file rows', () => {
 
         expect(onOpenFileDiff).toHaveBeenCalledTimes(1);
         const ctx = onOpenFileDiff.mock.calls[0][0];
-        expect(ctx.file.path).toBe('src/a.ts');
+        // The converged context carries the whole group's files, focused on the
+        // clicked one (no standalone single-file `file` property anymore).
+        expect(ctx.focusPath).toBe('src/a.ts');
+        expect(ctx.files.map((f: any) => f.path)).toEqual(['src/a.ts']);
+        expect(ctx.file).toBeUndefined();
         expect(ctx.workspaceId).toBe('test-ws');
         expect(ctx.toolCalls).toEqual([
             { toolName: 'edit', args: { path: 'src/a.ts', old_str: 'old', new_str: 'new' } },
         ]);
     });
 
-    it('passes detected group commits through for the commit-diff fallback', () => {
+    it('passes detected group commits through for parity', () => {
         const onOpenFileDiff = vi.fn();
         const commits = [{ shortHash: 'abc1234', fullHash: 'abc1234def', subject: 'fix: x', isFixup: false }];
         const body = renderActionableFiles(
