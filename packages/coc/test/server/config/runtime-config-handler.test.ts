@@ -492,7 +492,7 @@ describe('AC-01 effortLevels.enabled live enablement end-to-end', () => {
 });
 
 describe('session context attachments feature flag', () => {
-    it('features.sessionContextAttachments defaults disabled and updates through runtime config service', async () => {
+    it('features.sessionContextAttachments defaults enabled and updates through runtime config service', async () => {
         const fs = await import('fs');
         const path = await import('path');
         const os = await import('os');
@@ -504,13 +504,13 @@ describe('session context attachments feature flag', () => {
             const svc = new RuntimeConfigService({ configPath });
 
             const before = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
-            expect(before.features.sessionContextAttachmentsEnabled).toBe(false);
+            expect(before.features.sessionContextAttachmentsEnabled).toBe(true);
 
-            const updateResult = await svc.updateConfig({ 'features.sessionContextAttachments': true });
-            expect(updateResult.config.features.sessionContextAttachments).toBe(true);
+            const updateResult = await svc.updateConfig({ 'features.sessionContextAttachments': false });
+            expect(updateResult.config.features.sessionContextAttachments).toBe(false);
 
             const after = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
-            expect(after.features.sessionContextAttachmentsEnabled).toBe(true);
+            expect(after.features.sessionContextAttachmentsEnabled).toBe(false);
 
             const effect = updateResult.effects.find(e => e.field === 'features.sessionContextAttachments');
             expect(effect).toBeDefined();
@@ -522,7 +522,7 @@ describe('session context attachments feature flag', () => {
 });
 
 describe('commit chat lens feature flag', () => {
-    it('features.commitChatLens defaults disabled and updates through runtime config service', async () => {
+    it('features.commitChatLens defaults enabled and updates through runtime config service', async () => {
         const fs = await import('fs');
         const path = await import('path');
         const os = await import('os');
@@ -534,13 +534,13 @@ describe('commit chat lens feature flag', () => {
             const svc = new RuntimeConfigService({ configPath });
 
             const before = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
-            expect(before.features.commitChatLensEnabled).toBe(false);
+            expect(before.features.commitChatLensEnabled).toBe(true);
 
-            const updateResult = await svc.updateConfig({ 'features.commitChatLens': true });
-            expect(updateResult.config.features.commitChatLens).toBe(true);
+            const updateResult = await svc.updateConfig({ 'features.commitChatLens': false });
+            expect(updateResult.config.features.commitChatLens).toBe(false);
 
             const after = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
-            expect(after.features.commitChatLensEnabled).toBe(true);
+            expect(after.features.commitChatLensEnabled).toBe(false);
 
             const effect = updateResult.effects.find(e => e.field === 'features.commitChatLens');
             expect(effect).toBeDefined();

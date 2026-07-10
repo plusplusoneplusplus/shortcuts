@@ -75,7 +75,7 @@ describe('Config', () => {
                 timeoutMs: 3_600_000,
             });
             expect(DEFAULT_CONFIG.features.gitCrossCloneCherryPick).toBe(true);
-            expect(DEFAULT_CONFIG.features.commitChatLens).toBe(false);
+            expect(DEFAULT_CONFIG.features.commitChatLens).toBe(true);
             expect(DEFAULT_CONFIG.features.autoAgentProviderRouting).toBe(false);
             expect(DEFAULT_CONFIG.defaultProvider).toBe('copilot');
             expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.provider)).toEqual(['claude', 'codex', 'copilot']);
@@ -1262,7 +1262,7 @@ timeout: 300
                   "features": {
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
-                    "commitChatLens": false,
+                    "commitChatLens": true,
                     "commitChatLensDormantMode": "ghost",
                     "focusedDiff": true,
                     "gitCommitLookup": false,
@@ -1272,7 +1272,7 @@ timeout: 300
                     "ralphMultiAgentGrill": false,
                     "remoteShell": true,
                     "schedulesInScheduledSlide": true,
-                    "sessionContextAttachments": false,
+                    "sessionContextAttachments": true,
                     "splitWorkspacePanel": true,
                   },
                   "forEach": {

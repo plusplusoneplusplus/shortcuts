@@ -39,6 +39,11 @@ describe('E2E server boot config', () => {
             expect(runtime.remoteShellEnabled).toBe(false);
             expect(runtime.splitWorkspacePanelEnabled).toBe(false);
 
+            // The review chat lens reroutes unpinned commit/PR chat away from the
+            // inline commit-chat-panel that commit-chat-binding.spec.ts asserts,
+            // so it stays off at boot (commit-chat-lens.spec.ts re-enables it live).
+            expect(runtime.commitChatLensEnabled).toBe(false);
+
             // The deprecated Plans/Tasks sub-tab many specs use stays enabled.
             expect(runtime.showPlanDepTab).toBe(true);
 
