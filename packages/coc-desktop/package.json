@@ -49,6 +49,7 @@
       "**/*.node",
       "**/@anthropic-ai/claude-agent-sdk-*/**",
       "**/@openai/codex-*/**",
+      "**/@github/copilot/**",
       "**/@github/copilot-*-*/**"
     ],
     "extraResources": [

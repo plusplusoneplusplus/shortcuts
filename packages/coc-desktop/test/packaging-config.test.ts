@@ -10,6 +10,8 @@
  *   3. Only the host platform's @github/copilot binaries are bundled — the
  *      package ships prebuilds/ripgrep/tgrep for every OS/arch, ~150MB+ of which
  *      a single-platform build can never execute.
+ *   4. Copilot's JS launcher and native platform package are unpacked, because
+ *      packaged desktop runs the launcher with system Node rather than Electron.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -18,6 +20,7 @@ import * as path from 'path';
 
 type Build = {
     files?: string[];
+    asarUnpack?: string[];
     mac?: { target?: string[]; files?: string[] };
     win?: { files?: string[] };
 };
@@ -37,6 +40,12 @@ describe('electron-builder packaging config', () => {
         // local rebuild slurps the prior run's dmg/zip/exe/win-unpacked into the
         // new asar (multi-GB). The negation keeps the output dir out.
         expect(buildConfig().files).toContain('!release/**');
+    });
+
+    it('unpacks Copilot launcher files and platform binaries for packaged desktop', () => {
+        const asarUnpack = buildConfig().asarUnpack ?? [];
+        expect(asarUnpack).toContain('**/@github/copilot/**');
+        expect(asarUnpack).toContain('**/@github/copilot-*-*/**');
     });
 
     describe('cross-platform @github/copilot binary pruning', () => {
