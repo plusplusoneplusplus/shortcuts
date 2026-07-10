@@ -18,7 +18,7 @@ import type { CopilotClient } from '@github/copilot-sdk';
 import { findSdkBinaryPath } from './sdk-loader';
 import { loadCopilotSdk } from './sdk-esm-loader';
 import { getAIServiceLogger } from './logger';
-import { createSdkClient } from './sdk-client-factory';
+import { createSdkClient, getLastCopilotElectronSpawn } from './sdk-client-factory';
 import {
     SendMessageOptions,
     SDKInvocationResult,
@@ -307,6 +307,18 @@ export class CopilotSDKService implements ISDKService {
             const params = gitHubToken ? { gitHubToken } : {};
             const result = await (client as any).rpc.account.getQuota(params);
             return result as IAccountQuotaResult;
+        } catch (err) {
+            // Under Electron the CLI is launched via a resolved node runtime;
+            // append how it was spawned so a packaged-desktop failure (e.g. the
+            // CLI rejecting an argument) is diagnosable from the error alone.
+            const spawn = getLastCopilotElectronSpawn();
+            if (spawn) {
+                const message = err instanceof Error ? err.message : String(err);
+                throw new Error(
+                    `${message} [copilot CLI spawn: mode=${spawn.mode}, node=${spawn.nodeRuntime}, cli=${spawn.cliPath}]`,
+                );
+            }
+            throw err;
         } finally {
             await client.stop();
         }

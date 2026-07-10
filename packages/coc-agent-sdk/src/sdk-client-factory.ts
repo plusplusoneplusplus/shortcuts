@@ -71,6 +71,74 @@ export function resolveSystemNodePath(): string | undefined {
 export function resetSystemNodePathCache(): void { cachedSystemNodePath = null; }
 
 /**
+ * How CoC launches the Copilot CLI under Electron: which Node runtime runs which
+ * CLI entry. Recorded on each client creation so packaged-desktop spawn failures
+ * (e.g. the CLI rejecting an argument) are diagnosable from the surfaced error.
+ */
+export interface CopilotElectronSpawn {
+    /** Absolute path to the Node runtime that will run the CLI. */
+    nodeRuntime: string;
+    /** Absolute path to the Copilot CLI entry (`@github/copilot/index.js`). */
+    cliPath: string;
+    /**
+     * `system-node`: a real `node` was found on disk (preferred).
+     * `electron-node`: no system node found, so the Electron binary is run in
+     * Node mode (`ELECTRON_RUN_AS_NODE=1`) instead — e.g. on an nvm-only machine
+     * whose `node` is not on a GUI-launched app's PATH.
+     */
+    mode: 'system-node' | 'electron-node';
+}
+
+/**
+ * Decide the Node runtime for the Copilot CLI under Electron. Prefer a real
+ * system `node`; when none is found, fall back to the Electron binary run in
+ * Node mode rather than leaving the SDK to resolve an ambiguous bundled CLI
+ * under the raw Electron binary. Pure — injectable for testing.
+ */
+export function resolveElectronCopilotSpawn(
+    cliPath: string,
+    systemNode: string | undefined,
+    electronExecPath: string,
+): CopilotElectronSpawn {
+    return systemNode
+        ? { nodeRuntime: systemNode, cliPath, mode: 'system-node' }
+        : { nodeRuntime: electronExecPath, cliPath, mode: 'electron-node' };
+}
+
+/**
+ * Build the `{ connection, env }` a `CopilotClient` needs to launch the CLI via
+ * `<nodeRuntime> <cliPath> --headless …` under Electron. The env is a clean copy
+ * of `baseEnv` with `ELECTRON_RUN_AS_NODE` stripped for a real system node, or
+ * forced on so the Electron binary runs as Node. Pure — injectable for testing.
+ */
+export function buildElectronCopilotConnection<TConnection>(
+    forStdio: (opts: { path: string; args: string[] }) => TConnection,
+    cliPath: string,
+    systemNode: string | undefined,
+    electronExecPath: string,
+    baseEnv: NodeJS.ProcessEnv,
+): { connection: TConnection; env: Record<string, string>; spawn: CopilotElectronSpawn } {
+    const spawn = resolveElectronCopilotSpawn(cliPath, systemNode, electronExecPath);
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(baseEnv)) {
+        if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') {
+            env[k] = v;
+        }
+    }
+    if (spawn.mode === 'electron-node') {
+        env.ELECTRON_RUN_AS_NODE = '1';
+    }
+    return { connection: forStdio({ path: spawn.nodeRuntime, args: [spawn.cliPath] }), env, spawn };
+}
+
+let lastCopilotElectronSpawn: CopilotElectronSpawn | undefined;
+
+/** The most recent Electron Copilot spawn resolution, for diagnostics. */
+export function getLastCopilotElectronSpawn(): CopilotElectronSpawn | undefined {
+    return lastCopilotElectronSpawn;
+}
+
+/**
  * Spawn a new `CopilotClient`.
  *
  * Responsibilities:
@@ -128,39 +196,41 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
     if (!sdk) throw new Error('Copilot SDK not loaded. Call loadCopilotSdk() first.');
 
     // In desktop mode the server runs under Electron Helper (ELECTRON_RUN_AS_NODE=1),
-    // so process.execPath is the Electron binary. The copilot-sdk spawns the CLI via
-    // `spawn(process.execPath, [cliPath, ...])` which would use the Electron binary.
-    // Override the connection to use the system `node` binary (absolute path) instead.
-    // The copilot-sdk validates the path with `existsSync`, so a bare `'node'` fails.
+    // so process.execPath is the Electron binary. Left alone, the copilot-sdk
+    // resolves its own bundled CLI and spawns it under that binary, which fails in
+    // packaged builds. Override the connection so CoC controls both the Node
+    // runtime and the CLI entry. The copilot-sdk validates the path with
+    // `existsSync`, so the runtime and CLI must be absolute on-disk paths.
     if (
         (process.versions as Record<string, string | undefined>).electron &&
         !clientOptions.connection
     ) {
-        // The copilot CLI is launched by the *system* node, which has no asar
-        // support — so an `app.asar` path fails to load. Rewrite it to the
-        // unpacked copy on disk (no-op for a normal CLI install).
+        // The CLI is run by a Node runtime with no asar support, so an `app.asar`
+        // path fails to load. Rewrite it to the unpacked copy on disk (a no-op for
+        // a normal CLI install).
         const rawCopilotCliPath = findCopilotCliPath();
         const copilotCliPath = rawCopilotCliPath ? preferUnpackedPath(rawCopilotCliPath) : undefined;
-        const systemNode = resolveSystemNodePath();
-        if (copilotCliPath && systemNode) {
-            clientOptions.connection = sdk.RuntimeConnection.forStdio({
-                path: systemNode,
-                args: [copilotCliPath],
-            });
-            // Strip Electron-specific env vars so the spawned child is a clean node process.
-            const cleanEnv: Record<string, string> = {};
-            for (const [k, v] of Object.entries(process.env)) {
-                if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') {
-                    cleanEnv[k] = v;
-                }
-            }
-            clientOptions.env = cleanEnv;
-            aiLog.debug({ copilotCliPath, systemNode }, 'Electron detected: overriding copilot CLI connection to use system node');
-        } else if (copilotCliPath) {
-            aiLog.warn(
-                { copilotCliPath },
-                'Electron detected but system node binary not found. Copilot SDK will use Electron binary which may fail.',
+        if (copilotCliPath) {
+            // Launch the CLI via `<node> index.js --headless …` (0 positional
+            // args). Prefer a real system node; otherwise run the Electron binary
+            // in Node mode. Never leave the SDK to resolve its own bundled CLI
+            // under the raw Electron binary, which fails in packaged builds.
+            const { connection, env, spawn } = buildElectronCopilotConnection(
+                (opts) => sdk.RuntimeConnection.forStdio(opts),
+                copilotCliPath,
+                resolveSystemNodePath(),
+                process.execPath,
+                process.env,
             );
+            clientOptions.connection = connection;
+            clientOptions.env = env;
+            lastCopilotElectronSpawn = spawn;
+            aiLog.info(
+                { nodeRuntime: spawn.nodeRuntime, copilotCliPath: spawn.cliPath, mode: spawn.mode },
+                'Electron detected: launching copilot CLI via resolved node runtime',
+            );
+        } else {
+            aiLog.warn('Electron detected but the copilot CLI (@github/copilot/index.js) could not be found.');
         }
     }
 
