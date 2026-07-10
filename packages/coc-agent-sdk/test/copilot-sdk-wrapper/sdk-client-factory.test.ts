@@ -70,6 +70,9 @@ import {
     resetSystemNodePathCache,
     resolveElectronCopilotSpawn,
     buildElectronCopilotConnection,
+    buildCopilotNativeConnection,
+    findCopilotNativeCliPath,
+    resolveCopilotCli,
     getLastCopilotElectronSpawn,
 } from '../../src/sdk-client-factory';
 import * as trustedFolder from '../../src/trusted-folder';
@@ -157,10 +160,15 @@ describe('createSdkClient', () => {
         expect(fs.existsSync).toHaveBeenCalledWith('/nonexistent/dir');
     });
 
-    it('does NOT call existsSync when workingDirectory is absent', () => {
+    it('does NOT validate a workingDirectory when none is given', () => {
         createSdkClient();
 
-        expect(fs.existsSync).not.toHaveBeenCalled();
+        // CLI-layout resolution probes node_modules paths; nothing else may be
+        // stat'd when there is no workingDirectory to validate.
+        const nonCliProbes = vi.mocked(fs.existsSync).mock.calls
+            .map(([p]) => String(p))
+            .filter((p) => !p.includes(path.join('node_modules', '@github')));
+        expect(nonCliProbes).toEqual([]);
     });
 
     it('routes WSL working directories to the host filesystem for the Windows Copilot CLI', () => {
@@ -197,6 +205,20 @@ describe('createSdkClient', () => {
         expect(fs.existsSync).toHaveBeenCalledWith(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
     });
 });
+
+// Path fragments used to distinguish the two CLI layouts in existsSync mocks.
+const INDEX_JS_FRAGMENT = path.join('@github', 'copilot', 'index.js');
+const NATIVE_PKG_FRAGMENT = path.join('@github', `copilot-${process.platform}-${process.arch}`);
+
+/** existsSync mock: the >= 1.0.62 layout — no index.js, native binary present. */
+function mockNativeOnlyLayout(): void {
+    vi.mocked(fs.existsSync).mockImplementation((p) => {
+        const s = String(p);
+        if (s.endsWith(INDEX_JS_FRAGMENT)) return false;
+        if (s.includes(NATIVE_PKG_FRAGMENT)) return true;
+        return true; // workingDirectory etc.
+    });
+}
 
 describe('createSdkClient — Electron connection override', () => {
     beforeEach(() => {
@@ -269,6 +291,61 @@ describe('createSdkClient — Electron connection override', () => {
         expect(spawn!.mode).toBe('system-node');
         expect(path.isAbsolute(spawn!.nodeRuntime)).toBe(true);
     });
+
+    it('spawns the native platform binary directly when index.js is absent (copilot >= 1.0.62 layout)', () => {
+        (process.versions as Record<string, string | undefined>).electron = '30.0.0';
+        mockNativeOnlyLayout();
+
+        createSdkClient({ workingDirectory: '/project' });
+
+        const conn = capturedOptions[0].connection;
+        expect(conn).toBeDefined();
+        expect(conn.kind).toBe('stdio');
+        expect(conn.path).toContain(NATIVE_PKG_FRAGMENT);
+        // The native binary needs no wrapper args; the SDK appends --headless etc.
+        expect(conn.args).toEqual([]);
+        expect(capturedOptions[0].env).toBeDefined();
+        expect(capturedOptions[0].env.ELECTRON_RUN_AS_NODE).toBeUndefined();
+
+        const spawn = getLastCopilotElectronSpawn();
+        expect(spawn!.mode).toBe('native-binary');
+        expect(spawn!.cliPath).toContain(NATIVE_PKG_FRAGMENT);
+    });
+});
+
+describe('createSdkClient — native binary override outside Electron', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        capturedOptions.length = 0;
+        mockRuntimeConnection.forStdio.mockClear();
+        resetSystemNodePathCache();
+    });
+
+    afterEach(() => {
+        resetSystemNodePathCache();
+    });
+
+    it('overrides the connection under plain Node when only the native layout is installed', () => {
+        // The copilot-sdk's own bundled-CLI default requires index.js, so with
+        // the native-only layout it cannot start the CLI even under plain Node.
+        mockNativeOnlyLayout();
+
+        createSdkClient({ workingDirectory: '/project' });
+
+        const conn = capturedOptions[0].connection;
+        expect(conn).toBeDefined();
+        expect(conn.path).toContain(NATIVE_PKG_FRAGMENT);
+        expect(conn.args).toEqual([]);
+    });
+
+    it('leaves the SDK default in place under plain Node when index.js exists', () => {
+        vi.mocked(fs.existsSync).mockReturnValue(true);
+
+        createSdkClient({ workingDirectory: '/project' });
+
+        expect(capturedOptions[0].connection).toBeUndefined();
+        expect(capturedOptions[0].env).toBeUndefined();
+    });
 });
 
 describe('resolveElectronCopilotSpawn', () => {
@@ -281,6 +358,85 @@ describe('resolveElectronCopilotSpawn', () => {
         // e.g. an nvm-only machine whose `node` is not on a GUI app's PATH.
         const spawn = resolveElectronCopilotSpawn('/cli/index.js', undefined, '/Apps/CoC/Electron');
         expect(spawn).toEqual({ nodeRuntime: '/Apps/CoC/Electron', cliPath: '/cli/index.js', mode: 'electron-node' });
+    });
+});
+
+describe('findCopilotNativeCliPath / resolveCopilotCli', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('finds the native platform binary by walking up node_modules', () => {
+        mockNativeOnlyLayout();
+
+        const found = findCopilotNativeCliPath('/repo/packages/coc-agent-sdk/dist');
+
+        expect(found).toBeDefined();
+        expect(found).toContain(NATIVE_PKG_FRAGMENT);
+        const expectedName = process.platform === 'win32' ? 'copilot.exe' : 'copilot';
+        expect(path.basename(found!)).toBe(expectedName);
+    });
+
+    it('returns undefined when no native platform package exists', () => {
+        vi.mocked(fs.existsSync).mockReturnValue(false);
+
+        expect(findCopilotNativeCliPath('/repo')).toBeUndefined();
+    });
+
+    it('resolveCopilotCli prefers index.js when both layouts are present', () => {
+        vi.mocked(fs.existsSync).mockReturnValue(true);
+
+        const resolution = resolveCopilotCli('/repo');
+
+        expect(resolution).toEqual({ kind: 'js', path: expect.stringContaining(INDEX_JS_FRAGMENT) });
+    });
+
+    it('resolveCopilotCli falls back to the native binary when index.js is absent', () => {
+        mockNativeOnlyLayout();
+
+        const resolution = resolveCopilotCli('/repo');
+
+        expect(resolution).toEqual({ kind: 'native', path: expect.stringContaining(NATIVE_PKG_FRAGMENT) });
+    });
+
+    it('resolveCopilotCli returns undefined when neither layout is installed', () => {
+        vi.mocked(fs.existsSync).mockReturnValue(false);
+
+        expect(resolveCopilotCli('/repo')).toBeUndefined();
+    });
+
+    it('resolveCopilotCli rewrites asar paths to the unpacked copy', () => {
+        const sep = path.sep;
+        const asarStart = `${sep}Apps${sep}CoC${sep}resources${sep}app.asar${sep}dist`;
+        mockNativeOnlyLayout();
+
+        const resolution = resolveCopilotCli(asarStart);
+
+        expect(resolution!.kind).toBe('native');
+        expect(resolution!.path).toContain(`app.asar.unpacked${sep}`);
+        expect(resolution!.path).not.toContain(`app.asar${sep}node_modules`);
+    });
+});
+
+describe('buildCopilotNativeConnection', () => {
+    const forStdio = (opts: { path: string; args: string[] }) => ({ kind: 'stdio' as const, ...opts });
+
+    it('spawns the binary directly with no wrapper args and strips ELECTRON_RUN_AS_NODE', () => {
+        const { connection, env, spawn } = buildCopilotNativeConnection(
+            forStdio,
+            '/unpacked/@github/copilot-darwin-arm64/copilot',
+            { PATH: '/x', ELECTRON_RUN_AS_NODE: '1', FOO: 'bar' },
+        );
+
+        expect(connection.path).toBe('/unpacked/@github/copilot-darwin-arm64/copilot');
+        expect(connection.args).toEqual([]);
+        expect(env.ELECTRON_RUN_AS_NODE).toBeUndefined();
+        expect(env.FOO).toBe('bar');
+        expect(spawn).toEqual({
+            nodeRuntime: '/unpacked/@github/copilot-darwin-arm64/copilot',
+            cliPath: '/unpacked/@github/copilot-darwin-arm64/copilot',
+            mode: 'native-binary',
+        });
     });
 });
 

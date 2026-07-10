@@ -25,7 +25,7 @@ Location: `packages/coc-agent-sdk/src/`
 | `streaming-state-machine.ts` | Pure state machine: `Idle → Streaming → Settled \| Cancelled` |
 | `session-timer-manager.ts` | Timer management: overall timeout, idle timeout, turn-end grace |
 | `session-telemetry.ts` | Token usage accumulation, tool-call tracking |
-| `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: working-directory validation, folder trust |
+| `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: working-directory validation, folder trust, Copilot CLI resolution (`resolveCopilotCli`: `index.js` or native platform binary) |
 | `sdk-loader.ts` | SDK binary discovery + ESM import workaround |
 | `sdk-esm-loader.ts` | Dynamic ESM import helper (webpack-safe `new Function` indirection) |
 | `types.ts` | Shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
@@ -94,6 +94,8 @@ const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 ### Singleton + Per-Session Client Isolation
 
 Each `sendMessage()` call creates its **own `CopilotClient`** child process — no shared client. Concurrent tasks with different working directories cannot interfere.
+
+**Copilot CLI spawn resolution** (`sdk-client-factory.ts`): when the caller supplies no `connection`, `resolveCopilotCli()` locates the CLI, rewriting `app.asar` paths to `app.asar.unpacked`. Two layouts exist: `@github/copilot` <= 1.0.61 ships an `index.js` JS entry; >= 1.0.62 ships only a thin `npm-loader.js` plus a native executable in `@github/copilot-<platform>-<arch>`. With `index.js` under Electron, the connection is overridden to `<node runtime> index.js` (system node preferred, else the Electron binary in Node mode via `ELECTRON_RUN_AS_NODE=1`); under plain Node the copilot-sdk's own default handles `index.js` and is left alone. With the native layout the unpacked binary is spawned **directly** (`forStdio({ path: binary, args: [] })`; the SDK appends `--headless --stdio …` itself) — under Electron *and* plain Node, because the copilot-sdk's bundled-CLI default requires `index.js` and cannot start the CLI at all with the new layout. The resolved spawn (`mode: system-node | electron-node | native-binary`) is recorded and appended to `getAccountQuota` errors for diagnosis.
 
 Copilot streaming tool telemetry is normalized through `SessionTelemetry` into the shared `ToolCall` / `ToolEvent` contract. `parentToolCallId` is preserved from either the start or terminal SDK event; if the terminal event supplies or corrects the parent, the stored `ToolCall` is updated too. This keeps Copilot-backed sub-agent descendants reconstructable from both live timelines and persisted `toolCalls`.
 
