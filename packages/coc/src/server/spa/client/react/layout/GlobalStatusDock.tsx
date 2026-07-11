@@ -13,7 +13,8 @@
  *   - the workspace chat/activity sub-tab (`SplitWorkspacePanel` `footer`),
  *   - the Admin shell (its `.ar-sidebar` hosts `DockedStatusFooter`),
  *   - the My Work view (its body hosts `DockedStatusFooter`),
- *   - the workspace notes sub-tab (`NotesView`'s own `NotesSidebar` footer).
+ *   - the workspace notes sub-tab (`NotesView`'s own `NotesSidebar` footer),
+ *   - the workspace settings sub-tab (`RepoSettingsTab`'s own nav footer).
  * This global dock covers every OTHER tab/sub-tab, so it renders null on those
  * views to avoid double-docking. Together they hide the topbar cluster on every
  * desktop remote-shell tab (`TopBar`'s `statusInDock`).
@@ -88,6 +89,14 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
         !!state.selectedRepoId &&
         state.activeRepoSubTab === 'notes';
     if (inNotesSidebarFooter) return null;
+
+    // The settings sub-tab hosts the cluster in `RepoSettingsTab`'s own nav
+    // footer, matching Notes/Admin owned-sidebar behavior.
+    const inSettingsSidebarFooter =
+        state.activeTab === 'repos' &&
+        !!state.selectedRepoId &&
+        state.activeRepoSubTab === 'settings';
+    if (inSettingsSidebarFooter) return null;
 
     // Tracks the resizable workspace left column (or the panel default when no
     // split sidebar is mounted) so the band stays flush under that column.

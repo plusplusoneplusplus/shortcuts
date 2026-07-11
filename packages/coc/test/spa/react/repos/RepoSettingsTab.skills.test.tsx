@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { useEffect } from 'react';
 import type { SettingsSection } from '../../../../src/server/spa/client/react/types/dashboard';
 
@@ -63,6 +63,10 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-settings/SyncSett
     ),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/layout/DockedStatusFooter', () => ({
+    DockedStatusFooter: () => <div data-testid="sidebar-status-actions" />,
+}));
+
 vi.mock('../../../../src/server/spa/client/react/features/repo-settings/RepoPreferencesSection', () => ({
     RepoPreferencesSection: ({ workspaceId }: { workspaceId: string }) => (
         <div data-testid="preferences-section-stub">Preferences for {workspaceId}</div>
@@ -100,9 +104,11 @@ function makeRepo(workspaceId: string) {
 async function renderSettingsTab({
     workspaceId = 'ws-1',
     initialSection,
+    dockStatusFooter,
 }: {
     workspaceId?: string;
     initialSection?: SettingsSection;
+    dockStatusFooter?: boolean;
 } = {}) {
     const { RepoSettingsTab } = await import(
         '../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab'
@@ -121,10 +127,10 @@ async function renderSettingsTab({
         return null;
     }
 
-    render(
+    return render(
         <AppProvider>
             <InitialSectionSetter />
-            <RepoSettingsTab workspaceId={workspaceId} repo={makeRepo(workspaceId) as any} />
+            <RepoSettingsTab workspaceId={workspaceId} repo={makeRepo(workspaceId) as any} dockStatusFooter={dockStatusFooter} />
         </AppProvider>
     );
 }
@@ -341,5 +347,19 @@ describe('RepoSettingsTab redesigned sidebar', () => {
         // Ensure the prop was explicitly forwarded in the last render of the panel.
         const lastProps = capturedMcpPanelProps[capturedMcpPanelProps.length - 1];
         expect(lastProps.workspaceId).toBe('ws-42');
+    });
+
+    it('does not render the docked status footer by default', async () => {
+        await act(async () => { await renderSettingsTab(); });
+        await waitFor(() => expect(screen.getByTestId('settings-sidebar')).toBeTruthy());
+
+        expect(screen.queryByTestId('sidebar-status-actions')).toBeNull();
+    });
+
+    it('renders the docked status footer inside the settings sidebar when enabled', async () => {
+        await act(async () => { await renderSettingsTab({ dockStatusFooter: true }); });
+        const sidebar = await screen.findByTestId('settings-sidebar');
+
+        expect(within(sidebar).getByTestId('sidebar-status-actions')).toBeTruthy();
     });
 });

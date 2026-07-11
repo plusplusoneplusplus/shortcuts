@@ -9,8 +9,8 @@ import { useBreakpoint } from './useBreakpoint';
  * Centralises the gate so every host of the docked cluster agrees:
  *   - `TopBar` hides its top-right cluster (`statusInDock`),
  *   - `GlobalStatusDock` renders the app-wide bottom band,
- *   - the Admin sidebar and the My Work view dock the cluster in their own
- *     left-column footer (`DockedStatusFooter`).
+ *   - the Admin sidebar, Notes, Settings, and My Work view dock the cluster in
+ *     their own chrome (`DockedStatusFooter`).
  *
  * Off (classic mode) or on mobile the topbar keeps the cluster, so this is
  * false and none of the docked hosts render.
