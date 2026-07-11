@@ -9,7 +9,8 @@
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
-import { getApiBase } from '../utils/config';
+import type { Canvas } from '@plusplusoneplusplus/coc-client';
+import { getApiBase, isCanvasEnabled } from '../utils/config';
 import { SHOW_EXCALIDRAW_DIAGRAMS } from '../featureFlags';
 import {
     parseSceneContent,
@@ -30,6 +31,8 @@ export interface ExcalidrawPreviewProps {
     workspaceId: string;
     /** Canvas ID of the excalidraw canvas to render. */
     canvasId: string;
+    /** Already-loaded canvas record; avoids a second fetch from a type-aware embed. */
+    canvas?: Canvas;
     /** Height of the preview canvas in pixels. */
     height?: number;
 }
@@ -54,7 +57,8 @@ function canvasApiUrl(wsId: string, canvasId: string): string {
 // Component
 // ---------------------------------------------------------------------------
 
-export function ExcalidrawPreview({ workspaceId, canvasId, height = DEFAULT_HEIGHT }: ExcalidrawPreviewProps) {
+export function ExcalidrawPreview({ workspaceId, canvasId, canvas, height = DEFAULT_HEIGHT }: ExcalidrawPreviewProps) {
+    const enabled = SHOW_EXCALIDRAW_DIAGRAMS || isCanvasEnabled();
     const [state, setState] = useState<LoadState>('loading');
     const [sceneData, setSceneData] = useState<ExcalidrawScene | null>(null);
     const [title, setTitle] = useState('');
@@ -97,10 +101,22 @@ export function ExcalidrawPreview({ workspaceId, canvasId, height = DEFAULT_HEIG
 
     // Fetch the excalidraw canvas scene from the canvas store.
     useEffect(() => {
-        if (!SHOW_EXCALIDRAW_DIAGRAMS) return;
+        if (!enabled) return;
 
         let cancelled = false;
         setState('loading');
+
+        if (canvas) {
+            if (canvas.type !== 'excalidraw') {
+                setErrorMsg('This canvas is not an Excalidraw diagram');
+                setState('error');
+                return;
+            }
+            setSceneData(parseSceneContent(canvas.content));
+            setTitle(canvas.title);
+            setState('loaded');
+            return;
+        }
 
         fetch(canvasApiUrl(workspaceId, canvasId))
             .then(async (res) => {
@@ -122,9 +138,9 @@ export function ExcalidrawPreview({ workspaceId, canvasId, height = DEFAULT_HEIG
             });
 
         return () => { cancelled = true; };
-    }, [workspaceId, canvasId]);
+    }, [workspaceId, canvasId, canvas, enabled]);
 
-    if (!SHOW_EXCALIDRAW_DIAGRAMS) return null;
+    if (!enabled) return null;
 
     const name = title || 'Diagram';
 

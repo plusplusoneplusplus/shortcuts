@@ -334,7 +334,12 @@ calls share one gate. The extension load, `invoke-capability`, and `set-state`
 calls all route through the workspace-scoped `useCocClient(workspaceId)` client
 (like `CanvasPanel`), so a remote workspace's extension is read from and written
 to its owning server rather than the local page origin. Edit mode shows the raw
-JSON shared state.
+JSON shared state. Inline `canvas://<canvasId>` references are rendered by
+`shared/CanvasEmbed.tsx`, which fetches the descriptor through the same
+workspace-routed client and chooses the renderer from its persisted `type`:
+Excalidraw keeps the view-only preview, extension canvases mount
+`ExtensionCanvasView`, and markdown/code canvases use a document preview. Legacy
+`.md-excalidraw-embed` placeholders remain supported for historical message HTML.
 
 `features/chat/source-canvas/` renders the docked, read-only source-file canvas
 for local file references clicked inside assistant chat responses. The global
