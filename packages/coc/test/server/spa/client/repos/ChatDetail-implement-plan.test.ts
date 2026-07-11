@@ -91,6 +91,17 @@ describe('ChatDetail implement-plan handoff', () => {
         expect(block).toContain('sourceMetadata=');
     });
 
+    it('opens file-backed plans in the source workspace docked canvas', () => {
+        const handler = source.match(/const handleOpenPlanFile[\s\S]*?\n    }, \[sourceCanvas, workspaceId\]\);/);
+        expect(handler).not.toBeNull();
+        expect(handler![0]).toContain("kind: 'note'");
+        expect(handler![0]).toContain('wsId: workspaceId');
+
+        const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
+        expect(cardBlock).not.toBeNull();
+        expect(cardBlock![0]).toContain('onOpenPlanFile={effectivePlanCanvasId ? undefined : handleOpenPlanFile}');
+    });
+
     it('passes onRecordPersisted for optimistic local update', () => {
         const cardBlock = source.match(/<ImplementPlanCard[\s\S]*?\/>/);
         expect(cardBlock).not.toBeNull();

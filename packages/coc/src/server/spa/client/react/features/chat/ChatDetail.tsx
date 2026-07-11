@@ -151,9 +151,16 @@ export interface ChatDetailProps {
      * to highlight matches across the rendered turns while the search box is open.
      */
     searchHighlightQuery?: string;
+    /**
+     * When true, suppresses the built-in ChatHeader entirely. Use when the
+     * host surface (e.g. Notes Chat) renders its own compact header and would
+     * otherwise duplicate title/status/action chrome. Defaults to false so
+     * existing consumers are unchanged.
+     */
+    hideHeader?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false }: ChatDetailProps) {
     // Per-clone REST client (AC-07): a remote clone's chat reads/writes go to its
     // own server; a local clone keeps the default origin client. All process/
     // queue/notes/canvas/skill calls below are scoped to this chat's workspace.
@@ -2140,6 +2147,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         scratchpad.open(scratchpadCandidates[0]);
     }, [sourceCanvas, whisperDiff, scratchpad, scratchpadCandidates]);
 
+    const handleOpenPlanFile = useCallback((filePath: string) => {
+        if (!filePath.toLowerCase().endsWith('.md')) return;
+        sourceCanvas.open({
+            fullPath: filePath,
+            wsId: workspaceId,
+            kind: 'note',
+        });
+    }, [sourceCanvas, workspaceId]);
+
     const handleScratchpadNotFound = useCallback(() => {
         const missingPath = scratchpad.linkedNotePath;
         if (!missingPath) {
@@ -2221,63 +2237,65 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
     return (
         <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail" {...(workspaceId ? { 'data-ws-id': workspaceId } : {})}>
-            <ChatHeader
-                task={task}
-                metadataProcess={metadataProcess}
-                planPath={effectivePlanPath}
-                createdFiles={displayFiles}
-                pinnedFile={pinnedFile}
-                onBack={onBack}
-                variant={variant}
-                isPopOut={isPopOut}
-                loading={loading}
-                turns={turns}
-                resumeLaunching={resumeLaunching}
-                resumeSessionId={resumeSessionId}
-                isPending={isPending}
-                sessionTokenLimit={sessionTokenLimit}
-                sessionCurrentTokens={sessionCurrentTokens}
-                sessionSystemTokens={sessionSystemTokens}
-                sessionToolTokens={sessionToolTokens}
-                sessionConversationTokens={sessionConversationTokens}
-                sessionModel={sessionModel}
-                copied={copied}
-                setCopied={setCopied}
-                taskId={taskId}
-                onLaunchInteractiveResume={() => { void launchInteractiveResume(); }}
-                onCopyResumeCommand={() => { void copyResumeCommand(); }}
-                onPopOut={handlePopOut}
-                onFloat={handleFloat}
-                title={(task?.customTitle as string | undefined) || title || task?.title || task?.displayName}
-                wsId={workspaceId}
-                turnsContainerRef={turnsContainerRef}
-                isSelecting={selection.isSelecting}
-                onToggleSelecting={selection.toggleSelecting}
-                showScratchpadButton={showScratchpadButton}
-                onOpenScratchpad={handleOpenScratchpad}
-                onToggleExplorer={canOpenExplorer ? handleToggleExplorer : undefined}
-                explorerOpen={explorerOpen}
-                onFork={metadataProcess?.sdkSessionId && task?.status === 'completed' ? handleFork : undefined}
-                forking={forking}
-                loopCount={loopsHook.manageableCount}
-                hasActiveLoops={loopsHook.hasActiveLoops}
-                onToggleLoopPanel={() => setLoopPanelOpen(v => !v)}
-                onRenameTitle={processId ? () => setRenameOpen(true) : undefined}
-                onStartFreshSameContext={onStartFreshSameContext}
-                startingFreshSameContext={startingFreshSameContext}
-                viewToggle={hasSubAgents && !loading && !isPending && variant !== 'floating'
-                    ? (
-                        <>
-                            <ChatViewToggle view={view} onChange={setView} />
-                            <AgentCascadeMenu
-                                levels={agentLevels}
-                                selectedAgentId={selectedAgentId}
-                                onSelectAgent={handleSelectAgent}
-                            />
-                        </>
-                    )
-                    : undefined}
-            />
+            {!hideHeader && (
+                <ChatHeader
+                    task={task}
+                    metadataProcess={metadataProcess}
+                    planPath={effectivePlanPath}
+                    createdFiles={displayFiles}
+                    pinnedFile={pinnedFile}
+                    onBack={onBack}
+                    variant={variant}
+                    isPopOut={isPopOut}
+                    loading={loading}
+                    turns={turns}
+                    resumeLaunching={resumeLaunching}
+                    resumeSessionId={resumeSessionId}
+                    isPending={isPending}
+                    sessionTokenLimit={sessionTokenLimit}
+                    sessionCurrentTokens={sessionCurrentTokens}
+                    sessionSystemTokens={sessionSystemTokens}
+                    sessionToolTokens={sessionToolTokens}
+                    sessionConversationTokens={sessionConversationTokens}
+                    sessionModel={sessionModel}
+                    copied={copied}
+                    setCopied={setCopied}
+                    taskId={taskId}
+                    onLaunchInteractiveResume={() => { void launchInteractiveResume(); }}
+                    onCopyResumeCommand={() => { void copyResumeCommand(); }}
+                    onPopOut={handlePopOut}
+                    onFloat={handleFloat}
+                    title={(task?.customTitle as string | undefined) || title || task?.title || task?.displayName}
+                    wsId={workspaceId}
+                    turnsContainerRef={turnsContainerRef}
+                    isSelecting={selection.isSelecting}
+                    onToggleSelecting={selection.toggleSelecting}
+                    showScratchpadButton={showScratchpadButton}
+                    onOpenScratchpad={handleOpenScratchpad}
+                    onToggleExplorer={canOpenExplorer ? handleToggleExplorer : undefined}
+                    explorerOpen={explorerOpen}
+                    onFork={metadataProcess?.sdkSessionId && task?.status === 'completed' ? handleFork : undefined}
+                    forking={forking}
+                    loopCount={loopsHook.manageableCount}
+                    hasActiveLoops={loopsHook.hasActiveLoops}
+                    onToggleLoopPanel={() => setLoopPanelOpen(v => !v)}
+                    onRenameTitle={processId ? () => setRenameOpen(true) : undefined}
+                    onStartFreshSameContext={onStartFreshSameContext}
+                    startingFreshSameContext={startingFreshSameContext}
+                    viewToggle={hasSubAgents && !loading && !isPending && variant !== 'floating'
+                        ? (
+                            <>
+                                <ChatViewToggle view={view} onChange={setView} />
+                                <AgentCascadeMenu
+                                    levels={agentLevels}
+                                    selectedAgentId={selectedAgentId}
+                                    onSelectAgent={handleSelectAgent}
+                                />
+                            </>
+                        )
+                        : undefined}
+                />
+            )}
             {loopPanelOpen && isLoopsEnabled() && (
                 <div className="relative">
                     <LoopManagementPanel
@@ -2438,6 +2456,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             workingDirectory={workingDirectory}
                             sourceIsRemote={sourceRemoteInfo.isRemote}
                             sourceBaseUrl={sourceRemoteInfo.baseUrl}
+                            onOpenPlanFile={effectivePlanCanvasId ? undefined : handleOpenPlanFile}
                             existingRuns={resolvedRuns}
                             availableTargets={implementTargets}
                             sourceProcessId={processId ?? undefined}

@@ -10,8 +10,9 @@
  * numeric aggregation (sum/avg). The original static table is hidden but
  * kept in the DOM for snapshot copy and accessibility fallback.
  *
- * Excalidraw diagram placeholders (`.md-excalidraw-embed`) are mounted as
- * interactive preview canvases via React portals.
+ * Generic canvas placeholders (`.md-canvas-embed`) resolve their persisted type
+ * before rendering through React portals. Legacy Excalidraw placeholders retain
+ * their dedicated preview path.
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -20,6 +21,7 @@ import { CopySectionBtn } from '../ui/CopySectionBtn';
 import { useMermaid } from '../hooks/ui/useMermaid';
 import { extractTablesFromHtml, type ExtractedTable } from './extractTablesFromHtml';
 import { InteractiveTable } from './InteractiveTable';
+import { CanvasEmbed } from './CanvasEmbed';
 import { ExcalidrawPreview } from './ExcalidrawPreview';
 import { mountHtmlEmbeds } from './htmlEmbedMount';
 import { mountMapEmbeds } from './mapEmbedMount';
@@ -48,6 +50,13 @@ interface ExcalidrawPortal {
     key: string;
 }
 
+interface CanvasPortal {
+    mountEl: HTMLElement;
+    workspaceId: string;
+    canvasId: string;
+    key: string;
+}
+
 function getProcessDeepLinkHash(href: string | null): string | null {
     if (!href?.startsWith('#/')) return null;
 
@@ -68,6 +77,7 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
     const [tablePortals, setTablePortals] = React.useState<
         { mountEl: HTMLElement; table: ExtractedTable; key: string }[]
     >([]);
+    const [canvasPortals, setCanvasPortals] = React.useState<CanvasPortal[]>([]);
     const [excalidrawPortals, setExcalidrawPortals] = React.useState<ExcalidrawPortal[]>([]);
 
     useMermaid(containerRef, html);
@@ -181,7 +191,61 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
         };
     }, [html, hideSectionCopy]);
 
-    // Mount Excalidraw diagram preview canvases on placeholder divs.
+    // Resolve generic canvas references by their persisted type. This keeps an
+    // extension canvas from being forced through the Excalidraw renderer.
+    useEffect(() => {
+        if (!containerRef.current || hideSectionCopy) {
+            setCanvasPortals([]);
+            return;
+        }
+
+        const placeholders = Array.from(
+            containerRef.current.querySelectorAll<HTMLElement>('.md-canvas-embed'),
+        );
+        if (placeholders.length === 0) {
+            setCanvasPortals([]);
+            return;
+        }
+
+        const portals: CanvasPortal[] = [];
+        for (let i = 0; i < placeholders.length; i++) {
+            const el = placeholders[i];
+            const wsId = el.dataset.wsId;
+            const canvasId = el.dataset.canvasId;
+            if (!wsId || !canvasId) continue;
+
+            const embedKey = `canvas-${wsId}-${canvasId}-${i}`;
+
+            // Re-render guard
+            const existingMount = el.querySelector('.canvas-embed-mount');
+            if (existingMount) {
+                portals.push({
+                    mountEl: existingMount as HTMLElement,
+                    workspaceId: wsId,
+                    canvasId,
+                    key: embedKey,
+                });
+                continue;
+            }
+
+            const mountEl = document.createElement('div');
+            mountEl.className = 'canvas-embed-mount';
+            el.appendChild(mountEl);
+
+            portals.push({ mountEl, workspaceId: wsId, canvasId, key: embedKey });
+        }
+
+        setCanvasPortals(portals);
+
+        return () => {
+            for (const { mountEl } of portals) {
+                mountEl.remove();
+            }
+        };
+    }, [html, hideSectionCopy]);
+
+    // Legacy excalidraw:// placeholders predate the generic canvas renderer.
+    // Keep their existing behavior for historical, pre-rendered message HTML.
     useEffect(() => {
         if (!SHOW_EXCALIDRAW_DIAGRAMS || !containerRef.current || hideSectionCopy) {
             setExcalidrawPortals([]);
@@ -200,35 +264,23 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
         for (let i = 0; i < placeholders.length; i++) {
             const el = placeholders[i];
             const wsId = el.dataset.wsId;
-            // Diagrams are canvases now — render from the canvas store via data-canvas-id.
-            // Legacy excalidraw:// embeds (data-diagram-path only) point at the removed
-            // /api/diagrams endpoint, so they are intentionally not mounted.
             const canvasId = el.dataset.canvasId;
             if (!wsId || !canvasId) continue;
 
             const embedKey = `excalidraw-${wsId}-${canvasId}-${i}`;
-
-            // Re-render guard
             const existingMount = el.querySelector('.excalidraw-preview-mount');
             if (existingMount) {
-                portals.push({
-                    mountEl: existingMount as HTMLElement,
-                    workspaceId: wsId,
-                    canvasId,
-                    key: embedKey,
-                });
+                portals.push({ mountEl: existingMount as HTMLElement, workspaceId: wsId, canvasId, key: embedKey });
                 continue;
             }
 
             const mountEl = document.createElement('div');
             mountEl.className = 'excalidraw-preview-mount';
             el.appendChild(mountEl);
-
             portals.push({ mountEl, workspaceId: wsId, canvasId, key: embedKey });
         }
 
         setExcalidrawPortals(portals);
-
         return () => {
             for (const { mountEl } of portals) {
                 mountEl.remove();
@@ -255,6 +307,16 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
                         key={key}
                         tableKey={key}
                         {...table.data}
+                    />,
+                    mountEl
+                )
+            )}
+            {canvasPortals.map(({ mountEl, workspaceId, canvasId, key }) =>
+                createPortal(
+                    <CanvasEmbed
+                        key={key}
+                        workspaceId={workspaceId}
+                        canvasId={canvasId}
                     />,
                     mountEl
                 )

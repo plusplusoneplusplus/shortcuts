@@ -82,16 +82,56 @@ describe('NoteChatPanel', () => {
             expect(source).toContain('Notes Chat');
         });
 
-        it('has close button', () => {
-            expect(source).toContain('note-chat-close-btn');
-        });
-
         it('has input field', () => {
             expect(source).toContain('note-chat-input');
         });
 
         it('has send button', () => {
             expect(source).toContain('note-chat-send-btn');
+        });
+    });
+
+    describe('single compact header (both states)', () => {
+        it('renders exactly one NotesChatHeader for both empty and active states', () => {
+            const matches = source.match(/<NotesChatHeader/g) ?? [];
+            expect(matches.length).toBe(1);
+        });
+
+        it('renders NotesChatHeader before the empty/active-state conditionals', () => {
+            const headerIdx = source.indexOf('<NotesChatHeader');
+            const emptyStateIdx = source.indexOf('{!taskId && (');
+            const activeStateIdx = source.indexOf('{taskId && (');
+            expect(headerIdx).toBeGreaterThan(-1);
+            expect(headerIdx).toBeLessThan(emptyStateIdx);
+            expect(headerIdx).toBeLessThan(activeStateIdx);
+        });
+
+        it('imports NotesChatHeader from ./NotesChatHeader', () => {
+            expect(source).toContain("from './NotesChatHeader'");
+        });
+
+        it('passes presentation, onMinimize, onPin, onUnpin, and onNewChat to the header', () => {
+            expect(source).toContain('windowMode={presentation}');
+            expect(source).toContain('onMinimize={onMinimize}');
+            expect(source).toContain('onPin={onPin}');
+            expect(source).toContain('onUnpin={onUnpin}');
+            expect(source).toContain('onNewChat={taskId ? resetChat : undefined}');
+        });
+
+        it('accepts presentation, onMinimize, onPin, onUnpin props', () => {
+            expect(source).toContain('presentation?: NotesChatWindowMode');
+            expect(source).toContain('onMinimize?: () => void');
+            expect(source).toContain('onPin?: () => void');
+            expect(source).toContain('onUnpin?: () => void');
+        });
+
+        it('defaults presentation to embedded', () => {
+            expect(source).toContain("presentation = 'embedded'");
+        });
+
+        it('no longer defines its own ScopeToggle or per-state header rows', () => {
+            expect(source).not.toContain('function ScopeToggle');
+            expect(source).not.toContain('note-chat-new-btn');
         });
     });
 
@@ -109,9 +149,8 @@ describe('NoteChatPanel', () => {
             expect(source).toContain('variant="floating"');
         });
 
-        it('has New Chat button', () => {
-            expect(source).toContain('note-chat-new-btn');
-            expect(source).toContain('New Chat');
+        it('hides ChatDetail\'s own header (compact header covers it)', () => {
+            expect(source).toContain('hideHeader');
         });
 
         it('passes disableScratchpad to ChatDetail', () => {

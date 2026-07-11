@@ -55,6 +55,8 @@ When `features.commitChatLens` is enabled from Admin -> Configure -> Features, r
 
 The Notes view inherits the same `features.commitChatLens` source of truth for its AI chat surface. `NotesView` uses `useReviewChatPresentation()` with a workspace-scoped `notes` target, preserving the legacy workspace-scoped notes chat open key while Lens is disabled and using the shared target-scoped Lens open/pin/minimize keys when Lens is enabled. The notes area shows no separate Lens indicator; no notes-specific Lens setting is stored or exposed. Note-producing SPA flows that originate from notes/chat UI (notes chat edits, AI note creation, and bulk chat summaries) attach `context.lensChat = { inherited: true, source: 'features.commitChatLens' }` only while the shared Lens flag is enabled, so the process metadata records inherited Lens routing without adding persistent notes-specific state.
 
+Notes Chat renders exactly one compact 48px header (`NotesChatHeader.tsx`, next to `NoteChatPanel.tsx`) across the Lens, pinned side-panel, and embedded (mobile / Lens-disabled) presentations and across both the empty and active-conversation states — there is no density setting or alternate full header. The header shows a Notes Chat identity mark, a muted context label (current note title in per-note scope, workspace display name via `resolveWorkspaceName` in per-workspace scope, truncated with the full value on hover), the `NotesChatScopeToggle` segmented control (This note / Workspace), and a window-action group whose contents depend on `NoteChatPanel`'s `presentation` prop (`'lens' | 'side-panel' | 'embedded'`, computed in `NotesView` from `useReviewChatPresentation()`'s state): minimize + pin in `'lens'`, unpin in `'side-panel'`, neither in `'embedded'`; close is always present. "New chat" (resets the active scope's chat, keeping it recoverable in history) lives in the header's `ChatHeaderOverflowMenu` instead of a dedicated button, and only renders when a chat exists. To avoid duplicated chrome, `ReviewChatPlacementFrame` accepts an opt-in `hideHeader` prop (Notes passes it; commits/PRs/Work Items omit it and keep the shared generic Lens/side-panel header unchanged) and `ChatDetail` accepts an opt-in `hideHeader` prop (Notes passes it to suppress the nested `ChatHeader`; other `ChatDetail` consumers are unaffected). The ask/autopilot mode toggle (`NoteModeToggle`) is intentionally kept out of the header and renders inline with the empty-state composer next to the input, matching where `ChatDetail`'s own `compactModeSelector` places it once a chat is active.
+
 Chat-list hierarchy grouping is consolidated behind a shared engine:
 `features/chat/task-group-grouping.ts` owns the generic matching/aggregation
 logic (the `payload.context.taskGroup` tag reader, activity/end timestamp
@@ -334,7 +336,12 @@ calls share one gate. The extension load, `invoke-capability`, and `set-state`
 calls all route through the workspace-scoped `useCocClient(workspaceId)` client
 (like `CanvasPanel`), so a remote workspace's extension is read from and written
 to its owning server rather than the local page origin. Edit mode shows the raw
-JSON shared state.
+JSON shared state. Inline `canvas://<canvasId>` references are rendered by
+`shared/CanvasEmbed.tsx`, which fetches the descriptor through the same
+workspace-routed client and chooses the renderer from its persisted `type`:
+Excalidraw keeps the view-only preview, extension canvases mount
+`ExtensionCanvasView`, and markdown/code canvases use a document preview. Legacy
+`.md-excalidraw-embed` placeholders remain supported for historical message HTML.
 
 `features/chat/source-canvas/` renders the docked, read-only source-file canvas
 for local file references clicked inside assistant chat responses. The global
@@ -366,7 +373,11 @@ own server instead of the local one. `ChatDetail` owns the listener,
 closes sibling right-side panels, and mounts `SourceCanvasPanel` as the right
 column on desktop or a bottom sheet on mobile. Flag-off, user-message, and
 non-chat file references continue to route to the floating
-`MarkdownReviewDialog`.
+`MarkdownReviewDialog`. File-backed plan paths in `ImplementPlanCard` use the
+same dock through `onOpenPlanFile`: they render as native keyboard-accessible
+controls and open an editable note scoped to the chat's source workspace,
+including a remote clone. Canvas-backed plan labels remain static because they
+do not identify an on-disk file.
 The source canvas header shows project-relative paths for files inside the
 current workspace root while retaining the full absolute path in the hover
 tooltip; files outside the workspace root continue to display their absolute

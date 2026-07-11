@@ -1,10 +1,13 @@
 /**
- * Tests for NoteChatPanel — scope toggle UI.
+ * Tests for NoteChatPanel — scope wiring into the compact header.
  *
- * Validates that the panel renders a scope segmented control,
- * uses appropriate empty state messages per scope, conditionally
- * renders NoteContextBanner only in per-note scope, and accepts
- * the defaultScope prop.
+ * Validates that the panel wires scope state into the single NotesChatHeader,
+ * uses appropriate empty state messages per scope, conditionally renders
+ * NoteContextBanner only in per-note scope, computes the header context
+ * label per scope, and accepts the defaultScope prop.
+ *
+ * The scope segmented control itself now lives in NotesChatHeader.tsx — see
+ * NotesChatHeader.test.tsx for its rendering/interaction coverage.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -16,7 +19,7 @@ const PANEL_PATH = path.join(
     'features', 'notes', 'editor', 'NoteChatPanel.tsx'
 );
 
-describe('NoteChatPanel — scope toggle', () => {
+describe('NoteChatPanel — scope wiring', () => {
     let source: string;
 
     beforeAll(() => {
@@ -33,33 +36,15 @@ describe('NoteChatPanel — scope toggle', () => {
         });
     });
 
-    describe('ScopeToggle component', () => {
-        it('renders a scope toggle with data-testid', () => {
-            expect(source).toContain('data-testid="chat-scope-toggle"');
+    describe('scope wired into the single compact header', () => {
+        it('passes scope and onScopeChange to NotesChatHeader', () => {
+            expect(source).toContain('scope={scope}');
+            expect(source).toContain('onScopeChange={setScope}');
         });
 
-        it('renders per-note button', () => {
-            expect(source).toContain('data-testid="chat-scope-per-note"');
-        });
-
-        it('renders per-workspace button', () => {
-            expect(source).toContain('data-testid="chat-scope-per-workspace"');
-        });
-
-        it('calls onScopeChange with per-note when per-note button clicked', () => {
-            expect(source).toContain("onScopeChange('per-note')");
-        });
-
-        it('calls onScopeChange with per-workspace when per-workspace button clicked', () => {
-            expect(source).toContain("onScopeChange('per-workspace')");
-        });
-
-        it('renders 📝 This Note label', () => {
-            expect(source).toContain('📝 This Note');
-        });
-
-        it('renders 🗂️ Workspace label', () => {
-            expect(source).toContain('🗂️ Workspace');
+        it('does not define its own ScopeToggle component (moved to NotesChatHeader)', () => {
+            expect(source).not.toContain('function ScopeToggle');
+            expect(source).not.toContain('data-testid="chat-scope-toggle"');
         });
     });
 
@@ -83,11 +68,28 @@ describe('NoteChatPanel — scope toggle', () => {
         });
     });
 
+    describe('header context label', () => {
+        it('computes a per-note context label from noteTitle/notePath with a no-note fallback', () => {
+            expect(source).toContain("const noteContextLabel = noteTitle || notePath?.split('/').pop()?.replace(/\\.md$/, '') || 'No note selected'");
+        });
+
+        it('resolves a workspace label via resolveWorkspaceName for workspace scope', () => {
+            expect(source).toContain("import { resolveWorkspaceName } from '../../../utils/workspace'");
+            expect(source).toContain('resolveWorkspaceName(workspaceId,');
+        });
+
+        it('picks the note or workspace label based on the active scope', () => {
+            expect(source).toContain("const headerContextLabel = scope === 'per-note' ? noteContextLabel : workspaceLabel");
+        });
+
+        it('passes headerContextLabel to NotesChatHeader as contextLabel', () => {
+            expect(source).toContain('contextLabel={headerContextLabel}');
+        });
+    });
+
     describe('NoteContextBanner scope gating', () => {
         it('renders NoteContextBanner only in per-note scope', () => {
             expect(source).toContain("scope === 'per-note'");
-            // Verify NoteContextBanner is inside the per-note JSX guard (use indexOf to find
-            // the JSX guard, not the ScopeToggle component definition which also uses scope === 'per-note')
             const perNoteJsxIdx = source.indexOf("{scope === 'per-note' && (");
             expect(perNoteJsxIdx).toBeGreaterThan(-1);
             const bannerIdx = source.indexOf('NoteContextBanner', perNoteJsxIdx);
@@ -101,7 +103,7 @@ describe('NoteChatPanel — scope toggle', () => {
         });
 
         it('destructs onHasChatChange in the component function signature', () => {
-            expect(source).toContain('onHasChatChange }');
+            expect(source).toContain('onHasChatChange,');
         });
 
         it('calls onHasChatChange via useEffect when taskId changes', () => {
@@ -112,39 +114,6 @@ describe('NoteChatPanel — scope toggle', () => {
             const effectIdx = source.indexOf('onHasChatChange?.(!!taskId)');
             const afterEffect = source.slice(effectIdx, effectIdx + 100);
             expect(afterEffect).toContain('[taskId, onHasChatChange]');
-        });
-    });
-
-    describe('ScopeToggle in both empty and active states', () => {
-        it('renders ScopeToggle in same row as header buttons (single-row layout)', () => {
-            // In the single-row layout, ScopeToggle is inlined before the action button in each header row
-            const emptyStateStart = source.indexOf('{!taskId && (');
-            const activeStateStart = source.indexOf('{taskId && (');
-
-            // ScopeToggle in empty state (before close button)
-            const scopeToggle1 = source.indexOf('<ScopeToggle', emptyStateStart);
-            expect(scopeToggle1).toBeGreaterThan(emptyStateStart);
-            expect(scopeToggle1).toBeLessThan(activeStateStart);
-
-            const closeIdx = source.indexOf('note-chat-close-btn', scopeToggle1);
-            expect(closeIdx).toBeGreaterThan(scopeToggle1);
-            expect(closeIdx).toBeLessThan(activeStateStart);
-
-            // ScopeToggle in active state (before new-chat button)
-            const scopeToggle2 = source.indexOf('<ScopeToggle', activeStateStart);
-            expect(scopeToggle2).toBeGreaterThan(activeStateStart);
-
-            const newChatIdx = source.indexOf('note-chat-new-btn', scopeToggle2);
-            expect(newChatIdx).toBeGreaterThan(scopeToggle2);
-        });
-
-        it('ScopeToggle no longer renders its own border-b row', () => {
-            const scopeToggleDef = source.indexOf('function ScopeToggle');
-            expect(scopeToggleDef).toBeGreaterThan(-1);
-            const afterDef = source.slice(scopeToggleDef);
-            const componentBodyEnd = afterDef.indexOf('\n}');
-            const componentBody = afterDef.slice(0, componentBodyEnd);
-            expect(componentBody).not.toContain('border-b');
         });
     });
 });

@@ -7,6 +7,7 @@ import { NoteEditor } from './editor/NoteEditor';
 import type { NoteViewMode } from './editor/NoteEditor';
 import { CommentsSidebar } from './editor/CommentsSidebar';
 import { NoteChatPanel } from './editor/NoteChatPanel';
+import type { NotesChatWindowMode } from './editor/NotesChatHeader';
 import type { ChatScope } from './hooks/useNotesChat';
 import { useComments } from './editor/useComments';
 import { notesApi } from './notesApi';
@@ -411,6 +412,13 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
     const isResizing = !isMobile && (sidebarResize.isDragging || commentsPanelResize.isDragging || chatPanelResize.isDragging);
     const commentsVisible = commentsPanelOpen && !!selectedPath && noteViewMode === 'rich';
     const chatVisible = chatPanelOpen;
+    // The compact Notes Chat header (rendered inside NoteChatPanel) needs to
+    // know which window actions apply: minimize/pin when floating as a Lens,
+    // unpin when pinned to the side panel via the shared frame, or neither
+    // when embedded directly (mobile, or Lens disabled).
+    const noteChatWindowMode: NotesChatWindowMode = noteChatPresentation === 'lens'
+        ? 'lens'
+        : (noteChatLensEnabled && noteChatPinned && noteChatIsDesktop ? 'side-panel' : 'embedded');
     const renderNoteChatPanel = () => (
         <NoteChatPanel
             workspaceId={workspaceId}
@@ -423,6 +431,10 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
             onRemoveReference={noteRefs.removeReference}
             onClearReferences={noteRefs.clearReferences}
             onHasChatChange={setHasNoteChat}
+            presentation={noteChatWindowMode}
+            onMinimize={noteChatWindowMode === 'lens' ? minimizeNoteChat : undefined}
+            onPin={noteChatWindowMode === 'lens' ? pinNoteChat : undefined}
+            onUnpin={noteChatWindowMode === 'side-panel' ? unpinNoteChat : undefined}
         />
     );
 
@@ -579,6 +591,7 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
                     onRestore={restoreNoteChat}
                     onPin={pinNoteChat}
                     testIdPrefix="notes-chat"
+                    hideHeader
                 >
                     {renderNoteChatPanel()}
                 </ReviewChatPlacementFrame>
@@ -609,6 +622,7 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
                                 onClose={closeNoteChat}
                                 onUnpin={unpinNoteChat}
                                 testIdPrefix="notes-chat"
+                                hideHeader
                             >
                                 {renderNoteChatPanel()}
                             </ReviewChatPlacementFrame>

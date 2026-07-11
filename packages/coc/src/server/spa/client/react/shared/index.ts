@@ -11,6 +11,8 @@ export { InteractiveTable } from './InteractiveTable';
 export type { InteractiveTableProps } from './InteractiveTable';
 export { ExcalidrawPreview } from './ExcalidrawPreview';
 export type { ExcalidrawPreviewProps } from './ExcalidrawPreview';
+export { CanvasEmbed } from './CanvasEmbed';
+export type { CanvasEmbedProps } from './CanvasEmbed';
 export { extractTablesFromHtml, MIN_ROWS, MIN_COLS } from './extractTablesFromHtml';
 export type { ExtractedTable, ExtractedTableData, ColumnAlignment } from './extractTablesFromHtml';
 export { mountHtmlEmbeds } from './htmlEmbedMount';

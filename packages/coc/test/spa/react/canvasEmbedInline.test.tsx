@@ -1,18 +1,22 @@
 /**
- * AC-05 — inline-in-chat Excalidraw rendering via the canvas:// marker.
- *
- * Verifies the full round-trip: the marker that `write_canvas` returns for an
- * excalidraw canvas (`canvas://<id>`) is rewritten by `chatMarkdownToHtml` into
- * an embed placeholder, `MarkdownView` mounts `ExcalidrawPreview` on it, and the
- * preview reads the scene from the canvas store endpoint and renders it.
+ * Regression coverage for inline canvas:// references. The persisted canvas
+ * descriptor is the source of truth: its type decides which viewer mounts.
  */
 
 import React from 'react';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
-// @excalidraw/excalidraw can't load in Node; the global setup stubs it to
-// render nothing. Override locally so the rendered scene is observable.
+const mocks = vi.hoisted(() => ({
+    get: vi.fn(),
+    getExtension: vi.fn(),
+    client: null as unknown,
+}));
+
+vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({
+    useCocClient: () => mocks.client,
+}));
+
 vi.mock('@excalidraw/excalidraw', () => ({
     Excalidraw: ({ initialData }: { initialData: { elements?: unknown[] } }) => (
         <div
@@ -27,6 +31,13 @@ vi.mock('@excalidraw/excalidraw', () => ({
 import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
 import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 
+mocks.client = {
+    canvases: {
+        get: mocks.get,
+        getExtension: mocks.getExtension,
+    },
+};
+
 const SCENE = JSON.stringify({
     elements: [
         { id: 'a', type: 'rectangle', x: 0, y: 0, width: 10, height: 10 },
@@ -35,50 +46,103 @@ const SCENE = JSON.stringify({
     appState: { viewBackgroundColor: '#ffffff' },
 });
 
-describe('inline canvas:// excalidraw embed', () => {
-    let fetchMock: ReturnType<typeof vi.fn>;
+const EXTENSION = {
+    manifest: {
+        description: 'Notes Chat header redesign',
+        capabilities: [{ name: 'set_scope', description: 'Change chat scope' }],
+    },
+    uiHtml: '<main><header><strong>Notes Chat</strong><button>This note</button><button>Workspace</button></header></main>',
+    capabilitiesJs: 'capabilities = { set_scope: function (state) { return state; } };',
+};
 
+describe('inline canvas:// embed', () => {
     beforeEach(() => {
-        fetchMock = vi.fn().mockResolvedValue({
-            ok: true,
-            json: async () => ({ canvas: { id: 'arch', title: 'Architecture', type: 'excalidraw', content: SCENE } }),
-        });
-        vi.stubGlobal('fetch', fetchMock);
+        mocks.get.mockReset();
+        mocks.getExtension.mockReset();
     });
 
     afterEach(() => {
         cleanup();
-        vi.unstubAllGlobals();
         vi.clearAllMocks();
     });
 
-    it('renders the diagram inline from the canvas store endpoint', async () => {
-        // The marker is exactly what write_canvas returns for an excalidraw canvas.
-        const html = chatMarkdownToHtml('Here it is: canvas://arch', 'ws-1', { excalidrawEmbedEnabled: true });
+    it('preserves the Excalidraw preview for an Excalidraw canvas', async () => {
+        mocks.get.mockResolvedValue({
+            id: 'arch',
+            workspaceId: 'ws-1',
+            title: 'Architecture',
+            type: 'excalidraw',
+            content: SCENE,
+            revision: 1,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            lastEditor: 'ai',
+        });
+
+        const html = chatMarkdownToHtml('Here it is: canvas://arch', 'ws-1', { canvasEmbedEnabled: true });
         expect(html).toContain('data-canvas-id="arch"');
+        expect(html).toContain('md-canvas-embed');
 
         render(<MarkdownView html={html} />);
 
-        // The preview fetches the scene from the canvas store, not /api/diagrams.
-        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-        expect(fetchMock.mock.calls[0][0]).toContain('/workspaces/ws-1/canvases/arch');
-        expect(fetchMock.mock.calls[0][0]).not.toContain('/diagrams');
-
+        await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('ws-1', 'arch'));
         const viewer = await screen.findByTestId('mock-excalidraw');
         expect(viewer.getAttribute('data-element-count')).toBe('2');
     });
 
-    it('does not mount a preview for legacy excalidraw:// embeds (no canvas id)', async () => {
-        const html = chatMarkdownToHtml('Old: excalidraw://ws-1/old.excalidraw', 'ws-1', { excalidrawEmbedEnabled: true });
-        // The legacy placeholder is still emitted, but it carries no canvas id...
-        expect(html).toContain('data-diagram-path="old.excalidraw"');
+    it('renders an extension canvas through its sandboxed iframe instead of Excalidraw', async () => {
+        mocks.get.mockResolvedValue({
+            id: 'notes-chat-header-redesign-d68498',
+            workspaceId: 'ws-1',
+            title: 'Notes Chat Header Redesign',
+            type: 'extension',
+            content: JSON.stringify({ scope: 'note', pinned: false, compact: true }),
+            revision: 11,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            lastEditor: 'user',
+        });
+        mocks.getExtension.mockResolvedValue(EXTENSION);
 
+        const html = chatMarkdownToHtml(
+            'canvas://notes-chat-header-redesign-d68498',
+            'ws-1',
+            { canvasEmbedEnabled: true },
+        );
         render(<MarkdownView html={html} />);
 
-        // ...so nothing is fetched and no viewer mounts (the removed /api/diagrams
-        // endpoint is intentionally unsupported after the hard cutover).
-        await new Promise(r => setTimeout(r, 20));
-        expect(fetchMock).not.toHaveBeenCalled();
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        expect(mocks.get).toHaveBeenCalledWith('ws-1', 'notes-chat-header-redesign-d68498');
+        expect(mocks.getExtension).toHaveBeenCalledWith('ws-1', 'notes-chat-header-redesign-d68498');
+        expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
+        expect(iframe.getAttribute('srcdoc')).toContain('window.CanvasHost');
+        expect(iframe.getAttribute('srcdoc')).toContain('Notes Chat');
+        expect(screen.queryByTestId('mock-excalidraw')).toBeNull();
+    });
+
+    it.each([
+        { type: 'markdown', content: '# Project brief', label: 'markdown' },
+        { type: 'code', content: 'const scope = "note";', label: 'typescript', language: 'typescript' },
+    ])('renders a $type canvas as a document instead of an empty diagram', async ({ type, content, label, language }) => {
+        mocks.get.mockResolvedValue({
+            id: `${type}-canvas`,
+            workspaceId: 'ws-1',
+            title: 'Reference',
+            type,
+            content,
+            language,
+            revision: 1,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            lastEditor: 'ai',
+        });
+
+        const html = chatMarkdownToHtml(`canvas://${type}-canvas`, 'ws-1', { canvasEmbedEnabled: true });
+        render(<MarkdownView html={html} />);
+
+        const preview = await screen.findByTestId('canvas-embed-document');
+        expect(preview.textContent).toContain(content);
+        expect(preview.textContent).toContain(label);
         expect(screen.queryByTestId('mock-excalidraw')).toBeNull();
     });
 });

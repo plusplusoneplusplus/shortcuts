@@ -108,6 +108,11 @@ export interface ImplementPlanCardProps {
     sourceIsRemote?: boolean;
     /** Remote routing base URL of the source workspace, when known. */
     sourceBaseUrl?: string;
+    /**
+     * Open a file-backed plan in the chat's docked source canvas. Canvas-backed
+     * plans have no file to open, so this is not exposed for them.
+     */
+    onOpenPlanFile?: (filePath: string) => void;
     onImplemented: (newProcessId: string) => void;
     /** Existing implementation runs with resolved live status. */
     existingRuns?: ExistingRun[];
@@ -217,6 +222,7 @@ export function ImplementPlanCard({
     workingDirectory,
     sourceIsRemote,
     sourceBaseUrl,
+    onOpenPlanFile,
     onImplemented,
     existingRuns = [],
     onViewRun,
@@ -264,6 +270,7 @@ export function ImplementPlanCard({
     const showFileSelector = planFiles.length > 1;
     const [selectedPlanFile, setSelectedPlanFile] = useState<string>(planFiles[0] ?? planFilePath);
     const activePlanFilePath = showFileSelector ? selectedPlanFile : planFilePath;
+    const canOpenPlanFile = !planCanvasId && onOpenPlanFile !== undefined;
 
     // Prior runs filtered to the selected plan file (AC-03), matched against each
     // record's `planFilePath`. Single-file keeps the full, unfiltered list.
@@ -401,12 +408,25 @@ export function ImplementPlanCard({
                     <span className="shrink-0 text-xs font-semibold text-[#1f2328] dark:text-[#c9d1d9]">
                         Implement this plan
                     </span>
-                    <span
-                        className="min-w-0 flex-1 truncate text-[11px] font-mono text-[#848484]"
-                        title={`Start a new autopilot session to execute the plan.\n${activePlanFilePath}`}
-                    >
-                        {activePlanFilePath}
-                    </span>
+                    {canOpenPlanFile ? (
+                        <button
+                            type="button"
+                            className="min-w-0 flex-1 truncate text-left text-[11px] font-mono text-[#0969da] dark:text-[#58a6ff] underline decoration-dotted underline-offset-2 hover:text-[#0550ae] dark:hover:text-[#79c0ff] focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0969da]/50"
+                            data-testid="implement-plan-card-path"
+                            onClick={() => onOpenPlanFile?.(activePlanFilePath)}
+                            title={`Open this plan in the right-side file panel.\n${activePlanFilePath}`}
+                            aria-label={`Open ${planFileBasename(activePlanFilePath)} in the right-side file panel`}
+                        >
+                            {activePlanFilePath}
+                        </button>
+                    ) : (
+                        <span
+                            className="min-w-0 flex-1 truncate text-[11px] font-mono text-[#848484]"
+                            title={`Start a new autopilot session to execute the plan.\n${activePlanFilePath}`}
+                        >
+                            {activePlanFilePath}
+                        </span>
+                    )}
 
                     {showFileSelector && (
                         <div className="flex shrink-0 items-center gap-1" data-testid="implement-plan-card-file">

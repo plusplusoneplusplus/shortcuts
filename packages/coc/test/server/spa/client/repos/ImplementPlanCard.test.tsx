@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 // ---------------------------------------------------------------------------
 // Mocks – declared before importing the component under test
@@ -103,6 +104,41 @@ describe('ImplementPlanCard', () => {
         expect(btn.disabled).toBe(false);
         expect(btn.textContent).toContain('Implement');
         expect(screen.getByText('/repo/.vscode/tasks/feature.plan.md')).toBeTruthy();
+    });
+
+    it('opens a file-backed plan with an accessible path control', async () => {
+        const onOpenPlanFile = vi.fn();
+        const user = userEvent.setup();
+        render(
+            <ImplementPlanCard
+                planFilePath="/repo/notes/feature.plan.md"
+                onOpenPlanFile={onOpenPlanFile}
+                onImplemented={onImplemented}
+            />,
+        );
+
+        const pathButton = screen.getByTestId('implement-plan-card-path');
+        expect(pathButton.tagName).toBe('BUTTON');
+        expect(pathButton.getAttribute('aria-label')).toBe(
+            'Open feature.plan.md in the right-side file panel',
+        );
+
+        pathButton.focus();
+        await user.keyboard('{Enter}');
+        expect(onOpenPlanFile).toHaveBeenCalledWith('/repo/notes/feature.plan.md');
+    });
+
+    it('does not make a canvas plan label a file control', () => {
+        render(
+            <ImplementPlanCard
+                planFilePath="Feature plan"
+                planCanvasId="canvas-1"
+                onOpenPlanFile={vi.fn()}
+                onImplemented={onImplemented}
+            />,
+        );
+
+        expect(screen.queryByTestId('implement-plan-card-path')).toBeNull();
     });
 
     it('renders unchanged when no prior runs exist (no status pill)', () => {
@@ -1015,6 +1051,25 @@ describe('ImplementPlanCard', () => {
         const payload = mockEnqueue.mock.calls[0][0];
         expect(payload.payload.context.files).toEqual([PLAN_017]);
         expect(payload.payload.prompt).toBe(`Read and implement the plan file at ${PLAN_017}`);
+    });
+
+    it('opens the currently selected plan file', () => {
+        const onOpenPlanFile = vi.fn();
+        render(
+            <ImplementPlanCard
+                planFilePath={PLAN_016}
+                planFiles={[PLAN_016, PLAN_017, PLAN_018]}
+                onOpenPlanFile={onOpenPlanFile}
+                onImplemented={onImplemented}
+            />,
+        );
+
+        fireEvent.change(screen.getByTestId('implement-plan-card-file-select'), {
+            target: { value: PLAN_017 },
+        });
+        fireEvent.click(screen.getByTestId('implement-plan-card-path'));
+
+        expect(onOpenPlanFile).toHaveBeenCalledWith(PLAN_017);
     });
 
     it('persists the selected plan file path in the implementation record', async () => {

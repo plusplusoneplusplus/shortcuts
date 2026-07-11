@@ -81,8 +81,8 @@ export function parseExcalidrawLink(url: string): { workspaceId: string; diagram
 /**
  * Parse a `canvas://<canvasId>` reference marker.
  *
- * Excalidraw diagrams are canvases, so `write_canvas` returns this marker for
- * an excalidraw canvas; placing it in a chat reply renders the diagram inline.
+ * The canvas type is resolved from its persisted descriptor before rendering,
+ * so the same marker supports diagram, extension, markdown, and code canvases.
  * Returns null if the marker doesn't match a valid canvas id.
  */
 export function parseCanvasEmbedLink(url: string): { canvasId: string } | null {
@@ -93,7 +93,7 @@ export function parseCanvasEmbedLink(url: string): { canvasId: string } | null {
 
 /**
  * Post-processing: convert bare `canvas://<id>` text in HTML (not already
- * inside a tag attribute) into excalidraw embed divs. The workspace id is
+ * inside a tag attribute) into canvas embed divs. The workspace id is
  * injected separately by `injectCanvasEmbedWorkspace` once it is known.
  */
 function rewriteBareCanvasEmbedLinks(html: string): string {
@@ -102,7 +102,7 @@ function rewriteBareCanvasEmbedLinks(html: string): string {
         (match) => {
             const parsed = parseCanvasEmbedLink(match);
             if (!parsed) return match;
-            return `<div class="md-excalidraw-embed" data-canvas-id="${escapeAttr(parsed.canvasId)}"></div>`;
+            return `<div class="md-canvas-embed" data-canvas-id="${escapeAttr(parsed.canvasId)}"></div>`;
         },
     );
 }
@@ -114,8 +114,8 @@ function rewriteBareCanvasEmbedLinks(html: string): string {
  */
 function injectCanvasEmbedWorkspace(html: string, wsId: string): string {
     return html.replace(
-        /<div class="md-excalidraw-embed" data-canvas-id="([^"]*)"><\/div>/g,
-        (_match, canvasId) => `<div class="md-excalidraw-embed" data-canvas-id="${canvasId}" data-ws-id="${escapeAttr(wsId)}"></div>`,
+        /<div class="md-canvas-embed" data-canvas-id="([^"]*)"><\/div>/g,
+        (_match, canvasId) => `<div class="md-canvas-embed" data-canvas-id="${canvasId}" data-ws-id="${escapeAttr(wsId)}"></div>`,
     );
 }
 
@@ -137,7 +137,11 @@ function rewriteBareExcalidrawLinks(html: string): string {
     );
 }
 
-function createChatMarked(htmlEmbedEnabled: boolean, excalidrawEmbedEnabled: boolean = false): Marked {
+function createChatMarked(
+    htmlEmbedEnabled: boolean,
+    excalidrawEmbedEnabled: boolean = false,
+    canvasEmbedEnabled: boolean = false,
+): Marked {
     let mermaidBlockIndex = 0;
 
     return new Marked({
@@ -175,11 +179,11 @@ function createChatMarked(htmlEmbedEnabled: boolean, excalidrawEmbedEnabled: boo
                         return `<div class="md-excalidraw-embed" data-ws-id="${escapeAttr(parsed.workspaceId)}" data-diagram-path="${escapeAttr(parsed.diagramPath)}"></div>`;
                     }
                 }
-                // Canvas reference markers → inline excalidraw embed (ws id stamped later)
-                if (excalidrawEmbedEnabled && href && /^canvas:\/\//i.test(href)) {
+                // Canvas reference markers → type-aware inline embed (ws id stamped later)
+                if (canvasEmbedEnabled && href && /^canvas:\/\//i.test(href)) {
                     const parsed = parseCanvasEmbedLink(href);
                     if (parsed) {
-                        return `<div class="md-excalidraw-embed" data-canvas-id="${escapeAttr(parsed.canvasId)}"></div>`;
+                        return `<div class="md-canvas-embed" data-canvas-id="${escapeAttr(parsed.canvasId)}"></div>`;
                     }
                 }
                 const isExternal = /^https?:\/\/|^mailto:/i.test(href ?? '');
@@ -255,22 +259,32 @@ function rewriteLocalImagePaths(html: string, wsId: string): string {
  * Produces proper `<h3>`, `<strong>`, `<ul>`, `<pre><code>`, etc.
  * File paths are linkified for hover previews.
  */
-export function chatMarkdownToHtml(content: string, wsId?: string, options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean }): string {
+export function chatMarkdownToHtml(
+    content: string,
+    wsId?: string,
+    options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean; canvasEmbedEnabled?: boolean },
+): string {
     if (!content || !content.trim()) return '';
     // Order matters: normalizeMarkdownLinkUrls fixes link/image URLs first (handles
     // spaces + backslashes), then normalizeWindowsPathsInText handles bare prose paths.
     const linkNormalized = normalizeMarkdownLinkUrls(content);
     const normalized = normalizeWindowsPathsInText(linkNormalized);
     const excalidrawEnabled = options?.excalidrawEmbedEnabled === true;
-    let html = linkifyFilePaths(createChatMarked(options?.htmlEmbedEnabled === true, excalidrawEnabled).parse(normalized) as string);
+    // Keep existing callers that only enable Excalidraw embeds working while
+    // allowing canvas references to render when only the Canvas feature is on.
+    const canvasEnabled = options?.canvasEmbedEnabled === true || excalidrawEnabled;
+    let html = linkifyFilePaths(
+        createChatMarked(options?.htmlEmbedEnabled === true, excalidrawEnabled, canvasEnabled).parse(normalized) as string,
+    );
     if (wsId) {
         html = rewriteLocalImagePaths(html, wsId);
     }
-    // Post-process: convert bare excalidraw:// / canvas:// URLs to embed divs,
-    // then stamp the workspace id onto canvas embeds so the viewer can read the
-    // scene from the canvas store.
+    // Post-process bare references, then stamp the workspace id onto generic
+    // canvas embeds so the renderer can resolve the persisted canvas type.
     if (excalidrawEnabled) {
         html = rewriteBareExcalidrawLinks(html);
+    }
+    if (canvasEnabled) {
         html = rewriteBareCanvasEmbedLinks(html);
         if (wsId) {
             html = injectCanvasEmbedWorkspace(html, wsId);
@@ -363,7 +377,11 @@ type RenderChunk =
         parentToolId?: string;
       };
 
-export function toContentHtml(content: string, wsId?: string, options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean }): string {
+export function toContentHtml(
+    content: string,
+    wsId?: string,
+    options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean; canvasEmbedEnabled?: boolean },
+): string {
     return chatMarkdownToHtml(content, wsId, options);
 }
 
@@ -937,7 +955,11 @@ function buildToolDepthMap(calls: RenderToolCall[]): Map<string, number> {
     return depthMap;
 }
 
-function buildAssistantRender(turn: ClientConversationTurn, wsId?: string, options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean }): {
+function buildAssistantRender(
+    turn: ClientConversationTurn,
+    wsId?: string,
+    options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean; canvasEmbedEnabled?: boolean },
+): {
     chunks: RenderChunk[];
     chunksByParent: Map<string, RenderChunk[]>;
     toolById: Map<string, RenderToolCall>;
@@ -1282,12 +1304,13 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     const htmlEmbedEnabled = useHtmlEmbedPreference(wsId) && !turn.streaming;
     // Excalidraw diagrams are now canvases, so enable inline embeds whenever the
     // canvas feature is on (the legacy excalidraw flag still enables it too).
+    const canvasEmbedEnabled = isCanvasEnabled() && !turn.streaming;
     const excalidrawEmbedEnabled = SHOW_EXCALIDRAW_DIAGRAMS && (isExcalidrawEnabled() || isCanvasEnabled()) && !turn.streaming;
     const assistantRender = useMemo(
-        () => isUser ? null : buildAssistantRender(turn, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled }),
+        () => isUser ? null : buildAssistantRender(turn, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled }),
         // turn.timeline + turn.content drive the markdown HTML; embed flags toggle inline-HTML/excalidraw rendering.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [isUser, turn.timeline, turn.content, turn.streaming, wsId, htmlEmbedEnabled, excalidrawEmbedEnabled],
+        [isUser, turn.timeline, turn.content, turn.streaming, wsId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled],
     );
     const parsedUserContent = useMemo(
         () => isUser ? parseAttachedSessionContextBlocks(turn.content || '') : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], pointerContexts: [], remainingContent: '' },
@@ -1378,7 +1401,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             icon: '📄',
             onClick: async () => {
                 try {
-                    const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled });
+                    const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled });
                     await copyHtmlToClipboard(html);
                 } catch {}
             },
@@ -1710,7 +1733,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             title="Copy as HTML"
                             onClick={async () => {
                                 try {
-                                    const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled });
+                                    const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled });
                                     await copyHtmlToClipboard(html);
                                     setCopiedHtml(true);
                                     setTimeout(() => setCopiedHtml(false), 1500);
@@ -1764,7 +1787,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                                         className="err-detail text-[12.5px] leading-snug text-[#2c2f33] dark:text-[#cccccc] [&_code]:font-mono [&_code]:text-[12px] [&_code]:px-1 [&_code]:py-[1px] [&_code]:rounded [&_code]:bg-[#fff] dark:[&_code]:bg-[#1e1e1e] [&_code]:border [&_code]:border-[#f5c2c2] dark:[&_code]:border-[#7a3030]"
                                         data-testid="error-strip-detail"
                                     >
-                                        <MarkdownView html={chatMarkdownToHtml(turn.content, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled })} />
+                                        <MarkdownView html={chatMarkdownToHtml(turn.content, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled })} />
                                     </div>
                                 )}
                                 {onRetry && (

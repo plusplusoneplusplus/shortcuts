@@ -1,8 +1,11 @@
 /**
  * @vitest-environment node
  *
- * Static analysis test: NoteChatPanel must render a mode toggle in the
- * empty-state header and pass allowedModes (no plan) to ChatDetail.
+ * Static analysis test: NoteChatPanel must render the ask/autopilot mode
+ * toggle inline with the empty-state composer (not the header — the mode
+ * control is intentionally kept out of the compact Notes Chat header per
+ * the notes-chat-compact-header plan) and pass allowedModes (no plan) to
+ * ChatDetail.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -20,9 +23,17 @@ describe('NoteChatPanel — mode toggle', () => {
         expect(source).toMatch(/useState.*'ask'/);
     });
 
-    it('renders NoteModeToggle in the empty-state header', () => {
+    it('renders NoteModeToggle inline with the empty-state composer, not the header', () => {
         expect(source).toMatch(/<NoteModeToggle/);
         expect(source).toMatch(/data-testid="note-mode-toggle"/);
+        // The mode toggle must render inside the composer's input row (which
+        // wraps the RichTextInput), not inside <NotesChatHeader>.
+        const modeToggleIdx = source.indexOf('<NoteModeToggle');
+        const headerIdx = source.indexOf('<NotesChatHeader');
+        const headerEndIdx = source.indexOf('/>', headerIdx);
+        expect(modeToggleIdx).toBeGreaterThan(headerEndIdx);
+        const inputIdx = source.indexOf('note-chat-input');
+        expect(modeToggleIdx).toBeLessThan(inputIdx);
     });
 
     it('has ask and autopilot toggle buttons', () => {
@@ -43,12 +54,13 @@ describe('NoteChatPanel — mode toggle', () => {
         expect(source).toMatch(/NOTE_CHAT_ALLOWED_MODES.*ChatMode\[\].*=.*\['ask',\s*'autopilot'\]/);
     });
 
-    it('passes compactModeSelector to ChatDetail so the side panel uses the icon-only variant', () => {
+    it('passes compactModeSelector and hideHeader to ChatDetail so the compact header is the only header', () => {
         const chatDetailIdx = source.indexOf('<ChatDetail');
         expect(chatDetailIdx).toBeGreaterThan(-1);
         const chatDetailEnd = source.indexOf('/>', chatDetailIdx);
         expect(chatDetailEnd).toBeGreaterThan(-1);
         const chatDetailBlock = source.slice(chatDetailIdx, chatDetailEnd);
         expect(chatDetailBlock).toContain('compactModeSelector');
+        expect(chatDetailBlock).toContain('hideHeader');
     });
 });

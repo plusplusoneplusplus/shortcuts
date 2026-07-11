@@ -685,7 +685,7 @@ describe('parseCanvasEmbedLink', () => {
 });
 
 // =====================================================================
-// Canvas (excalidraw) embed markers in chatMarkdownToHtml
+// Generic canvas embed markers in chatMarkdownToHtml
 // =====================================================================
 
 describe('chatMarkdownToHtml — canvas embeds', () => {
@@ -695,7 +695,7 @@ describe('chatMarkdownToHtml — canvas embeds', () => {
             'ws-1',
             { excalidrawEmbedEnabled: true },
         );
-        expect(html).toContain('class="md-excalidraw-embed"');
+        expect(html).toContain('class="md-canvas-embed"');
         expect(html).toContain('data-canvas-id="arch-1"');
         expect(html).toContain('data-ws-id="ws-1"');
     });
@@ -706,7 +706,7 @@ describe('chatMarkdownToHtml — canvas embeds', () => {
             'ws-9',
             { excalidrawEmbedEnabled: true },
         );
-        expect(html).toContain('class="md-excalidraw-embed"');
+        expect(html).toContain('class="md-canvas-embed"');
         expect(html).toContain('data-canvas-id="flow-2"');
         expect(html).toContain('data-ws-id="ws-9"');
     });
@@ -717,7 +717,7 @@ describe('chatMarkdownToHtml — canvas embeds', () => {
             'ws-1',
             { excalidrawEmbedEnabled: false },
         );
-        expect(html).not.toContain('md-excalidraw-embed');
+        expect(html).not.toContain('md-canvas-embed');
         expect(html).toContain('canvas://arch-1');
     });
 
@@ -736,7 +736,7 @@ describe('chatMarkdownToHtml — canvas embeds', () => {
             'ws-1',
             { excalidrawEmbedEnabled: true },
         );
-        const matches = html.match(/md-excalidraw-embed/g);
+        const matches = html.match(/md-canvas-embed/g);
         expect(matches).toHaveLength(2);
         expect(html).toContain('data-canvas-id="a-1"');
         expect(html).toContain('data-canvas-id="b-2"');

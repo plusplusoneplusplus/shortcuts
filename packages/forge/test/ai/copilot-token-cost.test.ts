@@ -41,6 +41,42 @@ describe('Copilot token cost pricing', () => {
         expect(cost!.totalUsd).toBeCloseTo(18.875);
     });
 
+    it.each([
+        ['GPT 5.6 Luna', 'gpt-5.6-luna', 'GPT-5.6 Luna', 'Lightweight', 1, 0.1, 6],
+        ['GPT 5.6 Sol', 'gpt-5.6-sol', 'GPT-5.6 Sol', 'Powerful', 5, 0.5, 30],
+        ['GPT 5.6 Terra', 'gpt-5.6-terra', 'GPT-5.6 Terra', 'Versatile', 2.5, 0.25, 15],
+    ] as const)('prices %s with its supported default-tier rates', (
+        modelName,
+        modelId,
+        displayName,
+        category,
+        inputRate,
+        cachedInputRate,
+        outputRate
+    ) => {
+        expect(normalizeCopilotModelId(modelName)).toBe(modelId);
+        expect(getCopilotModelPricing(modelId)).toMatchObject({
+            modelId,
+            displayName,
+            provider: 'openai',
+            releaseStatus: 'GA',
+            category,
+            usdPerMillionInputTokens: inputRate,
+            usdPerMillionCachedInputTokens: cachedInputRate,
+            usdPerMillionOutputTokens: outputRate,
+        });
+
+        const cost = estimateCopilotTokenCost(modelId, {
+            inputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+        });
+
+        expect(cost).toBeDefined();
+        expect(cost!.totalUsd).toBeCloseTo(inputRate + outputRate);
+    });
+
     it('uses Anthropic cache-write pricing', () => {
         const cost = estimateCopilotTokenCost('claude-sonnet-4.6', {
             inputTokens: 1_000_000,
