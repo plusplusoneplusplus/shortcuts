@@ -17,6 +17,15 @@ export interface ReviewChatPlacementFrameProps {
     onUnpin?: () => void;
     testIdPrefix?: string;
     children: ReactNode;
+    /**
+     * When true, skips the frame's built-in title/identifier/action header
+     * row. Resize grip and minimized-pill behavior are unaffected. Used by
+     * surfaces (e.g. Notes Chat) that render their own compact header inside
+     * `children` instead of relying on the shared generic header. Defaults to
+     * false so existing consumers (commits, pull requests, work items) are
+     * unchanged.
+     */
+    hideHeader?: boolean;
 }
 
 const LENS_MARGIN_PX = 16;
@@ -181,6 +190,7 @@ export function ReviewChatPlacementFrame({
     onUnpin,
     testIdPrefix = 'review-chat',
     children,
+    hideHeader = false,
 }: ReviewChatPlacementFrameProps) {
     const cardRef = useRef<HTMLDivElement | null>(null);
     const pillRef = useRef<HTMLDivElement | null>(null);
@@ -402,67 +412,69 @@ export function ReviewChatPlacementFrame({
                         <span aria-hidden="true" className="pointer-events-none absolute left-0.5 top-0.5 h-2 w-2 border-l border-t border-current" />
                     </button>
                 )}
-                <div
-                    className="flex items-center justify-between gap-2 border-b border-[#e0e0e0] px-3 py-2 dark:border-[#3c3c3c]"
-                    data-testid={`${testIdPrefix}-${placementTestId}-header`}
-                >
-                    <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
-                            💬 {title}
-                        </span>
-                        {identifier && (
-                            <span className="rounded bg-[#e8e8e8] px-1.5 py-0.5 font-mono text-[10px] text-blue-600 dark:bg-[#333] dark:text-blue-400">
-                                {identifier}
+                {!hideHeader && (
+                    <div
+                        className="flex items-center justify-between gap-2 border-b border-[#e0e0e0] px-3 py-2 dark:border-[#3c3c3c]"
+                        data-testid={`${testIdPrefix}-${placementTestId}-header`}
+                    >
+                        <div className="flex min-w-0 items-center gap-2">
+                            <span className="truncate text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
+                                💬 {title}
                             </span>
-                        )}
+                            {identifier && (
+                                <span className="rounded bg-[#e8e8e8] px-1.5 py-0.5 font-mono text-[10px] text-blue-600 dark:bg-[#333] dark:text-blue-400">
+                                    {identifier}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                            {isLens && onMinimize && (
+                                <button
+                                    type="button"
+                                    onClick={onMinimize}
+                                    aria-label="Minimize chat lens"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
+                                    data-testid={`${testIdPrefix}-minimize-btn`}
+                                    title="Minimize chat lens"
+                                >
+                                    <MinimizeIcon />
+                                </button>
+                            )}
+                            {isLens && onPin && (
+                                <button
+                                    type="button"
+                                    onClick={onPin}
+                                    aria-label="Pin to side panel"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
+                                    data-testid={`${testIdPrefix}-pin-btn`}
+                                    title="Pin to side panel"
+                                >
+                                    <PinIcon />
+                                </button>
+                            )}
+                            {!isLens && onUnpin && (
+                                <button
+                                    type="button"
+                                    onClick={onUnpin}
+                                    className="rounded px-1.5 py-0.5 text-[11px] font-medium text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
+                                    data-testid={`${testIdPrefix}-unpin-btn`}
+                                    title="Unpin from side panel"
+                                >
+                                    Unpin
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="rounded px-1 py-0.5 text-xs text-[#848484] hover:bg-black/[0.06] hover:text-[#1e1e1e] dark:hover:bg-white/[0.08] dark:hover:text-white"
+                                data-testid={`${testIdPrefix}-frame-close-btn`}
+                                title="Close"
+                            >
+                                ✕
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                        {isLens && onMinimize && (
-                            <button
-                                type="button"
-                                onClick={onMinimize}
-                                aria-label="Minimize chat lens"
-                                className="inline-flex h-7 w-7 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
-                                data-testid={`${testIdPrefix}-minimize-btn`}
-                                title="Minimize chat lens"
-                            >
-                                <MinimizeIcon />
-                            </button>
-                        )}
-                        {isLens && onPin && (
-                            <button
-                                type="button"
-                                onClick={onPin}
-                                aria-label="Pin to side panel"
-                                className="inline-flex h-7 w-7 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
-                                data-testid={`${testIdPrefix}-pin-btn`}
-                                title="Pin to side panel"
-                            >
-                                <PinIcon />
-                            </button>
-                        )}
-                        {!isLens && onUnpin && (
-                            <button
-                                type="button"
-                                onClick={onUnpin}
-                                className="rounded px-1.5 py-0.5 text-[11px] font-medium text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
-                                data-testid={`${testIdPrefix}-unpin-btn`}
-                                title="Unpin from side panel"
-                            >
-                                Unpin
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="rounded px-1 py-0.5 text-xs text-[#848484] hover:bg-black/[0.06] hover:text-[#1e1e1e] dark:hover:bg-white/[0.08] dark:hover:text-white"
-                            data-testid={`${testIdPrefix}-frame-close-btn`}
-                            title="Close"
-                        >
-                            ✕
-                        </button>
-                    </div>
-                </div>
+                )}
                 <div className="min-h-0 flex-1">
                     {children}
                 </div>

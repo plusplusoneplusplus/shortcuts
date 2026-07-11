@@ -6,6 +6,7 @@ import { ChatPreferencesProvider } from '../../../contexts/ChatPreferencesContex
 import { RichTextInput } from '../../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../../shared/RichTextInput';
 import { NoteContextBanner } from './NoteContextBanner';
+import { NotesChatHeader, type NotesChatWindowMode } from './NotesChatHeader';
 import { useModels } from '../../../hooks/useModels';
 import { useSlashCommands } from '../../chat/hooks/useSlashCommands';
 import { useModelCommand, selectPickableModels } from '../../chat/hooks/useModelCommand';
@@ -19,6 +20,8 @@ import { getSpaCocClient } from '../../../api/cocClient';
 import { isLoopsEnabled } from '../../../utils/config';
 import { useFileAttachments } from '../../chat/hooks/useFileAttachments';
 import { AttachmentPreviews } from '../../../ui/AttachmentPreviews';
+import { useApp } from '../../../contexts/AppContext';
+import { resolveWorkspaceName } from '../../../utils/workspace';
 
 export interface NoteChatPanelProps {
     workspaceId: string;
@@ -38,9 +41,21 @@ export interface NoteChatPanelProps {
     onClearReferences?: () => void;
     /** Called whenever the chat existence state changes (taskId goes from null→set or set→null). */
     onHasChatChange?: (hasChat: boolean) => void;
+    /**
+     * Where this panel is currently presented — drives which window actions
+     * the compact header shows (minimize/pin for 'lens', unpin for
+     * 'side-panel', neither for 'embedded'). Defaults to 'embedded'.
+     */
+    presentation?: NotesChatWindowMode;
+    /** Minimizes the Lens. Only meaningful when presentation is 'lens'. */
+    onMinimize?: () => void;
+    /** Pins the Lens to the side panel. Only meaningful when presentation is 'lens'. */
+    onPin?: () => void;
+    /** Unpins the side panel back to a Lens. Only meaningful when presentation is 'side-panel'. */
+    onUnpin?: () => void;
 }
 
-export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend, defaultScope, references, onRemoveReference, onClearReferences, onHasChatChange }: NoteChatPanelProps) {
+export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend, defaultScope, references, onRemoveReference, onClearReferences, onHasChatChange, presentation = 'embedded', onMinimize, onPin, onUnpin }: NoteChatPanelProps) {
     const { taskId, chatNoteContext, createChat, resetChat, scope, setScope } = useNotesChat({
         workspaceId,
         notePath,
@@ -58,6 +73,14 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(pickableModels);
+
+    // ── Compact header context label ─────────────────────────────────────────
+    // The header shows the current note title in per-note scope, or the
+    // workspace display name in per-workspace scope.
+    const { state: appState } = useApp();
+    const workspaceLabel = resolveWorkspaceName(workspaceId, null, appState.workspaces) ?? workspaceId;
+    const noteContextLabel = noteTitle || notePath?.split('/').pop()?.replace(/\.md$/, '') || 'No note selected';
+    const headerContextLabel = scope === 'per-note' ? noteContextLabel : workspaceLabel;
 
     useEffect(() => {
         onHasChatChange?.(!!taskId);
@@ -111,17 +134,22 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
         <div className="flex flex-col bg-[#f8f8f8] dark:bg-[#1e1e1e] overflow-hidden h-full w-full"
              data-testid="note-chat-panel">
 
+            {/* Single compact header — shown in both empty and active conversation states */}
+            <NotesChatHeader
+                contextLabel={headerContextLabel}
+                scope={scope}
+                onScopeChange={setScope}
+                windowMode={presentation}
+                onClose={onClose}
+                onMinimize={onMinimize}
+                onPin={onPin}
+                onUnpin={onUnpin}
+                onNewChat={taskId ? resetChat : undefined}
+            />
+
             {/* Empty state / no-note state — no chat yet */}
             {!taskId && (
                 <>
-                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                        <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">🤖 Notes Chat</span>
-                        <ScopeToggle scope={scope} onScopeChange={setScope} />
-                        <NoteModeToggle mode={selectedMode} onModeChange={setSelectedMode} />
-                        <button onClick={onClose} className="text-xs px-1 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-white"
-                                data-testid="note-chat-close-btn" title="Close">✕</button>
-                    </div>
-
                     {noNoteSelected ? (
                         <div className="flex-1 flex items-center justify-center">
                             <div className="text-center text-[#848484]">
@@ -152,6 +180,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                 )}
                                 <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
                                 <div className="flex items-center gap-2">
+                                    <NoteModeToggle mode={selectedMode} onModeChange={setSelectedMode} />
                                     <div className="flex-1 min-w-0 relative">
                                         <RichTextInput
                                             ref={richTextRef}
@@ -262,19 +291,6 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
             {/* Active chat */}
             {taskId && (
                 <ChatPreferencesProvider workspaceId={workspaceId}>
-                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-shrink-0">
-                        <span className="text-[10px] text-[#848484]">🤖 Notes Chat</span>
-                        <ScopeToggle scope={scope} onScopeChange={setScope} />
-                        <button
-                            onClick={resetChat}
-                            className="text-[10px] px-1.5 py-0.5 rounded text-[#0078d4] hover:bg-[#e8e8e8] dark:hover:bg-[#333]"
-                            data-testid="note-chat-new-btn"
-                            title="Start a new chat (current chat is kept in history)"
-                        >
-                            🔄 New Chat
-                        </button>
-                    </div>
-
                     {scope === 'per-note' && (
                         <NoteContextBanner
                             chatNotePath={chatNoteContext?.notePath}
@@ -297,6 +313,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                         variant="floating"
                         standalone
                         title="Notes Chat"
+                        hideHeader
                         allowedModes={NOTE_CHAT_ALLOWED_MODES}
                         compactModeSelector
                         disableScratchpad
@@ -313,51 +330,6 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
 // ── Allowed modes for Note Chat ──────────────────────────────────────────────
 
 const NOTE_CHAT_ALLOWED_MODES: ChatMode[] = ['ask', 'autopilot'];
-
-// ── Scope toggle segmented control ───────────────────────────────────────────
-
-interface ScopeToggleProps {
-    scope: ChatScope;
-    onScopeChange: (scope: ChatScope) => void;
-}
-
-function ScopeToggle({ scope, onScopeChange }: ScopeToggleProps) {
-    return (
-        <div
-            className="flex items-center gap-0.5"
-            data-testid="chat-scope-toggle"
-        >
-            <button
-                type="button"
-                className={
-                    'text-[10px] px-2 py-0.5 rounded transition-colors ' +
-                    (scope === 'per-note'
-                        ? 'bg-[#0078d4] text-white font-medium'
-                        : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-[#e8e8e8] dark:hover:bg-[#333]')
-                }
-                onClick={() => onScopeChange('per-note')}
-                data-testid="chat-scope-per-note"
-                title="One chat per note"
-            >
-                📝 This Note
-            </button>
-            <button
-                type="button"
-                className={
-                    'text-[10px] px-2 py-0.5 rounded transition-colors ' +
-                    (scope === 'per-workspace'
-                        ? 'bg-[#0078d4] text-white font-medium'
-                        : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-[#e8e8e8] dark:hover:bg-[#333]')
-                }
-                onClick={() => onScopeChange('per-workspace')}
-                data-testid="chat-scope-per-workspace"
-                title="One chat for the whole workspace"
-            >
-                🗂️ Workspace
-            </button>
-        </div>
-    );
-}
 
 // ── Mode toggle segmented control ────────────────────────────────────────────
 
