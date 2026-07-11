@@ -31,6 +31,7 @@ import type {
     VirtualWorkspaceHeaderAction,
     VirtualWorkspaceHeaderConfig,
 } from '../../../../src/server/spa/client/react/features/remote-shell/virtualWorkspaceHeader';
+import type { RepoData } from '../../../../src/server/spa/client/react/repos/repoGrouping';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -75,9 +76,27 @@ function makeConfig(overrides: Partial<VirtualWorkspaceHeaderConfig> = {}): Virt
     };
 }
 
+function makeLocalRepo(id: string, name: string, rootPath = `/home/user/${name}`): RepoData {
+    return { workspace: { id, name, rootPath } };
+}
+
+function makeRemoteRepo(id: string, name: string, serverId = 'server-1', serverLabel = 'My Server', connection = 'online'): RepoData {
+    return {
+        workspace: {
+            id,
+            name,
+            baseUrl: 'https://server-1.example.com',
+            remote: { serverId, serverLabel, connection },
+        },
+    };
+}
+
+const mockOnSelectRepo = vi.fn();
+
 beforeEach(() => {
     cleanup();
     mockDispatch.mockReset();
+    mockOnSelectRepo.mockReset();
     syncRun.mockReset().mockResolvedValue('Synced 3 items');
     generateRun.mockReset().mockResolvedValue('Summary saved to Weekly/w.md');
     mockActiveRepoSubTab = 'notes';
@@ -89,7 +108,7 @@ beforeEach(() => {
 
 describe('VirtualWorkspaceShellHeader', () => {
     it('renders identity, all sub-tabs and the action buttons', () => {
-        render(<VirtualWorkspaceShellHeader config={makeConfig()} />);
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
 
         const header = screen.getByTestId('virtual-workspace-shell-header');
         expect(header.getAttribute('data-workspace')).toBe('demo_ws');
@@ -103,7 +122,7 @@ describe('VirtualWorkspaceShellHeader', () => {
 
     it('marks the active sub-tab', () => {
         mockActiveRepoSubTab = 'git';
-        render(<VirtualWorkspaceShellHeader config={makeConfig()} />);
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
 
         expect(screen.getByTestId('demo-shell-tab-git').getAttribute('data-active')).toBe('true');
         expect(screen.getByTestId('demo-shell-tab-notes').getAttribute('data-active')).toBe('false');
@@ -111,12 +130,12 @@ describe('VirtualWorkspaceShellHeader', () => {
 
     it('falls back to Notes when the active sub-tab is not in the tab set', () => {
         mockActiveRepoSubTab = 'templates';
-        render(<VirtualWorkspaceShellHeader config={makeConfig()} />);
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
         expect(screen.getByTestId('demo-shell-tab-notes').getAttribute('data-active')).toBe('true');
     });
 
     it('switches sub-tab via dispatch + hash on click', () => {
-        render(<VirtualWorkspaceShellHeader config={makeConfig()} />);
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
 
         fireEvent.click(screen.getByTestId('demo-shell-tab-activity'));
 
@@ -126,13 +145,13 @@ describe('VirtualWorkspaceShellHeader', () => {
 
     it('hides the Schedules tab when schedules-in-scheduled-slide is enabled', () => {
         mockSchedulesInScheduledSlideEnabled = true;
-        render(<VirtualWorkspaceShellHeader config={makeConfig()} />);
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
         expect(screen.queryByTestId('demo-shell-tab-schedules')).toBeNull();
     });
 
     it('runs an action and shows its status message', async () => {
         syncRun.mockResolvedValueOnce('Synced 3 items');
-        render(<VirtualWorkspaceShellHeader config={makeConfig()} />);
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
 
         fireEvent.click(screen.getByTestId('demo-sync-btn'));
 
@@ -144,7 +163,7 @@ describe('VirtualWorkspaceShellHeader', () => {
     it('shows a busy label and disables the button while an action runs', async () => {
         let resolveRun!: (v: string | null) => void;
         syncRun.mockReturnValueOnce(new Promise<string | null>(r => { resolveRun = r; }));
-        render(<VirtualWorkspaceShellHeader config={makeConfig()} />);
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
 
         fireEvent.click(screen.getByTestId('demo-sync-btn'));
 
@@ -159,11 +178,144 @@ describe('VirtualWorkspaceShellHeader', () => {
 
     it('surfaces the error label when an action throws', async () => {
         syncRun.mockRejectedValueOnce(new Error('boom'));
-        render(<VirtualWorkspaceShellHeader config={makeConfig()} />);
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
 
         fireEvent.click(screen.getByTestId('demo-sync-btn'));
 
         await waitFor(() => expect(screen.getByTestId('demo-shell-status').textContent).toBe('Sync failed: boom'));
+    });
+
+    // ── Repo picker dropdown ────────────────────────────────────────────────
+
+    it('identity chip is a button with aria-haspopup and aria-expanded', () => {
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
+        const btn = screen.getByTestId('demo-shell-identity');
+        expect(btn.tagName).toBe('BUTTON');
+        expect(btn.getAttribute('aria-haspopup')).toBe('menu');
+        expect(btn.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('clicking the identity chip opens the dropdown', () => {
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
+        expect(screen.queryByTestId('demo-repo-dropdown')).toBeNull();
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        expect(screen.getByTestId('demo-repo-dropdown')).toBeTruthy();
+        expect(screen.getByTestId('demo-shell-identity').getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('clicking the identity chip again closes the dropdown', () => {
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        expect(screen.queryByTestId('demo-repo-dropdown')).toBeNull();
+    });
+
+    it('shows empty state with hamburger hint when no repos and dropdown is open', () => {
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        const dropdown = screen.getByTestId('demo-repo-dropdown');
+        expect(dropdown.textContent).toContain('No repositories');
+        expect(dropdown.textContent).toContain('☰');
+    });
+
+    it('shows local repos in the dropdown with a Local section header', () => {
+        const repos = [makeLocalRepo('ws-1', 'shortcuts'), makeLocalRepo('ws-2', 'dotfiles')];
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={repos} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        const dropdown = screen.getByTestId('demo-repo-dropdown');
+        expect(dropdown.textContent).toContain('Local');
+        const rows = screen.getAllByTestId('demo-repo-local-row');
+        expect(rows).toHaveLength(2);
+        expect(rows[0].textContent).toContain('shortcuts');
+        expect(rows[1].textContent).toContain('dotfiles');
+    });
+
+    it('shows remote repos in the dropdown with a Remote section header', () => {
+        const repos = [makeRemoteRepo('ws-r1', 'shortcuts', 'srv-1', 'Dev Server')];
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={repos} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        const dropdown = screen.getByTestId('demo-repo-dropdown');
+        expect(dropdown.textContent).toContain('Remote');
+        const rows = screen.getAllByTestId('demo-repo-remote-row');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].textContent).toContain('shortcuts');
+        expect(rows[0].textContent).toContain('Dev Server');
+    });
+
+    it('clicking a local repo row calls onSelectRepo and closes the dropdown', () => {
+        const repos = [makeLocalRepo('ws-local', 'myrepo')];
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={repos} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        fireEvent.click(screen.getByTestId('demo-repo-local-row'));
+        expect(mockOnSelectRepo).toHaveBeenCalledWith('ws-local');
+        expect(screen.queryByTestId('demo-repo-dropdown')).toBeNull();
+    });
+
+    it('clicking a remote repo row calls onSelectRepo with the remote clone key', () => {
+        const repo = makeRemoteRepo('ws-r1', 'myrepo', 'srv-1', 'Dev Server', 'online');
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[repo]} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        fireEvent.click(screen.getByTestId('demo-repo-remote-row'));
+        // Remote clone key is "remote:<encodedServerId>:<encodedWorkspaceId>"
+        expect(mockOnSelectRepo).toHaveBeenCalledWith(expect.stringContaining('srv-1'));
+    });
+
+    it('offline remote repo is disabled and does not call onSelectRepo', () => {
+        const repo = makeRemoteRepo('ws-offline', 'offline-repo', 'srv-1', 'Dev Server', 'offline');
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[repo]} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        const row = screen.getByTestId('demo-repo-remote-row') as HTMLButtonElement;
+        expect(row.disabled).toBe(true);
+        expect(row.textContent).toContain('offline');
+        fireEvent.click(row);
+        expect(mockOnSelectRepo).not.toHaveBeenCalled();
+    });
+
+    it('filter hides repos that do not match the query', () => {
+        const repos = [makeLocalRepo('ws-1', 'shortcuts'), makeLocalRepo('ws-2', 'dotfiles')];
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={repos} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        const search = screen.getByTestId('demo-repo-search');
+        fireEvent.change(search, { target: { value: 'short' } });
+        const rows = screen.getAllByTestId('demo-repo-local-row');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].textContent).toContain('shortcuts');
+    });
+
+    it('filter shows "No repositories match" when nothing passes the filter', () => {
+        const repos = [makeLocalRepo('ws-1', 'shortcuts')];
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={repos} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        fireEvent.change(screen.getByTestId('demo-repo-search'), { target: { value: 'zzz-no-match' } });
+        expect(screen.getByTestId('demo-repo-dropdown').textContent).toContain('No repositories match');
+    });
+
+    it('Escape closes the dropdown', () => {
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[]} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        expect(screen.getByTestId('demo-repo-dropdown')).toBeTruthy();
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('demo-repo-dropdown')).toBeNull();
+    });
+
+    it('shows both Local and Remote sections when both types are present', () => {
+        const repos = [
+            makeLocalRepo('ws-1', 'local-repo'),
+            makeRemoteRepo('ws-r1', 'remote-repo', 'srv-1', 'Dev Server', 'online'),
+        ];
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={repos} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        const dropdown = screen.getByTestId('demo-repo-dropdown');
+        expect(dropdown.textContent).toContain('Local');
+        expect(dropdown.textContent).toContain('Remote');
+    });
+
+    it('short path of rootPath is shown as sublabel for local repos', () => {
+        const repos = [makeLocalRepo('ws-1', 'myrepo', '/home/user/projects/myrepo')];
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={repos} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        const row = screen.getByTestId('demo-repo-local-row');
+        expect(row.textContent).toContain('projects/myrepo');
     });
 });
 
