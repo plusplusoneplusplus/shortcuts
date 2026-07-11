@@ -186,6 +186,67 @@ describe('POST /api/processes/:id/promote-to-ralph', () => {
         expect(enqueueArg.payload.prompt).toContain('focus the goal on the queue refactor');
     });
 
+    // ── Display-only user turn for typed guidance ──
+
+    it('appends the raw typed guidance as a single displayOnly user turn', async () => {
+        await store.addProcess(makeFixture({ id: 'queue_p-disp', workspaceId: 'ws-disp' }));
+
+        const res = await post(baseUrl, '/api/processes/queue_p-disp/promote-to-ralph', {
+            workspaceId: 'ws-disp',
+            extraGuidance: 'focus the goal on the queue refactor',
+        });
+
+        expect(res.status).toBe(200);
+        const proc = await store.getProcess('queue_p-disp');
+        const turns = (proc as any).conversationTurns as any[];
+        // Fixture starts with 2 turns (user + assistant); exactly one added.
+        expect(turns).toHaveLength(3);
+        const added = turns[turns.length - 1];
+        expect(added.role).toBe('user');
+        // Raw typed text, NOT the buildRalphSynthesisPrompt output.
+        expect(added.content).toBe('focus the goal on the queue refactor');
+        expect(added.content).not.toContain('## Goal');
+        expect(added.displayOnly).toBe(true);
+        // Sits after all pre-existing turns, so before the later assistant
+        // synthesis turn in turnIndex order.
+        expect(added.turnIndex).toBe(2);
+    });
+
+    it('appends no extra user turn when extraGuidance is empty/whitespace', async () => {
+        await store.addProcess(makeFixture({ id: 'queue_p-blank', workspaceId: 'ws-blank' }));
+
+        const res = await post(baseUrl, '/api/processes/queue_p-blank/promote-to-ralph', {
+            workspaceId: 'ws-blank',
+            extraGuidance: '   ',
+        });
+
+        expect(res.status).toBe(200);
+        const proc = await store.getProcess('queue_p-blank');
+        const turns = (proc as any).conversationTurns as any[];
+        expect(turns).toHaveLength(2);
+        expect(turns.some((t) => t.displayOnly)).toBe(false);
+    });
+
+    it('still promotes (200 + enqueue) when the display-turn append throws', async () => {
+        await store.addProcess(makeFixture({ id: 'queue_p-disp-err', workspaceId: 'ws-disp-err' }));
+        const appendSpy = vi
+            .spyOn(store, 'appendConversationTurn')
+            .mockRejectedValueOnce(new Error('append failed'));
+
+        try {
+            const res = await post(baseUrl, '/api/processes/queue_p-disp-err/promote-to-ralph', {
+                workspaceId: 'ws-disp-err',
+                extraGuidance: 'some guidance',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json().promoted).toBe(true);
+            expect(mockEnqueue).toHaveBeenCalledOnce();
+        } finally {
+            appendSpy.mockRestore();
+        }
+    });
+
     it('stores and forwards a normalized multi-agent grill setup when provided', async () => {
         await store.addProcess(makeFixture({ id: 'queue_p-grill', workspaceId: 'ws-grill' }));
 

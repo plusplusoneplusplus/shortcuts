@@ -234,7 +234,14 @@ A completed ask-mode chat can be promoted to a Ralph session in place via
 The endpoint:
 
 1. Attaches a `grilling`-phase Ralph context to the existing process.
-2. Enqueues a synthesis follow-up turn with `mode=ask`,
+2. When the user typed guidance (`extraGuidance`), persists it as a
+   `displayOnly: true` **user** turn so it renders as their own message bubble
+   just before the synthesized `## Goal` turn. `displayOnly` keeps it out of
+   model replay history (`buildConversationHistoryContext`) — the same guidance
+   is already embedded in the synthesis prompt, so replaying it would
+   double-count it. Best-effort: a failed append does not fail the promotion,
+   and empty/whitespace guidance appends no turn.
+3. Enqueues a synthesis follow-up turn with `mode=ask`,
    `context.skills=['grill-me']`, `context.ralph.phase='grilling'`, carrying
    the prompt produced by `buildRalphSynthesisPrompt`
    (`packages/coc/src/server/ralph/synthesis-prompt.ts`).

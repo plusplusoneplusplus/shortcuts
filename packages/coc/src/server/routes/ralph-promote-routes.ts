@@ -192,6 +192,31 @@ export function registerRalphPromoteRoutes(routes: Route[], ctx: RalphPromoteRou
                 }
             }
 
+            // Persist the user's typed guidance as a UI-only user turn so it
+            // renders as their own message bubble immediately before the
+            // synthesized ## Goal turn. `displayOnly` keeps it out of model
+            // replay history (buildConversationHistoryContext) — the guidance
+            // is already embedded in the synthesis prompt, so replaying it here
+            // would double-count it. Best-effort: a failed append must not fail
+            // the promotion. Empty guidance renders nothing (no user message).
+            if (extraGuidance) {
+                try {
+                    await store.appendConversationTurn(proc.id, (idx) => ({
+                        role: 'user' as const,
+                        content: extraGuidance,
+                        timestamp: new Date(),
+                        turnIndex: idx,
+                        timeline: [],
+                        displayOnly: true,
+                    }));
+                } catch (err) {
+                    getLogger().warn(
+                        LogCategory.AI,
+                        `[Ralph promote] display turn append failed for ${proc.id}: ${err instanceof Error ? err.message : String(err)}`,
+                    );
+                }
+            }
+
             // Enqueue the synthesis follow-up turn against the same process.
             // mode=ask + grill-me skill + context.ralph.phase=grilling triggers
             // the grilling system prompt in chat-base-executor.
