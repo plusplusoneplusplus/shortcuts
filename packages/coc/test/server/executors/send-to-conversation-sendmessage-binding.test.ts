@@ -59,6 +59,7 @@ function makeSendMessageBinding(store: any, bridge: any): SendMessageFn {
             pasteExternalized: false,
             ...(input.mode ? { mode: input.mode } : {}),
             ...(input.model ? { model: input.model } : {}),
+            ...(input.effort ? { effort: input.effort } : {}),
         };
         const result = await new ProcessMessageDeliveryService({ store, bridge }).deliver(proc, deliveryInput);
         return { turnIndex: result.turnIndex };
@@ -123,6 +124,33 @@ describe('send_to_conversation post-mode delivery binding (real ProcessMessageDe
 
         expect(result.error).toBeUndefined();
         expect(result.turnIndex).toBe(0);
+    });
+
+    it('applies post-mode effortTier using the existing conversation provider without changing provider metadata', async () => {
+        const { store, bridge, tool } = setup();
+        await store.addProcess({
+            id: 'queue_target',
+            status: 'completed',
+            metadata: { type: 'chat', workspaceId: WS_ID, provider: 'claude' },
+            conversationTurns: [],
+        } as any);
+
+        const result = await tool.handler({
+            processId: 'queue_target',
+            content: 'follow up with tier',
+            provider: 'codex',
+            effortTier: 'medium',
+        }) as any;
+
+        expect(result.error).toBeUndefined();
+        expect(bridge.enqueue).toHaveBeenCalledTimes(1);
+        const enqueued = (bridge.enqueue as any).mock.calls[0][0];
+        expect(enqueued.payload.provider).toBeUndefined();
+        expect(enqueued.payload.model).toBe('opus');
+        expect(enqueued.payload.reasoningEffort).toBe('medium');
+        expect(enqueued.config.reasoningEffort).toBe('medium');
+        const proc = await store.getProcess('queue_target') as any;
+        expect(proc.metadata.provider).toBe('claude');
     });
 
     it("maps deliveryMode 'steer' onto immediate delivery (steers a running process)", async () => {

@@ -34,6 +34,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
 import { createSendToConversationTool } from '../../../src/server/llm-tools/send-to-conversation-tool';
 import { enqueueViaBridge, type QueueGlobalState } from '../../../src/server/routes/queue-shared';
+import { prepareTaskForEnqueue } from '../../../src/server/routes/queue-enqueue';
 
 const WS_ID = 'ws-spawn';
 const ROOT = '/repo/spawn';
@@ -63,8 +64,12 @@ function setup(state: QueueGlobalState = freshState()) {
     // autoStart:false → enqueued tasks stay queued (no SDK execution in the test).
     const bridge = new MultiRepoQueueRouter(registry, store, { autoStart: false });
 
-    const enqueueChat = (input: CreateTaskInput): Promise<string> =>
-        enqueueViaBridge(input, bridge, state, ROOT, store);
+    const enqueueChat = async (input: CreateTaskInput): Promise<string> => {
+        await prepareTaskForEnqueue(input, {
+            getDefaultProvider: () => 'copilot',
+        });
+        return enqueueViaBridge(input, bridge, state, ROOT, store);
+    };
 
     const { tool } = createSendToConversationTool({
         store: store as any,
@@ -124,5 +129,23 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
 
         expect(result.error).toMatch(/Unknown workspaceId/);
         expect(bridge.createAggregateQueueFacade().getQueued()).toHaveLength(0);
+    });
+
+    it('resolves an explicit provider effort tier through queue preparation without persisting raw effortTier', async () => {
+        const { bridge, tool } = setup();
+
+        const result = await tool.handler({
+            content: 'spawn claude helper',
+            provider: 'claude',
+            effortTier: 'medium',
+        }) as any;
+
+        expect(result.error).toBeUndefined();
+        const task = bridge.getTask(result.processId.slice('queue_'.length))!;
+        expect((task.payload as any).provider).toBe('claude');
+        expect(task.config?.model).toBe('opus');
+        expect(task.config?.reasoningEffort).toBe('medium');
+        expect((task.config as any).afterEffortTier).toBe('medium');
+        expect((task.config as any).effortTier).toBeUndefined();
     });
 });

@@ -235,6 +235,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // store + queue bridge live) after the queue infra is created; the late-bound
     // getter passed to createQueueInfrastructure reads this once routes register.
     let sendMessageCapability: import('./llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
+    let sendToConversationRuntime: import('./llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
 
     // MCP OAuth infra — enabled by default when any MCP server may be configured.
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
@@ -369,6 +370,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // Late-bound follow-up delivery capability for the post mode of
         // `send_to_conversation`; bound at the route layer below.
         () => sendMessageCapability,
+        // Runtime provider/tier helpers for `send_to_conversation`.
+        () => sendToConversationRuntime,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -647,6 +650,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         nativeCopilotSessionStateDir: options.nativeCopilotSessionStateDir,
         setEnqueueChat: (fn) => { enqueueChatCapability = fn; },
         setSendMessage: (fn) => { sendMessageCapability = fn; },
+        setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });

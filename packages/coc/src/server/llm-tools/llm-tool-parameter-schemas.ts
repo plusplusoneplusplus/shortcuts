@@ -76,6 +76,8 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
             deliveryMode: { type: 'string' },
             title: { type: 'string' },
             model: { type: 'string' },
+            provider: { type: 'string' },
+            effortTier: { type: 'string' },
             priority: { type: 'string' },
         },
         required: ['content'],

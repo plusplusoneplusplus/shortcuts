@@ -71,6 +71,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
                 : undefined,
             enqueueChat: this.getEnqueueChat?.(),
             sendMessage: this.getSendMessage?.(),
+            sendToConversationRuntime: this.getSendToConversationRuntime?.(),
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
             includeMemoryV2: false,
