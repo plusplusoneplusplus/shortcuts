@@ -36,7 +36,7 @@ import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
 import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/useChatSSE';
 import { CanvasPanel } from '../canvas/CanvasPanel';
-import { SourceCanvasDock, useSourceCanvasState, useSourceCanvasContent, useSourceCanvasTree } from './source-canvas';
+import { SourceCanvasDock, useConversationSourceFiles, useSourceCanvasState, useSourceCanvasContent, useSourceCanvasTree } from './source-canvas';
 import { readCanvasClosed, writeCanvasClosed } from './canvasClosedPreference';
 import { deriveOpenCanvasMemory, type OpenCanvasMemory } from './openCanvasMemory';
 import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER_DIFF_EVENT } from './whisper-diff';
@@ -529,6 +529,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         && !nonRetryableFollowUpError;
 
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
+    const conversationSourceFiles = useConversationSourceFiles(turns, workspaceId);
 
     // ── Agents view: spatial tree of this chat's recursive sub-agent runs ──
     const agentRoot = useMemo<AgentRunNode>(() => buildAgentRunTreeFromTurns(turns, {
@@ -1455,6 +1456,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             content={sourceCanvasContent}
             tree={sourceCanvasTree}
             onNavigate={sourceCanvas.open}
+            sourceFiles={conversationSourceFiles}
             isMobile={isMobile}
             onClose={sourceCanvas.close}
             resize={sourceCanvasResize}

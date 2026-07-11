@@ -53,6 +53,13 @@ const { mockState } = vi.hoisted(() => ({
         // Per-pid canvas descriptors served by the fetch handler for
         // `client.canvases.list`.
         canvasesByPid: {} as Record<string, Array<{ id: string; title?: string; type?: string }>>,
+        sourceFiles: [] as Array<{
+            fullPath: string;
+            wsId: string;
+            kind: 'code';
+            line?: number;
+            endLine?: number;
+        }>,
     },
 }));
 
@@ -309,7 +316,22 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/source-canvas', a
             'data-testid': 'source-canvas-dock',
             'data-kind': props.fileRef?.kind ?? 'code',
             'data-path': props.fileRef?.fullPath ?? '',
-        }, R.createElement('button', { 'data-testid': 'source-canvas-close', onClick: props.onClose }, 'Close')),
+            'data-ws-id': props.wsId ?? '',
+            'data-line': props.fileRef?.line ?? '',
+            'data-end-line': props.fileRef?.endLine ?? '',
+        },
+        R.createElement('span', {
+            'data-testid': 'source-canvas-candidate-count',
+            'data-count': props.sourceFiles?.length ?? 0,
+        }),
+        props.sourceFiles?.map((sourceFile: any, index: number) => R.createElement('button', {
+            key: `${sourceFile.wsId}:${sourceFile.fullPath}`,
+            'data-testid': `source-canvas-candidate-${index}`,
+            'data-path': sourceFile.fullPath,
+            'data-ws-id': sourceFile.wsId,
+            onClick: () => props.onNavigate?.(sourceFile),
+        }, sourceFile.fullPath)),
+        R.createElement('button', { 'data-testid': 'source-canvas-close', onClick: props.onClose }, 'Close')),
         useSourceCanvasState: (opts: any) => {
             const [fileRef, setFileRef] = R.useState<any>(null);
             const onOpenRef = R.useRef(opts?.onOpen);
@@ -323,6 +345,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/source-canvas', a
         },
         useSourceCanvasContent: () => null,
         useSourceCanvasTree: () => null,
+        useConversationSourceFiles: () => mockState.sourceFiles,
     };
 });
 
@@ -383,6 +406,7 @@ function jsonResponse(body: any): Response {
 beforeEach(() => {
     localStorage.clear();
     mockState.canvasesByPid = {};
+    mockState.sourceFiles = [];
     mockState.sseOpts = null;
     fetchMock = vi.fn(async (url: string) => {
         const urlStr = typeof url === 'string' ? url : '';
@@ -551,6 +575,33 @@ describe('ChatDetail — persisted canvas closed state (AC-02)', () => {
         rerenderChat(rerender, 'task-A');
         await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
         expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(false);
+    });
+
+    it('replaces the active source canvas from its conversation candidates and preserves the selected workspace', async () => {
+        mockState.sourceFiles = [
+            { fullPath: '/remote/src/newer.ts', wsId: 'remote-ws', kind: 'code', line: 21, endLine: 24 },
+            { fullPath: '/local/src/older.ts', wsId: WS_ID, kind: 'code', line: 3 },
+        ];
+        renderChat('task-A');
+
+        act(() => {
+            window.dispatchEvent(new CustomEvent('coc-open-source-canvas', {
+                detail: { filePath: '/local/src/older.ts', wsId: WS_ID, line: 3 },
+            }));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+        expect(screen.getByTestId('source-canvas-candidate-count').getAttribute('data-count')).toBe('2');
+
+        fireEvent.click(screen.getByTestId('source-canvas-candidate-0'));
+
+        await waitFor(() => {
+            const dock = screen.getByTestId('source-canvas-dock');
+            expect(dock.getAttribute('data-path')).toBe('/remote/src/newer.ts');
+            expect(dock.getAttribute('data-ws-id')).toBe('remote-ws');
+            expect(dock.getAttribute('data-line')).toBe('21');
+            expect(dock.getAttribute('data-end-line')).toBe('24');
+        });
     });
 
     it('keeps a closed chat collapsed across a full reload (fresh mount)', async () => {
@@ -738,5 +789,32 @@ describe('ChatDetail — restore open canvas on chat switch', () => {
             .join(';');
         expect(dump).not.toContain('/secret-canvas-path.ts');
         expect(localStorage.getItem(canvasClosedStorageKey(WS_ID, pidFor('task-A'))!)).toBeNull();
+    });
+
+    it('forwards only the current conversation candidate list after chat switches', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [];
+        mockState.canvasesByPid[pidFor('task-B')] = [];
+        mockState.sourceFiles = [
+            { fullPath: '/workspace-a/src/one.ts', wsId: 'workspace-a', kind: 'code', line: 1 },
+        ];
+        const { rerender } = renderChat('task-A');
+
+        openSourceCanvas({ filePath: '/workspace-a/src/one.ts', wsId: 'workspace-a' });
+        await waitFor(() => expect(screen.getByTestId('source-canvas-candidate-0').getAttribute('data-path')).toBe('/workspace-a/src/one.ts'));
+
+        mockState.sourceFiles = [
+            { fullPath: '/workspace-b/src/two.ts', wsId: 'workspace-b', kind: 'code', line: 2 },
+        ];
+        rerenderChat(rerender, 'task-B');
+        openSourceCanvas({ filePath: '/workspace-b/src/two.ts', wsId: 'workspace-b' });
+        await waitFor(() => expect(screen.getByTestId('source-canvas-candidate-0').getAttribute('data-path')).toBe('/workspace-b/src/two.ts'));
+
+        mockState.sourceFiles = [
+            { fullPath: '/workspace-a/src/one.ts', wsId: 'workspace-a', kind: 'code', line: 1 },
+        ];
+        rerenderChat(rerender, 'task-A');
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock').getAttribute('data-path')).toBe('/workspace-a/src/one.ts'));
+        expect(screen.getByTestId('source-canvas-candidate-0').getAttribute('data-path')).toBe('/workspace-a/src/one.ts');
+        expect(screen.queryByText('/workspace-b/src/two.ts')).toBeNull();
     });
 });

@@ -111,6 +111,124 @@ describe('SourceCanvasPanel', () => {
         expect(getByTestId('source-canvas-path').getAttribute('title')).toBe('/abs/proj/src/foo.ts');
     });
 
+    it('shows a source-file switcher with active state and disambiguating paths', () => {
+        const onNavigate = vi.fn();
+        const sourceFiles = [
+            { fullPath: '/home/u/proj/lib/foo.ts', wsId: 'ws1', kind: 'code' as const, line: 7 },
+            { fullPath: '/home/u/proj/src/foo.ts', wsId: 'ws1', kind: 'code' as const, line: 42 },
+        ];
+        const { getByTestId, getAllByRole } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                workspaceRootPath="/home/u/proj"
+                sourceFiles={sourceFiles}
+                onNavigate={onNavigate}
+                onClose={() => {}}
+            />,
+        );
+
+        const trigger = getByTestId('source-canvas-file-switcher-trigger');
+        expect(trigger.textContent).toContain('foo.ts');
+        expect(trigger.textContent).toContain('src/foo.ts');
+        fireEvent.click(trigger);
+
+        const options = getAllByRole('option');
+        expect(options).toHaveLength(2);
+        expect(options[0].textContent).toContain('lib/foo.ts');
+        expect(options[1].textContent).toContain('src/foo.ts');
+        expect(options[0].getAttribute('aria-selected')).toBe('false');
+        expect(options[1].getAttribute('aria-selected')).toBe('true');
+        expect(getByTestId('source-canvas-copy-btn')).toBeTruthy();
+        expect(getByTestId('source-canvas-reveal-btn')).toBeTruthy();
+        expect(getByTestId('source-canvas-close-btn')).toBeTruthy();
+
+        fireEvent.click(options[0]);
+        expect(onNavigate).toHaveBeenCalledWith(sourceFiles[0]);
+        expect(getByTestId('source-canvas-file-switcher-trigger').getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('supports keyboard navigation and Escape dismissal for the source-file switcher', () => {
+        const sourceFiles = [
+            { fullPath: '/home/u/proj/lib/foo.ts', wsId: 'ws1', kind: 'code' as const },
+            { fullPath: '/home/u/proj/src/foo.ts', wsId: 'ws1', kind: 'code' as const },
+        ];
+        const { getByTestId, queryByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                sourceFiles={sourceFiles}
+                onNavigate={() => {}}
+                onClose={() => {}}
+            />,
+        );
+
+        const trigger = getByTestId('source-canvas-file-switcher-trigger');
+        trigger.focus();
+        fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+        expect(getByTestId('source-canvas-file-switcher-menu')).toBeTruthy();
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(queryByTestId('source-canvas-file-switcher-menu')).toBeNull();
+        expect(document.activeElement).toBe(trigger);
+    });
+
+    it('keeps the compact static header when only one source file is available', () => {
+        const { getByTestId, queryByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                sourceFiles={[{ fullPath: '/home/u/proj/src/foo.ts', wsId: 'ws1', kind: 'code' }]}
+                onNavigate={() => {}}
+                onClose={() => {}}
+            />,
+        );
+
+        expect(queryByTestId('source-canvas-file-switcher-trigger')).toBeNull();
+        expect(getByTestId('source-canvas-header-titles')).toBeTruthy();
+    });
+
+    it('keeps an unresolved selected file in the canvas error state', () => {
+        const onNavigate = vi.fn();
+        const sourceFiles = [
+            { fullPath: '/home/u/proj/src/foo.ts', wsId: 'ws1', kind: 'code' as const },
+            { fullPath: '/home/u/proj/src/missing.ts', wsId: 'ws1', kind: 'code' as const, line: 9 },
+        ];
+        const { getByTestId, getAllByRole, rerender } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                sourceFiles={sourceFiles}
+                onNavigate={onNavigate}
+                onClose={() => {}}
+            />,
+        );
+
+        fireEvent.click(getByTestId('source-canvas-file-switcher-trigger'));
+        fireEvent.click(getAllByRole('option')[1]);
+        expect(onNavigate).toHaveBeenCalledWith(sourceFiles[1]);
+
+        rerender(
+            <SourceCanvasPanel
+                fileRef={sourceFiles[1]}
+                wsId="ws1"
+                sourceFiles={sourceFiles}
+                onNavigate={onNavigate}
+                content={{
+                    status: 'error',
+                    content: '',
+                    language: '',
+                    resolvedPath: '/home/u/proj/src/missing.ts',
+                    error: 'File not found',
+                }}
+                onClose={() => {}}
+            />,
+        );
+        expect(getByTestId('source-canvas-error-msg').textContent).toBe(
+            "Couldn't load /home/u/proj/src/missing.ts",
+        );
+    });
+
     it('close button invokes onClose', () => {
         const onClose = vi.fn();
         const { getByTestId } = render(

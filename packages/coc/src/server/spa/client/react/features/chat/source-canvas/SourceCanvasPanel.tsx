@@ -11,7 +11,7 @@
  * resizing are owned by the host (`ChatDetail`); this component is the inner
  * chrome only.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { Spinner } from '../../../ui/Spinner';
 import { SourceCanvasBody } from './SourceCanvasBody';
@@ -22,6 +22,10 @@ import { getSourceCanvasDisplayPath } from './resolve';
 import type { SourceCanvasFileRef } from './types';
 import type { SourceCanvasContentState } from './useSourceCanvasContent';
 import type { SourceCanvasTreeState } from './useSourceCanvasTree';
+import {
+    getConversationSourceFileKey,
+    type ConversationSourceFile,
+} from './conversationSourceFiles';
 
 function basename(p: string): string {
     const normalized = p.replace(/\\/g, '/');
@@ -68,6 +72,191 @@ function RevealInExplorerIcon() {
     );
 }
 
+interface SourceCanvasFileSwitcherProps {
+    fileRef: SourceCanvasFileRef;
+    wsId?: string | null;
+    workspaceRootPath?: string | null;
+    sourceFiles: readonly ConversationSourceFile[];
+    onNavigate: (ref: SourceCanvasFileRef) => void;
+}
+
+function SourceCanvasFileSwitcher({
+    fileRef,
+    wsId,
+    workspaceRootPath,
+    sourceFiles,
+    onNavigate,
+}: SourceCanvasFileSwitcherProps) {
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    const activeKey = getConversationSourceFileKey(fileRef.wsId ?? wsId ?? '', fileRef.fullPath);
+    const activePath = fileRef.displayPath || getSourceCanvasDisplayPath(fileRef.fullPath, workspaceRootPath);
+    const activeName = basename(activePath);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+            if (!containerRef.current?.contains(event.target as Node)) {
+                setOpen(false);
+            }
+        };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                setOpen(false);
+                triggerRef.current?.focus();
+            }
+        };
+
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('touchstart', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('touchstart', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [open]);
+
+    const focusOption = useCallback((offset: number) => {
+        const options = containerRef.current?.querySelectorAll<HTMLButtonElement>(
+            '[role="option"]',
+        );
+        if (!options?.length) return;
+        const activeIndex = Array.from(options).findIndex(option => option.getAttribute('aria-selected') === 'true');
+        const index = activeIndex >= 0 ? activeIndex : 0;
+        options[(index + offset + options.length) % options.length].focus();
+    }, []);
+
+    const handleTriggerKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        setOpen(true);
+        requestAnimationFrame(() => focusOption(event.key === 'ArrowDown' ? 0 : -1));
+    }, [focusOption]);
+
+    const handleOptionKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+        const options = Array.from(containerRef.current?.querySelectorAll<HTMLButtonElement>(
+            '[role="option"]',
+        ) ?? []);
+        const currentIndex = options.indexOf(event.currentTarget);
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            setOpen(false);
+            triggerRef.current?.focus();
+            return;
+        }
+        if (event.key === 'Home' || event.key === 'End') {
+            event.preventDefault();
+            options[event.key === 'Home' ? 0 : options.length - 1]?.focus();
+            return;
+        }
+        if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && currentIndex >= 0) {
+            event.preventDefault();
+            const nextIndex = event.key === 'ArrowDown'
+                ? (currentIndex + 1) % options.length
+                : (currentIndex - 1 + options.length) % options.length;
+            options[nextIndex]?.focus();
+        }
+    }, []);
+
+    const handleContainerKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+        triggerRef.current?.focus();
+    }, []);
+
+    return (
+        <div
+            ref={containerRef}
+            className="relative min-w-0"
+            data-testid="source-canvas-file-switcher"
+            onKeyDown={handleContainerKeyDown}
+        >
+            <button
+                ref={triggerRef}
+                type="button"
+                className="min-w-0 max-w-full flex items-baseline gap-1.5 rounded px-1 -mx-1 text-left hover:bg-black/[0.06] dark:hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50"
+                data-testid="source-canvas-file-switcher-trigger"
+                aria-haspopup="listbox"
+                aria-expanded={open}
+                aria-label={`Switch source file, currently ${activeName}`}
+                title={fileRef.fullPath}
+                onClick={() => setOpen(value => !value)}
+                onKeyDown={handleTriggerKeyDown}
+            >
+                <span
+                    className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] shrink-0"
+                    data-testid="source-canvas-filename"
+                >
+                    {activeName}
+                </span>
+                <span
+                    className="text-[11px] text-[#848484] truncate min-w-0 text-left"
+                    dir="rtl"
+                    title={fileRef.fullPath}
+                    data-testid="source-canvas-path"
+                >
+                    <bdi>{activePath}</bdi>
+                </span>
+                <span className="text-[10px] text-[#848484] shrink-0" aria-hidden="true">
+                    {open ? '▴' : '▾'}
+                </span>
+            </button>
+            {open && (
+                <div
+                    className="absolute left-0 top-full mt-1 z-50 min-w-[220px] max-w-[min(420px,calc(100vw-2rem))] rounded border border-[#e0e0e0] dark:border-[#474749] bg-white dark:bg-[#252526] shadow-lg py-1"
+                    role="listbox"
+                    aria-label="Conversation source files"
+                    data-testid="source-canvas-file-switcher-menu"
+                >
+                    {sourceFiles.map((sourceFile) => {
+                        const sourceKey = getConversationSourceFileKey(sourceFile.wsId, sourceFile.fullPath);
+                        const selected = sourceKey === activeKey;
+                        const sourcePath = sourceFile.displayPath
+                            || getSourceCanvasDisplayPath(sourceFile.fullPath, workspaceRootPath);
+                        return (
+                            <button
+                                key={sourceKey}
+                                type="button"
+                                role="option"
+                                aria-selected={selected}
+                                className={`w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs ${
+                                    selected
+                                        ? 'bg-[#f3f3f3] dark:bg-[#2a2d2e] text-[#1e1e1e] dark:text-[#cccccc]'
+                                        : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e]'
+                                }`}
+                                data-testid={`source-canvas-file-option-${sourceKey}`}
+                                title={sourceFile.fullPath}
+                                onClick={() => {
+                                    onNavigate(sourceFile);
+                                    setOpen(false);
+                                    triggerRef.current?.focus();
+                                }}
+                                onKeyDown={handleOptionKeyDown}
+                            >
+                                <span className="min-w-0 flex-1">
+                                    <span className="block font-medium truncate">{basename(sourcePath)}</span>
+                                    <span className="block text-[11px] text-[#848484] truncate">{sourcePath}</span>
+                                </span>
+                                {selected && (
+                                    <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff]" aria-label="Active file">
+                                        ✓
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export interface SourceCanvasPanelProps {
     /** The file to display. */
     fileRef: SourceCanvasFileRef;
@@ -84,6 +273,8 @@ export interface SourceCanvasPanelProps {
      * opens the read-only code viewer. Folders expand in place, not via this.
      */
     onNavigate?: (ref: SourceCanvasFileRef) => void;
+    /** Conversation-scoped code files eligible for the source header switcher. */
+    sourceFiles?: readonly ConversationSourceFile[];
     /** Close the canvas (X button). */
     onClose: () => void;
 }
@@ -95,12 +286,16 @@ export function SourceCanvasPanel({
     content,
     tree,
     onNavigate,
+    sourceFiles = [],
     onClose,
 }: SourceCanvasPanelProps) {
     const { fullPath, displayPath } = fileRef;
     const path = displayPath || getSourceCanvasDisplayPath(fullPath, workspaceRootPath);
     const fileName = basename(path);
     const [copied, setCopied] = useState(false);
+    const hasFileSwitcher = fileRef.kind !== 'note'
+        && fileRef.kind !== 'dir'
+        && sourceFiles.length > 1;
 
     const handleCopy = useCallback(() => {
         const clip = navigator.clipboard;
@@ -124,30 +319,40 @@ export function SourceCanvasPanel({
             data-testid="source-canvas-panel"
         >
             <div className="px-3 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] flex items-center justify-between gap-2">
-                <div
-                    className="min-w-0 flex items-baseline gap-1.5"
-                    data-testid="source-canvas-header-titles"
-                >
-                    <span
-                        className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] shrink-0"
-                        data-testid="source-canvas-filename"
+                {hasFileSwitcher && onNavigate ? (
+                    <SourceCanvasFileSwitcher
+                        fileRef={fileRef}
+                        wsId={wsId}
+                        workspaceRootPath={workspaceRootPath}
+                        sourceFiles={sourceFiles}
+                        onNavigate={onNavigate}
+                    />
+                ) : (
+                    <div
+                        className="min-w-0 flex items-baseline gap-1.5"
+                        data-testid="source-canvas-header-titles"
                     >
-                        {fileName}
-                    </span>
-                    {/* Truncate from the FRONT (dir=rtl) so the low-signal
-                        `packages/coc/src/...` prefix is dropped and the meaningful
-                        tail (parent folders + file) stays visible. `<bdi>` keeps the
-                        path itself in normal left-to-right order. The full path is
-                        preserved in the DOM for the tooltip + copy-path action. */}
-                    <span
-                        className="text-[11px] text-[#848484] truncate min-w-0 text-left"
-                        dir="rtl"
-                        title={fullPath}
-                        data-testid="source-canvas-path"
-                    >
-                        <bdi>{path}</bdi>
-                    </span>
-                </div>
+                        <span
+                            className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] shrink-0"
+                            data-testid="source-canvas-filename"
+                        >
+                            {fileName}
+                        </span>
+                        {/* Truncate from the FRONT (dir=rtl) so the low-signal
+                            `packages/coc/src/...` prefix is dropped and the meaningful
+                            tail (parent folders + file) stays visible. `<bdi>` keeps the
+                            path itself in normal left-to-right order. The full path is
+                            preserved in the DOM for the tooltip + copy-path action. */}
+                        <span
+                            className="text-[11px] text-[#848484] truncate min-w-0 text-left"
+                            dir="rtl"
+                            title={fullPath}
+                            data-testid="source-canvas-path"
+                        >
+                            <bdi>{path}</bdi>
+                        </span>
+                    </div>
+                )}
                 <div className="flex items-center gap-0.5 shrink-0">
                     <button
                         type="button"

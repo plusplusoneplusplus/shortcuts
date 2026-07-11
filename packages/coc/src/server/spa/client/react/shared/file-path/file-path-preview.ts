@@ -10,7 +10,12 @@ import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
 import { openLink } from '../../utils/link-handler';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS } from '../../featureFlags';
-import { parseFilePathRef } from '../file-path-utils';
+import {
+    isExternalFileReferenceHref,
+    isSourceCanvasDirectoryPath,
+    isSourceCanvasNotePath,
+    parseFilePathRef,
+} from '../file-path-utils';
 
 interface WorkspaceInfo {
     id: string;
@@ -236,26 +241,6 @@ function readSourceFilePath(el: HTMLElement): string | undefined {
     return el.closest('[data-source-file]')?.getAttribute('data-source-file') || undefined;
 }
 
-const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
-
-/** A `.md`/`.markdown`/`.mdx` path (ignoring any `?query`/`#hash` suffix). */
-function isMarkdownPath(path: string): boolean {
-    const clean = path.split(/[?#]/)[0];
-    const ext = clean.split('.').pop()?.toLowerCase() || '';
-    return MARKDOWN_EXTENSIONS.has(ext);
-}
-
-/**
- * A directory reference — a path ending with `/` (ignoring any `?query`/`#hash`
- * suffix). The trailing slash is the only click-time signal that a chat link
- * points at a folder rather than a file, so folder links route to the read-only
- * folder explorer instead of the file viewer.
- */
-function isDirectoryPath(path: string): boolean {
-    const clean = toForwardSlashes(path).split(/[?#]/)[0];
-    return clean.length > 1 && clean.endsWith('/');
-}
-
 /**
  * Open the docked source canvas. `kind` discriminates the body mode the host
  * renders: `'note'` → the editable markdown NoteEditor, `'dir'` → the read-only
@@ -307,15 +292,15 @@ function openFileReference(sourceEl: HTMLElement, ref: FileReference): void {
     hideTooltip();
 
     if (SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS) {
-        if (isDirectoryPath(ref.filePath) && sourceEl.closest('.chat-message.assistant')) {
+        if (isSourceCanvasDirectoryPath(ref.filePath) && sourceEl.closest('.chat-message.assistant')) {
             dispatchOpenSourceCanvas(ref, 'dir');
             return;
         }
-        if (isMarkdownPath(ref.filePath) && sourceEl.closest('.chat-message')) {
+        if (isSourceCanvasNotePath(ref.filePath) && sourceEl.closest('.chat-message')) {
             dispatchOpenSourceCanvas(ref, 'note');
             return;
         }
-        if (!isMarkdownPath(ref.filePath) && sourceEl.closest('.chat-message.assistant')) {
+        if (!isSourceCanvasNotePath(ref.filePath) && sourceEl.closest('.chat-message.assistant')) {
             dispatchOpenSourceCanvas(ref);
             return;
         }
@@ -356,10 +341,6 @@ function findMdLink(target: EventTarget | null): HTMLElement | null {
     return link;
 }
 
-function isExternalHref(href: string): boolean {
-    return /^https?:\/\/|^mailto:/i.test(href);
-}
-
 function findChatMarkdownAnchor(target: EventTarget | null): HTMLAnchorElement | null {
     if (!(target instanceof HTMLElement)) return null;
     const link = target.closest<HTMLAnchorElement>('a[href]');
@@ -367,14 +348,14 @@ function findChatMarkdownAnchor(target: EventTarget | null): HTMLAnchorElement |
     const chatMessage = link.closest('.chat-message');
     if (!chatMessage) return null;
     const href = link.getAttribute('href') || '';
-    if (!href || isExternalHref(href) || href.startsWith('#')) return null;
+    if (!href || isExternalFileReferenceHref(href) || href.startsWith('#')) return null;
     // Assistant messages route every local anchor through the canvas (markdown →
     // editable note, code → read-only source viewer). User messages only divert
     // *markdown* note anchors — including tilde-style CoC note hrefs like
     // `~/.coc/repos/<wsId>/notes/.../*.md` — so non-markdown local anchors keep
     // their existing native navigation.
     if (!chatMessage.classList.contains('assistant')
-        && !isMarkdownPath(parseFilePathRef(toForwardSlashes(href)).path)) {
+        && !isSourceCanvasNotePath(parseFilePathRef(toForwardSlashes(href)).path)) {
         return null;
     }
     return link;
@@ -798,7 +779,7 @@ function initFilePathPreviewDelegation(): void {
         if (!href) return;
 
         // External URLs — open using link-handler (may redirect to desktop app)
-        if (isExternalHref(href)) {
+        if (isExternalFileReferenceHref(href)) {
             openLink(href, getLinkHandlersConfig());
             return;
         }

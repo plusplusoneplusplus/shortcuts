@@ -256,6 +256,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
 
 // ConversationTurnBubble — stub that renders turn content
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
+    chatMarkdownToHtml: (content: string) => content,
     ConversationTurnBubble: (props: any) => {
         const turnIndex = props.turn?.turnIndex;
         const children: React.ReactNode[] = [props.turn?.content ?? ''];

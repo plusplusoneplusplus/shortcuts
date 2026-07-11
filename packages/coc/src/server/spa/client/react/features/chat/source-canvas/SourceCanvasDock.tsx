@@ -17,6 +17,7 @@ import type { SourceCanvasFileRef } from './types';
 import type { SourceCanvasContentState } from './useSourceCanvasContent';
 import type { SourceCanvasTreeState } from './useSourceCanvasTree';
 import type { UseResizablePanelReturn } from '../../../hooks/ui/useResizablePanel';
+import type { ConversationSourceFile } from './conversationSourceFiles';
 
 function sheetTitle(fileRef: SourceCanvasFileRef): string {
     const path = fileRef.displayPath || fileRef.fullPath;
@@ -36,6 +37,8 @@ export interface SourceCanvasDockProps {
     tree?: SourceCanvasTreeState;
     /** Open a file ref in the same panel (folder-tree file navigation). */
     onNavigate?: (ref: SourceCanvasFileRef) => void;
+    /** Conversation-scoped code files eligible for the source header switcher. */
+    sourceFiles?: readonly ConversationSourceFile[];
     /** Mobile breakpoint → render inside a BottomSheet instead of a column. */
     isMobile: boolean;
     /** Close the canvas. */
@@ -51,6 +54,7 @@ export function SourceCanvasDock({
     content,
     tree,
     onNavigate,
+    sourceFiles,
     isMobile,
     onClose,
     resize,
@@ -70,6 +74,7 @@ export function SourceCanvasDock({
                     content={content}
                     tree={tree}
                     onNavigate={onNavigate}
+                    sourceFiles={sourceFiles}
                     onClose={onClose}
                 />
             </BottomSheet>
@@ -98,6 +103,7 @@ export function SourceCanvasDock({
                     content={content}
                     tree={tree}
                     onNavigate={onNavigate}
+                    sourceFiles={sourceFiles}
                     onClose={onClose}
                 />
             </div>

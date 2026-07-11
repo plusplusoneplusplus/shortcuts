@@ -99,7 +99,7 @@ describe('AC-06 — code references stay read-only and assistant-only', () => {
     it('code chat links open the read-only viewer (no note kind) from assistant messages only', () => {
         expect(preview).toContain("sourceEl.closest('.chat-message.assistant')");
         // The non-markdown branch dispatches WITHOUT a kind argument.
-        expect(preview).toMatch(/!isMarkdownPath\(ref\.filePath\)[\s\S]*?dispatchOpenSourceCanvas\(ref\);/);
+        expect(preview).toMatch(/!isSourceCanvasNotePath\(ref\.filePath\)[\s\S]*?dispatchOpenSourceCanvas\(ref\);/);
     });
 });
 

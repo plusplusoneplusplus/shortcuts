@@ -54,7 +54,7 @@ export function shortenFilePath(p: string): string {
  * URLs (e.g. `https://example.com/api`) and other slash-delimited tokens.
  */
 export const FILE_PATH_RE =
-    /(?:(?<![:/\w])\/[a-zA-Z][a-zA-Z0-9_.-]*(?:\/[^\s&"'<>()]+)+|(?<![/\w])[A-Za-z]:[/\\][\w./@\\-]+)/g;
+    /(?:(?<![:/\w])\/[a-zA-Z][a-zA-Z0-9_.-]*(?:\/[^\s&"'<>()]+)+|(?<![/\w])[A-Za-z]:[/\\][\w./@\\-]+(?::\d+(?:-\d+)?)?)/g;
 
 /**
  * A parsed file-path reference: the bare path plus an optional `:line` /
@@ -67,6 +67,26 @@ export interface FilePathRef {
     line?: number;
     /** The end line number, when a `:start-end` range suffix is present. */
     endLine?: number;
+}
+
+const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
+
+/** Whether a path opens the editable source-canvas note surface. */
+export function isSourceCanvasNotePath(path: string): boolean {
+    const clean = path.split(/[?#]/)[0];
+    const ext = clean.split('.').pop()?.toLowerCase() || '';
+    return MARKDOWN_EXTENSIONS.has(ext);
+}
+
+/** Whether a path opens the source-canvas folder explorer. */
+export function isSourceCanvasDirectoryPath(path: string): boolean {
+    const clean = toForwardSlashes(path).split(/[?#]/)[0];
+    return clean.length > 1 && clean.endsWith('/');
+}
+
+/** Whether an href is handled outside of the local source-file link flow. */
+export function isExternalFileReferenceHref(href: string): boolean {
+    return /^https?:\/\/|^mailto:/i.test(href);
 }
 
 function safeDecodeURIComponent(value: string): string {
