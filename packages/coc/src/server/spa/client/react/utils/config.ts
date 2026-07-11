@@ -72,7 +72,7 @@ interface DashboardConfig {
      * as the target-server capability signal exposed via GET /api/config/runtime.
      */
     gitWorktreeExecutionEnabled?: boolean;
-    /** Whether the Effort Tiers selector (Low/Medium/High) is enabled in the composer. Disabled by default. */
+    /** Whether the Effort Tiers selector (Very Low/Low/Medium/High) is enabled in the composer. Enabled by default. */
     effortLevelsEnabled?: boolean;
     /** Whether the read-only native CLI sessions tab is enabled (feature flag). */
     nativeCliSessionsEnabled?: boolean;

@@ -55,6 +55,20 @@ const CATALOG_WITH_REASONING: ModelInfo[] = [
     makeModelInfo('opus-model', 'Opus Model', ['medium', 'high']),
 ];
 
+const COPILOT_DEFAULTS = {
+    'very-low': { model: 'gpt-5.6-luna',  reasoningEffort: 'xhigh' },
+    low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' },
+    medium: { model: 'claude-opus-4.8', reasoningEffort: 'xhigh' },
+    high:   { model: 'gpt-5.6-sol',   reasoningEffort: 'xhigh' },
+};
+
+const COPILOT_DEFAULT_TIERS = {
+    'very-low': { ...COPILOT_DEFAULTS['very-low'], source: 'default' },
+    low:    { ...COPILOT_DEFAULTS.low,    source: 'default' },
+    medium: { ...COPILOT_DEFAULTS.medium, source: 'default' },
+    high:   { ...COPILOT_DEFAULTS.high,   source: 'default' },
+};
+
 function makeRuntimeConfigService(config: Record<string, unknown> = {}): RuntimeConfigService {
     return new RuntimeConfigService({
         fileConfig: { codex: { enabled: false }, claude: { enabled: false }, ...config },
@@ -157,18 +171,8 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         };
         expect(data.provider).toBe('copilot');
         // All four tiers populated from defaults, source: 'default'.
-        expect(data.effortTiers).toEqual({
-            'very-low': { model: 'gpt-5.4-mini',     reasoningEffort: 'low',   source: 'default' },
-            low:    { model: 'claude-sonnet-5',   reasoningEffort: 'high',  source: 'default' },
-            medium: { model: 'claude-opus-4.8',   reasoningEffort: null,    source: 'default' },
-            high:   { model: 'gpt-5.6-sol',       reasoningEffort: 'xhigh', source: 'default' },
-        });
-        expect(data.defaults).toEqual({
-            'very-low': { model: 'gpt-5.4-mini',     reasoningEffort: 'low'   },
-            low:    { model: 'claude-sonnet-5',   reasoningEffort: 'high'  },
-            medium: { model: 'claude-opus-4.8',   reasoningEffort: null    },
-            high:   { model: 'gpt-5.6-sol',       reasoningEffort: 'xhigh' },
-        });
+        expect(data.effortTiers).toEqual(COPILOT_DEFAULT_TIERS);
+        expect(data.defaults).toEqual(COPILOT_DEFAULTS);
     });
 
     it('returns hardcoded codex defaults for fresh provider', async () => {
@@ -221,7 +225,7 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         expect(status).toBe(200);
         const data = body as { provider: string; effortTiers: Record<string, unknown> };
         expect(data.effortTiers).toEqual({
-            'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low', source: 'default' },
+            'very-low': { ...COPILOT_DEFAULTS['very-low'], source: 'default' },
             low:    { model: 'fast-model', reasoningEffort: null,     source: 'config' },
             medium: { model: 'mid-model',  reasoningEffort: 'medium', source: 'config' },
             high:   { model: 'opus-model', reasoningEffort: 'high',   source: 'config' },
@@ -250,8 +254,8 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         expect(data.effortTiers['very-low'].source).toBe('default');
         expect(data.effortTiers.low.source).toBe('default');
         expect(data.effortTiers.high.source).toBe('default');
-        expect(data.effortTiers['very-low'].model).toBe('gpt-5.4-mini');
-        expect(data.effortTiers.low.model).toBe('claude-sonnet-5');
+        expect(data.effortTiers['very-low'].model).toBe(COPILOT_DEFAULTS['very-low'].model);
+        expect(data.effortTiers.low.model).toBe(COPILOT_DEFAULTS.low.model);
     });
 
     it('returns 400 for invalid provider', async () => {
@@ -512,9 +516,9 @@ describe('PUT /api/agent-providers/:provider/effort-tiers — full-map replace',
         const data = body as { effortTiers: Record<string, { model: string; source: string }> };
         // full-map replace: stored 'low' is cleared, so it surfaces as default
         expect(data.effortTiers['very-low'].source).toBe('default');
-        expect(data.effortTiers['very-low'].model).toBe('gpt-5.4-mini');
+        expect(data.effortTiers['very-low'].model).toBe(COPILOT_DEFAULTS['very-low'].model);
         expect(data.effortTiers.low.source).toBe('default');
-        expect(data.effortTiers.low.model).toBe('claude-sonnet-5');
+        expect(data.effortTiers.low.model).toBe(COPILOT_DEFAULTS.low.model);
         expect(data.effortTiers.medium).toEqual({ model: 'new-mid', reasoningEffort: null, source: 'config' });
         expect(data.effortTiers.high).toEqual({ model: 'new-high', reasoningEffort: null, source: 'config' });
         // Stored config carries only the sent tiers — no default leakage.

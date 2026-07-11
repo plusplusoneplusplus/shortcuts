@@ -51,8 +51,8 @@ describe('resolveEffortTierConfig', () => {
 
         resolveEffortTierConfig(input, makeContext());
 
-        expect(input.config.model).toBe('claude-sonnet-5');
-        expect(input.config.reasoningEffort).toBe('high');
+        expect(input.config.model).toBe('gpt-5.6-terra');
+        expect(input.config.reasoningEffort).toBe('xhigh');
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 

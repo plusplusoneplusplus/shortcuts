@@ -29,17 +29,14 @@ import type {
 import { getRepoDataPath } from '../paths';
 import {
     PREFERENCES_FILE_NAME,
-    readPreferences,
     readRepoPreferences,
     writePreferences,
     writeRepoPreferences,
 } from '../preferences/repository';
 import {
-    validateGlobalPreferences,
     validatePerRepoPreferences,
 } from '../preferences/schema';
 import {
-    applyGlobalPreferencesPatch,
     applyRepoPreferencesPatch,
 } from '../preferences/merge-policy';
 import { atomicWriteJson } from '../shared/fs-utils';
@@ -1055,8 +1052,8 @@ function readGlobalPreferencesSnapshot(dataDir: string): { preferences: Record<s
 function writeGlobalPreferencesSnapshot(dataDir: string, preferences: Record<string, unknown>, errors: string[]): void {
     try {
         const globalData: Record<string, unknown> = {};
-        if ((preferences as Record<string, unknown> | undefined)?.global !== undefined) {
-            globalData.global = validateGlobalPreferences(preferences.global);
+        if (isPlainRecord(preferences.global)) {
+            globalData.global = preferences.global;
         }
         writePreferences(dataDir, globalData as any);
     } catch (err) {
@@ -1066,17 +1063,31 @@ function writeGlobalPreferencesSnapshot(dataDir: string, preferences: Record<str
 
 function mergeGlobalPreferencesSnapshot(dataDir: string, preferences: Record<string, unknown>, errors: string[]): void {
     try {
-        if ((preferences as Record<string, unknown> | undefined)?.global !== undefined) {
-            const existingGlobal = readPreferences(dataDir);
-            const { preferences: merged } = applyGlobalPreferencesPatch(
-                existingGlobal.global,
-                preferences.global,
-            );
-            writePreferences(dataDir, { ...existingGlobal, global: merged });
+        if (isPlainRecord(preferences.global)) {
+            const existingGlobal = readRawGlobalPreferences(dataDir);
+            writePreferences(dataDir, {
+                global: {
+                    ...existingGlobal,
+                    ...preferences.global,
+                },
+            } as any);
         }
     } catch (err) {
         errors.push(`Failed to merge preferences: ${getErrorMessage(err)}`);
     }
+}
+
+function readRawGlobalPreferences(dataDir: string): Record<string, unknown> {
+    const prefFile = path.join(dataDir, PREFERENCES_FILE_NAME);
+    if (!fs.existsSync(prefFile)) {
+        return {};
+    }
+
+    const parsed = readJsonFile<Record<string, unknown>>(prefFile);
+    if (!parsed.ok || !isPlainRecord(parsed.value.global)) {
+        return {};
+    }
+    return parsed.value.global;
 }
 
 function readRepoPreferenceSnapshots(dataDir: string): { snapshots: RepoPreferencesSnapshot[]; warnings: string[] } {
@@ -1236,6 +1247,10 @@ function readJsonFile<T>(filePath: string): { ok: true; value: T } | { ok: false
     } catch (error) {
         return { ok: false, error };
     }
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function taskId(task: unknown): unknown {
