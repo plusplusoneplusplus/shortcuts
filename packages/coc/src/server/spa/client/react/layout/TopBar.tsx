@@ -219,7 +219,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     </button>
                 )}
                 {!isMobile && (showVirtualHeader && virtualHeaderConfig ? (
-                    <VirtualWorkspaceShellHeader config={virtualHeaderConfig} />
+                    <VirtualWorkspaceShellHeader config={virtualHeaderConfig} repos={repos} onSelectRepo={navigateToWorkspace} />
                 ) : showRemoteHeader ? (
                     // Remote-first shell: always rendered; repo may be undefined
                     // (unselected state shows a "Select repository" picker).
