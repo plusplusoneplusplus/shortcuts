@@ -16,6 +16,7 @@ import * as crypto from 'crypto';
 import type { ProcessStore, TaskQueueManager, QueuedTask } from '@plusplusoneplusplus/forge';
 import { toTaskId, toQueueProcessId, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
+import { PeriodicEntryScheduler } from '../schedule/periodic-entry-scheduler';
 import type { LoopStore } from './loop-store';
 import type { LoopEntry, LoopChangeEvent } from './loop-types';
 import { MAX_CONSECUTIVE_FAILURES, MAX_CONSECUTIVE_WAKEUPS_PER_PROCESS } from './loop-types';
@@ -60,8 +61,19 @@ export class LoopExecutor {
      */
     private readonly inflight = new Set<string>();
 
+    /** Shared timer-arming lifecycle kernel (delay/overdue/reschedule/shutdown). */
+    private readonly scheduler: PeriodicEntryScheduler<LoopEntry>;
+
     constructor(deps: LoopExecutorDeps) {
         this.deps = deps;
+        this.scheduler = new PeriodicEntryScheduler<LoopEntry>({
+            timerRegistry: deps.timerRegistry,
+            getFallbackIntervalMs: loop => loop.intervalMs,
+            persist: loop => this.deps.store.update(loop),
+            onTick: id => this.onTick(id),
+            logLabel: 'LoopExecutor',
+            onShutdownCleanup: () => this.inflight.clear(),
+        });
     }
 
     // ========================================================================
@@ -73,13 +85,7 @@ export class LoopExecutor {
      * Called once at server startup after loops are loaded from the DB.
      */
     armAll(): void {
-        const loops = this.deps.store.getActive();
-        const logger = getLogger();
-        for (const loop of loops) {
-            this.armTimer(loop);
-            logger.debug(LogCategory.AI, `[LoopExecutor] Armed timer for loop ${loop.id}`);
-        }
-        logger.info(LogCategory.AI, `[LoopExecutor] Armed ${loops.length} active loop(s)`);
+        this.scheduler.armAll(this.deps.store.getActive());
     }
 
     /**
@@ -87,26 +93,14 @@ export class LoopExecutor {
      * (or falls back to `intervalMs` from now).
      */
     armTimer(loop: LoopEntry): void {
-        if (loop.status !== 'active') return;
-
-        const now = Date.now();
-        let delayMs: number;
-
-        if (loop.nextTickAt) {
-            delayMs = new Date(loop.nextTickAt).getTime() - now;
-            if (delayMs < 0) delayMs = 0; // overdue — fire immediately
-        } else {
-            delayMs = loop.intervalMs;
-        }
-
-        this.deps.timerRegistry.set(loop.id, () => this.onTick(loop.id), delayMs);
+        this.scheduler.arm(loop);
     }
 
     /**
      * Cancel the timer for a loop and remove it from the inflight set.
      */
     disarmTimer(loopId: string): void {
-        this.deps.timerRegistry.cancel(loopId);
+        this.scheduler.disarm(loopId);
     }
 
     /**
@@ -114,10 +108,7 @@ export class LoopExecutor {
      * persisted loop state. Active loops are re-armed on the next startup.
      */
     shutdownAll(): void {
-        const logger = getLogger();
-        this.deps.timerRegistry.clear();
-        this.inflight.clear();
-        logger.info(LogCategory.AI, '[LoopExecutor] Disarmed active loop timer(s) for shutdown');
+        this.scheduler.shutdownAll();
     }
 
     /**
@@ -161,11 +152,8 @@ export class LoopExecutor {
             }
         }
 
-        // Schedule next tick
-        const nextTickAt = new Date(Date.now() + loop.intervalMs).toISOString();
-        loop.nextTickAt = nextTickAt;
-        this.deps.store.update(loop);
-        this.armTimer(loop);
+        // Schedule next tick (advance nextTickAt, persist, re-arm).
+        this.scheduler.reschedule(loop);
 
         this.deps.emit({ type: 'loop-tick', loop });
     }
@@ -357,9 +345,6 @@ export class LoopExecutor {
      * Uses the full interval to avoid rapid retry loops.
      */
     private rescheduleAfterSkip(loop: LoopEntry): void {
-        const nextTickAt = new Date(Date.now() + loop.intervalMs).toISOString();
-        loop.nextTickAt = nextTickAt;
-        this.deps.store.update(loop);
-        this.armTimer(loop);
+        this.scheduler.reschedule(loop);
     }
 }
