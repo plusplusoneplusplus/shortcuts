@@ -373,7 +373,11 @@ own server instead of the local one. `ChatDetail` owns the listener,
 closes sibling right-side panels, and mounts `SourceCanvasPanel` as the right
 column on desktop or a bottom sheet on mobile. Flag-off, user-message, and
 non-chat file references continue to route to the floating
-`MarkdownReviewDialog`.
+`MarkdownReviewDialog`. File-backed plan paths in `ImplementPlanCard` use the
+same dock through `onOpenPlanFile`: they render as native keyboard-accessible
+controls and open an editable note scoped to the chat's source workspace,
+including a remote clone. Canvas-backed plan labels remain static because they
+do not identify an on-disk file.
 The source canvas header shows project-relative paths for files inside the
 current workspace root while retaining the full absolute path in the hover
 tooltip; files outside the workspace root continue to display their absolute

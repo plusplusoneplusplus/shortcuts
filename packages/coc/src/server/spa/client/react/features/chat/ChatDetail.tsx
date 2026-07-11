@@ -2147,6 +2147,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         scratchpad.open(scratchpadCandidates[0]);
     }, [sourceCanvas, whisperDiff, scratchpad, scratchpadCandidates]);
 
+    const handleOpenPlanFile = useCallback((filePath: string) => {
+        if (!filePath.toLowerCase().endsWith('.md')) return;
+        sourceCanvas.open({
+            fullPath: filePath,
+            wsId: workspaceId,
+            kind: 'note',
+        });
+    }, [sourceCanvas, workspaceId]);
+
     const handleScratchpadNotFound = useCallback(() => {
         const missingPath = scratchpad.linkedNotePath;
         if (!missingPath) {
@@ -2447,6 +2456,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             workingDirectory={workingDirectory}
                             sourceIsRemote={sourceRemoteInfo.isRemote}
                             sourceBaseUrl={sourceRemoteInfo.baseUrl}
+                            onOpenPlanFile={effectivePlanCanvasId ? undefined : handleOpenPlanFile}
                             existingRuns={resolvedRuns}
                             availableTargets={implementTargets}
                             sourceProcessId={processId ?? undefined}
