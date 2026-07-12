@@ -20,6 +20,8 @@ import {
     FIND_IN_PAGE_CHANNEL,
     STOP_FIND_IN_PAGE_CHANNEL,
     FIND_RESULT_CHANNEL,
+    OPEN_FIND_BAR_CHANNEL,
+    CLOSE_FIND_BAR_CHANNEL,
 } from '../src/find-in-page';
 import {
     DEVTUNNEL_MODAL_SUBMIT_CHANNEL,
@@ -82,6 +84,14 @@ describe('preload bridge', () => {
         expect(on).toHaveBeenCalledWith(FIND_RESULT_CHANNEL, expect.any(Function));
         unsubscribe();
         expect(removeListener).toHaveBeenCalledWith(FIND_RESULT_CHANNEL, expect.any(Function));
+    });
+
+    it('find.openBar / find.closeBar send on the real bar channels', () => {
+        const api = exposedApi();
+        api.find.openBar();
+        expect(send).toHaveBeenCalledWith(OPEN_FIND_BAR_CHANNEL);
+        api.find.closeBar();
+        expect(send).toHaveBeenCalledWith(CLOSE_FIND_BAR_CHANNEL);
     });
 
     it('devtunnelModal submit/cancel send on the real devtunnel channels', () => {

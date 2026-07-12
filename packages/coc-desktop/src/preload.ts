@@ -20,6 +20,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 const FIND_IN_PAGE_CHANNEL = 'coc-desktop:find-in-page';
 const STOP_FIND_IN_PAGE_CHANNEL = 'coc-desktop:stop-find-in-page';
 const FIND_RESULT_CHANNEL = 'coc-desktop:find-result';
+const OPEN_FIND_BAR_CHANNEL = 'coc-desktop:open-find-bar';
+const CLOSE_FIND_BAR_CHANNEL = 'coc-desktop:close-find-bar';
 const DEVTUNNEL_MODAL_SUBMIT_CHANNEL = 'coc-desktop:devtunnel-modal-submit';
 const DEVTUNNEL_MODAL_CANCEL_CHANNEL = 'coc-desktop:devtunnel-modal-cancel';
 
@@ -41,9 +43,10 @@ const api = {
         node: process.versions.node,
     },
     /**
-     * Find-in-page bridge for the injected find bar. `query` searches the page,
-     * `stop` clears the current selection, and `onResult` subscribes to match
-     * counts (returning an unsubscribe function).
+     * Find-in-page bridge, used from two renderers: the SPA page calls
+     * `openBar` (its injected Ctrl+F listener), while the find-bar
+     * WebContentsView page uses `query` / `stop` / `onResult` / `closeBar`.
+     * The main process routes each request by sender (see find-bar-host.ts).
      */
     find: {
         query: (text: string, options: { forward?: boolean; findNext?: boolean }) =>
@@ -54,6 +57,8 @@ const api = {
             ipcRenderer.on(FIND_RESULT_CHANNEL, listener);
             return () => ipcRenderer.removeListener(FIND_RESULT_CHANNEL, listener);
         },
+        openBar: () => ipcRenderer.send(OPEN_FIND_BAR_CHANNEL),
+        closeBar: () => ipcRenderer.send(CLOSE_FIND_BAR_CHANNEL),
     },
     /**
      * Configure… modal bridge (Windows-only Dev Tunnel feature, AC-01). The modal

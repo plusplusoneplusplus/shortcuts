@@ -4,25 +4,43 @@
  * Electron has no built-in find bar, and the served SPA relies on the browser's
  * native find-in-page for content pages (chat conversations, notes, wiki, diffs)
  * that have no in-app search box of their own. This module supplies that missing
- * capability: a small find-bar overlay injected into the renderer, wired through
- * IPC to `webContents.findInPage` / `stopFindInPage` in the main process.
+ * capability: a find-bar overlay hosted in its OWN WebContentsView (see
+ * `find-bar-host.ts`), wired through IPC to `webContents.findInPage` /
+ * `stopFindInPage` on the SPA's webContents.
  *
- * The overlay listens on `window` in the bubble phase and bails out whenever the
- * keydown was already `defaultPrevented` — so on the pages where the SPA already
- * owns Ctrl+F (Chat list, Tasks, Work Items), the SPA's own search wins and this
- * bar stays closed. It only opens where nothing else handled the shortcut.
+ * The bar deliberately lives OUTSIDE the searched page — like Chrome's own find
+ * bar — because an in-page bar fights the find machinery it drives: the query
+ * matches its own input (+1 on every count), find activation steals focus from
+ * the input mid-typing, editing during an active session clobbers the input's
+ * caret, and stopping a find can wipe the caret entirely. A separate
+ * webContents is immune to all of that by construction.
  *
- * Like `splash.ts` and `app-menu.ts`, this module imports NOTHING from `electron`,
- * so the channel constants, the count formatter, and the injected-script builder
- * are all unit-testable under plain Node/vitest.
+ * The SPA page only gets a tiny injected shortcut listener: it observes Ctrl+F
+ * in the bubble phase and bails out whenever the keydown was already
+ * `defaultPrevented` — so on the pages where the SPA already owns Ctrl+F (Chat
+ * list, Tasks, Work Items), the SPA's own search wins and this bar stays
+ * closed. It only opens where nothing else handled the shortcut.
+ *
+ * Like `splash.ts` and `app-menu.ts`, this module imports NOTHING from
+ * `electron`, so the channel constants, the count formatter, and the script /
+ * HTML builders are all unit-testable under plain Node/vitest.
  */
 
-/** IPC channel: renderer → main, "search the page for this text". */
+/** IPC channel: find-bar renderer → main, "search the page for this text". */
 export const FIND_IN_PAGE_CHANNEL = 'coc-desktop:find-in-page';
-/** IPC channel: renderer → main, "clear the current find selection". */
+/** IPC channel: find-bar renderer → main, "clear the current find selection". */
 export const STOP_FIND_IN_PAGE_CHANNEL = 'coc-desktop:stop-find-in-page';
-/** IPC channel: main → renderer, carrying an Electron `found-in-page` result. */
+/** IPC channel: main → find-bar renderer, carrying an Electron `found-in-page` result. */
 export const FIND_RESULT_CHANNEL = 'coc-desktop:find-result';
+/** IPC channel: SPA renderer → main, "show and focus the find bar". */
+export const OPEN_FIND_BAR_CHANNEL = 'coc-desktop:open-find-bar';
+/** IPC channel: find-bar renderer → main, "hide the find bar and stop finding". */
+export const CLOSE_FIND_BAR_CHANNEL = 'coc-desktop:close-find-bar';
+
+/** Find-bar view geometry (px). The view is pinned to the window's top-right. */
+export const FIND_BAR_WIDTH = 380;
+export const FIND_BAR_HEIGHT = 44;
+export const FIND_BAR_MARGIN = 12;
 
 /**
  * Render the match-count label shown in the find bar. Mirrors the shape of an
@@ -31,8 +49,8 @@ export const FIND_RESULT_CHANNEL = 'coc-desktop:find-result';
  * "No results"; otherwise "3/12".
  *
  * Kept as a standalone, dependency-free function so it can be both unit-tested
- * here AND embedded verbatim into the injected renderer script (via
- * `.toString()`), keeping a single source of truth for the formatting.
+ * here AND embedded verbatim into the find-bar page script (via `.toString()`),
+ * keeping a single source of truth for the formatting.
  */
 export function formatFindCount(activeMatchOrdinal: number, matches: number): string {
     if (!matches || matches <= 0) {
@@ -42,124 +60,144 @@ export function formatFindCount(activeMatchOrdinal: number, matches: number): st
 }
 
 /**
- * Build the self-contained JavaScript injected into the renderer (via
- * `webContents.executeJavaScript`) that creates and drives the find bar.
+ * Build the tiny script injected into the SPA page (via `executeJavaScript`).
+ * It ONLY forwards unhandled Ctrl+F / Cmd+F to the main process; the find bar
+ * itself lives in a separate WebContentsView and never touches this page.
  *
- * The script is idempotent — a `__cocFindBarInstalled` guard makes re-injection
- * (e.g. on reload) a no-op. All styling is applied via the CSSOM (`el.style`),
- * never an injected `<style>` element, so a strict page CSP cannot block it.
+ * Bubble-phase listener on window: document-level SPA handlers fire first, so
+ * if the active page already handled Ctrl+F (calling preventDefault) we leave
+ * it alone and never open the bar.
+ *
+ * Idempotent — a guard makes re-injection (e.g. on reload) a no-op.
  */
-export function buildFindBarScript(): string {
-    // NOTE: this string runs in the page's context, NOT here. Keep it free of
-    // TypeScript syntax and of backticks / ${...} so it nests cleanly in this
-    // template literal.
+export function buildFindShortcutScript(): string {
+    // NOTE: this string runs in the SPA page's context, NOT here. Keep it free
+    // of TypeScript syntax and of backticks / ${...}.
     return `(function () {
-  if (window.__cocFindBarInstalled) { return; }
+  if (window.__cocFindShortcutInstalled) { return; }
+  var api = window.cocDesktop && window.cocDesktop.find;
+  if (!api || !api.openBar) { return; }
+  window.__cocFindShortcutInstalled = true;
+  window.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+      if (e.defaultPrevented) { return; }
+      e.preventDefault();
+      api.openBar();
+    }
+  });
+})();`;
+}
+
+/**
+ * Build the script that drives the find-bar page (running in the bar's own
+ * WebContentsView, with the standard preload bridge). Separated from
+ * `buildFindBarHtml` so tests can drive it against a DOM stub.
+ *
+ * Electron findInPage semantics: findNext:true BEGINS a new find session
+ * (first request for a query); findNext:false advances within the current
+ * session. So a (re)typed query passes newSession=true and Enter / the
+ * prev-next buttons pass newSession=false — inverting these leaves typing
+ * with no session and snaps every Enter back to the first match.
+ */
+export function buildFindBarPageScript(): string {
+    // NOTE: runs in the find-bar page's context. No TypeScript, no backticks.
+    return `(function () {
   var api = window.cocDesktop && window.cocDesktop.find;
   if (!api) { return; }
-  window.__cocFindBarInstalled = true;
 
   var formatFindCount = ${formatFindCount.toString()};
 
-  var bar = document.createElement('div');
-  bar.setAttribute('role', 'search');
-  bar.style.cssText = 'position:fixed;top:12px;right:16px;z-index:2147483647;display:none;' +
-    'align-items:center;gap:6px;padding:6px 8px;border-radius:8px;' +
-    'background:#161b22;border:1px solid #30363d;box-shadow:0 6px 20px rgba(0,0,0,0.4);' +
-    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:13px;color:#e6edf3;';
+  var input = document.getElementById('find-input');
+  var count = document.getElementById('find-count');
+  var prevBtn = document.getElementById('find-prev');
+  var nextBtn = document.getElementById('find-next');
+  var closeBtn = document.getElementById('find-close');
 
-  var input = document.createElement('input');
-  input.type = 'text';
-  input.placeholder = 'Find';
-  input.setAttribute('aria-label', 'Find in page');
-  input.style.cssText = 'width:200px;padding:4px 6px;border-radius:4px;border:1px solid #30363d;' +
-    'background:#0d1117;color:#e6edf3;outline:none;';
-
-  var count = document.createElement('span');
-  count.style.cssText = 'min-width:56px;text-align:center;color:#8b949e;';
-
-  function makeButton(label, title) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = label;
-    b.title = title;
-    b.style.cssText = 'min-width:26px;height:26px;padding:0 6px;border-radius:4px;' +
-      'border:1px solid #30363d;background:#21262d;color:#e6edf3;cursor:pointer;';
-    return b;
-  }
-  var prevBtn = makeButton('\\u2191', 'Previous match (Shift+Enter)');
-  var nextBtn = makeButton('\\u2193', 'Next match (Enter)');
-  var closeBtn = makeButton('\\u2715', 'Close (Esc)');
-
-  bar.appendChild(input);
-  bar.appendChild(count);
-  bar.appendChild(prevBtn);
-  bar.appendChild(nextBtn);
-  bar.appendChild(closeBtn);
-
-  function mount() {
-    if (!bar.parentNode && document.body) { document.body.appendChild(bar); }
-  }
-
-  var isOpen = false;
   var debounceTimer = null;
 
-  function runFind(findNext, forward) {
+  function runFind(newSession, forward) {
     var text = input.value;
     if (!text) { api.stop(); count.textContent = ''; return; }
-    api.query(text, { findNext: findNext, forward: forward });
-  }
-
-  function open() {
-    mount();
-    isOpen = true;
-    bar.style.display = 'flex';
-    input.focus();
-    input.select();
-    if (input.value) { runFind(true, true); }
-  }
-
-  function close() {
-    isOpen = false;
-    bar.style.display = 'none';
-    count.textContent = '';
-    api.stop();
+    api.query(text, { findNext: newSession, forward: forward });
   }
 
   input.addEventListener('input', function () {
     if (debounceTimer) { clearTimeout(debounceTimer); }
-    debounceTimer = setTimeout(function () { runFind(false, true); }, 120);
+    debounceTimer = setTimeout(function () { runFind(true, true); }, 50);
   });
 
   input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      runFind(true, !e.shiftKey);
+      runFind(false, !e.shiftKey);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      close();
-    }
-  });
-
-  prevBtn.addEventListener('click', function () { input.focus(); runFind(true, false); });
-  nextBtn.addEventListener('click', function () { input.focus(); runFind(true, true); });
-  closeBtn.addEventListener('click', function () { close(); });
-
-  // Bubble-phase listener on window: document-level SPA handlers fire first, so
-  // if the active page already handled Ctrl+F (calling preventDefault) we leave
-  // it alone and never open this bar.
-  window.addEventListener('keydown', function (e) {
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
-      if (e.defaultPrevented) { return; }
+      api.closeBar();
+    } else if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+      // Ctrl+F while already in the bar: behave like Chrome — reselect.
       e.preventDefault();
-      open();
+      input.focus();
+      input.select();
     }
   });
+
+  prevBtn.addEventListener('click', function () { input.focus(); runFind(false, false); });
+  nextBtn.addEventListener('click', function () { input.focus(); runFind(false, true); });
+  closeBtn.addEventListener('click', function () { api.closeBar(); });
 
   api.onResult(function (result) {
-    if (!isOpen) { return; }
     if (!input.value) { count.textContent = ''; return; }
     count.textContent = formatFindCount(result.activeMatchOrdinal, result.matches);
   });
+
+  // Called by the main process (executeJavaScript) whenever the bar is shown:
+  // focus + select the query and, if one is present, re-run it so the page's
+  // highlights come back after a close/reopen.
+  window.__cocFindBarFocus = function () {
+    input.focus();
+    input.select();
+    if (input.value) { runFind(true, true); }
+  };
 })();`;
+}
+
+/**
+ * Full HTML document for the find-bar WebContentsView, loaded as a data: URL.
+ * Self-contained: inline styles (the view has no access to the SPA's CSS) and
+ * the page script from `buildFindBarPageScript`.
+ */
+export function buildFindBarHtml(): string {
+    return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    display: flex; align-items: center; gap: 6px; padding: 0 8px;
+    box-sizing: border-box;
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px; color: #e6edf3;
+  }
+  #find-input {
+    flex: 1; min-width: 0; padding: 4px 6px; border-radius: 4px;
+    border: 1px solid #30363d; background: #0d1117; color: #e6edf3; outline: none;
+  }
+  #find-count { min-width: 56px; text-align: center; color: #8b949e; }
+  button {
+    min-width: 26px; height: 26px; padding: 0 6px; border-radius: 4px;
+    border: 1px solid #30363d; background: #21262d; color: #e6edf3; cursor: pointer;
+  }
+</style>
+</head>
+<body role="search">
+  <input id="find-input" type="text" placeholder="Find" aria-label="Find in page" autofocus>
+  <span id="find-count"></span>
+  <button id="find-prev" type="button" title="Previous match (Shift+Enter)">&#8593;</button>
+  <button id="find-next" type="button" title="Next match (Enter)">&#8595;</button>
+  <button id="find-close" type="button" title="Close (Esc)">&#10005;</button>
+  <script>${buildFindBarPageScript()}</script>
+</body>
+</html>`;
 }

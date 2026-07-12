@@ -31,12 +31,7 @@ import {
     UpdatePrompt,
 } from './update-check';
 import { buildAppMenuTemplate, buildTrayMenuTemplate, DevTunnelMenuInput } from './app-menu';
-import {
-    FIND_IN_PAGE_CHANNEL,
-    STOP_FIND_IN_PAGE_CHANNEL,
-    FIND_RESULT_CHANNEL,
-    buildFindBarScript,
-} from './find-in-page';
+import { attachFindBar, registerFindBarIpc } from './find-bar-host';
 import { buildWindowOptions, buildMacInsetCss } from './window-config';
 import {
     DevTunnelConfig,
@@ -174,50 +169,6 @@ function wireExternalLinkRouting(win: BrowserWindow, servedUrl: string): void {
     });
 }
 
-/** Guard so the global find-in-page IPC handlers are registered only once. */
-let findInPageIpcRegistered = false;
-
-/**
- * Register the app-wide find-in-page IPC handlers exactly once. They drive
- * `findInPage` / `stopFindInPage` on whichever window's renderer sent the
- * request (`event.sender`), so this stays correct even with multiple windows.
- */
-function registerFindInPageIpc(): void {
-    if (findInPageIpcRegistered) {
-        return;
-    }
-    findInPageIpcRegistered = true;
-    ipcMain.on(FIND_IN_PAGE_CHANNEL, (event, text: string, options?: Electron.FindInPageOptions) => {
-        // Electron throws on an empty query; the renderer guards too, but be safe.
-        if (typeof text !== 'string' || text.length === 0) {
-            return;
-        }
-        event.sender.findInPage(text, options ?? {});
-    });
-    ipcMain.on(STOP_FIND_IN_PAGE_CHANNEL, (event) => {
-        event.sender.stopFindInPage('clearSelection');
-    });
-}
-
-/**
- * Wire find-in-page for a window: relay each `found-in-page` result back to the
- * renderer (so the find bar can show the match count) and inject the find-bar
- * script once the SPA has loaded. Injection is idempotent, so a reload is safe.
- */
-function wireFindInPage(win: BrowserWindow): void {
-    const wc = win.webContents;
-    wc.on('found-in-page', (_event, result) => {
-        if (!wc.isDestroyed()) {
-            wc.send(FIND_RESULT_CHANNEL, result);
-        }
-    });
-    wc.on('did-finish-load', () => {
-        wc.executeJavaScript(buildFindBarScript()).catch(() => {
-            /* injection is a nicety — never break the app if it fails */
-        });
-    });
-}
-
 /**
  * macOS only: pad the SPA's top bar clear of the hiddenInset traffic lights and
  * make it the window drag handle. Injected on every load (reload-safe) from the
@@ -242,7 +193,7 @@ function wireMacTitleBarInset(win: BrowserWindow): void {
 async function showServedSpa(url: string): Promise<void> {
     mainWindow = createWindow();
     wireExternalLinkRouting(mainWindow, url);
-    wireFindInPage(mainWindow);
+    attachFindBar(mainWindow);
     wireMacTitleBarInset(mainWindow);
 
     // Reveal the window only once the renderer can paint, then drop the splash,
@@ -757,7 +708,7 @@ async function bootstrap(): Promise<void> {
 
     // Register the find-in-page IPC handlers before any window loads, so the
     // injected find bar can talk to the main process as soon as it appears.
-    registerFindInPageIpc();
+    registerFindBarIpc();
 
     // macOS: set the dock icon early (BrowserWindow `icon` is ignored by macOS).
     // Only override when the real icon file resolves — otherwise leave the dock
