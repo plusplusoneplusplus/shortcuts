@@ -9,15 +9,19 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
-import {
-    FIND_IN_PAGE_CHANNEL,
-    STOP_FIND_IN_PAGE_CHANNEL,
-    FIND_RESULT_CHANNEL,
-} from './find-in-page';
-import {
-    DEVTUNNEL_MODAL_SUBMIT_CHANNEL,
-    DEVTUNNEL_MODAL_CANCEL_CHANNEL,
-} from './devtunnel-modal';
+
+// The preload runs SANDBOXED (Electron sandboxes preloads by default since v20):
+// its `require` can only load the 'electron' builtin, and a relative import —
+// which tsc compiles to `require('./find-in-page')` — throws "module not found",
+// killing the whole preload and with it every `window.cocDesktop` bridge. So the
+// IPC channel names are declared as local literals here instead of imported.
+// They must match the exported constants in find-in-page.ts / devtunnel-modal.ts;
+// preload.test.ts asserts they stay in sync.
+const FIND_IN_PAGE_CHANNEL = 'coc-desktop:find-in-page';
+const STOP_FIND_IN_PAGE_CHANNEL = 'coc-desktop:stop-find-in-page';
+const FIND_RESULT_CHANNEL = 'coc-desktop:find-result';
+const DEVTUNNEL_MODAL_SUBMIT_CHANNEL = 'coc-desktop:devtunnel-modal-submit';
+const DEVTUNNEL_MODAL_CANCEL_CHANNEL = 'coc-desktop:devtunnel-modal-cancel';
 
 /** Shape of an Electron `found-in-page` result, as relayed to the renderer. */
 interface FindResult {
