@@ -378,13 +378,21 @@ same dock through `onOpenPlanFile`: they render as native keyboard-accessible
 controls and open an editable note scoped to the chat's source workspace,
 including a remote clone. Canvas-backed plan labels remain static because they
 do not identify an on-disk file.
-The source canvas header shows project-relative paths for files inside the
-current workspace root while retaining the full absolute path in the hover
-tooltip; files outside the workspace root continue to display their absolute
-path. The source-canvas folder explorer uses the same resolver but converts the
-resolved absolute folder to a workspace-relative tree path before calling
-`explorer.tree`; the workspace root is sent as `.` while outside-root paths stay
-absolute so the server-side repo guard can reject them clearly.
+`ChatDetail` derives the source-header switcher candidates in memory from the
+current conversation's loaded assistant turns through the same markdown/file-link
+metadata used by click handling. It excludes notes and folders, de-duplicates
+normalized workspace/path identities, keeps the latest line/range, and orders
+files newest-first. The selector appears only when a code canvas has multiple
+candidates, including inside the mobile sheet; selecting one replaces the single
+active canvas with that candidate's workspace and line/range. The candidate list
+is never written to browser or disk storage. The source canvas header shows
+project-relative paths for files inside the current workspace root while
+retaining the full absolute path in the hover tooltip; files outside the
+workspace root continue to display their absolute path. The source-canvas folder
+explorer uses the same resolver but converts the resolved absolute folder to a
+workspace-relative tree path before calling `explorer.tree`; the workspace root
+is sent as `.` while outside-root paths stay absolute so the server-side repo
+guard can reject them clearly.
 
 ## Key Contexts
 

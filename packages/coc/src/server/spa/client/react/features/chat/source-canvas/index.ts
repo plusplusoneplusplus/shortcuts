@@ -40,3 +40,9 @@ export type {
     SourceCanvasWorkspace,
 } from './resolve';
 export type { SourceCanvasFileRef } from './types';
+export {
+    collectConversationSourceFiles,
+    getConversationSourceFileKey,
+    useConversationSourceFiles,
+} from './conversationSourceFiles';
+export type { ConversationSourceFile } from './conversationSourceFiles';

@@ -100,6 +100,10 @@ describe('SourceCanvasDock', () => {
     });
 
     it('hosts the read-only code viewer inside the BottomSheet for a code ref on mobile', () => {
+        const sourceFiles = [
+            { fullPath: '/home/u/proj/src/foo.ts', wsId: 'ws1', kind: 'code' as const },
+            { fullPath: '/home/u/proj/src/bar.ts', wsId: 'ws1', kind: 'code' as const },
+        ];
         render(
             <SourceCanvasDock
                 fileRef={codeRef}
@@ -111,6 +115,8 @@ describe('SourceCanvasDock', () => {
                     resolvedPath: '/home/u/proj/src/foo.ts',
                     error: '',
                 }}
+                sourceFiles={sourceFiles}
+                onNavigate={() => {}}
                 isMobile
                 onClose={() => {}}
                 resize={resize}
@@ -120,6 +126,14 @@ describe('SourceCanvasDock', () => {
         // Read-only source viewer inside the sheet; no editable note editor.
         expect(sheet.contains(screen.getByTestId('source-canvas-source'))).toBe(true);
         expect(screen.queryByTestId('source-canvas-note-editor-stub')).toBeNull();
+        // The same selector is available inside the mobile sheet, not only in
+        // the desktop source panel.
+        const trigger = screen.getByTestId('source-canvas-file-switcher-trigger');
+        expect(sheet.contains(trigger)).toBe(true);
+        fireEvent.click(trigger);
+        fireEvent.keyDown(trigger, { key: 'Escape' });
+        expect(screen.queryByTestId('source-canvas-file-switcher-menu')).toBeNull();
+        expect(screen.getByTestId('bottomsheet-panel')).toBeTruthy();
     });
 
     it('hosts the read-only file tree in the desktop column and forwards file navigation', () => {

@@ -72,6 +72,11 @@ describe('FILE_PATH_RE', () => {
             .toEqual(['D:/projects/repo/src/app.ts']);
     });
 
+    it('matches Windows paths with a line range suffix', () => {
+        expect(findPaths('opened D:/projects/repo/src/app.ts:12-14'))
+            .toEqual(['D:/projects/repo/src/app.ts:12-14']);
+    });
+
     it('matches Docker/Codespaces /workspace paths', () => {
         expect(findPaths('edit /workspace/project/src/file.ts please'))
             .toEqual(['/workspace/project/src/file.ts']);
@@ -243,6 +248,13 @@ describe('linkifyFilePaths — line/range suffixes (AC-01)', () => {
     it('emits data-line and data-end-line for a :start-end range', () => {
         const result = linkifyFilePaths('see /Users/alice/code/foo.ts:42-58 now');
         expect(result).toContain('data-full-path="/Users/alice/code/foo.ts"');
+        expect(result).toContain('data-line="42"');
+        expect(result).toContain('data-end-line="58"');
+    });
+
+    it('emits line metadata for Windows path ranges', () => {
+        const result = linkifyFilePaths('see C:\\repo\\src\\foo.ts:42-58 now');
+        expect(result).toContain('data-full-path="C:/repo/src/foo.ts"');
         expect(result).toContain('data-line="42"');
         expect(result).toContain('data-end-line="58"');
     });
