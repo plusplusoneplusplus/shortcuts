@@ -617,6 +617,46 @@
   color: var(--ar-text-dim);
   padding: 8px 20px 2px;
 }
+.admin-redesign .ar-feature-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 10px 20px 8px;
+}
+.admin-redesign .ar-feature-search .ar-input {
+  padding-left: 30px;
+  padding-right: 30px;
+}
+.admin-redesign .ar-feature-search-icon {
+  position: absolute;
+  left: 30px;
+  font-size: 12px;
+  color: var(--ar-text-dim);
+  pointer-events: none;
+}
+.admin-redesign .ar-feature-search-clear {
+  position: absolute;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--ar-text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px;
+}
+.admin-redesign .ar-feature-search-clear:hover {
+  color: var(--ar-text);
+}
+.admin-redesign .ar-feature-empty {
+  padding: 20px;
+  color: var(--ar-text-dim);
+  font-size: 13px;
+  text-align: center;
+}
 .admin-redesign .ar-card-foot {
   display: flex;
   align-items: center;
