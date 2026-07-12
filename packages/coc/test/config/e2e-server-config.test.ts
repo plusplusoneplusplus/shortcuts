@@ -22,6 +22,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { resolveConfig } from '../../src/config';
 import { buildRuntimeFeatures } from '../../src/server/config/runtime-config-handler';
+import { buildRuntimeFeatureFlags } from '../../src/config/admin-setting-definitions';
 import { E2E_SERVER_CONFIG_YAML } from '../e2e/fixtures/e2e-server-config';
 
 describe('E2E server boot config', () => {
@@ -43,6 +44,13 @@ describe('E2E server boot config', () => {
             // inline commit-chat-panel that commit-chat-binding.spec.ts asserts,
             // so it stays off at boot (commit-chat-lens.spec.ts re-enables it live).
             expect(runtime.commitChatLensEnabled).toBe(false);
+
+            // The effort-tier selector graduated to default-on, but it replaces the
+            // model-picker chip / model control that ai-actions.spec.ts and
+            // commit-chat-lens.spec.ts assert. Pin it off so the suite keeps
+            // exercising the model-picker UI it targets.
+            expect(resolved.effortLevels.enabled).toBe(false);
+            expect(buildRuntimeFeatureFlags(resolved).effortLevelsEnabled).toBe(false);
 
             // The deprecated Plans/Tasks sub-tab many specs use stays enabled.
             expect(runtime.showPlanDepTab).toBe(true);
