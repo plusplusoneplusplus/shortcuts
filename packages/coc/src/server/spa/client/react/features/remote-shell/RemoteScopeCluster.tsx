@@ -22,6 +22,8 @@ import { resolveRepoWorkItemOriginScope } from '../work-items/workItemOriginScop
 import type { RepoSubTab } from '../../types/dashboard';
 import { computeCloneStatusMap, partitionShellTabs, summarizeRemote } from './shellModel';
 import { RemoteProviderBadge } from './RemoteProviderBadge';
+import { useDropdownPopover } from './useDropdownPopover';
+import { PickerEmpty, PickerRow, PickerSection, RepoPickerPopover } from './RepoPickerPopover';
 import { useRecentRemotes } from './useRecentRemotes';
 import { useShellNavigation } from './useShellNavigation';
 
@@ -34,15 +36,6 @@ function Chevron() {
     return (
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M6 9l6 6 6-6" />
-        </svg>
-    );
-}
-
-function SearchIcon() {
-    return (
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" />
-            <path d="M16 16l4 4" />
         </svg>
     );
 }
@@ -101,14 +94,15 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
     // no workspace sub-tab is being viewed — so WI/PR shouldn't highlight there.
     const activeTab = state.activeTab === 'repos' ? state.activeRepoSubTab : null;
 
-    const [open, setOpen] = useState(false);
     const [showAll, setShowAll] = useState(false);
     const [query, setQuery] = useState('');
     const [addFolderOpen, setAddFolderOpen] = useState(false);
     const [addRepoOpen, setAddRepoOpen] = useState(false);
     const [cloneOpen, setCloneOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
+    const triggerRef = useRef<HTMLButtonElement>(null);
     const lastCloneByRemote = useRef<Record<string, string>>({});
+    const { open, toggle, close, searchRef } = useDropdownPopover(rootRef, triggerRef);
 
     const groups = useMemo(() => groupReposByRemote(repos, {}), [repos]);
     const cloneStatus = useMemo(
@@ -128,20 +122,6 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
         }
     }, [activeGroupKey, cloneId]);
 
-    useEffect(() => {
-        if (!open) return;
-        const onDown = (e: MouseEvent) => {
-            if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
-        };
-        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-        document.addEventListener('mousedown', onDown);
-        document.addEventListener('keydown', onKey);
-        return () => {
-            document.removeEventListener('mousedown', onDown);
-            document.removeEventListener('keydown', onKey);
-        };
-    }, [open]);
-
     const tabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
@@ -160,10 +140,10 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
             recordUse(key);
             selectClone(target);
         }
-        setOpen(false);
+        close();
         setShowAll(false);
         setQuery('');
-    }, [repos, recordUse, selectClone]);
+    }, [repos, recordUse, selectClone, close]);
 
     const onRemoteTab = (key: RepoSubTab) => {
         if (key === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: workItemOriginId });
@@ -207,46 +187,44 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
         : [...recentGroups, ...(showAll ? remainingGroups : [])];
     const showAllCount = remainingGroups.length;
 
-    const renderGroupRow = (group: RepoGroup, testId: string) => {
+    // Group rows never surface an offline state: a remote group aggregates clones
+    // with independent connection states, so offline is only meaningful per-clone
+    // (handled by the virtual repo picker). The aggregate status color dot is shown
+    // instead. See repo-picker-convergence plan, open question 3.
+    const renderGroupRow = (group: RepoGroup) => {
         const key = groupKey(group);
         const summary = summarizeRemote(group, cloneStatus, unseenCounts);
         const isActive = key === activeGroupKey;
         return (
-            <button
+            <PickerRow
                 key={key}
-                data-testid={testId}
-                data-remote-key={key}
-                data-active={isActive ? 'true' : 'false'}
-                role="menuitem"
+                testId="remote-dropdown-item"
+                remoteKey={key}
+                active={isActive}
+                colorDot={summary.color}
+                name={summary.name}
+                sublabel={group.label}
                 onClick={() => chooseGroup(group)}
-                className={
-                    'w-full flex items-center gap-2 px-2 py-2 rounded-md text-left transition-colors ' +
-                    (isActive
-                        ? 'bg-[#ddf4ff] dark:bg-[#3794ff]/15 text-[#0969da] dark:text-[#79c0ff]'
-                        : 'text-[#1f2328] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]')
+                badges={
+                    <>
+                        {summary.cloneCount > 1 && (
+                            <span className="inline-flex items-center gap-0.5 h-[16px] px-1.5 rounded-full text-[10px] font-semibold leading-none bg-black/[0.06] dark:bg-white/[0.10] text-[#555] dark:text-[#bbb]">
+                                <CloneGlyph />
+                                {summary.cloneCount}
+                            </span>
+                        )}
+                        {summary.unseen > 0 && (
+                            <span
+                                className={unreadBadgeClass}
+                                data-testid="remote-unseen-badge"
+                                aria-label={`${summary.unseen} unread`}
+                            >
+                                {formatUnreadCount(summary.unseen)}
+                            </span>
+                        )}
+                    </>
                 }
-            >
-                <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: summary.color }} aria-hidden />
-                <span className="flex-1 min-w-0">
-                    <span className="block text-[12.5px] font-semibold truncate">{summary.name}</span>
-                    <span className="block text-[10.5px] text-[#848484] dark:text-[#777] truncate">{group.label}</span>
-                </span>
-                {summary.cloneCount > 1 && (
-                    <span className="inline-flex items-center gap-0.5 h-[16px] px-1.5 rounded-full text-[10px] font-semibold leading-none bg-black/[0.06] dark:bg-white/[0.10] text-[#555] dark:text-[#bbb]">
-                        <CloneGlyph />
-                        {summary.cloneCount}
-                    </span>
-                )}
-                {summary.unseen > 0 && (
-                    <span
-                        className={unreadBadgeClass}
-                        data-testid="remote-unseen-badge"
-                        aria-label={`${summary.unseen} unread`}
-                    >
-                        {formatUnreadCount(summary.unseen)}
-                    </span>
-                )}
-            </button>
+            />
         );
     };
 
@@ -257,12 +235,13 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
             ref={rootRef}
         >
             <button
+                ref={triggerRef}
                 data-testid="remote-chip"
                 data-remote-key={activeGroupKey ?? ''}
                 aria-haspopup="menu"
                 aria-expanded={open}
                 title={activeGroup?.label ?? (repo?.workspace.name ?? 'Select repository')}
-                onClick={() => setOpen(o => !o)}
+                onClick={toggle}
                 className="relative inline-flex items-center gap-1.5 h-[26px] px-2 rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] max-w-[190px]"
             >
                 <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: activeSummary?.color ?? '#848484' }} aria-hidden />
@@ -283,81 +262,68 @@ export function RemoteScopeCluster({ repo, repos }: RemoteScopeClusterProps) {
 
             {repo && remoteTabs.map(renderRemoteTab)}
 
-            {open && (
-                <div
-                    data-testid="remote-dropdown"
-                    role="menu"
-                    className="absolute left-0 top-full mt-1 z-50 w-[320px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg p-1.5"
-                >
-                    <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#252526]">
-                        <SearchIcon />
-                        <input
-                            data-testid="remote-search-input"
-                            value={query}
-                            onChange={e => setQuery(e.target.value)}
-                            placeholder="Search remotes"
-                            className="min-w-0 flex-1 bg-transparent outline-none text-[12px] text-[#1f2328] dark:text-[#cccccc] placeholder:text-[#848484]"
-                        />
-                    </div>
-
-                    {!query.trim() && (
-                        <div className="px-2 pt-2 pb-1 text-[10px] font-bold uppercase tracking-[0.07em] text-[#848484] dark:text-[#777]">Recent remotes</div>
-                    )}
-                    {query.trim() && (
-                        <div className="px-2 pt-2 pb-1 text-[10px] font-bold uppercase tracking-[0.07em] text-[#848484] dark:text-[#777]">Search results</div>
-                    )}
-                    <div className="max-h-[280px] overflow-y-auto">
-                        {filteredGroups.length > 0 ? (
-                            filteredGroups.map(group => renderGroupRow(group, 'remote-dropdown-item'))
-                        ) : (
-                            <div className="px-2 py-3 text-xs text-[#848484] dark:text-[#777]">No remotes found</div>
+            <RepoPickerPopover
+                open={open}
+                dropdownTestId="remote-dropdown"
+                searchTestId="remote-search-input"
+                searchRef={searchRef}
+                searchPlaceholder="Search remotes"
+                query={query}
+                onQueryChange={setQuery}
+                footer={
+                    <>
+                        {!query.trim() && showAllCount > 0 && (
+                            <button
+                                data-testid="remote-show-all-btn"
+                                role="menuitem"
+                                onClick={() => setShowAll(v => !v)}
+                                className="mt-1 w-full flex items-center justify-between px-2 py-1.5 rounded-md text-[12px] font-semibold text-[#656d76] dark:text-[#999] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                            >
+                                <span>{showAll ? 'Hide all' : `Show all (${showAllCount})`}</span>
+                                <Chevron />
+                            </button>
                         )}
-                    </div>
 
-                    {!query.trim() && showAllCount > 0 && (
-                        <button
-                            data-testid="remote-show-all-btn"
-                            role="menuitem"
-                            onClick={() => setShowAll(v => !v)}
-                            className="mt-1 w-full flex items-center justify-between px-2 py-1.5 rounded-md text-[12px] font-semibold text-[#656d76] dark:text-[#999] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                        >
-                            <span>{showAll ? 'Hide all' : `Show all (${showAllCount})`}</span>
-                            <Chevron />
-                        </button>
-                    )}
-
-                    <div className="mt-1 pt-1 border-t border-[#eaeef2] dark:border-[#3c3c3c]">
-                        <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.07em] text-[#848484] dark:text-[#777]">Add repository</div>
-                        <button
-                            data-testid="remote-add-folder-option"
-                            role="menuitem"
-                            className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
-                            onClick={() => { setOpen(false); setAddFolderOpen(true); }}
-                        >
-                            <PlusIcon />
-                            Add workspace folder
-                        </button>
-                        <button
-                            data-testid="remote-add-repo-option"
-                            role="menuitem"
-                            className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
-                            onClick={() => { setOpen(false); setAddRepoOpen(true); }}
-                        >
-                            <PlusIcon />
-                            Add specific repository
-                        </button>
-                        <button
-                            data-testid="remote-clone-repo-option"
-                            role="menuitem"
-                            className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
-                            onClick={() => { setOpen(false); setCloneOpen(true); }}
-                        >
-                            <CloneGlyph />
-                            Clone repository
-                        </button>
-                    </div>
-                </div>
-            )}
+                        <div className="mt-1 pt-1 border-t border-[#eaeef2] dark:border-[#3c3c3c]">
+                            <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.07em] text-[#848484] dark:text-[#777]">Add repository</div>
+                            <button
+                                data-testid="remote-add-folder-option"
+                                role="menuitem"
+                                className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
+                                onClick={() => { close(); setAddFolderOpen(true); }}
+                            >
+                                <PlusIcon />
+                                Add workspace folder
+                            </button>
+                            <button
+                                data-testid="remote-add-repo-option"
+                                role="menuitem"
+                                className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
+                                onClick={() => { close(); setAddRepoOpen(true); }}
+                            >
+                                <PlusIcon />
+                                Add specific repository
+                            </button>
+                            <button
+                                data-testid="remote-clone-repo-option"
+                                role="menuitem"
+                                className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
+                                onClick={() => { close(); setCloneOpen(true); }}
+                            >
+                                <CloneGlyph />
+                                Clone repository
+                            </button>
+                        </div>
+                    </>
+                }
+            >
+                <PickerSection label={query.trim() ? 'Search results' : 'Recent remotes'} />
+                {filteredGroups.length > 0 ? (
+                    filteredGroups.map(group => renderGroupRow(group))
+                ) : (
+                    <PickerEmpty>No remotes found</PickerEmpty>
+                )}
+            </RepoPickerPopover>
 
             <AddFolderDialog
                 open={addFolderOpen}

@@ -1119,6 +1119,17 @@ Enabled by default; desktop-only; takes effect on reload.
   tabs use a hidden measurement mirror plus `ResizeObserver` feeding
   `computeVisibleTabKeys`, so as many tabs as fit stay inline and the tail
   collapses into the overflow menu while keeping the active tab visible.
+- **Shared repo-picker chrome.** The remote-picker dropdown (`RemoteScopeCluster`,
+  rows = remote groups) and the virtual repo-picker dropdown
+  (`VirtualWorkspaceShellHeader`, rows = individual repos) share one presentational
+  shell `RepoPickerPopover` (fixed width, search box, scroll area, plus `PickerSection`
+  / `PickerRow` / `PickerEmpty` primitives) and one interaction hook
+  `useDropdownPopover` (open state + outside-click + Escape-close-and-refocus-trigger
+  + search auto-focus). Row helpers `getServerName` / `isRepoOffline` / `shortPath`
+  live in `repos/repoPickerModel.ts`. The two callers keep their genuine differences
+  (the remote picker's Add-repository footer + remote sub-tabs; the virtual picker's
+  identity chip + navigation-only rows). Offline is surfaced per-repo in the virtual
+  picker only; group rows show the aggregate status dot instead.
 
 **Remote workspace aggregation** (gated by `features.remoteShell`): when the flag
 is ON, `ReposContext.fetchRepos` also calls `aggregateRemoteWorkspaces()`
