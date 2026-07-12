@@ -46,8 +46,10 @@ export interface ScopedFindShortcutOptions {
  *  - ignore when the container is unmounted or hidden (`offsetParent === null`);
  *  - ignore when focus is in the detail pane (native find wins);
  *  - handle when focus is inside this container;
- *  - when focus is elsewhere: ignore if another find-scope owns it; otherwise
- *    handle only when this panel claims body focus.
+ *  - when focus is elsewhere: ignore if another find-scope owns it; ignore if
+ *    focus is inside any other region (e.g. the workspace right dock — that
+ *    region owns its own Ctrl+F story, so native find wins); otherwise focus
+ *    is on body/nothing and the panel that claims body focus handles it.
  *
  * The container element is tagged with `data-find-scope` while mounted so
  * sibling panels can detect that focus lives inside *another* search-owning
@@ -82,6 +84,12 @@ export function useScopedFindShortcut(
                 const owningScope = targetEl ? targetEl.closest('[data-find-scope]') : null;
                 // Focus lives in a different visible search panel — let it win.
                 if (owningScope && owningScope !== container) return;
+                // Focus lives in some other region (right dock, chrome, a future
+                // panel) — never steal Ctrl+F from it; yield to native find.
+                const focusOnBody = !targetEl
+                    || targetEl === document.body
+                    || targetEl === document.documentElement;
+                if (!focusOnBody) return;
                 // Focus is on body/nothing: only the body-default panel handles.
                 if (!claimsBodyFocusRef.current) return;
             }

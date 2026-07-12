@@ -190,6 +190,37 @@ describe('useScopedFindShortcut', () => {
         expect(event.defaultPrevented).toBe(false);
     });
 
+    it('REGRESSION: yields to native find when focus is in a non-scope region (right dock)', () => {
+        // Emulates the workspace right dock (Terminal/Explorer): a focusable
+        // sibling region that is neither a find-scope nor the detail pane. The
+        // body-default panel must NOT steal Ctrl+F from it — preventDefault
+        // stays false so the desktop find bar / native find can open.
+        const onTrigger = vi.fn();
+        const { getByTestId } = render(
+            <>
+                <Panel testid="p" onTrigger={onTrigger} />
+                <div data-testid="dock"><input data-testid="dock-input" /></div>
+            </>,
+        );
+        makeVisible(getByTestId('p') as HTMLElement);
+
+        const event = pressCtrlF(getByTestId('dock-input'));
+
+        expect(onTrigger).not.toHaveBeenCalled();
+        expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('handles a non-Element target (document) as body focus', () => {
+        const onTrigger = vi.fn();
+        const { getByTestId } = render(<Panel testid="p" onTrigger={onTrigger} />);
+        makeVisible(getByTestId('p') as HTMLElement);
+
+        const event = pressCtrlF(document);
+
+        expect(onTrigger).toHaveBeenCalledTimes(1);
+        expect(event.defaultPrevented).toBe(true);
+    });
+
     it('is inert when enabled is false', () => {
         const onTrigger = vi.fn();
         const { getByTestId } = render(

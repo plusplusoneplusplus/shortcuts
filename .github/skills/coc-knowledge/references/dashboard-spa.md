@@ -1307,7 +1307,10 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   intercepts); yields when focus is in the detail pane (`data-pane="detail"`, via
   the exported `isWithinDetailPane`) so native find-in-page (Electron overlay /
   browser find) takes over — it only opens when `defaultPrevented` stays false;
-  handles when focus is inside the container; and, when focus is on
+  handles when focus is inside the container; yields when focus is inside any
+  other region that is neither this container nor `document.body`/
+  `documentElement` (e.g. the workspace right dock's terminal/explorer — that
+  region owns its own Ctrl+F story, so native find wins); and, when focus is on
   `document.body`/nothing, handles only if `claimsBodyFocus` is set (default true;
   the git list passes `!isSplitWorkspace` so the chat list wins body focus in the
   split-workspace layout). Panels are tagged with `data-find-scope` while mounted
