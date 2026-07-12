@@ -18,6 +18,7 @@
 
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
+import { PeriodicEntryScheduler } from '../schedule/periodic-entry-scheduler';
 import type { TriggerStore } from './trigger-store';
 import type {
     Trigger,
@@ -98,9 +99,20 @@ export class TriggerManager {
     private readonly deps: TriggerManagerDeps;
     private readonly now: () => number;
 
+    /** Shared timer-arming lifecycle kernel (delay/overdue/reschedule/shutdown). */
+    private readonly scheduler: PeriodicEntryScheduler<Trigger>;
+
     constructor(deps: TriggerManagerDeps) {
         this.deps = deps;
         this.now = deps.now ?? Date.now;
+        this.scheduler = new PeriodicEntryScheduler<Trigger>({
+            timerRegistry: deps.timerRegistry,
+            getFallbackIntervalMs: trigger => getPollInterval(trigger.event),
+            persist: trigger => this.deps.store.update(trigger),
+            onTick: id => { void this.onTick(id); },
+            logLabel: 'TriggerManager',
+            now: this.now,
+        });
     }
 
     // ========================================================================
@@ -112,11 +124,7 @@ export class TriggerManager {
      * triggers are loaded from the DB.
      */
     armAll(): void {
-        const triggers = this.deps.store.getActive();
-        for (const trigger of triggers) {
-            this.arm(trigger);
-        }
-        getLogger().info(LogCategory.AI, `[TriggerManager] Armed ${triggers.length} active trigger(s)`);
+        this.scheduler.armAll(this.deps.store.getActive());
     }
 
     /**
@@ -124,23 +132,12 @@ export class TriggerManager {
      * (or falls back to the event's poll cadence from now).
      */
     arm(trigger: Trigger): void {
-        if (trigger.status !== 'active') return;
-
-        const now = this.now();
-        let delayMs: number;
-        if (trigger.nextTickAt) {
-            delayMs = new Date(trigger.nextTickAt).getTime() - now;
-            if (delayMs < 0) delayMs = 0; // overdue — fire immediately
-        } else {
-            delayMs = getPollInterval(trigger.event);
-        }
-
-        this.deps.timerRegistry.set(trigger.id, () => { void this.onTick(trigger.id); }, delayMs);
+        this.scheduler.arm(trigger);
     }
 
     /** Cancel the timer for a trigger (does not mutate persisted state). */
     disarm(triggerId: string): void {
-        this.deps.timerRegistry.cancel(triggerId);
+        this.scheduler.disarm(triggerId);
     }
 
     /**
@@ -148,8 +145,7 @@ export class TriggerManager {
      * persisted state. Active triggers re-arm on the next startup.
      */
     shutdownAll(): void {
-        this.deps.timerRegistry.clear();
-        getLogger().info(LogCategory.AI, '[TriggerManager] Disarmed active trigger timer(s) for shutdown');
+        this.scheduler.shutdownAll();
     }
 
     /**
@@ -264,10 +260,7 @@ export class TriggerManager {
 
     /** Persist `nextTickAt` and (re)arm the timer at the event's poll cadence. */
     private reschedule(trigger: Trigger): void {
-        const nextTickAt = new Date(this.now() + getPollInterval(trigger.event)).toISOString();
-        trigger.nextTickAt = nextTickAt;
-        this.deps.store.update(trigger);
-        this.arm(trigger);
+        this.scheduler.reschedule(trigger);
     }
 
     /** Terminally stop a trigger (expired/disarmed) and cancel its timer. */

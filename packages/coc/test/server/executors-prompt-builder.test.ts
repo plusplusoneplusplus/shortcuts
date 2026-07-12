@@ -620,6 +620,29 @@ describe('buildConversationHistoryContext', () => {
         expect(result).toContain('[User]: Continue');
         expect(result).not.toContain('Context compacted');
     });
+
+    it('excludes a display-only user guidance turn (Ralph promote) so it is not double-fed', () => {
+        // The Ralph-promote route persists the user's typed guidance as a
+        // displayOnly user turn purely for the UI; the same guidance is already
+        // embedded in the synthesis prompt, so replaying it here would
+        // double-count it.
+        const turns = [
+            { role: 'user' as const, content: 'Original question', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            { role: 'assistant' as const, content: 'Real answer', timestamp: new Date(), turnIndex: 1, timeline: [] },
+            {
+                role: 'user' as const,
+                content: 'focus the goal on the queue refactor',
+                timestamp: new Date(),
+                turnIndex: 2,
+                timeline: [],
+                displayOnly: true,
+            },
+        ];
+        const result = buildConversationHistoryContext(turns);
+        expect(result).toContain('[User]: Original question');
+        expect(result).toContain('[Assistant]: Real answer');
+        expect(result).not.toContain('focus the goal on the queue refactor');
+    });
 });
 
 // ============================================================================

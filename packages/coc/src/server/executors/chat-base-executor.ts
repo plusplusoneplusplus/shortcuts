@@ -179,6 +179,8 @@ export interface ChatModeExecutorOptions {
      * capability is unavailable.
      */
     getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
+    /** Late-bound provider/tier helpers for send_to_conversation. */
+    getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
     /** Late-bound MCP OAuth manager (getter to allow optional/feature-flagged wiring). */
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider. Used to detect provider mismatches on follow-up resume. */
@@ -252,6 +254,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly getLoopInfra?: () => LoopInfraDeps | undefined;
     protected readonly getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
     protected readonly getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
+    protected readonly getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
     protected readonly getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider — used to guard against provider mismatches on follow-up resume. */
     protected readonly provider: 'copilot' | 'codex' | 'claude' | 'opencode';
@@ -281,6 +284,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.getLoopInfra = options.getLoopInfra;
         this.getEnqueueChat = options.getEnqueueChat;
         this.getSendMessage = options.getSendMessage;
+        this.getSendToConversationRuntime = options.getSendToConversationRuntime;
         this.getMcpOauthManager = options.getMcpOauthManager;
         this.provider = options.provider ?? 'copilot';
         this.ralphMultiAgentGrillEnabled = options.ralphMultiAgentGrillEnabled === true;
@@ -490,6 +494,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             broadcastWorkItem,
             enqueueChat: this.getEnqueueChat?.(),
             sendMessage: this.getSendMessage?.(),
+            sendToConversationRuntime: this.getSendToConversationRuntime?.(),
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
             askUser: {

@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { exportAllData, importData, DataWiper, EXPORT_SCHEMA_VERSION } from '@plusplusoneplusplus/coc-server';
 import type { CoCExportPayload, ImportOptions } from '@plusplusoneplusplus/coc-server';
 
@@ -203,5 +203,68 @@ describe('Export/Import Round-Trip Fidelity — Section 8', () => {
         expect(reExported.queueHistory).toHaveLength(1);
         const restoredTask = reExported.queueHistory[0].history[0] as any;
         expect(restoredTask.resolvedPrompt).toBe('do something');
+    });
+
+    it('schedule YAML and run rows are preserved through round-trip', async () => {
+        const sqliteDataDir = createTempDir();
+        const sqliteStore = new SqliteProcessStore({ dbPath: path.join(sqliteDataDir, 'processes.db') });
+        const sqliteWiper = new DataWiper(sqliteDataDir, sqliteStore);
+        try {
+            const schedulesDir = path.join(sqliteDataDir, 'repos', 'repo-schedule', 'schedules');
+            fs.mkdirSync(schedulesDir, { recursive: true });
+            fs.writeFileSync(
+                path.join(schedulesDir, 'sched-1.yaml'),
+                [
+                    'id: sched-1',
+                    'name: Daily',
+                    'cron: "0 8 * * *"',
+                    'prompt: Run daily check',
+                ].join('\n'),
+                'utf-8',
+            );
+            writeJSON(path.join(sqliteDataDir, 'repos', 'repo-schedule', 'queues.json'), {
+                version: 3,
+                repoRootPath: '/projects/repo-schedule',
+                repoId: 'repo-schedule',
+                pending: [],
+                history: [],
+            });
+            sqliteStore.getDatabase()
+                .prepare('INSERT INTO schedule_runs (id, schedule_id, repo_id, started_at, completed_at, status, duration_ms, process_id, task_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                .run(
+                    'run-1',
+                    'sched-1',
+                    'repo-schedule',
+                    '2026-03-01T00:00:00.000Z',
+                    '2026-03-01T00:01:00.000Z',
+                    'completed',
+                    60000,
+                    'proc-1',
+                    'task-1',
+                );
+
+            const exported = await exportAllData({ store: sqliteStore, dataDir: sqliteDataDir });
+            expect(exported.scheduleHistory).toHaveLength(1);
+            expect(exported.scheduleHistory![0].repoRootPath).toBe('/projects/repo-schedule');
+            expect(exported.scheduleHistory![0].schedules).toHaveLength(1);
+            expect(exported.scheduleHistory![0].scheduleRuns).toHaveLength(1);
+
+            await importData(exported, {
+                store: sqliteStore,
+                dataDir: sqliteDataDir,
+                mode: 'replace',
+                wiper: sqliteWiper,
+            });
+            const reExported = await exportAllData({ store: sqliteStore, dataDir: sqliteDataDir });
+
+            expect(reExported.scheduleHistory).toHaveLength(1);
+            expect((reExported.scheduleHistory![0].schedules[0] as any).id).toBe('sched-1');
+            expect((reExported.scheduleHistory![0].scheduleRuns[0] as any).id).toBe('run-1');
+            const runCount = (sqliteStore.getDatabase().prepare('SELECT COUNT(*) as cnt FROM schedule_runs').get() as { cnt: number }).cnt;
+            expect(runCount).toBe(1);
+        } finally {
+            sqliteStore.close();
+            fs.rmSync(sqliteDataDir, { recursive: true, force: true });
+        }
     });
 });

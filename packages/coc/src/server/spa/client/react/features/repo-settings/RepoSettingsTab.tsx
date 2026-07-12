@@ -29,10 +29,16 @@ import { RepoPreferencesSection } from './RepoPreferencesSection';
 import { LlmToolsPanel } from './LlmToolsPanel';
 import { NotesSettingsSection } from './NotesSettingsSection';
 import { SyncSettingsSection } from './SyncSettingsSection';
+import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 
 interface RepoSettingsTabProps {
     workspaceId: string;
     repo: RepoData;
+    /**
+     * When true, dock the shared status/action cluster in the settings sidebar
+     * footer. Hosts with their own shared body-level footer leave this off.
+     */
+    dockStatusFooter?: boolean;
 }
 
 type ActiveSection = SettingsSection;
@@ -286,7 +292,7 @@ function StatCard({
     );
 }
 
-export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
+export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }: RepoSettingsTabProps) {
     const { addToast } = useGlobalToast();
     const { state, dispatch } = useApp();
     const { repos: allRepos } = useRepos();
@@ -667,7 +673,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
         <div className="flex flex-col sm:flex-row h-full overflow-hidden bg-[var(--vscode-editor-background,#fff)] dark:bg-[#191919]">
             {/* ── Left sidebar ── */}
             <nav
-                className="flex-shrink-0 flex flex-col border-b sm:border-b-0 sm:border-r border-[#e0e0e0] dark:border-[#2d2d30] bg-[var(--vscode-sideBar-background,#fafbfc)] dark:bg-[#1c1c1c] overflow-y-auto sm:w-[210px]"
+                className="flex-shrink-0 flex flex-col border-b sm:border-b-0 sm:border-r border-[#e0e0e0] dark:border-[#2d2d30] bg-[var(--vscode-sideBar-background,#fafbfc)] dark:bg-[#1c1c1c] sm:w-[210px]"
                 data-testid="settings-sidebar"
             >
                 {/* Filter input */}
@@ -692,43 +698,46 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                 </div>
 
                 {/* Grouped nav */}
-                <div className="flex-1 px-1.5 pb-3 flex flex-col gap-3">
-                    {filteredGroups.length === 0 ? (
-                        <div className="px-2.5 py-3 text-[11px] text-[#6e7781] dark:text-[#8b949e]" data-testid="settings-filter-empty">
-                            No settings match “{filterQuery.trim()}”.
-                        </div>
-                    ) : (
-                        filteredGroups.map(group => (
-                            <div key={group.id} className="flex flex-col" data-testid={`nav-group-${group.id}`}>
-                                <div className="px-2.5 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6e7781] dark:text-[#8b949e]">
-                                    {group.label}
-                                </div>
-                                {group.items.map(item => {
-                                    const isActive = activeSection === item.id;
-                                    return (
-                                        <button
-                                            key={item.id}
-                                            onClick={() => setActiveSection(item.id)}
-                                            className={`group flex items-center gap-2 h-7 px-2.5 rounded-md text-[12.5px] text-left transition-colors whitespace-nowrap ${
-                                                isActive
-                                                    ? 'bg-white dark:bg-[#252526] text-[#1f2328] dark:text-[#e6edf3] border border-[#d8dee4] dark:border-[#3c3c3c] font-semibold shadow-[0_1px_0_rgba(31,35,40,0.04)]'
-                                                    : 'border border-transparent text-[#1f2328] dark:text-[#c9d1d9] hover:bg-[#eef1f4] dark:hover:bg-[#252526]'
-                                            }`}
-                                            data-testid={`nav-item-${item.id}`}
-                                            aria-current={isActive ? 'page' : undefined}
-                                        >
-                                            <span className={`flex-shrink-0 ${isActive ? 'text-[#1f2328] dark:text-[#e6edf3]' : 'text-[#6e7781] dark:text-[#8b949e]'}`}>
-                                                <Icon id={item.id} />
-                                            </span>
-                                            <span className="flex-1 truncate">{item.label}</span>
-                                            {renderBadge(item.id)}
-                                        </button>
-                                    );
-                                })}
+                <div className="sm:flex-1 sm:min-h-0 sm:overflow-y-auto">
+                    <div className="px-1.5 pb-3 flex flex-col gap-3">
+                        {filteredGroups.length === 0 ? (
+                            <div className="px-2.5 py-3 text-[11px] text-[#6e7781] dark:text-[#8b949e]" data-testid="settings-filter-empty">
+                                No settings match “{filterQuery.trim()}”.
                             </div>
-                        ))
-                    )}
+                        ) : (
+                            filteredGroups.map(group => (
+                                <div key={group.id} className="flex flex-col" data-testid={`nav-group-${group.id}`}>
+                                    <div className="px-2.5 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6e7781] dark:text-[#8b949e]">
+                                        {group.label}
+                                    </div>
+                                    {group.items.map(item => {
+                                        const isActive = activeSection === item.id;
+                                        return (
+                                            <button
+                                                key={item.id}
+                                                onClick={() => setActiveSection(item.id)}
+                                                className={`group flex items-center gap-2 h-7 px-2.5 rounded-md text-[12.5px] text-left transition-colors whitespace-nowrap ${
+                                                    isActive
+                                                        ? 'bg-white dark:bg-[#252526] text-[#1f2328] dark:text-[#e6edf3] border border-[#d8dee4] dark:border-[#3c3c3c] font-semibold shadow-[0_1px_0_rgba(31,35,40,0.04)]'
+                                                        : 'border border-transparent text-[#1f2328] dark:text-[#c9d1d9] hover:bg-[#eef1f4] dark:hover:bg-[#252526]'
+                                                }`}
+                                                data-testid={`nav-item-${item.id}`}
+                                                aria-current={isActive ? 'page' : undefined}
+                                            >
+                                                <span className={`flex-shrink-0 ${isActive ? 'text-[#1f2328] dark:text-[#e6edf3]' : 'text-[#6e7781] dark:text-[#8b949e]'}`}>
+                                                    <Icon id={item.id} />
+                                                </span>
+                                                <span className="flex-1 truncate">{item.label}</span>
+                                                {renderBadge(item.id)}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </div>
+                {dockStatusFooter && <DockedStatusFooter />}
             </nav>
 
             {/* ── Right content panel ── */}

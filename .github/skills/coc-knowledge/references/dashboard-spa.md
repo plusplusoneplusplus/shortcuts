@@ -944,7 +944,7 @@ Modal job-submission dialogs use `shared/ModalJobAiControls.tsx` when they need 
 
 `EffortPillSelector` drives the per-turn `reasoningEffort` override (Low/Medium/High; `null` = no override, falls back to the persisted per-model effort then the SDK default). The chip is structurally a dropdown menu (`AgentSelectorChip` style): trigger button (bars icon + label + chevron) opens a popover listbox with `Auto`/`Low`/`Medium`/`High` entries. The `Auto` entry explicitly clears the override and is also what the currently-selected level toggles to when re-clicked. New chats persist the selection alongside the draft (`useDraftStore` → `Draft.effortOverride`). Follow-ups thread the choice through `useSendMessage → ProcessMessageRequest.reasoningEffort → POST /api/processes/:id/message` and into either `bridge.enqueue` (queued) or `bridge.executeFollowUp` (direct/buffered). The server mirrors the value into `task.config.reasoningEffort` via `queue-shared.validateAndParseTask`, so executors see it from a single canonical location.
 
-When effort-tier mode is enabled, `EffortTierSelector` lists `Very Low`, `Low`, `Medium`, and `High` in that order. For concrete providers, tooltips expose the concrete model and reasoning effort mapped to the selected tier and each configured menu option; empty reasoning effort displays as `Auto`, and unconfigured options remain disabled with an Admin configuration tooltip. For the Auto provider selection, all tier keys remain selectable and tooltips explain that the provider and model are resolved at scheduling time.
+Effort-tier mode is enabled by default through `effortLevels.enabled` and can be turned off live from Admin when users need the legacy separate model picker and reasoning-effort controls. `EffortTierSelector` lists `Very Low`, `Low`, `Medium`, and `High` in that order. For concrete providers, tooltips expose the concrete model and reasoning effort mapped to the selected tier and each configured menu option; empty reasoning effort displays as `Auto`, and unconfigured options remain disabled with an Admin configuration tooltip. For the Auto provider selection, all tier keys remain selectable and tooltips explain that the provider and model are resolved at scheduling time.
 
 The Admin AI Provider page's Provider routing subtab exposes the single `features.autoAgentProviderRouting` toggle. When enabled, Auto becomes the default for omitted-provider chats, tasks, and API-created work; explicit provider selections and follow-ups keep their provider. The same subtab lets admins reorder provider rules, toggle each rule, edit normal minimum remaining quota percentages, toggle and edit weekly guard thresholds, choose a fallback provider, and preview the concrete provider selected by the shared Auto router using the current availability state plus cached quota response. The Default Provider buttons only select concrete providers (`copilot`, `codex`, `claude`) for the non-Auto fallback path. The Refresh quota button force-refreshes the provider quota cache and updates the preview. When Auto is disabled, the rule editor is hidden behind an Auto-disabled message.
 
@@ -1335,6 +1335,12 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   column; when both halves are collapsed neither carries `flex-1`, so a `flex-1`
   spacer is rendered above the footer to keep it at the bottom instead of riding
   up under the headers.
+- Owned-sidebar workspace views host the remote-first status cluster inside
+  their own sidebar/footer chrome instead of relying on the app-wide
+  `GlobalStatusDock`: `NotesView` passes `DockedStatusFooter` into
+  `NotesSidebar`, regular repo and My Life Settings pass `dockStatusFooter` to
+  `RepoSettingsTab` so the cluster sits inside the 210px settings nav, and My
+  Work keeps its body-level `DockedStatusFooter` shared across all sub-tabs.
 - The git half uses a dense skin to save vertical space. `SplitWorkspacePanel`
   exposes a `gitHeaderExtra` slot on the git section header (rendered right of
   the chevron+label toggle; its clicks don't toggle; stays visible while

@@ -1,7 +1,7 @@
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
-import type { EnqueueChatFn, SendMessageFn } from '../llm-tools/send-to-conversation-tool';
+import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
@@ -38,6 +38,8 @@ export interface ChatToolBundleOptions {
      * `send_to_conversation` (posting into an existing conversation). Optional.
      */
     sendMessage?: SendMessageFn;
+    /** Runtime provider/tier helpers used by send_to_conversation. */
+    sendToConversationRuntime?: SendToConversationRuntimeOptions;
     processId?: string;
     followUpSuggestions?: { enabled: boolean; count: number };
     askUser?: {
@@ -107,6 +109,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             options.enqueueChat,
             options.processId,
             options.sendMessage,
+            options.sendToConversationRuntime,
         ));
     }
 

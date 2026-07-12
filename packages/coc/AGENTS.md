@@ -33,6 +33,18 @@ all have their own `references/*.md`.
 
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
+- **Admin export/import/wipe storage behavior** is centralized in
+  `src/server/storage/storage-snapshot-domains.ts`. When adding a persisted
+  storage family, update its snapshot domain and the focused storage tests
+  together so export counts, import merge/replace behavior, and wipe dry-run
+  counts cannot drift.
+- **Server preferences** live under `src/server/preferences/`: `schema.ts`
+  owns Zod schemas and inferred types, `repository.ts` owns global and
+  repo-scoped disk persistence, `merge-policy.ts` owns PATCH/import merge
+  semantics, `live-effects.ts` owns sync and work-item runtime side effects,
+  and `routes.ts` owns HTTP route registration. `preferences-handler.ts` is a
+  compatibility barrel; new server code should import the specific preference
+  module it needs.
 - **In-memory caching** uses the one shared primitive at
   `src/server/cache/` (`createCache<T>({ namespace, ttlMs?, maxSize=500,
   immutable? })` → a handle with `get`/`set`/`getOrCompute`/`delete`/

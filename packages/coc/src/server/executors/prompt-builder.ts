@@ -32,7 +32,7 @@ import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '..
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn, type CreateUpdateWorkItemToolDeps } from '../llm-tools/create-update-work-item-tool';
-import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn } from '../llm-tools/send-to-conversation-tool';
+import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { createGetWorkItemTool } from '../llm-tools/get-work-item-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
@@ -532,12 +532,13 @@ export function buildSendToConversationAddon(
     enqueueChat: EnqueueChatFn | undefined,
     parentProcessId?: string,
     sendMessage?: SendMessageFn,
+    runtime?: SendToConversationRuntimeOptions,
 ): { tools: Tool<any>[]; suffix: string } {
     if (!store || !enqueueChat) {
         return { tools: [], suffix: '' };
     }
 
-    const { tool } = createSendToConversationTool({ store, workspaceId, enqueueChat, sendMessage, parentProcessId });
+    const { tool } = createSendToConversationTool({ store, workspaceId, enqueueChat, sendMessage, parentProcessId, runtime });
 
     // No prose suffix — the send_to_conversation tool description carries its own guidance.
     return { tools: [tool], suffix: '' };

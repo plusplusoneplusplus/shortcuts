@@ -34,10 +34,10 @@ function makeEffortTiersResponse(
 }
 
 const COPILOT_DEFAULTS = {
-    'very-low': { model: 'gpt-5.4-mini',      reasoningEffort: 'low'   },
-    low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'  },
-    medium: { model: 'claude-opus-4.8',   reasoningEffort: null    },
-    high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh' },
+    'very-low': { model: 'gpt-5.6-luna',  reasoningEffort: 'xhigh' },
+    low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' },
+    medium: { model: 'claude-opus-4.8', reasoningEffort: 'xhigh' },
+    high:   { model: 'gpt-5.6-sol',   reasoningEffort: 'xhigh' },
 };
 
 const COPILOT_DEFAULT_TIERS = {
@@ -77,6 +77,7 @@ describe('useProviderEffortTiers', () => {
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
+        expect(result.current.tiers).toEqual(COPILOT_DEFAULT_TIERS);
         expect(result.current.tiers.low?.source).toBe('default');
         expect(result.current.tiers['very-low']?.source).toBe('default');
         expect(result.current.tiers.medium?.source).toBe('default');
@@ -185,8 +186,8 @@ describe('useProviderEffortTiers', () => {
 
         // Reverted to default, not removed.
         expect(result.current.tiers.low).toEqual({
-            model: 'claude-sonnet-4.6',
-            reasoningEffort: 'high',
+            model: 'gpt-5.6-terra',
+            reasoningEffort: 'xhigh',
             source: 'default',
         });
         expect(result.current.dirty).toBe(true);

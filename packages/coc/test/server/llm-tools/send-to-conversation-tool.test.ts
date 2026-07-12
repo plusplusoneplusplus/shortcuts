@@ -18,6 +18,7 @@ import type {
     SendToConversationResult,
     SendToConversationSuccess,
     SendMessageFn,
+    SendToConversationRuntimeOptions,
 } from '../../../src/server/llm-tools/send-to-conversation-tool';
 import type { CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
 
@@ -59,6 +60,10 @@ interface MakeToolOpts {
     parentMeta?: ParentMeta;
     /** Post-mode delivery capability. Omit to model an unwired post mode. */
     sendMessage?: SendMessageFn;
+    /** Runtime provider/tier helpers supplied by the route layer. */
+    runtime?: SendToConversationRuntimeOptions;
+    /** Additional process records addressable by post-mode tests. */
+    extraProcesses?: Record<string, { id: string; metadata?: ParentMeta }>;
 }
 
 /** Build a tool wired to a stub enqueue that captures the CreateTaskInput it receives. */
@@ -71,9 +76,10 @@ function makeTool(opts?: MakeToolOpts) {
 
     const parentProcessId = opts && 'parentProcessId' in opts ? opts.parentProcessId : DEFAULT_PARENT_ID;
     const parentMeta = opts?.parentMeta ?? DEFAULT_PARENT_META;
-    const processes = parentProcessId
-        ? { [parentProcessId]: { id: parentProcessId, metadata: parentMeta } }
-        : {};
+    const processes = {
+        ...(opts?.extraProcesses ?? {}),
+        ...(parentProcessId ? { [parentProcessId]: { id: parentProcessId, metadata: parentMeta } } : {}),
+    };
 
     const { tool } = createSendToConversationTool({
         store: makeStore(opts?.storeWorkspaces, processes),
@@ -81,6 +87,7 @@ function makeTool(opts?: MakeToolOpts) {
         enqueueChat,
         sendMessage: opts?.sendMessage,
         parentProcessId: parentProcessId ?? undefined,
+        runtime: opts?.runtime,
     });
     return { tool, enqueueChat, captured };
 }
@@ -107,14 +114,14 @@ describe('createSendToConversationTool — shape & description', () => {
         });
     });
 
-    it('declares the dual-mode parameter set (processId switch, no provider param)', () => {
+    it('declares the dual-mode parameter set with provider and effortTier metadata', () => {
         const { tool } = makeTool();
         const props = (tool.parameters as { properties: Record<string, unknown> }).properties;
         expect(Object.keys(props).sort()).toEqual(
-            ['content', 'deliveryMode', 'mode', 'model', 'priority', 'processId', 'title', 'workspaceId'].sort(),
+            ['content', 'deliveryMode', 'effortTier', 'mode', 'model', 'priority', 'processId', 'provider', 'title', 'workspaceId'].sort(),
         );
-        // `provider` was intentionally dropped from the parameter set.
-        expect(props.provider).toBeUndefined();
+        expect(props.provider).toMatchObject({ type: 'string', enum: ['copilot', 'codex', 'claude', 'opencode'] });
+        expect(props.effortTier).toMatchObject({ type: 'string', enum: ['very-low', 'low', 'medium', 'high'] });
     });
 
     // AC-05: description leads with the processId branch and notes create-only-ignored.
@@ -238,6 +245,20 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
+    it('errors on an invalid provider value', async () => {
+        const { tool, enqueueChat } = makeTool();
+        const result = await tool.handler({ content: 'hi', provider: 'auto' as never }, invocationStub);
+        expect('error' in result && result.error).toMatch(/invalid provider/i);
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('errors on an invalid effortTier value', async () => {
+        const { tool, enqueueChat } = makeTool();
+        const result = await tool.handler({ content: 'hi', effortTier: 'ultra' as never }, invocationStub);
+        expect('error' in result && result.error).toMatch(/invalid efforttier/i);
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
     // ---- parent inheritance ----------------------------------------------
 
     it('inherits provider/model/reasoningEffort from the parent for { content } only', async () => {
@@ -283,7 +304,89 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(captured.input!.config?.reasoningEffort).toBe('high');
     });
 
-    it('reasoningEffort and provider are always inherited and expose no schema param', async () => {
+    it('explicit provider replaces parent provider/model/reasoningEffort inheritance', async () => {
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'claude', model: 'claude-opus-4-8', reasoningEffort: 'high' },
+        });
+        await tool.handler({ content: 'hi', provider: 'codex' }, invocationStub);
+        const payload = payloadOf(captured.input!);
+        expect(payload.provider).toBe('codex');
+        expect(captured.input!.config?.model).toBeUndefined();
+        expect(captured.input!.config?.reasoningEffort).toBeUndefined();
+    });
+
+    it('explicit provider plus explicit model does not inherit parent reasoningEffort', async () => {
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'claude', model: 'claude-opus-4-8', reasoningEffort: 'high' },
+        });
+        await tool.handler({ content: 'hi', provider: 'codex', model: 'gpt-5.5' }, invocationStub);
+        const payload = payloadOf(captured.input!);
+        expect(payload.provider).toBe('codex');
+        expect(captured.input!.config?.model).toBe('gpt-5.5');
+        expect(captured.input!.config?.reasoningEffort).toBeUndefined();
+        expect((captured.input!.config as any).effortTier).toBeUndefined();
+    });
+
+    it('passes an explicit create-mode effortTier through queue config when no model is supplied', async () => {
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'claude', model: 'claude-opus-4-8', reasoningEffort: 'high' },
+        });
+        await tool.handler({ content: 'hi', provider: 'codex', effortTier: 'high' }, invocationStub);
+        const payload = payloadOf(captured.input!);
+        expect(payload.provider).toBe('codex');
+        expect(captured.input!.config?.model).toBeUndefined();
+        expect(captured.input!.config?.reasoningEffort).toBeUndefined();
+        expect((captured.input!.config as any).effortTier).toBe('high');
+    });
+
+    it('ignores create-mode effortTier when an explicit model is supplied', async () => {
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'claude', model: 'claude-opus-4-8', reasoningEffort: 'high' },
+        });
+        await tool.handler(
+            { content: 'hi', provider: 'codex', model: 'gpt-5.5', effortTier: 'high' },
+            invocationStub,
+        );
+        expect(captured.input!.config?.model).toBe('gpt-5.5');
+        expect((captured.input!.config as any).effortTier).toBeUndefined();
+        expect(captured.input!.config?.reasoningEffort).toBeUndefined();
+    });
+
+    it('rejects an explicit provider whose requested model is incompatible', async () => {
+        const { tool, enqueueChat } = makeTool();
+        const result = await tool.handler(
+            { content: 'hi', provider: 'codex', model: 'claude-opus-4-8' },
+            invocationStub,
+        );
+        expect('error' in result && result.error).toMatch(/not compatible/i);
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unavailable explicit provider before enqueueing', async () => {
+        const validateProvider = vi.fn(async () => {
+            throw new Error('Claude provider is disabled.');
+        });
+        const { tool, enqueueChat } = makeTool({ runtime: { validateProvider } });
+        const result = await tool.handler({ content: 'hi', provider: 'claude' }, invocationStub);
+        expect(validateProvider).toHaveBeenCalledWith('claude');
+        expect('error' in result && result.error).toMatch(/disabled/i);
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('rejects an incompatible configured effortTier model for the selected provider', async () => {
+        const { tool, enqueueChat } = makeTool({
+            runtime: {
+                getEffortTiersForProvider: () => ({
+                    high: { model: 'claude-opus-4-8', reasoningEffort: 'high' },
+                }),
+            },
+        });
+        const result = await tool.handler({ content: 'hi', provider: 'codex', effortTier: 'high' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/not compatible/i);
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('reasoningEffort is inherited but not exposed as a raw schema param', async () => {
         const { tool, captured } = makeTool({
             parentMeta: { provider: 'claude', model: 'claude-opus-4-8', reasoningEffort: 'xhigh' },
         });
@@ -292,7 +395,7 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
 
         const props = (tool.parameters as { properties: Record<string, unknown> }).properties;
         expect(props.reasoningEffort).toBeUndefined();
-        expect(props.provider).toBeUndefined();
+        expect(props.provider).toBeDefined();
     });
 
     it('falls back to provider default (no error) when parent has provider but no model', async () => {
@@ -391,6 +494,109 @@ describe('createSendToConversationTool — post mode (processId provided)', () =
                 deliveryMode: 'steer',
             }),
         );
+    });
+
+    it('accepts but ignores post-mode provider', async () => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 1 }));
+        const { tool } = makeTool({ sendMessage });
+        await tool.handler(
+            {
+                processId: 'queue_existing',
+                content: 'go',
+                provider: 'codex',
+            },
+            invocationStub,
+        );
+        expect(sendMessage).toHaveBeenCalledWith(
+            expect.not.objectContaining({ provider: expect.anything() }),
+        );
+    });
+
+    it('resolves post-mode effortTier against the existing conversation provider', async () => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 1 }));
+        const { tool } = makeTool({
+            sendMessage,
+            extraProcesses: {
+                queue_existing: { id: 'queue_existing', metadata: { provider: 'claude' } },
+            },
+        });
+        await tool.handler(
+            {
+                processId: 'queue_existing',
+                content: 'go',
+                provider: 'codex',
+                effortTier: 'medium',
+            },
+            invocationStub,
+        );
+        expect(sendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                processId: 'queue_existing',
+                model: 'opus',
+                effort: 'medium',
+            }),
+        );
+    });
+
+    it('uses post-mode model over effortTier and does not resolve the tier', async () => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 1 }));
+        const getEffortTiersForProvider = vi.fn();
+        const { tool } = makeTool({
+            sendMessage,
+            runtime: { getEffortTiersForProvider },
+        });
+        await tool.handler(
+            {
+                processId: 'queue_existing',
+                content: 'go',
+                provider: 'claude',
+                model: 'gpt-5.5',
+                effortTier: 'high',
+            },
+            invocationStub,
+        );
+        expect(getEffortTiersForProvider).not.toHaveBeenCalled();
+        expect(sendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                processId: 'queue_existing',
+                model: 'gpt-5.5',
+            }),
+        );
+        expect(sendMessage).toHaveBeenCalledWith(
+            expect.not.objectContaining({ effort: expect.anything() }),
+        );
+    });
+
+    it('errors when post-mode effortTier cannot resolve the target process', async () => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 1 }));
+        const { tool } = makeTool({ sendMessage });
+        const result = await tool.handler(
+            { processId: 'queue_missing', content: 'go', effortTier: 'high' },
+            invocationStub,
+        );
+        expect('error' in result && result.error).toMatch(/not found/i);
+        expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('rejects an incompatible post-mode effortTier model for the existing provider', async () => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 1 }));
+        const { tool } = makeTool({
+            sendMessage,
+            extraProcesses: {
+                queue_existing: { id: 'queue_existing', metadata: { provider: 'codex' } },
+            },
+            runtime: {
+                getEffortTiersForProvider: () => ({
+                    high: { model: 'claude-opus-4-8', reasoningEffort: 'high' },
+                }),
+            },
+        });
+        const result = await tool.handler(
+            { processId: 'queue_existing', content: 'go', effortTier: 'high' },
+            invocationStub,
+        );
+        expect('error' in result && result.error).toMatch(/not compatible/i);
+        expect(sendMessage).not.toHaveBeenCalled();
     });
 
     it('ignores create-only fields (workspaceId, title, priority) without error', async () => {

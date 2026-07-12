@@ -21,7 +21,7 @@ import { registerQueueRoutes } from '../queue/queue-handler';
 import { prepareTaskForEnqueue } from './queue-enqueue';
 import { serializeTask, enqueueViaBridge } from './queue-shared';
 import type { QueueGlobalState } from './queue-shared';
-import type { EnqueueChatFn, SendMessageFn } from '../llm-tools/send-to-conversation-tool';
+import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { ProcessMessageDeliveryService, type FollowUpMessageInput } from '../processes/process-message-delivery-service';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
@@ -244,6 +244,7 @@ export interface RegisterRoutesOptions {
      * uses against the shared store + queue bridge.
      */
     setSendMessage?: (fn: SendMessageFn) => void;
+    setSendToConversationRuntime?: (runtime: SendToConversationRuntimeOptions) => void;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
@@ -365,6 +366,19 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             ?? opts.resolvedConfig?.models?.providers?.[provider]?.effortTiers
         );
     };
+    const validateSendToConversationProvider = async (provider: ChatProvider): Promise<void> => {
+        const availability = await getAutoProviderAvailability();
+        const status = availability[provider];
+        if (!status) {
+            throw new Error(`Provider '${provider}' is not recognized by the server.`);
+        }
+        if (!status.enabled) {
+            throw new Error(status.reason ?? `Provider '${provider}' is disabled.`);
+        }
+        if (!status.available) {
+            throw new Error(status.reason ?? `Provider '${provider}' is unavailable.`);
+        }
+    };
     const prepareEnqueueTask = async (input: CreateTaskInput): Promise<void> => {
         await prepareTaskForEnqueue(input, {
             getDefaultProvider: concreteDefaultProvider,
@@ -405,6 +419,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         await prepareEnqueueTask(input);
         return enqueueViaBridge(input, bridge, queueGlobalState, globalWorkspaceRootPath, store);
     });
+    opts.setSendToConversationRuntime?.({
+        validateProvider: validateSendToConversationProvider,
+        getEffortTiersForProvider,
+    });
 
     // Publish the bound follow-up delivery capability so executors can offer the
     // post mode of `send_to_conversation` (posting into an existing
@@ -414,7 +432,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // user-turn index. The tool's `'steer'` delivery mode maps onto the
     // service's `'immediate'` mode — the service auto-steers a running process.
     opts.setSendMessage?.(async (input): Promise<{ turnIndex: number }> => {
-        const { processId, content, mode, model, deliveryMode } = input;
+        const { processId, content, mode, model, effort, deliveryMode } = input;
         let proc = await store.getProcess(processId);
         if (!proc && isQueueProcessId(processId)) {
             proc = await store.getProcess(toTaskId(processId));
@@ -431,6 +449,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             pasteExternalized: false,
             ...(mode ? { mode } : {}),
             ...(model ? { model } : {}),
+            ...(effort ? { effort } : {}),
         };
         const result = await new ProcessMessageDeliveryService({ store, bridge }).deliver(proc, deliveryInput);
         return { turnIndex: result.turnIndex };

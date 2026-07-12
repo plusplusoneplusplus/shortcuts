@@ -18,17 +18,17 @@
  * to the store + enqueue/send capabilities + the caller's current workspace,
  * avoiding cross-request contamination.
  *
- * NOTE on `model` validation: the queue path already coerces a model that the
- * resolved provider does not support (see `resolveModelForProvider` in
- * `validateAndParseTask`). This tool therefore treats `model` as a pass-through
- * string — it only rejects an empty / non-string value — and leaves
- * provider-specific allow-listing to the shared enqueue / delivery machinery.
+ * NOTE on `model` validation: legacy calls that only supply the existing `model`
+ * argument keep the queue path's pass-through/coercion behavior. Calls that also
+ * select a new explicit provider or effort tier validate provider compatibility
+ * before enqueueing so the tool never falls back to a different provider.
  */
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
-import type { CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
-import { toQueueProcessId } from '@plusplusoneplusplus/forge';
+import type { AIProcess, CreateTaskInput, ProcessStore, StoredEffortTiersMap } from '@plusplusoneplusplus/forge';
+import { isQueueProcessId, mergeEffortTiersWithDefaults, resolveModelForProvider, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { validateAndParseTask } from '../routes/queue-shared';
+import { VALID_CHAT_PROVIDERS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
 
 // ============================================================================
 // Types
@@ -39,6 +39,12 @@ export type SendToConversationMode = 'autopilot' | 'ask';
 
 /** Delivery modes for post mode (an existing conversation). */
 export type SendToConversationDeliveryMode = 'immediate' | 'enqueue' | 'steer';
+
+/** Concrete providers this tool accepts; `auto` and registry aliases are excluded. */
+export type SendToConversationProvider = ChatProvider;
+
+/** Provider-scoped effort tiers accepted by this tool. */
+export type SendToConversationEffortTier = 'very-low' | 'low' | 'medium' | 'high';
 
 export interface SendToConversationArgs {
     /** The message (post mode) / first prompt (create mode). Required. */
@@ -58,6 +64,16 @@ export interface SendToConversationArgs {
     title?: string;
     /** Overrides the AI model (both modes). */
     model?: string;
+    /**
+     * Create mode: explicit concrete provider. Post mode: accepted but ignored;
+     * the existing conversation provider remains authoritative.
+     */
+    provider?: SendToConversationProvider;
+    /**
+     * Provider-scoped effort tier. Create mode passes it through queue
+     * preparation; post mode expands it against the target conversation provider.
+     */
+    effortTier?: SendToConversationEffortTier;
     /** Create mode: queue priority. Default `normal`. */
     priority?: 'high' | 'normal' | 'low';
 }
@@ -82,8 +98,20 @@ export type SendMessageFn = (input: {
     content: string;
     mode?: SendToConversationMode;
     model?: string;
+    effort?: ReasoningEffort;
     deliveryMode?: SendToConversationDeliveryMode;
 }) => Promise<{ turnIndex: number }>;
+
+/** Validate a concrete provider before an explicit create-mode selection enqueues. */
+export type ValidateSendToConversationProviderFn = (provider: SendToConversationProvider) => Promise<void> | void;
+
+/** Read stored provider-specific effort-tier overrides; defaults are merged by the tool. */
+export type GetSendToConversationEffortTiersFn = (provider: SendToConversationProvider) => StoredEffortTiersMap | undefined;
+
+export interface SendToConversationRuntimeOptions {
+    validateProvider?: ValidateSendToConversationProviderFn;
+    getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
+}
 
 export interface SendToConversationToolOptions {
     /** ProcessStore instance — used to validate the target workspace exists. */
@@ -94,13 +122,14 @@ export interface SendToConversationToolOptions {
     enqueueChat: EnqueueChatFn;
     /** Bound in-process follow-up delivery capability (post mode). */
     sendMessage?: SendMessageFn;
+    /** Runtime provider/tier helpers supplied by the server route layer. */
+    runtime?: SendToConversationRuntimeOptions;
     /**
      * The parent chat's processId — the conversation in which this tool was
      * built/invoked. In create mode the handler reads the parent process
      * record's resolved `provider` / `model` / `reasoningEffort` from its
-     * `metadata` and inherits them onto the spawned conversation (per-field
-     * overridable by the explicit `model` param; `provider` and
-     * `reasoningEffort` are always inherited). Mirrors the
+     * `metadata` and inherits them onto the spawned conversation unless an
+     * explicit provider or effort tier asks for provider defaults. Mirrors the
      * `search_conversations` addon's `processId` threading.
      */
     parentProcessId?: string;
@@ -138,6 +167,13 @@ const ALLOWED_DELIVERY_MODES: ReadonlySet<string> = new Set<SendToConversationDe
     'steer',
 ]);
 
+const ALLOWED_EFFORT_TIERS: ReadonlySet<string> = new Set<SendToConversationEffortTier>([
+    'very-low',
+    'low',
+    'medium',
+    'high',
+]);
+
 // ============================================================================
 // Tool Factory
 // ============================================================================
@@ -148,20 +184,24 @@ const ALLOWED_DELIVERY_MODES: ReadonlySet<string> = new Set<SendToConversationDe
  * @param options Tool options (store + caller workspace + enqueue/send capabilities).
  */
 export function createSendToConversationTool(options: SendToConversationToolOptions) {
-    const { store, workspaceId: callerWorkspaceId, enqueueChat, sendMessage, parentProcessId } = options;
+    const { store, workspaceId: callerWorkspaceId, enqueueChat, sendMessage, parentProcessId, runtime } = options;
 
     const tool = defineTool<SendToConversationArgs>('send_to_conversation', {
         description:
             'Send a message to a conversation. ' +
             'If `processId` is provided, posts `content` as a message into that EXISTING ' +
             'conversation and returns `{ processId, openLink, turnIndex }`; the create-only ' +
-            'fields (`workspaceId`, `title`, `priority`) are ignored in this mode. ' +
+            'fields (`workspaceId`, `title`, `priority`) are ignored in this mode, and `provider` ' +
+            'is accepted but ignored so the existing conversation provider remains unchanged. ' +
             'If `processId` is omitted, starts a brand-new, separate chat conversation ' +
             '(fire-and-forget) with `content` as its first prompt — it appears in the dashboard ' +
             'chat list and is executed by the queue, and `deliveryMode` is ignored; it does NOT ' +
             'continue or follow up the current chat. Returns `{ processId, openLink }`. ' +
             '`content` is required; in create mode `workspaceId` defaults to the current ' +
-            'workspace and `mode` defaults to `ask`.',
+            'workspace and `mode` defaults to `ask`. Optional `provider` selects one of ' +
+            '`copilot`, `codex`, `claude`, or `opencode` for new conversations; optional ' +
+            '`effortTier` selects `very-low`, `low`, `medium`, or `high`. If both `model` and ' +
+            '`effortTier` are supplied, `model` wins and the tier is ignored.',
         parameters: {
             type: 'object',
             properties: {
@@ -203,6 +243,20 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                     type: 'string',
                     description: 'Overrides the AI model (both modes).',
                 },
+                provider: {
+                    type: 'string',
+                    enum: ['copilot', 'codex', 'claude', 'opencode'],
+                    description:
+                        'Create mode: concrete AI provider (`copilot`, `codex`, `claude`, or `opencode`). ' +
+                        'Post mode: accepted but ignored; the existing conversation provider is unchanged.',
+                },
+                effortTier: {
+                    type: 'string',
+                    enum: ['very-low', 'low', 'medium', 'high'],
+                    description:
+                        'Provider-specific effort tier (`very-low`, `low`, `medium`, or `high`). ' +
+                        'Ignored when `model` is also provided.',
+                },
                 priority: {
                     type: 'string',
                     enum: ['high', 'normal', 'low'],
@@ -234,16 +288,39 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             }
             const model = args.model?.trim();
 
+            // --- provider (create only; accepted+ignored in post mode) ----------
+            const provider = args.provider;
+            if (provider !== undefined && (typeof provider !== 'string' || !VALID_CHAT_PROVIDERS.has(provider as ChatProvider))) {
+                return {
+                    error:
+                        `Invalid provider: '${String(args.provider)}'. ` +
+                        `Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}.`,
+                };
+            }
+
+            // --- effortTier (both modes; model wins over tier resolution) -------
+            const effortTier = args.effortTier;
+            if (effortTier !== undefined && (typeof effortTier !== 'string' || !ALLOWED_EFFORT_TIERS.has(effortTier))) {
+                return {
+                    error:
+                        `Invalid effortTier: '${String(args.effortTier)}'. ` +
+                        `Valid tiers: ${[...ALLOWED_EFFORT_TIERS].join(', ')}.`,
+                };
+            }
+
             // --- mode switch: processId provided → post into existing chat ----
             const targetProcessId =
                 typeof args.processId === 'string' && args.processId.trim() ? args.processId.trim() : undefined;
             if (targetProcessId) {
                 return postToExistingConversation({
+                    store,
                     sendMessage,
                     processId: targetProcessId,
                     content,
                     mode,
                     model,
+                    effortTier: model ? undefined : effortTier,
+                    getEffortTiersForProvider: runtime?.getEffortTiersForProvider,
                     deliveryMode: args.deliveryMode,
                 });
             }
@@ -258,6 +335,10 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 content,
                 mode,
                 model,
+                explicitProvider: provider,
+                effortTier: model ? undefined : effortTier,
+                validateProvider: runtime?.validateProvider,
+                getEffortTiersForProvider: runtime?.getEffortTiersForProvider,
             });
         },
     });
@@ -270,14 +351,17 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
 // ============================================================================
 
 async function postToExistingConversation(params: {
+    store: ProcessStore;
     sendMessage?: SendMessageFn;
     processId: string;
     content: string;
     mode: SendToConversationMode;
     model?: string;
+    effortTier?: SendToConversationEffortTier;
+    getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
     deliveryMode?: SendToConversationDeliveryMode;
 }): Promise<SendToConversationResult> {
-    const { sendMessage, processId, content, mode, model, deliveryMode } = params;
+    const { store, sendMessage, processId, content, mode, model, effortTier, getEffortTiersForProvider, deliveryMode } = params;
 
     if (deliveryMode !== undefined && !ALLOWED_DELIVERY_MODES.has(deliveryMode)) {
         return {
@@ -296,11 +380,24 @@ async function postToExistingConversation(params: {
     }
 
     try {
+        const tierOverride = effortTier
+            ? await resolvePostModeEffortTier({
+                store,
+                processId,
+                effortTier,
+                getEffortTiersForProvider,
+            })
+            : {};
+        if ('error' in tierOverride) {
+            return { error: tierOverride.error };
+        }
+
         const { turnIndex } = await sendMessage({
             processId,
             content,
             mode,
             ...(model ? { model } : {}),
+            ...tierOverride,
             ...(deliveryMode ? { deliveryMode } : {}),
         });
         return {
@@ -327,8 +424,25 @@ async function createNewConversation(params: {
     content: string;
     mode: SendToConversationMode;
     model?: string;
+    explicitProvider?: SendToConversationProvider;
+    effortTier?: SendToConversationEffortTier;
+    validateProvider?: ValidateSendToConversationProviderFn;
+    getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
 }): Promise<SendToConversationResult> {
-    const { store, callerWorkspaceId, enqueueChat, parentProcessId, args, content, mode, model } = params;
+    const {
+        store,
+        callerWorkspaceId,
+        enqueueChat,
+        parentProcessId,
+        args,
+        content,
+        mode,
+        model,
+        explicitProvider,
+        effortTier,
+        validateProvider,
+        getEffortTiersForProvider,
+    } = params;
 
     // --- workspace (default to caller's; must be registered) --------------
     const requestedWorkspaceId =
@@ -355,22 +469,24 @@ async function createNewConversation(params: {
         };
     }
 
-    // --- inherit provider/model/reasoningEffort from the parent chat ------
+    // --- resolve provider/model/reasoningEffort ---------------------------
     // The tool is built per chat turn, so `parentProcessId` identifies the
     // conversation in which this tool was invoked. Read the parent's resolved
     // values from its process metadata (the same authoritative fields the
-    // follow-up executor reads — see follow-up-executor.ts). An explicit `model`
-    // param wins for that field; everything else inherits from the parent.
+    // follow-up executor reads — see follow-up-executor.ts). An explicit provider
+    // selects that provider's defaults instead of inheriting parent model/effort.
     const parent = parentProcessId ? await store.getProcess(parentProcessId) : undefined;
     const parentProvider =
-        typeof parent?.metadata?.provider === 'string' ? parent.metadata.provider : undefined;
+        typeof parent?.metadata?.provider === 'string' && VALID_CHAT_PROVIDERS.has(parent.metadata.provider as ChatProvider)
+            ? (parent.metadata.provider as ChatProvider)
+            : undefined;
     const parentModel = typeof parent?.metadata?.model === 'string' ? parent.metadata.model : undefined;
     const parentEffort =
         typeof parent?.metadata?.reasoningEffort === 'string' ? parent.metadata.reasoningEffort : undefined;
 
-    const resolvedProvider = parentProvider;
-    const resolvedModel = model ?? parentModel;
-    const resolvedEffort = parentEffort;
+    const resolvedProvider = explicitProvider ?? parentProvider;
+    const resolvedModel = model ?? (explicitProvider || effortTier ? undefined : parentModel);
+    const resolvedEffort = explicitProvider || effortTier ? undefined : parentEffort;
 
     // Only a missing provider is fatal. A resolvable parent whose model /
     // reasoningEffort are absent falls back to provider defaults below.
@@ -378,20 +494,42 @@ async function createNewConversation(params: {
         return {
             error:
                 'Cannot determine a provider for the new conversation: no parent chat ' +
-                'context was available to inherit from.',
+                'context was available to inherit from and no explicit `provider` was supplied.',
         };
+    }
+
+    if (explicitProvider && validateProvider) {
+        try {
+            await validateProvider(explicitProvider);
+        } catch (err) {
+            const reason = err instanceof Error ? err.message : String(err);
+            return { error: `Provider '${explicitProvider}' is not available for send_to_conversation: ${reason}` };
+        }
+    }
+
+    if (explicitProvider || effortTier) {
+        const compatibility = validateRequestedModelAndTier({
+            provider: resolvedProvider,
+            model: resolvedModel,
+            effortTier,
+            getEffortTiersForProvider,
+        });
+        if (compatibility) {
+            return { error: compatibility };
+        }
     }
 
     // --- build + validate the task spec, then enqueue in-process ----------
     // Setting `payload.provider` makes the enqueue path treat the provider as
-    // explicit, so the inherited provider also suppresses global default-provider
+    // explicit, so inherited/selected providers suppress global default-provider
     // auto-routing. Resolved model goes onto `config.model` (with the existing
-    // `payload.model` mirror) and the inherited effort onto
-    // `config.reasoningEffort`; `config.effortTier` is intentionally never set.
+    // `payload.model` mirror), inherited effort onto `config.reasoningEffort`,
+    // and an explicit tier onto `config.effortTier` for queue preparation.
     const title = typeof args.title === 'string' && args.title.trim() ? args.title.trim() : undefined;
     const config: Record<string, unknown> = {
         ...(resolvedModel ? { model: resolvedModel } : {}),
         ...(resolvedEffort ? { reasoningEffort: resolvedEffort } : {}),
+        ...(effortTier ? { effortTier } : {}),
     };
     const taskSpec: Record<string, unknown> = {
         type: 'chat',
@@ -429,4 +567,92 @@ async function createNewConversation(params: {
         processId,
         openLink: `#/process/${processId}`,
     };
+}
+
+async function resolvePostModeEffortTier(params: {
+    store: ProcessStore;
+    processId: string;
+    effortTier: SendToConversationEffortTier;
+    getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
+}): Promise<{ model?: string; effort?: ReasoningEffort } | { error: string }> {
+    const { store, processId, effortTier, getEffortTiersForProvider } = params;
+    const proc = await resolveProcessForTool(store, processId);
+    if (!proc) {
+        return { error: `Cannot resolve effortTier '${effortTier}': process '${processId}' was not found.` };
+    }
+
+    const provider = normalizeProcessProvider(proc);
+    const tier = resolveTierForProvider(provider, effortTier, getEffortTiersForProvider);
+    if (!tier) {
+        return { error: `No effort tier '${effortTier}' is configured for provider '${provider}'.` };
+    }
+
+    const modelResolution = resolveModelForProvider(provider, tier.model);
+    if (modelResolution.coerced) {
+        return {
+            error:
+                `Effort tier '${effortTier}' resolves to model '${tier.model}', ` +
+                `which is not compatible with provider '${provider}'.`,
+        };
+    }
+
+    return {
+        model: modelResolution.model,
+        ...(tier.reasoningEffort ? { effort: tier.reasoningEffort as ReasoningEffort } : {}),
+    };
+}
+
+function validateRequestedModelAndTier(params: {
+    provider: SendToConversationProvider;
+    model?: string;
+    effortTier?: SendToConversationEffortTier;
+    getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
+}): string | undefined {
+    const { provider, model, effortTier, getEffortTiersForProvider } = params;
+    if (model) {
+        const modelResolution = resolveModelForProvider(provider, model);
+        if (modelResolution.coerced) {
+            return `Model '${model}' is not compatible with provider '${provider}'.`;
+        }
+        return undefined;
+    }
+    if (!effortTier) return undefined;
+
+    const tier = resolveTierForProvider(provider, effortTier, getEffortTiersForProvider);
+    if (!tier) {
+        return `No effort tier '${effortTier}' is configured for provider '${provider}'.`;
+    }
+    const modelResolution = resolveModelForProvider(provider, tier.model);
+    if (modelResolution.coerced) {
+        return (
+            `Effort tier '${effortTier}' resolves to model '${tier.model}', ` +
+            `which is not compatible with provider '${provider}'.`
+        );
+    }
+    return undefined;
+}
+
+function resolveTierForProvider(
+    provider: SendToConversationProvider,
+    effortTier: SendToConversationEffortTier,
+    getEffortTiersForProvider?: GetSendToConversationEffortTiersFn,
+) {
+    const tiers = mergeEffortTiersWithDefaults(provider, getEffortTiersForProvider?.(provider));
+    return tiers[effortTier];
+}
+
+async function resolveProcessForTool(store: ProcessStore, processId: string): Promise<AIProcess | undefined> {
+    const direct = await store.getProcess(processId);
+    if (direct) return direct;
+    if (isQueueProcessId(processId)) {
+        return store.getProcess(toTaskId(processId));
+    }
+    return undefined;
+}
+
+function normalizeProcessProvider(proc: AIProcess): SendToConversationProvider {
+    const provider = proc.metadata?.provider;
+    return typeof provider === 'string' && VALID_CHAT_PROVIDERS.has(provider as ChatProvider)
+        ? (provider as SendToConversationProvider)
+        : 'copilot';
 }

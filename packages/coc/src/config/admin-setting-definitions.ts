@@ -819,10 +819,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     }),
 
     bool({
-        key: 'effortLevels.enabled', default: false, runtime: 'live', runtimeFlag: 'effortLevelsEnabled',
+        key: 'effortLevels.enabled', default: true, runtime: 'live', runtimeFlag: 'effortLevelsEnabled',
         ui: {
             group: 'aiModes', order: 40, label: 'Effort Tiers', badge: 'experimental',
-            hint: 'Replace the model picker + reasoning-effort pill in the chat composer with a single Low / Medium / High effort selector. Configure tier mappings per provider on the AI Provider page. Disabled by default.',
+            hint: 'Use a single Very Low / Low / Medium / High effort selector in chat composers instead of separate model and reasoning-effort controls. Configure tier mappings per provider on the AI Provider page; turn this off to use the legacy controls.',
             testId: 'toggle-effort-levels-enabled',
         },
     }),

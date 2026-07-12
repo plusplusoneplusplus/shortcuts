@@ -83,6 +83,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.weeklyGuard.minimumRemainingPercent)).toEqual([33, 33, 10]);
             expect(DEFAULT_CONFIG.agentProviderRouting.auto.fallbackProvider).toBe('copilot');
             expect(DEFAULT_CONFIG.workItems.sync.enabled).toBe(false);
+            expect(DEFAULT_CONFIG.effortLevels.enabled).toBe(true);
         });
 
         it('should default terminal feature to enabled', () => {
@@ -647,6 +648,16 @@ timeout: 300
         it('should override loops.enabled from file', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { loops: { enabled: true } });
             expect(result.loops.enabled).toBe(true);
+        });
+
+        it('should default effortLevels.enabled to true', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {});
+            expect(result.effortLevels.enabled).toBe(true);
+        });
+
+        it('should allow effortLevels.enabled=false as an explicit opt-out', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { effortLevels: { enabled: false } });
+            expect(result.effortLevels.enabled).toBe(false);
         });
 
         it('should default excalidraw.enabled to false', () => {
@@ -1254,7 +1265,7 @@ timeout: 300
                     "timeoutMs": 3600000,
                   },
                   "effortLevels": {
-                    "enabled": false,
+                    "enabled": true,
                   },
                   "excalidraw": {
                     "enabled": false,
@@ -1562,6 +1573,7 @@ timeout: 300
             expect(defaults['features.focusedDiff']).toBe(DEFAULT_CONFIG.features.focusedDiff);
             expect(defaults['features.gitCrossCloneCherryPick']).toBe(DEFAULT_CONFIG.features.gitCrossCloneCherryPick);
             expect(defaults['pullRequests.autoClassifyTeam']).toBe(DEFAULT_CONFIG.pullRequests.autoClassifyTeam);
+            expect(defaults['effortLevels.enabled']).toBe(DEFAULT_CONFIG.effortLevels.enabled);
         });
 
         it('should return correct default for deeply nested keys', () => {

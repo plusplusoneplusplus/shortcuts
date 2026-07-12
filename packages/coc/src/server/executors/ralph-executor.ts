@@ -87,6 +87,7 @@ export class RalphExecutor extends ChatBaseExecutor {
                 : undefined,
             enqueueChat: this.getEnqueueChat?.(),
             sendMessage: this.getSendMessage?.(),
+            sendToConversationRuntime: this.getSendToConversationRuntime?.(),
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
         });

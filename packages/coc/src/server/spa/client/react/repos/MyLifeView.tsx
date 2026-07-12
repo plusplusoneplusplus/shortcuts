@@ -126,7 +126,7 @@ export function MyLifeView() {
                         <RepoSchedulesTab workspaceId={MY_LIFE_WORKSPACE_ID} />
                     </div>
                 )}
-                {activeTab === 'settings' && <RepoSettingsTab workspaceId={MY_LIFE_WORKSPACE_ID} repo={VIRTUAL_REPO} />}
+                {activeTab === 'settings' && <RepoSettingsTab workspaceId={MY_LIFE_WORKSPACE_ID} repo={VIRTUAL_REPO} dockStatusFooter />}
             </div>
         </div>
     );

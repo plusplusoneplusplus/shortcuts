@@ -29,6 +29,10 @@ import {
     normalizeGlobalPreferencesForRead,
     resolveDefaultModel,
     registerPreferencesRoutes,
+    applyGlobalPreferencesPatch,
+    applyRepoPreferencesPatch,
+    readPreferencesWithStatus,
+    readRepoPreferencesWithStatus,
     PREFERENCES_FILE_NAME,
 } from '../../src/server/preferences-handler';
 import type { PreferencesFile } from '../../src/server/preferences-handler';
@@ -246,6 +250,36 @@ describe('readPreferences / writePreferences', () => {
         fs.writeFileSync(path.join(tmpDir, PREFERENCES_FILE_NAME), '{{invalid', 'utf-8');
         const prefs = readPreferences(tmpDir);
         expect(prefs).toEqual({});
+    });
+
+    it('distinguishes missing global preferences from corrupt global preferences', () => {
+        const missing = readPreferencesWithStatus(tmpDir);
+        expect(missing.status).toBe('missing');
+        expect(missing.value).toEqual({});
+        expect(missing.warnings).toEqual([]);
+
+        fs.writeFileSync(path.join(tmpDir, PREFERENCES_FILE_NAME), '{{invalid', 'utf-8');
+        const corrupt = readPreferencesWithStatus(tmpDir);
+        expect(corrupt.status).toBe('invalid');
+        expect(corrupt.value).toEqual({});
+        expect(corrupt.warnings[0].filePath).toBe(path.join(tmpDir, PREFERENCES_FILE_NAME));
+        expect(readPreferences(tmpDir)).toEqual({});
+    });
+
+    it('distinguishes missing repo preferences from corrupt repo preferences', () => {
+        const missing = readRepoPreferencesWithStatus(tmpDir, 'repo-1');
+        expect(missing.status).toBe('missing');
+        expect(missing.value).toEqual({});
+        expect(missing.warnings).toEqual([]);
+
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'repo-1', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
+        fs.writeFileSync(repoPrefsPath, '{{invalid', 'utf-8');
+        const corrupt = readRepoPreferencesWithStatus(tmpDir, 'repo-1');
+        expect(corrupt.status).toBe('invalid');
+        expect(corrupt.value).toEqual({});
+        expect(corrupt.warnings[0].filePath).toBe(repoPrefsPath);
+        expect(readRepoPreferences(tmpDir, 'repo-1')).toEqual({});
     });
 
     it('returns empty object when file contains non-object JSON', () => {
@@ -1004,6 +1038,103 @@ describe('validatePreferences', () => {
         const result = validatePerRepoPreferences({ lastDepth: 'deep', sync: { gitRemote: 'https://x.git' } });
         expect(result.lastDepth).toBe('deep');
         expect(result.sync).toEqual({ gitRemote: 'https://x.git' });
+    });
+});
+
+describe('preferences merge policy', () => {
+    it('deep-merges global fields that have patch semantics', () => {
+        const { preferences, patch } = applyGlobalPreferencesPatch(
+            {
+                theme: 'dark',
+                activityFilters: { workspace: 'ws-1' },
+                promptAutocomplete: {
+                    enabled: true,
+                    ai: { enabled: true, model: 'gpt-4', debounceMs: 250 },
+                },
+            },
+            {
+                activityFilters: { myWorkExcludedTypes: ['ask'] },
+                promptAutocomplete: {
+                    enabled: false,
+                    ai: { timeoutMs: 1000 },
+                },
+            },
+        );
+
+        expect(patch).toEqual({
+            activityFilters: { myWorkExcludedTypes: ['ask'] },
+            promptAutocomplete: {
+                enabled: false,
+                ai: { timeoutMs: 1000 },
+            },
+        });
+        expect(preferences).toEqual({
+            theme: 'dark',
+            activityFilters: { workspace: 'ws-1', myWorkExcludedTypes: ['ask'] },
+            promptAutocomplete: {
+                enabled: false,
+                ai: { enabled: true, model: 'gpt-4', debounceMs: 250, timeoutMs: 1000 },
+            },
+        });
+    });
+
+    it('applies repo PATCH merge and clear rules without HTTP routes', () => {
+        const { preferences, patch } = applyRepoPreferencesPatch(
+            {
+                lastSkills: { task: ['impl'], ask: ['go-deep'] },
+                lastModels: { task: 'gpt-4' },
+                defaultModel: 'gpt-4',
+                defaultModels: { task: 'gpt-4', ask: 'claude-3' },
+                activityFilters: { statusFilter: 'running' },
+                workItems: {
+                    sync: {
+                        github: {
+                            owner: 'plusplusoneplusplus',
+                            repo: 'shortcuts',
+                            pollingEnabled: true,
+                        },
+                    },
+                },
+                disabledLlmTools: ['memory'],
+                linkedRepoIds: ['ws-linked'],
+            },
+            {
+                lastSkills: { task: [] },
+                lastModels: { ask: 'claude-3' },
+                defaultModel: '',
+                defaultModels: { task: '' },
+                activityFilters: { typeFilter: 'chat' },
+                workItems: {
+                    sync: {
+                        github: {
+                            pollingEnabled: false,
+                            pollIntervalMinutes: 10,
+                        },
+                    },
+                },
+                disabledLlmTools: ['create_bug', 'ask_user'],
+                linkedRepoIds: [],
+            },
+        );
+
+        expect(patch.disabledLlmTools).toEqual(['ask_user']);
+        expect(preferences).toEqual({
+            lastSkills: { ask: ['go-deep'] },
+            lastModels: { task: 'gpt-4', ask: 'claude-3' },
+            defaultModels: { ask: 'claude-3' },
+            activityFilters: { statusFilter: 'running', typeFilter: 'chat' },
+            workItems: {
+                sync: {
+                    github: {
+                        owner: 'plusplusoneplusplus',
+                        repo: 'shortcuts',
+                        pollingEnabled: false,
+                        pollIntervalMinutes: 10,
+                    },
+                },
+            },
+            disabledLlmTools: ['ask_user'],
+        });
     });
 });
 

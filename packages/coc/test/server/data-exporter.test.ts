@@ -223,6 +223,9 @@ describe('exportAllData', () => {
 
         // Only the valid queue should be included
         expect(payload.metadata.queueFileCount).toBe(1);
+        expect(payload.metadata.warnings).toEqual([
+            expect.stringContaining('Skipped queue file'),
+        ]);
         expect(payload.queueHistory).toHaveLength(1);
         expect(payload.queueHistory[0].repoId).toBe('good1234');
 
@@ -294,6 +297,9 @@ describe('exportAllData', () => {
         expect(payload.imageBlobs).toHaveLength(1);
         expect(payload.imageBlobs![0].taskId).toBe('task-good');
         expect(payload.metadata.blobFileCount).toBe(1);
+        expect(payload.metadata.warnings).toEqual([
+            expect.stringContaining('Skipped image blob file'),
+        ]);
     });
 
     it('extracts taskId from filename correctly', async () => {
@@ -304,5 +310,23 @@ describe('exportAllData', () => {
 
         expect(payload.imageBlobs).toHaveLength(1);
         expect(payload.imageBlobs![0].taskId).toBe('my-complex-task-id');
+    });
+
+    it('surfaces corrupt repo preference files as export warnings', async () => {
+        const goodRepoDir = path.join(dataDir, 'repos', 'repo-good');
+        const badRepoDir = path.join(dataDir, 'repos', 'repo-bad');
+        writeJSON(path.join(goodRepoDir, 'preferences.json'), { lastDepth: 'deep' });
+        fs.mkdirSync(badRepoDir, { recursive: true });
+        writeFile(path.join(badRepoDir, 'preferences.json'), '{corrupt json!!!');
+
+        const payload = await exportAllData({ store, dataDir });
+
+        expect(payload.metadata.repoPreferenceCount).toBe(1);
+        expect(payload.repoPreferences).toEqual([
+            { repoId: 'repo-good', repoRootPath: '', preferences: { lastDepth: 'deep' } },
+        ]);
+        expect(payload.metadata.warnings).toEqual([
+            expect.stringContaining('Skipped repo preferences file'),
+        ]);
     });
 });

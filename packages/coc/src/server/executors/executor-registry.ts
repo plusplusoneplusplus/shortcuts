@@ -57,6 +57,8 @@ export interface ExecutorRegistryOptions {
     getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
     /** Late-bound follow-up delivery capability for the post mode of `send_to_conversation`. */
     getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
+    /** Late-bound provider/tier helpers for `send_to_conversation`. */
+    getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     getDreamRunExecutor?: () => import('../dreams/dream-runner').DreamRunExecutor | undefined;
     cancelledTasks?: Set<string>;
@@ -110,6 +112,7 @@ export class ExecutorRegistry {
             getLoopInfra: options.getLoopInfra,
             getEnqueueChat: options.getEnqueueChat,
             getSendMessage: options.getSendMessage,
+            getSendToConversationRuntime: options.getSendToConversationRuntime,
             getMcpOauthManager: options.getMcpOauthManager,
             provider: options.provider,
             ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,

@@ -6,7 +6,8 @@
  * column. Off (classic mode) or on mobile it renders nothing (topbar keeps the
  * cluster). It also renders nothing on views that dock the cluster in their own
  * left-column footer: the workspace chat/activity sub-tab, the admin shell, the
- * My Work workspace, and the workspace notes sub-tab.
+ * My Work workspace, the workspace notes sub-tab, and the workspace settings
+ * sub-tab.
  *
  * @vitest-environment jsdom
  */
@@ -111,6 +112,13 @@ describe('GlobalStatusDock', () => {
         // NotesView hosts the cluster in its own NotesSidebar footer, so the
         // global band stands down — otherwise a partial-width band paints an
         // empty white strip beside the note editor.
+        expect(screen.queryByTestId('status-actions')).toBeNull();
+        expect(container.firstChild).toBeNull();
+    });
+
+    it('renders nothing on the workspace settings sub-tab (RepoSettingsTab docks the cluster in its own sidebar footer)', () => {
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'settings' };
+        const { container } = render(<GlobalStatusDock />);
         expect(screen.queryByTestId('status-actions')).toBeNull();
         expect(container.firstChild).toBeNull();
     });

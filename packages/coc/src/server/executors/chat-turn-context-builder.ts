@@ -18,7 +18,7 @@
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
-import type { EnqueueChatFn, SendMessageFn } from '../llm-tools/send-to-conversation-tool';
+import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';
 import type { MemoryV2Addon } from './memory-v2-addon';
@@ -54,6 +54,8 @@ export interface ChatTurnContextInput {
      * Absent → post mode reports the capability is unavailable.
      */
     sendMessage?: SendMessageFn;
+    /** Runtime provider/tier helpers used by send_to_conversation. */
+    sendToConversationRuntime?: SendToConversationRuntimeOptions;
     scheduleWakeup?: WakeupToolDeps;
     loopTools?: LoopToolDeps;
     askUser?: {
@@ -164,6 +166,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         broadcastWorkItem: input.broadcastWorkItem,
         enqueueChat: input.enqueueChat,
         sendMessage: input.sendMessage,
+        sendToConversationRuntime: input.sendToConversationRuntime,
         memoryV2: includeMemoryV2 ? memoryV2 : undefined,
         scheduleWakeup: input.scheduleWakeup,
         loopTools: input.loopTools,

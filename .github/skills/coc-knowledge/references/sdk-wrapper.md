@@ -35,7 +35,7 @@ Location: `packages/coc-agent-sdk/src/`
 | `model-reasoning.ts` | Metadata-aware model/reasoning resolver; variant IDs with `capabilities.family` sent as base model + reasoning effort |
 | `model-context-tier.ts` | Copilot context-tier resolver: `getCopilotContextTierForModel`/`getCopilotLongContextPromptLimit` derive `"long_context"` strictly from tiered billing metadata (`billing.tokenPrices.longContext.contextMax`, camelCase or snake_case) |
 | `claude-model-catalog.ts` | `findClaudeCatalogModel` — bridges configured Claude model ids (CLI aliases, dotted marketing ids, dashed CLI ids, provider-default sentinels) to Claude CLI catalog entries via exact, dashed-normalized, and family (id/name/description) matching |
-| `effort-tier-defaults.ts` | Hardcoded per-provider effort-tier defaults (`very-low`/`low`/`medium`/`high` → model + reasoning effort) and stored-config merge helper; Claude tiers reference CLI catalog aliases (`haiku`/`sonnet`/`opus`), with no pinned effort for Haiku |
+| `effort-tier-defaults.ts` | Hardcoded per-provider effort-tier defaults (`very-low`/`low`/`medium`/`high` → model + reasoning effort) and stored-config merge helper; Copilot defaults are Luna/Terra/Opus/Sol all pinned to `xhigh`, and Claude tiers reference CLI catalog aliases (`haiku`/`sonnet`/`opus`), with no pinned effort for Haiku |
 | `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json`, workspace `.vscode/mcp.json`, and explicit request options |
 | `trusted-folder.ts` | Pre-registers working directories in `~/.copilot/config.json` |
 | `image-converter.ts` | Image file detection plus data-URL/base64 conversion helpers |

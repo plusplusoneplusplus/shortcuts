@@ -15,14 +15,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { importData, DataWiper } from '@plusplusoneplusplus/coc-server';
 import {
     EXPORT_SCHEMA_VERSION,
     type CoCExportPayload,
     type ImportOptions,
 } from '@plusplusoneplusplus/coc-server';
-import { readPreferences, writePreferences } from '../../src/server/preferences-handler';
+import { readPreferences, readRepoPreferences, writePreferences } from '../../src/server/preferences-handler';
 import { getRepoDataPath } from '../../src/server/paths';
 
 /** Get the per-repo queue file path (legacy JSON format). */
@@ -308,6 +308,85 @@ describe('importData', () => {
             expect(result.importedBlobFiles).toBe(0);
             expect(result.errors).toEqual([]);
         });
+
+        it('restores per-repo preferences through validation helpers', async () => {
+            const payload = buildPayload({
+                repoPreferences: [{
+                    repoId: 'ws-prefs',
+                    repoRootPath: '/repo',
+                    preferences: {
+                        lastDepth: 'deep',
+                        disabledLlmTools: ['create_bug', 'ask_user'],
+                        unknownField: 'dropped',
+                    },
+                }],
+            });
+
+            const result = await importData(payload, baseOptions());
+
+            expect(result.importedRepoPreferenceFiles).toBe(1);
+            expect(readRepoPreferences(dataDir, 'ws-prefs')).toEqual({
+                lastDepth: 'deep',
+                disabledLlmTools: ['ask_user'],
+            });
+
+            const raw = JSON.parse(fs.readFileSync(getRepoDataPath(dataDir, 'ws-prefs', 'preferences.json'), 'utf-8'));
+            expect(raw.unknownField).toBeUndefined();
+            expect(raw.disabledLlmTools).toEqual(['ask_user']);
+        });
+
+        it('restores schedule YAML files and schedule run rows', async () => {
+            const sqliteDir = createTempDir();
+            const sqliteStore = new SqliteProcessStore({ dbPath: path.join(sqliteDir, 'processes.db') });
+            const sqliteWiper = new DataWiper(sqliteDir, sqliteStore);
+            try {
+                const payload = buildPayload({
+                    scheduleHistory: [{
+                        repoId: 'repo-schedule',
+                        repoRootPath: '/repo',
+                        schedules: [{
+                            id: 'sched-1',
+                            name: 'Daily',
+                            cron: '0 8 * * *',
+                            prompt: 'Run daily check',
+                        }],
+                        scheduleRuns: [{
+                            id: 'run-1',
+                            scheduleId: 'sched-1',
+                            repoId: 'repo-schedule',
+                            startedAt: '2026-03-01T00:00:00.000Z',
+                            completedAt: '2026-03-01T00:01:00.000Z',
+                            status: 'completed',
+                            durationMs: 60000,
+                            processId: 'proc-1',
+                            taskId: 'task-1',
+                        }],
+                    }],
+                });
+
+                const result = await importData(payload, {
+                    store: sqliteStore,
+                    dataDir: sqliteDir,
+                    mode: 'replace',
+                    wiper: sqliteWiper,
+                });
+
+                expect(result.importedScheduleFiles).toBe(1);
+                expect(fs.existsSync(getRepoDataPath(sqliteDir, 'repo-schedule', path.join('schedules', 'sched-1.yaml')))).toBe(true);
+                const row = sqliteStore.getDatabase()
+                    .prepare('SELECT * FROM schedule_runs WHERE id = ?')
+                    .get('run-1') as { schedule_id: string; repo_id: string; status: string; task_id: string };
+                expect(row).toMatchObject({
+                    schedule_id: 'sched-1',
+                    repo_id: 'repo-schedule',
+                    status: 'completed',
+                    task_id: 'task-1',
+                });
+            } finally {
+                sqliteStore.close();
+                fs.rmSync(sqliteDir, { recursive: true, force: true });
+            }
+        });
     });
 
     // ========================================================================
@@ -512,6 +591,99 @@ describe('importData', () => {
 
             expect(result.importedBlobFiles).toBe(0);
             expect(result.errors).toEqual([]);
+        });
+
+        it('merges per-repo preferences through validation helpers', async () => {
+            writeJSON(getRepoDataPath(dataDir, 'ws-prefs', 'preferences.json'), {
+                lastModel: 'gpt-4',
+                disabledLlmTools: ['memory'],
+            });
+            const payload = buildPayload({
+                repoPreferences: [{
+                    repoId: 'ws-prefs',
+                    repoRootPath: '/repo',
+                    preferences: {
+                        disabledLlmTools: ['create_bug', 'ask_user'],
+                        unknownField: 'dropped',
+                    },
+                }],
+            });
+
+            const result = await importData(payload, baseOptions({ mode: 'merge' }));
+
+            expect(result.importedRepoPreferenceFiles).toBe(1);
+            expect(readRepoPreferences(dataDir, 'ws-prefs')).toEqual({
+                lastModel: 'gpt-4',
+                disabledLlmTools: ['ask_user'],
+            });
+            const raw = JSON.parse(fs.readFileSync(getRepoDataPath(dataDir, 'ws-prefs', 'preferences.json'), 'utf-8'));
+            expect(raw.unknownField).toBeUndefined();
+        });
+
+        it('merges per-repo preferences with the API PATCH merge policy', async () => {
+            writeJSON(getRepoDataPath(dataDir, 'ws-prefs', 'preferences.json'), {
+                lastSkills: { task: ['impl'], ask: ['go-deep'] },
+                lastModels: { task: 'gpt-4' },
+                defaultModel: 'gpt-4',
+                defaultModels: { task: 'gpt-4', ask: 'claude-3' },
+                activityFilters: { statusFilter: 'running' },
+                workItems: {
+                    sync: {
+                        github: {
+                            owner: 'plusplusoneplusplus',
+                            repo: 'shortcuts',
+                            pollingEnabled: true,
+                        },
+                    },
+                },
+                linkedRepoIds: ['ws-linked'],
+                disabledLlmTools: ['memory'],
+            });
+
+            const payload = buildPayload({
+                repoPreferences: [{
+                    repoId: 'ws-prefs',
+                    repoRootPath: '/repo',
+                    preferences: {
+                        lastSkills: { task: [] },
+                        lastModels: { ask: 'claude-3' },
+                        defaultModel: '',
+                        defaultModels: { task: '' },
+                        activityFilters: { typeFilter: 'chat' },
+                        workItems: {
+                            sync: {
+                                github: {
+                                    pollingEnabled: false,
+                                    pollIntervalMinutes: 10,
+                                },
+                            },
+                        },
+                        linkedRepoIds: [],
+                        disabledLlmTools: ['create_bug', 'ask_user'],
+                    },
+                }],
+            });
+
+            const result = await importData(payload, baseOptions({ mode: 'merge' }));
+
+            expect(result.importedRepoPreferenceFiles).toBe(1);
+            expect(readRepoPreferences(dataDir, 'ws-prefs')).toEqual({
+                lastSkills: { ask: ['go-deep'] },
+                lastModels: { task: 'gpt-4', ask: 'claude-3' },
+                defaultModels: { ask: 'claude-3' },
+                activityFilters: { statusFilter: 'running', typeFilter: 'chat' },
+                workItems: {
+                    sync: {
+                        github: {
+                            owner: 'plusplusoneplusplus',
+                            repo: 'shortcuts',
+                            pollingEnabled: false,
+                            pollIntervalMinutes: 10,
+                        },
+                    },
+                },
+                disabledLlmTools: ['ask_user'],
+            });
         });
     });
 

@@ -127,6 +127,8 @@ export interface ExportMetadata {
     repoPreferenceCount?: number;
     /** Number of schedule snapshots included. */
     scheduleFileCount?: number;
+    /** Non-fatal export warnings, such as skipped corrupt files. */
+    warnings?: string[];
 }
 
 /** One task's externalized images, included in the export payload. */

@@ -177,3 +177,29 @@ describe('ConversationArea mode-change divider', () => {
         expect(screen.getByTestId('mode-change-divider')).toBeTruthy();
     });
 });
+
+describe('ConversationArea display-only turns', () => {
+    it('renders a displayOnly user turn as a visible bubble (not filtered like deletedAt/archived)', () => {
+        // The Ralph-promote guidance bubble is a displayOnly user turn. Unlike
+        // deletedAt/archived turns, displayOnly must still render in the UI.
+        const turns = [
+            makeTurn({ turnIndex: 0, role: 'user', content: 'Original question' }),
+            makeTurn({ turnIndex: 1, role: 'assistant', content: 'Assistant reply' }),
+            makeTurn({ turnIndex: 2, role: 'user', content: 'focus the goal on the queue refactor', displayOnly: true }),
+        ];
+
+        render(<ConversationArea {...baseProps} turns={turns} />);
+        expect(screen.getByTestId('turn-2').textContent).toBe('focus the goal on the queue refactor');
+    });
+
+    it('still filters out deletedAt turns while keeping displayOnly turns', () => {
+        const turns = [
+            makeTurn({ turnIndex: 0, role: 'user', content: 'kept guidance', displayOnly: true }),
+            makeTurn({ turnIndex: 1, role: 'user', content: 'deleted turn', deletedAt: new Date().toISOString() }),
+        ];
+
+        render(<ConversationArea {...baseProps} turns={turns} />);
+        expect(screen.getByTestId('turn-0')).toBeTruthy();
+        expect(screen.queryByTestId('turn-1')).toBeNull();
+    });
+});

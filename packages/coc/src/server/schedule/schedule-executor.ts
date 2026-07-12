@@ -25,12 +25,23 @@ import {
 } from '../preferences-handler';
 import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
+import type { RalphSessionCompleteEvent } from '../queue/queue-executor-bridge';
 import type {
     ScheduleEntry,
     ScheduleRunRecord,
     ScheduleChangeEvent,
 } from './schedule-manager-types';
 import type { ScheduleRunHistory } from './schedule-run-history';
+import {
+    awaitQueueTerminalOutcome,
+    createScheduleQueueEventBus,
+    getTerminalOutcome,
+    ralphSessionCompleteSignal,
+    taskCancelledSignal,
+    taskCompletedSignal,
+    taskFailedSignal,
+    type QueueTerminalOutcome,
+} from './schedule-queue-await';
 
 export type ScheduleEventEmit = (event: ScheduleChangeEvent) => void;
 
@@ -180,53 +191,19 @@ export class ScheduleExecutor {
     }
 
     private waitForTaskTerminal(taskId: string): Promise<QueueTerminalOutcome> {
-        const queueManager = this.queueManager;
-        if (!queueManager) return Promise.resolve({ status: 'completed' });
-        if (
-            typeof queueManager.on !== 'function'
-            || typeof queueManager.off !== 'function'
-            || typeof queueManager.getTask !== 'function'
-        ) {
-            return Promise.resolve({ status: 'completed' });
-        }
+        const bus = createScheduleQueueEventBus(this.queueManager);
+        if (!bus) return Promise.resolve({ status: 'completed' });
 
-        const existingOutcome = getTerminalOutcome(queueManager.getTask(taskId));
-        if (existingOutcome) return Promise.resolve(existingOutcome);
-
-        return new Promise(resolve => {
-            let settled = false;
-            const resolveOnce = (outcome: QueueTerminalOutcome) => {
-                if (settled) return;
-                settled = true;
-                cleanup();
-                resolve(outcome);
-            };
-            const onCompleted = (task: QueuedTask) => {
-                if (task.id !== taskId) return;
-                resolveOnce({ status: 'completed' });
-            };
-            const onFailed = (task: QueuedTask, error: Error) => {
-                if (task.id !== taskId) return;
-                resolveOnce({ status: 'failed', error: error ?? task.error });
-            };
-            const onCancelled = (task: QueuedTask) => {
-                if (task.id !== taskId) return;
-                resolveOnce({ status: 'failed', error: 'Task cancelled' });
-            };
-            const cleanup = () => {
-                queueManager.off('taskCompleted', onCompleted);
-                queueManager.off('taskFailed', onFailed);
-                queueManager.off('taskCancelled', onCancelled);
-            };
-
-            queueManager.on('taskCompleted', onCompleted);
-            queueManager.on('taskFailed', onFailed);
-            queueManager.on('taskCancelled', onCancelled);
-
-            const terminalOutcome = getTerminalOutcome(queueManager.getTask(taskId));
-            if (terminalOutcome) {
-                resolveOnce(terminalOutcome);
-            }
+        const matchesTask = (task: QueuedTask) => task.id === taskId;
+        return awaitQueueTerminalOutcome({
+            bus,
+            taskId,
+            precheck: getTerminalOutcome,
+            signals: [
+                taskCompletedSignal(matchesTask),
+                taskFailedSignal(matchesTask),
+                taskCancelledSignal(matchesTask),
+            ],
         });
     }
 
@@ -236,57 +213,31 @@ export class ScheduleExecutor {
         workspaceId: string;
         scheduleRunId: string;
     }): Promise<QueueTerminalOutcome> {
-        const queueManager = this.queueManager;
-        if (!queueManager) return Promise.resolve({ status: 'completed' });
-        if (
-            typeof queueManager.on !== 'function'
-            || typeof queueManager.off !== 'function'
-            || typeof queueManager.getTask !== 'function'
-        ) {
-            return this.waitForTaskTerminal(input.taskId);
-        }
+        const bus = createScheduleQueueEventBus(this.queueManager);
+        if (!bus) return Promise.resolve({ status: 'completed' });
 
-        const existingOutcome = getTerminalOutcome(queueManager.getTask(input.taskId));
-        if (existingOutcome?.status === 'failed') return Promise.resolve(existingOutcome);
-
-        return new Promise(resolve => {
-            let settled = false;
-            const resolveOnce = (outcome: QueueTerminalOutcome) => {
-                if (settled) return;
-                settled = true;
-                cleanup();
-                resolve(outcome);
-            };
-            const onSessionComplete = (event: RalphSessionCompleteEvent) => {
-                if (!matchesRalphSession(input, event)) return;
-                if (isFailedRalphCompletionReason(event.reason)) {
-                    resolveOnce({ status: 'failed', error: event.reason });
-                    return;
-                }
-                resolveOnce({ status: 'completed' });
-            };
-            const onFailed = (task: QueuedTask, error: Error) => {
-                if (!matchesScheduledRalphTask(input, task)) return;
-                resolveOnce({ status: 'failed', error: error ?? task.error });
-            };
-            const onCancelled = (task: QueuedTask) => {
-                if (!matchesScheduledRalphTask(input, task)) return;
-                resolveOnce({ status: 'failed', error: 'Task cancelled' });
-            };
-            const cleanup = () => {
-                queueManager.off('ralphSessionComplete' as never, onSessionComplete as never);
-                queueManager.off('taskFailed', onFailed);
-                queueManager.off('taskCancelled', onCancelled);
-            };
-
-            queueManager.on('ralphSessionComplete' as never, onSessionComplete as never);
-            queueManager.on('taskFailed', onFailed);
-            queueManager.on('taskCancelled', onCancelled);
-
-            const terminalOutcome = getTerminalOutcome(queueManager.getTask(input.taskId));
-            if (terminalOutcome?.status === 'failed') {
-                resolveOnce(terminalOutcome);
-            }
+        const matchesScheduledTask = (task: QueuedTask) => matchesScheduledRalphTask(input, task);
+        return awaitQueueTerminalOutcome({
+            bus,
+            taskId: input.taskId,
+            // A completed queue task is not terminal for a Ralph schedule — the
+            // session's final-check / gap-fix loop keeps running.  Only a
+            // failed or cancelled queue task ends the run early; success arrives
+            // via the `ralphSessionComplete` signal.
+            precheck: task => {
+                const outcome = getTerminalOutcome(task);
+                return outcome?.status === 'failed' ? outcome : undefined;
+            },
+            signals: [
+                ralphSessionCompleteSignal(
+                    event => matchesRalphSession(input, event),
+                    reason => isFailedRalphCompletionReason(reason)
+                        ? { status: 'failed', error: reason }
+                        : { status: 'completed' },
+                ),
+                taskFailedSignal(matchesScheduledTask),
+                taskCancelledSignal(matchesScheduledTask),
+            ],
         });
     }
 
@@ -380,30 +331,12 @@ export class ScheduleExecutor {
     }
 }
 
-type QueueTerminalOutcome =
-    | { status: 'completed' }
-    | { status: 'failed'; error: unknown };
-
 function scheduleKey(repoId: string, scheduleId: string): string {
     return `${repoId}\0${scheduleId}`;
 }
 
 function createRalphSessionId(): string {
     return `ralph-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-}
-
-function getTerminalOutcome(task: QueuedTask | undefined): QueueTerminalOutcome | undefined {
-    if (!task) return undefined;
-    if (task.status === 'completed') return { status: 'completed' };
-    if (task.status === 'failed') return { status: 'failed', error: task.error };
-    if (task.status === 'cancelled') return { status: 'failed', error: 'Task cancelled' };
-    return undefined;
-}
-
-interface RalphSessionCompleteEvent {
-    workspaceId: string;
-    sessionId?: string;
-    reason: string;
 }
 
 function matchesRalphSession(

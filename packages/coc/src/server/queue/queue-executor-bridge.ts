@@ -62,6 +62,8 @@ export interface CLITaskExecutorOptions {
      * existing conversation).
      */
     getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
+    /** Late-bound provider/tier helpers for send_to_conversation. */
+    getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     dreamRunExecutor?: DreamRunExecutor;
@@ -187,6 +189,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             getLoopInfra: options.getLoopInfra,
             getEnqueueChat: options.getEnqueueChat,
             getSendMessage: options.getSendMessage,
+            getSendToConversationRuntime: options.getSendToConversationRuntime,
             getMcpOauthManager: options.getMcpOauthManager,
             getDreamRunExecutor: () => this.dreamRunExecutor,
             cancelledTasks: this.cancelledTasks,

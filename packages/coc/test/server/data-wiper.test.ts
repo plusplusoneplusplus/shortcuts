@@ -94,6 +94,21 @@ describe('DataWiper', () => {
             expect(summary.deletedQueues).toBe(3);
         });
 
+        it('should count queue files from repos directory', async () => {
+            writeJSON(path.join(dataDir, 'repos', 'repo1', 'queues.json'), {
+                version: 3,
+                repoRootPath: '/repo1',
+                repoId: 'repo1',
+                pending: [],
+                history: [],
+            });
+
+            const wiper = new DataWiper(dataDir, store);
+            const summary = await wiper.getDryRunSummary();
+
+            expect(summary.deletedQueues).toBe(1);
+        });
+
         it('should detect preferences file', async () => {
             writeJSON(path.join(dataDir, 'preferences.json'), { lastModel: 'gpt-4' });
 
@@ -270,6 +285,23 @@ describe('DataWiper', () => {
             expect(stateRows.cnt).toBe(0);
             const pathRows = db.prepare('SELECT COUNT(*) as cnt FROM queue_repo_paths').get() as { cnt: number };
             expect(pathRows.cnt).toBe(0);
+        });
+
+        it('should delete queue files from repos directory', async () => {
+            const queuePath = path.join(dataDir, 'repos', 'repo1', 'queues.json');
+            writeJSON(queuePath, {
+                version: 3,
+                repoRootPath: '/repo1',
+                repoId: 'repo1',
+                pending: [],
+                history: [],
+            });
+
+            const wiper = new DataWiper(dataDir, store);
+            const result = await wiper.wipeData({ includeWikis: false });
+
+            expect(result.deletedQueues).toBe(1);
+            expect(fs.existsSync(queuePath)).toBe(false);
         });
 
         it('should delete preferences file', async () => {
