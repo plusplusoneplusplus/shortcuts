@@ -14,6 +14,10 @@ import {
     STOP_FIND_IN_PAGE_CHANNEL,
     FIND_RESULT_CHANNEL,
 } from './find-in-page';
+import {
+    DEVTUNNEL_MODAL_SUBMIT_CHANNEL,
+    DEVTUNNEL_MODAL_CANCEL_CHANNEL,
+} from './devtunnel-modal';
 
 /** Shape of an Electron `found-in-page` result, as relayed to the renderer. */
 interface FindResult {
@@ -46,6 +50,16 @@ const api = {
             ipcRenderer.on(FIND_RESULT_CHANNEL, listener);
             return () => ipcRenderer.removeListener(FIND_RESULT_CHANNEL, listener);
         },
+    },
+    /**
+     * Configure… modal bridge (Windows-only Dev Tunnel feature, AC-01). The modal
+     * document (see `devtunnel-modal.ts`) calls `submit(id)` to save a new tunnel
+     * ID or `cancel()` to dismiss; the main process persists the ID and reconfigures
+     * the host. Only the tunnel ID crosses the bridge — never any credential.
+     */
+    devtunnelModal: {
+        submit: (tunnelId: string) => ipcRenderer.send(DEVTUNNEL_MODAL_SUBMIT_CHANNEL, tunnelId),
+        cancel: () => ipcRenderer.send(DEVTUNNEL_MODAL_CANCEL_CHANNEL),
     },
 } as const;
 

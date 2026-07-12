@@ -13,7 +13,7 @@
  */
 
 import * as path from 'path';
-import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell, clipboard, ipcMain } from 'electron';
+import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, shell, clipboard, ipcMain } from 'electron';
 import { attachOrStart, defaultDataDir, ServerHandle } from './server-controller';
 import { splashDataUrl } from './splash';
 import { detectAgentClis, missingAgentClis, runFirstRunPreflight } from './agent-preflight';
@@ -30,7 +30,7 @@ import {
     UpdateChannel,
     UpdatePrompt,
 } from './update-check';
-import { buildAppMenuTemplate, buildTrayMenuTemplate } from './app-menu';
+import { buildAppMenuTemplate, buildTrayMenuTemplate, DevTunnelMenuInput } from './app-menu';
 import {
     FIND_IN_PAGE_CHANNEL,
     STOP_FIND_IN_PAGE_CHANNEL,
@@ -38,6 +38,27 @@ import {
     buildFindBarScript,
 } from './find-in-page';
 import { buildWindowOptions, buildMacInsetCss } from './window-config';
+import {
+    DevTunnelConfig,
+    defaultDevTunnelConfig,
+    defaultTunnelId,
+    readDevTunnelConfig,
+    setDevTunnelEnabled,
+    setDevTunnelId,
+} from './devtunnel-config';
+import {
+    createDevTunnelHostManager,
+    defaultDevTunnelHostSpawner,
+    DevTunnelHostErrorInfo,
+    DevTunnelHostManager,
+} from './devtunnel-host';
+import { ensureDevTunnelHttpBinding, resolveDevTunnelCliPath } from './devtunnel-cli';
+import { autoStartDevTunnelOnLaunch } from './devtunnel-launch';
+import {
+    devTunnelConfigDataUrl,
+    DEVTUNNEL_MODAL_CANCEL_CHANNEL,
+    DEVTUNNEL_MODAL_SUBMIT_CHANNEL,
+} from './devtunnel-modal';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
 // In dev (electron launched against this package) this fixes the menu-bar name,
@@ -52,6 +73,16 @@ let tray: Tray | null = null;
 let serverHandle: ServerHandle | null = null;
 /** Set once we begin draining on quit, so `before-quit` only intercepts once. */
 let isQuitting = false;
+/**
+ * AC-01/03/04: the Windows-only DevTunnel host manager. Null on macOS/Linux and
+ * until the CoC server + port are known. Owns only the `devtunnel host` child —
+ * never the CoC server — so disposing it can never stop an attached server.
+ */
+let devTunnelManager: DevTunnelHostManager | null = null;
+/** The Configure… modal window, while open (Windows-only). */
+let devTunnelModalWindow: BrowserWindow | null = null;
+/** Guard so the Dev Tunnel modal IPC handlers are registered only once. */
+let devTunnelModalIpcRegistered = false;
 
 /** Fallback tray glyph used when the real icon file cannot be found. */
 const TRAY_ICON_FALLBACK_DATA_URL =
@@ -446,8 +477,267 @@ function setupApplicationMenu(currentChannel?: UpdateChannel): void {
             setUpdateChannel(defaultDataDir(), ch);
             setupApplicationMenu(ch);
         },
+        // AC-01: the top-level "Dev Tunnel" menu. Undefined off win32 / before the
+        // manager exists; `buildAppMenuTemplate` only inserts it on win32 anyway.
+        devTunnel: buildDevTunnelMenuInput(),
     });
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// ─── AC-01/03/04: Windows-only Dev Tunnel wiring ────────────────────────────
+//
+// Every behavioural decision lives in the electron-free modules (config store,
+// CLI reconciler, host lifecycle, launch gate, modal renderer). This block is
+// only the thin Electron glue: build the menu snapshot, open the modal window,
+// render failures as dialogs/notifications, and hand the manager the real deps.
+// All of it is gated behind win32 so macOS/Linux menus/behaviour stay unchanged.
+
+/**
+ * Read the persisted DevTunnel preference, degrading a malformed file to the
+ * default (feature-off) config so a corrupt file can never wedge the menu build
+ * or a Start/Stop action. The config module still surfaces the malformed case as
+ * an error to callers that want it; here we only need a value to render.
+ */
+function readDevTunnelConfigSafe(): DevTunnelConfig {
+    try {
+        return readDevTunnelConfig(defaultDataDir());
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[coc-desktop] devtunnel config unreadable: ${message}\n`);
+        return defaultDevTunnelConfig();
+    }
+}
+
+/**
+ * Build the current Dev Tunnel menu snapshot (state + gate + click handlers), or
+ * `undefined` when the feature is inactive (non-win32, or no manager yet). The
+ * status/Retry/Copy rows read the runtime `manager.state`; Start vs Stop reads
+ * the persisted `enabled` gate.
+ */
+function buildDevTunnelMenuInput(): DevTunnelMenuInput | undefined {
+    if (process.platform !== 'win32' || !devTunnelManager) {
+        return undefined;
+    }
+    return {
+        state: devTunnelManager.state,
+        enabled: readDevTunnelConfigSafe().enabled,
+        handlers: {
+            onConfigure: () => openDevTunnelConfigModal(),
+            onStart: () => void startDevTunnel(),
+            onStop: () => void stopDevTunnel(),
+            onRetry: () => void devTunnelManager?.retry(),
+            onShowLastError: () => showDevTunnelLastError(),
+            onCopyPublicUrl: () => copyDevTunnelPublicUrl(),
+        },
+    };
+}
+
+/**
+ * Construct the host manager once the CoC server + port are known, then rebuild
+ * the menu (to add the Dev Tunnel item) and auto-start when enabled. Called only
+ * on win32, AFTER the SPA is shown — the auto-start is fire-and-forget so a
+ * DevTunnel problem can never block or delay the desktop window (AC-04).
+ */
+function setupDevTunnel(port: number): void {
+    registerDevTunnelModalIpc();
+    devTunnelManager = createDevTunnelHostManager({
+        ensureBinding: (opts) => ensureDevTunnelHttpBinding(opts),
+        resolveCliPath: () => resolveDevTunnelCliPath(),
+        spawn: defaultDevTunnelHostSpawner,
+        // Rebuild the native menu on every observable transition so the status
+        // row, Start/Stop, Retry, and Copy Public URL always match reality.
+        onStateChange: () => setupApplicationMenu(),
+        // AC-04: exactly one Windows notification per auto-failure episode. Only
+        // the concise message crosses — never the bounded raw CLI detail.
+        onFailureNotification: (error) => showDevTunnelNotification(error),
+    });
+    // Rebuild now so the Dev Tunnel menu appears immediately (Status: Off).
+    setupApplicationMenu();
+    // AC-01 auto-start / AC-04 non-blocking: read the preference and, when
+    // enabled, kick the host fire-and-forget after the SPA is already up.
+    autoStartDevTunnelOnLaunch({
+        port,
+        readConfig: () => readDevTunnelConfig(defaultDataDir()),
+        manager: devTunnelManager,
+    });
+}
+
+/** Register the Configure… modal's submit/cancel IPC handlers exactly once. */
+function registerDevTunnelModalIpc(): void {
+    if (devTunnelModalIpcRegistered) {
+        return;
+    }
+    devTunnelModalIpcRegistered = true;
+    ipcMain.on(DEVTUNNEL_MODAL_SUBMIT_CHANNEL, (_event, rawId: unknown) => {
+        const id = typeof rawId === 'string' ? rawId.trim() : '';
+        closeDevTunnelModal();
+        if (id) {
+            void saveDevTunnelConfig(id);
+        }
+    });
+    ipcMain.on(DEVTUNNEL_MODAL_CANCEL_CHANNEL, () => {
+        closeDevTunnelModal();
+    });
+}
+
+/**
+ * Open the fixed-size, dark-shell Configure… modal owned by the main window. The
+ * single field is prefilled with the current persisted ID (or the default
+ * `<computer-name>-coc`). Focus an already-open modal rather than stacking two.
+ */
+function openDevTunnelConfigModal(): void {
+    if (process.platform !== 'win32') {
+        return;
+    }
+    if (devTunnelModalWindow && !devTunnelModalWindow.isDestroyed()) {
+        devTunnelModalWindow.focus();
+        return;
+    }
+    const tunnelId = readDevTunnelConfigSafe().tunnelId || defaultTunnelId();
+    const modal = new BrowserWindow({
+        width: 440,
+        height: 250,
+        parent: mainWindow ?? undefined,
+        modal: true,
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        fullscreenable: false,
+        show: false,
+        backgroundColor: '#0d1117',
+        title: 'Configure Dev Tunnel',
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+    });
+    modal.setMenuBarVisibility(false);
+    modal.once('ready-to-show', () => {
+        if (!modal.isDestroyed()) {
+            modal.show();
+        }
+    });
+    modal.on('closed', () => {
+        devTunnelModalWindow = null;
+    });
+    void modal.loadURL(devTunnelConfigDataUrl({ tunnelId }));
+    devTunnelModalWindow = modal;
+}
+
+/** Close the Configure… modal if it is still open. */
+function closeDevTunnelModal(): void {
+    if (devTunnelModalWindow && !devTunnelModalWindow.isDestroyed()) {
+        devTunnelModalWindow.close();
+    }
+    devTunnelModalWindow = null;
+}
+
+/**
+ * Persist a saved tunnel ID and, if a host is running, reconfigure it (stop the
+ * old tunnel, start the newly configured one). Preserves the current enabled
+ * flag. Never throws into the IPC handler.
+ */
+async function saveDevTunnelConfig(tunnelId: string): Promise<void> {
+    try {
+        setDevTunnelId(defaultDataDir(), tunnelId);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[coc-desktop] failed to save devtunnel id: ${message}\n`);
+        return;
+    }
+    const port = serverHandle?.port;
+    if (devTunnelManager && port !== undefined) {
+        try {
+            await devTunnelManager.reconfigure({ tunnelId, port });
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            process.stderr.write(`[coc-desktop] devtunnel reconfigure failed: ${message}\n`);
+        }
+    }
+    // Reflect the (possibly unchanged) state — reconfigure only emits on change.
+    setupApplicationMenu();
+}
+
+/**
+ * AC-01 Start: persist `enabled: true`, then start the host. A manual-start
+ * failure returns a settled `failed` state — surface it as an actionable modal
+ * (AC-04), not a background notification.
+ */
+async function startDevTunnel(): Promise<void> {
+    const port = serverHandle?.port;
+    if (!devTunnelManager || port === undefined) {
+        return;
+    }
+    const config = setDevTunnelEnabled(defaultDataDir(), true);
+    // Reflect the Start→Stop toggle immediately, before the async attempt.
+    setupApplicationMenu();
+    const state = await devTunnelManager.start(
+        { tunnelId: config.tunnelId, port },
+        { trigger: 'manual' },
+    );
+    if (state.status === 'failed' && state.error) {
+        showDevTunnelErrorDialog('Dev Tunnel failed to start', state.error);
+    }
+}
+
+/** AC-01 Stop: persist `enabled: false`, cancel timers, and reap the host tree. */
+async function stopDevTunnel(): Promise<void> {
+    setDevTunnelEnabled(defaultDataDir(), false);
+    // Reflect the Stop→Start toggle immediately.
+    setupApplicationMenu();
+    await devTunnelManager?.stop();
+}
+
+/** AC-04 "Show Last Error…": surface the bounded last-error detail in a dialog. */
+function showDevTunnelLastError(): void {
+    const error = devTunnelManager?.state.error;
+    if (error) {
+        showDevTunnelErrorDialog('Dev Tunnel Error', error);
+    }
+}
+
+/** AC-01 "Copy Public URL": copy the live public URL to the clipboard. */
+function copyDevTunnelPublicUrl(): void {
+    const url = devTunnelManager?.state.publicUrl;
+    if (url) {
+        clipboard.writeText(url);
+    }
+}
+
+/**
+ * AC-04: render a normalized DevTunnel failure as an actionable error dialog. The
+ * concise `message` carries the guidance (install CLI, run `devtunnel user login`,
+ * etc.); the bounded `detail` shows diagnostic text without leaking secrets.
+ */
+function showDevTunnelErrorDialog(title: string, error: DevTunnelHostErrorInfo): void {
+    void dialog
+        .showMessageBox({
+            type: 'error',
+            title,
+            message: error.message,
+            detail: error.detail,
+            buttons: ['OK'],
+            noLink: true,
+        })
+        .catch(() => { /* dialog failures are non-fatal */ });
+}
+
+/**
+ * AC-04: show exactly one Windows notification for an auto-start/reconnect failure
+ * episode. Only the concise message is shown — never the raw CLI detail — so no
+ * credential or unbounded output can leak.
+ */
+function showDevTunnelNotification(error: DevTunnelHostErrorInfo): void {
+    try {
+        if (!Notification.isSupported()) {
+            return;
+        }
+        new Notification({ title: 'Dev Tunnel', body: error.message }).show();
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[coc-desktop] devtunnel notification failed: ${message}\n`);
+    }
 }
 
 async function bootstrap(): Promise<void> {
@@ -497,6 +787,12 @@ async function bootstrap(): Promise<void> {
         await showServedSpa(serverHandle.url);
         // AC-05: a tray to show/hide + quit, now that a window exists.
         createTray();
+        // AC-01/03/04 (Windows only): construct the DevTunnel host manager and,
+        // when enabled, auto-start it — fire-and-forget, AFTER the SPA is shown so
+        // remote exposure never blocks or delays the local window.
+        if (process.platform === 'win32') {
+            setupDevTunnel(serverHandle.port);
+        }
         // AC-06: warn (non-blocking) about any missing agent CLI now that the
         // window is up. The app is already usable regardless of the outcome.
         runAgentPreflight();
@@ -543,6 +839,12 @@ app.on('before-quit', (event) => {
     if (isQuitting) {
         return;
     }
+    // AC-03: always stop the Desktop-owned tunnel process on quit, whether the
+    // CoC server was started or only attached. `dispose()` reaps the host tree
+    // but does NOT persist `enabled: false`, so the next launch can auto-start.
+    // The manager holds no server reference, so this can never stop an attached
+    // CoC server — hence it runs BEFORE the attached-server early-return below.
+    devTunnelManager?.dispose();
     if (!serverHandle || !serverHandle.started) {
         // Nothing to drain (no server, or attached to an external one).
         return;

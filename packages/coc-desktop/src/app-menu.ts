@@ -17,6 +17,7 @@
 
 import type { MenuItemConstructorOptions } from 'electron';
 import type { UpdateChannel } from './update-check';
+import type { DevTunnelHostState, DevTunnelHostStatus } from './devtunnel-host';
 
 /** Click handlers the application menu needs wired from `main.ts`. */
 export interface AppMenuHandlers {
@@ -30,6 +31,12 @@ export interface AppMenuHandlers {
     currentChannel?: UpdateChannel;
     /** Invoked when the user selects a new update channel from the menu. */
     onSetUpdateChannel?: (channel: UpdateChannel) => void;
+    /**
+     * Windows-only Dev Tunnel menu (AC-01). When present, a top-level
+     * "Dev Tunnel" menu is added on win32 (only). Omit it (or pass a non-win32
+     * platform) to keep macOS/Linux menus unchanged.
+     */
+    devTunnel?: DevTunnelMenuInput;
 }
 
 /** The "Check for Updates…" label — shared so tests and both platforms agree. */
@@ -37,6 +44,107 @@ export const CHECK_FOR_UPDATES_LABEL = 'Check for Updates…';
 
 /** The "Update Channel" submenu label. */
 export const UPDATE_CHANNEL_LABEL = 'Update Channel';
+
+/** The top-level "Dev Tunnel" menu label (Windows only). */
+export const DEV_TUNNEL_MENU_LABEL = 'Dev Tunnel';
+/** Dev Tunnel action labels — shared so tests and `main.ts` wiring agree. */
+export const DEV_TUNNEL_CONFIGURE_LABEL = 'Configure…';
+export const DEV_TUNNEL_START_LABEL = 'Start';
+export const DEV_TUNNEL_STOP_LABEL = 'Stop';
+export const DEV_TUNNEL_RETRY_LABEL = 'Retry';
+export const DEV_TUNNEL_SHOW_ERROR_LABEL = 'Show Last Error…';
+export const DEV_TUNNEL_COPY_URL_LABEL = 'Copy Public URL';
+
+/** Click handlers the Dev Tunnel menu needs wired from `main.ts` (AC-01/03/04). */
+export interface DevTunnelMenuHandlers {
+    /** Opens the fixed-size Configure… modal. */
+    onConfigure: () => void;
+    /** Persists `enabled: true` and starts the host (shown only while disabled). */
+    onStart: () => void;
+    /** Persists `enabled: false` and stops the host (shown only while enabled). */
+    onStop: () => void;
+    /** Cancels a pending backoff and attempts immediately (shown only when failed). */
+    onRetry: () => void;
+    /** Surfaces the bounded last-error detail (shown only when an error exists). */
+    onShowLastError: () => void;
+    /** Copies the public URL to the clipboard (shown only when online). */
+    onCopyPublicUrl: () => void;
+}
+
+/** Everything the top-level Dev Tunnel menu needs to render one snapshot. */
+export interface DevTunnelMenuInput {
+    /** The latest observable tunnel state (drives status row, Retry, Copy URL). */
+    state: DevTunnelHostState;
+    /** The persisted feature gate (drives Start vs Stop). */
+    enabled: boolean;
+    handlers: DevTunnelMenuHandlers;
+}
+
+/** Human-readable status-row label for the disabled first menu item (AC-01). */
+export function devTunnelStatusLabel(status: DevTunnelHostStatus): string {
+    switch (status) {
+        case 'off':
+            return 'Status: Off';
+        case 'starting':
+            return 'Status: Starting';
+        case 'online':
+            return 'Status: Online';
+        case 'failed':
+            return 'Status: Failed';
+    }
+}
+
+/**
+ * Build the top-level "Dev Tunnel" menu (AC-01). Pure — the click wiring and the
+ * enablement/visibility of each row are asserted under Node.
+ *
+ * Rows, in order:
+ *   - a disabled status row (Off / Starting / Online / Failed);
+ *   - Configure… (always available);
+ *   - Start (while the feature is disabled) OR Stop (while enabled) — Start/Stop
+ *     toggles the persisted `enabled` gate; Retry never touches it;
+ *   - Retry (only when the current status is Failed);
+ *   - Show Last Error… (only when a normalized error is present);
+ *   - Copy Public URL (only when Online with a resolved public URL).
+ */
+export function buildDevTunnelMenu(
+    input: DevTunnelMenuInput,
+): MenuItemConstructorOptions {
+    const { state, enabled, handlers } = input;
+    const items: MenuItemConstructorOptions[] = [
+        // Disabled status row — reflects the runtime status, not the gate.
+        { label: devTunnelStatusLabel(state.status), enabled: false },
+        { type: 'separator' },
+        { label: DEV_TUNNEL_CONFIGURE_LABEL, click: handlers.onConfigure },
+    ];
+
+    // Start (feature off) or Stop (feature on) — mutually exclusive.
+    items.push(
+        enabled
+            ? { label: DEV_TUNNEL_STOP_LABEL, click: handlers.onStop }
+            : { label: DEV_TUNNEL_START_LABEL, click: handlers.onStart },
+    );
+
+    // Retry only while failed; it cancels a pending backoff and attempts now.
+    if (state.status === 'failed') {
+        items.push({ label: DEV_TUNNEL_RETRY_LABEL, click: handlers.onRetry });
+    }
+
+    // Show Last Error… only when a normalized error is present.
+    if (state.error) {
+        items.push({ label: DEV_TUNNEL_SHOW_ERROR_LABEL, click: handlers.onShowLastError });
+    }
+
+    // Copy Public URL only when online with a resolved URL.
+    if (state.status === 'online' && state.publicUrl) {
+        items.push(
+            { type: 'separator' },
+            { label: DEV_TUNNEL_COPY_URL_LABEL, click: handlers.onCopyPublicUrl },
+        );
+    }
+
+    return { label: DEV_TUNNEL_MENU_LABEL, submenu: items };
+}
 
 /**
  * Build the full application-menu template for the given platform.
@@ -116,16 +224,24 @@ export function buildAppMenuTemplate(
     // Windows (and any other non-darwin platform a caller passes): the default
     // menu has no "About", so a Help submenu hosts "About <app>" followed
     // directly (across a separator) by "Check for Updates…" and "Update Channel".
-    return [
+    const template: MenuItemConstructorOptions[] = [
         { role: 'fileMenu' },
         { role: 'editMenu' },
         { role: 'viewMenu' },
         { role: 'windowMenu' },
-        {
-            label: 'Help',
-            submenu: [aboutItem, { type: 'separator' }, checkForUpdatesItem, updateChannelItem],
-        },
     ];
+
+    // Windows-only top-level Dev Tunnel menu (AC-01), placed before Help. Gated on
+    // win32 so macOS/Linux menus stay unchanged even if a caller passes devTunnel.
+    if (platform === 'win32' && handlers.devTunnel) {
+        template.push(buildDevTunnelMenu(handlers.devTunnel));
+    }
+
+    template.push({
+        label: 'Help',
+        submenu: [aboutItem, { type: 'separator' }, checkForUpdatesItem, updateChannelItem],
+    });
+    return template;
 }
 
 /** Click handlers the tray context menu needs wired from `main.ts`. */
