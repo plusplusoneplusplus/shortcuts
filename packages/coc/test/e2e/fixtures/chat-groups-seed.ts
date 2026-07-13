@@ -59,17 +59,40 @@ export async function seedPlainChat(
     offsetMinutes: number,
     promptPreview?: string,
 ): Promise<string> {
-    const ts = seededIso(offsetMinutes);
+    return seedPlainChatAt(baseURL, wsId, id, seededIso(offsetMinutes), promptPreview);
+}
+
+/**
+ * Seed a plain completed chat at an explicit ISO timestamp. Use this to place a
+ * plain chat relative to a For Each / Map Reduce group: those groups are backed
+ * by a persisted run whose record is created at wall-clock "now", so the group's
+ * sort timestamp is `max(run.createdAt≈now, seededChildTs)` ≈ now regardless of
+ * the seeded child offsets — a fixed-past-base plain chat can never sort between
+ * them. Seeding a plain chat at `Date.now() ± minutes` brackets the run groups
+ * deterministically. Returns the chat id.
+ */
+export async function seedPlainChatAt(
+    baseURL: string,
+    wsId: string,
+    id: string,
+    iso: string,
+    promptPreview?: string,
+): Promise<string> {
     await seedProcess(baseURL, id, {
         type: 'chat',
         status: 'completed',
         workspaceId: wsId,
         promptPreview: promptPreview ?? `Plain chat ${id}`,
-        startTime: ts,
-        endTime: ts,
+        startTime: iso,
+        endTime: iso,
         metadata: { type: 'chat', workspaceId: wsId, mode: 'ask' },
     });
     return id;
+}
+
+/** ISO timestamp `offsetMinutes` from real wall-clock now (for bracketing run-backed groups). */
+export function nowRelativeIso(offsetMinutes: number): string {
+    return new Date(Date.now() + offsetMinutes * 60_000).toISOString();
 }
 
 /**
