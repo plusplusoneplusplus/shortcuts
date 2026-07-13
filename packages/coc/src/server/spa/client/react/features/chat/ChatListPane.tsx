@@ -457,6 +457,39 @@ export function getMapReduceRunSubIds(group: MapReduceRunGroup): string[] {
     return Array.from(new Set(ids));
 }
 
+export interface GroupSelectionState {
+    /** Every child sub-id is in the active selection. */
+    isFullySelected: boolean;
+    /** At least one — but not all — child sub-ids are selected. */
+    isPartiallySelected: boolean;
+}
+
+/**
+ * Resolve a group header's selection state from its child sub-ids and the
+ * active history selection (AC-06). A group is *fully* selected when every
+ * child is in the selection, *partially* selected when some — but not all —
+ * are, and neither when the group is empty or has no selected children. The
+ * two flags are mutually exclusive so a header can render at most one of the
+ * full / partial indicators.
+ */
+export function resolveGroupSelectionState(
+    subIds: string[],
+    selectedIds: ReadonlySet<string>,
+): GroupSelectionState {
+    if (subIds.length === 0) {
+        return { isFullySelected: false, isPartiallySelected: false };
+    }
+    let selectedCount = 0;
+    for (const id of subIds) {
+        if (selectedIds.has(id)) { selectedCount++; }
+    }
+    const isFullySelected = selectedCount === subIds.length;
+    return {
+        isFullySelected,
+        isPartiallySelected: selectedCount > 0 && !isFullySelected,
+    };
+}
+
 export function buildHistoryRangeRows(
     entries: HistoryRangeInput[],
     expandedRalphSessionIds: ReadonlySet<string>,
@@ -2662,7 +2695,8 @@ export function ChatListPane({
 
     const renderRalphSessionGroup = useCallback((session: RalphSession, listForRange: HistoryRangeInput[]) => {
         const ralphSubIds = getRalphSessionSubIds(session);
-        const isRalphRangeSelected = ralphSubIds.length > 0 && ralphSubIds.every(id => selectedHistoryIds.has(id));
+        const { isFullySelected: isRalphRangeSelected, isPartiallySelected: isRalphPartiallySelected } =
+            resolveGroupSelectionState(ralphSubIds, selectedHistoryIds);
         const isPinned = isPinnedGroupEntry(session) || isGroupPinned('ralph-session', session.sessionId);
         const groupPin: GroupPinMenuTarget = {
             type: 'ralph-session',
@@ -2693,6 +2727,7 @@ export function ChatListPane({
                 selectedTaskId={selectedTaskId}
                 selectedSessionId={selectedRalphSessionId}
                 isRangeSelected={isRalphRangeSelected}
+                isPartiallySelected={isRalphPartiallySelected}
                 expanded={expandedRalphSessionIds.has(session.sessionId)}
                 onToggleExpanded={() => toggleRalphSession(session.sessionId)}
                 now={now}
@@ -2753,7 +2788,8 @@ export function ChatListPane({
 
     const renderForEachRunGroup = useCallback((group: ForEachRunGroup, listForRange: HistoryRangeInput[]) => {
         const forEachSubIds = getForEachRunSubIds(group);
-        const isForEachRangeSelected = forEachSubIds.length > 0 && forEachSubIds.every(id => selectedHistoryIds.has(id));
+        const { isFullySelected: isForEachRangeSelected, isPartiallySelected: isForEachPartiallySelected } =
+            resolveGroupSelectionState(forEachSubIds, selectedHistoryIds);
         const isPinned = isPinnedGroupEntry(group) || isGroupPinned('for-each-run', group.runId);
         const groupPin: GroupPinMenuTarget = {
             type: 'for-each-run',
@@ -2779,6 +2815,7 @@ export function ChatListPane({
                 group={group}
                 selectedRunId={selectedForEachRunId}
                 isRangeSelected={isForEachRangeSelected}
+                isPartiallySelected={isForEachPartiallySelected}
                 expanded={expandedForEachRunIds.has(group.runId)}
                 onToggleExpanded={() => toggleForEachRun(group.runId)}
                 now={now}
@@ -2836,7 +2873,8 @@ export function ChatListPane({
 
     const renderMapReduceRunGroup = useCallback((group: MapReduceRunGroup, listForRange: HistoryRangeInput[]) => {
         const mapReduceSubIds = getMapReduceRunSubIds(group);
-        const isMapReduceRangeSelected = mapReduceSubIds.length > 0 && mapReduceSubIds.every(id => selectedHistoryIds.has(id));
+        const { isFullySelected: isMapReduceRangeSelected, isPartiallySelected: isMapReducePartiallySelected } =
+            resolveGroupSelectionState(mapReduceSubIds, selectedHistoryIds);
         const isPinned = isPinnedGroupEntry(group) || isGroupPinned('map-reduce-run', group.runId);
         const groupPin: GroupPinMenuTarget = {
             type: 'map-reduce-run',
@@ -2862,6 +2900,7 @@ export function ChatListPane({
                 group={group}
                 selectedRunId={selectedMapReduceRunId}
                 isRangeSelected={isMapReduceRangeSelected}
+                isPartiallySelected={isMapReducePartiallySelected}
                 expanded={expandedMapReduceRunIds.has(group.runId)}
                 onToggleExpanded={() => toggleMapReduceRun(group.runId)}
                 now={now}

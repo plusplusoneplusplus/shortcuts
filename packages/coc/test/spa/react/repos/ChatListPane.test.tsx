@@ -25,6 +25,7 @@ import {
     getForEachRunRangeId,
     getMapReduceRunRangeId,
     getRalphSessionRangeId,
+    resolveGroupSelectionState,
     resolveHistoryRangeSelection,
     taskMatchesFilter,
     taskMatchesSearch,
@@ -3296,6 +3297,60 @@ describe('ChatListPane history range helpers', () => {
         expect(collapsed).toHaveLength(1);
         const expanded = buildHistoryRangeRows([tree], new Set(), new Set(), new Set(), new Set());
         expect(expanded.map(row => row.id)).toEqual(['st-root', 'st-child-1', 'st-gc-1', 'st-child-2']);
+    });
+});
+
+// ── AC-06: partial group-header selection state ────────────────────────
+describe('resolveGroupSelectionState', () => {
+    it('returns neither full nor partial for an empty group', () => {
+        expect(resolveGroupSelectionState([], new Set())).toEqual({
+            isFullySelected: false,
+            isPartiallySelected: false,
+        });
+    });
+
+    it('returns neither when no child is selected', () => {
+        expect(resolveGroupSelectionState(['a', 'b', 'c'], new Set(['x', 'y']))).toEqual({
+            isFullySelected: false,
+            isPartiallySelected: false,
+        });
+    });
+
+    it('is fully selected — not partial — when every child is selected', () => {
+        expect(resolveGroupSelectionState(['a', 'b', 'c'], new Set(['a', 'b', 'c']))).toEqual({
+            isFullySelected: true,
+            isPartiallySelected: false,
+        });
+    });
+
+    it('is partially selected — not full — when some but not all children are selected', () => {
+        expect(resolveGroupSelectionState(['a', 'b', 'c'], new Set(['a', 'c']))).toEqual({
+            isFullySelected: false,
+            isPartiallySelected: true,
+        });
+    });
+
+    it('treats a single selected child of a multi-child group as partial', () => {
+        expect(resolveGroupSelectionState(['a', 'b', 'c'], new Set(['b']))).toEqual({
+            isFullySelected: false,
+            isPartiallySelected: true,
+        });
+    });
+
+    it('treats a single-child group as full (never partial) when that child is selected', () => {
+        expect(resolveGroupSelectionState(['solo'], new Set(['solo']))).toEqual({
+            isFullySelected: true,
+            isPartiallySelected: false,
+        });
+    });
+
+    it('ignores selected ids that are not children of the group', () => {
+        // Extra unrelated selection entries do not push a fully-selected group
+        // into a partial state.
+        expect(resolveGroupSelectionState(['a', 'b'], new Set(['a', 'b', 'unrelated']))).toEqual({
+            isFullySelected: true,
+            isPartiallySelected: false,
+        });
     });
 });
 

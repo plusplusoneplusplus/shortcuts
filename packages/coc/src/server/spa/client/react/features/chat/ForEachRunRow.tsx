@@ -7,6 +7,8 @@ interface ForEachRunRowProps {
     group: ForEachRunGroup;
     selectedRunId?: string | null;
     isRangeSelected?: boolean;
+    /** Some — but not all — child chats are selected by history multi-select. */
+    isPartiallySelected?: boolean;
     expanded?: boolean;
     onToggleExpanded?: () => void;
     now: number;

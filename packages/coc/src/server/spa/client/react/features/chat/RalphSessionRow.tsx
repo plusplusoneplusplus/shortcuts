@@ -22,6 +22,8 @@ interface RalphSessionRowProps {
     selectedSessionId?: string | null;
     /** When every child process is selected by history multi-select. */
     isRangeSelected?: boolean;
+    /** When some — but not all — child processes are selected. */
+    isPartiallySelected?: boolean;
     /** Controlled expansion state supplied by ChatListPane so range selection can mirror rendered rows. */
     expanded?: boolean;
     onToggleExpanded?: () => void;
@@ -75,6 +77,7 @@ export function RalphSessionRow({
     selectedTaskId: _selectedTaskId,
     selectedSessionId,
     isRangeSelected,
+    isPartiallySelected,
     expanded,
     onToggleExpanded,
     now,
@@ -140,6 +143,7 @@ export function RalphSessionRow({
             }}
             selectedRunId={selectedSessionId}
             isRangeSelected={isRangeSelected}
+            isPartiallySelected={isPartiallySelected}
             expanded={expanded}
             onToggleExpanded={onToggleExpanded}
             now={now}

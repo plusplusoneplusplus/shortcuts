@@ -70,6 +70,8 @@ export interface TaskGroupRunRowProps {
     display: TaskGroupRunRowDisplay;
     selectedRunId?: string | null;
     isRangeSelected?: boolean;
+    /** Some — but not all — child chats are selected by history multi-select. */
+    isPartiallySelected?: boolean;
     expanded?: boolean;
     onToggleExpanded?: () => void;
     now: number;
@@ -97,6 +99,7 @@ export function TaskGroupRunRow({
     display,
     selectedRunId,
     isRangeSelected,
+    isPartiallySelected,
     expanded: controlledExpanded,
     onToggleExpanded,
     now: _now,
@@ -117,6 +120,9 @@ export function TaskGroupRunRow({
     const [expanded, setExpanded] = useState(false);
     const isExpanded = controlledExpanded ?? expanded;
     const isSelected = selectedRunId === group.runId || !!isRangeSelected;
+    // Partial state only shows when the group is not already fully selected —
+    // the full-selection ring takes precedence (AC-06).
+    const showPartial = !!isPartiallySelected && !isSelected;
     const childCount = group.children.length;
     const timestamp = group.latestTimestamp
         ? formatRelativeTime(new Date(group.latestTimestamp).toISOString())
@@ -138,9 +144,14 @@ export function TaskGroupRunRow({
             data-testid={`${display.testIdPrefix}-row`}
             {...groupIdAttribute}
             data-selected={isSelected ? 'true' : 'false'}
+            data-partial={showPartial ? 'true' : 'false'}
             className={cn(
                 isExpanded && 'bg-[#f7f7f8] dark:bg-[#1f1f20]/80',
                 isSelected && `ring-1 ${display.selectedRingClassName}`,
+                // Dimmed accent bar for a partially-selected group (some children
+                // selected). Uses the standard light/dark selection accent at
+                // reduced opacity so it reads as a weaker cousin of the full ring.
+                showPartial && 'border-l-2 border-l-[#0078d4]/50 dark:border-l-[#3794ff]/50',
             )}
             data-pinned={isPinned ? 'true' : undefined}
         >
