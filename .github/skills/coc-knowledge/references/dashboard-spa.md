@@ -347,12 +347,15 @@ Excalidraw keeps the view-only preview, extension canvases mount
 for local file references clicked inside assistant chat responses. The global
 file-path delegation normalizes bare `.file-path-link` spans, shared renderer
 `.md-link` spans, and local Markdown `<a href>` anchors from chat's markdown
-renderer into one file-reference path; when `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS`
-is enabled, assistant-response clicks dispatch `coc-open-source-canvas` with the
-bare path, workspace hint, optional `sourceFilePath`, and optional line/range
-metadata. Local `file://` hrefs are converted to filesystem paths and
-GitHub-style `#L<line>` / `#L<start>-L<end>` hashes are carried as line metadata,
-so the resolver never treats a file URI as workspace-relative text. The
+renderer into one file-reference path. Bare prose linkification keeps a terminal
+run of `.`, `,`, `;`, `!`, or `?` outside the clickable span and its metadata;
+explicit Markdown hrefs and paths in code or preformatted blocks retain their
+literal behavior. When `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS` is enabled,
+assistant-response clicks dispatch `coc-open-source-canvas` with the bare path,
+workspace hint, optional `sourceFilePath`, and optional line/range metadata.
+Local `file://` hrefs are converted to filesystem paths and GitHub-style
+`#L<line>` / `#L<start>-L<end>` hashes are carried as line metadata, so the
+resolver never treats a file URI as workspace-relative text. The
 shared `MarkdownView` intercepts assistant-prose conversation deep-links with
 `#/process/<id>`, `#/session/<id>`, or `#/processes/<id>` hrefs, prevents the
 default link action, and assigns `window.location.hash`; the router recognizes
