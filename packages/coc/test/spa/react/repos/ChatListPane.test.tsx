@@ -23,6 +23,7 @@ import {
     ChatListPane,
     buildHistoryRangeRows,
     getForEachRunRangeId,
+    getMapReduceRunRangeId,
     getRalphSessionRangeId,
     resolveHistoryRangeSelection,
     taskMatchesFilter,
@@ -2818,6 +2819,26 @@ describe('ChatListPane history range helpers', () => {
         latestTimestamp: 2,
         hasUnseen: false,
     };
+    const mapReduceRun: any = {
+        kind: 'map-reduce-run',
+        runId: 'mr-1',
+        run: {
+            runId: 'mr-1',
+            workspaceId: 'ws-1',
+            status: 'completed',
+            reduceStatus: 'completed',
+            originalRequest: 'Reduce range work',
+            childMode: 'ask',
+            reduceInstructions: 'Combine the outputs',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:01:00.000Z',
+            generationProcessId: 'mr-1-generation',
+            itemCount: 2,
+        },
+        children: [{ id: 'mr-1-generation' }, { id: 'mr-1-child-1' }, { id: 'mr-1-reduce' }],
+        latestTimestamp: 2,
+        hasUnseen: false,
+    };
 
     it('expands a collapsed Ralph session sentinel into its child process ids', () => {
         const rows = buildHistoryRangeRows(
@@ -2925,6 +2946,196 @@ describe('ChatListPane history range helpers', () => {
             'fe-1-child-1',
             'regular-b',
         ]);
+    });
+
+    // ── AC-01: Map Reduce runs (collapsed + expanded) ───────────────────
+    it('AC-01: treats a collapsed Map Reduce run as one endpoint and selects its child process ids only', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, mapReduceRun, { id: 'regular-b' }],
+            new Set(),
+        );
+
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            getMapReduceRunRangeId('mr-1'),
+            'regular-b',
+        ]);
+        const selected = Array.from(resolveHistoryRangeSelection(rows, 'regular-a', 'regular-b')!);
+        expect(selected).toEqual([
+            'regular-a',
+            'mr-1-generation',
+            'mr-1-child-1',
+            'mr-1-reduce',
+            'regular-b',
+        ]);
+        expect(selected).not.toContain('mr-1');
+    });
+
+    it('AC-01: uses Map Reduce child rows when expanded while keeping the run header a selectable endpoint', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, mapReduceRun, { id: 'regular-b' }],
+            new Set(),
+            new Set(),
+            new Set(['mr-1']),
+        );
+
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            'mr-1-generation',
+            'mr-1-child-1',
+            'mr-1-reduce',
+            'regular-b',
+        ]);
+        // anchor = plain before, target = run header id → whole run + the plain
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'regular-a', getMapReduceRunRangeId('mr-1'))!)).toEqual([
+            'regular-a',
+            'mr-1-generation',
+            'mr-1-child-1',
+            'mr-1-reduce',
+        ]);
+        // anchor = a middle child, target = plain after → child anchor snaps to the
+        // whole run boundary (group semantics), selecting the entire run + the plain.
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'mr-1-child-1', 'regular-b')!)).toEqual([
+            'mr-1-generation',
+            'mr-1-child-1',
+            'mr-1-reduce',
+            'regular-b',
+        ]);
+    });
+
+    // ── AC-01: anchor-on-group-header / target-on-group-header ──────────
+    it('AC-01: anchor on a collapsed group header selects the group plus the plain target', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, { id: 'regular-b' }],
+            new Set(),
+        );
+        // anchor = ralph header, target = plain after
+        expect(Array.from(resolveHistoryRangeSelection(rows, getRalphSessionRangeId('rs-1'), 'regular-b')!)).toEqual([
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'regular-b',
+        ]);
+        // anchor = ralph header, target = plain before
+        expect(Array.from(resolveHistoryRangeSelection(rows, getRalphSessionRangeId('rs-1'), 'regular-a')!)).toEqual([
+            'regular-a',
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+        ]);
+    });
+
+    it('AC-01: target on a collapsed group header pulls in the whole group', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, forEachRun, { id: 'regular-b' }],
+            new Set(),
+        );
+        // anchor = plain before, target = for-each header
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'regular-a', getForEachRunRangeId('fe-1'))!)).toEqual([
+            'regular-a',
+            'fe-1-generation',
+            'fe-1-child-1',
+        ]);
+    });
+
+    // ── AC-01: mixed-kind ranges spanning multiple group kinds ──────────
+    it('AC-01: a plain→plain range spanning ralph + for-each + map-reduce (all collapsed) selects every child id in order', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, forEachRun, mapReduceRun, { id: 'regular-b' }],
+            new Set(),
+        );
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            getRalphSessionRangeId('rs-1'),
+            getForEachRunRangeId('fe-1'),
+            getMapReduceRunRangeId('mr-1'),
+            'regular-b',
+        ]);
+        const selected = Array.from(resolveHistoryRangeSelection(rows, 'regular-a', 'regular-b')!);
+        expect(selected).toEqual([
+            'regular-a',
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'fe-1-generation',
+            'fe-1-child-1',
+            'mr-1-generation',
+            'mr-1-child-1',
+            'mr-1-reduce',
+            'regular-b',
+        ]);
+        // no range-id sentinels leak into the selection
+        expect(selected).not.toContain(getRalphSessionRangeId('rs-1'));
+        expect(selected).not.toContain('fe-1');
+        expect(selected).not.toContain('mr-1');
+    });
+
+    it('AC-01: a mixed range from one group header to another selects both groups and everything between', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, { id: 'regular-mid' }, mapReduceRun, { id: 'regular-b' }],
+            new Set(),
+        );
+        // anchor = ralph header, target = map-reduce header
+        const selected = Array.from(resolveHistoryRangeSelection(rows, getRalphSessionRangeId('rs-1'), getMapReduceRunRangeId('mr-1'))!);
+        expect(selected).toEqual([
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'regular-mid',
+            'mr-1-generation',
+            'mr-1-child-1',
+            'mr-1-reduce',
+        ]);
+    });
+
+    it('AC-01: a mixed range with groups expanded selects the same child ids as when collapsed', () => {
+        const collapsedRows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, forEachRun, { id: 'regular-b' }],
+            new Set(),
+        );
+        const expandedRows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, forEachRun, { id: 'regular-b' }],
+            new Set(['rs-1']),
+            new Set(['fe-1']),
+        );
+        const collapsed = Array.from(resolveHistoryRangeSelection(collapsedRows, 'regular-a', 'regular-b')!);
+        const expanded = Array.from(resolveHistoryRangeSelection(expandedRows, 'regular-a', 'regular-b')!);
+        expect(expanded).toEqual(collapsed);
+        expect(expanded).toEqual([
+            'regular-a',
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'fe-1-generation',
+            'fe-1-child-1',
+            'regular-b',
+        ]);
+    });
+
+    it('AC-01: an expanded-group child anchor to a child in a different expanded group selects both whole groups', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, forEachRun, { id: 'regular-b' }],
+            new Set(['rs-1']),
+            new Set(['fe-1']),
+        );
+        // anchor = a ralph child, target = a for-each child → both groups whole
+        const selected = Array.from(resolveHistoryRangeSelection(rows, 'rs-1-iter-1', 'fe-1-child-1')!);
+        expect(selected).toEqual([
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'fe-1-generation',
+            'fe-1-child-1',
+        ]);
+    });
+
+    it('AC-01: resolveHistoryRangeSelection returns null when an endpoint is not present', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, { id: 'regular-b' }],
+            new Set(),
+        );
+        expect(resolveHistoryRangeSelection(rows, 'regular-a', 'does-not-exist')).toBeNull();
+        expect(resolveHistoryRangeSelection(rows, 'does-not-exist', 'regular-b')).toBeNull();
     });
 });
 
