@@ -35,6 +35,7 @@ import {
 } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 import { POINTER_CONTEXT_DRAG_MIME, SESSION_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 import { readSessionContextDropPayloads } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrop';
+import { groupBySpawnedTree, type SpawnedTreeEntry } from '../../../../src/server/spa/client/react/features/chat/spawned-tree-grouping';
 import {
     drainNewChatSeedContext,
     peekNewChatSeedContext,
@@ -3136,6 +3137,165 @@ describe('ChatListPane history range helpers', () => {
         );
         expect(resolveHistoryRangeSelection(rows, 'regular-a', 'does-not-exist')).toBeNull();
         expect(resolveHistoryRangeSelection(rows, 'does-not-exist', 'regular-b')).toBeNull();
+    });
+
+    // ── AC-05: spawned-conversation trees participate in range selection ──
+    //
+    // Build a real spawned tree via groupBySpawnedTree so the fixture matches
+    // production shape exactly. Shape (children sorted oldest-first by activity):
+    //   st-root
+    //   ├─ st-child-1  (ts 5)
+    //   │   └─ st-gc-1  (ts 4)
+    //   └─ st-child-2  (ts 6)
+    // Pre-order chat ids: st-root, st-child-1, st-gc-1, st-child-2.
+    const makeSpawnedTree = (): SpawnedTreeEntry => {
+        const tasks = [
+            { id: 'st-root', lastActivityAt: 10 },
+            { id: 'st-child-1', parentProcessId: 'st-root', lastActivityAt: 5 },
+            { id: 'st-child-2', parentProcessId: 'st-root', lastActivityAt: 6 },
+            { id: 'st-gc-1', parentProcessId: 'st-child-1', lastActivityAt: 4 },
+        ];
+        const entry = groupBySpawnedTree(tasks).find(
+            (e): e is SpawnedTreeEntry => (e as any).kind === 'spawned-tree',
+        );
+        if (!entry) throw new Error('fixture: expected a spawned-tree entry');
+        return entry;
+    };
+
+    it('AC-05: a collapsed spawned tree is one endpoint that selects root + all descendants as a unit', () => {
+        const tree = makeSpawnedTree();
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, tree, { id: 'regular-b' }],
+            new Set(),
+            new Set(),
+            new Set(),
+            new Set(['st-root']), // root collapsed → whole tree hidden under one row
+        );
+        expect(rows.map(row => row.id)).toEqual(['regular-a', 'st-root', 'regular-b']);
+        // The single collapsed row carries the whole subtree.
+        expect(rows[1]).toMatchObject({ kind: 'spawned-tree', rootProcessId: 'st-root' });
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'regular-a', 'regular-b')!)).toEqual([
+            'regular-a',
+            'st-root',
+            'st-child-1',
+            'st-gc-1',
+            'st-child-2',
+            'regular-b',
+        ]);
+        // Anchoring on the collapsed tree itself still selects the whole unit.
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'st-root', 'st-root')!)).toEqual([
+            'st-root',
+            'st-child-1',
+            'st-gc-1',
+            'st-child-2',
+        ]);
+    });
+
+    it('AC-05: an expanded spawned tree exposes each visible node as an independent range row', () => {
+        const tree = makeSpawnedTree();
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, tree, { id: 'regular-b' }],
+            new Set(),
+            new Set(),
+            new Set(),
+            new Set(), // nothing collapsed → fully expanded (default-expanded contract)
+        );
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            'st-root',
+            'st-child-1',
+            'st-gc-1',
+            'st-child-2',
+            'regular-b',
+        ]);
+        expect(rows.every(row => row.kind === 'task')).toBe(true);
+        // A sub-range inside the tree selects only the visible nodes it spans —
+        // no whole-tree snapping, so descendants outside the span stay unselected.
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'st-root', 'st-child-1')!)).toEqual([
+            'st-root',
+            'st-child-1',
+        ]);
+        // Spanning the whole tree selects every node.
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'st-root', 'st-child-2')!)).toEqual([
+            'st-root',
+            'st-child-1',
+            'st-gc-1',
+            'st-child-2',
+        ]);
+    });
+
+    it('AC-05: a collapsed inner node stays a sub-unit while its expanded root remains individually selectable', () => {
+        const tree = makeSpawnedTree();
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, tree, { id: 'regular-b' }],
+            new Set(),
+            new Set(),
+            new Set(),
+            new Set(['st-child-1']), // root expanded, inner child-1 collapsed → hides st-gc-1
+        );
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            'st-root',
+            'st-child-1',
+            'st-child-2',
+            'regular-b',
+        ]);
+        // The collapsed inner node is the unit that represents its hidden grandchild.
+        expect(rows[2]).toMatchObject({ kind: 'spawned-tree', id: 'st-child-1' });
+        // Selecting the collapsed inner node pulls in its hidden grandchild.
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'st-child-1', 'st-child-1')!)).toEqual([
+            'st-child-1',
+            'st-gc-1',
+        ]);
+        // A range across the tree includes the hidden grandchild via the inner unit.
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'st-root', 'st-child-2')!)).toEqual([
+            'st-root',
+            'st-child-1',
+            'st-gc-1',
+            'st-child-2',
+        ]);
+    });
+
+    it('AC-05: a mixed range spanning a plain chat, a collapsed spawned tree, and a collapsed ralph session selects every child id in order', () => {
+        const tree = makeSpawnedTree();
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, tree, ralphSession, { id: 'regular-b' }],
+            new Set(),
+            new Set(),
+            new Set(),
+            new Set(['st-root']),
+        );
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            'st-root',
+            getRalphSessionRangeId('rs-1'),
+            'regular-b',
+        ]);
+        const selected = Array.from(resolveHistoryRangeSelection(rows, 'regular-a', 'regular-b')!);
+        expect(selected).toEqual([
+            'regular-a',
+            'st-root',
+            'st-child-1',
+            'st-gc-1',
+            'st-child-2',
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'regular-b',
+        ]);
+        // No synthetic range-id sentinel leaks into the selection.
+        expect(selected).not.toContain(getRalphSessionRangeId('rs-1'));
+    });
+
+    it('AC-05: spawned-tree entries are no longer dropped from the range rows (regression guard)', () => {
+        const tree = makeSpawnedTree();
+        // Before AC-05 a SpawnedTreeEntry (no `id`, has `rootProcessId`) fell
+        // through every branch and was silently dropped, leaving a gap that
+        // shift-range skipped over. It must now contribute at least one row.
+        const collapsed = buildHistoryRangeRows([tree], new Set(), new Set(), new Set(), new Set(['st-root']));
+        expect(collapsed).toHaveLength(1);
+        const expanded = buildHistoryRangeRows([tree], new Set(), new Set(), new Set(), new Set());
+        expect(expanded.map(row => row.id)).toEqual(['st-root', 'st-child-1', 'st-gc-1', 'st-child-2']);
     });
 });
 
