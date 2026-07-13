@@ -193,9 +193,10 @@ export function ImplementPlanCard({
     availableTargets,
 }: ImplementPlanCardProps) {
     const [expanded, setExpanded] = useState(false);
-    // The banner is now a trigger: clicking Implement opens the launch dialog,
-    // which hosts the selectors, AI controls, and the confirm/enqueue action
-    // (AC-01). Enqueue never happens directly from the banner.
+    // The banner is a trigger: clicking Implement expands the inline launch
+    // panel below the banner, which hosts the selectors, AI controls, and the
+    // confirm/enqueue action (AC-01). Enqueue never happens directly from the
+    // banner.
     const [dialogOpen, setDialogOpen] = useState(false);
 
     // ── Plan-file selection (AC-02/AC-03) ──────────────────────────────

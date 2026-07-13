@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * Tests for ImplementPlanLaunchDialog — the launch dialog that hosts the
+ * Tests for ImplementPlanLaunchDialog — the inline launch panel that hosts the
  * confirm/enqueue action for implementing a reviewed plan. Verifies the enqueue
  * payload (including the resolved AI selection), local vs. remote routing,
  * canvas-backed plans, record persistence, and the close-without-enqueue paths.
@@ -446,11 +446,18 @@ describe('ImplementPlanLaunchDialog', () => {
         expect(mockEnqueue).not.toHaveBeenCalled();
     });
 
-    it('closes without enqueuing on backdrop click', () => {
+    it('closes without enqueuing via the header close button', () => {
         renderDialog();
-        fireEvent.mouseDown(screen.getByTestId('implement-launch-dialog'));
+        fireEvent.click(screen.getByLabelText('Close'));
         expect(onClose).toHaveBeenCalledTimes(1);
         expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('renders as an inline panel, not a fixed modal overlay', () => {
+        renderDialog();
+        const panel = screen.getByTestId('implement-launch-dialog');
+        expect(panel.className).not.toContain('fixed');
+        expect(panel.className).not.toContain('inset-0');
     });
 
     // ── AC-04: remote-target provider/tier resolution ────────────────────

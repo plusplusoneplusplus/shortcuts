@@ -1,10 +1,11 @@
 /**
- * ImplementPlanLaunchDialog — launch dialog for implementing a reviewed plan.
+ * ImplementPlanLaunchDialog — inline launch panel for implementing a reviewed plan.
  *
- * Modeled on RalphLaunchDialog: clicking "Implement" on the plan banner opens
- * this modal instead of enqueuing immediately. The dialog hosts the launch
- * action and carries the chosen AI provider/effort settings into the enqueue
- * payload sent to the selected target server.
+ * Modeled on RalphStartPanel's open state: clicking "Implement" on the plan
+ * banner expands this panel in place (below the banner) instead of opening a
+ * modal overlay. The panel hosts the launch action and carries the chosen AI
+ * provider/effort settings into the enqueue payload sent to the selected
+ * target server.
  *
  * It owns everything needed to enqueue the implementation task:
  *  • the target/repo selector (when more than one target is reachable),
@@ -268,7 +269,7 @@ export function ImplementPlanLaunchDialog({
         setSelectedTargetId(defaultTargetId);
     }, [open, defaultTargetId]);
 
-    // Escape closes the dialog without enqueuing (AC-01), except mid-launch.
+    // Escape closes the panel without enqueuing (AC-01), except mid-launch.
     useEffect(() => {
         if (!open) return;
         const onKeyDown = (e: KeyboardEvent) => {
@@ -406,136 +407,133 @@ export function ImplementPlanLaunchDialog({
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            className="mt-2 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#161b22] px-3 py-3 space-y-2"
             data-testid="implement-launch-dialog"
-            onMouseDown={(e) => { if (e.target === e.currentTarget && !submitting) onClose(); }}
         >
-            <div className="bg-white dark:bg-[#252526] rounded-lg shadow-xl w-full max-w-lg mx-4 border border-[#e0e0e0] dark:border-[#3c3c3c]">
-                {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                    <h2 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
-                        🚀 Implement this plan
-                    </h2>
-                    <button
-                        type="button"
-                        onClick={onClose}
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
+                    🚀 Implement this plan
+                </h3>
+                <button
+                    type="button"
+                    onClick={onClose}
+                    disabled={submitting}
+                    className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] disabled:opacity-50"
+                    aria-label="Close"
+                >
+                    ✕
+                </button>
+            </div>
+            <p className="text-xs text-[#848484]">
+                Review the settings below, then click <strong>Implement</strong> to enqueue the run.
+            </p>
+
+            {/* Plan-file selector (multi-file only) */}
+            {showFileSelector && (
+                <div>
+                    <label htmlFor="implement-launch-file-select" className="block text-xs text-[#848484] mb-1">
+                        Plan file:
+                    </label>
+                    <select
+                        id="implement-launch-file-select"
+                        data-testid="implement-launch-file-select"
+                        value={selectedPlanFile}
+                        onChange={(e) => onSelectPlanFile(e.target.value)}
                         disabled={submitting}
-                        className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-sm disabled:opacity-50"
-                        aria-label="Close"
+                        className="w-full text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1a1a1a] text-[#1e1e1e] dark:text-[#cccccc] px-2 py-1 disabled:opacity-60"
                     >
-                        ✕
-                    </button>
+                        {planFiles.map(p => (
+                            <option key={p} value={p}>{planFileBasename(p)}</option>
+                        ))}
+                    </select>
                 </div>
+            )}
 
-                {/* Body */}
-                <div className="px-4 py-3 space-y-3">
-                    {/* Plan-file selector (multi-file only) */}
-                    {showFileSelector && (
-                        <div>
-                            <label htmlFor="implement-launch-file-select" className="block text-xs text-[#848484] mb-1">
-                                Plan file:
-                            </label>
-                            <select
-                                id="implement-launch-file-select"
-                                data-testid="implement-launch-file-select"
-                                value={selectedPlanFile}
-                                onChange={(e) => onSelectPlanFile(e.target.value)}
-                                disabled={submitting}
-                                className="w-full text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1a1a1a] text-[#1e1e1e] dark:text-[#cccccc] px-2 py-1 disabled:opacity-60"
-                            >
-                                {planFiles.map(p => (
-                                    <option key={p} value={p}>{planFileBasename(p)}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
-                    {/* Target/repo selector (multi-target only) */}
-                    {showTargetSelector && (
-                        <div>
-                            <label htmlFor="implement-launch-target-select" className="block text-xs text-[#848484] mb-1">
-                                Run in:
-                            </label>
-                            <select
-                                id="implement-launch-target-select"
-                                data-testid="implement-launch-target-select"
-                                value={selectedTargetId}
-                                onChange={(e) => setSelectedTargetId(e.target.value)}
-                                disabled={submitting}
-                                className="w-full text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1a1a1a] text-[#1e1e1e] dark:text-[#cccccc] px-2 py-1 disabled:opacity-60"
-                            >
-                                {targets.map(t => {
-                                    const isCurrent = t.workspaceId === workspaceId;
-                                    const label = t.isRemote
-                                        ? `${t.label} · ${t.serverLabel ?? 'remote'}`
-                                        : `${t.label}${isCurrent ? ' (current)' : ''}`;
-                                    return <option key={t.workspaceId} value={t.workspaceId}>{label}</option>;
-                                })}
-                            </select>
-                        </div>
-                    )}
-
-                    {/* AI provider / effort controls */}
-                    <div>
-                        <div className="block text-xs text-[#848484] mb-1">Agent:</div>
-                        {remoteAiError ? (
-                            <p
-                                className="text-xs text-[#848484]"
-                                data-testid="implement-launch-remote-ai-unavailable"
-                            >
-                                Cannot reach target server — AI settings unavailable
-                            </p>
-                        ) : (
-                            <ModalJobAiControls
-                                selection={aiSelection}
-                                disabled={submitting || remoteAiLoading}
-                                testIdPrefix="implement-launch"
-                            />
-                        )}
-                    </div>
-
-                    {/* Read-only plan summary */}
-                    <div>
-                        <div className="text-xs text-[#848484] mb-1">Plan to implement:</div>
-                        <div
-                            className="text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#1a1a1a] px-2 py-1 font-mono text-[#1e1e1e] dark:text-[#cccccc] break-all"
-                            data-testid="implement-launch-summary"
+            {/* Target selector + AI controls, side by side (RalphStartPanel layout) */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
+                {showTargetSelector && (
+                    <div className="flex-1 min-w-0">
+                        <label htmlFor="implement-launch-target-select" className="block text-xs text-[#848484] mb-1">
+                            Run in:
+                        </label>
+                        <select
+                            id="implement-launch-target-select"
+                            data-testid="implement-launch-target-select"
+                            value={selectedTargetId}
+                            onChange={(e) => setSelectedTargetId(e.target.value)}
+                            disabled={submitting}
+                            className="w-full text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1a1a1a] text-[#1e1e1e] dark:text-[#cccccc] px-2 py-1 disabled:opacity-60"
                         >
-                            {planSummaryLabel}
-                        </div>
+                            {targets.map(t => {
+                                const isCurrent = t.workspaceId === workspaceId;
+                                const label = t.isRemote
+                                    ? `${t.label} · ${t.serverLabel ?? 'remote'}`
+                                    : `${t.label}${isCurrent ? ' (current)' : ''}`;
+                                return <option key={t.workspaceId} value={t.workspaceId}>{label}</option>;
+                            })}
+                        </select>
                     </div>
-
-                    {/* Error */}
-                    {error && (
-                        <p className="text-xs text-[#f14c4c]" data-testid="implement-launch-error">
-                            {error}
+                )}
+                <div className="flex-1 min-w-0">
+                    <div className="block text-xs text-[#848484] mb-1">Agent:</div>
+                    {remoteAiError ? (
+                        <p
+                            className="text-xs text-[#848484]"
+                            data-testid="implement-launch-remote-ai-unavailable"
+                        >
+                            Cannot reach target server — AI settings unavailable
                         </p>
+                    ) : (
+                        <ModalJobAiControls
+                            selection={aiSelection}
+                            disabled={submitting || remoteAiLoading}
+                            testIdPrefix="implement-launch"
+                        />
                     )}
                 </div>
+            </div>
 
-                {/* Footer */}
-                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        disabled={submitting}
-                        className="text-sm px-3 py-1.5 text-[#5a5a5a] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="button"
-                        data-testid="implement-launch-confirm-btn"
-                        onClick={handleConfirm}
-                        disabled={submitting}
-                        className={
-                            'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white transition-colors '
-                            + (submitting ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700')
-                        }
-                    >
-                        {submitting ? '⏳ Starting…' : '🚀 Implement'}
-                    </button>
+            {/* Read-only plan summary */}
+            <div>
+                <div className="text-xs text-[#848484] mb-1">Plan to implement:</div>
+                <div
+                    className="text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#1a1a1a] px-2 py-1 font-mono text-[#1e1e1e] dark:text-[#cccccc] break-all"
+                    data-testid="implement-launch-summary"
+                >
+                    {planSummaryLabel}
                 </div>
+            </div>
+
+            {/* Error */}
+            {error && (
+                <p className="text-xs text-[#f14c4c]" data-testid="implement-launch-error">
+                    {error}
+                </p>
+            )}
+
+            {/* Footer */}
+            <div className="flex items-center gap-2">
+                <button
+                    type="button"
+                    data-testid="implement-launch-confirm-btn"
+                    onClick={handleConfirm}
+                    disabled={submitting}
+                    className={
+                        'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white transition-colors '
+                        + (submitting ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700')
+                    }
+                >
+                    {submitting ? '⏳ Starting…' : '🚀 Implement'}
+                </button>
+                <button
+                    type="button"
+                    onClick={onClose}
+                    disabled={submitting}
+                    className="text-sm text-[#5a5a5a] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50"
+                >
+                    Cancel
+                </button>
             </div>
         </div>
     );

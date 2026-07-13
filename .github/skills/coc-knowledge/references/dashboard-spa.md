@@ -639,8 +639,21 @@ does not render Copilot premium request units.
 `ImplementPlanCard` (`features/chat/ImplementPlanCard.tsx`) is the thread-only
 flow card shown after a completed **Ask-mode plan-file chat** (gated in
 `ChatDetail` on terminal status, not busy, Ask mode, and a known
-`effectivePlanPath`). It enqueues a new autopilot task that executes the plan,
-and renders a status banner over the CTA when prior runs exist (live status of
+`effectivePlanPath`). The card is a trigger: clicking **Implement** expands
+`ImplementPlanLaunchDialog` (`features/chat/ImplementPlanLaunchDialog.tsx`), an
+inline launch panel below the banner styled like `RalphStartPanel`'s open
+state (not a modal). The panel hosts the plan-file selector, target selector,
+shared AI controls (`ModalJobAiControls` via `useModalJobAiSelection`, keyed to
+the selected target), a read-only plan summary, and the confirm/enqueue action;
+the resolved provider/effort selection is carried into the queue payload
+(`payload.provider/model/reasoningEffort` + `config.effortTier` +
+`context.autoProviderRouting`) and recorded on the `ImplementationRecord`.
+When a **remote** target is selected, the panel fetches the provider list and
+effort tiers from the target server (`getCocClientFor(baseUrl).agentProviders`)
+and injects them as `externalAgentProviders`/`externalEffortTierMap` overrides
+into `useModalJobAiSelection`; if the target is unreachable the AI controls are
+replaced by a "Cannot reach target server" hint while enqueue stays available.
+The card renders a status banner when prior runs exist (live status of
 the latest run, total run count, an expandable per-run list, and a `View →`
 action per run).
 
