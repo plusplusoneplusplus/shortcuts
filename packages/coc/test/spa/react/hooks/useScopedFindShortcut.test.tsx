@@ -210,6 +210,27 @@ describe('useScopedFindShortcut', () => {
         expect(event.defaultPrevented).toBe(false);
     });
 
+    it('REGRESSION: handles Ctrl+F when focus is on neutral chrome (a tab button)', () => {
+        // Emulates the e2e path (task-search.spec 17.4): the user clicks a
+        // sub-tab button, leaving focus on that <button> — outside the panel and
+        // not on document.body. A button is not a text-entry surface, so the
+        // body-default panel must still claim Ctrl+F and focus its search box.
+        // The old "any non-body focus yields" guard wrongly swallowed this.
+        const onTrigger = vi.fn();
+        const { getByTestId } = render(
+            <>
+                <Panel testid="p" onTrigger={onTrigger} />
+                <button data-testid="tab-btn">Tasks</button>
+            </>,
+        );
+        makeVisible(getByTestId('p') as HTMLElement);
+
+        const event = pressCtrlF(getByTestId('tab-btn'));
+
+        expect(onTrigger).toHaveBeenCalledTimes(1);
+        expect(event.defaultPrevented).toBe(true);
+    });
+
     it('handles a non-Element target (document) as body focus', () => {
         const onTrigger = vi.fn();
         const { getByTestId } = render(<Panel testid="p" onTrigger={onTrigger} />);
