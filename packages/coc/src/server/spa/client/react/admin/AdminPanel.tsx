@@ -380,6 +380,14 @@ export function AdminPanel() {
 
     // Feature toggles
     const [featureValues, setFeatureValues] = useState<FeatureValues>(() => readFeatureValues(undefined));
+    // Live search/filter for the Workspace Features card. Local UI state only —
+    // never persisted, never part of the save payload, and not counted toward
+    // dirty state. Reset whenever the Features sub-tab is left so it does not
+    // linger when the user switches away and back (or navigates away).
+    const [featureSearch, setFeatureSearch] = useState('');
+    useEffect(() => {
+        if (settingsSubTab !== 'features') setFeatureSearch('');
+    }, [settingsSubTab]);
     const [autoAgentProviderRoutingEnabled, setAutoAgentProviderRoutingEnabled] = useState(false);
     const [codexEnabled, setCodexEnabled] = useState(false);
     const [claudeEnabled, setClaudeEnabled] = useState(false);
@@ -1700,44 +1708,92 @@ export function AdminPanel() {
                                                     onCancel={handleCancelFeatures}
                                                     data-testid="settings-features"
                                                 >
-                                                    {FEATURE_CARD_GROUPS.map(group => (
-                                                        <div className="ar-feature-group" data-testid={group.testId} key={group.id}>
-                                                            <div className="ar-feature-group-head">{group.heading}</div>
-                                                            {getFeatureCardSettings(group.id).map(def => {
-                                                                const ui = def.ui!;
-                                                                if (ui.dependsOn && featureValues[ui.dependsOn] !== true) {
-                                                                    return null;
-                                                                }
-                                                                const badge = ui.badge ? FEATURE_BADGES[ui.badge] : undefined;
-                                                                const name = badge
-                                                                    ? <>{ui.label} <span className={badge.className}>{badge.label}</span></>
-                                                                    : ui.label;
-                                                                return (
-                                                                    <AdminRow key={def.key} name={name} hint={ui.hint}>
-                                                                        <SourceBadge source={sources[def.key]} isDefault={isDefaultValue(def.key)} />
-                                                                        {ui.control?.type === 'select' ? (
-                                                                            <select
-                                                                                className="ar-select ar-med"
-                                                                                value={String(featureValues[def.key] ?? '')}
-                                                                                onChange={e => setFeatureValues(prev => ({ ...prev, [def.key]: e.target.value }))}
-                                                                                data-testid={ui.testId}
-                                                                            >
-                                                                                {ui.control.options.map(option => (
-                                                                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                                                                ))}
-                                                                            </select>
-                                                                        ) : (
-                                                                            <AdminToggle
-                                                                                checked={featureValues[def.key] === true}
-                                                                                onChange={checked => setFeatureValues(prev => ({ ...prev, [def.key]: checked }))}
-                                                                                data-testid={ui.testId}
-                                                                            />
-                                                                        )}
-                                                                    </AdminRow>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    ))}
+                                                    <div className="ar-feature-search">
+                                                        <span className="ar-feature-search-icon" aria-hidden="true">🔍</span>
+                                                        <input
+                                                            type="text"
+                                                            className="ar-input ar-full"
+                                                            placeholder="Search features…"
+                                                            value={featureSearch}
+                                                            onChange={e => setFeatureSearch(e.target.value)}
+                                                            aria-label="Search features"
+                                                            data-testid="feature-search-input"
+                                                        />
+                                                        {featureSearch && (
+                                                            <button
+                                                                type="button"
+                                                                className="ar-feature-search-clear"
+                                                                onClick={() => setFeatureSearch('')}
+                                                                title="Clear search"
+                                                                aria-label="Clear search"
+                                                                data-testid="feature-search-clear"
+                                                            >
+                                                                ✕
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    {(() => {
+                                                        // Case-insensitive substring match against label + hint.
+                                                        // Whitespace-only query is treated as empty (full list).
+                                                        const query = featureSearch.trim().toLowerCase();
+                                                        const groups = FEATURE_CARD_GROUPS
+                                                            .map(group => ({
+                                                                group,
+                                                                defs: getFeatureCardSettings(group.id).filter(def => {
+                                                                    const ui = def.ui!;
+                                                                    // dependsOn-hidden rows never appear, regardless of text match.
+                                                                    if (ui.dependsOn && featureValues[ui.dependsOn] !== true) return false;
+                                                                    if (!query) return true;
+                                                                    return ui.label.toLowerCase().includes(query)
+                                                                        || ui.hint.toLowerCase().includes(query);
+                                                                }),
+                                                            }))
+                                                            .filter(entry => entry.defs.length > 0);
+
+                                                        if (query && groups.length === 0) {
+                                                            return (
+                                                                <div className="ar-feature-empty" data-testid="feature-search-empty">
+                                                                    No features match.
+                                                                </div>
+                                                            );
+                                                        }
+
+                                                        return groups.map(({ group, defs }) => (
+                                                            <div className="ar-feature-group" data-testid={group.testId} key={group.id}>
+                                                                <div className="ar-feature-group-head">{group.heading}</div>
+                                                                {defs.map(def => {
+                                                                    const ui = def.ui!;
+                                                                    const badge = ui.badge ? FEATURE_BADGES[ui.badge] : undefined;
+                                                                    const name = badge
+                                                                        ? <>{ui.label} <span className={badge.className}>{badge.label}</span></>
+                                                                        : ui.label;
+                                                                    return (
+                                                                        <AdminRow key={def.key} name={name} hint={ui.hint}>
+                                                                            <SourceBadge source={sources[def.key]} isDefault={isDefaultValue(def.key)} />
+                                                                            {ui.control?.type === 'select' ? (
+                                                                                <select
+                                                                                    className="ar-select ar-med"
+                                                                                    value={String(featureValues[def.key] ?? '')}
+                                                                                    onChange={e => setFeatureValues(prev => ({ ...prev, [def.key]: e.target.value }))}
+                                                                                    data-testid={ui.testId}
+                                                                                >
+                                                                                    {ui.control.options.map(option => (
+                                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                                    ))}
+                                                                                </select>
+                                                                            ) : (
+                                                                                <AdminToggle
+                                                                                    checked={featureValues[def.key] === true}
+                                                                                    onChange={checked => setFeatureValues(prev => ({ ...prev, [def.key]: checked }))}
+                                                                                    data-testid={ui.testId}
+                                                                                />
+                                                                            )}
+                                                                        </AdminRow>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        ));
+                                                    })()}
                                                 </SettingsCard>
                                             )}
 

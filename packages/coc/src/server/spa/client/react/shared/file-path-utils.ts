@@ -181,6 +181,18 @@ export function parseFilePathRef(token: string): FilePathRef {
         : { path: m[1], line: resolvedLine };
 }
 
+/** Split sentence punctuation from a bare path match before linkification. */
+function splitTerminalProsePunctuation(token: string): {
+    pathToken: string;
+    punctuation: string;
+} {
+    const punctuation = token.match(/[.,;!?]+$/)?.[0] ?? '';
+    return {
+        pathToken: punctuation ? token.slice(0, -punctuation.length) : token,
+        punctuation,
+    };
+}
+
 /**
  * Post-process HTML to wrap file paths in interactive `.file-path-link` spans.
  * Only operates on text outside HTML tags and `<code>` blocks.
@@ -201,7 +213,8 @@ export function linkifyFilePaths(html: string): string {
         if (otherTag) return otherTag;
         if (!text || insideCode > 0) return text || '';
         return text.replace(FILE_PATH_RE, (pathMatch: string) => {
-            const { path, line, endLine } = parseFilePathRef(pathMatch);
+            const { pathToken, punctuation } = splitTerminalProsePunctuation(pathMatch);
+            const { path, line, endLine } = parseFilePathRef(pathToken);
             const normalized = toForwardSlashes(path);
             const suffix = line === undefined
                 ? ''
@@ -209,7 +222,7 @@ export function linkifyFilePaths(html: string): string {
             const short = shortenFilePath(normalized) + suffix;
             const lineAttr = line === undefined ? '' : ` data-line="${line}"`;
             const endLineAttr = endLine === undefined ? '' : ` data-end-line="${endLine}"`;
-            return `<span class="file-path-link" data-full-path="${normalized}"${lineAttr}${endLineAttr} title="${normalized}${suffix}">${short}</span>`;
+            return `<span class="file-path-link" data-full-path="${normalized}"${lineAttr}${endLineAttr} title="${normalized}${suffix}">${short}</span>${punctuation}`;
         });
     });
 }

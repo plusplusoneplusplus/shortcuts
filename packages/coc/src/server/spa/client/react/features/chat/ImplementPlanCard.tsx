@@ -25,11 +25,9 @@
  */
 
 import { useState } from 'react';
-import { getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { useCocClient, type CloneRef } from '../../repos/cloneRouting';
-import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
 import { formatRelativeTime } from '../../utils/format';
 import { cn } from '../../ui/cn';
+import { ImplementPlanLaunchDialog } from './ImplementPlanLaunchDialog';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -49,6 +47,15 @@ export interface ImplementationRecord {
     targetServerLabel?: string;
     /** True when the run was dispatched to a remote clone. */
     isRemoteTarget?: boolean;
+    /**
+     * Chosen AI selection for this run (AC-05), recorded for display only. All
+     * optional and absent on legacy records — no schema migration.
+     */
+    provider?: string;
+    effortTier?: string;
+    model?: string;
+    reasoningEffort?: string;
+    autoProviderRouting?: boolean;
 }
 
 export type RunLiveStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown';
@@ -159,57 +166,11 @@ function describeRunTarget(run: ExistingRun): string | null {
     return label;
 }
 
-/** Build the prompt for a remote run by inlining the plan content (AC-04). */
-function buildRemotePrompt(planFilePath: string, planContent: string): string {
-    return [
-        'Implement the following plan in this repository.',
-        `The plan was authored as \`${planFilePath}\` on another machine, so its full content is inlined below.`,
-        '',
-        '----- BEGIN PLAN -----',
-        planContent,
-        '----- END PLAN -----',
-    ].join('\n');
-}
-
-/** Build the prompt for a canvas-backed plan by inlining the canvas content. */
-function buildCanvasPrompt(planLabel: string, planContent: string): string {
-    return [
-        'Implement the following plan in this repository.',
-        `The plan was authored in a canvas ("${planLabel}"), so its full content is inlined below.`,
-        '',
-        '----- BEGIN PLAN -----',
-        planContent,
-        '----- END PLAN -----',
-    ].join('\n');
-}
-
 /** File basename (last path segment) for a plan-file dropdown label. */
 function planFileBasename(filePath: string): string {
     const normalized = filePath.replace(/\\/g, '/');
     const idx = normalized.lastIndexOf('/');
     return idx >= 0 ? normalized.slice(idx + 1) : normalized;
-}
-
-/**
- * Resolve the enqueue routing ref. An explicit remote target routes via its own
- * baseUrl. When the run falls back to the source workspace and that workspace is
- * a remote clone with a known baseUrl, route to the source server explicitly — a
- * bare remote workspace id silently resolves to the LOCAL client when the clone
- * registry does not know it. Everything else routes by id.
- */
-function toCloneRef(
-    target: ImplementTarget | undefined,
-    fallbackId: string | undefined,
-    source?: { isRemote?: boolean; baseUrl?: string },
-): CloneRef | undefined {
-    if (target?.isRemote && target.baseUrl) {
-        return { id: target.workspaceId, baseUrl: target.baseUrl, remote: {} };
-    }
-    const targetIsSource = !target || target.workspaceId === fallbackId;
-    if (targetIsSource && source?.isRemote && source.baseUrl) {
-        return { id: fallbackId ?? '', baseUrl: source.baseUrl, remote: {} };
-    }
-    return target?.workspaceId ?? fallbackId;
 }
 
 // ── Component ──────────────────────────────────────────────────────────
@@ -231,42 +192,18 @@ export function ImplementPlanCard({
     onRecordPersisted,
     availableTargets,
 }: ImplementPlanCardProps) {
-    const targets = availableTargets ?? [];
-    const showSelector = targets.length > 1;
-
-    // Default to the current repo so the existing one-click local behavior is
-    // unchanged (AC-01); fall back to the first local, then any, target.
-    const defaultTargetId =
-        workspaceId
-        ?? targets.find(t => !t.isRemote)?.workspaceId
-        ?? targets[0]?.workspaceId;
-    const [selectedTargetId, setSelectedTargetId] = useState<string | undefined>(defaultTargetId);
-
-    const selectedTarget = targets.find(t => t.workspaceId === selectedTargetId);
-
-    // AC-07/AC-03: the source client (initiating server) persists the record and
-    // reads the plan; the target client routes the enqueue to the chosen repo.
-    // When the source workspace is a remote clone with a known baseUrl, route
-    // both explicitly — bare-id resolution falls back to the local client when
-    // the clone registry does not know the workspace.
-    const sourceRef: CloneRef | undefined = sourceIsRemote && sourceBaseUrl
-        ? { id: workspaceId ?? '', baseUrl: sourceBaseUrl, remote: {} }
-        : workspaceId;
-    const sourceClient = useCocClient(sourceRef);
-    const targetClient = useCocClient(
-        toCloneRef(selectedTarget, workspaceId, { isRemote: sourceIsRemote, baseUrl: sourceBaseUrl }),
-    );
-
-    const [submitting, setSubmitting] = useState(false);
-    const [submitted, setSubmitted] = useState(false);
-    const [error, setError] = useState<string | null>(null);
     const [expanded, setExpanded] = useState(false);
+    // The banner is a trigger: clicking Implement expands the inline launch
+    // panel below the banner, which hosts the selectors, AI controls, and the
+    // confirm/enqueue action (AC-01). Enqueue never happens directly from the
+    // banner.
+    const [dialogOpen, setDialogOpen] = useState(false);
 
-    // ── Plan-file selector (AC-02/AC-03) ───────────────────────────────
-    // The selector appears only in the auto-detected multi-file case. With 0–1
-    // files the card falls back to `planFilePath` so single-file behavior is
-    // byte-for-byte unchanged. Selection is ephemeral local state, defaulting to
-    // the first detected file (which equals `planFilePath`).
+    // ── Plan-file selection (AC-02/AC-03) ──────────────────────────────
+    // The selector UI now lives in the dialog, but the banner still owns the
+    // selection so its status pill, path label, and prior-runs list stay scoped
+    // to the file the dialog will implement. With 0–1 files this is fixed to
+    // planFilePath so single-file behavior is unchanged.
     const showFileSelector = planFiles.length > 1;
     const [selectedPlanFile, setSelectedPlanFile] = useState<string>(planFiles[0] ?? planFilePath);
     const activePlanFilePath = showFileSelector ? selectedPlanFile : planFilePath;
@@ -281,123 +218,6 @@ export function ImplementPlanCard({
     const latestRun = filteredRuns.length > 0 ? filteredRuns[filteredRuns.length - 1] : null;
     const latestIsActive = latestRun ? isActiveStatus(latestRun.liveStatus) : false;
     const hasRuns = filteredRuns.length > 0;
-
-    async function readSourcePlanContent(): Promise<string> {
-        try {
-            const blob = await sourceClient.explorer.readTrustedBlob(activePlanFilePath);
-            if (blob.encoding === 'base64') {
-                try {
-                    return typeof atob === 'function' ? atob(blob.content) : blob.content;
-                } catch {
-                    return blob.content;
-                }
-            }
-            return blob.content;
-        } catch (err) {
-            throw new Error(
-                `Could not read the plan file on the source server: ${getSpaCocClientErrorMessage(err, 'read failed')}`,
-            );
-        }
-    }
-
-    async function readSourceCanvasContent(canvasId: string): Promise<string> {
-        try {
-            const canvas = await sourceClient.canvases.get(workspaceId ?? '', canvasId);
-            return canvas.content;
-        } catch (err) {
-            throw new Error(
-                `Could not read the plan canvas on the source server: ${getSpaCocClientErrorMessage(err, 'read failed')}`,
-            );
-        }
-    }
-
-    async function handleClick() {
-        if (submitting || submitted) return;
-        setSubmitting(true);
-        setError(null);
-        try {
-            const isRemote = !!selectedTarget?.isRemote;
-            const targetIsSource = !selectedTarget || selectedTarget.workspaceId === workspaceId;
-            // A run that stays on the source workspace inherits the source's
-            // remote-ness: the target list may omit or mislabel the current
-            // workspace (repos still loading, offline clone, no ReposProvider).
-            const runsRemotely = isRemote || (targetIsSource && !!sourceIsRemote);
-            const targetWorkspaceId = selectedTarget?.workspaceId ?? workspaceId;
-            const targetWorkingDirectory = selectedTarget?.workingDirectory ?? workingDirectory;
-
-            // Canvas-backed plans have no on-disk path, so always read the canvas
-            // content from the source server and embed it inline (local or remote).
-            // File-based plans keep the existing convention: local runs reference
-            // the path, remote runs embed the file content read from the source
-            // server (AC-04). A remote-sourced plan is always embedded — its path
-            // only exists on the source machine.
-            let prompt: string;
-            let context: { files: string[] } | undefined;
-            if (planCanvasId) {
-                const planContent = await readSourceCanvasContent(planCanvasId);
-                prompt = buildCanvasPrompt(activePlanFilePath, planContent);
-                context = undefined;
-            } else if (isRemote || sourceIsRemote) {
-                const planContent = await readSourcePlanContent();
-                prompt = buildRemotePrompt(activePlanFilePath, planContent);
-                context = undefined;
-            } else {
-                prompt = `Read and implement the plan file at ${activePlanFilePath}`;
-                context = { files: [activePlanFilePath] };
-            }
-
-            const result = await targetClient.queue.enqueue({
-                type: 'chat',
-                priority: 'normal',
-                payload: {
-                    kind: 'chat',
-                    mode: 'autopilot' as any,
-                    prompt,
-                    ...(context ? { context } : {}),
-                    workingDirectory: targetWorkingDirectory,
-                    workspaceId: targetWorkspaceId,
-                } as any,
-            });
-            const rawId = (result as any).task?.id ?? (result as any).id;
-            if (!rawId) throw new Error('No task id returned from enqueue');
-            const processId = isQueueProcessId(rawId) ? rawId : toQueueProcessId(rawId);
-
-            // Persist implementation record on the source task (best-effort), via the
-            // source client so records always land on the initiating server.
-            if (sourceProcessId) {
-                const record: ImplementationRecord = {
-                    processId,
-                    planFilePath: activePlanFilePath,
-                    enqueuedAt: new Date().toISOString(),
-                    targetWorkspaceId,
-                    targetLabel: selectedTarget?.label,
-                    targetServerLabel: isRemote ? selectedTarget?.serverLabel : undefined,
-                    isRemoteTarget: runsRemotely,
-                };
-                const prevImpls = Array.isArray(sourceMetadata?.implementations)
-                    ? (sourceMetadata!.implementations as ImplementationRecord[])
-                    : [];
-                const implementations = [...prevImpls, record];
-                try {
-                    await sourceClient.processes.patchMetadata(sourceProcessId, {
-                        set: { implementations },
-                    });
-                    onRecordPersisted?.(record);
-                } catch (persistErr) {
-                    console.warn('Failed to persist implementation record:', persistErr);
-                }
-            }
-
-            setSubmitted(true);
-            onImplemented(processId);
-        } catch (err) {
-            setError(getSpaCocClientErrorMessage(err, 'Failed to start implementation'));
-        } finally {
-            setSubmitting(false);
-        }
-    }
-
-    const disabled = submitting || submitted;
 
     return (
         <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-4 py-3" data-testid="implement-plan-card">
@@ -428,26 +248,6 @@ export function ImplementPlanCard({
                         </span>
                     )}
 
-                    {showFileSelector && (
-                        <div className="flex shrink-0 items-center gap-1" data-testid="implement-plan-card-file">
-                            <label htmlFor="implement-plan-card-file-select" className="text-[11px] text-[#57606a] dark:text-[#8b949e]">
-                                Plan
-                            </label>
-                            <select
-                                id="implement-plan-card-file-select"
-                                data-testid="implement-plan-card-file-select"
-                                value={selectedPlanFile}
-                                onChange={(e) => setSelectedPlanFile(e.target.value)}
-                                disabled={disabled}
-                                className="text-[11px] rounded border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#0d1117] text-[#1f2328] dark:text-[#c9d1d9] px-1 py-0.5 max-w-[12rem] truncate disabled:opacity-60"
-                            >
-                                {planFiles.map(p => (
-                                    <option key={p} value={p}>{planFileBasename(p)}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
                     {hasRuns && latestRun && (
                         <button
                             type="button"
@@ -465,50 +265,21 @@ export function ImplementPlanCard({
                         </button>
                     )}
 
-                    {showSelector && (
-                        <div className="flex shrink-0 items-center gap-1" data-testid="implement-plan-card-target">
-                            <label htmlFor="implement-plan-card-target-select" className="text-[11px] text-[#57606a] dark:text-[#8b949e]">
-                                Run in
-                            </label>
-                            <select
-                                id="implement-plan-card-target-select"
-                                data-testid="implement-plan-card-target-select"
-                                value={selectedTargetId}
-                                onChange={(e) => setSelectedTargetId(e.target.value)}
-                                disabled={disabled}
-                                className="text-[11px] rounded border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#0d1117] text-[#1f2328] dark:text-[#c9d1d9] px-1 py-0.5 max-w-[12rem] truncate disabled:opacity-60"
-                            >
-                                {targets.map(t => {
-                                    const isCurrent = t.workspaceId === workspaceId;
-                                    const label = t.isRemote ? `${t.label} · ${t.serverLabel ?? 'remote'}` : `${t.label}${isCurrent ? ' (current)' : ''}`;
-                                    return <option key={t.workspaceId} value={t.workspaceId}>{label}</option>;
-                                })}
-                            </select>
-                        </div>
-                    )}
-
                     <button
                         type="button"
                         data-testid="implement-plan-card-btn"
-                        onClick={handleClick}
-                        disabled={disabled}
+                        onClick={() => setDialogOpen(true)}
                         title={latestIsActive ? 'An implementation is already running. Click to start another.' : undefined}
                         className={cn(
                             'inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                            disabled ? 'bg-blue-400 text-white cursor-not-allowed'
-                                : latestIsActive ? 'border border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30'
+                            latestIsActive
+                                ? 'border border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30'
                                 : 'bg-blue-600 hover:bg-blue-700 text-white',
                         )}
                     >
-                        {submitted ? '✓ Implementing' : submitting ? '⏳ Starting…' : hasRuns ? 'Implement again' : 'Implement →'}
+                        {hasRuns ? 'Implement again' : 'Implement →'}
                     </button>
                 </div>
-
-                {error && (
-                    <p className="px-2.5 pb-1.5 text-[11px] text-[#cf222e] dark:text-[#f85149]" data-testid="implement-plan-card-error">
-                        {error}
-                    </p>
-                )}
 
                 {filteredRuns.length > 1 && (
                     <div className="border-t border-[#d0d7de] dark:border-[#3c3c3c] px-2.5 py-1">
@@ -535,6 +306,25 @@ export function ImplementPlanCard({
                     </div>
                 )}
             </div>
+
+            <ImplementPlanLaunchDialog
+                open={dialogOpen}
+                onClose={() => setDialogOpen(false)}
+                planFilePath={planFilePath}
+                planFiles={planFiles}
+                selectedPlanFile={activePlanFilePath}
+                onSelectPlanFile={setSelectedPlanFile}
+                planCanvasId={planCanvasId}
+                workspaceId={workspaceId}
+                workingDirectory={workingDirectory}
+                sourceIsRemote={sourceIsRemote}
+                sourceBaseUrl={sourceBaseUrl}
+                availableTargets={availableTargets}
+                sourceProcessId={sourceProcessId}
+                sourceMetadata={sourceMetadata}
+                onImplemented={onImplemented}
+                onRecordPersisted={onRecordPersisted}
+            />
         </div>
     );
 }

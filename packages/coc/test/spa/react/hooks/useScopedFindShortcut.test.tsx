@@ -190,6 +190,58 @@ describe('useScopedFindShortcut', () => {
         expect(event.defaultPrevented).toBe(false);
     });
 
+    it('REGRESSION: yields to native find when focus is in a non-scope region (right dock)', () => {
+        // Emulates the workspace right dock (Terminal/Explorer): a focusable
+        // sibling region that is neither a find-scope nor the detail pane. The
+        // body-default panel must NOT steal Ctrl+F from it — preventDefault
+        // stays false so the desktop find bar / native find can open.
+        const onTrigger = vi.fn();
+        const { getByTestId } = render(
+            <>
+                <Panel testid="p" onTrigger={onTrigger} />
+                <div data-testid="dock"><input data-testid="dock-input" /></div>
+            </>,
+        );
+        makeVisible(getByTestId('p') as HTMLElement);
+
+        const event = pressCtrlF(getByTestId('dock-input'));
+
+        expect(onTrigger).not.toHaveBeenCalled();
+        expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('REGRESSION: handles Ctrl+F when focus is on neutral chrome (a tab button)', () => {
+        // Emulates the e2e path (task-search.spec 17.4): the user clicks a
+        // sub-tab button, leaving focus on that <button> — outside the panel and
+        // not on document.body. A button is not a text-entry surface, so the
+        // body-default panel must still claim Ctrl+F and focus its search box.
+        // The old "any non-body focus yields" guard wrongly swallowed this.
+        const onTrigger = vi.fn();
+        const { getByTestId } = render(
+            <>
+                <Panel testid="p" onTrigger={onTrigger} />
+                <button data-testid="tab-btn">Tasks</button>
+            </>,
+        );
+        makeVisible(getByTestId('p') as HTMLElement);
+
+        const event = pressCtrlF(getByTestId('tab-btn'));
+
+        expect(onTrigger).toHaveBeenCalledTimes(1);
+        expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('handles a non-Element target (document) as body focus', () => {
+        const onTrigger = vi.fn();
+        const { getByTestId } = render(<Panel testid="p" onTrigger={onTrigger} />);
+        makeVisible(getByTestId('p') as HTMLElement);
+
+        const event = pressCtrlF(document);
+
+        expect(onTrigger).toHaveBeenCalledTimes(1);
+        expect(event.defaultPrevented).toBe(true);
+    });
+
     it('is inert when enabled is false', () => {
         const onTrigger = vi.fn();
         const { getByTestId } = render(

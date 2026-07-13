@@ -173,6 +173,25 @@ describe('linkifyFilePaths', () => {
         expect(linkifyFilePaths('/data/repos/index.ts')).toContain('data-full-path="/data/repos/index.ts"');
     });
 
+    it('keeps sentence-ending punctuation outside a bare file link', () => {
+        const result = linkifyFilePaths('Read /workspace/project/outgoing-commit-squash.plan.md.');
+        expect(result).toContain('data-full-path="/workspace/project/outgoing-commit-squash.plan.md"');
+        expect(result).not.toContain('data-full-path="/workspace/project/outgoing-commit-squash.plan.md."');
+        expect(result).toContain('>/workspace/project/outgoing-commit-squash.plan.md</span>.');
+    });
+
+    it('preserves terminal punctuation runs outside the link in source order', () => {
+        const result = linkifyFilePaths('See /workspace/project/file.ts.,;!? Next');
+        expect(result).toContain('>/workspace/project/file.ts</span>.,;!? Next');
+        expect(result).toContain('data-full-path="/workspace/project/file.ts"');
+    });
+
+    it('preserves dots inside directory and file names', () => {
+        const result = linkifyFilePaths('See /workspace/project.v2/foo.test.ts.');
+        expect(result).toContain('data-full-path="/workspace/project.v2/foo.test.ts"');
+        expect(result).toContain('>/workspace/project.v2/foo.test.ts</span>.');
+    });
+
     it('does not linkify URL path tails', () => {
         const html = 'visit https://example.com/api/v1/users';
         expect(linkifyFilePaths(html)).not.toContain('file-path-link');
@@ -262,6 +281,30 @@ describe('linkifyFilePaths — line/range suffixes (AC-01)', () => {
     it('keeps the :line suffix in the visible link text', () => {
         const result = linkifyFilePaths('see /Users/alice/code/foo.ts:42');
         expect(result).toContain('>~/code/foo.ts:42</span>');
+    });
+
+    it('keeps trailing punctuation outside a single-line reference', () => {
+        const result = linkifyFilePaths('see /Users/alice/code/foo.ts:42.');
+        expect(result).toContain('data-full-path="/Users/alice/code/foo.ts"');
+        expect(result).toContain('data-line="42"');
+        expect(result).not.toContain('data-end-line');
+        expect(result).toContain('>~/code/foo.ts:42</span>.');
+    });
+
+    it('keeps trailing punctuation outside a line-range reference', () => {
+        const result = linkifyFilePaths('see /Users/alice/code/foo.ts:42-58.');
+        expect(result).toContain('data-full-path="/Users/alice/code/foo.ts"');
+        expect(result).toContain('data-line="42"');
+        expect(result).toContain('data-end-line="58"');
+        expect(result).toContain('>~/code/foo.ts:42-58</span>.');
+    });
+
+    it('keeps trailing punctuation outside a hash-line reference', () => {
+        const result = linkifyFilePaths('see /workspace/project/foo.ts#L42-L58.');
+        expect(result).toContain('data-full-path="/workspace/project/foo.ts"');
+        expect(result).toContain('data-line="42"');
+        expect(result).toContain('data-end-line="58"');
+        expect(result).toContain('>/workspace/project/foo.ts:42-58</span>.');
     });
 
     it('leaves bare paths (no suffix) without line attributes', () => {

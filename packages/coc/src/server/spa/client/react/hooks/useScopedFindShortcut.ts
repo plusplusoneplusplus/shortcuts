@@ -26,6 +26,20 @@ export function isWithinDetailPane(target: EventTarget | null): boolean {
     return target.closest('[data-pane="detail"]') !== null;
 }
 
+/**
+ * True when the focused element is a text-entry surface (form field or
+ * contentEditable). Ctrl+F must not be yanked away from a surface the user is
+ * actively typing in — e.g. the workspace right dock's terminal/inputs — even
+ * when that surface is not itself a find-scope. Neutral chrome (a nav or tab
+ * button) is NOT editable, so the body-default panel still claims Ctrl+F.
+ */
+export function isEditableTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof Element)) return false;
+    const tag = target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    return target instanceof HTMLElement && target.isContentEditable;
+}
+
 export interface ScopedFindShortcutOptions {
     /**
      * When true (default), this panel also handles Ctrl+F when keyboard focus
@@ -46,8 +60,11 @@ export interface ScopedFindShortcutOptions {
  *  - ignore when the container is unmounted or hidden (`offsetParent === null`);
  *  - ignore when focus is in the detail pane (native find wins);
  *  - handle when focus is inside this container;
- *  - when focus is elsewhere: ignore if another find-scope owns it; otherwise
- *    handle only when this panel claims body focus.
+ *  - when focus is elsewhere: ignore if another find-scope owns it; ignore if
+ *    focus is on a text-entry surface in another region (e.g. the workspace
+ *    right dock's terminal/inputs — that surface owns its own Ctrl+F, so native
+ *    find wins); otherwise focus is on body/nothing or neutral chrome (a tab or
+ *    nav button) and the panel that claims body focus handles it.
  *
  * The container element is tagged with `data-find-scope` while mounted so
  * sibling panels can detect that focus lives inside *another* search-owning
@@ -82,7 +99,13 @@ export function useScopedFindShortcut(
                 const owningScope = targetEl ? targetEl.closest('[data-find-scope]') : null;
                 // Focus lives in a different visible search panel — let it win.
                 if (owningScope && owningScope !== container) return;
-                // Focus is on body/nothing: only the body-default panel handles.
+                // Focus is on a text-entry surface in another region (right dock
+                // terminal/inputs, a rich-text editor) — that surface owns its
+                // own Ctrl+F; yield to native find rather than yanking focus away
+                // from what the user is typing in.
+                if (isEditableTarget(targetEl)) return;
+                // Otherwise focus is on body/nothing or neutral chrome (a tab or
+                // nav button): only the body-default panel handles it.
                 if (!claimsBodyFocusRef.current) return;
             }
             e.preventDefault();

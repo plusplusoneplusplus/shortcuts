@@ -347,12 +347,15 @@ Excalidraw keeps the view-only preview, extension canvases mount
 for local file references clicked inside assistant chat responses. The global
 file-path delegation normalizes bare `.file-path-link` spans, shared renderer
 `.md-link` spans, and local Markdown `<a href>` anchors from chat's markdown
-renderer into one file-reference path; when `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS`
-is enabled, assistant-response clicks dispatch `coc-open-source-canvas` with the
-bare path, workspace hint, optional `sourceFilePath`, and optional line/range
-metadata. Local `file://` hrefs are converted to filesystem paths and
-GitHub-style `#L<line>` / `#L<start>-L<end>` hashes are carried as line metadata,
-so the resolver never treats a file URI as workspace-relative text. The
+renderer into one file-reference path. Bare prose linkification keeps a terminal
+run of `.`, `,`, `;`, `!`, or `?` outside the clickable span and its metadata;
+explicit Markdown hrefs and paths in code or preformatted blocks retain their
+literal behavior. When `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS` is enabled,
+assistant-response clicks dispatch `coc-open-source-canvas` with the bare path,
+workspace hint, optional `sourceFilePath`, and optional line/range metadata.
+Local `file://` hrefs are converted to filesystem paths and GitHub-style
+`#L<line>` / `#L<start>-L<end>` hashes are carried as line metadata, so the
+resolver never treats a file URI as workspace-relative text. The
 shared `MarkdownView` intercepts assistant-prose conversation deep-links with
 `#/process/<id>`, `#/session/<id>`, or `#/processes/<id>` hrefs, prevents the
 default link action, and assigns `window.location.hash`; the router recognizes
@@ -639,8 +642,21 @@ does not render Copilot premium request units.
 `ImplementPlanCard` (`features/chat/ImplementPlanCard.tsx`) is the thread-only
 flow card shown after a completed **Ask-mode plan-file chat** (gated in
 `ChatDetail` on terminal status, not busy, Ask mode, and a known
-`effectivePlanPath`). It enqueues a new autopilot task that executes the plan,
-and renders a status banner over the CTA when prior runs exist (live status of
+`effectivePlanPath`). The card is a trigger: clicking **Implement** expands
+`ImplementPlanLaunchDialog` (`features/chat/ImplementPlanLaunchDialog.tsx`), an
+inline launch panel below the banner styled like `RalphStartPanel`'s open
+state (not a modal). The panel hosts the plan-file selector, target selector,
+shared AI controls (`ModalJobAiControls` via `useModalJobAiSelection`, keyed to
+the selected target), a read-only plan summary, and the confirm/enqueue action;
+the resolved provider/effort selection is carried into the queue payload
+(`payload.provider/model/reasoningEffort` + `config.effortTier` +
+`context.autoProviderRouting`) and recorded on the `ImplementationRecord`.
+When a **remote** target is selected, the panel fetches the provider list and
+effort tiers from the target server (`getCocClientFor(baseUrl).agentProviders`)
+and injects them as `externalAgentProviders`/`externalEffortTierMap` overrides
+into `useModalJobAiSelection`; if the target is unreachable the AI controls are
+replaced by a "Cannot reach target server" hint while enqueue stays available.
+The card renders a status banner when prior runs exist (live status of
 the latest run, total run count, an expandable per-run list, and a `View →`
 action per run).
 
@@ -1119,6 +1135,17 @@ Enabled by default; desktop-only; takes effect on reload.
   tabs use a hidden measurement mirror plus `ResizeObserver` feeding
   `computeVisibleTabKeys`, so as many tabs as fit stay inline and the tail
   collapses into the overflow menu while keeping the active tab visible.
+- **Shared repo-picker chrome.** The remote-picker dropdown (`RemoteScopeCluster`,
+  rows = remote groups) and the virtual repo-picker dropdown
+  (`VirtualWorkspaceShellHeader`, rows = individual repos) share one presentational
+  shell `RepoPickerPopover` (fixed width, search box, scroll area, plus `PickerSection`
+  / `PickerRow` / `PickerEmpty` primitives) and one interaction hook
+  `useDropdownPopover` (open state + outside-click + Escape-close-and-refocus-trigger
+  + search auto-focus). Row helpers `getServerName` / `isRepoOffline` / `shortPath`
+  live in `repos/repoPickerModel.ts`. The two callers keep their genuine differences
+  (the remote picker's Add-repository footer + remote sub-tabs; the virtual picker's
+  identity chip + navigation-only rows). Offline is surfaced per-repo in the virtual
+  picker only; group rows show the aggregate status dot instead.
 
 **Remote workspace aggregation** (gated by `features.remoteShell`): when the flag
 is ON, `ReposContext.fetchRepos` also calls `aggregateRemoteWorkspaces()`
@@ -1307,7 +1334,10 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   intercepts); yields when focus is in the detail pane (`data-pane="detail"`, via
   the exported `isWithinDetailPane`) so native find-in-page (Electron overlay /
   browser find) takes over — it only opens when `defaultPrevented` stays false;
-  handles when focus is inside the container; and, when focus is on
+  handles when focus is inside the container; yields when focus is inside any
+  other region that is neither this container nor `document.body`/
+  `documentElement` (e.g. the workspace right dock's terminal/explorer — that
+  region owns its own Ctrl+F story, so native find wins); and, when focus is on
   `document.body`/nothing, handles only if `claimsBodyFocus` is set (default true;
   the git list passes `!isSplitWorkspace` so the chat list wins body focus in the
   split-workspace layout). Panels are tagged with `data-find-scope` while mounted

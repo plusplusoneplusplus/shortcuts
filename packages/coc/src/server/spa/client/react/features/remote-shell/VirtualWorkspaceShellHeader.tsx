@@ -13,11 +13,14 @@
  * Rendered by `TopBar` in the remote-first desktop shell; the matching in-body
  * header (`VirtualWorkspaceInlineHeader`) covers classic shell / mobile.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useVirtualWorkspaceHeader } from './useVirtualWorkspaceHeader';
+import { useDropdownPopover } from './useDropdownPopover';
+import { PickerEmpty, PickerRow, PickerSection, RepoPickerPopover } from './RepoPickerPopover';
 import type { VirtualWorkspaceHeaderConfig } from './virtualWorkspaceHeader';
 import type { RepoData } from '../../repos/repoGrouping';
 import { isRemoteRepo } from '../../repos/repoGrouping';
+import { getServerName, isRepoOffline, shortPath } from '../../repos/repoPickerModel';
 import { getRepoSelectionId } from '../../repos/cloneIdentity';
 
 export interface VirtualWorkspaceShellHeaderProps {
@@ -34,69 +37,14 @@ function Chevron() {
     );
 }
 
-function SearchIcon() {
-    return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" />
-            <path d="M16 16l4 4" />
-        </svg>
-    );
-}
-
-function getServerName(repo: RepoData): string {
-    const remote = (repo.workspace as any).remote as { serverLabel?: string; serverId?: string } | null;
-    return String(remote?.serverLabel ?? remote?.serverId ?? (repo.workspace as any).baseUrl ?? 'remote');
-}
-
-function isRepoOffline(repo: RepoData): boolean {
-    const remote = (repo.workspace as any).remote as { connection?: string } | null;
-    if (!remote) return false;
-    const connection = remote.connection ?? 'offline';
-    return connection === 'offline' || connection === 'failed';
-}
-
-function shortPath(fullPath: string): string {
-    if (!fullPath) return '';
-    const parts = fullPath.replace(/\\/g, '/').split('/').filter(Boolean);
-    return parts.slice(-2).join('/');
-}
-
 export function VirtualWorkspaceShellHeader({ config, repos, onSelectRepo }: VirtualWorkspaceShellHeaderProps) {
     const { visibleTabs, activeTab, switchTab, statusMsg, isActionRunning, runAction } = useVirtualWorkspaceHeader(config);
     const prefix = config.testIdPrefix;
 
-    const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     const rootRef = useRef<HTMLDivElement>(null);
-    const searchRef = useRef<HTMLInputElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
-
-    useEffect(() => {
-        if (!open) return;
-        const onDown = (e: MouseEvent) => {
-            if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
-        };
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                setOpen(false);
-                triggerRef.current?.focus();
-            }
-        };
-        document.addEventListener('mousedown', onDown);
-        document.addEventListener('keydown', onKey);
-        return () => {
-            document.removeEventListener('mousedown', onDown);
-            document.removeEventListener('keydown', onKey);
-        };
-    }, [open]);
-
-    // Focus the search field after the dropdown renders
-    useEffect(() => {
-        if (open) {
-            const id = setTimeout(() => searchRef.current?.focus(), 0);
-            return () => clearTimeout(id);
-        }
-    }, [open]);
+    const { open, toggle, close, searchRef } = useDropdownPopover(rootRef, triggerRef);
 
     const filteredRepos = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -115,45 +63,31 @@ export function VirtualWorkspaceShellHeader({ config, repos, onSelectRepo }: Vir
     const handleSelect = useCallback((repo: RepoData) => {
         if (isRepoOffline(repo)) return;
         onSelectRepo(getRepoSelectionId(repo));
-        setOpen(false);
+        close();
         setQuery('');
-    }, [onSelectRepo]);
+    }, [onSelectRepo, close]);
 
     const renderRepoRow = (repo: RepoData, testId: string) => {
         const name = String(repo.workspace.name ?? repo.workspace.id ?? 'Unknown');
         const offline = isRepoOffline(repo);
-        const remote = isRemoteRepo(repo);
-        const sublabel = remote
+        const sublabel = isRemoteRepo(repo)
             ? getServerName(repo)
             : shortPath(String(repo.workspace.rootPath ?? repo.workspace.path ?? ''));
 
         return (
-            <button
+            <PickerRow
                 key={getRepoSelectionId(repo)}
-                data-testid={testId}
-                role="menuitem"
-                disabled={offline}
-                aria-disabled={offline}
+                testId={testId}
+                name={name}
+                sublabel={sublabel}
+                offline={offline}
                 onClick={() => handleSelect(repo)}
-                className={
-                    'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition-colors ' +
-                    (offline
-                        ? 'opacity-50 cursor-not-allowed text-[#848484] dark:text-[#666]'
-                        : 'text-[#1f2328] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]')
-                }
-            >
-                <span className="flex-1 min-w-0">
-                    <span className="block font-semibold truncate">{name}</span>
-                    {sublabel && (
-                        <span className="block text-[10.5px] text-[#848484] dark:text-[#777] truncate">{sublabel}</span>
-                    )}
-                </span>
-                {offline && (
+                badges={offline ? (
                     <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#848484]/10 text-[#848484] dark:text-[#666] flex-shrink-0">
                         offline
                     </span>
-                )}
-            </button>
+                ) : undefined}
+            />
         );
     };
 
@@ -174,7 +108,7 @@ export function VirtualWorkspaceShellHeader({ config, repos, onSelectRepo }: Vir
                     aria-expanded={open}
                     aria-label={`${config.label} — switch repository`}
                     title="Switch repository"
-                    onClick={() => setOpen(o => !o)}
+                    onClick={toggle}
                     className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:bg-[#eaeef2] dark:hover:bg-[#333] transition-colors"
                 >
                     <span aria-hidden>{config.icon}</span>
@@ -182,53 +116,36 @@ export function VirtualWorkspaceShellHeader({ config, repos, onSelectRepo }: Vir
                     <Chevron />
                 </button>
 
-                {open && (
-                    <div
-                        data-testid={`${prefix}-repo-dropdown`}
-                        role="menu"
-                        className="absolute left-0 top-full mt-1 z-50 w-[280px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg p-1.5"
-                    >
-                        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#252526]">
-                            <SearchIcon />
-                            <input
-                                ref={searchRef}
-                                data-testid={`${prefix}-repo-search`}
-                                value={query}
-                                onChange={e => setQuery(e.target.value)}
-                                placeholder="Filter repositories"
-                                className="min-w-0 flex-1 bg-transparent outline-none text-[12px] text-[#1f2328] dark:text-[#cccccc] placeholder:text-[#848484]"
-                                aria-label="Filter repositories"
-                            />
-                        </div>
-
-                        <div className="max-h-[260px] overflow-y-auto mt-1">
-                            {isEmpty ? (
-                                <div className="px-2 py-3 text-[12px] text-[#848484] dark:text-[#777] text-center">
-                                    {query.trim() ? 'No repositories match' : 'No repositories — use ☰ to add one'}
-                                </div>
-                            ) : (
+                <RepoPickerPopover
+                    open={open}
+                    dropdownTestId={`${prefix}-repo-dropdown`}
+                    searchTestId={`${prefix}-repo-search`}
+                    searchRef={searchRef}
+                    searchPlaceholder="Search repositories"
+                    query={query}
+                    onQueryChange={setQuery}
+                >
+                    {isEmpty ? (
+                        <PickerEmpty>
+                            {query.trim() ? 'No repositories match' : 'No repositories — use ☰ to add one'}
+                        </PickerEmpty>
+                    ) : (
+                        <>
+                            {localRepos.length > 0 && (
                                 <>
-                                    {localRepos.length > 0 && (
-                                        <>
-                                            <div className="px-2 pt-2 pb-0.5 text-[10px] font-bold uppercase tracking-[0.07em] text-[#848484] dark:text-[#777]">
-                                                Local
-                                            </div>
-                                            {localRepos.map(r => renderRepoRow(r, `${prefix}-repo-local-row`))}
-                                        </>
-                                    )}
-                                    {remoteRepos.length > 0 && (
-                                        <>
-                                            <div className={`px-2 ${localRepos.length > 0 ? 'pt-2' : 'pt-1'} pb-0.5 text-[10px] font-bold uppercase tracking-[0.07em] text-[#848484] dark:text-[#777]`}>
-                                                Remote
-                                            </div>
-                                            {remoteRepos.map(r => renderRepoRow(r, `${prefix}-repo-remote-row`))}
-                                        </>
-                                    )}
+                                    <PickerSection label="Local" />
+                                    {localRepos.map(r => renderRepoRow(r, `${prefix}-repo-local-row`))}
                                 </>
                             )}
-                        </div>
-                    </div>
-                )}
+                            {remoteRepos.length > 0 && (
+                                <>
+                                    <PickerSection label="Remote" />
+                                    {remoteRepos.map(r => renderRepoRow(r, `${prefix}-repo-remote-row`))}
+                                </>
+                            )}
+                        </>
+                    )}
+                </RepoPickerPopover>
             </div>
 
             <span className="w-px h-[18px] bg-[#d8dee4] dark:bg-[#3c3c3c] flex-shrink-0" aria-hidden />

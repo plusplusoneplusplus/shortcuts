@@ -7,6 +7,7 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import ReactDOM from 'react-dom';
 import { cn } from '../../../../ui';
 import type { WhisperSummary, FileEdit } from './toolGroupUtils';
+import type { SkillInfo } from '../../../../shared';
 import { groupConsecutiveToolChunks, computeFileEditTotals } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
 import type { RenderToolCall } from './ToolCallGroupView';
@@ -19,10 +20,10 @@ import type { DetectedPush } from '../pushDetection';
 import { CommitStrip } from '../CommitStrip';
 import { buildGitReviewPopOutUrl } from '../../../../layout/Router';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../../contexts/GitReviewPopOutContext';
-import { lookupCloneBaseUrl } from '../../../../repos/cloneRegistry';
+import { lookupCloneBaseUrl, getCocClientForWorkspace } from '../../../../repos/cloneRegistry';
 import { normalizeToolName } from './toolNormalization';
 import type { WhisperDiffToolCall } from './buildWhisperFileDiff';
-import { clampPopoverPosition, useHoverPopover, HoverSummarySpan } from './hoverPopover';
+import { clampPopoverPosition, useHoverPopover, useHoverPopoverDismissal, HoverSummarySpan } from './hoverPopover';
 import { buildWhisperGroupModel, collectGroupToolCalls } from './whisperGroupModel';
 
 /**
@@ -171,6 +172,226 @@ function DiffBar({ insertions, deletions, isCreate, isDeleted }: DiffBarProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Skill detail — on-demand, remote-clone-safe fetch (AC-03)
+// ---------------------------------------------------------------------------
+
+type SkillDetailState =
+    | { status: 'loading' }
+    | { status: 'loaded'; skill: SkillInfo }
+    | { status: 'not-found' };
+
+/**
+ * Fetch a single skill's detail, remote-clone-safe. Tries the workspace-scoped
+ * endpoint first (when a workspace id is known), then falls back to the global
+ * endpoint. Both calls ride the SAME clone-routed client so remote-clone tabs
+ * hit the remote CoC server (a bare `fetchApi('/workspaces/:id/...')` would
+ * 404 there). Resolves to null when neither endpoint has the skill
+ * (deleted/renamed since the turn ran) or on any transport error.
+ */
+async function fetchSkillDetail(workspaceId: string | undefined, name: string): Promise<SkillInfo | null> {
+    const client = getCocClientForWorkspace(workspaceId);
+    if (workspaceId) {
+        try {
+            const res = await client.skills.detailWorkspace(workspaceId, name);
+            if (res?.skill) return res.skill;
+        } catch {
+            // Fall through to the global endpoint.
+        }
+    }
+    try {
+        const res = await client.skills.detailGlobal(name);
+        return res?.skill ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Per-popover skill-detail cache. Fetches lazily (only when a row is opened),
+ * memoizes each result per skill name for the popover's lifetime, and
+ * re-renders as each fetch settles. `requestDetail` is idempotent per name.
+ */
+function useSkillDetailCache(workspaceId: string | undefined) {
+    const [states, setStates] = useState<Record<string, SkillDetailState>>({});
+    const requestedRef = useRef<Set<string>>(new Set());
+
+    const requestDetail = useCallback((name: string) => {
+        if (requestedRef.current.has(name)) return;
+        requestedRef.current.add(name);
+        setStates(prev => ({ ...prev, [name]: { status: 'loading' } }));
+        fetchSkillDetail(workspaceId, name)
+            .then(skill => {
+                setStates(prev => ({
+                    ...prev,
+                    [name]: skill ? { status: 'loaded', skill } : { status: 'not-found' },
+                }));
+            })
+            .catch(() => {
+                setStates(prev => ({ ...prev, [name]: { status: 'not-found' } }));
+            });
+    }, [workspaceId]);
+
+    return { states, requestDetail };
+}
+
+/** Best-available "source location" line for a skill (endpoints vary in fields). */
+function skillSourceLocation(skill: SkillInfo): string | undefined {
+    return skill.folderLabel || skill.folderPath || skill.relativePath || skill.source;
+}
+
+// ---------------------------------------------------------------------------
+// SkillDetailPopover — nested detail view opened when a skill row is clicked
+// ---------------------------------------------------------------------------
+
+/** Sizing hints for viewport clamping (actual content scrolls within). */
+const SKILL_DETAIL_WIDTH = 520;
+const SKILL_DETAIL_HEIGHT = 360;
+
+interface SkillDetailPopoverProps {
+    name: string;
+    state: SkillDetailState | undefined;
+    anchorRef: React.RefObject<HTMLElement | null>;
+    onMouseEnter: () => void;
+    onMouseLeave: () => void;
+    onDismiss: () => void;
+}
+
+function SkillDetailPopover({ name, state, anchorRef, onMouseEnter, onMouseLeave, onDismiss }: SkillDetailPopoverProps) {
+    const selfRef = useRef<HTMLDivElement | null>(null);
+    // Escape / click-outside collapse just this detail view (the list popover
+    // stays open — the SkillHoverSpan keeps it mounted while a detail is open).
+    useHoverPopoverDismissal(true, anchorRef, selfRef, onDismiss);
+
+    if (!anchorRef.current) return null;
+    const rect = anchorRef.current.getBoundingClientRect();
+    const pos = clampPopoverPosition(rect, SKILL_DETAIL_WIDTH, SKILL_DETAIL_HEIGHT);
+
+    const status = state?.status ?? 'loading';
+    const skill = state?.status === 'loaded' ? state.skill : undefined;
+    const source = skill ? skillSourceLocation(skill) : undefined;
+    // Only the body-bearing view is worth resizing; loading / not-found stay a
+    // small auto-sized box. When resizable, the frame gets a definite starting
+    // size + viewport-bounded min/max so the browser resize handle has room to
+    // drag, and the body flexes to fill it.
+    const resizable = !!skill?.promptBody;
+
+    return ReactDOM.createPortal(
+        <div
+            ref={selfRef}
+            className={cn(
+                'fixed z-[60] rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-xl min-w-[320px] p-3 flex flex-col gap-2',
+                resizable
+                    ? 'resize overflow-hidden w-[480px] max-w-[90vw] min-h-[180px] max-h-[80vh]'
+                    : 'max-w-[520px]',
+            )}
+            style={{ top: pos.top, left: pos.left }}
+            data-testid="skill-detail-popover"
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
+            onClick={e => e.stopPropagation()}
+        >
+            <div className="flex items-center gap-2">
+                <span className="shrink-0">🛠</span>
+                <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1" data-testid="skill-detail-name">
+                    {name}
+                </span>
+                {skill?.version && (
+                    <span className="shrink-0 text-[10px] bg-[#e8f0fe] dark:bg-[#1a3a5c] text-[#1a73e8] dark:text-[#8ab4f8] px-1.5 py-0.5 rounded" data-testid="skill-detail-version">
+                        v{skill.version}
+                    </span>
+                )}
+            </div>
+
+            {status === 'loading' && (
+                <div className="text-xs text-[#848484]" data-testid="skill-detail-loading">Loading…</div>
+            )}
+            {status === 'not-found' && (
+                <div className="text-xs text-[#848484] italic" data-testid="skill-detail-not-found">Skill not found</div>
+            )}
+            {skill && (
+                <>
+                    {skill.description && (
+                        <div className="text-xs text-[#1e1e1e] dark:text-[#ccc]" data-testid="skill-detail-description">
+                            {skill.description}
+                        </div>
+                    )}
+                    {source && (
+                        <div className="text-[10px] text-[#848484] font-mono break-all" data-testid="skill-detail-source">
+                            {source}
+                        </div>
+                    )}
+                    {skill.promptBody && (
+                        <pre
+                            className="m-0 flex-1 min-h-0 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-5 text-[#1e1e1e] dark:text-[#cccccc] font-mono bg-[#f9f9f9] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2"
+                            data-testid="skill-detail-body"
+                        >
+                            {skill.promptBody}
+                        </pre>
+                    )}
+                </>
+            )}
+        </div>,
+        document.body,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// SkillPopoverRow — a clickable skill name that expands its detail popover
+// ---------------------------------------------------------------------------
+
+interface SkillPopoverRowProps {
+    name: string;
+    expanded: boolean;
+    state: SkillDetailState | undefined;
+    onToggle: (name: string) => void;
+    onCollapse: () => void;
+    onMouseEnter: () => void;
+    onMouseLeave: () => void;
+}
+
+function SkillPopoverRow({ name, expanded, state, onToggle, onCollapse, onMouseEnter, onMouseLeave }: SkillPopoverRowProps) {
+    const rowRef = useRef<HTMLDivElement | null>(null);
+    return (
+        <div
+            ref={rowRef}
+            className={cn(
+                'flex items-center gap-2 px-2.5 py-1 text-xs cursor-pointer hover:bg-[#e1effe] dark:hover:bg-[#1f2d42]',
+                expanded && 'bg-[#e1effe] dark:bg-[#1f2d42]',
+            )}
+            data-testid="skill-popover-row"
+            role="button"
+            tabIndex={0}
+            aria-expanded={expanded}
+            aria-label={`Show detail for skill ${name}`}
+            onClick={e => { e.stopPropagation(); onToggle(name); }}
+            onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onToggle(name);
+                }
+            }}
+        >
+            <span className="shrink-0">🛠</span>
+            <span className="text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1">
+                {name}
+            </span>
+            <span className="shrink-0 text-[10px] text-[#848484]" aria-hidden="true">{expanded ? '▼' : '▶'}</span>
+            {expanded && (
+                <SkillDetailPopover
+                    name={name}
+                    state={state}
+                    anchorRef={rowRef}
+                    onMouseEnter={onMouseEnter}
+                    onMouseLeave={onMouseLeave}
+                    onDismiss={onCollapse}
+                />
+            )}
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
 // SkillHoverPopover — shown when hovering over "N skills"
 // ---------------------------------------------------------------------------
 
@@ -180,9 +401,23 @@ interface SkillHoverPopoverProps {
     popoverRef: React.RefObject<HTMLDivElement | null>;
     onMouseEnter: () => void;
     onMouseLeave: () => void;
+    expandedSkill: string | null;
+    onToggleSkill: (name: string) => void;
+    onCollapseSkill: () => void;
+    states: Record<string, SkillDetailState>;
 }
 
-function SkillHoverPopover({ skillNames, anchorRef, popoverRef, onMouseEnter, onMouseLeave }: SkillHoverPopoverProps) {
+function SkillHoverPopover({
+    skillNames,
+    anchorRef,
+    popoverRef,
+    onMouseEnter,
+    onMouseLeave,
+    expandedSkill,
+    onToggleSkill,
+    onCollapseSkill,
+    states,
+}: SkillHoverPopoverProps) {
     if (!anchorRef.current) return null;
     const rect = anchorRef.current.getBoundingClientRect();
     const pos = clampPopoverPosition(rect, 400, skillNames.length * 28 + 8);
@@ -195,18 +430,19 @@ function SkillHoverPopover({ skillNames, anchorRef, popoverRef, onMouseEnter, on
             data-testid="skill-hover-popover"
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
+            onClick={e => e.stopPropagation()}
         >
             {skillNames.map(name => (
-                <div
+                <SkillPopoverRow
                     key={name}
-                    className="flex items-center gap-2 px-2.5 py-1 text-xs"
-                    data-testid="skill-popover-row"
-                >
-                    <span className="shrink-0">🛠</span>
-                    <span className="text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1">
-                        {name}
-                    </span>
-                </div>
+                    name={name}
+                    expanded={expandedSkill === name}
+                    state={states[name]}
+                    onToggle={onToggleSkill}
+                    onCollapse={onCollapseSkill}
+                    onMouseEnter={onMouseEnter}
+                    onMouseLeave={onMouseLeave}
+                />
             ))}
         </div>,
         document.body,
@@ -220,17 +456,58 @@ function SkillHoverPopover({ skillNames, anchorRef, popoverRef, onMouseEnter, on
 interface SkillHoverSpanProps {
     text: string;
     skillNames: string[];
+    workspaceId?: string;
     testId?: string;
 }
 
-function SkillHoverSpan({ text, skillNames, testId }: SkillHoverSpanProps) {
+function SkillHoverSpan({ text, skillNames, workspaceId, testId }: SkillHoverSpanProps) {
+    // Uses `useHoverPopover` directly (rather than `HoverSummarySpan`) so the
+    // list popover can stay mounted while a nested skill detail is expanded,
+    // even after the pointer leaves the anchor.
+    const { hovered, anchorRef, popoverRef, showPopover, hidePopover } = useHoverPopover<HTMLSpanElement>();
+    const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+    const { states, requestDetail } = useSkillDetailCache(workspaceId);
+
+    const open = hovered || expandedSkill !== null;
+
+    const handleToggle = useCallback((name: string) => {
+        setExpandedSkill(prev => (prev === name ? null : name));
+    }, []);
+    const handleCollapse = useCallback(() => setExpandedSkill(null), []);
+
+    // Fetch on demand: only when a skill row is actually expanded (AC-03).
+    useEffect(() => {
+        if (expandedSkill) requestDetail(expandedSkill);
+    }, [expandedSkill, requestDetail]);
+
+    // Drop any expanded detail once the list popover has fully closed.
+    useEffect(() => {
+        if (!open) setExpandedSkill(null);
+    }, [open]);
+
     return (
-        <HoverSummarySpan
-            text={text}
-            testId={testId}
-            hasContent={skillNames.length > 0}
-            renderPopover={(anchor) => <SkillHoverPopover skillNames={skillNames} {...anchor} />}
-        />
+        <span
+            ref={anchorRef}
+            onMouseEnter={showPopover}
+            onMouseLeave={hidePopover}
+            className="underline decoration-dotted cursor-default"
+            data-testid={testId}
+        >
+            {text}
+            {open && skillNames.length > 0 && (
+                <SkillHoverPopover
+                    skillNames={skillNames}
+                    anchorRef={anchorRef}
+                    popoverRef={popoverRef}
+                    onMouseEnter={showPopover}
+                    onMouseLeave={hidePopover}
+                    expandedSkill={expandedSkill}
+                    onToggleSkill={handleToggle}
+                    onCollapseSkill={handleCollapse}
+                    states={states}
+                />
+            )}
+        </span>
     );
 }
 
@@ -979,7 +1256,7 @@ export function WhisperCollapsedGroup({
             );
         } else if (part.kind === 'skill' && summary.skillNames && summary.skillNames.length > 0) {
             headerElements.push(
-                <SkillHoverSpan key={`part-${idx}`} text={part.text} skillNames={summary.skillNames} testId="whisper-skill-hover" />,
+                <SkillHoverSpan key={`part-${idx}`} text={part.text} skillNames={summary.skillNames} workspaceId={workspaceId} testId="whisper-skill-hover" />,
             );
         } else if (part.kind === 'memory' && summary.memoryActions && summary.memoryActions.length > 0) {
             headerElements.push(
