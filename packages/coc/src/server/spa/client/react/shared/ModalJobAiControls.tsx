@@ -14,7 +14,7 @@ import { useDefaultModelForMode } from '../hooks/useDefaultModelForMode';
 import type { ChatModeForModel } from '../hooks/useDefaultModelForMode';
 import { useModels } from '../hooks/useModels';
 import { useProviderEffortTiers } from '../hooks/useProviderEffortTiers';
-import type { EffortTierKey } from '../hooks/useProviderEffortTiers';
+import type { EffortTierKey, LocalEffortTiersMap } from '../hooks/useProviderEffortTiers';
 import { useProviderReasoningEfforts } from '../hooks/useProviderReasoningEfforts';
 import { isEffortLevelsEnabled } from '../utils/config';
 import { deriveEffort } from '../utils/effortUtils';
@@ -44,6 +44,17 @@ export interface UseModalJobAiSelectionOptions {
     workspaceId?: string;
     mode?: ChatModeForModel;
     initialSelection?: ResolvedModalJobAiSelection;
+    /**
+     * When set, overrides the locally-fetched provider list.
+     * Pass this when the available providers should come from a remote target server.
+     */
+    externalAgentProviders?: AgentSelectorProvider[];
+    /**
+     * When set, overrides the locally-fetched effort-tier map per provider.
+     * Key is the concrete provider id (e.g. 'copilot', 'codex'); value is the
+     * normalized tier map for that provider fetched from a remote target server.
+     */
+    externalEffortTierMap?: Partial<Record<string, LocalEffortTiersMap>>;
 }
 
 export interface UseModalJobAiSelectionResult {
@@ -123,6 +134,8 @@ export function useModalJobAiSelection({
     workspaceId,
     mode = 'ask',
     initialSelection,
+    externalAgentProviders,
+    externalEffortTierMap,
 }: UseModalJobAiSelectionOptions): UseModalJobAiSelectionResult {
     const [provider, setProviderState] = useState<ChatProvider>(() => getSelectableComposerDefaultProvider([]));
     const [effortOverride, setEffortOverrideState] = useState<EffortLevel | null>(null);
@@ -133,8 +146,12 @@ export function useModalJobAiSelection({
     const initialProvider = getInitialProvider(initialSelection);
     const initialSelectionKey = getInitialSelectionKey(initialSelection);
 
-    const { providers: rawAgentProviders, loading: providersLoading } = useAgentProviders();
-    const agentProviders = useMemo(() => getAgentSelectorProviders(rawAgentProviders), [rawAgentProviders]);
+    const { providers: rawAgentProviders, loading: rawProvidersLoading } = useAgentProviders();
+    const agentProviders = useMemo(
+        () => externalAgentProviders ?? getAgentSelectorProviders(rawAgentProviders),
+        [externalAgentProviders, rawAgentProviders],
+    );
+    const providersLoading = externalAgentProviders !== undefined ? false : rawProvidersLoading;
     const providerForClientHooks = getConcreteProviderForClientHooks(provider);
     const autoProviderSelected = provider === 'auto';
     const { models: availableModels, loading: modelsLoading } = useModels(providerForClientHooks);
@@ -143,10 +160,15 @@ export function useModalJobAiSelection({
     const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } =
         useDefaultModelForMode(workspaceId, mode, availableModels, providerForClientHooks);
     const reasoningEfforts = useProviderReasoningEfforts(providerForClientHooks);
-    const { tiers: providerEffortTierMap, loading: effortTiersLoading } = useProviderEffortTiers(providerForClientHooks);
-    const hasTiers = !effortTiersLoading && (['low', 'medium', 'high'] as EffortTierKey[]).some(k => !!providerEffortTierMap[k]?.model);
+    const { tiers: localEffortTierMap, loading: rawEffortTiersLoading } = useProviderEffortTiers(providerForClientHooks);
+    // When external tier data is provided for this provider, use it instead of the local fetch.
+    const resolvedEffortTierMap = externalEffortTierMap !== undefined
+        ? (externalEffortTierMap[providerForClientHooks] ?? {})
+        : localEffortTierMap;
+    const effortTiersLoading = externalEffortTierMap !== undefined ? false : rawEffortTiersLoading;
+    const hasTiers = !effortTiersLoading && (['low', 'medium', 'high'] as EffortTierKey[]).some(k => !!resolvedEffortTierMap[k]?.model);
     const useEffortTierMode = autoProviderSelected || (isEffortLevelsEnabled() && hasTiers);
-    const effortTierMap = autoProviderSelected ? AUTO_EFFORT_TIER_MAP : providerEffortTierMap;
+    const effortTierMap = autoProviderSelected ? AUTO_EFFORT_TIER_MAP : resolvedEffortTierMap;
 
     const validModelOverride = useMemo(() => {
         const override = modelCommand.modelOverride;
