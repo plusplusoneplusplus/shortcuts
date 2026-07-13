@@ -480,3 +480,62 @@ test.describe('Chat list shift-range selection (AC-03 / AC-05)', () => {
         }
     });
 });
+
+/**
+ * AC-06 — partial group-header selection indicator.
+ *
+ * When only some of an expanded group's children are selected, the header shows
+ * a distinct partial state (`data-partial="true"` + a dimmed accent bar) rather
+ * than the full-selection style. Ctrl-toggling children of an EXPANDED group is
+ * the natural way to build a partial selection: unlike shift-range, ctrl-toggle
+ * does NOT snap the whole run in, so a strict child subset stays selected.
+ * Completing the subset flips the header to fully-selected (`data-partial` back
+ * to `false`, `data-selected="true"`).
+ */
+test.describe('Chat list partial group-header selection (AC-06)', () => {
+    test('AC-06 expanded group header shows data-partial when a child subset is selected', async ({ page, serverUrl }) => {
+        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'ac06');
+        try {
+            await enableGroupFeatures(serverUrl);
+            // Ralph session = grill + 2 iterations (3 children). Ralph has no run
+            // record, so it interleaves by seeded time — a plain chat above it
+            // stays out of the selection to prove the header state is driven by
+            // the group's own children, not the whole list.
+            await seedPlainChat(serverUrl, wsId, 'plain-outside', 40);
+            const ralph = await seedRalphSession(serverUrl, wsId, 'rs-06', { iterations: 2, baseOffsetMinutes: 20 });
+
+            await gotoActivity(page, serverUrl, wsId);
+            await expect(page.locator('[data-testid="ralph-session-row"]')).toBeVisible({ timeout: 10_000 });
+            // Header starts neither selected nor partial.
+            await expect(page.locator('[data-testid="ralph-session-row"]')).toHaveAttribute('data-selected', 'false');
+            await expect(page.locator('[data-testid="ralph-session-row"]')).toHaveAttribute('data-partial', 'false');
+
+            // Expand so the children render as individual rows.
+            await page.locator('[data-testid="ralph-session-chevron"]').click();
+            await expect(page.locator('[data-testid="ralph-session-children"]')).toBeVisible();
+            await expect(page.locator(`[data-task-id="${ralph.grillId}"]`)).toBeVisible();
+
+            // Ctrl-toggle a STRICT subset: grill + first iteration (2 of 3). No snap.
+            const ctrl = { modifiers: ['ControlOrMeta' as const] };
+            await page.locator(`[data-task-id="${ralph.grillId}"]`).click(ctrl);
+            await page.locator(`[data-task-id="${ralph.iterationIds[0]}"]`).click(ctrl);
+
+            // Header now reads PARTIAL, not fully-selected.
+            await expect(page.locator('[data-testid="ralph-session-row"]')).toHaveAttribute('data-partial', 'true');
+            await expect(page.locator('[data-testid="ralph-session-row"]')).toHaveAttribute('data-selected', 'false');
+            // The unselected sibling stays unselected; the outside plain chat too.
+            await expect(page.locator(`[data-task-id="${ralph.iterationIds[1]}"]`)).not.toHaveAttribute('data-selected', 'true');
+            await expect(page.locator('[data-task-id="plain-outside"]')).not.toHaveAttribute('data-selected', 'true');
+            // Two children selected → pill reads 2.
+            expect(await selectionPillCount(page)).toBe(2);
+
+            // Completing the subset (select the last child) flips the header to FULL.
+            await page.locator(`[data-task-id="${ralph.iterationIds[1]}"]`).click(ctrl);
+            await expect(page.locator('[data-testid="ralph-session-row"]')).toHaveAttribute('data-selected', 'true');
+            await expect(page.locator('[data-testid="ralph-session-row"]')).toHaveAttribute('data-partial', 'false');
+            expect(await selectionPillCount(page)).toBe(3);
+        } finally {
+            cleanup();
+        }
+    });
+});
