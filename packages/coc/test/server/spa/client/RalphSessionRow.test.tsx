@@ -238,6 +238,60 @@ describe('RalphSessionRow', () => {
         expect(screen.getByTestId('ralph-session-row').getAttribute('data-selected')).toBe('true');
     });
 
+    // ── AC-06: partial group-header selection indicator ──
+    it('defaults to data-partial="false" with no partial indicator', () => {
+        render(<RalphSessionRow session={makeSession()} {...defaultProps} />);
+        const row = screen.getByTestId('ralph-session-row');
+        expect(row.getAttribute('data-partial')).toBe('false');
+        expect(row.className).not.toMatch(/border-l-\[#0078d4\]/);
+    });
+
+    it('renders a dimmed partial accent (data-partial="true") when some children are selected', () => {
+        render(
+            <RalphSessionRow
+                session={makeSession()}
+                {...defaultProps}
+                isPartiallySelected
+            />,
+        );
+        const row = screen.getByTestId('ralph-session-row');
+        expect(row.getAttribute('data-partial')).toBe('true');
+        // Row is NOT fully selected while partial.
+        expect(row.getAttribute('data-selected')).toBe('false');
+        // Uses the light/dark selection accent at reduced opacity.
+        expect(row.className).toMatch(/border-l-\[#0078d4\]\/50/);
+        expect(row.className).toMatch(/dark:border-l-\[#3794ff\]\/50/);
+    });
+
+    it('full range selection takes precedence over the partial indicator', () => {
+        render(
+            <RalphSessionRow
+                session={makeSession()}
+                {...defaultProps}
+                isRangeSelected
+                isPartiallySelected
+            />,
+        );
+        const row = screen.getByTestId('ralph-session-row');
+        expect(row.getAttribute('data-selected')).toBe('true');
+        expect(row.getAttribute('data-partial')).toBe('false');
+        expect(row.className).not.toMatch(/border-l-\[#0078d4\]/);
+    });
+
+    it('navigation selection (selectedSessionId) suppresses the partial indicator', () => {
+        render(
+            <RalphSessionRow
+                session={makeSession()}
+                {...defaultProps}
+                selectedSessionId="sess-1"
+                isPartiallySelected
+            />,
+        );
+        const row = screen.getByTestId('ralph-session-row');
+        expect(row.getAttribute('data-selected')).toBe('true');
+        expect(row.getAttribute('data-partial')).toBe('false');
+    });
+
     it('clicking the chevron also toggles expanded state', () => {
         render(<RalphSessionRow session={makeSession()} {...defaultProps} />);
         const chevron = screen.getByTestId('ralph-session-chevron');

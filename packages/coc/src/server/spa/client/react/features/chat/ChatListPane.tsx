@@ -37,7 +37,7 @@ import { groupByMapReduceRun, getMapReduceEntryTimestamp, getMapReduceRunId, typ
 import { useTaskGroupExpansion } from './task-group-expansion';
 import { buildForEachRunCopyInfo, buildMapReduceRunCopyInfo, buildRalphSessionCopyInfo } from './task-group-copy-info';
 import { MapReduceRunRow } from './MapReduceRunRow';
-import { buildSpawnedTreeChatView, collectSpawnedEntryTasks, getSpawnedEntryTimestamp, isSpawnedTreeEntry, partitionSpawnedTreesByArchived, type SpawnedTreeEntry } from './spawned-tree-grouping';
+import { buildSpawnedTreeChatView, collectSpawnedEntryTasks, getSpawnedEntryTimestamp, getSpawnedNodeId, isSpawnedTreeEntry, partitionSpawnedTreesByArchived, type SpawnedTreeEntry, type SpawnedTreeNode } from './spawned-tree-grouping';
 import { SpawnedTreeRow } from './SpawnedTreeRow';
 import { isSpawnedTreeViewEnabled, loadCollapsedSpawnedRootIds, toggleCollapsedSpawnedRoot } from './spawned-tree-view-state';
 import { getGroupPinKey, isPinnedGroupEntry, mergePinnedEntries, partitionPinnedGroups, type PinnedGroupEntry, type PinnedListEntry } from './group-pinning';
@@ -337,7 +337,12 @@ export type HistoryRangeRow =
     | { kind: 'task'; id: string; ralphSessionId?: string; ralphSessionSubIds?: string[]; forEachRunId?: string; forEachRunSubIds?: string[]; mapReduceRunId?: string; mapReduceRunSubIds?: string[] }
     | { kind: 'ralph-session'; id: string; sessionId: string; subIds: string[] }
     | { kind: 'for-each-run'; id: string; runId: string; subIds: string[] }
-    | { kind: 'map-reduce-run'; id: string; runId: string; subIds: string[] };
+    | { kind: 'map-reduce-run'; id: string; runId: string; subIds: string[] }
+    // A collapsed spawned-conversation node (the tree root, or a collapsed inner
+    // node): its own row stands in for the whole hidden subtree, so `id` is the
+    // node's real chat id and `subIds` are that node + every descendant. Expanded
+    // spawned nodes are plain `task` rows instead (see buildHistoryRangeRows).
+    | { kind: 'spawned-tree'; id: string; rootProcessId: string; subIds: string[] };
 
 type HistoryRangeInput = HistoryRangeRow | any;
 
@@ -363,7 +368,64 @@ function isHistoryRangeRow(entry: any): entry is HistoryRangeRow {
     return (entry?.kind === 'task' && typeof entry.id === 'string')
         || (entry?.kind === 'ralph-session' && typeof entry.id === 'string' && Array.isArray(entry.subIds))
         || (entry?.kind === 'for-each-run' && typeof entry.id === 'string' && Array.isArray(entry.subIds))
-        || (entry?.kind === 'map-reduce-run' && typeof entry.id === 'string' && Array.isArray(entry.subIds));
+        || (entry?.kind === 'map-reduce-run' && typeof entry.id === 'string' && Array.isArray(entry.subIds))
+        // A spawned-tree range ROW carries `id` + `subIds`; a spawned-tree
+        // grouping ENTRY (below) carries `root`/`rootProcessId` instead, so the
+        // two never collide when a built row is re-normalized.
+        || (entry?.kind === 'spawned-tree' && typeof entry.id === 'string' && Array.isArray(entry.subIds));
+}
+
+/**
+ * A spawned-tree GROUPING entry (from spawned-tree-grouping), as opposed to a
+ * built spawned-tree range ROW. The grouping entry always carries a `root`
+ * node; the range row never does. buildHistoryRangeRows must distinguish them
+ * because both share `kind === 'spawned-tree'`.
+ */
+function isSpawnedTreeGroupEntry(entry: any): entry is SpawnedTreeEntry {
+    return entry?.kind === 'spawned-tree'
+        && typeof entry.rootProcessId === 'string'
+        && entry.root != null
+        && typeof entry.root === 'object';
+}
+
+/** Pre-order chat ids for a spawned-tree node's subtree (the node, then its descendants). */
+function collectSpawnedNodeSubtreeIds(node: SpawnedTreeNode): string[] {
+    const ids: string[] = [];
+    const walk = (current: SpawnedTreeNode) => {
+        const id = getSpawnedNodeId(current);
+        if (id) ids.push(id);
+        for (const child of current.children) walk(child);
+    };
+    walk(node);
+    return ids;
+}
+
+/**
+ * Emit range rows for a spawned-tree node, mirroring exactly what SpawnedTreeRow
+ * renders: a node whose children are collapsed becomes a single `spawned-tree`
+ * unit row standing in for its whole hidden subtree; an expanded (or leaf) node
+ * becomes a plain `task` row and we recurse into any visible children. This keeps
+ * the visible-row set === the range-row set at every collapse depth.
+ */
+function pushSpawnedTreeRangeRows(
+    node: SpawnedTreeNode,
+    rootProcessId: string,
+    collapsedSpawnedIds: ReadonlySet<string>,
+    rows: HistoryRangeRow[],
+): void {
+    const nodeId = getSpawnedNodeId(node);
+    if (!nodeId) return;
+    const hasChildren = node.children.length > 0;
+    if (hasChildren && collapsedSpawnedIds.has(nodeId)) {
+        rows.push({ kind: 'spawned-tree', id: nodeId, rootProcessId, subIds: collectSpawnedNodeSubtreeIds(node) });
+        return;
+    }
+    rows.push({ kind: 'task', id: nodeId });
+    if (hasChildren) {
+        for (const child of node.children) {
+            pushSpawnedTreeRangeRows(child, rootProcessId, collapsedSpawnedIds, rows);
+        }
+    }
 }
 
 export function getRalphSessionRangeId(sessionId: string): string {
@@ -395,11 +457,47 @@ export function getMapReduceRunSubIds(group: MapReduceRunGroup): string[] {
     return Array.from(new Set(ids));
 }
 
+export interface GroupSelectionState {
+    /** Every child sub-id is in the active selection. */
+    isFullySelected: boolean;
+    /** At least one — but not all — child sub-ids are selected. */
+    isPartiallySelected: boolean;
+}
+
+/**
+ * Resolve a group header's selection state from its child sub-ids and the
+ * active history selection (AC-06). A group is *fully* selected when every
+ * child is in the selection, *partially* selected when some — but not all —
+ * are, and neither when the group is empty or has no selected children. The
+ * two flags are mutually exclusive so a header can render at most one of the
+ * full / partial indicators.
+ */
+export function resolveGroupSelectionState(
+    subIds: string[],
+    selectedIds: ReadonlySet<string>,
+): GroupSelectionState {
+    if (subIds.length === 0) {
+        return { isFullySelected: false, isPartiallySelected: false };
+    }
+    let selectedCount = 0;
+    for (const id of subIds) {
+        if (selectedIds.has(id)) { selectedCount++; }
+    }
+    const isFullySelected = selectedCount === subIds.length;
+    return {
+        isFullySelected,
+        isPartiallySelected: selectedCount > 0 && !isFullySelected,
+    };
+}
+
 export function buildHistoryRangeRows(
     entries: HistoryRangeInput[],
     expandedRalphSessionIds: ReadonlySet<string>,
     expandedForEachRunIds: ReadonlySet<string> = new Set(),
     expandedMapReduceRunIds: ReadonlySet<string> = new Set(),
+    // Spawned trees are default-EXPANDED, so this is a set of COLLAPSED node ids
+    // (mirroring collapsedSpawnedIds), unlike the expanded-id sets above.
+    collapsedSpawnedIds: ReadonlySet<string> = new Set(),
 ): HistoryRangeRow[] {
     const rows: HistoryRangeRow[] = [];
     for (const entry of entries) {
@@ -454,6 +552,10 @@ export function buildHistoryRangeRows(
             }
             continue;
         }
+        if (isSpawnedTreeGroupEntry(entry)) {
+            pushSpawnedTreeRangeRows(entry.root, entry.rootProcessId, collapsedSpawnedIds, rows);
+            continue;
+        }
         if (isHistoryRangeRow(entry)) {
             rows.push(entry);
             continue;
@@ -481,6 +583,11 @@ function getHistoryRangeRowGroupRangeId(row: HistoryRangeRow): string | null {
     if (row.kind === 'ralph-session') return row.id;
     if (row.kind === 'for-each-run') return row.id;
     if (row.kind === 'map-reduce-run') return row.id;
+    // Spawned-tree unit rows are self-contained endpoints: they carry their own
+    // subtree in `subIds` and never snap-expand an anchored sub-range to a whole
+    // group (unlike ralph/for-each/map-reduce children), so they expose no group
+    // range id. Sub-conversations stay independently range-selectable.
+    if (row.kind === 'spawned-tree') return null;
     if (row.ralphSessionId) return getRalphSessionRangeId(row.ralphSessionId);
     if (row.forEachRunId) return getForEachRunRangeId(row.forEachRunId);
     if (row.mapReduceRunId) return getMapReduceRunRangeId(row.mapReduceRunId);
@@ -489,6 +596,7 @@ function getHistoryRangeRowGroupRangeId(row: HistoryRangeRow): string | null {
 
 function getHistoryRangeRowGroupSubIds(row: HistoryRangeRow): string[] {
     if (row.kind === 'ralph-session' || row.kind === 'for-each-run' || row.kind === 'map-reduce-run') return row.subIds;
+    if (row.kind === 'spawned-tree') return row.subIds;
     return row.ralphSessionSubIds ?? row.forEachRunSubIds ?? row.mapReduceRunSubIds ?? [];
 }
 
@@ -1754,9 +1862,10 @@ export function ChatListPane({
                 expandedRalphSessionIds,
                 expandedForEachRunIds,
                 expandedMapReduceRunIds,
+                collapsedSpawnedIds,
             )
             : [],
-        [chatGroups, todayGrouped, weekGrouped, olderGrouped, expandedRalphSessionIds, expandedForEachRunIds, expandedMapReduceRunIds],
+        [chatGroups, todayGrouped, weekGrouped, olderGrouped, expandedRalphSessionIds, expandedForEachRunIds, expandedMapReduceRunIds, collapsedSpawnedIds],
     );
 
     const activityRangeRows = useMemo(
@@ -1771,8 +1880,9 @@ export function ChatListPane({
             expandedRalphSessionIds,
             expandedForEachRunIds,
             expandedMapReduceRunIds,
+            collapsedSpawnedIds,
         ),
-        [activityRunningEntries, pinnedActivityEntries, dateBucketedHistory, expandedRalphSessionIds, expandedForEachRunIds, expandedMapReduceRunIds],
+        [activityRunningEntries, pinnedActivityEntries, dateBucketedHistory, expandedRalphSessionIds, expandedForEachRunIds, expandedMapReduceRunIds, collapsedSpawnedIds],
     );
 
     const visibleHistoryRangeRows = activeTab === 'chats' ? chatRangeRows : activityRangeRows;
@@ -2585,7 +2695,8 @@ export function ChatListPane({
 
     const renderRalphSessionGroup = useCallback((session: RalphSession, listForRange: HistoryRangeInput[]) => {
         const ralphSubIds = getRalphSessionSubIds(session);
-        const isRalphRangeSelected = ralphSubIds.length > 0 && ralphSubIds.every(id => selectedHistoryIds.has(id));
+        const { isFullySelected: isRalphRangeSelected, isPartiallySelected: isRalphPartiallySelected } =
+            resolveGroupSelectionState(ralphSubIds, selectedHistoryIds);
         const isPinned = isPinnedGroupEntry(session) || isGroupPinned('ralph-session', session.sessionId);
         const groupPin: GroupPinMenuTarget = {
             type: 'ralph-session',
@@ -2616,6 +2727,7 @@ export function ChatListPane({
                 selectedTaskId={selectedTaskId}
                 selectedSessionId={selectedRalphSessionId}
                 isRangeSelected={isRalphRangeSelected}
+                isPartiallySelected={isRalphPartiallySelected}
                 expanded={expandedRalphSessionIds.has(session.sessionId)}
                 onToggleExpanded={() => toggleRalphSession(session.sessionId)}
                 now={now}
@@ -2676,7 +2788,8 @@ export function ChatListPane({
 
     const renderForEachRunGroup = useCallback((group: ForEachRunGroup, listForRange: HistoryRangeInput[]) => {
         const forEachSubIds = getForEachRunSubIds(group);
-        const isForEachRangeSelected = forEachSubIds.length > 0 && forEachSubIds.every(id => selectedHistoryIds.has(id));
+        const { isFullySelected: isForEachRangeSelected, isPartiallySelected: isForEachPartiallySelected } =
+            resolveGroupSelectionState(forEachSubIds, selectedHistoryIds);
         const isPinned = isPinnedGroupEntry(group) || isGroupPinned('for-each-run', group.runId);
         const groupPin: GroupPinMenuTarget = {
             type: 'for-each-run',
@@ -2702,6 +2815,7 @@ export function ChatListPane({
                 group={group}
                 selectedRunId={selectedForEachRunId}
                 isRangeSelected={isForEachRangeSelected}
+                isPartiallySelected={isForEachPartiallySelected}
                 expanded={expandedForEachRunIds.has(group.runId)}
                 onToggleExpanded={() => toggleForEachRun(group.runId)}
                 now={now}
@@ -2759,7 +2873,8 @@ export function ChatListPane({
 
     const renderMapReduceRunGroup = useCallback((group: MapReduceRunGroup, listForRange: HistoryRangeInput[]) => {
         const mapReduceSubIds = getMapReduceRunSubIds(group);
-        const isMapReduceRangeSelected = mapReduceSubIds.length > 0 && mapReduceSubIds.every(id => selectedHistoryIds.has(id));
+        const { isFullySelected: isMapReduceRangeSelected, isPartiallySelected: isMapReducePartiallySelected } =
+            resolveGroupSelectionState(mapReduceSubIds, selectedHistoryIds);
         const isPinned = isPinnedGroupEntry(group) || isGroupPinned('map-reduce-run', group.runId);
         const groupPin: GroupPinMenuTarget = {
             type: 'map-reduce-run',
@@ -2785,6 +2900,7 @@ export function ChatListPane({
                 group={group}
                 selectedRunId={selectedMapReduceRunId}
                 isRangeSelected={isMapReduceRangeSelected}
+                isPartiallySelected={isMapReducePartiallySelected}
                 expanded={expandedMapReduceRunIds.has(group.runId)}
                 onToggleExpanded={() => toggleMapReduceRun(group.runId)}
                 now={now}

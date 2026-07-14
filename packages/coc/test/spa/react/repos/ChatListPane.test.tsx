@@ -23,7 +23,9 @@ import {
     ChatListPane,
     buildHistoryRangeRows,
     getForEachRunRangeId,
+    getMapReduceRunRangeId,
     getRalphSessionRangeId,
+    resolveGroupSelectionState,
     resolveHistoryRangeSelection,
     taskMatchesFilter,
     taskMatchesSearch,
@@ -34,6 +36,7 @@ import {
 } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 import { POINTER_CONTEXT_DRAG_MIME, SESSION_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 import { readSessionContextDropPayloads } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrop';
+import { groupBySpawnedTree, type SpawnedTreeEntry } from '../../../../src/server/spa/client/react/features/chat/spawned-tree-grouping';
 import {
     drainNewChatSeedContext,
     peekNewChatSeedContext,
@@ -2818,6 +2821,26 @@ describe('ChatListPane history range helpers', () => {
         latestTimestamp: 2,
         hasUnseen: false,
     };
+    const mapReduceRun: any = {
+        kind: 'map-reduce-run',
+        runId: 'mr-1',
+        run: {
+            runId: 'mr-1',
+            workspaceId: 'ws-1',
+            status: 'completed',
+            reduceStatus: 'completed',
+            originalRequest: 'Reduce range work',
+            childMode: 'ask',
+            reduceInstructions: 'Combine the outputs',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:01:00.000Z',
+            generationProcessId: 'mr-1-generation',
+            itemCount: 2,
+        },
+        children: [{ id: 'mr-1-generation' }, { id: 'mr-1-child-1' }, { id: 'mr-1-reduce' }],
+        latestTimestamp: 2,
+        hasUnseen: false,
+    };
 
     it('expands a collapsed Ralph session sentinel into its child process ids', () => {
         const rows = buildHistoryRangeRows(
@@ -2925,6 +2948,409 @@ describe('ChatListPane history range helpers', () => {
             'fe-1-child-1',
             'regular-b',
         ]);
+    });
+
+    // ── AC-01: Map Reduce runs (collapsed + expanded) ───────────────────
+    it('AC-01: treats a collapsed Map Reduce run as one endpoint and selects its child process ids only', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, mapReduceRun, { id: 'regular-b' }],
+            new Set(),
+        );
+
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            getMapReduceRunRangeId('mr-1'),
+            'regular-b',
+        ]);
+        const selected = Array.from(resolveHistoryRangeSelection(rows, 'regular-a', 'regular-b')!);
+        expect(selected).toEqual([
+            'regular-a',
+            'mr-1-generation',
+            'mr-1-child-1',
+            'mr-1-reduce',
+            'regular-b',
+        ]);
+        expect(selected).not.toContain('mr-1');
+    });
+
+    it('AC-01: uses Map Reduce child rows when expanded while keeping the run header a selectable endpoint', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, mapReduceRun, { id: 'regular-b' }],
+            new Set(),
+            new Set(),
+            new Set(['mr-1']),
+        );
+
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            'mr-1-generation',
+            'mr-1-child-1',
+            'mr-1-reduce',
+            'regular-b',
+        ]);
+        // anchor = plain before, target = run header id → whole run + the plain
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'regular-a', getMapReduceRunRangeId('mr-1'))!)).toEqual([
+            'regular-a',
+            'mr-1-generation',
+            'mr-1-child-1',
+            'mr-1-reduce',
+        ]);
+        // anchor = a middle child, target = plain after → child anchor snaps to the
+        // whole run boundary (group semantics), selecting the entire run + the plain.
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'mr-1-child-1', 'regular-b')!)).toEqual([
+            'mr-1-generation',
+            'mr-1-child-1',
+            'mr-1-reduce',
+            'regular-b',
+        ]);
+    });
+
+    // ── AC-01: anchor-on-group-header / target-on-group-header ──────────
+    it('AC-01: anchor on a collapsed group header selects the group plus the plain target', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, { id: 'regular-b' }],
+            new Set(),
+        );
+        // anchor = ralph header, target = plain after
+        expect(Array.from(resolveHistoryRangeSelection(rows, getRalphSessionRangeId('rs-1'), 'regular-b')!)).toEqual([
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'regular-b',
+        ]);
+        // anchor = ralph header, target = plain before
+        expect(Array.from(resolveHistoryRangeSelection(rows, getRalphSessionRangeId('rs-1'), 'regular-a')!)).toEqual([
+            'regular-a',
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+        ]);
+    });
+
+    it('AC-01: target on a collapsed group header pulls in the whole group', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, forEachRun, { id: 'regular-b' }],
+            new Set(),
+        );
+        // anchor = plain before, target = for-each header
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'regular-a', getForEachRunRangeId('fe-1'))!)).toEqual([
+            'regular-a',
+            'fe-1-generation',
+            'fe-1-child-1',
+        ]);
+    });
+
+    // ── AC-01: mixed-kind ranges spanning multiple group kinds ──────────
+    it('AC-01: a plain→plain range spanning ralph + for-each + map-reduce (all collapsed) selects every child id in order', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, forEachRun, mapReduceRun, { id: 'regular-b' }],
+            new Set(),
+        );
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            getRalphSessionRangeId('rs-1'),
+            getForEachRunRangeId('fe-1'),
+            getMapReduceRunRangeId('mr-1'),
+            'regular-b',
+        ]);
+        const selected = Array.from(resolveHistoryRangeSelection(rows, 'regular-a', 'regular-b')!);
+        expect(selected).toEqual([
+            'regular-a',
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'fe-1-generation',
+            'fe-1-child-1',
+            'mr-1-generation',
+            'mr-1-child-1',
+            'mr-1-reduce',
+            'regular-b',
+        ]);
+        // no range-id sentinels leak into the selection
+        expect(selected).not.toContain(getRalphSessionRangeId('rs-1'));
+        expect(selected).not.toContain('fe-1');
+        expect(selected).not.toContain('mr-1');
+    });
+
+    it('AC-01: a mixed range from one group header to another selects both groups and everything between', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, { id: 'regular-mid' }, mapReduceRun, { id: 'regular-b' }],
+            new Set(),
+        );
+        // anchor = ralph header, target = map-reduce header
+        const selected = Array.from(resolveHistoryRangeSelection(rows, getRalphSessionRangeId('rs-1'), getMapReduceRunRangeId('mr-1'))!);
+        expect(selected).toEqual([
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'regular-mid',
+            'mr-1-generation',
+            'mr-1-child-1',
+            'mr-1-reduce',
+        ]);
+    });
+
+    it('AC-01: a mixed range with groups expanded selects the same child ids as when collapsed', () => {
+        const collapsedRows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, forEachRun, { id: 'regular-b' }],
+            new Set(),
+        );
+        const expandedRows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, forEachRun, { id: 'regular-b' }],
+            new Set(['rs-1']),
+            new Set(['fe-1']),
+        );
+        const collapsed = Array.from(resolveHistoryRangeSelection(collapsedRows, 'regular-a', 'regular-b')!);
+        const expanded = Array.from(resolveHistoryRangeSelection(expandedRows, 'regular-a', 'regular-b')!);
+        expect(expanded).toEqual(collapsed);
+        expect(expanded).toEqual([
+            'regular-a',
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'fe-1-generation',
+            'fe-1-child-1',
+            'regular-b',
+        ]);
+    });
+
+    it('AC-01: an expanded-group child anchor to a child in a different expanded group selects both whole groups', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, forEachRun, { id: 'regular-b' }],
+            new Set(['rs-1']),
+            new Set(['fe-1']),
+        );
+        // anchor = a ralph child, target = a for-each child → both groups whole
+        const selected = Array.from(resolveHistoryRangeSelection(rows, 'rs-1-iter-1', 'fe-1-child-1')!);
+        expect(selected).toEqual([
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'fe-1-generation',
+            'fe-1-child-1',
+        ]);
+    });
+
+    it('AC-01: resolveHistoryRangeSelection returns null when an endpoint is not present', () => {
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, ralphSession, { id: 'regular-b' }],
+            new Set(),
+        );
+        expect(resolveHistoryRangeSelection(rows, 'regular-a', 'does-not-exist')).toBeNull();
+        expect(resolveHistoryRangeSelection(rows, 'does-not-exist', 'regular-b')).toBeNull();
+    });
+
+    // ── AC-05: spawned-conversation trees participate in range selection ──
+    //
+    // Build a real spawned tree via groupBySpawnedTree so the fixture matches
+    // production shape exactly. Shape (children sorted oldest-first by activity):
+    //   st-root
+    //   ├─ st-child-1  (ts 5)
+    //   │   └─ st-gc-1  (ts 4)
+    //   └─ st-child-2  (ts 6)
+    // Pre-order chat ids: st-root, st-child-1, st-gc-1, st-child-2.
+    const makeSpawnedTree = (): SpawnedTreeEntry => {
+        const tasks = [
+            { id: 'st-root', lastActivityAt: 10 },
+            { id: 'st-child-1', parentProcessId: 'st-root', lastActivityAt: 5 },
+            { id: 'st-child-2', parentProcessId: 'st-root', lastActivityAt: 6 },
+            { id: 'st-gc-1', parentProcessId: 'st-child-1', lastActivityAt: 4 },
+        ];
+        const entry = groupBySpawnedTree(tasks).find(
+            (e): e is SpawnedTreeEntry => (e as any).kind === 'spawned-tree',
+        );
+        if (!entry) throw new Error('fixture: expected a spawned-tree entry');
+        return entry;
+    };
+
+    it('AC-05: a collapsed spawned tree is one endpoint that selects root + all descendants as a unit', () => {
+        const tree = makeSpawnedTree();
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, tree, { id: 'regular-b' }],
+            new Set(),
+            new Set(),
+            new Set(),
+            new Set(['st-root']), // root collapsed → whole tree hidden under one row
+        );
+        expect(rows.map(row => row.id)).toEqual(['regular-a', 'st-root', 'regular-b']);
+        // The single collapsed row carries the whole subtree.
+        expect(rows[1]).toMatchObject({ kind: 'spawned-tree', rootProcessId: 'st-root' });
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'regular-a', 'regular-b')!)).toEqual([
+            'regular-a',
+            'st-root',
+            'st-child-1',
+            'st-gc-1',
+            'st-child-2',
+            'regular-b',
+        ]);
+        // Anchoring on the collapsed tree itself still selects the whole unit.
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'st-root', 'st-root')!)).toEqual([
+            'st-root',
+            'st-child-1',
+            'st-gc-1',
+            'st-child-2',
+        ]);
+    });
+
+    it('AC-05: an expanded spawned tree exposes each visible node as an independent range row', () => {
+        const tree = makeSpawnedTree();
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, tree, { id: 'regular-b' }],
+            new Set(),
+            new Set(),
+            new Set(),
+            new Set(), // nothing collapsed → fully expanded (default-expanded contract)
+        );
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            'st-root',
+            'st-child-1',
+            'st-gc-1',
+            'st-child-2',
+            'regular-b',
+        ]);
+        expect(rows.every(row => row.kind === 'task')).toBe(true);
+        // A sub-range inside the tree selects only the visible nodes it spans —
+        // no whole-tree snapping, so descendants outside the span stay unselected.
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'st-root', 'st-child-1')!)).toEqual([
+            'st-root',
+            'st-child-1',
+        ]);
+        // Spanning the whole tree selects every node.
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'st-root', 'st-child-2')!)).toEqual([
+            'st-root',
+            'st-child-1',
+            'st-gc-1',
+            'st-child-2',
+        ]);
+    });
+
+    it('AC-05: a collapsed inner node stays a sub-unit while its expanded root remains individually selectable', () => {
+        const tree = makeSpawnedTree();
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, tree, { id: 'regular-b' }],
+            new Set(),
+            new Set(),
+            new Set(),
+            new Set(['st-child-1']), // root expanded, inner child-1 collapsed → hides st-gc-1
+        );
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            'st-root',
+            'st-child-1',
+            'st-child-2',
+            'regular-b',
+        ]);
+        // The collapsed inner node is the unit that represents its hidden grandchild.
+        expect(rows[2]).toMatchObject({ kind: 'spawned-tree', id: 'st-child-1' });
+        // Selecting the collapsed inner node pulls in its hidden grandchild.
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'st-child-1', 'st-child-1')!)).toEqual([
+            'st-child-1',
+            'st-gc-1',
+        ]);
+        // A range across the tree includes the hidden grandchild via the inner unit.
+        expect(Array.from(resolveHistoryRangeSelection(rows, 'st-root', 'st-child-2')!)).toEqual([
+            'st-root',
+            'st-child-1',
+            'st-gc-1',
+            'st-child-2',
+        ]);
+    });
+
+    it('AC-05: a mixed range spanning a plain chat, a collapsed spawned tree, and a collapsed ralph session selects every child id in order', () => {
+        const tree = makeSpawnedTree();
+        const rows = buildHistoryRangeRows(
+            [{ id: 'regular-a' }, tree, ralphSession, { id: 'regular-b' }],
+            new Set(),
+            new Set(),
+            new Set(),
+            new Set(['st-root']),
+        );
+        expect(rows.map(row => row.id)).toEqual([
+            'regular-a',
+            'st-root',
+            getRalphSessionRangeId('rs-1'),
+            'regular-b',
+        ]);
+        const selected = Array.from(resolveHistoryRangeSelection(rows, 'regular-a', 'regular-b')!);
+        expect(selected).toEqual([
+            'regular-a',
+            'st-root',
+            'st-child-1',
+            'st-gc-1',
+            'st-child-2',
+            'rs-1-grill',
+            'rs-1-iter-1',
+            'rs-1-iter-2',
+            'regular-b',
+        ]);
+        // No synthetic range-id sentinel leaks into the selection.
+        expect(selected).not.toContain(getRalphSessionRangeId('rs-1'));
+    });
+
+    it('AC-05: spawned-tree entries are no longer dropped from the range rows (regression guard)', () => {
+        const tree = makeSpawnedTree();
+        // Before AC-05 a SpawnedTreeEntry (no `id`, has `rootProcessId`) fell
+        // through every branch and was silently dropped, leaving a gap that
+        // shift-range skipped over. It must now contribute at least one row.
+        const collapsed = buildHistoryRangeRows([tree], new Set(), new Set(), new Set(), new Set(['st-root']));
+        expect(collapsed).toHaveLength(1);
+        const expanded = buildHistoryRangeRows([tree], new Set(), new Set(), new Set(), new Set());
+        expect(expanded.map(row => row.id)).toEqual(['st-root', 'st-child-1', 'st-gc-1', 'st-child-2']);
+    });
+});
+
+// ── AC-06: partial group-header selection state ────────────────────────
+describe('resolveGroupSelectionState', () => {
+    it('returns neither full nor partial for an empty group', () => {
+        expect(resolveGroupSelectionState([], new Set())).toEqual({
+            isFullySelected: false,
+            isPartiallySelected: false,
+        });
+    });
+
+    it('returns neither when no child is selected', () => {
+        expect(resolveGroupSelectionState(['a', 'b', 'c'], new Set(['x', 'y']))).toEqual({
+            isFullySelected: false,
+            isPartiallySelected: false,
+        });
+    });
+
+    it('is fully selected — not partial — when every child is selected', () => {
+        expect(resolveGroupSelectionState(['a', 'b', 'c'], new Set(['a', 'b', 'c']))).toEqual({
+            isFullySelected: true,
+            isPartiallySelected: false,
+        });
+    });
+
+    it('is partially selected — not full — when some but not all children are selected', () => {
+        expect(resolveGroupSelectionState(['a', 'b', 'c'], new Set(['a', 'c']))).toEqual({
+            isFullySelected: false,
+            isPartiallySelected: true,
+        });
+    });
+
+    it('treats a single selected child of a multi-child group as partial', () => {
+        expect(resolveGroupSelectionState(['a', 'b', 'c'], new Set(['b']))).toEqual({
+            isFullySelected: false,
+            isPartiallySelected: true,
+        });
+    });
+
+    it('treats a single-child group as full (never partial) when that child is selected', () => {
+        expect(resolveGroupSelectionState(['solo'], new Set(['solo']))).toEqual({
+            isFullySelected: true,
+            isPartiallySelected: false,
+        });
+    });
+
+    it('ignores selected ids that are not children of the group', () => {
+        // Extra unrelated selection entries do not push a fully-selected group
+        // into a partial state.
+        expect(resolveGroupSelectionState(['a', 'b'], new Set(['a', 'b', 'unrelated']))).toEqual({
+            isFullySelected: true,
+            isPartiallySelected: false,
+        });
     });
 });
 
