@@ -1089,6 +1089,69 @@ describe('NoteEditor', () => {
     });
 
     // ══════════════════════════════════════════════════════════════════════
+    // Conflict resolution (Keep mine / Load disk)
+    // ══════════════════════════════════════════════════════════════════════
+
+    describe('conflict resolution', () => {
+        // Load a note, edit it, and reject the debounced save with a 409 so the
+        // conflict banner is showing. Returns once the banner is in the DOM.
+        async function renderInConflict() {
+            mockLoadContent.mockResolvedValueOnce({ content: '# Original', path: 'page.md', mtime: 100 });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>', { emitUpdate: false }));
+
+            mockIOSaveContent.mockRejectedValue(
+                Object.assign(new Error('mtime_mismatch'), { status: 409, currentContent: '# Later external write' }),
+            );
+
+            vi.useFakeTimers();
+            act(() => { capturedOnChange?.(mockEditor); });
+            await act(async () => { vi.advanceTimersByTime(1600); });
+            await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+            expect(screen.getByTestId('note-conflict-banner')).toBeDefined();
+        }
+
+        it('Keep my version re-saves with a forced overwrite (no mtime check)', async () => {
+            await renderInConflict();
+
+            // The retry should succeed.
+            mockIOSaveContent.mockReset();
+            mockIOSaveContent.mockResolvedValue({ path: 'page.md', updated: true, mtime: 300 });
+
+            await act(async () => {
+                screen.getByTestId('conflict-keep-mine-btn').click();
+            });
+            await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+            // Forced overwrite → expectedMtime is undefined.
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', 'content', undefined, undefined);
+            expect(screen.queryByTestId('note-conflict-banner')).toBeNull();
+        });
+
+        it('Load disk version loads the external content into the editor and refreshes mtime', async () => {
+            await renderInConflict();
+
+            mockSetContent.mockClear();
+            mockLoadContent.mockClear();
+            mockLoadContent.mockResolvedValue({ content: '# Later external write', path: 'page.md', mtime: 400 });
+
+            await act(async () => {
+                screen.getByTestId('conflict-load-disk-btn').click();
+            });
+            await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+            // Disk content is converted and applied to the rich editor.
+            expect(mockSetContent).toHaveBeenCalledWith('<p># Later external write</p>', { emitUpdate: false });
+            // The banner is dismissed and the mtime baseline is refreshed from disk.
+            expect(screen.queryByTestId('note-conflict-banner')).toBeNull();
+            expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md', undefined);
+        });
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
     // onNotFound callback
     // ══════════════════════════════════════════════════════════════════════
 

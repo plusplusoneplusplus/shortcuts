@@ -424,7 +424,7 @@ present.
 | `useApi` | HTTP client wrapper |
 | `useWebSocket` | WebSocket connection management |
 | `useMarkdownPreview` | Shared markdown rendering pipeline |
-| `useMarkdownDocumentSession` | Shared markdown document loading, dirty state, save/flush, refresh, conflict, beforeunload, and keyboard-save kernel used by Notes and MarkdownReviewEditor through injected I/O adapters |
+| `useMarkdownDocumentSession` | Shared markdown document loading, dirty state, save/flush, refresh, conflict, beforeunload, and keyboard-save kernel used by Notes and MarkdownReviewEditor through injected I/O adapters. Pure conversion helpers live in `shared/markdown-document/markdownRichConversion` (`markdownToRichEditorHtml`, `richEditorHtmlToMarkdown`, `buildImageMarkdown`, `insertTextAtSelection`) composing front matter split/compose, markdown⇄HTML, and image URL rewriting so NoteEditor's load/switch-to-rich/conflict-load-disk/notes-changed-reload paths share one code path |
 | `useDiffComments` | Inline diff comment state |
 | `useUnseenChat` | Read/unread tracking |
 

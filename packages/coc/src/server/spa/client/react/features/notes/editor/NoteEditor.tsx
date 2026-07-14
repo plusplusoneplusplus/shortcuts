@@ -2,9 +2,14 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type React from 'react';
 import type { Editor } from '@tiptap/core';
 import type { CommentThread } from '../notesApi';
-import { markdownToHtml, htmlToMarkdown, rewriteImageSrcToRelative } from './noteMarkdown';
 import type { NoteEditorIO } from './NoteEditorIO';
-import { defaultNoteEditorIO, rewriteHtmlImageSrc } from './NoteEditorIO';
+import { defaultNoteEditorIO } from './NoteEditorIO';
+import {
+    buildImageMarkdown,
+    insertTextAtSelection,
+    markdownToRichEditorHtml,
+    richEditorHtmlToMarkdown,
+} from '../../../shared/markdown-document/markdownRichConversion';
 import type { NoteEditorCommentBackend } from './NoteEditorCommentBackend';
 import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
@@ -28,7 +33,7 @@ import { FilePreviewTooltip } from './FilePreviewTooltip';
 import { NoteVersionHistoryPanel } from './NoteVersionHistoryPanel';
 import { NoteMetadataPanel } from './NoteMetadataPanel';
 import type { NoteFrontMatterParseResult } from './noteFrontMatter';
-import { composeMarkdownWithFrontMatter, parseNoteFrontMatter } from './noteFrontMatter';
+import { parseNoteFrontMatter } from './noteFrontMatter';
 import { notesApi } from '../notesApi';
 import { useQueue } from '../../../contexts/QueueContext';
 import { isGoalFile } from '../../../shared/goal-file-utils';
@@ -272,13 +277,13 @@ export function NoteEditor({
             setTocActiveIndex(null);
         },
         onLoaded: ({ content }) => {
-            const parsedFrontMatter = parseNoteFrontMatter(content);
-            setFrontMatterResult(parsedFrontMatter);
-            const richMarkdown = parsedFrontMatter.kind === 'valid'
-                ? parsedFrontMatter.frontMatter.body
-                : content;
-            let html = markdownToHtml(richMarkdown);
-            html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current, rootRef.current);
+            const { html, frontMatter } = markdownToRichEditorHtml({
+                markdown: content,
+                io: ioRef.current,
+                workspaceId: workspaceIdRef.current,
+                root: rootRef.current,
+            });
+            setFrontMatterResult(frontMatter);
 
             const ed = editorRef.current;
             if (ed && !ed.isDestroyed) {
@@ -371,12 +376,10 @@ export function NoteEditor({
     // ── Get current editor content as markdown (for Ralph launch) ───────────
     const getCurrentGoalSpec = useCallback(() => {
         if (viewMode === 'source') return rawMarkdown;
-        const html = editorRef.current?.getHTML() ?? '';
-        let md = htmlToMarkdown(html);
-        md = rewriteImageSrcToRelative(md);
-        const fm = frontMatterResultRef.current;
-        if (fm.kind === 'valid') md = composeMarkdownWithFrontMatter(fm.frontMatter, md);
-        return md;
+        return richEditorHtmlToMarkdown({
+            html: editorRef.current?.getHTML() ?? '',
+            frontMatter: frontMatterResultRef.current,
+        });
     }, [viewMode, rawMarkdown]);
 
     // ── Load git initialized state (only for default managed root) ────────
@@ -455,13 +458,10 @@ export function NoteEditor({
     }, []);
 
     function scheduleSave(ed: { getHTML: () => string }) {
-        let md = htmlToMarkdown(ed.getHTML());
-        md = rewriteImageSrcToRelative(md);
-        const currentFrontMatter = frontMatterResultRef.current;
-        if (currentFrontMatter.kind === 'valid') {
-            md = composeMarkdownWithFrontMatter(currentFrontMatter.frontMatter, md);
-        }
-        queueSave(md);
+        queueSave(richEditorHtmlToMarkdown({
+            html: ed.getHTML(),
+            frontMatter: frontMatterResultRef.current,
+        }));
     }
 
     // ── Source mode: handle textarea change ─────────────────────────────────
@@ -506,17 +506,12 @@ export function NoteEditor({
                             dataUrl,
                             rootRef.current,
                         );
-                        const mdImg = `![${file.name || ''}](${result.path})`;
+                        const mdImg = buildImageMarkdown(file.name || '', result.path);
                         const ta = sourceTextareaRef.current;
                         const currentMd = rawMarkdownRef.current;
-                        let newContent: string;
-                        if (ta) {
-                            const start = ta.selectionStart;
-                            const end = ta.selectionEnd;
-                            newContent = currentMd.slice(0, start) + mdImg + currentMd.slice(end);
-                        } else {
-                            newContent = currentMd + mdImg;
-                        }
+                        const start = ta ? ta.selectionStart : currentMd.length;
+                        const end = ta ? ta.selectionEnd : currentMd.length;
+                        const newContent = insertTextAtSelection(currentMd, start, end, mdImg);
                         setRawMarkdown(newContent);
                         setSourceDirty(true);
                         queueSave(newContent);
@@ -538,7 +533,7 @@ export function NoteEditor({
             const currentMd = rawMarkdownRef.current;
             const start = textarea.selectionStart;
             const end = textarea.selectionEnd;
-            const newContent = currentMd.slice(0, start) + pastedText + currentMd.slice(end);
+            const newContent = insertTextAtSelection(currentMd, start, end, pastedText);
             setRawMarkdown(newContent);
             setSourceDirty(true);
             queueSave(newContent);
@@ -575,13 +570,13 @@ export function NoteEditor({
         // Convert raw markdown to HTML and load into Tiptap
         const ed = editorRef.current;
         if (ed && !ed.isDestroyed) {
-            const parsedFrontMatter = parseNoteFrontMatter(rawMarkdown);
-            setFrontMatterResult(parsedFrontMatter);
-            const richMarkdown = parsedFrontMatter.kind === 'valid'
-                ? parsedFrontMatter.frontMatter.body
-                : rawMarkdown;
-            let html = markdownToHtml(richMarkdown);
-            html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current, rootRef.current);
+            const { html, frontMatter } = markdownToRichEditorHtml({
+                markdown: rawMarkdown,
+                io: ioRef.current,
+                workspaceId: workspaceIdRef.current,
+                root: rootRef.current,
+            });
+            setFrontMatterResult(frontMatter);
             ed.commands.setContent(html, { emitUpdate: false });
             ed.commands.setTextSelection?.(1);
             resetEditorHistory(ed);
@@ -620,13 +615,13 @@ export function NoteEditor({
         if (!conflictContent) return;
         const ed = editorRef.current;
         if (ed && !ed.isDestroyed) {
-            const parsedFrontMatter = parseNoteFrontMatter(conflictContent);
-            setFrontMatterResult(parsedFrontMatter);
-            const richMarkdown = parsedFrontMatter.kind === 'valid'
-                ? parsedFrontMatter.frontMatter.body
-                : conflictContent;
-            let html = markdownToHtml(richMarkdown);
-            html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current, rootRef.current);
+            const { html, frontMatter } = markdownToRichEditorHtml({
+                markdown: conflictContent,
+                io: ioRef.current,
+                workspaceId: workspaceIdRef.current,
+                root: rootRef.current,
+            });
+            setFrontMatterResult(frontMatter);
             ed.commands.setContent(html, { emitUpdate: false });
             resetEditorHistory(ed);
         }
@@ -854,13 +849,13 @@ export function NoteEditor({
                 // Capture previous doc text before updating content
                 const previousDocText = ed.state.doc.textContent;
 
-                const parsedFrontMatter = parseNoteFrontMatter(content);
-                setFrontMatterResult(parsedFrontMatter);
-                const richMarkdown = parsedFrontMatter.kind === 'valid'
-                    ? parsedFrontMatter.frontMatter.body
-                    : content;
-                let html = markdownToHtml(richMarkdown);
-                html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current, rootRef.current);
+                const { html, frontMatter } = markdownToRichEditorHtml({
+                    markdown: content,
+                    io: ioRef.current,
+                    workspaceId: workspaceIdRef.current,
+                    root: rootRef.current,
+                });
+                setFrontMatterResult(frontMatter);
                 ed.commands.setContent(html, { emitUpdate: false });
                 resetEditorHistory(ed);
                 setDirty(false);
