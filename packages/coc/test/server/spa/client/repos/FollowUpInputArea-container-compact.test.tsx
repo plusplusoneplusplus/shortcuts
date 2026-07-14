@@ -327,7 +327,8 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
             render(<FollowUpInputArea {...defaultProps()} />);
             expect(screen.getByTestId('mode-selector')).toBeTruthy();
             expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
-            expect(screen.getByTestId('chat-toolbar-mention-btn')).toBeTruthy();
+            expect(screen.getByTestId('follow-up-attach-btn')).toBeTruthy();
+            expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
             // The mobile fallbacks stay viewport-gated (hidden on lg+).
             expect(screen.getByTestId('chat-toolbar-overflow').className).toContain('lg:hidden');
             expect(screen.getByTestId('mode-cycle-btn-compact').className).toContain('lg:hidden');
@@ -341,7 +342,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
             expect(screen.getByTestId('mode-cycle-btn-compact').className).not.toContain('lg:hidden');
         });
 
-        it('folds slash/mention/attach into the overflow menu when the pane is tight', () => {
+        it('folds slash/attach into the overflow menu when the pane is tight', () => {
             setContainerWidth('narrow', 420);
             render(<FollowUpInputArea {...defaultProps()} />);
             expect(screen.queryByTestId('chat-toolbar-slash-btn')).toBeNull();

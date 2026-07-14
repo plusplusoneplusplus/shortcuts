@@ -406,18 +406,12 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(slash.className).not.toContain('px-[7px]');
     });
 
-    // ── @ mention-skill button (matches reference .ctool with @ kbd) ──────
-    it('renders an @ mention-skill toolbar button alongside the slash button', () => {
+    // ── Removed @ mention-skill button ────────────────────────────────────
+    it('does not render a duplicate @ mention-skill toolbar button', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
-        const mention = screen.getByTestId('chat-toolbar-mention-btn');
-        expect(mention).toBeTruthy();
-        expect(mention.className).toContain('h-[22px]');
-        expect(mention.className).toContain('px-1.5');
-        expect(mention.className).toContain('text-[11px]');
-        expect(mention.className).toContain('ctool');
-        expect(mention.getAttribute('aria-label')).toBe('Mention a skill');
-        // Carries an @ glyph as a visible kbd hint
-        expect(mention.textContent).toContain('@');
+        expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+        expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
+        expect(screen.queryByLabelText('Mention a skill')).toBeNull();
     });
 
     // ── Toolbar position + responsiveness ────────────────────────────────
@@ -579,12 +573,12 @@ describe('NewChatArea — stacked input card layout', () => {
         expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
     });
 
-    it('renders the bottom toolbar with attach + slash + mention trigger buttons', () => {
+    it('renders the bottom toolbar with attach + slash trigger buttons', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         expect(screen.getByTestId('chat-input-toolbar')).toBeTruthy();
         expect(screen.getByTestId('new-chat-attach-btn')).toBeTruthy();
         expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
-        expect(screen.getByTestId('chat-toolbar-mention-btn')).toBeTruthy();
+        expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
     });
 
     it('Send button has shrink-0 + ultra-compact 24px height + vertical-separator hint', () => {
@@ -605,12 +599,13 @@ describe('NewChatArea — stacked input card layout', () => {
 
     it('NewChatArea toolbar buttons use the uniform ctool class (h-[22px])', () => {
         render(<NewChatArea workspaceId="ws-1" />);
-        for (const tid of ['model-picker-chip', 'chat-toolbar-slash-btn', 'chat-toolbar-mention-btn', 'new-chat-attach-btn']) {
+        for (const tid of ['model-picker-chip', 'chat-toolbar-slash-btn', 'new-chat-attach-btn']) {
             const btn = screen.getByTestId(tid);
             expect(btn.className).toContain('ctool');
             expect(btn.className).toContain('h-[22px]');
             expect(btn.className).not.toContain('h-[26px]');
         }
+        expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
     });
 
     // Regression: the inner contenteditable in NewChatArea must also

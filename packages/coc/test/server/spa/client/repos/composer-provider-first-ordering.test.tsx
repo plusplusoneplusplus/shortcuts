@@ -353,15 +353,14 @@ describe('Composer provider-first ordering', () => {
             expect(indexInParent(divider)).toBeLessThan(indexInParent(modelContainer));
         });
 
-        it('renders slash/mention/attach buttons after the model picker (tools-on-the-right zone)', () => {
+        it('renders slash/attach buttons after the model picker (tools-on-the-right zone)', () => {
             render(<NewChatArea workspaceId="ws-1" />);
             const model = screen.getByTestId('model-picker-chip');
             const slash = screen.getByTestId('chat-toolbar-slash-btn');
-            const mention = screen.getByTestId('chat-toolbar-mention-btn');
             const attach = screen.getByTestId('new-chat-attach-btn');
             expect(indexInParent(model)).toBeLessThan(indexInParent(slash));
-            expect(indexInParent(slash)).toBeLessThan(indexInParent(mention));
-            expect(indexInParent(mention)).toBeLessThan(indexInParent(attach));
+            expect(indexInParent(slash)).toBeLessThan(indexInParent(attach));
+            expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
         });
 
         it('renders a divider between the tools zone and the send button', () => {
@@ -415,15 +414,14 @@ describe('Composer provider-first ordering', () => {
             expect(indexInParent(divider)).toBeLessThan(indexInParent(modelContainer));
         });
 
-        it('renders slash/mention/attach buttons after the model picker', () => {
+        it('renders slash/attach buttons after the model picker', () => {
             render(<FollowUpInputArea {...defaultFollowUpProps()} />);
             const model = screen.getByTestId('model-picker-chip');
             const slash = screen.getByTestId('chat-toolbar-slash-btn');
-            const mention = screen.getByTestId('chat-toolbar-mention-btn');
             const attach = screen.getByTestId('follow-up-attach-btn');
             expect(indexInParent(model)).toBeLessThan(indexInParent(slash));
-            expect(indexInParent(slash)).toBeLessThan(indexInParent(mention));
-            expect(indexInParent(mention)).toBeLessThan(indexInParent(attach));
+            expect(indexInParent(slash)).toBeLessThan(indexInParent(attach));
+            expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
         });
 
         it('renders a divider between the tools zone and the send button', () => {

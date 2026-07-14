@@ -406,7 +406,9 @@ describe('NewChatArea', () => {
         expect(screen.getByTestId('mode-selector')).toBeTruthy();
         expect(screen.getByTestId('model-picker-chip')).toBeTruthy();
         expect(screen.getByTestId('effort-pill-selector')).toBeTruthy();
-        expect(screen.getByTestId('chat-toolbar-mention-btn')).toBeTruthy();
+        expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
+        expect(screen.getByTestId('new-chat-attach-btn')).toBeTruthy();
+        expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
     });
 
     it('uses the compact AI settings chip when the Activity composer container is narrow', async () => {

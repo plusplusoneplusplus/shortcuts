@@ -295,7 +295,7 @@ export function FollowUpInputArea({
     //    no "Effort:" prefix); the meta strip's container queries handle its
     //    own fit independently.
     //  - tight (<500): swap in the mobile controls — the segmented mode pills
-    //    become the tap-to-cycle button and slash/mention/attach fold into
+    //    become the tap-to-cycle button and slash/attach fold into
     //    the "⋯" overflow menu — so a narrow PANE gets the same treatment a
     //    narrow VIEWPORT already does.
     //  - minimal (<380): provider chip and Send go icon-only.
@@ -351,7 +351,7 @@ export function FollowUpInputArea({
     useEffect(() => { setSuggestionsDismissed(false); }, [suggestions]);
 
     // Mobile/tablet (≤1023px) overflow ("⋯") menu state for the inner
-    // toolbar's low-priority tool actions (slash / mention / attach). On
+    // toolbar's low-priority tool actions (slash / attach). On
     // desktop (lg+) those actions render inline and this menu is hidden, so
     // the desktop layout is unchanged.
     const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
@@ -906,8 +906,8 @@ export function FollowUpInputArea({
                 </div>
             ) : (
                 /* ── Stacked layout: input card whose bottom toolbar holds the
-                     mode pill selector (first), model picker, slash/mention/
-                     attach buttons, and the QueueFollowUpButton. The toolbar
+                     mode pill selector (first), model picker, slash/attach
+                     buttons, and the QueueFollowUpButton. The toolbar
                      wraps vertically on narrow screens (mobile-responsive).
                      Visual style mirrors the OpenDesign chats.html reference:
                      uniform h-[26px] ctool buttons with rounded-sm corners,
@@ -1188,7 +1188,7 @@ export function FollowUpInputArea({
                                     </div>
                                 </div>
                             </div>
-                            {/* Tools zone — slash/mention/attach live on the
+                            {/* Tools zone — slash/attach live on the
                                  right of the flexible middle (matches the OpenDesign
                                  composer ordering: mode · model · tools · send).
                                  On mobile/tablet (≤1023px) or a container-tight pane
@@ -1201,7 +1201,7 @@ export function FollowUpInputArea({
                                     className="ctool inline-flex items-center justify-center h-8 w-8 lg:h-[22px] lg:w-[22px] rounded-sm text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
                                     onClick={() => setToolsMenuOpen(o => !o)}
                                     aria-label="More actions"
-                                    title="More actions (slash, mention, attach)"
+                                    title="More actions (slash, attach)"
                                     aria-haspopup="menu"
                                     aria-expanded={toolsMenuOpen}
                                     data-testid="chat-toolbar-overflow-btn"
@@ -1228,16 +1228,6 @@ export function FollowUpInputArea({
                                         >
                                             <span aria-hidden="true" className="font-mono text-[12px] w-4 text-center text-[#848484]">/</span>
                                             Slash command
-                                        </button>
-                                        <button
-                                            type="button"
-                                            role="menuitem"
-                                            className="w-full flex items-center gap-2 px-2.5 py-2 text-left text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] cursor-pointer"
-                                            onClick={() => { focusInputAndInsertSlash(); setToolsMenuOpen(false); }}
-                                            data-testid="chat-toolbar-overflow-mention"
-                                        >
-                                            <span aria-hidden="true" className="font-mono text-[12px] w-4 text-center text-[#848484]">@</span>
-                                            Mention a skill
                                         </button>
                                         <button
                                             type="button"
@@ -1269,19 +1259,6 @@ export function FollowUpInputArea({
                                     <path d="M6 13l4-10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                                 </svg>
                                 <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">/</span>
-                            </button>
-                            <button
-                                type="button"
-                                className="ctool shrink-0 hidden lg:inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
-                                onClick={focusInputAndInsertSlash}
-                                aria-label="Mention a skill"
-                                title="Mention a skill (@) — opens the skill picker"
-                                data-testid="chat-toolbar-mention-btn"
-                            >
-                                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                                    <path d="M8 2L3 5v6l5 3 5-3V5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-                                </svg>
-                                <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">@</span>
                             </button>
                             <button
                                 type="button"

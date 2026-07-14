@@ -1232,24 +1232,6 @@ export function InitialChatComposer({
         );
     }
 
-    function renderMentionButton() {
-        return (
-            <button
-                type="button"
-                className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
-                onClick={focusInputAndInsertSlash}
-                aria-label="Mention a skill"
-                title="Mention a skill (@) — opens the skill picker"
-                data-testid="chat-toolbar-mention-btn"
-            >
-                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M8 2L3 5v6l5 3 5-3V5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-                </svg>
-                <span aria-hidden="true" className="font-mono text-[9px] text-[#848484]">@</span>
-            </button>
-        );
-    }
-
     function renderAttachButton() {
         return (
             <button
@@ -1533,7 +1515,7 @@ export function InitialChatComposer({
                             </>
                         )}
                         <div className="flex-1 min-w-0" />
-                        {/* Tools zone — slash/mention/attach live on the right of
+                        {/* Tools zone — slash/attach live on the right of
                              the spacer (matches the OpenDesign composer ordering:
                              provider · mode · model · tools · send). */}
                         {effectiveSettingsLayout === 'compact' ? (
@@ -1544,7 +1526,6 @@ export function InitialChatComposer({
                         ) : (
                             <>
                                 {renderSlashButton()}
-                                {renderMentionButton()}
                                 {renderAttachButton()}
                             </>
                         )}

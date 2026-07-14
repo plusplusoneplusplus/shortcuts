@@ -5,7 +5,7 @@
  * FollowUpInputArea inner toolbar.
  *
  * On narrow viewports the toolbar must stay on a single row (no flex-wrap):
- *  - the low-priority tool actions (slash / mention / attach) collapse into a
+ *  - the low-priority tool actions (slash / attach) collapse into a
  *    single overflow ("⋯") menu, while remaining individually reachable;
  *  - the wide segmented mode pill collapses into a compact tap-to-cycle button;
  *  - the desktop layout (lg+) is preserved via responsive `lg:` utilities, so
@@ -218,18 +218,19 @@ describe('FollowUpInputArea – compact mobile toolbar', () => {
         expectMobileTapTarget(screen.getByTestId('effort-tier-trigger-btn'), 'lg:h-[22px]');
     });
 
-    it('collapses slash/mention/attach into an overflow menu that is reachable', () => {
+    it('collapses slash/attach into an overflow menu that is reachable', () => {
         render(<FollowUpInputArea {...defaultProps()} />);
         const overflowBtn = screen.getByTestId('chat-toolbar-overflow-btn');
         expect(overflowBtn).toBeTruthy();
         // Menu is closed initially.
         expect(screen.queryByTestId('chat-toolbar-overflow-menu')).toBeNull();
-        // Opening it surfaces all three collapsed actions.
+        // Opening it surfaces both collapsed actions.
         fireEvent.click(overflowBtn);
         expect(screen.getByTestId('chat-toolbar-overflow-menu')).toBeTruthy();
         expect(screen.getByTestId('chat-toolbar-overflow-slash')).toBeTruthy();
-        expect(screen.getByTestId('chat-toolbar-overflow-mention')).toBeTruthy();
         expect(screen.getByTestId('chat-toolbar-overflow-attach')).toBeTruthy();
+        expect(screen.queryByTestId('chat-toolbar-overflow-mention')).toBeNull();
+        expect(screen.queryByText('Mention a skill')).toBeNull();
     });
 
     it('triggers the file picker from the overflow attach action', () => {
@@ -255,8 +256,8 @@ describe('FollowUpInputArea – compact mobile toolbar', () => {
         render(<FollowUpInputArea {...defaultProps()} />);
         // Desktop inline tool buttons still exist (hidden via lg: utilities only).
         expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
-        expect(screen.getByTestId('chat-toolbar-mention-btn')).toBeTruthy();
         expect(screen.getByTestId('follow-up-attach-btn')).toBeTruthy();
+        expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
         // Desktop mode pill wrapper + inner selector still present.
         expect(screen.getByTestId('mode-selector')).toBeTruthy();
         expect(screen.getByTestId('mode-pill-selector-inner')).toBeTruthy();
