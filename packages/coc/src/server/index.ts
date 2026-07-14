@@ -62,6 +62,7 @@ import { SshConnector } from './servers/ssh-connector';
 import { RemoteServerStore } from './servers/remote-server-store';
 import { pruneAllStaleClassifications } from './repos/classification-store';
 import { SyncEngine } from './sync/sync-engine';
+import { DEFAULT_SYNC_INTERVAL_MINUTES } from './sync/sync-constants';
 import { ContainerLinkClient } from './container-link/container-client';
 import { registerContainerLinkRoutes } from './container-link/container-link-routes';
 
@@ -773,7 +774,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             if (fs.existsSync(prefsPath)) {
                 const prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
                 if (prefs?.sync?.gitRemote) {
-                    engine.start(prefs.sync.gitRemote, prefs.sync.intervalMinutes ?? 5).catch(() => {});
+                    engine.start(prefs.sync.gitRemote, prefs.sync.intervalMinutes ?? DEFAULT_SYNC_INTERVAL_MINUTES).catch(() => {});
                 }
             }
         } catch { /* best-effort */ }

@@ -1,3 +1,4 @@
+import { DEFAULT_SYNC_INTERVAL_MINUTES } from '../sync/sync-constants';
 import type { SyncEngine } from '../sync/sync-engine';
 import type { PerRepoPreferences } from './schema';
 
@@ -22,7 +23,7 @@ export function applyRepoPreferencesLiveEffects(options: ApplyRepoPreferencesLiv
         const engine = options.getSyncEngine(options.workspaceId);
         if (engine) {
             const gitRemote = options.preferences.sync?.gitRemote ?? '';
-            const intervalMinutes = options.preferences.sync?.intervalMinutes ?? 5;
+            const intervalMinutes = options.preferences.sync?.intervalMinutes ?? DEFAULT_SYNC_INTERVAL_MINUTES;
             engine.start(gitRemote, intervalMinutes).catch(error => {
                 logPreferenceEffectError(
                     options,

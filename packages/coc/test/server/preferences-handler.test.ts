@@ -1034,6 +1034,16 @@ describe('validatePreferences', () => {
         expect(result.sync).toEqual({ gitRemote: 'https://x.git' });
     });
 
+    it('drops below-floor intervalMinutes (0) but keeps gitRemote', () => {
+        const result = validatePerRepoPreferences({ sync: { gitRemote: 'https://x.git', intervalMinutes: 0 } });
+        expect(result.sync).toEqual({ gitRemote: 'https://x.git' });
+    });
+
+    it('honors an explicit floor of 1 minute', () => {
+        const result = validatePerRepoPreferences({ sync: { gitRemote: 'https://x.git', intervalMinutes: 1 } });
+        expect(result.sync).toEqual({ gitRemote: 'https://x.git', intervalMinutes: 1 });
+    });
+
     it('sync coexists with other per-repo fields', () => {
         const result = validatePerRepoPreferences({ lastDepth: 'deep', sync: { gitRemote: 'https://x.git' } });
         expect(result.lastDepth).toBe('deep');
@@ -2659,7 +2669,7 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
         await found.route.handler(fakeReq('PATCH', { sync: { gitRemote: '' } }), res, found.match);
 
         expect(res.statusCode).toBe(200);
-        expect(mockEngine.start).toHaveBeenCalledWith('', 5);
+        expect(mockEngine.start).toHaveBeenCalledWith('', 30);
     });
 
     it('PATCH non-sync fields does NOT call engine.start()', async () => {
@@ -2695,7 +2705,7 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
         expect(res.statusCode).toBe(200);
     });
 
-    it('PATCH sync prefs uses default interval 5 when not specified', async () => {
+    it('PATCH sync prefs uses default interval 30 when not specified', async () => {
         const mockEngine = {
             start: vi.fn().mockResolvedValue(undefined),
         } as unknown as SyncEngine;
@@ -2710,7 +2720,7 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
         await found.route.handler(fakeReq('PATCH', { sync: { gitRemote: 'git@github.com:u/notes.git' } }), res, found.match);
 
         expect(res.statusCode).toBe(200);
-        expect(mockEngine.start).toHaveBeenCalledWith('git@github.com:u/notes.git', 5);
+        expect(mockEngine.start).toHaveBeenCalledWith('git@github.com:u/notes.git', 30);
     });
 
     it('PATCH sync prefs when getSyncEngine returns undefined is a no-op for sync', async () => {
