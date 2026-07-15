@@ -3,15 +3,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { WhatsAppBot } from '../src/bot';
-import type { InboundWAMessage, WASocket } from '../src/types';
+import { WhatsAppBot } from '../../src/whatsapp/bot';
+import type { InboundWAMessage, WASocket } from '../../src/whatsapp/types';
 
 // Mock the connection module so Baileys is never loaded
-vi.mock('../src/connection', () => ({
+vi.mock('../../src/whatsapp/connection', () => ({
     createBaileysConnection: vi.fn(),
 }));
 
-import { createBaileysConnection } from '../src/connection';
+import { createBaileysConnection } from '../../src/whatsapp/connection';
 const mockCreateConnection = vi.mocked(createBaileysConnection);
 
 function createMockSocket(): WASocket & { handlers: Map<string, Function> } {
@@ -96,7 +96,7 @@ describe('WhatsAppBot', () => {
         });
         await bot.start();
 
-        const msgId = await bot.send('group@g.us', 'Reply text', { quotedId: 'wamid.original' });
+        const msgId = await bot.send('group@g.us', 'Reply text', { replyToId: 'wamid.original' });
         expect(msgId).toBe('wamid.test123');
         expect(mockSocket.sendMessage).toHaveBeenCalledWith(
             'group@g.us',
@@ -353,7 +353,9 @@ describe('WhatsAppBot', () => {
 
         expect(receivedQR).toBe('test-qr-string');
         expect(bot.getLastQR()).toBe('test-qr-string');
-        expect(bot.getStatus()).toBe('qr-pending');
+        // getStatus() is normalized; the native 'qr-pending' maps to 'pairing'.
+        expect(bot.getStatus()).toBe('pairing');
+        expect(bot.getNativeStatus()).toBe('qr-pending');
 
         // Wait for connect
         await new Promise(r => setTimeout(r, 15));

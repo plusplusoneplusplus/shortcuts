@@ -10,6 +10,7 @@
  */
 
 import type { TeamsBotOptions, BotStatus, InboundTeamsMessage, TeamsChannel, TeamsTransportMode, TeamsTransport } from './types';
+import type { MessagingConnector, MessagingTarget, SendOptions } from '../core';
 import { GraphTransport } from './transport-graph';
 import { McpTransport } from './transport-mcp';
 import { acquireTokenViaAzCli } from './auth';
@@ -25,7 +26,9 @@ export function createTransport(mode: TeamsTransportMode, opts: { mcpServerUrl?:
     return new GraphTransport();
 }
 
-export class TeamsBot {
+export class TeamsBot implements MessagingConnector {
+    /** Stable provider id for the MessagingConnector contract. */
+    readonly provider = 'teams';
     private readonly opts: Required<Pick<TeamsBotOptions, 'onMessage' | 'pollIntervalMs' | 'botName'>> & TeamsBotOptions;
     private readonly mode: TeamsTransportMode;
     private transport: TeamsTransport;
@@ -112,15 +115,24 @@ export class TeamsBot {
     }
 
     /** Send a text message to a Teams channel/chat. Returns the message ID. */
-    async send(channelId: string, text: string, opts?: { replyToId?: string; mentions?: Array<{ aadId: string; displayName: string }> }): Promise<string> {
+    async send(channelId: string, text: string, opts?: SendOptions): Promise<string> {
         if (this._status !== 'connected') {
             throw new Error('TeamsBot is not connected');
         }
         this.resetPollInterval();
 
+        // Adapt the normalized SendOptions (mentions keyed by `id`) to the
+        // transport-native shape (mentions keyed by `aadId`).
+        const transportOpts = opts && (opts.replyToId || opts.mentions)
+            ? {
+                replyToId: opts.replyToId,
+                mentions: opts.mentions?.map((m) => ({ aadId: m.id, displayName: m.displayName })),
+            }
+            : undefined;
+
         console.log(`[teams-bot] send() target=${channelId.substring(0, 20)}..., text length=${text.length}, mode=${this.mode}`);
         try {
-            const messageId = await this.transport.send(channelId, text, opts);
+            const messageId = await this.transport.send(channelId, text, transportOpts);
             if (messageId) this._sentMessageIds.add(messageId);
             console.log(`[teams-bot] send() success, messageId=${messageId}`);
             return messageId;
@@ -130,7 +142,7 @@ export class TeamsBot {
             if (err.message?.includes('401')) {
                 const refreshed = await this.refreshToken();
                 if (refreshed) {
-                    const messageId = await this.transport.send(channelId, text, opts);
+                    const messageId = await this.transport.send(channelId, text, transportOpts);
                     if (messageId) this._sentMessageIds.add(messageId);
                     return messageId;
                 }
@@ -146,6 +158,12 @@ export class TeamsBot {
         }
         if (!this.opts.teamId) return [];
         return this.transport.listChannels(this.opts.teamId);
+    }
+
+    /** MessagingConnector: list channels as normalized targets. */
+    async listTargets(): Promise<MessagingTarget[]> {
+        const channels = await this.listChannels();
+        return channels.map((c) => ({ id: c.id, name: c.displayName }));
     }
 
     /** Set the target channel for message polling. */

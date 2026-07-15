@@ -1,7 +1,5 @@
 /**
- * @plusplusoneplusplus/teams-bot
- *
- * Standalone MS Teams bot package — supports Graph API (primary) and MCP server (fallback).
+ * Teams connector — Microsoft Teams via Graph API (primary) or MCP server (fallback).
  */
 
 export { TeamsBot, createTransport } from './bot';

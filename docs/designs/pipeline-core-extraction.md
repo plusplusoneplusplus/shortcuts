@@ -199,7 +199,7 @@ CoC tests:
 Root package build order:
 
 ```text
-coc-agent-sdk -> coc-workflow -> forge -> coc-client -> coc-memory -> teams-bot -> coc -> deep-wiki
+coc-agent-sdk -> coc-workflow -> forge -> coc-client -> coc-memory -> coc-connector -> coc -> deep-wiki
 ```
 
 Direct package builds keep the same dependency order through package prebuild scripts.

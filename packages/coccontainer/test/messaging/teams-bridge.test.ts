@@ -22,7 +22,7 @@ let botInstances: Array<{
     listChannels: ReturnType<typeof vi.fn>;
 }> = [];
 
-vi.mock('@plusplusoneplusplus/teams-bot', () => {
+vi.mock('@plusplusoneplusplus/coc-connector/teams', () => {
     const mockTransport = {
         initialize: vi.fn().mockResolvedValue(undefined),
         send: vi.fn().mockResolvedValue('transport-msg-001'),
@@ -789,7 +789,7 @@ describe('TeamsBridge', () => {
             expect(outboundCall![1]).toContain('<at id="0">Alice</at>');
             // Mentions array should be passed
             expect(outboundCall![2]?.mentions).toEqual([
-                { aadId: 'aad-alice-123', displayName: 'Alice' },
+                { id: 'aad-alice-123', displayName: 'Alice' },
             ]);
 
             vi.unstubAllGlobals();

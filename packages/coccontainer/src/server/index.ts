@@ -447,7 +447,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 if (!mcpServerUrl) {
                     return sendJson(res, { ok: false, error: 'No mcpServerUrl configured' });
                 }
-                const { getOAuthConfig } = await import('@plusplusoneplusplus/teams-bot');
+                const { getOAuthConfig } = await import('@plusplusoneplusplus/coc-connector/teams');
                 const oauthConfig = getOAuthConfig(mcpServerUrl, {
                     clientId: config.messaging?.teams?.clientId,
                     scope: config.messaging?.teams?.scope,
@@ -505,7 +505,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     return sendJson(res, { ok: false, error: 'No mcpServerUrl configured' });
                 }
                 try {
-                    const { exchangeCodeForToken } = await import('@plusplusoneplusplus/teams-bot');
+                    const { exchangeCodeForToken } = await import('@plusplusoneplusplus/coc-connector/teams');
                     await exchangeCodeForToken(mcpServerUrl, {
                         code,
                         codeVerifier,
@@ -569,7 +569,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     if (!mcpServerUrl) {
                         return sendJson(res, { authenticated: false, error: 'No mcpServerUrl configured' });
                     }
-                    const { acquireMcpOAuthToken } = await import('@plusplusoneplusplus/teams-bot');
+                    const { acquireMcpOAuthToken } = await import('@plusplusoneplusplus/coc-connector/teams');
                     await acquireMcpOAuthToken(mcpServerUrl);
                     return sendJson(res, { authenticated: true });
                 } catch {

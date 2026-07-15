@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-import { acquireTokenWithDeviceCode, extractTenantId } from '../src/auth';
+import { acquireTokenWithDeviceCode, extractTenantId } from '../../src/teams/auth';
 
 describe('extractTenantId', () => {
     it('should extract tenant ID from Agent365 MCP URL', () => {
@@ -183,7 +183,7 @@ describe('acquireMcpOAuthToken', () => {
 
     // Lazy import to get the version with mocked fetch
     async function getAcquireFn() {
-        const mod = await import('../src/auth');
+        const mod = await import('../../src/teams/auth');
         return mod.acquireMcpOAuthToken;
     }
 

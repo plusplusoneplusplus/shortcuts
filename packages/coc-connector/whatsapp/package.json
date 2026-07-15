@@ -1,0 +1,4 @@
+{
+  "main": "../dist/whatsapp/index.js",
+  "types": "../dist/whatsapp/index.d.ts"
+}

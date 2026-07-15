@@ -7,10 +7,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-import { createTransport } from '../src/bot';
-import { GraphTransport } from '../src/transport-graph';
-import { McpTransport } from '../src/transport-mcp';
-import type { TeamsTransport } from '../src/types';
+import { createTransport } from '../../src/teams/bot';
+import { GraphTransport } from '../../src/teams/transport-graph';
+import { McpTransport } from '../../src/teams/transport-mcp';
+import type { TeamsTransport } from '../../src/teams/types';
 
 describe('createTransport', () => {
     it('should create GraphTransport for graph mode', () => {

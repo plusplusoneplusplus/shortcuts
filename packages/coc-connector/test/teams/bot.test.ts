@@ -8,8 +8,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-import { TeamsBot } from '../src/bot';
-import type { InboundTeamsMessage } from '../src/types';
+import { TeamsBot } from '../../src/teams/bot';
+import type { InboundTeamsMessage } from '../../src/teams/types';
 
 describe('TeamsBot', () => {
     let onMessage: ReturnType<typeof vi.fn>;

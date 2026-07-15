@@ -1,7 +1,5 @@
 /**
- * @plusplusoneplusplus/whatsapp-bot
- *
- * Standalone WhatsApp bot package — no CoC/forge dependencies.
+ * WhatsApp connector — via Baileys (lazy-loaded).
  */
 
 export { WhatsAppBot } from './bot';

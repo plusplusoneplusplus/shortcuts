@@ -3,9 +3,21 @@
  */
 
 import type { BotOptions, BotStatus, InboundWAMessage, WASocket } from './types';
+import type { ConnectorStatus, MessagingConnector, MessagingTarget, SendOptions } from '../core';
 import { createBaileysConnection } from './connection';
 
-export class WhatsAppBot {
+/** Map native WhatsApp status to the normalized connector status. */
+function toConnectorStatus(status: BotStatus): ConnectorStatus {
+    switch (status) {
+        case 'qr-pending': return 'pairing';
+        case 'creating-group': return 'busy';
+        default: return status;
+    }
+}
+
+export class WhatsAppBot implements MessagingConnector {
+    /** Stable provider id for the MessagingConnector contract. */
+    readonly provider = 'whatsapp';
     private sock: WASocket | null = null;
     private readonly opts: Required<Pick<BotOptions, 'sessionDir' | 'onMessage' | 'printQR'>> & BotOptions;
     private _status: BotStatus = 'disconnected';
@@ -75,12 +87,13 @@ export class WhatsAppBot {
     }
 
     /** Send a text message, optionally quoting another message. Returns the WA message ID. */
-    async send(jid: string, text: string, opts?: { quotedId?: string }): Promise<string> {
+    async send(jid: string, text: string, opts?: SendOptions): Promise<string> {
         if (!this.sock) {
             throw new Error('WhatsAppBot is not started');
         }
-        const sendOpts = opts?.quotedId
-            ? { quoted: { key: { remoteJid: jid, id: opts.quotedId, fromMe: true } } }
+        // The normalized replyToId maps to a WhatsApp quoted message.
+        const sendOpts = opts?.replyToId
+            ? { quoted: { key: { remoteJid: jid, id: opts.replyToId, fromMe: true } } }
             : undefined;
         const result = await this.sock.sendMessage(jid, { text }, sendOpts);
         const msgId = result.key.id ?? '';
@@ -96,6 +109,17 @@ export class WhatsAppBot {
             jid,
             name: meta.subject ?? jid,
         }));
+    }
+
+    /** MessagingConnector: list groups as normalized targets. */
+    async listTargets(): Promise<MessagingTarget[]> {
+        const groups = await this.listGroups();
+        return groups.map((g) => ({ id: g.jid, name: g.name }));
+    }
+
+    /** MessagingConnector: resolve a target by creating a group with the given name. */
+    async resolveTarget(spec: unknown): Promise<string> {
+        return this.createGroup(String(spec));
     }
 
     /** Create a new WhatsApp group and return its JID. */
@@ -118,8 +142,13 @@ export class WhatsAppBot {
         return this._status === 'connected';
     }
 
-    /** Current connection status. */
-    getStatus(): BotStatus {
+    /** Current connection status, normalized to the connector contract. */
+    getStatus(): ConnectorStatus {
+        return toConnectorStatus(this._status);
+    }
+
+    /** Current native WhatsApp status (includes 'qr-pending' / 'creating-group'). */
+    getNativeStatus(): BotStatus {
         return this._status;
     }
 

@@ -16,7 +16,7 @@ let botInstances: Array<{
     send: ReturnType<typeof vi.fn>;
 }> = [];
 
-vi.mock('@plusplusoneplusplus/whatsapp-bot', () => {
+vi.mock('@plusplusoneplusplus/coc-connector/whatsapp', () => {
     return {
         WhatsAppBot: class MockWhatsAppBot {
             opts: any;

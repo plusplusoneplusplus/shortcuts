@@ -4,8 +4,8 @@
  * Only imported via dynamic import when messaging.whatsapp.enabled is true.
  */
 
-import type { InboundWAMessage, BotStatus } from '@plusplusoneplusplus/whatsapp-bot';
-import { WhatsAppBot } from '@plusplusoneplusplus/whatsapp-bot';
+import type { InboundWAMessage, BotStatus } from '@plusplusoneplusplus/coc-connector/whatsapp';
+import { WhatsAppBot } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
@@ -73,7 +73,7 @@ export class WhatsAppBridge {
     getWhatsAppStatus(): WhatsAppStatus {
         return {
             enabled: true,
-            status: this.bot?.getStatus() ?? 'disconnected',
+            status: this.bot?.getNativeStatus() ?? 'disconnected',
             qr: this.bot?.getLastQR() ?? null,
             error: this.bot?.getLastError() ?? null,
             groupJid: this.opts.config.groupJid,

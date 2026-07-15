@@ -9,7 +9,7 @@ import * as os from 'os';
 import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
 
 // Mock the teams-bot package
-vi.mock('@plusplusoneplusplus/teams-bot', () => ({
+vi.mock('@plusplusoneplusplus/coc-connector/teams', () => ({
     TeamsBot: vi.fn().mockImplementation((opts: any) => ({
         start: vi.fn().mockImplementation(async () => {
             opts.onStatusChange?.('connected');

@@ -18,7 +18,10 @@ export default defineConfig({
             '@plusplusoneplusplus/coc-server': path.resolve(__dirname, 'src/server/index.ts'),
             '@plusplusoneplusplus/coc-agent-sdk/testing': path.resolve(__dirname, '../coc-agent-sdk/src/testing/index.ts'),
             '@plusplusoneplusplus/coc-client': path.resolve(__dirname, '../coc-client/src/index.ts'),
-            '@plusplusoneplusplus/teams-bot': path.resolve(__dirname, '../teams-bot/src/index.ts'),
+            // Subpath alias must precede the core alias: Vite matches aliases in
+            // order and treats a bare package name as a prefix of its subpaths.
+            '@plusplusoneplusplus/coc-connector/teams': path.resolve(__dirname, '../coc-connector/src/teams/index.ts'),
+            '@plusplusoneplusplus/coc-connector': path.resolve(__dirname, '../coc-connector/src/index.ts'),
         },
     },
     test: {

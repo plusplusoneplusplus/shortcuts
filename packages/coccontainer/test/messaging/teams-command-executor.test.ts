@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TeamsCommandExecutor, type TeamsCommandExecutorDeps, type ProcessInfo } from '../../src/messaging/teams-command-executor';
-import type { InboundTeamsMessage } from '@plusplusoneplusplus/teams-bot';
+import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 
 function makeMsg(text: string, overrides: Partial<InboundTeamsMessage> = {}): InboundTeamsMessage {
     return {
