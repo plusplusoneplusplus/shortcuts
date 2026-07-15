@@ -92,6 +92,13 @@ interface ClaudeAssistantMessage {
     type: 'assistant';
     message: {
         content: ClaudeContentBlock[];
+        /**
+         * Nested SDK stop reason. `'end_turn'` marks a successful terminal
+         * assistant message — the model finished its turn with a final answer.
+         * Any other value (`tool_use`, `max_tokens`, a refusal, etc.) is NOT a
+         * terminal-success signal. See {@link ClaudeSDKService.isTerminalAssistantMessage}.
+         */
+        stop_reason?: string | null;
     };
     parent_tool_use_id?: string | null;
     session_id?: string;
@@ -1053,6 +1060,22 @@ export class ClaudeSDKService implements ISDKService {
                 gate.close();
             };
 
+            // Settlement signal for a turn whose CLI writes its final assistant
+            // message (`message.stop_reason: 'end_turn'`) and then blocks on
+            // stdin EOF without ever emitting a `result` or a
+            // `session_state_changed: idle` frame. The signal is held rather
+            // than acted on immediately: the turn only settles once no
+            // background task is still tracked, so an early end_turn frame can
+            // never cut off in-flight background work. Re-checked after each
+            // background-task drain so a terminal-assistant frame that arrives
+            // before the final task notification still settles the turn.
+            let terminalAssistantSeen = false;
+            const settleIfReady = async (): Promise<void> => {
+                if (!terminalAssistantSeen || backgroundTasks.size > 0) return;
+                clearDrainCap();
+                await captureContextUsageThenClose();
+            };
+
             for await (const msg of handle) {
                 if (abortController.signal.aborted) break;
                 publishProviderSessionId(this.extractSessionId(msg));
@@ -1070,6 +1093,13 @@ export class ClaudeSDKService implements ISDKService {
                                 registerBackgroundTask(block.id, toolName === 'task' ? 'agent' : 'shell', toolName);
                             }
                         }
+                    }
+                    // The final assistant message (`stop_reason: 'end_turn'`)
+                    // settles the turn when no `result`/idle frame follows. Held
+                    // behind settleIfReady so pending background work is not cut off.
+                    if (this.isTerminalAssistantMessage(msg)) {
+                        terminalAssistantSeen = true;
+                        await settleIfReady();
                     }
                 } else if (this.isUserMessage(msg)) {
                     this.handleClaudeUserToolResults(msg, options, toolCalls);
@@ -1129,11 +1159,17 @@ export class ClaudeSDKService implements ISDKService {
                     const status = msg.patch?.status;
                     if (status && CLAUDE_TERMINAL_TASK_STATUSES.has(status)) {
                         settleBackgroundTasks(msg.task_id);
+                        // Draining the final task may release a terminal-assistant
+                        // signal that arrived while the task was still running.
+                        await settleIfReady();
                     } else if (msg.patch?.is_backgrounded === true) {
                         registerBackgroundTask(msg.task_id, 'shell');
                     }
                 } else if (this.isClaudeSystemSubtype(msg, 'task_notification')) {
                     settleBackgroundTasks(msg.task_id, msg.tool_use_id);
+                    // Draining the final task may release a terminal-assistant
+                    // signal that arrived while the task was still running.
+                    await settleIfReady();
                 } else if (this.isClaudeSystemSubtype(msg, 'session_state_changed')) {
                     // Authoritative turn-over signal: the SDK's background drain
                     // loop has exited. Settle regardless of our local tracking.
@@ -1355,6 +1391,17 @@ export class ClaudeSDKService implements ISDKService {
             typeof (msg as ClaudeAssistantMessage).message === 'object' &&
             Array.isArray((msg as ClaudeAssistantMessage).message.content)
         );
+    }
+
+    /**
+     * Narrow to the single successful terminal condition observed in the trace:
+     * an `assistant` message whose nested `message.stop_reason` is `'end_turn'`
+     * (the model finished its turn with a final answer). Every other stop
+     * reason — `tool_use`, `max_tokens`, a refusal, etc. — is deliberately NOT
+     * a terminal-success signal and must not settle the turn on its own.
+     */
+    private isTerminalAssistantMessage(msg: ClaudeSDKMessage): msg is ClaudeAssistantMessage {
+        return this.isAssistantMessage(msg) && msg.message.stop_reason === 'end_turn';
     }
 
     private isClaudeTextBlock(block: ClaudeContentBlock): block is ClaudeTextBlock {
