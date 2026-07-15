@@ -37,10 +37,54 @@ export interface AppMenuHandlers {
      * platform) to keep macOS/Linux menus unchanged.
      */
     devTunnel?: DevTunnelMenuInput;
+    /**
+     * Fix 3: debug affordances. When present, a top-level "Debug" menu is added
+     * (on both macOS and Windows) with "Open Logs Viewer", "Reveal Log Files",
+     * and a "Toggle Developer Tools" item. Omit it to keep the menu unchanged.
+     */
+    debug?: DebugMenuHandlers;
 }
 
 /** The "Check for Updates…" label — shared so tests and both platforms agree. */
 export const CHECK_FOR_UPDATES_LABEL = 'Check for Updates…';
+
+/** The top-level "Debug" menu label (Fix 3). */
+export const DEBUG_MENU_LABEL = 'Debug';
+/** Debug action labels — shared so tests and `main.ts` wiring agree. */
+export const OPEN_LOGS_VIEWER_LABEL = 'Open Logs Viewer';
+export const REVEAL_LOG_FILES_LABEL = 'Reveal Log Files';
+export const TOGGLE_DEVTOOLS_LABEL = 'Toggle Developer Tools';
+
+/** Click handlers the Debug menu needs wired from `main.ts` (Fix 3). */
+export interface DebugMenuHandlers {
+    /** Navigate the main window to the in-app Logs viewer (`#logs`). */
+    onOpenLogsViewer: () => void;
+    /** Reveal the on-disk log directory in the OS file browser. */
+    onRevealLogFiles: () => void;
+    /** Toggle the renderer's DevTools (promoted out of the View submenu). */
+    onToggleDevTools: () => void;
+}
+
+/**
+ * Build the top-level "Debug" menu (Fix 3). Pure — the click wiring is asserted
+ * under Node. Rows, in order:
+ *   - Open Logs Viewer  → navigate the window to `#logs`;
+ *   - Reveal Log Files  → open the OS file browser at the log directory;
+ *   - (separator)
+ *   - Toggle Developer Tools → promote the DevTools toggle for discoverability
+ *     (the `viewMenu` role still carries its own toggle too).
+ */
+export function buildDebugMenu(handlers: DebugMenuHandlers): MenuItemConstructorOptions {
+    return {
+        label: DEBUG_MENU_LABEL,
+        submenu: [
+            { label: OPEN_LOGS_VIEWER_LABEL, click: handlers.onOpenLogsViewer },
+            { label: REVEAL_LOG_FILES_LABEL, click: handlers.onRevealLogFiles },
+            { type: 'separator' },
+            { label: TOGGLE_DEVTOOLS_LABEL, click: handlers.onToggleDevTools },
+        ],
+    };
+}
 
 /** The "Update Channel" submenu label. */
 export const UPDATE_CHANNEL_LABEL = 'Update Channel';
@@ -197,7 +241,7 @@ export function buildAppMenuTemplate(
     };
 
     if (platform === 'darwin') {
-        return [
+        const template: MenuItemConstructorOptions[] = [
             {
                 label: appName,
                 submenu: [
@@ -219,6 +263,11 @@ export function buildAppMenuTemplate(
             { role: 'viewMenu' },
             { role: 'windowMenu' },
         ];
+        // Fix 3: a top-level Debug menu, after Window, when handlers are provided.
+        if (handlers.debug) {
+            template.push(buildDebugMenu(handlers.debug));
+        }
+        return template;
     }
 
     // Windows (and any other non-darwin platform a caller passes): the default
@@ -235,6 +284,11 @@ export function buildAppMenuTemplate(
     // win32 so macOS/Linux menus stay unchanged even if a caller passes devTunnel.
     if (platform === 'win32' && handlers.devTunnel) {
         template.push(buildDevTunnelMenu(handlers.devTunnel));
+    }
+
+    // Fix 3: a top-level Debug menu, placed before Help, when handlers are provided.
+    if (handlers.debug) {
+        template.push(buildDebugMenu(handlers.debug));
     }
 
     template.push({
