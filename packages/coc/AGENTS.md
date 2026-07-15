@@ -59,7 +59,10 @@ all have their own `references/*.md`.
   `folderPaths`. Their `task:<sha256>` root ids are opaque, protected, and
   workspace-scoped. Never persist them in `additionalNotesRoots`, count them
   toward the user-configured Notes-root limit, or accept a client path as root
-  authority.
+  authority. Every non-default Notes file, folder, comment-sidecar, order, and
+  image path must pass `notes/notes-path-safety.ts`; it treats both slash styles
+  as separators, rejects absolute/drive/UNC/parent paths, and resolves existing
+  symlinks before checking containment in the selected root.
 - **In-memory caching** uses the one shared primitive at
   `src/server/cache/` (`createCache<T>({ namespace, ttlMs?, maxSize=500,
   immutable? })` → a handle with `get`/`set`/`getOrCompute`/`delete`/

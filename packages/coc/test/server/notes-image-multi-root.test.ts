@@ -197,6 +197,47 @@ describe('Notes Image Handler — Multi-Root', { timeout: 30_000 }, () => {
             expect(res.status).toBe(400);
             expect(res.body).toContain('not configured');
         });
+
+        it('rejects task-root image access through symlinks and Windows-style paths', async () => {
+            const primaryRoot = getRepoDataPath(dataDir, wsId, 'tasks');
+            const outsideRoot = getRepoDataPath(dataDir, wsId, 'outside-image-root');
+            fs.mkdirSync(primaryRoot, { recursive: true });
+            fs.mkdirSync(outsideRoot, { recursive: true });
+            fs.writeFileSync(path.join(outsideRoot, 'secret.png'), Buffer.from(TINY_PNG_BASE64, 'base64'));
+            fs.symlinkSync(
+                outsideRoot,
+                path.join(primaryRoot, '.images'),
+                process.platform === 'win32' ? 'junction' : 'dir',
+            );
+
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            const rootsRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/roots`);
+            expect(rootsRes.status).toBe(200);
+            const rootId = JSON.parse(rootsRes.body).roots.find((root: any) => root.label === 'Task Plans')?.rootId;
+            expect(rootId).toMatch(/^task:[a-f0-9]{64}$/);
+
+            const uploadRes = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/image`, {
+                fileName: 'diagram.png',
+                data: TINY_PNG_DATA_URL,
+                root: rootId,
+            });
+            expect(uploadRes.status).toBe(403);
+
+            const symlinkRead = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/image?path=${encodeURIComponent('.images/secret.png')}&root=${encodeURIComponent(rootId)}`,
+            );
+            expect(symlinkRead.status).toBe(403);
+
+            for (const invalidPath of ['C:\\outside\\secret.png', '\\\\server\\share\\secret.png']) {
+                const response = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/image?path=${encodeURIComponent(invalidPath)}&root=${encodeURIComponent(rootId)}`,
+                );
+                expect(response.status, invalidPath).toBe(403);
+            }
+
+            expect(fs.readdirSync(outsideRoot)).toEqual(['secret.png']);
+        });
     });
 
     // ========================================================================

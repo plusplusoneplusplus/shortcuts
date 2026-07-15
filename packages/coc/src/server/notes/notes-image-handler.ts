@@ -21,6 +21,7 @@ import { serveStaticFile } from '../shared/router';
 import type { Route } from '../types';
 import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
 import type { ResolvedNotesRoot } from './notes-root-resolver';
+import { resolveSafeNotesPath, isNotesPathSafetyError } from './notes-path-safety';
 import { readRepoPreferences } from '../preferences-handler';
 
 // ============================================================================
@@ -126,7 +127,13 @@ export function registerNotesImageRoutes(
             }
 
             const imgDirName = getImageDirName(resolved);
-            const attachmentsDir = path.join(resolved.absolutePath, imgDirName);
+            const safeImageDir = resolved.isDefault
+                ? undefined
+                : await resolveSafeNotesPath(resolved.absolutePath, imgDirName);
+            if (safeImageDir && isNotesPathSafetyError(safeImageDir)) {
+                return sendError(res, safeImageDir.statusCode, safeImageDir.error);
+            }
+            const attachmentsDir = safeImageDir?.absolutePath ?? path.join(resolved.absolutePath, imgDirName);
 
             try {
                 await fs.promises.mkdir(attachmentsDir, { recursive: true });
@@ -171,18 +178,34 @@ export function registerNotesImageRoutes(
             }
 
             const notesRoot = resolved.absolutePath;
-            const resolvedPath = path.resolve(notesRoot, imagePath);
-
-            // Security: ensure resolved path is within the notes directory
-            if (!isWithinDirectory(resolvedPath, notesRoot)) {
-                return sendError(res, 403, 'Access denied: path is outside notes directory');
-            }
-
-            // Validate the file is within the image directory
             const imgDirName = getImageDirName(resolved);
             const imgDir = path.join(notesRoot, imgDirName);
-            if (!isWithinDirectory(resolvedPath, imgDir)) {
-                return sendError(res, 403, `Access denied: path must be within ${imgDirName} directory`);
+            let resolvedPath: string;
+            if (resolved.isDefault) {
+                resolvedPath = path.resolve(notesRoot, imagePath);
+                if (!isWithinDirectory(resolvedPath, notesRoot)) {
+                    return sendError(res, 403, 'Access denied: path is outside notes directory');
+                }
+                if (!isWithinDirectory(resolvedPath, imgDir)) {
+                    return sendError(res, 403, `Access denied: path must be within ${imgDirName} directory`);
+                }
+            } else {
+                const safePath = await resolveSafeNotesPath(notesRoot, imagePath);
+                if (isNotesPathSafetyError(safePath)) {
+                    return sendError(res, safePath.statusCode, safePath.error);
+                }
+                const imagePrefix = `${imgDirName}/`;
+                if (!safePath.relativePath.startsWith(imagePrefix)) {
+                    return sendError(res, 403, `Access denied: path must be within ${imgDirName} directory`);
+                }
+                const safeImagePath = await resolveSafeNotesPath(
+                    imgDir,
+                    safePath.relativePath.slice(imagePrefix.length),
+                );
+                if (isNotesPathSafetyError(safeImagePath)) {
+                    return sendError(res, safeImagePath.statusCode, safeImagePath.error);
+                }
+                resolvedPath = safeImagePath.absolutePath;
             }
 
             const served = serveStaticFile(resolvedPath, res);

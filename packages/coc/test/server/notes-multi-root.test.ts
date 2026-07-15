@@ -557,6 +557,102 @@ describe('Notes Multi-Root — write endpoints', { timeout: 30_000 }, () => {
                 await safeRm(otherWorkspaceDir);
             }
         });
+
+        it('rejects symlink, encoded, absolute, parent, and Windows-style escapes for task roots', async () => {
+            const primaryRoot = getRepoDataPath(dataDir, wsId, 'tasks');
+            const outsideRoot = getRepoDataPath(dataDir, wsId, 'outside-task-root');
+            fs.mkdirSync(primaryRoot, { recursive: true });
+            fs.mkdirSync(outsideRoot, { recursive: true });
+            fs.writeFileSync(path.join(primaryRoot, 'inside.md'), 'inside search token', 'utf-8');
+            fs.writeFileSync(path.join(outsideRoot, 'secret.md'), 'outside search token', 'utf-8');
+            fs.symlinkSync(
+                outsideRoot,
+                path.join(primaryRoot, 'escape'),
+                process.platform === 'win32' ? 'junction' : 'dir',
+            );
+
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            const listed = await listRoots(srv);
+            const primaryEntry = listed.find(root => root.label === 'Task Plans');
+            expect(primaryEntry?.rootId).toMatch(/^task:[a-f0-9]{64}$/);
+            const rootId = primaryEntry.rootId as string;
+            const rootQuery = encodeURIComponent(rootId);
+
+            const treeRes = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/tree?root=${rootQuery}`,
+            );
+            expect(treeRes.status).toBe(200);
+            expect(flatNames(JSON.parse(treeRes.body).tree)).not.toContain('secret.md');
+
+            const searchRes = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/search?q=outside%20search%20token&root=${rootQuery}`,
+            );
+            expect(searchRes.status).toBe(200);
+            expect(JSON.parse(searchRes.body).results).toEqual([]);
+
+            const readRes = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/content?path=${encodeURIComponent('escape/secret.md')}&root=${rootQuery}`,
+            );
+            expect(readRes.status).toBe(403);
+
+            const createRes = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/page`, {
+                path: 'escape/created',
+                type: 'page',
+                root: rootId,
+            });
+            expect(createRes.status).toBe(403);
+
+            const saveRes = await putJSON(`${srv.url}/api/workspaces/${wsId}/notes/content`, {
+                path: 'escape/secret.md',
+                content: 'changed',
+                root: rootId,
+            });
+            expect(saveRes.status).toBe(403);
+
+            const renameSourceRes = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'escape/secret.md',
+                newPath: 'renamed.md',
+                root: rootId,
+            });
+            expect(renameSourceRes.status).toBe(403);
+            const renameTargetRes = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'inside.md',
+                newPath: 'escape/renamed.md',
+                root: rootId,
+            });
+            expect(renameTargetRes.status).toBe(403);
+
+            const deleteRes = await deleteReq(
+                `${srv.url}/api/workspaces/${wsId}/notes/path?path=${encodeURIComponent('escape/secret.md')}&root=${rootQuery}`,
+            );
+            expect(deleteRes.status).toBe(403);
+
+            const orderRes = await putJSON(`${srv.url}/api/workspaces/${wsId}/notes/order`, {
+                parentPath: 'escape',
+                order: ['secret.md'],
+                root: rootId,
+            });
+            expect(orderRes.status).toBe(403);
+
+            const invalidPaths = [
+                path.join(outsideRoot, 'secret.md'),
+                '../secret.md',
+                '..\\secret.md',
+                'C:\\outside\\secret.md',
+                '\\\\server\\share\\secret.md',
+            ];
+            for (const invalidPath of invalidPaths) {
+                const response = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/content?path=${encodeURIComponent(invalidPath)}&root=${rootQuery}`,
+                );
+                expect(response.status, invalidPath).toBe(403);
+            }
+
+            expect(fs.readFileSync(path.join(outsideRoot, 'secret.md'), 'utf-8')).toBe('outside search token');
+            expect(fs.existsSync(path.join(outsideRoot, 'created.md'))).toBe(false);
+            expect(fs.existsSync(path.join(outsideRoot, '.order.json'))).toBe(false);
+        });
     });
 
     // ========================================================================

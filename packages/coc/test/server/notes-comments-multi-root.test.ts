@@ -334,6 +334,76 @@ describe('Notes Comments Multi-Root', { timeout: 30_000 }, () => {
         expect(postRes.status).toBe(400);
     });
 
+    it('rejects task-root comment paths that escape through traversal or symlinks', async () => {
+        const primaryRoot = getRepoDataPath(dataDir, wsId, 'tasks');
+        const outsideRoot = getRepoDataPath(dataDir, wsId, 'outside-comments-root');
+        fs.mkdirSync(primaryRoot, { recursive: true });
+        fs.mkdirSync(outsideRoot, { recursive: true });
+        fs.writeFileSync(path.join(primaryRoot, 'page.md'), '# Task plan', 'utf-8');
+        fs.writeFileSync(path.join(outsideRoot, 'secret.md'), '# Secret', 'utf-8');
+        fs.symlinkSync(
+            outsideRoot,
+            path.join(primaryRoot, 'escape'),
+            process.platform === 'win32' ? 'junction' : 'dir',
+        );
+
+        const srv = await startServer();
+        await registerWorkspace(srv);
+        const rootsRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/roots`);
+        expect(rootsRes.status).toBe(200);
+        const rootId = JSON.parse(rootsRes.body).roots.find((root: any) => root.label === 'Task Plans')?.rootId;
+        expect(rootId).toMatch(/^task:[a-f0-9]{64}$/);
+
+        const invalidPaths = [
+            'escape/secret.md',
+            '../secret.md',
+            '..\\secret.md',
+            'C:\\outside\\secret.md',
+            '\\\\server\\share\\secret.md',
+        ];
+        for (const invalidPath of invalidPaths) {
+            const response = await postJSON(commentsUrl(srv, 'thread'), {
+                path: invalidPath,
+                root: rootId,
+                thread: {
+                    anchor: { quotedText: 'Secret', prefix: '', suffix: '' },
+                    comments: [{ content: 'Must not escape' }],
+                },
+            });
+            expect(response.status, invalidPath).toBe(403);
+        }
+
+        const encodedTraversal = await request(
+            commentsUrl(srv, '', `path=${encodeURIComponent('../secret.md')}&root=${encodeURIComponent(rootId)}`),
+        );
+        expect(encodedTraversal.status).toBe(403);
+        expect(fs.existsSync(path.join(outsideRoot, 'secret.md.comments.json'))).toBe(false);
+
+        const sidecarLink = path.join(
+            dataDir,
+            'repos',
+            wsId,
+            'notes-comments',
+            encodeRootPath(rootId),
+        );
+        fs.mkdirSync(path.dirname(sidecarLink), { recursive: true });
+        fs.symlinkSync(
+            outsideRoot,
+            sidecarLink,
+            process.platform === 'win32' ? 'junction' : 'dir',
+        );
+        const sidecarEscape = await postJSON(commentsUrl(srv, 'thread'), {
+            path: 'page.md',
+            root: rootId,
+            thread: {
+                anchor: { quotedText: 'Task plan', prefix: '', suffix: '' },
+                comments: [{ content: 'Must stay in managed storage' }],
+            },
+        });
+        expect(sidecarEscape.status).toBe(403);
+        expect(fs.existsSync(path.join(outsideRoot, 'page.md.comments.json'))).toBe(false);
+    });
+
     // ========================================================================
     // 6. PUT bulk update on repo-folder root
     // ========================================================================

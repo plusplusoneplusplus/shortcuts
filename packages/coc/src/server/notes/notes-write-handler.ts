@@ -17,10 +17,11 @@ import { isWithinDirectory, SqliteProcessStore } from '@plusplusoneplusplus/forg
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
-import { writeOrderFile, removeFromOrder, updateOrderOnRename } from './notes-order';
+import { ORDER_FILE_NAME, writeOrderFile, removeFromOrder, updateOrderOnRename } from './notes-order';
 import { SYSTEM_FOLDER_NAMES } from './notes-constants';
 import { NoteChatBindingStore } from './note-chat-binding-store';
 import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
+import { resolveSafeNotesPath, isNotesPathSafetyError } from './notes-path-safety';
 import { readRepoPreferences } from '../preferences-handler';
 
 // ============================================================================
@@ -159,20 +160,31 @@ export function registerNotesWriteRoutes(
             const notesRoot = rootResult.absolutePath;
             await fs.promises.mkdir(notesRoot, { recursive: true });
 
-            const resolved = path.resolve(notesRoot, notePath);
-            if (!isWithinDirectory(resolved, notesRoot)) {
-                return sendError(res, 403, 'Access denied: path is outside notes directory');
-            }
-
             try {
                 if (type === 'notebook' || type === 'section') {
+                    const safePath = rootResult.isDefault
+                        ? undefined
+                        : await resolveSafeNotesPath(notesRoot, notePath);
+                    if (safePath && isNotesPathSafetyError(safePath)) {
+                        return sendError(res, safePath.statusCode, safePath.error);
+                    }
+                    const resolved = safePath?.absolutePath ?? path.resolve(notesRoot, notePath);
+                    if (rootResult.isDefault && !isWithinDirectory(resolved, notesRoot)) {
+                        return sendError(res, 403, 'Access denied: path is outside notes directory');
+                    }
                     await fs.promises.mkdir(resolved, { recursive: true });
                     sendJSON(res, 201, { path: notePath, type });
                 } else {
                     // page — auto-append .md if missing, then create parent dir and empty file
                     const effectivePath = ensureMarkdownExtension(notePath);
-                    const resolvedPage = path.resolve(notesRoot, effectivePath);
-                    if (!isWithinDirectory(resolvedPage, notesRoot)) {
+                    const safePath = rootResult.isDefault
+                        ? undefined
+                        : await resolveSafeNotesPath(notesRoot, effectivePath);
+                    if (safePath && isNotesPathSafetyError(safePath)) {
+                        return sendError(res, safePath.statusCode, safePath.error);
+                    }
+                    const resolvedPage = safePath?.absolutePath ?? path.resolve(notesRoot, effectivePath);
+                    if (rootResult.isDefault && !isWithinDirectory(resolvedPage, notesRoot)) {
                         return sendError(res, 403, 'Access denied: path is outside notes directory');
                     }
                     await fs.promises.mkdir(path.dirname(resolvedPage), { recursive: true });
@@ -217,15 +229,20 @@ export function registerNotesWriteRoutes(
 
             // Absolute paths are used as-is (scratchpad / session-state files) — only for default root.
             // Relative paths are resolved against the active notesRoot.
-            const resolved = (path.isAbsolute(notePath) && rootResult.isDefault)
-                ? path.resolve(notePath)
-                : path.resolve(notesRoot, notePath);
+            let resolved: string;
+            if (path.isAbsolute(notePath) && rootResult.isDefault) {
+                resolved = path.resolve(notePath);
+            } else if (!rootResult.isDefault) {
+                const safePath = await resolveSafeNotesPath(notesRoot, notePath);
+                if (isNotesPathSafetyError(safePath)) {
+                    return sendError(res, safePath.statusCode, safePath.error);
+                }
+                resolved = safePath.absolutePath;
+            } else {
+                resolved = path.resolve(notesRoot, notePath);
+            }
 
-            // For non-default roots, allow paths within the resolved root directory
-            const allowed = rootResult.isDefault
-                ? isAllowedPath(resolved, wsDataDir, ws.rootPath)
-                : isWithinDirectory(resolved, notesRoot);
-            if (!allowed) {
+            if (rootResult.isDefault && !isAllowedPath(resolved, wsDataDir, ws.rootPath)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
@@ -251,7 +268,15 @@ export function registerNotesWriteRoutes(
 
             try {
                 // Atomic write: write to temp file then rename
-                const tmpPath = resolved + '.tmp';
+                let tmpPath = resolved + '.tmp';
+                if (!rootResult.isDefault) {
+                    const relativeTmpPath = path.relative(notesRoot, tmpPath);
+                    const safeTmpPath = await resolveSafeNotesPath(notesRoot, relativeTmpPath);
+                    if (isNotesPathSafetyError(safeTmpPath)) {
+                        return sendError(res, safeTmpPath.statusCode, safeTmpPath.error);
+                    }
+                    tmpPath = safeTmpPath.absolutePath;
+                }
                 await fs.promises.mkdir(path.dirname(resolved), { recursive: true });
                 await fs.promises.writeFile(tmpPath, content, 'utf-8');
                 await fs.promises.rename(tmpPath, resolved);
@@ -291,9 +316,15 @@ export function registerNotesWriteRoutes(
             }
 
             const notesRoot = rootResult.absolutePath;
-            const resolvedOld = path.resolve(notesRoot, oldPath);
+            const safeOldPath = rootResult.isDefault
+                ? undefined
+                : await resolveSafeNotesPath(notesRoot, oldPath);
+            if (safeOldPath && isNotesPathSafetyError(safeOldPath)) {
+                return sendError(res, safeOldPath.statusCode, safeOldPath.error);
+            }
+            const resolvedOld = safeOldPath?.absolutePath ?? path.resolve(notesRoot, oldPath);
 
-            if (!isWithinDirectory(resolvedOld, notesRoot)) {
+            if (rootResult.isDefault && !isWithinDirectory(resolvedOld, notesRoot)) {
                 return sendError(res, 403, 'Access denied: path is outside notes directory');
             }
 
@@ -311,8 +342,14 @@ export function registerNotesWriteRoutes(
             }
 
             const effectiveNewPath = oldStat.isFile() ? ensureMarkdownExtension(newPath) : newPath;
-            const resolvedNew = path.resolve(notesRoot, effectiveNewPath);
-            if (!isWithinDirectory(resolvedNew, notesRoot)) {
+            const safeNewPath = rootResult.isDefault
+                ? undefined
+                : await resolveSafeNotesPath(notesRoot, effectiveNewPath);
+            if (safeNewPath && isNotesPathSafetyError(safeNewPath)) {
+                return sendError(res, safeNewPath.statusCode, safeNewPath.error);
+            }
+            const resolvedNew = safeNewPath?.absolutePath ?? path.resolve(notesRoot, effectiveNewPath);
+            if (rootResult.isDefault && !isWithinDirectory(resolvedNew, notesRoot)) {
                 return sendError(res, 403, 'Access denied: path is outside notes directory');
             }
 
@@ -333,6 +370,15 @@ export function registerNotesWriteRoutes(
                 return sendError(res, 500, 'Failed to check destination path: ' + (err.message || 'Unknown error'));
             }
 
+            const oldParentDir = path.dirname(resolvedOld);
+            if (!rootResult.isDefault) {
+                const orderPath = path.relative(notesRoot, path.join(oldParentDir, ORDER_FILE_NAME));
+                const safeOrderPath = await resolveSafeNotesPath(notesRoot, orderPath);
+                if (isNotesPathSafetyError(safeOrderPath)) {
+                    return sendError(res, safeOrderPath.statusCode, safeOrderPath.error);
+                }
+            }
+
             try {
                 await fs.promises.mkdir(path.dirname(resolvedNew), { recursive: true });
                 await fs.promises.rename(resolvedOld, resolvedNew);
@@ -347,7 +393,6 @@ export function registerNotesWriteRoutes(
                 }
 
                 // Update .order.json in the parent directory when it's a same-parent rename
-                const oldParentDir = path.dirname(resolvedOld);
                 const newParentDir = path.dirname(resolvedNew);
                 if (oldParentDir === newParentDir) {
                     const oldName = path.basename(resolvedOld);
@@ -407,15 +452,32 @@ export function registerNotesWriteRoutes(
             }
 
             const notesRoot = rootResult.absolutePath;
-            const resolved = path.resolve(notesRoot, notePath);
+            const safePath = rootResult.isDefault
+                ? undefined
+                : await resolveSafeNotesPath(notesRoot, notePath);
+            if (safePath && isNotesPathSafetyError(safePath)) {
+                return sendError(res, safePath.statusCode, safePath.error);
+            }
+            const resolved = safePath?.absolutePath ?? path.resolve(notesRoot, notePath);
 
-            if (!isWithinDirectory(resolved, notesRoot)) {
+            if (rootResult.isDefault && !isWithinDirectory(resolved, notesRoot)) {
                 return sendError(res, 403, 'Access denied: path is outside notes directory');
             }
 
             // System folder protection only applies to the default managed root
             if (rootResult.isDefault && isSystemFolder(notesRoot, resolved)) {
                 return sendError(res, 403, 'Cannot delete a system folder');
+            }
+
+            if (!rootResult.isDefault) {
+                const orderPath = path.relative(
+                    notesRoot,
+                    path.join(path.dirname(resolved), ORDER_FILE_NAME),
+                );
+                const safeOrderPath = await resolveSafeNotesPath(notesRoot, orderPath);
+                if (isNotesPathSafetyError(safeOrderPath)) {
+                    return sendError(res, safeOrderPath.statusCode, safeOrderPath.error);
+                }
             }
 
             let stat: fs.Stats;
@@ -490,12 +552,26 @@ export function registerNotesWriteRoutes(
             }
 
             const notesRoot = rootResult.absolutePath;
-            const targetDir = parentPath
+            const safePath = rootResult.isDefault
+                ? undefined
+                : await resolveSafeNotesPath(notesRoot, parentPath, { allowRoot: true });
+            if (safePath && isNotesPathSafetyError(safePath)) {
+                return sendError(res, safePath.statusCode, safePath.error);
+            }
+            const targetDir = safePath?.absolutePath ?? (parentPath
                 ? path.resolve(notesRoot, parentPath)
-                : notesRoot;
+                : notesRoot);
 
-            if (!isWithinDirectory(targetDir, notesRoot) && targetDir !== notesRoot) {
+            if (rootResult.isDefault && !isWithinDirectory(targetDir, notesRoot) && targetDir !== notesRoot) {
                 return sendError(res, 403, 'Access denied: parentPath is outside notes directory');
+            }
+
+            if (!rootResult.isDefault) {
+                const orderPath = path.relative(notesRoot, path.join(targetDir, ORDER_FILE_NAME));
+                const safeOrderPath = await resolveSafeNotesPath(notesRoot, orderPath);
+                if (isNotesPathSafetyError(safeOrderPath)) {
+                    return sendError(res, safeOrderPath.statusCode, safeOrderPath.error);
+                }
             }
 
             // Verify the target directory exists
