@@ -525,10 +525,19 @@ describe('App review dialog lifecycle', () => {
     it('opens MarkdownReviewDialog with task-relative filePath when wsId hint is provided', async () => {
         render(<App />);
 
+        // A genuine task file (e.g. a TaskTree click) ships an explicit
+        // taskRootPath — that is what keeps the path task-relative in
+        // fetchMode 'tasks'. A bare relative link WITHOUT taskRootPath is a
+        // chat link and now resolves to an absolute/auto target instead
+        // (covered by resolveMarkdownReviewTarget.test.ts).
         act(() => {
             window.dispatchEvent(
                 new CustomEvent('coc-open-markdown-review', {
-                    detail: { wsId: 'ws-1', filePath: 'tasks/plan.md' },
+                    detail: {
+                        wsId: 'ws-1',
+                        filePath: 'tasks/plan.md',
+                        taskRootPath: '/projects/my-repo/.vscode/tasks',
+                    },
                 }),
             );
         });

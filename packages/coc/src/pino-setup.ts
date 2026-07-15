@@ -34,6 +34,22 @@ export interface CLIPinoLoggers {
 // ============================================================================
 
 /**
+ * Open an async `.ndjson` file destination with an error handler attached.
+ *
+ * `pino.destination({ sync: false })` returns a SonicBoom stream that opens and
+ * flushes the file asynchronously. If the write fails (directory removed out
+ * from under us, disk full, permissions), SonicBoom emits an `error` event —
+ * and with no listener Node re-throws it as an uncaught exception that would
+ * crash the server. Log files are best-effort, so swallow the error rather than
+ * take the process down; stderr (and the in-process ring buffer) keep working.
+ */
+function fileDestination(dest: string): pino.DestinationStream {
+    const stream = pino.destination({ dest, sync: false });
+    stream.on('error', () => { /* best-effort file logging — never crash the process */ });
+    return stream;
+}
+
+/**
  * Create a root CLI Pino logger plus ai and coc child loggers.
  *
  * Level is taken from resolved.level. Pretty mode resolves 'auto' via TTY detection.
@@ -122,13 +138,13 @@ export function createCLIPinoLogger(resolved: ResolvedLoggingConfig): CLIPinoLog
         if (aiFile) {
             streams.push({
                 level: level as pino.Level,
-                stream: pino.destination({ dest: aiFile, sync: false }),
+                stream: fileDestination(aiFile),
             });
         }
         if (cocFile) {
             streams.push({
                 level: level as pino.Level,
-                stream: pino.destination({ dest: cocFile, sync: false }),
+                stream: fileDestination(cocFile),
             });
         }
         root = pino(pinoOpts, pino.multistream(streams));
