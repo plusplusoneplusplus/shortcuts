@@ -15,8 +15,24 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { safeExistsAsync, safeReadDirAsync, safeReadFileAsync } from '@plusplusoneplusplus/forge';
 import type { AIInvoker } from '@plusplusoneplusplus/forge';
+import { DEFAULT_SYNC_INTERVAL_MINUTES, MAX_SYNC_BACKOFF_MINUTES } from './sync-constants';
 
 const execFileAsync = promisify(execFile);
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+// Interval/backoff constants live in a side-effect-free module so lightweight
+// consumers (live-effects, bootstrap) don't pull this engine into their graph.
+// Imported for internal use (backoff cap) and re-exported for existing consumers.
+export { DEFAULT_SYNC_INTERVAL_MINUTES, MAX_SYNC_BACKOFF_MINUTES };
+
+/**
+ * Names that must never be copied into — or mirror-deleted from — the sync
+ * repo. `.git` is the repo's own history and `.lock` is our sync lock file;
+ * both live in the destination but not in the notes source, so an unguarded
+ * mirror copy would delete them and force a re-clone every tick.
+ */
+export const SYNC_IGNORE_NAMES: ReadonlySet<string> = new Set(['.git', '.lock']);
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -118,13 +134,33 @@ function isProcessRunning(pid: number): boolean {
 
 // ── File sync helpers ────────────────────────────────────────────────────────
 
-async function copyDirContents(src: string, dest: string): Promise<void> {
+interface CopyDirOptions {
+    /** Basenames to never copy from the source or delete from the destination. */
+    ignore?: ReadonlySet<string>;
+}
+
+/**
+ * Mirror `src` into `dest`: copy new/changed files, mirror-delete anything in
+ * `dest` that no longer exists in `src`, and leave unchanged files untouched.
+ *
+ * Two properties matter for keeping disk churn low:
+ *   - Ignored names (e.g. the sync repo's own `.git`/`.lock`) are skipped in
+ *     BOTH the delete pass and the copy pass, so they survive every cycle.
+ *   - Files whose content already matches are not rewritten, so their mtime
+ *     stays stable and `git add -A` can skip re-hashing them.
+ *
+ * @returns the number of files actually written (copied), for callers/tests
+ *          that want to confirm an idle cycle wrote nothing.
+ */
+export async function copyDirContents(src: string, dest: string, options?: CopyDirOptions): Promise<number> {
+    const ignore = options?.ignore;
     await fs.promises.mkdir(dest, { recursive: true });
 
-    // Remove files in dest that don't exist in src
+    // Remove files in dest that don't exist in src (mirror-delete), skipping ignored names.
     const destEntries = await safeReadDirAsync(dest, true);
     if (destEntries.success) {
         for (const entry of destEntries.data!) {
+            if (ignore?.has(entry.name)) continue;
             const destPath = path.join(dest, entry.name);
             if (!await safeExistsAsync(path.join(src, entry.name))) {
                 if (entry.isDirectory()) {
@@ -136,19 +172,66 @@ async function copyDirContents(src: string, dest: string): Promise<void> {
         }
     }
 
-    if (!await safeExistsAsync(src)) return;
+    if (!await safeExistsAsync(src)) return 0;
 
+    let copied = 0;
     const srcEntries = await safeReadDirAsync(src, true);
-    if (!srcEntries.success) return;
+    if (!srcEntries.success) return copied;
     for (const entry of srcEntries.data!) {
+        if (ignore?.has(entry.name)) continue;
         const srcPath = path.join(src, entry.name);
         const destPath = path.join(dest, entry.name);
         if (entry.isDirectory()) {
-            await copyDirContents(srcPath, destPath);
-        } else {
-            await fs.promises.copyFile(srcPath, destPath);
+            copied += await copyDirContents(srcPath, destPath, options);
+        } else if (await copyFileIfChanged(srcPath, destPath)) {
+            copied++;
         }
     }
+    return copied;
+}
+
+/**
+ * Copy `src` → `dest` only when they differ. Skips the write (and preserves the
+ * destination's mtime) when size + content already match, so repeated syncs of
+ * an unchanged file cost only a stat/read, never a rewrite. The copied file's
+ * mtime is aligned to the source so the next tick can skip via the fast path.
+ *
+ * @returns true when a copy was performed, false when the file was up to date.
+ */
+async function copyFileIfChanged(src: string, dest: string): Promise<boolean> {
+    const [srcStat, destStat] = await Promise.all([
+        fs.promises.stat(src).catch(() => null),
+        fs.promises.stat(dest).catch(() => null),
+    ]);
+
+    if (srcStat && destStat && srcStat.size === destStat.size) {
+        // Fast path: same size and mtime — treat as unchanged, no read needed.
+        if (Math.floor(srcStat.mtimeMs) === Math.floor(destStat.mtimeMs)) {
+            return false;
+        }
+        // Same size, different mtime — compare content before rewriting.
+        if (await filesEqual(src, dest)) {
+            // Content identical: realign mtime so future ticks hit the fast path.
+            await fs.promises.utimes(dest, srcStat.atime, srcStat.mtime).catch(() => { /* best-effort */ });
+            return false;
+        }
+    }
+
+    await fs.promises.copyFile(src, dest);
+    // Preserve the source mtime so an unchanged file stays skippable next tick.
+    if (srcStat) {
+        await fs.promises.utimes(dest, srcStat.atime, srcStat.mtime).catch(() => { /* best-effort */ });
+    }
+    return true;
+}
+
+/** Byte-for-byte comparison of two files. Assumes callers already matched size. */
+async function filesEqual(a: string, b: string): Promise<boolean> {
+    const [bufA, bufB] = await Promise.all([
+        fs.promises.readFile(a),
+        fs.promises.readFile(b),
+    ]);
+    return bufA.equals(bufB);
 }
 
 // ── SyncEngine ───────────────────────────────────────────────────────────────
@@ -169,7 +252,13 @@ export class SyncEngine {
         enabled: false,
     };
 
-    private intervalTimer: ReturnType<typeof setInterval> | null = null;
+    private syncTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Base delay between ticks (ms), from the configured interval. */
+    private baseDelayMs = 0;
+    /** Delay (ms) for the next tick; grows on failure, resets on success. */
+    private nextDelayMs = 0;
+    /** Bumped on start/stop so an in-flight tick can't resurrect a stopped timer. */
+    private timerGeneration = 0;
 
     constructor(opts: SyncEngineOptions) {
         this.dataDir = opts.dataDir;
@@ -231,23 +320,48 @@ export class SyncEngine {
 
     private startPeriodicSync(intervalMinutes: number): void {
         this.stopPeriodicSync();
-        const ms = intervalMinutes * 60_000;
-        this.intervalTimer = setInterval(() => {
-            if (this.status.enabled) {
-                this.performSync(this.getGitRemoteFromStatus()).catch(() => {});
-            }
-        }, ms);
-        // Don't hold the event loop open for the timer
-        if (this.intervalTimer && typeof this.intervalTimer === 'object' && 'unref' in this.intervalTimer) {
-            this.intervalTimer.unref();
-        }
+        this.baseDelayMs = intervalMinutes * 60_000;
+        this.nextDelayMs = this.baseDelayMs;
+        this.scheduleNextSync(this.timerGeneration);
         this.logger.info(`Periodic sync scheduled every ${intervalMinutes} minutes`);
     }
 
     private stopPeriodicSync(): void {
-        if (this.intervalTimer) {
-            clearInterval(this.intervalTimer);
-            this.intervalTimer = null;
+        // Bump the generation so any in-flight tick won't reschedule itself.
+        this.timerGeneration++;
+        if (this.syncTimer) {
+            clearTimeout(this.syncTimer);
+            this.syncTimer = null;
+        }
+    }
+
+    /**
+     * Schedule the next sync via a self-rescheduling timeout (rather than a fixed
+     * interval) so the delay can grow after a failure and reset after success.
+     */
+    private scheduleNextSync(generation: number): void {
+        this.syncTimer = setTimeout(() => { void this.runScheduledSync(generation); }, this.nextDelayMs);
+        // Don't hold the event loop open for the timer.
+        if (this.syncTimer && typeof this.syncTimer === 'object' && 'unref' in this.syncTimer) {
+            this.syncTimer.unref();
+        }
+    }
+
+    private async runScheduledSync(generation: number): Promise<void> {
+        if (generation !== this.timerGeneration || !this.status.enabled) return;
+        try {
+            await this.performSync(this.getGitRemoteFromStatus());
+        } catch { /* performSync already records lastError */ }
+        // Back off on failure (lastError set), reset to the base delay on success.
+        this.nextDelayMs = nextSyncDelayMs({
+            failed: this.status.lastError !== null,
+            currentMs: this.nextDelayMs,
+            baseMs: this.baseDelayMs,
+            maxMs: MAX_SYNC_BACKOFF_MINUTES * 60_000,
+        });
+        // Only reschedule if we haven't been stopped/reconfigured mid-tick.
+        if (generation === this.timerGeneration && this.status.enabled) {
+            this.scheduleNextSync(generation);
         }
     }
 
@@ -276,24 +390,39 @@ export class SyncEngine {
             // 1. Ensure the sync repo exists (clone or verify)
             await this.ensureSyncRepo(gitRemote);
 
-            // 2. Copy local notes → sync repo
+            // 2. Copy local notes → sync repo (changed files only)
             await this.copyLocalToRepo();
 
-            // 3. Stage + commit local changes
-            await this.commitLocalChanges();
+            // 3. Stage local changes and see whether anything actually changed.
+            const hasLocalChanges = await this.stageLocalChanges();
 
-            // 4. Pull remote changes (may produce conflicts)
+            // 4. If nothing changed locally AND the remote has no new commits,
+            //    this is an idle tick — skip commit/pull/push/copy-back entirely.
+            const remoteHasChanges = await this.remoteHasNewCommits();
+            if (!hasLocalChanges && !remoteHasChanges) {
+                this.status.lastSyncTime = new Date().toISOString();
+                this.status.lastError = null;
+                this.logger.info('Sync idle — no local or remote changes');
+                return;
+            }
+
+            // 5. Commit any staged local changes.
+            if (hasLocalChanges) {
+                await this.commitLocalChanges();
+            }
+
+            // 6. Pull remote changes (may produce conflicts)
             const hasConflicts = await this.pullRemote();
 
-            // 5. If conflicts, resolve them
+            // 7. If conflicts, resolve them
             if (hasConflicts) {
                 await this.resolveConflicts();
             }
 
-            // 6. Push to remote
+            // 8. Push to remote
             await this.pushToRemote();
 
-            // 7. Copy sync repo → local notes
+            // 9. Copy sync repo → local notes
             await this.copyRepoToLocal();
 
             this.status.lastSyncTime = new Date().toISOString();
@@ -339,26 +468,57 @@ export class SyncEngine {
 
     private async copyLocalToRepo(): Promise<void> {
         if (await safeExistsAsync(this.mapping.localDir)) {
-            await copyDirContents(this.mapping.localDir, this.syncRepoDir);
+            // Never touch the sync repo's own .git / .lock on the outbound copy.
+            await copyDirContents(this.mapping.localDir, this.syncRepoDir, { ignore: SYNC_IGNORE_NAMES });
+        }
+    }
+
+    /**
+     * Stage all local changes and report whether anything is actually staged.
+     * `git add -A` after a changed-files-only copy is a cheap stat pass when the
+     * tree is unchanged, so an idle tick stages nothing and returns false.
+     */
+    private async stageLocalChanges(): Promise<boolean> {
+        await git(['add', '-A'], this.syncRepoDir);
+        try {
+            await git(['diff', '--cached', '--quiet'], this.syncRepoDir);
+            return false; // nothing staged
+        } catch {
+            return true; // changes staged
         }
     }
 
     private async commitLocalChanges(): Promise<void> {
-        await git(['add', '-A'], this.syncRepoDir);
+        const hostname = require('os').hostname();
+        await git(
+            ['commit', '-m', `sync from ${hostname} at ${new Date().toISOString()}`],
+            this.syncRepoDir,
+        );
+        this.logger.info('Committed local changes');
+    }
 
-        // Check if there's anything to commit
+    /**
+     * Whether the remote has commits the local sync repo doesn't (or vice-versa).
+     * Uses `ls-remote` so an idle tick never fetches or touches the working tree.
+     * Returns false when the remote is empty/unreachable — there's nothing to pull.
+     */
+    private async remoteHasNewCommits(): Promise<boolean> {
+        let remoteLine: string;
         try {
-            await git(['diff', '--cached', '--quiet'], this.syncRepoDir);
-            // No changes staged
+            remoteLine = await git(['ls-remote', 'origin', 'HEAD'], this.syncRepoDir);
         } catch {
-            // Changes exist — commit them
-            const hostname = require('os').hostname();
-            await git(
-                ['commit', '-m', `sync from ${hostname} at ${new Date().toISOString()}`],
-                this.syncRepoDir,
-            );
-            this.logger.info('Committed local changes');
+            return false; // unreachable — nothing to pull this tick
         }
+        const remoteHead = remoteLine.split(/\s+/)[0]?.trim();
+        if (!remoteHead) return false; // empty remote
+
+        let localHead: string;
+        try {
+            localHead = await git(['rev-parse', 'HEAD'], this.syncRepoDir);
+        } catch {
+            return true; // no local commits yet but remote has some → pull
+        }
+        return remoteHead !== localHead;
     }
 
     private async pullRemote(): Promise<boolean> {
@@ -456,17 +616,18 @@ export class SyncEngine {
     private async copyRepoToLocal(): Promise<void> {
         if (await safeExistsAsync(this.syncRepoDir)) {
             await fs.promises.mkdir(this.mapping.localDir, { recursive: true });
-            // Copy everything except .git and .lock
+            // Copy everything except .git and .lock, writing only changed files so
+            // an idle inbound copy doesn't churn mtimes (and the notes fs-watcher).
             const entries = await safeReadDirAsync(this.syncRepoDir, true);
             if (!entries.success) return;
             for (const entry of entries.data!) {
-                if (entry.name === '.git' || entry.name === '.lock') continue;
+                if (SYNC_IGNORE_NAMES.has(entry.name)) continue;
                 const src = path.join(this.syncRepoDir, entry.name);
                 const dest = path.join(this.mapping.localDir, entry.name);
                 if (entry.isDirectory()) {
-                    await copyDirContents(src, dest);
+                    await copyDirContents(src, dest, { ignore: SYNC_IGNORE_NAMES });
                 } else {
-                    await fs.promises.copyFile(src, dest);
+                    await copyFileIfChanged(src, dest);
                 }
             }
         }
@@ -474,6 +635,21 @@ export class SyncEngine {
 }
 
 // ── Utilities ────────────────────────────────────────────────────────────────
+
+/**
+ * Compute the delay before the next scheduled sync. On success the delay resets
+ * to the base interval; on failure it doubles (capped at `maxMs`) so a broken
+ * remote backs off instead of hammering the disk every tick.
+ */
+export function nextSyncDelayMs(opts: {
+    failed: boolean;
+    currentMs: number;
+    baseMs: number;
+    maxMs: number;
+}): number {
+    if (!opts.failed) return opts.baseMs;
+    return Math.min(Math.max(opts.currentMs, opts.baseMs) * 2, opts.maxMs);
+}
 
 /**
  * Simple merge-conflict resolution: extracts both sides and concatenates them,

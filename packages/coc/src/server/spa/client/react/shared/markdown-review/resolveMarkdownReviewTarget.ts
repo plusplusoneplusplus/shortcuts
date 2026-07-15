@@ -120,6 +120,7 @@ export function resolveMarkdownReviewTarget(
 
     const wsIdHint = typeof input.wsId === 'string' ? input.wsId : '';
     const eventTaskRootPath = typeof input.taskRootPath === 'string' ? input.taskRootPath : undefined;
+    const sourceFilePath = typeof input.sourceFilePath === 'string' ? input.sourceFilePath : '';
 
     // CoC note hrefs (e.g. `~/.coc/repos/<wsId>/notes/...`) arrive tilde-prefixed
     // from assistant markdown links. Expand `~` to an absolute path — using the
@@ -134,37 +135,42 @@ export function resolveMarkdownReviewTarget(
     if (wsIdHint) {
         const hintedWorkspace = (workspaces || []).find((ws) => ws.id === wsIdHint);
         if (hintedWorkspace) {
-            if (isAbsolutePath(filePath)) {
-                // Absolute path from a chat click — fetchMode by task membership.
-                const taskRelativePath = toTaskRelativePath(filePath, hintedWorkspace.rootPath || '');
+            // A RELATIVE path WITH an explicit task-root hint is a genuine task
+            // file (only the TaskTree sends taskRootPath). Keep it task-relative.
+            if (!isAbsolutePath(filePath) && eventTaskRootPath) {
+                const displayBase = normalizePath(eventTaskRootPath).replace(/\/+$/, '');
                 return {
                     wsId: hintedWorkspace.id,
-                    filePath: taskRelativePath ?? filePath,
-                    displayPath: filePath,
-                    fetchMode: taskRelativePath !== null ? 'tasks' : 'auto',
+                    filePath,
+                    displayPath: displayBase ? `${displayBase}/${filePath}` : filePath,
+                    fetchMode: 'tasks',
                     taskRootPath: eventTaskRootPath,
                 };
             }
-            // Task-relative path (e.g. from the TaskTree).
-            const displayBase = eventTaskRootPath
-                ? normalizePath(eventTaskRootPath).replace(/\/+$/, '')
-                : (() => {
-                    const rootNormalized = normalizePath(hintedWorkspace.rootPath || '').replace(/\/+$/, '');
-                    return rootNormalized ? `${rootNormalized}/.vscode/tasks` : '';
-                })();
-            const displayPath = displayBase ? `${displayBase}/${filePath}` : filePath;
+
+            // Otherwise resolve to an ABSOLUTE path so the workspace-file API can
+            // load it: relative chat links anchor to the source file's directory
+            // when known, else the workspace root. Then classify by ACTUAL
+            // `.vscode/tasks/` membership (never assume it).
+            let absPath = filePath;
+            if (!isAbsolutePath(absPath)) {
+                const base = sourceFilePath
+                    ? normalizePath(sourceFilePath).replace(/\/[^/]*$/, '')
+                    : normalizePath(hintedWorkspace.rootPath || '').replace(/\/+$/, '');
+                absPath = base ? resolveRelativePath(base, absPath) : absPath;
+            }
+            const taskRelativePath = toTaskRelativePath(absPath, hintedWorkspace.rootPath || '');
             return {
                 wsId: hintedWorkspace.id,
-                filePath,
-                displayPath,
-                fetchMode: 'tasks',
+                filePath: taskRelativePath ?? absPath,
+                displayPath: absPath,
+                fetchMode: taskRelativePath !== null ? 'tasks' : 'auto',
                 taskRootPath: eventTaskRootPath,
             };
         }
     }
 
     // Resolve relative paths against the source file's directory.
-    const sourceFilePath = typeof input.sourceFilePath === 'string' ? input.sourceFilePath : '';
     if (sourceFilePath && !isAbsolutePath(filePath)) {
         const sourceDir = normalizePath(sourceFilePath).replace(/\/[^/]*$/, '');
         filePath = resolveRelativePath(sourceDir, filePath);

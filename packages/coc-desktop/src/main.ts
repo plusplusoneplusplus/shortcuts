@@ -13,8 +13,16 @@
  */
 
 import * as path from 'path';
+import * as fs from 'fs';
 import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, shell, clipboard, ipcMain } from 'electron';
 import { attachOrStart, defaultDataDir, ServerHandle } from './server-controller';
+import {
+    createRotatingFileLogger,
+    installConsoleTee,
+    resolveDesktopLogDir,
+    DESKTOP_LOG_FILENAME,
+    RotatingFileLogger,
+} from './desktop-logging';
 import { splashDataUrl } from './splash';
 import { detectAgentClis, missingAgentClis, runFirstRunPreflight } from './agent-preflight';
 import { augmentPathWithBundledAgents } from './agent-bin-path';
@@ -30,7 +38,7 @@ import {
     UpdateChannel,
     UpdatePrompt,
 } from './update-check';
-import { buildAppMenuTemplate, buildTrayMenuTemplate, DevTunnelMenuInput } from './app-menu';
+import { buildAppMenuTemplate, buildTrayMenuTemplate, DevTunnelMenuInput, DebugMenuHandlers } from './app-menu';
 import { attachFindBar, registerFindBarIpc } from './find-bar-host';
 import { buildWindowOptions, buildMacInsetCss } from './window-config';
 import {
@@ -68,6 +76,12 @@ let tray: Tray | null = null;
 let serverHandle: ServerHandle | null = null;
 /** Set once we begin draining on quit, so `before-quit` only intercepts once. */
 let isQuitting = false;
+/**
+ * Fix 2: rotating on-disk log for the main process's `[coc-desktop]` output and
+ * the forked server's stdout/stderr, so a Finder/Dock-launched (terminal-less)
+ * app is diagnosable. Null until installed at the start of `bootstrap()`.
+ */
+let desktopLogger: RotatingFileLogger | null = null;
 /**
  * AC-01/03/04: the Windows-only DevTunnel host manager. Null on macOS/Linux and
  * until the CoC server + port are known. Owns only the `devtunnel host` child —
@@ -202,6 +216,11 @@ async function showServedSpa(url: string): Promise<void> {
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.show();
             mainWindow.focus();
+            // Fix 3 (optional): auto-open DevTools when explicitly debugging, so a
+            // packaged launch with COC_DESKTOP_DEBUG=1 surfaces the renderer console.
+            if (process.env.COC_DESKTOP_DEBUG === '1') {
+                mainWindow.webContents.openDevTools({ mode: 'detach' });
+            }
         }
         closeSplash();
     });
@@ -408,6 +427,72 @@ function createTray(): void {
 }
 
 /**
+ * Fix 3: navigate the main window to the in-app Logs viewer (`#logs`). Prefers an
+ * in-page hash change (no reload) on an already-loaded window; falls back to a
+ * full navigation, and re-shows the SPA on the logs route if the window is gone.
+ */
+function openLogsViewer(): void {
+    if (!serverHandle) {
+        return;
+    }
+    const logsUrl = `${serverHandle.url}#logs`;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindow.webContents
+            .executeJavaScript("window.location.hash = '#logs'")
+            .catch(() => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    void mainWindow.loadURL(logsUrl);
+                }
+            });
+        return;
+    }
+    void showServedSpa(logsUrl);
+}
+
+/**
+ * Fix 3: reveal the on-disk log directory in the OS file browser. When the
+ * desktop log file already exists, highlight it inside its folder; otherwise open
+ * the log directory directly (it holds the server's `*.ndjson` too). This is the
+ * same `<dataDir>/logs` dir Fixes 1–2 write to. Best-effort; never throws.
+ */
+function revealLogFiles(): void {
+    try {
+        const logDir = resolveDesktopLogDir(defaultDataDir());
+        const logFile = path.join(logDir, DESKTOP_LOG_FILENAME);
+        if (fs.existsSync(logFile)) {
+            shell.showItemInFolder(logFile);
+        } else {
+            void shell.openPath(logDir);
+        }
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[coc-desktop] reveal log files failed: ${message}\n`);
+    }
+}
+
+/**
+ * Fix 3: toggle the focused window's DevTools. Promoted out of the View submenu
+ * for discoverability; the `viewMenu` role keeps its own toggle too.
+ */
+function toggleDevTools(): void {
+    const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
+    if (win && !win.isDestroyed()) {
+        win.webContents.toggleDevTools();
+    }
+}
+
+/** Fix 3: the Debug submenu handlers wired to this process's real actions. */
+function buildDebugMenuHandlers(): DebugMenuHandlers {
+    return {
+        onOpenLogsViewer: () => openLogsViewer(),
+        onRevealLogFiles: () => revealLogFiles(),
+        onToggleDevTools: () => toggleDevTools(),
+    };
+}
+
+/**
  * AC-01/AC-02: install the native application menu (the macOS app-menu bar and
  * the Windows menu bar) with a "Check for Updates…" item directly after
  * "About CoC". Clicking it runs `runUpdateCheck(false)` — the same always-report,
@@ -431,6 +516,9 @@ function setupApplicationMenu(currentChannel?: UpdateChannel): void {
         // AC-01: the top-level "Dev Tunnel" menu. Undefined off win32 / before the
         // manager exists; `buildAppMenuTemplate` only inserts it on win32 anyway.
         devTunnel: buildDevTunnelMenuInput(),
+        // Fix 3: the top-level "Debug" menu — Open Logs Viewer / Reveal Log Files /
+        // Toggle Developer Tools. Added on both macOS and Windows.
+        debug: buildDebugMenuHandlers(),
     });
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -691,7 +779,33 @@ function showDevTunnelNotification(error: DevTunnelHostErrorInfo): void {
     }
 }
 
+/**
+ * Fix 2: install the rotating on-disk log for this process as early as possible
+ * so even the earliest `[coc-desktop]` startup lines are captured. The console
+ * tee preserves the original terminal output (so the `npm start` dev flow is
+ * unchanged), and the file lives alongside the server's `*.ndjson` logs under
+ * `<dataDir>/logs`. Best-effort: a logging failure must never block boot.
+ */
+function installDesktopFileLogging(): void {
+    if (desktopLogger) {
+        return;
+    }
+    try {
+        const logDir = resolveDesktopLogDir(defaultDataDir());
+        desktopLogger = createRotatingFileLogger({
+            filePath: path.join(logDir, DESKTOP_LOG_FILENAME),
+        });
+        installConsoleTee({ logger: desktopLogger });
+    } catch {
+        /* logging is a diagnostic nicety — never fatal */
+    }
+}
+
 async function bootstrap(): Promise<void> {
+    // Fix 2: capture main-process + forked-server output to disk before anything
+    // else runs, so a terminal-less packaged launch is still diagnosable.
+    installDesktopFileLogging();
+
     // Brand the native "About CoC" panel: CoC name, version, copyright and icon
     // instead of the default Electron atom + Electron version.
     app.setAboutPanelOptions(
@@ -729,8 +843,13 @@ async function bootstrap(): Promise<void> {
 
     try {
         // AC-02: attach to an already-running CoC server, or fork our own
-        // against the shared ~/.coc data dir.
-        serverHandle = await attachOrStart();
+        // against the shared ~/.coc data dir. Fix 2: when we start our own server,
+        // tee its stdout/stderr into the desktop log (packaged/no-TTY only).
+        serverHandle = await attachOrStart({
+            onServerOutput: desktopLogger
+                ? (chunk) => desktopLogger?.write(chunk)
+                : undefined,
+        });
         process.stdout.write(
             `[coc-desktop] server ${serverHandle.started ? 'started (forked)' : 'attached (external)'} at ${serverHandle.url}\n`,
         );

@@ -84,9 +84,40 @@ describe('resolveMarkdownReviewTarget', () => {
         });
     });
 
-    it('derives the tasks displayPath from the workspace root when no taskRootPath is given', () => {
+    it('anchors a bare relative link to the workspace root (auto mode) when no taskRootPath is given', () => {
         const target = resolveMarkdownReviewTarget(
             { filePath: 'plan.md', wsId: 'ws1' },
+            WS,
+        );
+        expect(target).toEqual({
+            wsId: 'ws1',
+            filePath: '/home/u/proj/plan.md',
+            displayPath: '/home/u/proj/plan.md',
+            fetchMode: 'auto',
+            taskRootPath: undefined,
+        });
+    });
+
+    it('resolves a relative chat link (no taskRootPath) against the workspace root with content (regression)', () => {
+        // The reported bug: `[desktop-debug-logging.goal.md](desktop-debug-logging.goal.md)`
+        // clicked in chat previously routed to `.vscode/tasks/…` and 404'd into a blank
+        // editor. It must resolve to the repo-root file and load it via the auto adapter.
+        const target = resolveMarkdownReviewTarget(
+            { filePath: 'desktop-debug-logging.goal.md', wsId: 'ws1' },
+            WS,
+        );
+        expect(target).toEqual({
+            wsId: 'ws1',
+            filePath: '/home/u/proj/desktop-debug-logging.goal.md',
+            displayPath: '/home/u/proj/desktop-debug-logging.goal.md',
+            fetchMode: 'auto',
+            taskRootPath: undefined,
+        });
+    });
+
+    it('still detects a .vscode/tasks/ file reached via root-anchoring (no taskRootPath)', () => {
+        const target = resolveMarkdownReviewTarget(
+            { filePath: '.vscode/tasks/plan.md', wsId: 'ws1' },
             WS,
         );
         expect(target).toEqual({
@@ -94,6 +125,20 @@ describe('resolveMarkdownReviewTarget', () => {
             filePath: 'plan.md',
             displayPath: '/home/u/proj/.vscode/tasks/plan.md',
             fetchMode: 'tasks',
+            taskRootPath: undefined,
+        });
+    });
+
+    it('anchors a relative link to the sourceFilePath directory (wins over the workspace root) in the fast-path', () => {
+        const target = resolveMarkdownReviewTarget(
+            { filePath: 'sibling.md', wsId: 'ws1', sourceFilePath: '/home/u/proj/docs/guide.md' },
+            WS,
+        );
+        expect(target).toEqual({
+            wsId: 'ws1',
+            filePath: '/home/u/proj/docs/sibling.md',
+            displayPath: '/home/u/proj/docs/sibling.md',
+            fetchMode: 'auto',
             taskRootPath: undefined,
         });
     });

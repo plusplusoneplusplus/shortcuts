@@ -24,6 +24,12 @@ import {
     DEV_TUNNEL_RETRY_LABEL,
     DEV_TUNNEL_SHOW_ERROR_LABEL,
     DEV_TUNNEL_COPY_URL_LABEL,
+    DEBUG_MENU_LABEL,
+    OPEN_LOGS_VIEWER_LABEL,
+    REVEAL_LOG_FILES_LABEL,
+    TOGGLE_DEVTOOLS_LABEL,
+    buildDebugMenu,
+    type DebugMenuHandlers,
     type DevTunnelMenuHandlers,
     type DevTunnelMenuInput,
 } from '../src/app-menu';
@@ -408,5 +414,103 @@ describe('buildAppMenuTemplate — Dev Tunnel menu (AC-01, Windows only)', () =>
             devTunnel,
         });
         expect(template.some((i) => i.label === DEV_TUNNEL_MENU_LABEL)).toBe(false);
+    });
+});
+
+describe('buildDebugMenu (Fix 3)', () => {
+    const makeHandlers = (): DebugMenuHandlers => ({
+        onOpenLogsViewer: vi.fn(),
+        onRevealLogFiles: vi.fn(),
+        onToggleDevTools: vi.fn(),
+    });
+
+    it('labels the top-level menu "Debug"', () => {
+        expect(buildDebugMenu(makeHandlers()).label).toBe(DEBUG_MENU_LABEL);
+    });
+
+    it('lists Open Logs Viewer, Reveal Log Files, (separator), Toggle Developer Tools in order', () => {
+        const items = submenuOf(buildDebugMenu(makeHandlers()));
+        const labels = items.filter((i) => i.label).map((i) => i.label);
+        expect(labels).toEqual([
+            OPEN_LOGS_VIEWER_LABEL,
+            REVEAL_LOG_FILES_LABEL,
+            TOGGLE_DEVTOOLS_LABEL,
+        ]);
+        // The DevTools toggle is separated from the two log actions.
+        const revealIdx = labelIdx(items, REVEAL_LOG_FILES_LABEL);
+        const devtoolsIdx = labelIdx(items, TOGGLE_DEVTOOLS_LABEL);
+        expect(isSeparator(items[revealIdx + 1])).toBe(true);
+        expect(devtoolsIdx).toBe(revealIdx + 2);
+    });
+
+    it('wires each Debug click to its handler', () => {
+        const handlers = makeHandlers();
+        const items = submenuOf(buildDebugMenu(handlers));
+        const click = (label: string) =>
+            (items.find((i) => i.label === label)!.click as () => void)();
+        click(OPEN_LOGS_VIEWER_LABEL);
+        click(REVEAL_LOG_FILES_LABEL);
+        click(TOGGLE_DEVTOOLS_LABEL);
+        expect(handlers.onOpenLogsViewer).toHaveBeenCalledTimes(1);
+        expect(handlers.onRevealLogFiles).toHaveBeenCalledTimes(1);
+        expect(handlers.onToggleDevTools).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('buildAppMenuTemplate — Debug menu (Fix 3)', () => {
+    const debug: DebugMenuHandlers = {
+        onOpenLogsViewer: vi.fn(),
+        onRevealLogFiles: vi.fn(),
+        onToggleDevTools: vi.fn(),
+    };
+
+    it('adds a top-level Debug menu on macOS, after the Window menu', () => {
+        const template = buildAppMenuTemplate('darwin', 'CoC', {
+            onCheckForUpdates: vi.fn(),
+            debug,
+        });
+        const debugIdx = template.findIndex((i) => i.label === DEBUG_MENU_LABEL);
+        const windowIdx = template.findIndex((i) => i.role === 'windowMenu');
+        expect(debugIdx).toBeGreaterThanOrEqual(0);
+        expect(debugIdx).toBeGreaterThan(windowIdx);
+    });
+
+    it('adds a top-level Debug menu on win32, before the Help menu', () => {
+        const template = buildAppMenuTemplate('win32', 'CoC', {
+            onCheckForUpdates: vi.fn(),
+            debug,
+        });
+        const debugIdx = template.findIndex((i) => i.label === DEBUG_MENU_LABEL);
+        const helpIdx = template.findIndex((i) => i.label === 'Help');
+        expect(debugIdx).toBeGreaterThanOrEqual(0);
+        expect(debugIdx).toBeLessThan(helpIdx);
+    });
+
+    it('omits the Debug menu when no debug handlers are provided (both platforms)', () => {
+        for (const platform of ['darwin', 'win32'] as const) {
+            const template = buildAppMenuTemplate(platform, 'CoC', { onCheckForUpdates: vi.fn() });
+            expect(template.some((i) => i.label === DEBUG_MENU_LABEL)).toBe(false);
+        }
+    });
+
+    it('wires the Debug items through buildAppMenuTemplate on both platforms', () => {
+        for (const platform of ['darwin', 'win32'] as const) {
+            const handlers: DebugMenuHandlers = {
+                onOpenLogsViewer: vi.fn(),
+                onRevealLogFiles: vi.fn(),
+                onToggleDevTools: vi.fn(),
+            };
+            const template = buildAppMenuTemplate(platform, 'CoC', {
+                onCheckForUpdates: vi.fn(),
+                debug: handlers,
+            });
+            const items = submenuOf(template.find((i) => i.label === DEBUG_MENU_LABEL)!);
+            (items.find((i) => i.label === OPEN_LOGS_VIEWER_LABEL)!.click as () => void)();
+            (items.find((i) => i.label === REVEAL_LOG_FILES_LABEL)!.click as () => void)();
+            (items.find((i) => i.label === TOGGLE_DEVTOOLS_LABEL)!.click as () => void)();
+            expect(handlers.onOpenLogsViewer).toHaveBeenCalledTimes(1);
+            expect(handlers.onRevealLogFiles).toHaveBeenCalledTimes(1);
+            expect(handlers.onToggleDevTools).toHaveBeenCalledTimes(1);
+        }
     });
 });

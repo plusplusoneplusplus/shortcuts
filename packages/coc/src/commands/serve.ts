@@ -21,11 +21,8 @@ import {
     bold,
     cyan,
 } from '../logger';
-import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
-import { setLogger, initAIServiceLogger } from '@plusplusoneplusplus/forge';
-import { initSDKLogger } from '@plusplusoneplusplus/coc-agent-sdk';
-import { resolveLoggingConfig, loadConfigFile, createProcessStore } from '../config';
-import { setServerLogger, getServerLogger } from '../server/logging/server-logger';
+import { loadConfigFile, createProcessStore } from '../config';
+import { setupServerLogging } from '../server/logging/setup-server-logging';
 import type { ServeCommandOptions } from '../server/types';
 
 // ============================================================================
@@ -48,24 +45,16 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
         ? options.drainTimeout * 1000
         : DEFAULT_DRAIN_TIMEOUT_S * 1000;
 
-    // Set up Pino loggers before anything else
+    // Set up Pino loggers before anything else. The shared helper wires the
+    // capture proxy + AI-service/SDK/forge loggers identically for the desktop
+    // forked server (see server/logging/setup-server-logging.ts).
     const logDir = options.logDir ?? path.join(dataDir, 'logs');
     const fileConfig = loadConfigFile();
-    const { ai, coc } = createCLIPinoLogger(resolveLoggingConfig(
-        { logLevel: options.logLevel, logDir },
-        fileConfig?.logging
-    ));
-    // Wire the server capture proxy first so that subsequent child loggers
-    // derived from getServerLogger() are also routed through the ring buffer.
-    setServerLogger(coc);
-    initAIServiceLogger(getServerLogger().child({ component: 'ai-service' }));
-    // Route coc-agent-sdk getSDKLogger() through the same capture chain so
-    // Claude SDK debug logs appear in the dashboard log stream.
-    initSDKLogger(getServerLogger().child({ component: 'claude-sdk' }));
-    // Route forge getLogger() through the same capture chain so MCP/AI debug
-    // logs (LogCategory.MCP, LogCategory.AI) appear in the /api/logs/stream
-    // dashboard view.
-    setLogger(pinoAdapterForPipelineCore(getServerLogger().child({ store: 'ai-service' })));
+    const { coc } = setupServerLogging({
+        logLevel: options.logLevel,
+        logDir,
+        fileConfig,
+    });
 
     // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });

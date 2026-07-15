@@ -21,6 +21,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { resolveDesktopLogDir } from './desktop-logging';
 
 // Minimal structural types for the prebuilt CoC server surface. We require the
 // compiled JS lazily (below) rather than importing the full type graph, keeping
@@ -39,7 +40,16 @@ type CreateExecutionServer = (options: {
     fileConfig?: unknown;
 }) => Promise<CocServerHandle>;
 type CreateProcessStore = (dataDir: string, backend?: 'file' | 'sqlite') => unknown;
-type LoadConfigFile = () => { store?: { backend?: 'file' | 'sqlite' } } | undefined;
+type LoadConfigFile = () => { store?: { backend?: 'file' | 'sqlite' }; logging?: unknown } | undefined;
+// Shared logger wiring from the coc package. Feeds the in-process ring buffer
+// behind `/api/logs/stream` and writes `<logDir>/*.ndjson`, so the in-app Logs
+// viewer works even when the desktop starts its OWN forked server (i.e. is not
+// attached to an external `coc serve`).
+type SetupServerLogging = (opts: {
+    logLevel?: string;
+    logDir: string;
+    fileConfig?: { logging?: unknown };
+}) => unknown;
 
 type ChildMessage =
     | { type: 'listening'; port: number }
@@ -62,8 +72,9 @@ async function main(): Promise<void> {
 
     // Required lazily so this module stays importable without the coc runtime.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { createExecutionServer } = require('@plusplusoneplusplus/coc/dist/server') as {
+    const { createExecutionServer, setupServerLogging } = require('@plusplusoneplusplus/coc/dist/server') as {
         createExecutionServer: CreateExecutionServer;
+        setupServerLogging: SetupServerLogging;
     };
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { createProcessStore, loadConfigFile } = require('@plusplusoneplusplus/coc/dist/config') as {
@@ -72,6 +83,19 @@ async function main(): Promise<void> {
     };
 
     const fileConfig = loadConfigFile();
+
+    // Wire logging BEFORE the server boots so request/AI/SDK logs are captured
+    // into the ring buffer (in-app Logs viewer) and written to disk. Matches the
+    // CLI `serve` command exactly; done once per process. logDir defaults to
+    // `<dataDir>/logs`, honoring any `logging:` config-file overrides. Shared with
+    // main.ts so the server's `*.ndjson` and the desktop log land together.
+    const logDir = resolveDesktopLogDir(dataDir);
+    setupServerLogging({
+        logLevel: process.env.COC_DESKTOP_LOG_LEVEL,
+        logDir,
+        fileConfig,
+    });
+
     const store = createProcessStore(dataDir, fileConfig?.store?.backend);
 
     const server = await createExecutionServer({ port, host, dataDir, store, fileConfig });
