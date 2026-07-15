@@ -21,6 +21,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { resolveDesktopLogDir } from './desktop-logging';
 
 // Minimal structural types for the prebuilt CoC server surface. We require the
 // compiled JS lazily (below) rather than importing the full type graph, keeping
@@ -86,8 +87,9 @@ async function main(): Promise<void> {
     // Wire logging BEFORE the server boots so request/AI/SDK logs are captured
     // into the ring buffer (in-app Logs viewer) and written to disk. Matches the
     // CLI `serve` command exactly; done once per process. logDir defaults to
-    // `<dataDir>/logs`, honoring any `logging:` config-file overrides.
-    const logDir = process.env.COC_DESKTOP_LOG_DIR || path.join(dataDir, 'logs');
+    // `<dataDir>/logs`, honoring any `logging:` config-file overrides. Shared with
+    // main.ts so the server's `*.ndjson` and the desktop log land together.
+    const logDir = resolveDesktopLogDir(dataDir);
     setupServerLogging({
         logLevel: process.env.COC_DESKTOP_LOG_LEVEL,
         logDir,

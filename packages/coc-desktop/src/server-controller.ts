@@ -21,7 +21,7 @@ import * as http from 'http';
 import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
-import { fork, ChildProcess } from 'child_process';
+import { fork, ChildProcess, StdioOptions } from 'child_process';
 import { augmentPathWithBundledAgents } from './agent-bin-path';
 
 /** Default loopback bind address — the server is never exposed off-box. */
@@ -64,6 +64,14 @@ export interface AttachOrStartOptions {
     serverEntryPath?: string;
     /** How long to wait for the forked server to report `listening` (default 30s). */
     startTimeoutMs?: number;
+    /**
+     * Fix 2: sink for the forked server's stdout/stderr. When provided (and there
+     * is no TTY to inherit to), the child is forked with piped stdio and every
+     * chunk is forwarded here so a Finder/Dock-launched app can capture the
+     * server's output to a file. Only used for a server WE start — attach mode
+     * never touches the external process. Absent → previous inherit behavior.
+     */
+    onServerOutput?: (chunk: string | Buffer) => void;
     deps?: AttachOrStartDeps;
 }
 
@@ -120,17 +128,55 @@ export function findFreePort(host: string = DEFAULT_HOST): Promise<number> {
     });
 }
 
+/**
+ * Decide whether the forked child's stdout/stderr should be piped (captured) vs
+ * inherited. Capture only when a sink is wired AND there is no TTY: with a
+ * terminal (the `npm start` dev flow) we `inherit` so the child prints straight
+ * to it exactly as before; without one (a packaged Finder/Dock launch) we pipe
+ * so the output can be forwarded into the on-disk log. Pure for easy testing.
+ */
+export function shouldCaptureChildOutput(wantsSink: boolean, isTty: boolean): boolean {
+    return wantsSink && !isTty;
+}
+
+/**
+ * Forward a forked child's piped stdout/stderr into `sink`. A no-op when the
+ * streams are absent (inherit mode, or a test fake), and any sink error is
+ * swallowed so logging can never crash the app or wedge the pipe.
+ */
+export function forwardChildOutput(
+    child: Pick<ChildProcess, 'stdout' | 'stderr'>,
+    sink: (chunk: string | Buffer) => void,
+): void {
+    const wire = (stream: NodeJS.ReadableStream | null | undefined): void => {
+        if (!stream) {
+            return;
+        }
+        stream.on('data', (chunk: string | Buffer) => {
+            try {
+                sink(chunk);
+            } catch {
+                /* logging must never crash the app */
+            }
+        });
+    };
+    wire(child.stdout);
+    wire(child.stderr);
+}
+
 /** Default fork: spawn `server-entry.js` as Electron's Node (`ELECTRON_RUN_AS_NODE`). */
-function defaultFork(modulePath: string, env: NodeJS.ProcessEnv): ChildProcess {
+function defaultFork(modulePath: string, env: NodeJS.ProcessEnv, capture: boolean): ChildProcess {
     const merged: NodeJS.ProcessEnv = { ...process.env, ...env };
     // Prepend the bundled agent-CLI directories so the server resolves the
     // shipped `copilot`/`codex`/`claude` even when the host PATH lacks them
     // (best-effort; leaves PATH unchanged when nothing bundled resolves).
     merged.PATH = augmentPathWithBundledAgents({}, merged.PATH);
-    return fork(modulePath, [], {
-        env: merged,
-        stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
-    });
+    // Fix 2: pipe stdout/stderr when capturing (packaged, no TTY) so we can tee
+    // them to the log file; otherwise inherit so a terminal dev run is unchanged.
+    const stdio: StdioOptions = capture
+        ? ['ignore', 'pipe', 'pipe', 'ipc']
+        : ['ignore', 'inherit', 'inherit', 'ipc'];
+    return fork(modulePath, [], { env: merged, stdio });
 }
 
 /** Resolve with the port the child actually bound once it signals `listening`. */
@@ -186,7 +232,12 @@ export async function attachOrStart(options: AttachOrStartOptions = {}): Promise
     const deps = options.deps ?? {};
     const probe = deps.probeHealth ?? probeHealth;
     const findPort = deps.findFreePort ?? findFreePort;
-    const forkFn = deps.fork ?? defaultFork;
+    // Capture the forked server's output only when a sink is wired and there's no
+    // TTY to inherit to (see shouldCaptureChildOutput). Falls back to the previous
+    // inherit behavior when no sink is provided.
+    const wantsSink = typeof options.onServerOutput === 'function';
+    const capture = shouldCaptureChildOutput(wantsSink, Boolean(process.stdout.isTTY));
+    const forkFn = deps.fork ?? ((modulePath, env) => defaultFork(modulePath, env, capture));
 
     // 1) Attach if a healthy server is already listening on the CLI port.
     if (await probe(host, attachPort)) {
@@ -201,6 +252,12 @@ export async function attachOrStart(options: AttachOrStartOptions = {}): Promise
         COC_DESKTOP_PORT: String(requestedPort),
         COC_DESKTOP_DATA_DIR: dataDir,
     });
+
+    // Fix 2: tee the forked server's piped stdout/stderr into the caller's sink
+    // (the on-disk log). No-op when the child inherited stdio (has no streams).
+    if (options.onServerOutput) {
+        forwardChildOutput(child, options.onServerOutput);
+    }
 
     let listeningPort: number;
     try {

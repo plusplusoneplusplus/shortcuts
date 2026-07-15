@@ -17,6 +17,8 @@ import {
     findFreePort,
     formatUrl,
     defaultDataDir,
+    forwardChildOutput,
+    shouldCaptureChildOutput,
     CLI_DEFAULT_PORT,
     DEFAULT_HOST,
 } from '../src/server-controller';
@@ -24,6 +26,16 @@ import {
 /** A fake forked child: an EventEmitter that records kill() and can be driven. */
 class FakeChild extends EventEmitter {
     public killed = false;
+    /** Optional piped streams (present only when the fork used `pipe` stdio). */
+    public stdout: EventEmitter | null = null;
+    public stderr: EventEmitter | null = null;
+    constructor(opts: { piped?: boolean } = {}) {
+        super();
+        if (opts.piped) {
+            this.stdout = new EventEmitter();
+            this.stderr = new EventEmitter();
+        }
+    }
     kill(): boolean {
         this.killed = true;
         return true;
@@ -228,5 +240,77 @@ describe('attachOrStart', () => {
             }),
         ).rejects.toThrow(/Timed out/);
         expect(child.killed).toBe(true);
+    });
+
+    it('forwards a started server\'s piped stdout/stderr to onServerOutput (Fix 2)', async () => {
+        const child = new FakeChild({ piped: true });
+        const captured: string[] = [];
+        const handle = await attachOrStart({
+            onServerOutput: (chunk) => captured.push(chunk.toString()),
+            deps: {
+                probeHealth: async () => false,
+                findFreePort: async () => 44000,
+                fork: () => {
+                    child.emitListening(44000);
+                    return child as unknown as ChildProcess;
+                },
+            },
+        });
+        expect(handle.started).toBe(true);
+        // The pipe wiring is synchronous; child output now reaches the sink.
+        child.stdout!.emit('data', Buffer.from('server up\n'));
+        child.stderr!.emit('data', 'a warning\n');
+        expect(captured).toEqual(['server up\n', 'a warning\n']);
+    });
+
+    it('does not forward when attaching to an external server (Fix 2)', async () => {
+        const captured: string[] = [];
+        const handle = await attachOrStart({
+            onServerOutput: (chunk) => captured.push(chunk.toString()),
+            deps: {
+                probeHealth: async () => true,
+                findFreePort: async () => 55555,
+                fork: () => new FakeChild({ piped: true }) as unknown as ChildProcess,
+            },
+        });
+        expect(handle.started).toBe(false);
+        expect(captured).toEqual([]);
+    });
+});
+
+describe('shouldCaptureChildOutput', () => {
+    it('captures only when a sink is wired AND there is no TTY', () => {
+        expect(shouldCaptureChildOutput(true, false)).toBe(true); // packaged: pipe+capture
+        expect(shouldCaptureChildOutput(true, true)).toBe(false); // dev TTY: inherit
+        expect(shouldCaptureChildOutput(false, false)).toBe(false); // no sink
+        expect(shouldCaptureChildOutput(false, true)).toBe(false); // no sink
+    });
+});
+
+describe('forwardChildOutput', () => {
+    it('pipes stdout and stderr data into the sink', () => {
+        const child = new FakeChild({ piped: true });
+        const captured: string[] = [];
+        forwardChildOutput(child as unknown as ChildProcess, (c) => captured.push(c.toString()));
+        child.stdout!.emit('data', 'out\n');
+        child.stderr!.emit('data', Buffer.from('err\n'));
+        expect(captured).toEqual(['out\n', 'err\n']);
+    });
+
+    it('is a no-op when the child has no piped streams', () => {
+        const child = new FakeChild(); // stdout/stderr are null (inherit mode)
+        expect(() =>
+            forwardChildOutput(child as unknown as ChildProcess, () => {
+                throw new Error('should not be called');
+            }),
+        ).not.toThrow();
+    });
+
+    it('swallows sink errors so a logging failure never wedges the pipe', () => {
+        const child = new FakeChild({ piped: true });
+        forwardChildOutput(child as unknown as ChildProcess, () => {
+            throw new Error('sink down');
+        });
+        expect(() => child.stdout!.emit('data', 'x\n')).not.toThrow();
     });
 });

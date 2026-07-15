@@ -15,6 +15,13 @@
 import * as path from 'path';
 import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, shell, clipboard, ipcMain } from 'electron';
 import { attachOrStart, defaultDataDir, ServerHandle } from './server-controller';
+import {
+    createRotatingFileLogger,
+    installConsoleTee,
+    resolveDesktopLogDir,
+    DESKTOP_LOG_FILENAME,
+    RotatingFileLogger,
+} from './desktop-logging';
 import { splashDataUrl } from './splash';
 import { detectAgentClis, missingAgentClis, runFirstRunPreflight } from './agent-preflight';
 import { augmentPathWithBundledAgents } from './agent-bin-path';
@@ -68,6 +75,12 @@ let tray: Tray | null = null;
 let serverHandle: ServerHandle | null = null;
 /** Set once we begin draining on quit, so `before-quit` only intercepts once. */
 let isQuitting = false;
+/**
+ * Fix 2: rotating on-disk log for the main process's `[coc-desktop]` output and
+ * the forked server's stdout/stderr, so a Finder/Dock-launched (terminal-less)
+ * app is diagnosable. Null until installed at the start of `bootstrap()`.
+ */
+let desktopLogger: RotatingFileLogger | null = null;
 /**
  * AC-01/03/04: the Windows-only DevTunnel host manager. Null on macOS/Linux and
  * until the CoC server + port are known. Owns only the `devtunnel host` child —
@@ -691,7 +704,33 @@ function showDevTunnelNotification(error: DevTunnelHostErrorInfo): void {
     }
 }
 
+/**
+ * Fix 2: install the rotating on-disk log for this process as early as possible
+ * so even the earliest `[coc-desktop]` startup lines are captured. The console
+ * tee preserves the original terminal output (so the `npm start` dev flow is
+ * unchanged), and the file lives alongside the server's `*.ndjson` logs under
+ * `<dataDir>/logs`. Best-effort: a logging failure must never block boot.
+ */
+function installDesktopFileLogging(): void {
+    if (desktopLogger) {
+        return;
+    }
+    try {
+        const logDir = resolveDesktopLogDir(defaultDataDir());
+        desktopLogger = createRotatingFileLogger({
+            filePath: path.join(logDir, DESKTOP_LOG_FILENAME),
+        });
+        installConsoleTee({ logger: desktopLogger });
+    } catch {
+        /* logging is a diagnostic nicety — never fatal */
+    }
+}
+
 async function bootstrap(): Promise<void> {
+    // Fix 2: capture main-process + forked-server output to disk before anything
+    // else runs, so a terminal-less packaged launch is still diagnosable.
+    installDesktopFileLogging();
+
     // Brand the native "About CoC" panel: CoC name, version, copyright and icon
     // instead of the default Electron atom + Electron version.
     app.setAboutPanelOptions(
@@ -729,8 +768,13 @@ async function bootstrap(): Promise<void> {
 
     try {
         // AC-02: attach to an already-running CoC server, or fork our own
-        // against the shared ~/.coc data dir.
-        serverHandle = await attachOrStart();
+        // against the shared ~/.coc data dir. Fix 2: when we start our own server,
+        // tee its stdout/stderr into the desktop log (packaged/no-TTY only).
+        serverHandle = await attachOrStart({
+            onServerOutput: desktopLogger
+                ? (chunk) => desktopLogger?.write(chunk)
+                : undefined,
+        });
         process.stdout.write(
             `[coc-desktop] server ${serverHandle.started ? 'started (forked)' : 'attached (external)'} at ${serverHandle.url}\n`,
         );
