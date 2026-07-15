@@ -130,6 +130,7 @@ describe('NoteEditor', () => {
         mockClearContent.mockReset();
         mockGetHTML.mockReturnValue('<p>content</p>');
         mockEditor.isDestroyed = false;
+        mockEditor.state.doc = {};
         capturedOnChange = null;
         richEditorMountCount = 0;
         mockQueueDispatch.mockReset();
@@ -206,6 +207,94 @@ describe('NoteEditor', () => {
 
         // Backend's loadThreads should NOT have been called when threads prop is provided
         expect(mockBackend.loadThreads).not.toHaveBeenCalled();
+    });
+
+    it('passes the selected root to comment backend load fallback', async () => {
+        const mockBackend = {
+            loadThreads: vi.fn().mockResolvedValue([]),
+            updateThreadAnchor: vi.fn(),
+        };
+
+        mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+
+        await act(async () => {
+            render(
+                <NoteEditor
+                    workspaceId="ws1"
+                    notePath="page.md"
+                    io={mockIo}
+                    commentBackend={mockBackend}
+                    commentsEnabled={true}
+                    root="task:primary"
+                />,
+            );
+        });
+
+        await waitFor(() => {
+            expect(mockBackend.loadThreads).toHaveBeenCalledWith('ws1', 'page.md', 'task:primary');
+        });
+    });
+
+    it('passes the selected root when updating comment thread anchors after save', async () => {
+        const fakeThread = {
+            id: 'thread-1',
+            anchor: { quotedText: 'old text', prefix: '', suffix: '' },
+            status: 'open' as const,
+            comments: [{ id: 'c1', body: 'Needs update', createdAt: '2025-01-01T00:00:00Z' }],
+            createdAt: '2025-01-01T00:00:00Z',
+        };
+        const mockBackend = {
+            loadThreads: vi.fn().mockResolvedValue([]),
+            updateThreadAnchor: vi.fn().mockResolvedValue(undefined),
+        };
+        let flushSave: (() => Promise<void>) | null = null;
+
+        mockLoadContent.mockResolvedValue({ content: 'new text', path: 'page.md' });
+        mockIOSaveContent.mockResolvedValue({ path: 'page.md', updated: true });
+        mockEditor.state.doc = {
+            textContent: 'new text',
+            content: { size: 8 },
+            textBetween: vi.fn(() => 'new text'),
+            descendants: (callback: (node: unknown, pos: number) => void) => {
+                callback({
+                    isText: true,
+                    type: { name: 'text' },
+                    text: 'new text',
+                    nodeSize: 8,
+                    marks: [{ type: { name: 'comment' }, attrs: { commentId: 'thread-1' } }],
+                }, 1);
+            },
+        };
+
+        await act(async () => {
+            render(
+                <NoteEditor
+                    workspaceId="ws1"
+                    notePath="page.md"
+                    io={mockIo}
+                    commentBackend={mockBackend}
+                    threads={[fakeThread]}
+                    commentsEnabled={true}
+                    root="task:primary"
+                    onFlushSave={(flush) => { flushSave = flush; }}
+                />,
+            );
+        });
+        await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+        await waitFor(() => expect(flushSave).not.toBeNull());
+
+        act(() => { capturedOnChange?.(mockEditor); });
+        await act(async () => { await flushSave?.(); });
+
+        await waitFor(() => {
+            expect(mockBackend.updateThreadAnchor).toHaveBeenCalledWith(
+                'ws1',
+                'page.md',
+                'thread-1',
+                'open',
+                'task:primary',
+            );
+        });
     });
 
     // ── Empty state ─────────────────────────────────────────────────────

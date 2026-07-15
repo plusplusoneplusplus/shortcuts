@@ -307,7 +307,11 @@ export function NoteEditor({
                             }
                         }
                     } else {
-                        commentBackendRef.current.loadThreads(workspaceIdRef.current, notePathRef.current ?? '').then((threads) => {
+                        commentBackendRef.current.loadThreads(
+                            workspaceIdRef.current,
+                            notePathRef.current ?? '',
+                            rootRef.current,
+                        ).then((threads) => {
                             const edInner = editorRef.current;
                             if (!edInner || edInner.isDestroyed) return;
                             loadedThreadsRef.current = threads;
@@ -340,7 +344,13 @@ export function NoteEditor({
                     if (thread.status === 'resolved') continue;
                     const freshAnchor = buildAnchorFromMark(editor, thread.id);
                     if (freshAnchor && freshAnchor.quotedText !== thread.anchor.quotedText) {
-                        commentBackendRef.current.updateThreadAnchor(workspaceIdRef.current, path, thread.id, thread.status)
+                        commentBackendRef.current.updateThreadAnchor(
+                            workspaceIdRef.current,
+                            path,
+                            thread.id,
+                            thread.status,
+                            rootRef.current,
+                        )
                             .catch(() => { /* non-fatal */ });
                         thread.anchor = freshAnchor;
                     }

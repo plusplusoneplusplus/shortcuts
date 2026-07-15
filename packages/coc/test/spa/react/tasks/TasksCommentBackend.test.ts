@@ -126,6 +126,20 @@ describe('createTasksCommentBackend', () => {
             .toHaveBeenCalledWith('ws1', 'docs/foo.md', 'c1', { status: 'resolved' });
     });
 
+    it('accepts a notes root parameter without changing task comment routing', async () => {
+        mocks.tasks.listComments.mockResolvedValueOnce([baseComment]);
+        mocks.tasks.updateComment.mockResolvedValueOnce({ ...baseComment, status: 'resolved' });
+        const backend = createTasksCommentBackend();
+
+        const threads = await backend.loadThreads('ws1', 'docs/foo.md', 'task:primary');
+        await backend.updateThreadAnchor('ws1', 'docs/foo.md', 'c1', 'resolved', 'task:primary');
+
+        expect(threads).toHaveLength(1);
+        expect(mocks.tasks.listComments).toHaveBeenCalledWith('ws1', 'docs/foo.md');
+        expect(mocks.tasks.updateComment)
+            .toHaveBeenCalledWith('ws1', 'docs/foo.md', 'c1', { status: 'resolved' });
+    });
+
     it('updateThreadAnchor is a no-op when notePath is empty', async () => {
         const backend = createTasksCommentBackend();
         await backend.updateThreadAnchor('ws1', '', 'c1', 'open');

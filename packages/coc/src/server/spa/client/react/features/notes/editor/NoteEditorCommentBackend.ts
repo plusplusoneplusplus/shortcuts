@@ -13,25 +13,26 @@ import type { CommentThread } from '../notesApi';
 
 export interface NoteEditorCommentBackend {
     /** Load all comment threads for a given note. */
-    loadThreads(workspaceId: string, notePath: string): Promise<CommentThread[]>;
+    loadThreads(workspaceId: string, notePath: string, root?: string): Promise<CommentThread[]>;
     /** Persist updated anchor/status for a single thread after a save. */
     updateThreadAnchor(
         workspaceId: string,
         notePath: string,
         threadId: string,
         status: 'open' | 'resolved',
+        root?: string,
     ): Promise<void>;
 }
 
 // ── Default (notes-backed) implementation ───────────────────────────────────
 
 export const defaultCommentBackend: NoteEditorCommentBackend = {
-    async loadThreads(workspaceId, notePath) {
-        const sidecar = await notesApi.getComments(workspaceId, notePath);
+    async loadThreads(workspaceId, notePath, root) {
+        const sidecar = await notesApi.getComments(workspaceId, notePath, root);
         return Object.values(sidecar.threads);
     },
-    async updateThreadAnchor(workspaceId, notePath, threadId, status) {
-        await notesApi.updateThread(workspaceId, notePath, threadId, status);
+    async updateThreadAnchor(workspaceId, notePath, threadId, status, root) {
+        await notesApi.updateThread(workspaceId, notePath, threadId, status, root);
     },
 };
 
