@@ -31,6 +31,8 @@ export interface NoteEditorToolbarProps {
     chatPanelOpen?: boolean;
     /** Called to toggle the AI chat panel. When provided, the 🤖 button is rendered. */
     onToggleChatPanel?: () => void;
+    /** When set, keeps the AI chat button visible but disabled with this reason. */
+    chatDisabledReason?: string;
     /** When true, the 🤖 button is tinted blue to indicate an existing chat history. */
     hasExistingChat?: boolean;
     /** Whether the TOC panel is currently open. */
@@ -279,7 +281,7 @@ function TableControls({ editor }: TableControlsProps) {
 
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight, onRefresh, refreshing, chatPanelOpen, onToggleChatPanel, hasExistingChat, tocOpen, onToggleToc, tocEntries = [], tocActiveIndex = null, onTocJump }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight, onRefresh, refreshing, chatPanelOpen, onToggleChatPanel, chatDisabledReason, hasExistingChat, tocOpen, onToggleToc, tocEntries = [], tocActiveIndex = null, onTocJump }: NoteEditorToolbarProps) {
     const tocRef = useRef<HTMLDivElement>(null);
 
     if (!editor) return null;
@@ -362,7 +364,7 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
             )}
 
             {/* Right-end controls — always visible */}
-            {(onToggleCommentsPanel || modeToggle || toolbarRight || onRefresh || onToggleChatPanel || onToggleToc || (aiEditCount ?? 0) > 0) && (
+            {(onToggleCommentsPanel || modeToggle || toolbarRight || onRefresh || onToggleChatPanel || chatDisabledReason || onToggleToc || (aiEditCount ?? 0) > 0) && (
                 <>
                     <div className="ml-auto" />
                     {(aiEditCount ?? 0) > 0 && onToggleAiEdits && (
@@ -401,21 +403,24 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                             )}
                         </button>
                     )}
-                    {onToggleChatPanel && (
+                    {(onToggleChatPanel || chatDisabledReason) && (
                         <button
                             type="button"
                             className={
                                 'text-xs px-2 py-0.5 rounded ' +
-                                (chatPanelOpen
+                                (chatDisabledReason
+                                    ? 'text-[#8c959f] dark:text-[#555] cursor-not-allowed'
+                                    : chatPanelOpen
                                     ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#333] dark:text-white'
                                     : hasExistingChat
                                         ? 'text-[#0078d4] dark:text-[#3794ff] hover:bg-[#e0eef9] dark:hover:bg-[#1a3a5c]'
                                         : 'text-[#888] hover:text-[#333] dark:hover:text-white')
                             }
                             onClick={onToggleChatPanel}
+                            disabled={Boolean(chatDisabledReason)}
                             data-testid="chat-panel-toggle"
-                            aria-label={chatPanelOpen ? 'Hide AI chat' : hasExistingChat ? 'Continue AI chat' : 'Show AI chat'}
-                            title={chatPanelOpen ? 'Hide AI chat' : hasExistingChat ? 'Continue AI chat' : 'Show AI chat'}
+                            aria-label={chatDisabledReason ?? (chatPanelOpen ? 'Hide AI chat' : hasExistingChat ? 'Continue AI chat' : 'Show AI chat')}
+                            title={chatDisabledReason ?? (chatPanelOpen ? 'Hide AI chat' : hasExistingChat ? 'Continue AI chat' : 'Show AI chat')}
                         >
                             🤖
                         </button>

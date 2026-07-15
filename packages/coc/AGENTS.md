@@ -62,7 +62,10 @@ all have their own `references/*.md`.
   authority. Every non-default Notes file, folder, comment-sidecar, order, and
   image path must pass `notes/notes-path-safety.ts`; it treats both slash styles
   as separators, rejects absolute/drive/UNC/parent paths, and resolves existing
-  symlinks before checking containment in the selected root.
+  symlinks before checking containment in the selected root. The SPA must keep
+  task-derived rows out of Notes root removal selection, refresh discovery with
+  the tree, clear the selected file when a root disappears or the workspace
+  changes, and discard late root/tree responses from stale workspace scopes.
 - **In-memory caching** uses the one shared primitive at
   `src/server/cache/` (`createCache<T>({ namespace, ttlMs?, maxSize=500,
   immutable? })` → a handle with `get`/`set`/`getOrCompute`/`delete`/

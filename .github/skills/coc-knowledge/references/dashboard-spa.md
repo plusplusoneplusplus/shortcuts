@@ -55,6 +55,21 @@ When `features.commitChatLens` is enabled from Admin -> Configure -> Features, r
 
 The Notes view inherits the same `features.commitChatLens` source of truth for its AI chat surface. `NotesView` uses `useReviewChatPresentation()` with a workspace-scoped `notes` target, preserving the legacy workspace-scoped notes chat open key while Lens is disabled and using the shared target-scoped Lens open/pin/minimize keys when Lens is enabled. The notes area shows no separate Lens indicator; no notes-specific Lens setting is stored or exposed. Note-producing SPA flows that originate from notes/chat UI (notes chat edits, AI note creation, and bulk chat summaries) attach `context.lensChat = { inherited: true, source: 'features.commitChatLens' }` only while the shared Lens flag is enabled, so the process metadata records inherited Lens routing without adding persistent notes-specific state.
 
+The Notes collection selector loads workspace-routed managed, user-configured,
+and task-derived roots through `useNotesRoots`. Task-derived rows use the
+server-provided `isProtected` marker to show a lock and stay outside modifier,
+range, and bulk-removal selection; opening a protected row remains a normal
+read/write collection switch. Refresh reloads both the selected tree and the
+derived collection list, so newly created task directories appear and removed
+directories disappear without persisted Notes configuration. If the active
+root disappears, Notes selects the managed root, clears the file selection and
+route, and persists that fallback. Root and tree request generations are scoped
+to the current workspace and root so late responses from a prior workspace
+cannot replace the active selector or tree. File, folder, search, comment, and
+image actions carry the active root identity. Notes Chat and AI page creation
+remain managed-root-only and render disabled with an explanation in every
+non-default collection.
+
 Notes Chat renders exactly one compact 48px header (`NotesChatHeader.tsx`, next to `NoteChatPanel.tsx`) across the Lens, pinned side-panel, and embedded (mobile / Lens-disabled) presentations and across both the empty and active-conversation states — there is no density setting or alternate full header. The header shows a Notes Chat identity mark, a muted context label (current note title in per-note scope, workspace display name via `resolveWorkspaceName` in per-workspace scope, truncated with the full value on hover), the `NotesChatScopeToggle` segmented control (This note / Workspace), and a window-action group whose contents depend on `NoteChatPanel`'s `presentation` prop (`'lens' | 'side-panel' | 'embedded'`, computed in `NotesView` from `useReviewChatPresentation()`'s state): minimize + pin in `'lens'`, unpin in `'side-panel'`, neither in `'embedded'`; close is always present. "New chat" (resets the active scope's chat, keeping it recoverable in history) lives in the header's `ChatHeaderOverflowMenu` instead of a dedicated button, and only renders when a chat exists. To avoid duplicated chrome, `ReviewChatPlacementFrame` accepts an opt-in `hideHeader` prop (Notes passes it; commits/PRs/Work Items omit it and keep the shared generic Lens/side-panel header unchanged) and `ChatDetail` accepts an opt-in `hideHeader` prop (Notes passes it to suppress the nested `ChatHeader`; other `ChatDetail` consumers are unaffected). The ask/autopilot mode toggle (`NoteModeToggle`) is intentionally kept out of the header and renders inline with the empty-state composer next to the input, matching where `ChatDetail`'s own `compactModeSelector` places it once a chat is active.
 
 Chat-list hierarchy grouping is consolidated behind a shared engine:

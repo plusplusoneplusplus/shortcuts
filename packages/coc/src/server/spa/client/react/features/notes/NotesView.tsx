@@ -55,10 +55,19 @@ function getNotesChatLegacyOpenStorageKey(workspaceId: string): string {
 
 export function NotesView({ workspaceId, initialNotePath, defaultScope, active = true, dockStatusFooter = false }: NotesViewProps) {
     const { dispatch } = useApp();
-    const [selectedPath, setSelectedPath] = useState<string | null>(initialNotePath ?? null);
+    const [selectedPathState, setSelectedPathState] = useState<string | null>(initialNotePath ?? null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [noteViewMode, setNoteViewMode] = useState<NoteViewMode>('rich');
     const { isMobile } = useBreakpoint();
+
+    const updateHash = useCallback((path: string | null) => {
+        const target = path
+            ? buildNoteHash(workspaceId, path)
+            : '#repos/' + encodeURIComponent(workspaceId) + '/notes';
+        if (location.hash !== target) {
+            location.hash = target;
+        }
+    }, [workspaceId]);
 
     // ── Navigation history ──────────────────────────────────────────────────
 
@@ -102,20 +111,51 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
 
     // Root param for API calls (undefined = default managed root)
     const rootParam = selectedRootId !== 'default' ? selectedRootId : undefined;
-
-    // Clear selected path when root changes
-    const prevRootRef = useRef(selectedRootId);
-    useEffect(() => {
-        if (prevRootRef.current !== selectedRootId) {
-            prevRootRef.current = selectedRootId;
-            setSelectedPath(null);
-            dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: null });
-        }
-    }, [selectedRootId, dispatch]);
+    const rootScopeKey = `${workspaceId}\0${selectedRootId}`;
+    const activeRootScopeRef = useRef(rootScopeKey);
+    activeRootScopeRef.current = rootScopeKey;
+    const selectedPathScopeRef = useRef(rootScopeKey);
+    const selectedPath = selectedPathScopeRef.current === rootScopeKey ? selectedPathState : null;
+    const setSelectedPath = useCallback((path: string | null) => {
+        selectedPathScopeRef.current = activeRootScopeRef.current;
+        setSelectedPathState(path);
+    }, []);
 
     // ── Notes root path (surfaced from NotesSidebar for plan-file skill button) ──
 
     const [notesRoot, setNotesRoot] = useState<string | null>(null);
+
+    // Root selection and note selection form one workspace-scoped identity.
+    // Clear the prior file synchronously after either part changes so the same
+    // relative path is never carried into another collection or workspace.
+    const prevRootScopeRef = useRef({ workspaceId, selectedRootId, initialNotePath });
+    useEffect(() => {
+        const previous = prevRootScopeRef.current;
+        const scopeChanged = previous.workspaceId !== workspaceId
+            || previous.selectedRootId !== selectedRootId;
+        const initialPathChanged = previous.initialNotePath !== initialNotePath;
+        prevRootScopeRef.current = { workspaceId, selectedRootId, initialNotePath };
+        if (!scopeChanged) {
+            return;
+        }
+
+        const workspaceChanged = previous.workspaceId !== workspaceId;
+        const nextPath = workspaceChanged && initialPathChanged ? initialNotePath ?? null : null;
+        setSelectedPath(nextPath);
+        setNotesRoot(null);
+        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: nextPath });
+        updateHash(nextPath);
+    }, [dispatch, initialNotePath, selectedRootId, updateHash, workspaceId]);
+
+    const aiUnavailableReason = isDefaultRoot
+        ? undefined
+        : 'AI note actions are available only in the managed Notes collection';
+
+    useEffect(() => {
+        if (!isDefaultRoot && chatPanelOpen) {
+            closeNoteChat();
+        }
+    }, [chatPanelOpen, closeNoteChat, isDefaultRoot]);
 
     // ── Dismiss update dot on click anywhere in NotesView ────────────────────
     const markSeenRef = useRef<(() => void) | null>(null);
@@ -287,9 +327,9 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
 
     const handleResolveWithAI = useCallback(async () => {
         if (!selectedPath) return;
-        const { content } = await notesApi.getContent(workspaceId, selectedPath);
+        const { content } = await notesApi.getContent(workspaceId, selectedPath, rootParam);
         await comments.resolveWithAI(content);
-    }, [selectedPath, workspaceId, comments]);
+    }, [selectedPath, workspaceId, rootParam, comments]);
 
     // ── Navigation ──────────────────────────────────────────────────────────
 
@@ -305,15 +345,6 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
             setSelectedPath(initialNotePath);
         }
     }, [initialNotePath]);
-
-    const updateHash = useCallback((path: string | null) => {
-        const target = path
-            ? buildNoteHash(workspaceId, path)
-            : '#repos/' + encodeURIComponent(workspaceId) + '/notes';
-        if (location.hash !== target) {
-            location.hash = target;
-        }
-    }, [workspaceId]);
 
     const selectedPathRef = useRef<string | null>(selectedPath);
     useEffect(() => { selectedPathRef.current = selectedPath; }, [selectedPath]);
@@ -411,7 +442,7 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
 
     const isResizing = !isMobile && (sidebarResize.isDragging || commentsPanelResize.isDragging || chatPanelResize.isDragging);
     const commentsVisible = commentsPanelOpen && !!selectedPath && noteViewMode === 'rich';
-    const chatVisible = chatPanelOpen;
+    const chatVisible = chatPanelOpen && isDefaultRoot;
     // The compact Notes Chat header (rendered inside NoteChatPanel) needs to
     // know which window actions apply: minimize/pin when floating as a Lens,
     // unpin when pinned to the side panel via the shared frame, or neither
@@ -528,9 +559,10 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
                     onFlushSave={(fn) => { flushSaveRef.current = fn; }}
                     chatPanelOpen={chatPanelOpen}
                     onToggleChatPanel={handleToggleChatPanel}
+                    chatDisabledReason={aiUnavailableReason}
                     hasExistingChat={hasNoteChat}
                     onNavigateToNote={handleNavigateToNote}
-                    onAddNoteReference={chatPanelOpen ? noteRefs.addReference : undefined}
+                    onAddNoteReference={chatVisible ? noteRefs.addReference : undefined}
                     isDefaultRoot={isDefaultRoot}
                     root={rootParam}
                 />

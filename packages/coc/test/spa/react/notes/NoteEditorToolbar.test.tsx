@@ -222,6 +222,26 @@ describe('NoteEditorToolbar — highlight controls', () => {
         render(<NoteEditorToolbar editor={editor as never} />);
         expect(screen.queryByTestId('chat-panel-toggle')).toBeNull();
     });
+
+    it('keeps unavailable Notes Chat visible with a disabled reason', () => {
+        const editor = makeMockEditor();
+        const onToggleChatPanel = vi.fn();
+        const reason = 'AI note actions are available only in the managed Notes collection';
+        render(
+            <NoteEditorToolbar
+                editor={editor as never}
+                onToggleChatPanel={onToggleChatPanel}
+                chatDisabledReason={reason}
+            />,
+        );
+
+        const toggle = screen.getByTestId('chat-panel-toggle');
+        expect(toggle).toBeDisabled();
+        expect(toggle.getAttribute('title')).toBe(reason);
+        expect(toggle.getAttribute('aria-label')).toBe(reason);
+        fireEvent.click(toggle);
+        expect(onToggleChatPanel).not.toHaveBeenCalled();
+    });
 });
 
 describe('NoteEditorToolbar — table controls secondary row', () => {

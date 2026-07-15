@@ -185,8 +185,14 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const [rootSelectionAnchor, setRootSelectionAnchor] = useState<string | null>(null);
     const [removingSelectedRoots, setRemovingSelectedRoots] = useState(false);
     const orderedRootIds = useMemo(() => roots?.map(r => r.rootId) ?? [], [roots]);
-    const removableRootIds = useMemo(() => new Set((roots ?? []).filter(r => !r.isDefault).map(r => r.rootId)), [roots]);
-    const removableSelectionCount = selectedRootIdsForRemoval.size;
+    const removableRootIds = useMemo(
+        () => new Set((roots ?? []).filter(r => !r.isDefault && !r.isProtected).map(r => r.rootId)),
+        [roots],
+    );
+    const removableSelectionCount = useMemo(
+        () => [...selectedRootIdsForRemoval].filter(id => removableRootIds.has(id)).length,
+        [removableRootIds, selectedRootIdsForRemoval],
+    );
 
     useEffect(() => {
         if (rootDropdownOpen) return;
@@ -601,7 +607,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         handleMultiSelect(path, { shift: shiftKey, ctrl: ctrlKey }, flatPageList);
     }, [handleMultiSelect, flatPageList]);
 
-    const handleRootOptionClick = useCallback((rootId: string, isDefault: boolean, e: React.MouseEvent<HTMLButtonElement>) => {
+    const handleRootOptionClick = useCallback((rootId: string, isProtected: boolean, e: React.MouseEvent<HTMLButtonElement>) => {
         const hasModifier = e.shiftKey || e.ctrlKey || e.metaKey;
         if (!hasModifier) {
             onSelectRoot?.(rootId);
@@ -612,13 +618,18 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         }
 
         e.preventDefault();
+        if (isProtected) {
+            return;
+        }
         if (e.shiftKey) {
             const anchor = rootSelectionAnchor && orderedRootIds.includes(rootSelectionAnchor)
                 ? rootSelectionAnchor
                 : selectedRootId;
             const anchorIndex = anchor ? orderedRootIds.indexOf(anchor) : -1;
             const targetIndex = orderedRootIds.indexOf(rootId);
-            if (anchorIndex === -1 || targetIndex === -1) return;
+            if (anchorIndex === -1 || targetIndex === -1) {
+                return;
+            }
 
             const start = Math.min(anchorIndex, targetIndex);
             const end = Math.max(anchorIndex, targetIndex);
@@ -626,7 +637,9 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             setSelectedRootIdsForRemoval(prev => {
                 const next = new Set(prev);
                 for (const id of range) {
-                    if (removableRootIds.has(id)) next.add(id);
+                    if (removableRootIds.has(id)) {
+                        next.add(id);
+                    }
                 }
                 return next;
             });
@@ -634,19 +647,32 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         }
 
         setRootSelectionAnchor(rootId);
-        if (isDefault) return;
         setSelectedRootIdsForRemoval(prev => {
             const next = new Set(prev);
-            if (next.has(rootId)) next.delete(rootId);
-            else next.add(rootId);
+            if (next.has(rootId)) {
+                next.delete(rootId);
+            } else {
+                next.add(rootId);
+            }
             return next;
         });
     }, [onSelectRoot, orderedRootIds, removableRootIds, rootSelectionAnchor, selectedRootId]);
 
+    const handleRefreshNotes = useCallback(async () => {
+        await Promise.allSettled([
+            refresh(),
+            Promise.resolve(onRootsChanged?.()),
+        ]);
+    }, [onRootsChanged, refresh]);
+
     const handleRemoveSelectedRoots = useCallback(async () => {
-        if (removingSelectedRoots) return;
+        if (removingSelectedRoots) {
+            return;
+        }
         const selectedIds = [...selectedRootIdsForRemoval].filter(id => removableRootIds.has(id));
-        if (selectedIds.length === 0) return;
+        if (selectedIds.length === 0) {
+            return;
+        }
 
         setRemovingSelectedRoots(true);
         let removedCount = 0;
@@ -742,8 +768,13 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                                 data-testid="notes-root-dropdown"
                             >
                                 {roots!.map(r => {
-                                    const selectedForRemoval = selectedRootIdsForRemoval.has(r.rootId);
+                                    const selectedForRemoval = removableRootIds.has(r.rootId)
+                                        && selectedRootIdsForRemoval.has(r.rootId);
                                     const isActive = r.rootId === selectedRootId;
+                                    const isProtected = r.isDefault || Boolean(r.isProtected);
+                                    const protectedReason = r.isDefault
+                                        ? 'Default managed root cannot be removed'
+                                        : 'Managed through Task/Plans settings and cannot be removed';
                                     return (
                                         <button
                                             key={r.rootId}
@@ -756,11 +787,11 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                                             }`}
                                             role="option"
                                             aria-selected={isActive}
-                                            aria-label={`${r.label}${isActive ? ', current root' : ''}${r.isDefault ? ', default managed root, cannot be removed' : selectedForRemoval ? ', selected for removal' : ''}`}
-                                            onClick={(e) => handleRootOptionClick(r.rootId, r.isDefault, e)}
+                                            aria-label={`${r.label}${isActive ? ', current root' : ''}${isProtected ? `, ${protectedReason.toLowerCase()}` : selectedForRemoval ? ', selected for removal' : ''}`}
+                                            onClick={(e) => handleRootOptionClick(r.rootId, isProtected, e)}
                                             data-testid={`notes-root-option-${r.rootId}`}
                                             data-removal-selected={selectedForRemoval ? 'true' : undefined}
-                                            title={r.isDefault ? 'Default managed root cannot be removed' : r.rootId}
+                                            title={isProtected ? protectedReason : r.rootId}
                                         >
                                             <span className="min-w-0 flex items-center gap-1 truncate">
                                                 <span aria-hidden="true">{r.isDefault ? '📓' : '📁'}</span>
@@ -769,8 +800,8 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                                             <span className="flex-shrink-0 text-[11px] text-[#656d76] dark:text-[#9d9d9d]">
                                                 {selectedForRemoval ? (
                                                     <span data-testid={`notes-root-selected-check-${r.rootId}`} aria-hidden="true">✓</span>
-                                                ) : r.isDefault ? (
-                                                    <span data-testid="notes-root-protected-default" title="Default managed root cannot be removed" aria-label="Protected root">🔒</span>
+                                                ) : isProtected ? (
+                                                    <span data-testid={`notes-root-protected-${r.rootId}`} title={protectedReason} aria-label="Protected root">🔒</span>
                                                 ) : isActive ? (
                                                     <span>Current</span>
                                                 ) : null}
@@ -802,7 +833,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 <button
                     type="button"
                     className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-transparent text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e] disabled:opacity-40 disabled:cursor-not-allowed"
-                    onClick={refresh}
+                    onClick={() => void handleRefreshNotes()}
                     disabled={loading}
                     aria-label="Refresh Notes"
                     title="Refresh Notes"
@@ -857,10 +888,16 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                                 📄 New Page
                             </button>
                             <button
-                                className="w-full text-left px-3 py-1.5 text-xs text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e]"
+                                className={`w-full text-left px-3 py-1.5 text-xs ${
+                                    isDefaultRoot
+                                        ? 'text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e]'
+                                        : 'text-[#8c959f] dark:text-[#555] cursor-not-allowed'
+                                }`}
                                 onClick={handleNewPageWithAI}
+                                disabled={!isDefaultRoot}
                                 data-testid="add-note-ai-create"
                                 role="menuitem"
+                                title={!isDefaultRoot ? 'New Page with AI is available only in the managed Notes collection' : undefined}
                             >
                                 🤖 New Page with AI…
                             </button>

@@ -82,6 +82,8 @@ const ROOTS: NotesRootEntry[] = [
     { rootId: 'docs', label: 'Docs', isDefault: false },
     { rootId: 'plans', label: 'Plans', isDefault: false },
     { rootId: 'archive', label: 'Archive', isDefault: false },
+    { rootId: 'task:primary', label: 'Task Plans', isDefault: false, isProtected: true },
+    { rootId: 'task:legacy', label: 'Legacy Plans (.vscode/tasks)', isDefault: false, isProtected: true },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -1002,6 +1004,60 @@ describe('NotesSidebar', () => {
         expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBe('true');
         expect((await findByTestId('notes-root-option-plans')).getAttribute('data-removal-selected')).toBe('true');
         expect(queryByTestId('notes-root-protected-default')).toBeTruthy();
+    });
+
+    it('shows task-derived roots as protected and excludes them from modifier and range removal', async () => {
+        const onSelectRoot = vi.fn();
+        const protectedRangeRoots: NotesRootEntry[] = [
+            ROOTS[0],
+            ROOTS[1],
+            ROOTS[4],
+            ROOTS[2],
+        ];
+        const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
+            roots: protectedRangeRoots,
+            selectedRootId: 'default',
+            selectedRootLabel: 'Notes',
+            onSelectRoot,
+        });
+        await findByTestId('notes-tree');
+
+        fireEvent.click(await findByTestId('notes-root-selector'));
+        const taskRoot = await findByTestId('notes-root-option-task:primary');
+        expect(taskRoot.textContent).toContain('Task Plans');
+        expect(taskRoot.getAttribute('title')).toContain('Task/Plans settings');
+        expect(queryByTestId('notes-root-protected-task:primary')).toBeTruthy();
+
+        fireEvent.click(taskRoot, { ctrlKey: true });
+        expect(taskRoot.getAttribute('data-removal-selected')).toBeNull();
+        expect(onSelectRoot).not.toHaveBeenCalled();
+        expect(queryByTestId('notes-root-remove-selected')).toBeNull();
+
+        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
+        fireEvent.click(await findByTestId('notes-root-option-plans'), { shiftKey: true });
+
+        expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBe('true');
+        expect(taskRoot.getAttribute('data-removal-selected')).toBeNull();
+        expect((await findByTestId('notes-root-option-plans')).getAttribute('data-removal-selected')).toBe('true');
+        expect((await findByTestId('notes-root-remove-selected')).textContent).toContain('(2)');
+    });
+
+    it('keeps default-root-only AI creation unavailable with a clear reason in external collections', async () => {
+        const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
+            isDefaultRoot: false,
+            roots: ROOTS,
+            selectedRootId: 'task:primary',
+            selectedRootLabel: 'Task Plans',
+            onSelectRoot: vi.fn(),
+        });
+        await findByTestId('notes-tree');
+
+        fireEvent.click(await findByTestId('add-note-btn'));
+        const aiCreate = await findByTestId('add-note-ai-create');
+        expect(aiCreate).toBeDisabled();
+        expect(aiCreate.getAttribute('title')).toContain('managed Notes collection');
+        fireEvent.click(aiCreate);
+        expect(queryByTestId('ai-create-note-textarea')).toBeNull();
     });
 
     it('bulk-removes selected additional roots, refreshes roots, and never deletes note files', async () => {
