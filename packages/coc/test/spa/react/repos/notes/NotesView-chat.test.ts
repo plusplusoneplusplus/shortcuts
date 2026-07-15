@@ -58,7 +58,7 @@ describe('NotesView (notes chat refactor)', () => {
         });
 
         it('chat panel visibility uses the resolved chatPanelOpen', () => {
-            expect(source).toContain('const chatVisible = chatPanelOpen;');
+            expect(source).toContain('const chatVisible = chatPanelOpen && isDefaultRoot;');
         });
     });
 

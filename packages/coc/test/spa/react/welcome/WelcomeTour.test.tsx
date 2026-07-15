@@ -73,7 +73,6 @@ function getPatchBodies(): any[] {
 
 afterEach(() => {
     vi.unstubAllGlobals();
-    document.querySelectorAll('#welcome-tour').forEach(el => el.remove());
 });
 
 // ── Visibility gates ───────────────────────────────────────────────

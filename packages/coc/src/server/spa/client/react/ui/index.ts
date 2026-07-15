@@ -22,6 +22,7 @@ export { ToastContainer, useToast } from './Toast';
 export type { ToastProps } from './Toast';
 export { ErrorBoundary } from './ErrorBoundary';
 export { cn } from './cn';
+export { usePortalContainer } from './usePortalContainer';
 
 // ── Layout primitives ──────────────────────────────────────────────────
 export { BottomSheet } from './BottomSheet';

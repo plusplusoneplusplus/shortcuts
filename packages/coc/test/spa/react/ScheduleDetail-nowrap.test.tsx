@@ -27,6 +27,20 @@ vi.mock('../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => `rel:${d}`,
 }));
 
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
+    useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
+}));
+
+vi.mock('../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
+    useResizablePanel: () => ({
+        width: 288,
+        isDragging: false,
+        handleMouseDown: vi.fn(),
+        handleTouchStart: vi.fn(),
+        resetWidth: vi.fn(),
+    }),
+}));
+
 function Wrap({ children }: { children: ReactNode }) {
     return (
         <AppProvider>
@@ -137,20 +151,6 @@ describe('RepoSchedulesTab — max-width constraint', () => {
         const { RepoSchedulesTab } = await import(
             '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab'
         );
-
-        // Mock useBreakpoint to return desktop
-        vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
-            useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
-        }));
-        vi.mock('../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
-            useResizablePanel: () => ({
-                width: 288,
-                isDragging: false,
-                handleMouseDown: vi.fn(),
-                handleTouchStart: vi.fn(),
-                resetWidth: vi.fn(),
-            }),
-        }));
 
         render(
             <Wrap>

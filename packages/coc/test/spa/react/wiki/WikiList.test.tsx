@@ -25,7 +25,6 @@ import { useWiki } from '../../../../src/server/spa/client/react/wiki/hooks/useW
 
 afterEach(() => {
     vi.clearAllMocks();
-    document.querySelectorAll('[data-testid="dialog-overlay"]').forEach(el => el.remove());
 });
 
 const makeWiki = (overrides: Record<string, any> = {}) => ({

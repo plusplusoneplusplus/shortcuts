@@ -72,8 +72,8 @@ export function resolveCopilotInvocation(
     const fileExists = deps.fileExists ?? existsSync;
 
     if (platform === 'win32') {
-        for (const dir of pathEnv.split(path.delimiter).filter(Boolean)) {
-            const loader = path.join(dir, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+        for (const dir of pathEnv.split(path.win32.delimiter).filter(Boolean)) {
+            const loader = path.win32.join(dir, 'node_modules', '@github', 'copilot', 'npm-loader.js');
             if (fileExists(loader)) {
                 return { command: nodePath, args: [loader, ...baseArgs] };
             }
@@ -180,7 +180,11 @@ async function spawnCopilot(args: string[], cwd: string, timeoutMs: number): Pro
 /** Returns the current `git diff HEAD` in workdir, or '' on failure. */
 export function captureGitDiff(workdir: string): string {
     try {
-        return execSync('git diff HEAD', { cwd: workdir, encoding: 'utf-8' });
+        return execSync('git diff HEAD', {
+            cwd: workdir,
+            encoding: 'utf-8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+        });
     } catch {
         return '';
     }

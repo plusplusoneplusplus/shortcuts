@@ -80,56 +80,6 @@ describe('upsertQueueTask', () => {
             result: { output: 'done' },
         });
 
-        // ============================================================================
-        // upsertQueueItem
-        // ============================================================================
-
-        describe('upsertQueueItem', () => {
-            it('persists pause markers with durationHours and queue order', () => {
-                const first = makeTask('t1', { displayName: 'first' });
-                const second = makeTask('t2', { displayName: 'second' });
-                const marker: PauseMarker = {
-                    kind: 'pause-marker',
-                    id: 'pause-1',
-                    createdAt: 1234,
-                    durationHours: 2,
-                };
-
-                store.upsertQueueTask(first, 0);
-                store.upsertQueueItem(marker, 'repo-1', 1);
-                store.upsertQueueTask(second, 2);
-
-                const items = store.getQueueItems('repo-1', ['queued']);
-                expect(items.map(item => item.id)).toEqual(['t1', 'pause-1', 't2']);
-                expect(items[1]).toEqual({
-                    kind: 'pause-marker',
-                    id: 'pause-1',
-                    repoId: 'repo-1',
-                    createdAt: 1234,
-                    durationHours: 2,
-                });
-                expect(store.getQueueTasks('repo-1', ['queued']).map(task => task.id)).toEqual(['t1', 't2']);
-            });
-
-            it('round-trips indefinite pause markers without durationHours', () => {
-                const marker: PauseMarker = {
-                    kind: 'pause-marker',
-                    id: 'pause-indefinite',
-                    createdAt: 5678,
-                };
-
-                store.upsertQueueItem(marker, 'repo-1', 0);
-
-                const [item] = store.getQueueItems('repo-1', ['queued']);
-                expect(item).toEqual({
-                    kind: 'pause-marker',
-                    id: 'pause-indefinite',
-                    repoId: 'repo-1',
-                    createdAt: 5678,
-                });
-            });
-        });
-
         store.upsertQueueTask(task);
         const tasks = store.getQueueTasks('repo-a');
 
@@ -162,6 +112,56 @@ describe('upsertQueueTask', () => {
         const tasks = store.getQueueTasks('repo-1');
         expect(tasks).toHaveLength(1);
         expect(tasks[0].status).toBe('running');
+    });
+});
+
+// ============================================================================
+// upsertQueueItem
+// ============================================================================
+
+describe('upsertQueueItem', () => {
+    it('persists pause markers with durationHours and queue order', () => {
+        const first = makeTask('t1', { displayName: 'first' });
+        const second = makeTask('t2', { displayName: 'second' });
+        const marker: PauseMarker = {
+            kind: 'pause-marker',
+            id: 'pause-1',
+            createdAt: 1234,
+            durationHours: 2,
+        };
+
+        store.upsertQueueTask(first, 0);
+        store.upsertQueueItem(marker, 'repo-1', 1);
+        store.upsertQueueTask(second, 2);
+
+        const items = store.getQueueItems('repo-1', ['queued']);
+        expect(items.map(item => item.id)).toEqual(['t1', 'pause-1', 't2']);
+        expect(items[1]).toEqual({
+            kind: 'pause-marker',
+            id: 'pause-1',
+            repoId: 'repo-1',
+            createdAt: 1234,
+            durationHours: 2,
+        });
+        expect(store.getQueueTasks('repo-1', ['queued']).map(task => task.id)).toEqual(['t1', 't2']);
+    });
+
+    it('round-trips indefinite pause markers without durationHours', () => {
+        const marker: PauseMarker = {
+            kind: 'pause-marker',
+            id: 'pause-indefinite',
+            createdAt: 5678,
+        };
+
+        store.upsertQueueItem(marker, 'repo-1', 0);
+
+        const [item] = store.getQueueItems('repo-1', ['queued']);
+        expect(item).toEqual({
+            kind: 'pause-marker',
+            id: 'pause-indefinite',
+            repoId: 'repo-1',
+            createdAt: 5678,
+        });
     });
 });
 

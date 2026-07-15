@@ -63,14 +63,14 @@ describe('Dialog', () => {
         expect(screen.getByText('OK')).toBeDefined();
     });
 
-    it('renders via createPortal into document.body', () => {
+    it('renders via createPortal into a document.body container', () => {
         render(
             <Dialog open={true} onClose={vi.fn()} title="Portal Test">
                 Content
             </Dialog>
         );
         const backdrop = document.querySelector('.fixed.inset-0');
-        expect(backdrop?.parentElement).toBe(document.body);
+        expect(backdrop?.parentElement?.parentElement).toBe(document.body);
     });
 
     it('forwards className to the inner dialog panel', () => {

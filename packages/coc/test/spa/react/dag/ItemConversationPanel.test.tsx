@@ -197,7 +197,7 @@ describe('ItemConversationPanel', () => {
             close: vi.fn(),
             onerror: null as any,
         };
-        vi.stubGlobal('EventSource', vi.fn(() => mockEs));
+        vi.stubGlobal('EventSource', vi.fn(function () { return mockEs; }));
 
         render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
 
@@ -351,7 +351,7 @@ describe('ItemConversationPanel', () => {
             close: vi.fn(),
             onerror: null as any,
         };
-        vi.stubGlobal('EventSource', vi.fn(() => mockEs));
+        vi.stubGlobal('EventSource', vi.fn(function () { return mockEs; }));
 
         render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
 
@@ -568,7 +568,7 @@ describe('ItemConversationPanel', () => {
                 close: vi.fn(),
                 onerror: null as any,
             };
-            vi.stubGlobal('EventSource', vi.fn(() => mockEs));
+            vi.stubGlobal('EventSource', vi.fn(function () { return mockEs; }));
 
             render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
 
@@ -615,7 +615,7 @@ describe('ItemConversationPanel', () => {
                 close: vi.fn(),
                 onerror: null as any,
             };
-            vi.stubGlobal('EventSource', vi.fn(() => mockEs));
+            vi.stubGlobal('EventSource', vi.fn(function () { return mockEs; }));
 
             render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
 
@@ -682,7 +682,7 @@ describe('ItemConversationPanel', () => {
                 close: vi.fn(),
                 onerror: null as any,
             };
-            vi.stubGlobal('EventSource', vi.fn(() => mockEs));
+            vi.stubGlobal('EventSource', vi.fn(function () { return mockEs; }));
 
             render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
 
@@ -726,7 +726,7 @@ describe('ItemConversationPanel', () => {
                 close: vi.fn(),
                 onerror: null as any,
             };
-            vi.stubGlobal('EventSource', vi.fn(() => mockEs));
+            vi.stubGlobal('EventSource', vi.fn(function () { return mockEs; }));
 
             render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
 

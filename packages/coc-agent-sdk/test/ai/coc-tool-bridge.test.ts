@@ -208,7 +208,7 @@ describe('bridge JSON-RPC handlers', () => {
     });
 
     it('runBridge reads newline-delimited messages and writes responses', async () => {
-        const { Readable, Writable } = await import('stream');
+        const { Readable, Writable } = await import('node:stream');
         const written: string[] = [];
         const stdout = new Writable({
             write(chunk, _enc, cb) { written.push(chunk.toString()); cb(); },

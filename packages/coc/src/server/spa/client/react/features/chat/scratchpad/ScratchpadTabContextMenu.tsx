@@ -19,6 +19,7 @@ export function ScratchpadTabContextMenu({ ctxMenu, workspaceRootPath, onClose }
     const menuRef = useRef<HTMLDivElement>(null);
     const absoluteButtonRef = useRef<HTMLButtonElement>(null);
     const relativeButtonRef = useRef<HTMLButtonElement>(null);
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
     const hasWorkspaceRootPath = !!workspaceRootPath?.trim();
 
@@ -31,12 +32,23 @@ export function ScratchpadTabContextMenu({ ctxMenu, workspaceRootPath, onClose }
         try {
             await navigator.clipboard.writeText(text);
             setCopyStatus('copied');
-            window.setTimeout(onClose, 250);
+            if (closeTimerRef.current !== null) {
+                clearTimeout(closeTimerRef.current);
+            }
+            closeTimerRef.current = setTimeout(onClose, 250);
         } catch (err) {
             console.error('Failed to copy scratchpad path:', err);
             setCopyStatus('failed');
         }
     }, [onClose]);
+
+    useEffect(() => {
+        return () => {
+            if (closeTimerRef.current !== null) {
+                clearTimeout(closeTimerRef.current);
+            }
+        };
+    }, []);
 
     useEffect(() => {
         const target = hasWorkspaceRootPath ? absoluteButtonRef.current : relativeButtonRef.current;

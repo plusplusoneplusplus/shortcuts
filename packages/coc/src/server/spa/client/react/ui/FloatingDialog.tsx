@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactDOM from 'react-dom';
 import { cn } from './cn';
+import { usePortalContainer } from './usePortalContainer';
 
 type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
@@ -103,6 +104,7 @@ export function FloatingDialog({
     const panelRef = useRef<HTMLDivElement>(null);
     const dragOffset = useRef<{ dx: number; dy: number } | null>(null);
     const resizeRef = useRef<ResizeState | null>(null);
+    const portalContainer = usePortalContainer(open);
     const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
     const [size, setSize] = useState<{ width: number; height: number } | null>(null);
 
@@ -182,7 +184,7 @@ export function FloatingDialog({
         };
     }, []);
 
-    if (!open) return null;
+    if (!open || !portalContainer) return null;
 
     const hasMaxWOverride = className ? /\bmax-w-\[/.test(className) : false;
 
@@ -323,6 +325,6 @@ export function FloatingDialog({
                 </div>
             )}
         </div>,
-        document.body,
+        portalContainer,
     );
 }

@@ -189,9 +189,9 @@ describe('resolveCopilotInvocation — cross-platform binary resolution', () => 
     const baseArgs = ['-p', 'hi', '--no-color'];
 
     it('on Windows, runs the npm-loader via node when found on PATH', () => {
-        const shimDir = path.join('C:', 'tools', 'npm-global');
-        const loader = path.join(shimDir, 'node_modules', '@github', 'copilot', 'npm-loader.js');
-        const pathEnv = [path.join('C:', 'other'), shimDir].join(path.delimiter);
+        const shimDir = path.win32.join('C:', 'tools', 'npm-global');
+        const loader = path.win32.join(shimDir, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+        const pathEnv = [path.win32.join('C:', 'other'), shimDir].join(path.win32.delimiter);
 
         const result = resolveCopilotInvocation(baseArgs, {
             platform: 'win32',
@@ -205,11 +205,11 @@ describe('resolveCopilotInvocation — cross-platform binary resolution', () => 
     });
 
     it('on Windows, picks the first PATH dir whose loader exists', () => {
-        const dirA = path.join('C:', 'a');
-        const dirB = path.join('C:', 'b');
-        const loaderA = path.join(dirA, 'node_modules', '@github', 'copilot', 'npm-loader.js');
-        const loaderB = path.join(dirB, 'node_modules', '@github', 'copilot', 'npm-loader.js');
-        const pathEnv = [dirA, dirB].join(path.delimiter);
+        const dirA = path.win32.join('C:', 'a');
+        const dirB = path.win32.join('C:', 'b');
+        const loaderA = path.win32.join(dirA, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+        const loaderB = path.win32.join(dirB, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+        const pathEnv = [dirA, dirB].join(path.win32.delimiter);
 
         const result = resolveCopilotInvocation(baseArgs, {
             platform: 'win32',
@@ -224,7 +224,7 @@ describe('resolveCopilotInvocation — cross-platform binary resolution', () => 
     it('on Windows, falls back to "copilot" when no loader is found', () => {
         const result = resolveCopilotInvocation(baseArgs, {
             platform: 'win32',
-            pathEnv: [path.join('C:', 'x'), path.join('C:', 'y')].join(path.delimiter),
+            pathEnv: [path.win32.join('C:', 'x'), path.win32.join('C:', 'y')].join(path.win32.delimiter),
             fileExists: () => false,
         });
 
@@ -246,7 +246,7 @@ describe('resolveCopilotInvocation — cross-platform binary resolution', () => 
     it('ignores empty PATH segments', () => {
         const result = resolveCopilotInvocation(baseArgs, {
             platform: 'win32',
-            pathEnv: path.delimiter + path.delimiter,
+            pathEnv: path.win32.delimiter + path.win32.delimiter,
             fileExists: () => false,
         });
         expect(result.command).toBe('copilot');

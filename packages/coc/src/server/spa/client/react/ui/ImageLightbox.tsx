@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import ReactDOM from 'react-dom';
+import { usePortalContainer } from './usePortalContainer';
 
 export interface ImageLightboxProps {
     /** Base64 data URL to show, or null to hide the lightbox */
@@ -13,6 +14,8 @@ export interface ImageLightboxProps {
  * Renders via portal to document.body (z-index 10003, above Dialog's 10002).
  */
 export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
+    const portalContainer = usePortalContainer(Boolean(src));
+
     useEffect(() => {
         if (!src) return;
         const handler = (e: KeyboardEvent) => {
@@ -22,7 +25,7 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
         return () => document.removeEventListener('keydown', handler);
     }, [src, onClose]);
 
-    if (!src) return null;
+    if (!src || !portalContainer) return null;
 
     return ReactDOM.createPortal(
         <div
@@ -45,6 +48,6 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
                 ×
             </button>
         </div>,
-        document.body
+        portalContainer
     );
 }

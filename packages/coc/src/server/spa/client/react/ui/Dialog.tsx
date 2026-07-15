@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from 'react';
 import ReactDOM from 'react-dom';
 import { cn } from './cn';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
+import { usePortalContainer } from './usePortalContainer';
 
 export interface DialogProps {
     open: boolean;
@@ -28,6 +29,7 @@ export interface DialogProps {
 
 export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id, disableClose, renderHeader, hidden }: DialogProps) {
     const { isMobile } = useBreakpoint();
+    const portalContainer = usePortalContainer(open);
 
     useEffect(() => {
         if (!open || hidden) return;
@@ -38,7 +40,7 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
         return () => document.removeEventListener('keydown', handler);
     }, [open, hidden, onClose]);
 
-    if (!open) return null;
+    if (!open || !portalContainer) return null;
 
     const hasMaxWOverride = className ? /\bmax-w-\[/.test(className) : false;
 
@@ -114,6 +116,6 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
                 )}
             </div>
         </div>,
-        document.body
+        portalContainer
     );
 }

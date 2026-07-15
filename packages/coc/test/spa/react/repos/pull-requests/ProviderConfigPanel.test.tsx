@@ -12,6 +12,9 @@ const { saveProviderConfig } = vi.hoisted(() => ({
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
+        agentProviders: {
+            listModels: vi.fn().mockResolvedValue({ models: [] }),
+        },
         pullRequests: {
             saveProviderConfig,
         },

@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
+import path from 'path';
 
 const require = createRequire(import.meta.url);
-const vitestEntry = require.resolve('vitest/vitest.mjs');
+const vitestPackageJsonPath = require.resolve('vitest/package.json');
+const vitestPackage = require(vitestPackageJsonPath);
+const vitestEntry = path.resolve(path.dirname(vitestPackageJsonPath), vitestPackage.bin.vitest);
 const args = ['run', ...process.argv.slice(2)];
 const greenExitGraceMs = Number(process.env.COC_VITEST_GREEN_EXIT_GRACE_MS ?? 1_000);
 

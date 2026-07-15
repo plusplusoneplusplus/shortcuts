@@ -20,14 +20,14 @@ describe('FloatingDialog', () => {
         expect(screen.getByText('Panel Content')).toBeDefined();
     });
 
-    it('renders via createPortal into document.body', () => {
+    it('renders via createPortal into a document.body container', () => {
         render(
             <FloatingDialog open={true} onClose={vi.fn()} title="Portal Test">
                 Content
             </FloatingDialog>,
         );
         const panel = document.querySelector('[data-testid="floating-dialog-panel"]');
-        expect(panel?.parentElement).toBe(document.body);
+        expect(panel?.parentElement?.parentElement).toBe(document.body);
     });
 
     it('does NOT render a backdrop overlay', () => {

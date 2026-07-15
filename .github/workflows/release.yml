@@ -22,8 +22,43 @@ permissions:
   contents: write
 
 jobs:
+  dependency-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            scripts/skillopt/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Audit production dependency graph
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit full dependency graph
+        run: npm audit --audit-level=high
+
+      - name: Install SkillOpt dependencies
+        run: npm ci
+        working-directory: scripts/skillopt
+
+      - name: Audit SkillOpt dependency graph
+        run: npm audit --audit-level=high
+        working-directory: scripts/skillopt
+
   # AC-03 — macOS binary (.dmg).
   build-mac:
+    needs: dependency-security
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -75,6 +110,7 @@ jobs:
 
   # AC-04 — Windows installer (.exe via nsis). Mirrors build-mac.
   build-win:
+    needs: dependency-security
     runs-on: windows-latest
     steps:
       - name: Checkout code

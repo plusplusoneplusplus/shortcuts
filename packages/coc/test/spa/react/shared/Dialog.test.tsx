@@ -6,14 +6,9 @@
  * portal overlay is rendered with a backdrop.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Dialog } from '../../../../src/server/spa/client/react/ui/Dialog';
-
-afterEach(() => {
-    // Clean up any portal nodes appended to document.body
-    document.querySelectorAll('[data-testid="dialog-overlay"]').forEach(el => el.remove());
-});
 
 describe('Dialog', () => {
     it('renders nothing when open is false', () => {
