@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 
 // --- Hoisted mocks ---
 const { mockContainerWidth, mockBreakpoint } = vi.hoisted(() => ({
-    mockContainerWidth: { width: 800, tier: 'wide' as const, isWide: true, isMedium: false, isNarrow: false },
+    mockContainerWidth: { width: 1000, tier: 'wide' as const, isWide: true, isMedium: false, isNarrow: false },
     mockBreakpoint: { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const },
 }));
 
@@ -171,7 +171,10 @@ function setTier(tier: 'wide' | 'medium' | 'narrow') {
     mockContainerWidth.isWide = tier === 'wide';
     mockContainerWidth.isMedium = tier === 'medium';
     mockContainerWidth.isNarrow = tier === 'narrow';
-    mockContainerWidth.width = tier === 'wide' ? 800 : tier === 'medium' ? 600 : 400;
+    // Widths reflect the chat-header-specific wide threshold (~960px): a
+    // comfortably wide desktop pane is `wide`, while a 700–900px split/zoomed
+    // pane falls into `medium`, and sub-500px is `narrow`.
+    mockContainerWidth.width = tier === 'wide' ? 1000 : tier === 'medium' ? 800 : 400;
 }
 
 describe('ChatHeader', () => {
@@ -184,7 +187,7 @@ describe('ChatHeader', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', loopsEnabled: true };
     });
 
-    describe('wide tier (>= 700px)', () => {
+    describe('wide tier (>= 960px)', () => {
         it('renders all elements', () => {
             render(<ChatHeader {...defaultProps()} />);
             expect(screen.getByText('Test Chat')).toBeTruthy();
@@ -253,7 +256,7 @@ describe('ChatHeader', () => {
         });
     });
 
-    describe('medium tier (500-699px)', () => {
+    describe('medium tier (500-959px, includes 700–900px split/zoom panes)', () => {
         beforeEach(() => setTier('medium'));
 
         it('hides inline references, resume CLI, context window', () => {
@@ -336,11 +339,14 @@ describe('ChatHeader', () => {
             expect(wideCount).toBeGreaterThan(5);
         });
 
-        it('truncates the title', () => {
+        it('truncates the title via min-w-0 (no hard max-width cap)', () => {
             render(<ChatHeader {...defaultProps({ title: 'A very long chat title that should be truncated at narrow width' })} />);
             const titleEl = screen.getByText('A very long chat title that should be truncated at narrow width');
             expect(titleEl.className).toContain('truncate');
-            expect(titleEl.className).toContain('max-w-[120px]');
+            expect(titleEl.className).toContain('min-w-0');
+            // The legacy 120px hard cap is gone — the flexible/clipped identity
+            // group now bounds the title instead.
+            expect(titleEl.className).not.toContain('max-w-[120px]');
         });
 
         it('still shows back, title, badge, and copy', () => {
@@ -806,6 +812,70 @@ describe('ChatHeader', () => {
         it('does NOT show provider badge when task is null', () => {
             render(<ChatHeader {...defaultProps({ task: null })} />);
             expect(screen.queryByTestId('provider-badge')).toBeNull();
+        });
+    });
+
+    describe('700–900px split/zoom pane (medium tier)', () => {
+        it('folds References into the overflow menu (not inline) and keeps the view-toggle slot', () => {
+            setTier('medium');
+            mockContainerWidth.width = 800;
+            render(<ChatHeader {...defaultProps({ viewToggle: <span data-testid="view-toggle-slot">VT</span> })} />);
+
+            // References is absent from the inline identity group at 700–900px…
+            const identity = screen.getByTestId('chat-header-identity');
+            expect(identity.querySelector('[data-testid="references-dropdown"]')).toBeNull();
+            expect(screen.queryByTestId('references-dropdown')).toBeNull();
+
+            // …but reachable through the overflow item.
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).toContain('references');
+            expect(menu.getAttribute('data-labels')?.split('|')).toContain('References (2)');
+
+            // The Thread/Agents view-toggle slot stays rendered in the action group.
+            expect(screen.getByTestId('view-toggle-slot')).toBeTruthy();
+        });
+    });
+
+    describe('responsive structure (prevents action-group bleed)', () => {
+        it('makes the identity group flex to remaining width and clip its overflow', () => {
+            setTier('wide');
+            render(<ChatHeader {...defaultProps()} />);
+            const identity = screen.getByTestId('chat-header-identity');
+            expect(identity.className).toContain('flex-1');
+            expect(identity.className).toContain('min-w-0');
+            expect(identity.className).toContain('overflow-hidden');
+        });
+
+        it('truncates the title on every tier', () => {
+            for (const t of ['wide', 'medium', 'narrow'] as const) {
+                setTier(t);
+                const { unmount } = render(<ChatHeader {...defaultProps({ title: 'Persistent title' })} />);
+                const titleEl = screen.getByText('Persistent title');
+                expect(titleEl.className, `title should truncate at ${t}`).toContain('truncate');
+                expect(titleEl.className, `title should be min-w-0 at ${t}`).toContain('min-w-0');
+                unmount();
+            }
+        });
+
+        it('stacks the action group onto a full, end-aligned second row in the narrow tier', () => {
+            setTier('narrow');
+            render(<ChatHeader {...defaultProps()} />);
+            const actions = screen.getByTestId('chat-header-actions');
+            expect(actions.className).toContain('w-full');
+            expect(actions.className).toContain('justify-end');
+            // The header opts into wrapping so the second row is reachable.
+            expect(screen.getByTestId('chat-header').className).toContain('flex-wrap');
+        });
+
+        it('keeps the action group inline (single row, not wrapped) at wide and medium', () => {
+            for (const t of ['wide', 'medium'] as const) {
+                setTier(t);
+                const { unmount } = render(<ChatHeader {...defaultProps()} />);
+                const actions = screen.getByTestId('chat-header-actions');
+                expect(actions.className, `actions should not be full-width at ${t}`).not.toContain('w-full');
+                expect(screen.getByTestId('chat-header').className, `header should not wrap at ${t}`).not.toContain('flex-wrap');
+                unmount();
+            }
         });
     });
 });

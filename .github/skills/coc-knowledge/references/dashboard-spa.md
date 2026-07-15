@@ -613,6 +613,20 @@ Task-tree queue activity badges reuse the provider dot palette from
 `useQueueChat`, and file/folder "in progress" badges fall back to Copilot
 green when provider metadata is missing.
 
+`ChatHeader` measures its own container via `useContainerWidth` with a
+chat-header-specific `wideThreshold` of 960px (raised above the generic 700px
+default) because its wide tier renders the inline `ReferencesDropdown` plus the
+full status pill on the left while the right side carries the `Thread | Agents`
+view toggle, cascade, copy, and `ChatHeaderOverflowMenu` controls. At `wide`
+(≥960px) References is inline and the status pill shows its label + duration; at
+`medium` (500–959px, including 700–900px split-pane, source-canvas, and
+browser-zoom widths) References folds into the overflow menu and the pill goes
+icon-only; at `narrow` (<500px) the action group wraps onto a full, end-aligned
+second row and float/pop-out move into overflow. The left identity group is
+`flex-1 min-w-0 overflow-hidden` and the title is always `min-w-0 truncate`, so
+the title yields width first and can never bleed under the non-shrinking action
+group.
+
 `QueuedFollowUps` renders pending messages as compact dashed-border cards with cancel buttons.
 
 `ConversationMetadataPopover` keeps long identifiers as separate label/value rows
