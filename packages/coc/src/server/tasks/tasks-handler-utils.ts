@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory } from '@plusplusoneplusplus/forge';
 import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/forge';
+import { getRepoDataPath } from '../paths';
 
 /**
  * Directories outside the workspace that are trusted for **read-only** access.
@@ -123,29 +124,51 @@ export interface TasksSettings {
 
 const TASKS_SETTINGS_FILE = 'tasks-settings.json';
 
+function parseTasksSettings(raw: string): TasksSettings | undefined {
+    try {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.folderPaths)
+            && parsed.folderPaths.every((folderPath: unknown) => typeof folderPath === 'string')) {
+            return { folderPaths: parsed.folderPaths, persisted: true };
+        }
+    } catch {
+        // Invalid settings use the same empty fallback as a missing file.
+    }
+    return undefined;
+}
+
 /**
  * Read per-workspace tasks settings (folderPaths).
  * Returns default (empty folderPaths) if file doesn't exist.
  * `persisted` is true when the result was read from an existing settings file.
  */
 export async function readTasksSettings(dataDir: string, workspaceId: string): Promise<TasksSettings> {
-    const { getRepoDataPath } = await import('../paths');
     const filePath = getRepoDataPath(dataDir, workspaceId, TASKS_SETTINGS_FILE);
     try {
         const raw = await fs.promises.readFile(filePath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.folderPaths)) {
-            return { folderPaths: parsed.folderPaths, persisted: true };
-        }
+        return parseTasksSettings(raw) ?? { folderPaths: [], persisted: false };
     } catch { /* file doesn't exist or invalid — return default */ }
     return { folderPaths: [], persisted: false };
+}
+
+/**
+ * Synchronous settings read for request-time root resolution. Notes root
+ * resolution is synchronous, so this keeps task settings as the single source
+ * of truth without caching or copying folder paths into Notes preferences.
+ */
+export function readTasksSettingsSync(dataDir: string, workspaceId: string): TasksSettings {
+    const filePath = getRepoDataPath(dataDir, workspaceId, TASKS_SETTINGS_FILE);
+    try {
+        return parseTasksSettings(fs.readFileSync(filePath, 'utf-8')) ?? { folderPaths: [], persisted: false };
+    } catch {
+        return { folderPaths: [], persisted: false };
+    }
 }
 
 /**
  * Write per-workspace tasks settings.
  */
 export async function writeTasksSettings(dataDir: string, workspaceId: string, settings: TasksSettings): Promise<void> {
-    const { getRepoDataPath } = await import('../paths');
     const filePath = getRepoDataPath(dataDir, workspaceId, TASKS_SETTINGS_FILE);
     const dir = path.dirname(filePath);
     await fs.promises.mkdir(dir, { recursive: true });

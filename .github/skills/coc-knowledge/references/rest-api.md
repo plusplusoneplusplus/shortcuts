@@ -263,20 +263,21 @@ Page create and rename operations normalize page filenames by appending `.md` wh
 | DELETE | `/api/workspaces/:id/notes/:path` | Delete note (`?root=` optional) |
 | GET | `/api/workspaces/:id/notes-git/status` | Git status (default root only) |
 | POST | `/api/workspaces/:id/notes-git/commit` | Git commit (default root only) |
-| GET | `/api/workspaces/:id/notes/roots` | List configured roots |
+| GET | `/api/workspaces/:id/notes/roots` | List configured and task-derived roots |
 | POST | `/api/workspaces/:id/notes/roots` | Add a repo-folder root |
 | DELETE | `/api/workspaces/:id/notes/roots` | Remove a repo-folder root |
 
 ### Multi-Root Notes
 
-Users can add up to **10** additional notes roots per workspace — subfolders inside the workspace git repo. The default managed root (`~/.coc/repos/<workspaceId>/notes/`) is always present.
+Users can add up to **10** additional notes roots per workspace — subfolders inside the workspace git repo. The default managed root (`~/.coc/repos/<workspaceId>/notes/`) is always present. Existing task directories are also exposed as protected roots: the repo-scoped `tasks/` directory, `<workspace>/.vscode/tasks`, and relative or absolute paths from `tasks-settings.json#folderPaths`.
 
-- **Root resolution:** default root via `getRepoDataPath(dataDir, workspaceId, 'notes')`; repo-folder roots via `<workspace-git-root>/<relative-path>`.
+- **Root resolution:** default root via `getRepoDataPath(dataDir, workspaceId, 'notes')`; repo-folder roots via `<workspace-git-root>/<relative-path>`; task-derived roots via opaque `task:<sha256>` identities recomputed from the selected workspace's existing canonical directories on every request. A client path or task identity is never accepted as filesystem authority.
+- **Task-root discovery:** missing task directories are omitted, canonical duplicates collapse with primary then legacy then configured label priority, and a task-derived protected entry hides an overlapping normal Notes root. Discovery does not write `additionalNotesRoots` or task settings and does not count toward the 10-root limit.
 - **Git ops** apply only to the default root; repo-folder roots inherit the workspace repo's git.
 - **Comment sidecar** for repo-folder roots is stored at `~/.coc/repos/<workspaceId>/notes-comments/<encoded-root-path>/`.
 - **Images** for repo-folder roots are co-located in `<root>/.images/`; default root uses `.attachments/`.
 - **System folders** (e.g., Plans) are auto-created only in the default root.
-- Configured roots are persisted in `PerRepoPreferences.additionalNotesRoots`.
+- User-configured Notes roots are persisted in `PerRepoPreferences.additionalNotesRoots`; task-derived roots remain owned by task settings.
 
 ## Workflows
 

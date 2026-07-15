@@ -40,6 +40,8 @@ export interface NotesRootEntry {
   label: string;
   /** Whether this is the default managed root (always present, cannot be removed). */
   isDefault: boolean;
+  /** Task-derived collections are protected and managed through task settings. */
+  isProtected?: boolean;
 }
 
 export interface NotesRootsResponse {

@@ -10,10 +10,18 @@
  *   DELETE /api/workspaces/:id/notes/roots        — remove a root
  */
 
+import * as path from 'path';
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import { readRepoPreferences, writeRepoPreferences } from '../preferences-handler';
-import { DEFAULT_ROOT_ID, MAX_ADDITIONAL_NOTES_ROOTS, validateNotesRootPath } from './notes-root-resolver';
+import {
+    canonicalizeExistingNotesDirectory,
+    DEFAULT_ROOT_ID,
+    discoverTaskDerivedNotesRoots,
+    MAX_ADDITIONAL_NOTES_ROOTS,
+    validateNotesRootPath,
+} from './notes-root-resolver';
+import { taskRootPathComparisonKey } from '../tasks/task-root-resolver';
 import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
@@ -28,6 +36,8 @@ export interface NotesRootEntry {
     label: string;
     /** Whether this is the default managed root (always present, cannot be removed). */
     isDefault: boolean;
+    /** Task-derived collections are protected and managed through task settings. */
+    isProtected?: boolean;
 }
 
 // ============================================================================
@@ -55,10 +65,24 @@ export function registerNotesRootsRoutes(
 
             const prefs = readRepoPreferences(dataDir, ws.id);
             const additional = prefs.additionalNotesRoots ?? [];
+            const taskRoots = discoverTaskDerivedNotesRoots(dataDir, ws.id, ws.rootPath);
+            const taskRootPaths = new Set(
+                taskRoots.map(root => taskRootPathComparisonKey(root.absolutePath)),
+            );
+            const visibleAdditional = additional.filter(rootPath => {
+                const canonicalPath = canonicalizeExistingNotesDirectory(path.resolve(ws.rootPath, rootPath));
+                return !canonicalPath || !taskRootPaths.has(taskRootPathComparisonKey(canonicalPath));
+            });
 
             const roots: NotesRootEntry[] = [
                 { rootId: DEFAULT_ROOT_ID, label: 'Notes', isDefault: true },
-                ...additional.map(r => ({
+                ...taskRoots.map(root => ({
+                    rootId: root.rootId,
+                    label: root.label,
+                    isDefault: false,
+                    isProtected: true,
+                })),
+                ...visibleAdditional.map(r => ({
                     rootId: r,
                     label: r,
                     isDefault: false,
@@ -145,6 +169,10 @@ export function registerNotesRootsRoutes(
             const normalized = rawPath.replace(/\\/g, '/').replace(/\/+$/, '');
             if (normalized === DEFAULT_ROOT_ID || normalized === '') {
                 return sendError(res, 400, 'Cannot remove the default managed root.');
+            }
+            if (discoverTaskDerivedNotesRoots(dataDir, ws.id, ws.rootPath)
+                .some(root => root.rootId === normalized)) {
+                return sendError(res, 400, 'Task-derived Notes roots are protected and managed through task settings.');
             }
 
             const prefs = readRepoPreferences(dataDir, ws.id);

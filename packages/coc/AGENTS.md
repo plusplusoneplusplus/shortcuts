@@ -54,6 +54,12 @@ all have their own `references/*.md`.
   and `routes.ts` owns HTTP route registration. `preferences-handler.ts` is a
   compatibility barrel; new server code should import the specific preference
   module it needs.
+- **Notes task collections** are discovered per request from existing canonical
+  directories: the repo-scoped task root, `.vscode/tasks`, and task
+  `folderPaths`. Their `task:<sha256>` root ids are opaque, protected, and
+  workspace-scoped. Never persist them in `additionalNotesRoots`, count them
+  toward the user-configured Notes-root limit, or accept a client path as root
+  authority.
 - **In-memory caching** uses the one shared primitive at
   `src/server/cache/` (`createCache<T>({ namespace, ttlMs?, maxSize=500,
   immutable? })` → a handle with `get`/`set`/`getOrCompute`/`delete`/

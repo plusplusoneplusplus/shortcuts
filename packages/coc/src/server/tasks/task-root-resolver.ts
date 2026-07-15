@@ -1,5 +1,5 @@
 import * as path from 'path';
-import * as fs from 'fs/promises';
+import * as fs from 'fs';
 
 export interface TaskRootInfo {
     /** Absolute path to the tasks directory, e.g. /home/user/.coc/repos/ws-kss6a7/tasks */
@@ -17,6 +17,17 @@ export interface TaskRootOptions {
     rootPath: string;
     /** Workspace ID, e.g. "ws-kss6a7" */
     workspaceId: string;
+}
+
+export type ExistingTaskRootSource = 'primary' | 'legacy' | 'configured';
+
+export interface ExistingTaskRoot {
+    /** Canonical absolute directory path after resolving symlinks. */
+    absolutePath: string;
+    /** User-facing Notes collection label. */
+    label: string;
+    /** Source used to derive this root. */
+    source: ExistingTaskRootSource;
 }
 
 /**
@@ -38,7 +49,7 @@ export function resolveTaskRoot(options: TaskRootOptions): TaskRootInfo {
  */
 export async function ensureTaskRoot(options: TaskRootOptions): Promise<TaskRootInfo> {
     const info = resolveTaskRoot(options);
-    await fs.mkdir(info.absolutePath, { recursive: true });
+    await fs.promises.mkdir(info.absolutePath, { recursive: true });
     return info;
 }
 
@@ -65,6 +76,68 @@ export function resolveAllTaskRoots(
     for (const p of additionalPaths) {
         const abs = path.isAbsolute(p) ? path.resolve(p) : path.resolve(options.rootPath, p);
         roots.push({ absolutePath: abs, label: buildRootLabel(abs) });
+    }
+    return roots;
+}
+
+/**
+ * Produce a comparison key for a canonical filesystem path. Windows path
+ * comparison is case-insensitive; POSIX comparison preserves case. realpath
+ * already collapses case aliases on case-insensitive macOS volumes.
+ */
+export function taskRootPathComparisonKey(
+    canonicalPath: string,
+    platform: NodeJS.Platform = process.platform,
+): string {
+    const normalized = path.normalize(canonicalPath);
+    return platform === 'win32'
+        ? normalized.toLocaleLowerCase('en-US')
+        : normalized;
+}
+
+/**
+ * Resolve task roots that currently exist as directories. Candidates are
+ * ordered by label priority so the primary and legacy labels win when task
+ * settings reach the same directory through another path.
+ */
+export function resolveExistingTaskRoots(
+    options: TaskRootOptions,
+    additionalPaths: string[],
+): ExistingTaskRoot[] {
+    const primary = resolveTaskRoot(options);
+    const candidates: Array<{ absolutePath: string; label: string; source: ExistingTaskRootSource }> = [
+        { absolutePath: primary.absolutePath, label: 'Task Plans', source: 'primary' },
+        {
+            absolutePath: path.resolve(options.rootPath, '.vscode', 'tasks'),
+            label: 'Legacy Plans (.vscode/tasks)',
+            source: 'legacy',
+        },
+        ...additionalPaths.map(configuredPath => ({
+            absolutePath: path.isAbsolute(configuredPath)
+                ? path.resolve(configuredPath)
+                : path.resolve(options.rootPath, configuredPath),
+            label: configuredPath,
+            source: 'configured' as const,
+        })),
+    ];
+
+    const seen = new Set<string>();
+    const roots: ExistingTaskRoot[] = [];
+    for (const candidate of candidates) {
+        try {
+            if (!fs.statSync(candidate.absolutePath).isDirectory()) continue;
+            const canonicalPath = fs.realpathSync.native(candidate.absolutePath);
+            const comparisonKey = taskRootPathComparisonKey(canonicalPath);
+            if (seen.has(comparisonKey)) continue;
+            seen.add(comparisonKey);
+            roots.push({
+                absolutePath: canonicalPath,
+                label: candidate.label,
+                source: candidate.source,
+            });
+        } catch {
+            // Missing or inaccessible task directories are not Notes collections.
+        }
     }
     return roots;
 }

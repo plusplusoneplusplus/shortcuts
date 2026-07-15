@@ -2,7 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { resolveTaskRoot, ensureTaskRoot, buildRootLabel, resolveAllTaskRoots } from '../../src/server/tasks/task-root-resolver';
+import {
+    resolveTaskRoot,
+    ensureTaskRoot,
+    buildRootLabel,
+    resolveAllTaskRoots,
+    resolveExistingTaskRoots,
+    taskRootPathComparisonKey,
+} from '../../src/server/tasks/task-root-resolver';
 
 describe('task-root-resolver', () => {
     let tmpDir: string;
@@ -98,6 +105,52 @@ describe('task-root-resolver', () => {
             );
             expect(roots).toHaveLength(1);
             expect(roots[0].label).toBe(path.join('ws-test', 'tasks'));
+        });
+    });
+
+    describe('resolveExistingTaskRoots', () => {
+        it('returns only existing directories with source-specific labels', () => {
+            const workspaceRoot = path.join(tmpDir, 'workspace');
+            const options = { dataDir: tmpDir, rootPath: workspaceRoot, workspaceId: 'ws-test' };
+            const primary = resolveTaskRoot(options).absolutePath;
+            const legacy = path.join(workspaceRoot, '.vscode', 'tasks');
+            const configured = path.join(workspaceRoot, 'plans');
+            fs.mkdirSync(primary, { recursive: true });
+            fs.mkdirSync(legacy, { recursive: true });
+            fs.mkdirSync(configured, { recursive: true });
+
+            expect(resolveExistingTaskRoots(options, ['plans', 'missing'])).toEqual([
+                { absolutePath: fs.realpathSync.native(primary), label: 'Task Plans', source: 'primary' },
+                { absolutePath: fs.realpathSync.native(legacy), label: 'Legacy Plans (.vscode/tasks)', source: 'legacy' },
+                { absolutePath: fs.realpathSync.native(configured), label: 'plans', source: 'configured' },
+            ]);
+        });
+
+        it('deduplicates canonical directories in source priority order', () => {
+            const workspaceRoot = path.join(tmpDir, 'workspace');
+            const options = { dataDir: tmpDir, rootPath: workspaceRoot, workspaceId: 'ws-test' };
+            const legacy = path.join(workspaceRoot, '.vscode', 'tasks');
+            fs.mkdirSync(legacy, { recursive: true });
+
+            expect(resolveExistingTaskRoots(options, ['.vscode/tasks', legacy, '.vscode/tasks/.'])).toEqual([
+                {
+                    absolutePath: fs.realpathSync.native(legacy),
+                    label: 'Legacy Plans (.vscode/tasks)',
+                    source: 'legacy',
+                },
+            ]);
+        });
+
+        it('uses platform-appropriate path comparison keys', () => {
+            expect(taskRootPathComparisonKey('/Repo/Plans', 'linux')).not.toBe(
+                taskRootPathComparisonKey('/repo/plans', 'linux'),
+            );
+            expect(taskRootPathComparisonKey('/Repo/Plans', 'darwin')).not.toBe(
+                taskRootPathComparisonKey('/repo/plans', 'darwin'),
+            );
+            expect(taskRootPathComparisonKey('C:\\Repo\\Plans', 'win32')).toBe(
+                taskRootPathComparisonKey('c:\\repo\\plans', 'win32'),
+            );
         });
     });
 });
