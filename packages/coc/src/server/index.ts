@@ -950,6 +950,10 @@ export type { ComponentAnalysis, ComponentGraph } from './wiki/types';
 
 // Logging
 export { captureEntry, clearLogBuffer } from './logging/server-log-capture';
+// Shared logger wiring, reused by both `coc serve` and the desktop-forked
+// server (which reaches it via `require('@plusplusoneplusplus/coc/dist/server')`).
+export { setupServerLogging } from './logging/setup-server-logging';
+export type { SetupServerLoggingOptions } from './logging/setup-server-logging';
 
 // Paths
 export { getRepoDataPath } from './paths';
