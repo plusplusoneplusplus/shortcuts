@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     deleteComment: vi.fn(),
     notesSaveContent: vi.fn(),
     copyImageToClipboard: vi.fn(),
+    exportCanvasAsHtml: vi.fn(),
 }));
 
 // Partial mock: keep the real markdown/format helpers (chatMarkdownToHtml
@@ -56,6 +57,16 @@ vi.mock('../../../../../src/server/spa/client/react/features/canvas/ExtensionCan
     ExtensionCanvasView: ({ canvas }: { canvas: { id: string } }) => (
         <div data-testid="mock-extension-view" data-canvas-id={canvas.id}>extension</div>
     ),
+}));
+
+// Layer F wires the "Export as HTML" menu item to the Layer E orchestrator.
+// Partial-mock it: keep the real `browserDownload` (which `htmlExportDeps`
+// imports) but stub the orchestrator so the UI test asserts dispatch/result
+// handling without running the real render pipeline (mermaid/excalidraw, which
+// cannot load under Node ≥ 24).
+vi.mock('../../../../../src/server/spa/client/react/features/canvas/html-export/exportCanvasAsHtml', async (importOriginal) => ({
+    ...(await importOriginal() as Record<string, unknown>),
+    exportCanvasAsHtml: mocks.exportCanvasAsHtml,
 }));
 
 // @excalidraw/excalidraw can't load in Node; the global setup stubs it to
@@ -120,6 +131,7 @@ describe('CanvasPanel', () => {
         mocks.deleteComment.mockReset();
         mocks.notesSaveContent.mockReset();
         mocks.copyImageToClipboard.mockReset().mockResolvedValue(undefined);
+        mocks.exportCanvasAsHtml.mockReset().mockResolvedValue({ ok: true, warnings: [] });
     });
 
     const originalFetch = globalThis.fetch;
@@ -717,6 +729,116 @@ describe('CanvasPanel', () => {
         fireEvent.click(screen.getByTestId('canvas-panel-export'));
         expect(screen.queryByTestId('canvas-panel-export-notes')).toBeNull();
         expect(screen.getByTestId('canvas-panel-export-download')).toBeTruthy();
+    });
+
+    // --- Export as HTML (Layer F) -----------------------------------------
+
+    it('exports a markdown canvas as HTML via the orchestrator with the current canvas + deps', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: '# Plan body', language: undefined }));
+        mocks.exportCanvasAsHtml.mockResolvedValue({ ok: true, html: '<!doctype html>', filename: 'my-plan.html', warnings: [] });
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-panel-export'));
+        fireEvent.click(screen.getByTestId('canvas-panel-export-html'));
+
+        await waitFor(() => expect(mocks.exportCanvasAsHtml).toHaveBeenCalledTimes(1));
+        const [exportable, deps] = mocks.exportCanvasAsHtml.mock.calls[0];
+        expect(exportable).toMatchObject({
+            title: 'My Plan',
+            type: 'markdown',
+            content: '# Plan body',
+            workspaceId: 'ws-1',
+        });
+        // The production browser deps are wired in and passed through.
+        expect(typeof deps.renderMarkdown).toBe('function');
+        expect(typeof deps.fetch).toBe('function');
+        expect(typeof deps.triggerDownload).toBe('function');
+        expect(typeof deps.exportToSvg).toBe('function');
+        expect(deps.mermaidApi && typeof deps.mermaidApi.render).toBe('function');
+
+        // Success feedback + menu closes.
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export-status').textContent).toBe('Exported HTML'));
+        expect(screen.queryByTestId('canvas-panel-export-menu')).toBeNull();
+    });
+
+    it('offers Export as HTML for code and excalidraw canvases', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'code', language: 'typescript', content: 'const x = 1;' }));
+        const { unmount } = render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('canvas-panel-export'));
+        expect(screen.getByTestId('canvas-panel-export-html')).toBeTruthy();
+        expect(screen.queryByTestId('canvas-panel-export-html-disabled')).toBeNull();
+        unmount();
+
+        const scene = JSON.stringify({ type: 'excalidraw', elements: [], appState: {} });
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'excalidraw', content: scene }));
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('canvas-panel-export'));
+        expect(screen.getByTestId('canvas-panel-export-html')).toBeTruthy();
+    });
+
+    it('disables Export as HTML for extension canvases with a view-only note (Phase 1)', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'extension', content: '{"cards":[]}' }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-panel-export'));
+        const disabled = screen.getByTestId('canvas-panel-export-html-disabled');
+        expect(disabled.hasAttribute('disabled')).toBe(true);
+        expect(disabled.getAttribute('title')).toContain('view-only');
+        // The active item is not rendered for extension canvases.
+        expect(screen.queryByTestId('canvas-panel-export-html')).toBeNull();
+
+        fireEvent.click(disabled);
+        expect(mocks.exportCanvasAsHtml).not.toHaveBeenCalled();
+    });
+
+    it('surfaces a toast and keeps the panel mounted when the HTML export fails', async () => {
+        mocks.get.mockResolvedValue(makeCanvas());
+        mocks.exportCanvasAsHtml.mockResolvedValue({ ok: false, warnings: [], error: 'render blew up' });
+        const addToast = vi.fn();
+        const toastValue: ToastContextValue = { addToast, removeToast: vi.fn(), toasts: [] };
+
+        render(
+            <ToastContext.Provider value={toastValue}>
+                <CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />
+            </ToastContext.Provider>,
+        );
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-panel-export'));
+        fireEvent.click(screen.getByTestId('canvas-panel-export-html'));
+
+        await waitFor(() => expect(addToast).toHaveBeenCalledWith('render blew up', 'error'));
+        // Panel never crashes on a failed export.
+        expect(screen.getByTestId('canvas-panel')).toBeTruthy();
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export-status').textContent).toBe('Export failed'));
+    });
+
+    it('reports export warnings as an info toast on a successful HTML export', async () => {
+        mocks.get.mockResolvedValue(makeCanvas());
+        mocks.exportCanvasAsHtml.mockResolvedValue({
+            ok: true, html: '<!doctype html>', filename: 'my-plan.html', warnings: ['image a failed', 'image b failed'],
+        });
+        const addToast = vi.fn();
+        const toastValue: ToastContextValue = { addToast, removeToast: vi.fn(), toasts: [] };
+
+        render(
+            <ToastContext.Provider value={toastValue}>
+                <CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />
+            </ToastContext.Provider>,
+        );
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-panel-export'));
+        fireEvent.click(screen.getByTestId('canvas-panel-export-html'));
+
+        await waitFor(() => expect(addToast).toHaveBeenCalledWith('Exported HTML with 2 warnings', 'info'));
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-export-status').textContent).toBe('Exported HTML'));
     });
 
     it('opens a custom "Copy image" menu on an inline image right-click and copies its src (AC-01, AC-02)', async () => {
