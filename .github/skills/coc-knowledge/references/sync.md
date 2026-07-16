@@ -52,7 +52,8 @@ Git-backed synchronization of My Work and My Life notes across multiple machines
 | `src/server/sync/sync-reconcile.ts` | Detection, planning, and apply for the initial-reconcile phase. Detection: `ReconcileMarker`, `reconcileMarkerPath()`/`readReconcileMarker()`/`writeReconcileMarker()`, `isUnrelatedHistoriesError()`, `shouldReconcile()`, `isNotesTreeNonEmpty()`. Planning: `planUnionMerge()` plus `isDecodableText()`/`localVariantPath()`. Apply: `scanTreeToMap()` reads a tree into `Map<posix path, Buffer>`, `buildConflictBlob()` synthesizes the add/add blob the existing resolvers consume (local = ours, remote = theirs), `applyMergePlan()` writes the merged tree — materializing every entry, skipping unchanged bytes, deleting nothing. Reporting: `reconcileCommitMessage()` builds the squashed commit's subject + the body that enumerates every AI-combined and flagged path, and `summarizeMergePlan()`/`reconcileReport()` build the `SyncStatus` report the settings panel shows. A leaf of the import graph — the engine imports it, so the ignore set and the conflict resolver are passed in rather than imported back. Runs no git. |
 | `src/server/sync/sync-handler.ts` | REST route registration (`registerSyncRoutes`) — workspace-scoped |
 | `src/server/sync/index.ts` | Barrel exports |
-| `src/server/spa/client/react/features/repo-settings/SyncSettingsSection.tsx` | Per-report sync config UI (git remote, interval, status, trigger) |
+| `src/server/spa/client/react/features/repo-settings/SyncSettingsSection.tsx` | Per-report sync config UI (git remote, interval, status, trigger) plus the initial merge's in-progress state and one-time report; `reconcileSummaryText()` is the summary wording |
+| `packages/coc-client/src/domains/sync.ts` | Hand-maintained mirror of `SyncStatus` + the report types — what the SPA compiles against. Rebuild its `dist` after a change |
 
 ## Per-Workspace Configuration
 
@@ -155,6 +156,32 @@ Two rules about its lifetime, both load-bearing:
 An ordinary first push to an *empty* remote records a baseline marker with **no**
 report: nothing was merged, so there is nothing to report. `reconcileReport` stays
 null there.
+
+### Where the user reads it
+
+`SyncSettingsSection.tsx` renders the report under a "First Merge" row, off the
+`SyncStatus` its 30s poll already fetches. `SyncStatus` is mirrored by hand in
+`packages/coc-client/src/domains/sync.ts` (`ReconcileReport`, `FlaggedBinary`,
+`MergeOutcome`) — that copy, not the engine's, is the type the SPA compiles
+against, and `packages/coc` typechecks against coc-client's built `dist`, so a
+field added there needs a `npm run build` in coc-client before it is visible.
+
+- **While it runs**, the status pill says "Merging notes…" instead of "Syncing…"
+  and the row explains that nothing is deleted on either side. The pill checks
+  `reconcileInProgress` *before* `inProgress` — both are true during the merge,
+  and the merge is the one long enough for a plain "Syncing…" to look hung.
+- **Afterwards**, `reconcileSummaryText()` states the four counts in one sentence
+  ("Merged 5 notes — 0 identical, 2 added from this device, 2 kept from remote,
+  1 combined by AI (b.md). Review recommended."), naming every AI-combined note
+  rather than only counting it, and keeping zero clauses so an omitted number
+  never reads as a forgotten one. "Review recommended" appears only when
+  something was combined or flagged. Flagged binaries list where the local copy
+  was parked; the backup tag is named so the undo is discoverable without a git
+  log.
+- **Never both at once.** The in-progress row replaces the report rather than
+  joining it: on the self-healing path a marker and its report already exist when
+  the pull hits unrelated histories and re-merges, so rendering both would show
+  last merge's summary as though it described the running one.
 
 A report that can't be read back (corrupt/wrong-shaped) drops on its own and
 leaves the marker valid — losing it costs a summary, whereas dropping the marker

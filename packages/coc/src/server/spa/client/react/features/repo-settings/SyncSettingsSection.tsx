@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useGlobalToast } from '../../contexts/ToastContext';
-import type { SyncStatus } from '@plusplusoneplusplus/coc-client';
+import type { ReconcileReport, SyncStatus } from '@plusplusoneplusplus/coc-client';
 
 const labelClass = 'text-xs w-28 shrink-0 text-[#616161] dark:text-[#999]';
 const inputClass =
@@ -204,11 +204,78 @@ export function SyncSettingsSection({ workspaceId }: SyncSettingsSectionProps) {
                     <span className="text-xs text-[#cf222e] dark:text-[#f85149]">{status.lastError}</span>
                 </div>
             )}
+
+            {/* The one-time initial merge: what it is doing, then what it did.
+                Never both at once — a merge that re-runs to heal an unrelated
+                remote has last time's report sitting on the status already. */}
+            {status?.reconcileInProgress ? (
+                <div className="flex items-start gap-2" data-testid="sync-reconcile-progress">
+                    <span className={labelClass}>First Merge</span>
+                    <span className="text-xs text-[#9a6700] dark:text-[#d29922]">
+                        Merging this device's notes with the remote for the first time. This can take a
+                        minute — nothing is deleted on either side.
+                    </span>
+                </div>
+            ) : status?.reconcileReport ? (
+                <ReconcileReportRow report={status.reconcileReport} />
+            ) : null}
+        </div>
+    );
+}
+
+/**
+ * The merge summary in one sentence.
+ *
+ * States all four counts even when zero: "0 identical" is what tells the user
+ * the merge weighed that case and found nothing, where a dropped clause reads as
+ * a number the panel forgot. The combined notes are named inline rather than
+ * counted, because "1 combined by AI" is only reviewable if it says which one.
+ */
+export function reconcileSummaryText(report: ReconcileReport): string {
+    const { counts } = report;
+    const combinedNames = report.combined.length > 0 ? ` (${report.combined.join(', ')})` : '';
+    const sentence =
+        `Merged ${report.total} ${report.total === 1 ? 'note' : 'notes'} — ` +
+        `${counts.identical} identical, ${counts.addedFromLocal} added from this device, ` +
+        `${counts.keptFromRemote} kept from remote, ${counts.combined} combined by AI${combinedNames}.`;
+    const needsReview = report.combined.length > 0 || report.flagged.length > 0;
+    return needsReview ? `${sentence} Review recommended.` : sentence;
+}
+
+function ReconcileReportRow({ report }: { report: ReconcileReport }) {
+    return (
+        <div className="flex items-start gap-2" data-testid="sync-reconcile-report">
+            <span className={labelClass}>First Merge</span>
+            <div className="flex flex-col gap-1">
+                <span className="text-xs text-[#656d76] dark:text-[#999]" data-testid="sync-reconcile-summary">
+                    {reconcileSummaryText(report)}
+                </span>
+                {report.flagged.length > 0 && (
+                    <ul className="flex flex-col gap-0.5" data-testid="sync-reconcile-flagged">
+                        {report.flagged.map(f => (
+                            <li key={f.path} className="text-xs text-[#9a6700] dark:text-[#d29922]">
+                                {f.path} — both versions differ and can't be combined; this device's copy
+                                kept at {f.localVariantPath}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                {report.backupTag && (
+                    <span className="text-xs text-[#656d76] dark:text-[#999]" data-testid="sync-reconcile-backup">
+                        The remote's pre-merge state is tagged {report.backupTag}.
+                    </span>
+                )}
+            </div>
         </div>
     );
 }
 
 function StatusPill({ status }: { status: SyncStatus }) {
+    // Checked before inProgress: both are true during the merge, and the merge is
+    // the one that runs long enough for a plain "Syncing…" to look stuck.
+    if (status.reconcileInProgress) {
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-[#fff8c5] dark:bg-[#3d2e00] text-[#9a6700] dark:text-[#d29922]" data-testid="sync-status-pill">⟳ Merging notes…</span>;
+    }
     if (status.inProgress) {
         return <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-[#fff8c5] dark:bg-[#3d2e00] text-[#9a6700] dark:text-[#d29922]" data-testid="sync-status-pill">⟳ Syncing…</span>;
     }
