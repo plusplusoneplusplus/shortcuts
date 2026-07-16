@@ -15,6 +15,15 @@ const mocks = vi.hoisted(() => ({
     setCommentStatus: vi.fn(),
     deleteComment: vi.fn(),
     notesSaveContent: vi.fn(),
+    copyImageToClipboard: vi.fn(),
+}));
+
+// Partial mock: keep the real markdown/format helpers (chatMarkdownToHtml
+// depends on them) but stub the clipboard image write so we can assert the
+// exact src handed to it without touching the real Clipboard API.
+vi.mock('../../../../../src/server/spa/client/react/utils/format', async (importOriginal) => ({
+    ...(await importOriginal() as Record<string, unknown>),
+    copyImageToClipboard: mocks.copyImageToClipboard,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -66,6 +75,7 @@ vi.mock('@excalidraw/excalidraw', () => ({
 }));
 
 import { CanvasPanel } from '../../../../../src/server/spa/client/react/features/canvas/CanvasPanel';
+import { ToastContext, type ToastContextValue } from '../../../../../src/server/spa/client/react/contexts/ToastContext';
 
 function makeCanvas(overrides: Record<string, unknown> = {}) {
     return {
@@ -109,6 +119,7 @@ describe('CanvasPanel', () => {
         mocks.setCommentStatus.mockReset();
         mocks.deleteComment.mockReset();
         mocks.notesSaveContent.mockReset();
+        mocks.copyImageToClipboard.mockReset().mockResolvedValue(undefined);
     });
 
     it('loads and renders the canvas title, revision, and preview', async () => {
@@ -695,5 +706,70 @@ describe('CanvasPanel', () => {
         fireEvent.click(screen.getByTestId('canvas-panel-export'));
         expect(screen.queryByTestId('canvas-panel-export-notes')).toBeNull();
         expect(screen.getByTestId('canvas-panel-export-download')).toBeTruthy();
+    });
+
+    it('opens a custom "Copy image" menu on an inline image right-click and copies its src (AC-01, AC-02)', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: '![diagram](assets/diagram.png)' }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
+
+        const preview = screen.getByTestId('canvas-panel-preview');
+        const img = preview.querySelector('img.chat-inline-image') as HTMLImageElement | null;
+        expect(img).toBeTruthy();
+
+        // Right-clicking the inline image suppresses the native menu (returns
+        // false = default prevented) and opens the custom context menu.
+        const notPrevented = fireEvent.contextMenu(img!);
+        expect(notPrevented).toBe(false);
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+
+        // The menu carries exactly one "Copy image" item.
+        const item = screen.getByTestId('context-menu-item-0');
+        expect(item.textContent).toContain('Copy image');
+        expect(screen.queryByTestId('context-menu-item-1')).toBeNull();
+
+        const expectedSrc = img!.currentSrc || img!.src;
+        fireEvent.click(item);
+
+        await waitFor(() => expect(mocks.copyImageToClipboard).toHaveBeenCalledWith(expectedSrc));
+        // Menu closes after the action.
+        await waitFor(() => expect(screen.queryByTestId('context-menu')).toBeNull());
+    });
+
+    it('leaves the native menu untouched when right-clicking off an inline image (AC-01)', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: 'plain text, no image' }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
+
+        const preview = screen.getByTestId('canvas-panel-preview');
+        // Right-click on non-image content: no preventDefault (returns true) and
+        // no custom menu.
+        const notPrevented = fireEvent.contextMenu(preview);
+        expect(notPrevented).toBe(true);
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+        expect(mocks.copyImageToClipboard).not.toHaveBeenCalled();
+    });
+
+    it('surfaces an error toast when the inline-image copy fails (AC-03)', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: '![remote](https://example.com/pic.png)' }));
+        mocks.copyImageToClipboard.mockRejectedValue(new Error('tainted canvas'));
+        const addToast = vi.fn();
+        const toastValue: ToastContextValue = { addToast, removeToast: vi.fn(), toasts: [] };
+
+        render(
+            <ToastContext.Provider value={toastValue}>
+                <CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />
+            </ToastContext.Provider>,
+        );
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
+
+        const img = screen.getByTestId('canvas-panel-preview').querySelector('img.chat-inline-image') as HTMLImageElement;
+        expect(img).toBeTruthy();
+        fireEvent.contextMenu(img);
+        fireEvent.click(screen.getByTestId('context-menu-item-0'));
+
+        await waitFor(() => expect(addToast).toHaveBeenCalledWith('Failed to copy image', 'error'));
     });
 });

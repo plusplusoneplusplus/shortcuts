@@ -28,12 +28,15 @@
  *    mode exposes the raw state JSON with the normal autosave.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import type { Canvas, CanvasComment, CanvasSummary, CanvasVersion, CanvasVersionMeta } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { MarkdownView } from '../../shared/MarkdownView';
 import { chatMarkdownToHtml } from '../chat/conversation/ConversationTurnBubble';
+import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
+import { copyImageToClipboard } from '../../utils/format';
+import { ToastContext } from '../../contexts/ToastContext';
 import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/MonacoFileEditor';
 import { ExtensionCanvasView } from './ExtensionCanvasView';
 import { ExcalidrawSceneView, parseSceneContent } from '../diagrams';
@@ -175,6 +178,11 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
     const [titleSwitcherOpen, setTitleSwitcherOpen] = useState(false);
     const titleSwitcherButtonRef = useRef<HTMLButtonElement | null>(null);
     const titleSwitcherMenuRef = useRef<HTMLDivElement | null>(null);
+    // Right-click "Copy image" menu for inline preview images (position + resolved src).
+    const [imageMenu, setImageMenu] = useState<{ x: number; y: number; src: string } | null>(null);
+    // Optional — the panel renders inside a ToastProvider in the app and pop-out
+    // shells, but tests may mount it bare, so degrade gracefully when absent.
+    const toast = useContext(ToastContext);
 
     const toggleFullscreen = useCallback(() => {
         setIsFullscreen(prev => {
@@ -375,6 +383,32 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         const text = window.getSelection()?.toString().trim() ?? '';
         setSelection(text.length > 0 ? text : null);
     }, []);
+
+    // Right-clicking an inline markdown image opens a custom "Copy image" menu.
+    // Images come from `dangerouslySetInnerHTML`, so there is no per-image React
+    // node — detection is event-delegation based. The native browser menu is
+    // suppressed only when the pointer is over an inline image; anywhere else in
+    // the preview the native menu is left untouched.
+    const handlePreviewContextMenu = useCallback((e: React.MouseEvent) => {
+        const target = e.target as unknown;
+        if (target instanceof HTMLImageElement && target.classList.contains('chat-inline-image')) {
+            e.preventDefault();
+            setImageMenu({ x: e.clientX, y: e.clientY, src: target.currentSrc || target.src });
+        }
+    }, []);
+
+    const imageMenuItems = useMemo((): ContextMenuItem[] => [{
+        label: 'Copy image',
+        icon: '🖼️',
+        onClick: async () => {
+            if (!imageMenu) return;
+            try {
+                await copyImageToClipboard(imageMenu.src);
+            } catch {
+                toast?.addToast('Failed to copy image', 'error');
+            }
+        },
+    }], [imageMenu, toast]);
 
     const handleEditorSelect = useCallback((e: React.SyntheticEvent<HTMLTextAreaElement>) => {
         const target = e.currentTarget;
@@ -872,6 +906,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                             className="canvas-mermaid-preview text-xs p-3"
                             data-testid="canvas-panel-preview"
                             onMouseUp={handlePreviewMouseUp}
+                            onContextMenu={handlePreviewContextMenu}
                         >
                             {previewMarkdown.trim()
                                 ? <MarkdownView html={previewHtml} />
@@ -919,6 +954,15 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         </div>
                     ))}
                 </div>
+            )}
+
+            {/* Right-click "Copy image" menu for inline preview images. */}
+            {imageMenu && (
+                <ContextMenu
+                    position={{ x: imageMenu.x, y: imageMenu.y }}
+                    items={imageMenuItems}
+                    onClose={() => setImageMenu(null)}
+                />
             )}
         </div>
     );
