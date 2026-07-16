@@ -30,6 +30,11 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         relativePath: 'coc-chat',
     },
     {
+        name: 'delegate',
+        description: 'Delegate a job from the current chat to a new conversation. Use when the user asks to delegate or hand off work.',
+        relativePath: 'delegate',
+    },
+    {
         name: 'rethink',
         description: 'Review a bug fix proposal and evaluate whether it is the cleanest solution, considering root cause alignment, simplicity, consistency, technical debt, side effects, and idiomatic alternatives',
         relativePath: 'rethink',

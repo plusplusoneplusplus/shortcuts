@@ -683,6 +683,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'kb-refresh',
     'fresh-written',
     'terse-replies',
+    'delegate',
     'for-each',
     'map-reduce',
     'grill-me',
