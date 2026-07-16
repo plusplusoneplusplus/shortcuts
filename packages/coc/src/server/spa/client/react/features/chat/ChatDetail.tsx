@@ -41,6 +41,7 @@ import { readCanvasClosed, writeCanvasClosed } from './canvasClosedPreference';
 import { deriveOpenCanvasMemory, type OpenCanvasMemory } from './openCanvasMemory';
 import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER_DIFF_EVENT } from './whisper-diff';
 import type { WhisperDiffOpenContext } from './conversation/tool-calls/WhisperCollapsedGroup';
+import { WhisperSkillDetailDialogProvider } from './conversation/tool-calls/WhisperSkillDetailDialog';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
 import { useSendMessage } from './hooks/useSendMessage';
@@ -261,6 +262,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const conversationContainerRef = useRef<HTMLDivElement>(null);
     const turnsContainerRef = useRef<HTMLDivElement>(null);
     const scratchpadContainerRef = useRef<HTMLDivElement>(null);
+    const whisperSkillBoundaryRef = useRef<HTMLDivElement>(null);
     const isInitialLoadRef = useRef(true);
     /** Set to true the first time we initialise effortOverride from processDetails.config.
      *  Reset to false on taskId change so every new conversation gets a fresh init. */
@@ -2313,7 +2315,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             <div className="relative flex-1 min-h-0 flex flex-row overflow-hidden min-w-0">
             {/* Left stack: conversation + composer. The canvas (when open) is a
                 full-height sibling column to the right of this whole stack. */}
-            <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+            <div ref={whisperSkillBoundaryRef} className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+            <WhisperSkillDetailDialogProvider boundaryRef={whisperSkillBoundaryRef} scopeKey={`${workspaceId ?? ''}:${taskId}`}>
             <div ref={scratchpadContainerRef}className={`relative flex-1 min-h-0 flex ${isVerticalScratchpad ? 'flex-row' : 'flex-col'} overflow-x-hidden min-w-0`}>
                 {/* Chat column: in vertical split, also contains the follow-up input */}
                 <div
@@ -2725,6 +2728,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     onClose={scratchpad.close}
                 />
             )}
+            </WhisperSkillDetailDialogProvider>
             </div>{/* /left stack */}
             {canvasColumn}
             {sourceCanvasColumn}

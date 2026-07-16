@@ -854,7 +854,18 @@ variants share one `ToolCallDetailSections` body. Whisper header parts and the
 group's reconstructable tool calls come from `buildWhisperGroupModel` /
 `collectGroupToolCalls` (`whisperGroupModel.ts`). The whisper summary spans
 (skills/memories/files/commits/PRs/pushes) share the `useHoverPopover` /
-`HoverSummarySpan` hover primitive (`hoverPopover.tsx`).
+`HoverSummarySpan` hover primitive (`hoverPopover.tsx`). Skill-count hover
+lists stay anchored to the whisper summary, but selecting a skill opens
+`WhisperSkillDetailDialogProvider`'s panel-scoped dialog. `ChatDetail` mounts
+that provider around the left conversation stack, so the backdrop and centered
+skill detail are bounded by the active conversation column and do not span
+right-side canvas/source/diff sibling panels; the DAG item conversation panel
+uses the same provider around its slide-in surface. The dialog lazy-loads skill
+details through the clone-routed skill client, tries workspace lookup before
+global lookup, caches per workspace/name while the provider is mounted, shows a
+stable not-found state for total lookup failure, traps focus, closes on Escape,
+backdrop, or the close button, and returns focus to the selected row or skill
+count trigger.
 
 In whisper mode (`toolCompactness === 3`), `filterWhisperChunks` keeps a tail of
 the final assistant message plus any `task_complete`/visible `ask_user` chunks,
