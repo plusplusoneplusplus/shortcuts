@@ -62,6 +62,8 @@ The plain-Node server and the Electron desktop share one hoisted `node_modules`,
 - **Node server:** `npm run ensure:native:node` (root) flips the tree back for the plain-Node runtime.
 - **Binary cache:** every verified build is stashed per `{module version, ABI, platform, arch}` under `node_modules/.cache/coc-native-abi/`, so flipping runtimes is a sub-second file restore after the first compile of each flavor. `rebuild:native` (`--force`, used by `build:desktop`) always recompiles.
 - The two runtimes still cannot use the shared tree *simultaneously* — the last `ensure:*` run wins.
+- **Electron pin is tied to better-sqlite3:** better-sqlite3 publishes Electron prebuilts per ABI, and that coverage trails Electron by a major or two — 11.x stops at electron-v133 (Electron 35), 12.x reaches electron-v146 (Electron 42). Electron 43 (ABI 148) has no prebuilt at any version, and better-sqlite3's C++ does not compile against its V8 15 (`External::Value` needs a tag arg), so bumping Electron past the covered range breaks `dev:desktop` and the mac release with a node-gyp error at install/packaging time. Check the [better-sqlite3 releases](https://github.com/WiseLibs/better-sqlite3/releases) for a matching `electron-v<abi>` asset before raising either version; the pact is pinned by `packages/coc-desktop/test/native-abi.test.ts`.
+- Electron is resolved through Node's module resolution, not a fixed path — npm nests it under `packages/coc-desktop/node_modules` or hoists it to the root depending on the rest of the tree, and both layouts must work.
 
 `scripts/ensure-native-dependency.mjs` (used by `coccontainer-serve-loop.sh`) is the standalone Node-side check; it also constructs an in-memory Database to force the lazy dlopen before trusting a load.
 

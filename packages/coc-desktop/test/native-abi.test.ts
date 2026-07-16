@@ -29,6 +29,7 @@ import {
     moduleDir,
     bindingPath,
     cachedBindingPath,
+    resolveElectronPkgPath,
     resolveElectronVersion,
     buildRebuildArgs,
     buildProbeScript,
@@ -101,6 +102,53 @@ describe('native-abi helpers', () => {
                 'abi-133-darwin-arm64',
             ),
         );
+    });
+
+    describe('resolveElectronPkgPath', () => {
+        // Regression: the preflight used to path-join
+        // `packages/coc-desktop/node_modules/electron` and bail when it was
+        // absent. npm hoists the devDependency to the workspace root whenever
+        // nothing conflicts, so a healthy tree reported "Electron is not
+        // installed. Run `npm install` first." — and npm install could never
+        // fix it, because installing is what hoisted electron in the first
+        // place. Resolution must follow the node_modules chain, not one path.
+        it('accepts electron hoisted to the workspace-root node_modules', () => {
+            const hoisted = path.join('/repo', 'node_modules', 'electron', 'package.json');
+            expect(resolveElectronPkgPath(() => hoisted)).toBe(hoisted);
+        });
+
+        it('accepts electron nested in the package-local node_modules', () => {
+            const nested = path.join(
+                '/repo',
+                'packages',
+                'coc-desktop',
+                'node_modules',
+                'electron',
+                'package.json',
+            );
+            expect(resolveElectronPkgPath(() => nested)).toBe(nested);
+        });
+
+        it('resolves the package.json subpath so the caller can read the version', () => {
+            const seen: string[] = [];
+            resolveElectronPkgPath((spec: string) => {
+                seen.push(spec);
+                return '/repo/node_modules/electron/package.json';
+            });
+            expect(seen).toEqual(['electron/package.json']);
+        });
+
+        it('reports an actionable install error when electron resolves nowhere', () => {
+            expect(() =>
+                resolveElectronPkgPath(() => {
+                    const err = new Error("Cannot find module 'electron/package.json'") as Error & {
+                        code?: string;
+                    };
+                    err.code = 'MODULE_NOT_FOUND';
+                    throw err;
+                }),
+            ).toThrow(/npm install/);
+        });
     });
 
     it('reads the electron version from its package.json', () => {
@@ -203,6 +251,60 @@ describe('native-abi helpers', () => {
             const res = parseProbeOutput('ABI 133\nOK rogue-module\nOK better-sqlite3\nOK node-pty\n', names);
             expect(res.ok).toEqual(names);
         });
+    });
+});
+
+/**
+ * The Electron ↔ better-sqlite3 ABI pact.
+ *
+ * better-sqlite3 ships prebuilt binaries per Electron ABI, and that coverage
+ * lags Electron by a major or two:
+ *
+ *   better-sqlite3 11.x → tops out at electron-v133 (Electron 35)
+ *   better-sqlite3 12.x → tops out at electron-v146 (Electron 42)
+ *
+ * Electron 43 (ABI 148) has NO prebuilt at any better-sqlite3 version, and
+ * better-sqlite3's C++ does not compile against Electron 43's V8 15
+ * (`External::Value` now requires a tag arg). Bumping past the pact therefore
+ * breaks `dev:desktop` and the mac release with a node-gyp compile failure —
+ * something no other test would catch, because it happens during install and
+ * packaging rather than at test time.
+ *
+ * This pact has already been broken twice: 26b0b8c76 pinned Electron 35 for
+ * exactly this reason, then a routine `chore: remediate npm audit findings`
+ * bumped it to 43 and silently reverted that pin. These assertions are a
+ * tripwire — before raising either number, confirm the prebuilt actually
+ * exists, then update them together:
+ *
+ *   https://github.com/WiseLibs/better-sqlite3/releases
+ *   → better-sqlite3-v<version>-electron-v<abi>-<platform>-<arch>.tar.gz
+ */
+describe('electron <-> better-sqlite3 ABI pact', () => {
+    const majorOf = (range: string): string | undefined => /^\D*(\d+)/.exec(range)?.[1];
+
+    function betterSqlite3Range(pkg: Record<string, unknown>): string {
+        const deps = (pkg.dependencies ?? {}) as Record<string, string>;
+        const devDeps = (pkg.devDependencies ?? {}) as Record<string, string>;
+        return deps['better-sqlite3'] ?? devDeps['better-sqlite3'];
+    }
+
+    it('pins Electron to the newest major better-sqlite3 ships a prebuilt for', () => {
+        const desktop = readJson('../package.json');
+        const range = ((desktop.devDependencies ?? {}) as Record<string, string>).electron;
+        expect(majorOf(range)).toBe('42');
+    });
+
+    it('pins better-sqlite3 to the major covering that Electron ABI, in every consumer', () => {
+        // All three resolve to ONE hoisted install shared with the desktop
+        // shell, so they cannot drift apart without breaking the Electron ABI.
+        for (const rel of [
+            '../../coc-memory/package.json',
+            '../../deep-wiki/package.json',
+            '../../forge/package.json',
+        ]) {
+            const range = betterSqlite3Range(readJson(rel));
+            expect(majorOf(range), `${rel} declares better-sqlite3 ${range}`).toBe('12');
+        }
     });
 });
 

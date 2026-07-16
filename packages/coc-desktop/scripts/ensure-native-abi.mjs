@@ -24,14 +24,19 @@
 //   node ensure-native-abi.mjs --runtime=node  # same, for the plain-Node server
 //   node ensure-native-abi.mjs --force         # always recompile (rebuild:native / dist)
 //
-// Releases never hit this: electron-builder rebuilds against Electron in its own
-// clean tree, and the npm-published CLI gets Node-ABI binaries. This is purely a
-// dev-from-source convenience for the shared workspace `node_modules`.
+// The tagged release never hits this: CI runs electron-builder (`dist:mac` /
+// `dist:win`) directly, which rebuilds against Electron in its own clean tree,
+// and the npm-published CLI gets Node-ABI binaries. Local `build:desktop` does
+// run it, via `rebuild:native` ahead of `dist`.
+//
+// Electron must stay within the ABI range better-sqlite3 ships a prebuilt for,
+// or the rebuild below fails to compile — see the ABI pact in
+// `test/native-abi.test.ts` before bumping Electron.
 
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
     NATIVE_MODULES,
@@ -39,6 +44,7 @@ import {
     moduleDir,
     bindingPath,
     cachedBindingPath,
+    resolveElectronPkgPath,
     resolveElectronVersion,
     buildRebuildArgs,
     buildProbeScript,
@@ -46,7 +52,6 @@ import {
 } from './native-abi.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const packageDir = resolve(here, '..');
 const root = workspaceRootFrom(here);
 const force = process.argv.includes('--force');
 const runtimeArg = process.argv.find((a) => a.startsWith('--runtime='));
@@ -64,13 +69,9 @@ function log(msg) {
 
 /** Resolve Electron's version and executable path from this package's devDependency. */
 function resolveElectron() {
-    const electronDir = join(packageDir, 'node_modules', 'electron');
-    const electronPkgPath = join(electronDir, 'package.json');
-    if (!existsSync(electronPkgPath)) {
-        throw new Error(
-            `Electron is not installed under ${join(packageDir, 'node_modules')}. Run \`npm install\` first.`,
-        );
-    }
+    // Resolved, not path-joined: npm may hoist electron to the workspace root.
+    const electronPkgPath = resolveElectronPkgPath((spec) => require.resolve(spec));
+    const electronDir = dirname(electronPkgPath);
     const version = resolveElectronVersion(JSON.parse(readFileSync(electronPkgPath, 'utf8')));
     // The electron package's main export resolves to the platform executable path.
     const exe = require(electronDir);

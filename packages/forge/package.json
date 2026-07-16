@@ -108,7 +108,7 @@
     "@github/copilot-sdk": "^1.0.6",
     "@octokit/rest": "^22.0.1",
     "azure-devops-node-api": "^14.1.0",
-    "better-sqlite3": "^11.9.1",
+    "better-sqlite3": "^12.11.1",
     "des.js": "^1.1.0",
     "diff": "^5.2.0",
     "js-md4": "^0.3.2",
