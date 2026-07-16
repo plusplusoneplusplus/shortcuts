@@ -87,7 +87,7 @@ interface MockEventSourceInstance {
 
 function createMockEventSourceClass() {
     const instances: MockEventSourceInstance[] = [];
-    const cls = vi.fn((url: string) => {
+    const cls = vi.fn(function (url: string) {
         const inst: MockEventSourceInstance = {
             url,
             listeners: {},

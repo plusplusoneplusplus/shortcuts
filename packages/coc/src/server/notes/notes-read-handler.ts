@@ -21,7 +21,8 @@ import { getRepoDataPath } from '../paths';
 import type { ResolvedCLIConfig } from '../../config';
 import { readOrderFile, applyOrder } from './notes-order';
 import { SYSTEM_FOLDER_NAMES } from './notes-constants';
-import { resolveNotesRoot, isRootResolveError, DEFAULT_ROOT_ID } from './notes-root-resolver';
+import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
+import { resolveSafeNotesPath, isNotesPathSafetyError } from './notes-path-safety';
 import { readRepoPreferences } from '../preferences-handler';
 
 // ============================================================================
@@ -78,7 +79,7 @@ async function ensureNotesRoot(notesRoot: string): Promise<void> {
  * Custom order from `.order.json` is applied per-directory; unlisted items fall
  * back to the default sort (directories first, then files, alphabetically within each group).
  */
-async function buildTree(dir: string, basePath: string): Promise<TreeNode[]> {
+async function buildTree(dir: string, basePath: string, safeRoot?: string): Promise<TreeNode[]> {
     let entries: fs.Dirent[];
     try {
         entries = await fs.promises.readdir(dir, { withFileTypes: true });
@@ -89,6 +90,9 @@ async function buildTree(dir: string, basePath: string): Promise<TreeNode[]> {
     // Keep only non-hidden directories and .md files, with default dirs-first sort
     const relevant = entries
         .filter(e => {
+            if (safeRoot && e.isSymbolicLink()) {
+                return false;
+            }
             if (e.isDirectory()) return !e.name.startsWith('.');
             return e.name.endsWith('.md');
         })
@@ -100,14 +104,23 @@ async function buildTree(dir: string, basePath: string): Promise<TreeNode[]> {
         });
 
     // Apply custom order when present; unlisted items keep their default sort position
-    const explicitOrder = await readOrderFile(dir);
+    let explicitOrder: string[] = [];
+    if (!safeRoot) {
+        explicitOrder = await readOrderFile(dir);
+    } else {
+        const orderPath = basePath ? `${basePath}/.order.json` : '.order.json';
+        const safeOrderPath = await resolveSafeNotesPath(safeRoot, orderPath);
+        if (!isNotesPathSafetyError(safeOrderPath)) {
+            explicitOrder = await readOrderFile(dir);
+        }
+    }
     const sorted = applyOrder(relevant, e => e.name, explicitOrder);
 
     const nodes: TreeNode[] = [];
     for (const entry of sorted) {
         const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
-            const children = await buildTree(path.join(dir, entry.name), entryPath);
+            const children = await buildTree(path.join(dir, entry.name), entryPath, safeRoot);
             // Top-level dirs are notebooks, nested dirs are sections
             const type = basePath ? 'section' : 'notebook';
             nodes.push({ name: entry.name, path: entryPath, type, children });
@@ -131,6 +144,7 @@ async function searchNotes(
     totalMatches: { count: number },
     maxFiles: number,
     maxMatches: number,
+    skipSymlinks = false,
 ): Promise<void> {
     let entries: fs.Dirent[];
     try {
@@ -142,11 +156,25 @@ async function searchNotes(
     const lowerQuery = query.toLowerCase();
 
     for (const entry of entries) {
-        if (results.length >= maxFiles || totalMatches.count >= maxMatches) return;
+        if (results.length >= maxFiles || totalMatches.count >= maxMatches) {
+            return;
+        }
+        if (skipSymlinks && entry.isSymbolicLink()) {
+            continue;
+        }
 
         const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
-            await searchNotes(path.join(dir, entry.name), entryPath, query, results, totalMatches, maxFiles, maxMatches);
+            await searchNotes(
+                path.join(dir, entry.name),
+                entryPath,
+                query,
+                results,
+                totalMatches,
+                maxFiles,
+                maxMatches,
+                skipSymlinks,
+            );
         } else if (entry.name.endsWith('.md')) {
             const matches: SearchMatch[] = [];
 
@@ -226,7 +254,7 @@ export function registerNotesRoutes(
                 );
             }
 
-            const tree = await buildTree(notesRoot, '');
+            const tree = await buildTree(notesRoot, '', resolved.isDefault ? undefined : notesRoot);
             sendJSON(res, 200, {
                 tree,
                 notesRoot,
@@ -267,15 +295,17 @@ export function registerNotesRoutes(
             let resolved: string;
             if (path.isAbsolute(filePath) && rootResult.isDefault) {
                 resolved = path.resolve(filePath);
+            } else if (!rootResult.isDefault) {
+                const safePath = await resolveSafeNotesPath(notesRoot, filePath);
+                if (isNotesPathSafetyError(safePath)) {
+                    return sendError(res, safePath.statusCode, safePath.error);
+                }
+                resolved = safePath.absolutePath;
             } else {
                 resolved = path.resolve(notesRoot, filePath);
             }
 
-            // For non-default roots, allow paths within the resolved root directory
-            const allowed = rootResult.isDefault
-                ? isAllowedPath(resolved, wsDataDir, ws.rootPath)
-                : isWithinDirectory(resolved, notesRoot);
-            if (!allowed) {
+            if (rootResult.isDefault && !isAllowedPath(resolved, wsDataDir, ws.rootPath)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
@@ -330,7 +360,16 @@ export function registerNotesRoutes(
                 return sendJSON(res, 200, { results: [], truncated: false });
             }
 
-            await searchNotes(notesRoot, '', query, results, totalMatches, MAX_FILES, MAX_MATCHES);
+            await searchNotes(
+                notesRoot,
+                '',
+                query,
+                results,
+                totalMatches,
+                MAX_FILES,
+                MAX_MATCHES,
+                !rootResult.isDefault,
+            );
 
             const truncated = results.length >= MAX_FILES || totalMatches.count >= MAX_MATCHES;
             sendJSON(res, 200, { results, truncated });

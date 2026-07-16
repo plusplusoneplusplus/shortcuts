@@ -126,7 +126,50 @@ async function reachedBatchWithOpenInput(
     return !fake.isInputEnded();
 }
 
+/**
+ * A fake `query()` that mirrors the observed Claude ordering for a turn that
+ * ends with a terminal assistant message and NO `result`/idle frame before it
+ * waits on stdin EOF: it yields the `pre` frames (typically an assistant
+ * `end_turn` message), then BLOCKS draining the streaming input until the
+ * provider closes the gate in response to that terminal frame, and only then
+ * yields the `postClose` frames (e.g. a late `result`/usage frame the SDK
+ * flushes after EOF). It proves the provider settles on `end_turn` alone AND
+ * still consumes trailing telemetry without a duplicate close or duplicated text.
+ */
+function makeTerminalAssistantFake(opts: { pre: object[]; postClose?: object[] }) {
+    const recordedInput: unknown[] = [];
+    let inputEnded = false;
+    const inputClosed = deferred();
+
+    const queryFn = vi.fn((callOptions: { prompt: AsyncIterable<unknown> }) => {
+        return {
+            [Symbol.asyncIterator]() {
+                return (async function* () {
+                    for (const m of opts.pre) yield m;
+                    // Block until the provider closes stdin in response to the
+                    // terminal assistant frame — no result/idle frame preceded it.
+                    for await (const m of callOptions.prompt) recordedInput.push(m);
+                    inputEnded = true;
+                    inputClosed.resolve();
+                    // Trailing telemetry the SDK flushes after EOF.
+                    for (const m of opts.postClose ?? []) yield m;
+                })();
+            },
+            return: async (v?: unknown) => ({ done: true as const, value: v }),
+        };
+    });
+
+    return {
+        queryFn,
+        recordedInput,
+        isInputEnded: () => inputEnded,
+        whenInputClosed: () => inputClosed.promise,
+    };
+}
+
 const assistantText = (text: string) => ({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
+/** Terminal assistant message: final text with the nested `end_turn` stop reason. */
+const endTurnAssistant = (text: string) => ({ type: 'assistant', message: { content: [{ type: 'text', text }], stop_reason: 'end_turn' } });
 const taskStarted = (taskId: string) => ({ type: 'system', subtype: 'task_started', task_id: taskId, task_type: 'local_bash' });
 const taskUpdated = (taskId: string) => ({ type: 'system', subtype: 'task_updated', task_id: taskId, patch: { status: 'completed' } });
 const taskNotification = (taskId: string, status = 'completed') => ({
@@ -346,5 +389,90 @@ describe('ClaudeSDKService background tasks', () => {
         expect(result).toBeDefined();
         await fake.whenInputClosed();
         expect(fake.isInputEnded()).toBe(true);
+    });
+
+    // ── Terminal assistant (`stop_reason: 'end_turn'`) settlement ───────────────
+    // Regression for a completed Claude turn hanging `running` forever when the
+    // CLI writes its final assistant message and then blocks on stdin EOF without
+    // emitting a `result` or a `session_state_changed: idle` frame.
+
+    describe('terminal assistant end_turn settlement', () => {
+        it('settles a no-background turn on end_turn alone and streams the final text once', async () => {
+            const fake = makeTerminalAssistantFake({
+                // Only a terminal assistant frame — no result / idle frame follows
+                // before the CLI blocks on stdin EOF.
+                pre: [endTurnAssistant('the answer')],
+            });
+            mockDynamicImport.mockResolvedValue({ query: fake.queryFn });
+
+            const chunks: string[] = [];
+            const result = await svc.sendMessage({
+                prompt: 'ask something',
+                onStreamingChunk: (c) => { if (c) chunks.push(c); },
+            });
+            await fake.whenInputClosed();
+
+            expect(result.success).toBe(true);
+            // Final assistant text returned and streamed exactly once.
+            expect(result.response).toBe('the answer');
+            expect(chunks).toEqual(['the answer']);
+            // The input iterable EOF'd (gate closed) and the registry is empty.
+            expect(fake.isInputEnded()).toBe(true);
+            expect(svc.getActiveSessionCount()).toBe(0);
+        });
+
+        it('consumes a result/usage frame delivered after the end_turn close without duplicating text', async () => {
+            const fake = makeTerminalAssistantFake({
+                pre: [endTurnAssistant('the answer')],
+                // The SDK flushes its result telemetry AFTER stdin EOF; the loop
+                // must still consume the usage without a second close or re-stream.
+                postClose: [resultMsg({ result: 'the answer', usage: { input_tokens: 12, output_tokens: 3 }, num_turns: 1 })],
+            });
+            mockDynamicImport.mockResolvedValue({ query: fake.queryFn });
+
+            const chunks: string[] = [];
+            const result = await svc.sendMessage({
+                prompt: 'ask something',
+                onStreamingChunk: (c) => { if (c) chunks.push(c); },
+            });
+            await fake.whenInputClosed();
+
+            expect(result.success).toBe(true);
+            // Text not duplicated by the trailing result frame.
+            expect(result.response).toBe('the answer');
+            expect(chunks).toEqual(['the answer']);
+            // Usage from the post-close result frame was still folded in.
+            expect(result.tokenUsage).toMatchObject({ inputTokens: 12, outputTokens: 3, totalTokens: 15 });
+            expect(fake.isInputEnded()).toBe(true);
+            expect(svc.getActiveSessionCount()).toBe(0);
+        });
+
+        it('does not settle on end_turn while a background task is still in flight, then settles when it drains', async () => {
+            const fake = makeDeferredStreamingFake({
+                // A background task starts, THEN the terminal assistant frame
+                // arrives while the task is still running. end_turn must NOT close
+                // input here — that would cut off the background work.
+                pre: [
+                    assistantText('working'),
+                    taskStarted('bg1'),
+                    endTurnAssistant('done'),
+                ],
+                // Released only if input stayed open (the SDK drops it otherwise).
+                batches: [[taskNotification('bg1', 'completed')]],
+            });
+            mockDynamicImport.mockResolvedValue({ query: fake.queryFn });
+
+            const sendP = svc.sendMessage({ prompt: 'background then finish' });
+            // The pending end_turn signal must leave stdin OPEN while bg1 runs.
+            expect(await reachedBatchWithOpenInput(fake, 0)).toBe(true);
+            // Draining the final task releases the held end_turn signal → settle.
+            fake.releaseBatch();
+            const result = await sendP;
+
+            expect(result.success).toBe(true);
+            expect(result.response).toBe('workingdone');
+            await fake.whenInputClosed();
+            expect(fake.isInputEnded()).toBe(true);
+        });
     });
 });

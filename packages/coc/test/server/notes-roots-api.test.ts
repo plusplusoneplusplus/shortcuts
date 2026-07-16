@@ -22,7 +22,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import { FileProcessStore, getRepoDataPath } from '@plusplusoneplusplus/forge';
 import { createExecutionServer } from '../../src/server/index';
 import type { ExecutionServer } from '../../src/server/types';
 import { writeRepoPreferences, readRepoPreferences } from '../../src/server/preferences-handler';
@@ -123,6 +123,12 @@ describe('Notes Roots Management API', { timeout: 30_000 }, () => {
         return `${srv.url}/api/workspaces/${wsId}/notes/roots`;
     }
 
+    function writeTaskSettings(folderPaths: string[]): void {
+        const settingsPath = getRepoDataPath(dataDir, wsId, 'tasks-settings.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify({ folderPaths }, null, 2), 'utf-8');
+    }
+
     // ========================================================================
     // GET /api/workspaces/:id/notes/roots
     // ========================================================================
@@ -152,6 +158,97 @@ describe('Notes Roots Management API', { timeout: 30_000 }, () => {
             expect(data.roots[0].isDefault).toBe(true);
             expect(data.roots[1]).toEqual({ rootId: 'docs/notes', label: 'docs/notes', isDefault: false });
             expect(data.roots[2]).toEqual({ rootId: 'wiki', label: 'wiki', isDefault: false });
+        });
+
+        it('discovers existing primary, legacy, relative, and absolute task roots with protected labels', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+
+            const primary = getRepoDataPath(dataDir, wsId, 'tasks');
+            const legacy = path.join(workspaceDir, '.vscode', 'tasks');
+            const relative = path.join(workspaceDir, 'plans', 'team');
+            const absolute = path.join(workspaceDir, 'absolute-plans');
+            for (const directory of [primary, legacy, relative, absolute]) {
+                fs.mkdirSync(directory, { recursive: true });
+            }
+            writeTaskSettings(['plans/team', absolute]);
+
+            const res = await request(rootsUrl(srv));
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            const taskRoots = data.roots.filter((root: any) => root.isProtected && !root.isDefault);
+            expect(taskRoots.map((root: any) => root.label)).toEqual([
+                'Task Plans',
+                'Legacy Plans (.vscode/tasks)',
+                'plans/team',
+                absolute,
+            ]);
+            expect(taskRoots.every((root: any) => /^task:[a-f0-9]{64}$/.test(root.rootId))).toBe(true);
+            expect(readRepoPreferences(dataDir, wsId).additionalNotesRoots).toBeUndefined();
+            expect(JSON.parse(fs.readFileSync(getRepoDataPath(dataDir, wsId, 'tasks-settings.json'), 'utf-8')))
+                .toEqual({ folderPaths: ['plans/team', absolute] });
+        });
+
+        it('refreshes task-derived roots from directory existence without persisting discovery', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            writeTaskSettings(['plans/later']);
+
+            let res = await request(rootsUrl(srv));
+            expect(JSON.parse(res.body).roots.map((root: any) => root.label)).toEqual(['Notes']);
+
+            const appearingRoot = path.join(workspaceDir, 'plans', 'later');
+            fs.mkdirSync(appearingRoot, { recursive: true });
+            res = await request(rootsUrl(srv));
+            expect(JSON.parse(res.body).roots.map((root: any) => root.label)).toEqual(['Notes', 'plans/later']);
+
+            fs.rmSync(appearingRoot, { recursive: true });
+            res = await request(rootsUrl(srv));
+            expect(JSON.parse(res.body).roots.map((root: any) => root.label)).toEqual(['Notes']);
+        });
+
+        it('deduplicates canonical task paths and hides an overlapping additional Notes root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            const sharedRoot = path.join(workspaceDir, 'plans', 'shared');
+            fs.mkdirSync(sharedRoot, { recursive: true });
+            writeTaskSettings(['plans/shared', sharedRoot, 'plans/shared/.']);
+            writeRepoPreferences(dataDir, wsId, { additionalNotesRoots: ['plans/shared', 'ordinary-notes'] });
+
+            const res = await request(rootsUrl(srv));
+            const roots = JSON.parse(res.body).roots;
+            expect(roots.filter((root: any) => root.label === 'plans/shared')).toEqual([
+                expect.objectContaining({ isProtected: true, isDefault: false }),
+            ]);
+            expect(roots.filter((root: any) => root.label === sharedRoot)).toHaveLength(0);
+            expect(roots).toContainEqual({ rootId: 'ordinary-notes', label: 'ordinary-notes', isDefault: false });
+        });
+
+        it('keeps discovered task roots scoped to the requested workspace', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            fs.mkdirSync(getRepoDataPath(dataDir, wsId, 'tasks'), { recursive: true });
+
+            const otherWsId = `${wsId}-other`;
+            const otherWorkspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-roots-api-other-ws-'));
+            try {
+                const registered = await postJSON(`${srv.url}/api/workspaces`, {
+                    id: otherWsId,
+                    name: 'Other Workspace',
+                    rootPath: otherWorkspaceDir,
+                });
+                expect(registered.status).toBe(201);
+                fs.mkdirSync(path.join(otherWorkspaceDir, '.vscode', 'tasks'), { recursive: true });
+
+                const first = JSON.parse((await request(rootsUrl(srv))).body).roots;
+                const second = JSON.parse((await request(
+                    `${srv.url}/api/workspaces/${otherWsId}/notes/roots`,
+                )).body).roots;
+                expect(first.map((root: any) => root.label)).toEqual(['Notes', 'Task Plans']);
+                expect(second.map((root: any) => root.label)).toEqual(['Notes', 'Legacy Plans (.vscode/tasks)']);
+            } finally {
+                await safeRm(otherWorkspaceDir);
+            }
         });
     });
 
@@ -313,6 +410,19 @@ describe('Notes Roots Management API', { timeout: 30_000 }, () => {
 
             const prefs = readRepoPreferences(dataDir, wsId);
             expect(prefs.additionalNotesRoots).toEqual([]);
+        });
+
+        it('rejects removal of a task-derived root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            fs.mkdirSync(getRepoDataPath(dataDir, wsId, 'tasks'), { recursive: true });
+            const listed = JSON.parse((await request(rootsUrl(srv))).body).roots;
+            const taskRoot = listed.find((root: any) => root.label === 'Task Plans');
+
+            const res = await deleteJSON(rootsUrl(srv), { rootPath: taskRoot.rootId });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toMatch(/protected/i);
+            expect(fs.existsSync(getRepoDataPath(dataDir, wsId, 'tasks'))).toBe(true);
         });
     });
 

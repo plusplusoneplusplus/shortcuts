@@ -76,6 +76,8 @@ const originalStderrWrite = process.stderr.write;
 const originalStdoutWrite = process.stdout.write;
 
 beforeEach(() => {
+    vi.clearAllMocks();
+
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deep-wiki-discover-test-'));
     stderrOutput = '';
     stdoutOutput = '';

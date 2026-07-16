@@ -15,8 +15,7 @@
     "packages/coc-desktop",
     "packages/deep-wiki",
     "packages/coccontainer",
-    "packages/whatsapp-bot",
-    "packages/teams-bot"
+    "packages/coc-connector"
   ],
   "scripts": {
     "build": "npm run build:packages",
@@ -28,11 +27,11 @@
     "test:all": "npm run test",
     "coverage": "npm run coverage -w packages/coc-agent-sdk && npm run coverage -w packages/coc-workflow && npm run coverage -w packages/forge && npm run coverage -w packages/coc-client && npm run coverage -w packages/coc-memory && npm run coverage -w packages/coc && npm run coverage -w packages/deep-wiki",
     "coverage:diff": "npm run coverage:diff -w packages/coc-agent-sdk && npm run coverage:diff -w packages/coc-workflow && npm run coverage:diff -w packages/forge && npm run coverage:diff -w packages/coc-client && npm run coverage:diff -w packages/coc-memory && npm run coverage:diff -w packages/coc && npm run coverage:diff -w packages/deep-wiki",
-    "build:packages": "npm run build -w packages/coc-agent-sdk && npm run build -w packages/coc-workflow && npm run build -w packages/forge && npm run build -w packages/coc-client && npm run build -w packages/coc-memory && npm run build -w packages/teams-bot && npm run build -w packages/coc && npm run build -w packages/deep-wiki && npm run build -w packages/coc-desktop",
+    "build:packages": "npm run build -w packages/coc-agent-sdk && npm run build -w packages/coc-workflow && npm run build -w packages/forge && npm run build -w packages/coc-client && npm run build -w packages/coc-memory && npm run build -w packages/coc-connector && npm run build -w packages/coc && npm run build -w packages/deep-wiki && npm run build -w packages/coc-desktop",
     "dev:desktop": "npm run build -w packages/coc && npm run build -w packages/coc-desktop && npm run start -w packages/coc-desktop",
     "ensure:native:node": "npm run ensure:native:node -w packages/coc-desktop",
     "build:desktop": "npm run build -w packages/coc && npm run build -w packages/coc-desktop && npm run rebuild:native -w packages/coc-desktop && npm run dist -w packages/coc-desktop",
-    "coc:link": "cd packages/coc-agent-sdk && npm run build && cd ../coc-workflow && npm run build && npm link && cd ../forge && npm run build && npm link && cd ../coc-client && npm run build && cd ../teams-bot && npm run build && cd ../coc && npm run build && npm link && node -e \"require('fs').rmSync('node_modules/@plusplusoneplusplus/forge', {recursive:true,force:true})\"",
+    "coc:link": "cd packages/coc-agent-sdk && npm run build && cd ../coc-workflow && npm run build && npm link && cd ../forge && npm run build && npm link && cd ../coc-client && npm run build && cd ../coc-connector && npm run build && cd ../coc && npm run build && npm link && node -e \"require('fs').rmSync('node_modules/@plusplusoneplusplus/forge', {recursive:true,force:true})\"",
     "deep-wiki:link": "cd packages/deep-wiki && npm run build && npm link",
     "changeset": "changeset",
     "version-packages": "changeset version",
@@ -49,5 +48,20 @@
   "dependencies": {
     "@github/copilot-sdk": "^1.0.6"
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  "overrides": {
+    "@excalidraw/excalidraw": {
+      "nanoid@3": "3.3.16"
+    },
+    "@excalidraw/mermaid-to-excalidraw": {
+      "@mermaid-js/parser@<=0.6.3": "1.2.0",
+      "nanoid@4": "5.1.16"
+    },
+    "mermaid": {
+      "dompurify@3": "3.4.12"
+    },
+    "monaco-editor": {
+      "dompurify@3": "3.4.12"
+    }
+  },
+  "packageManager": "npm@11.13.0"
 }

@@ -33,11 +33,20 @@ all have their own `references/*.md`.
 
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
-- **Admin export/import/wipe storage behavior** is centralized in
-  `src/server/storage/storage-snapshot-domains.ts`. When adding a persisted
-  storage family, update its snapshot domain and the focused storage tests
-  together so export counts, import merge/replace behavior, and wipe dry-run
-  counts cannot drift.
+- **Admin export/import/wipe storage behavior** lives under
+  `src/server/storage/snapshot/`: `types.ts` (the domain contract),
+  `registry.ts` (`createSnapshotDomains()` plus the collect/restore/wipe
+  orchestration), `snapshot-fs.ts` (shared filesystem helpers), and one module
+  per storage family (`core-store-domain`, `queue-domain`, `image-blob-domain`,
+  `preferences-domain`, `schedule-domain`, `git-ops-domain`).
+  `storage/storage-snapshot-domains.ts` is a compatibility barrel for the
+  public orchestration API. Schedule YAML + `schedule_runs` snapshot logic lives
+  next to schedule persistence in
+  `src/server/schedule/schedule-snapshot-repository.ts`. When adding a persisted
+  storage family, add a domain module, register it in `registry.ts`, and make it
+  pass the domain contract harness
+  (`test/server/snapshot-domain-contract.test.ts`) so export counts, import
+  merge/replace behavior, and wipe dry-run counts cannot drift.
 - **Server preferences** live under `src/server/preferences/`: `schema.ts`
   owns Zod schemas and inferred types, `repository.ts` owns global and
   repo-scoped disk persistence, `merge-policy.ts` owns PATCH/import merge
@@ -45,6 +54,18 @@ all have their own `references/*.md`.
   and `routes.ts` owns HTTP route registration. `preferences-handler.ts` is a
   compatibility barrel; new server code should import the specific preference
   module it needs.
+- **Notes task collections** are discovered per request from existing canonical
+  directories: the repo-scoped task root, `.vscode/tasks`, and task
+  `folderPaths`. Their `task:<sha256>` root ids are opaque, protected, and
+  workspace-scoped. Never persist them in `additionalNotesRoots`, count them
+  toward the user-configured Notes-root limit, or accept a client path as root
+  authority. Every non-default Notes file, folder, comment-sidecar, order, and
+  image path must pass `notes/notes-path-safety.ts`; it treats both slash styles
+  as separators, rejects absolute/drive/UNC/parent paths, and resolves existing
+  symlinks before checking containment in the selected root. The SPA must keep
+  task-derived rows out of Notes root removal selection, refresh discovery with
+  the tree, clear the selected file when a root disappears or the workspace
+  changes, and discard late root/tree responses from stale workspace scopes.
 - **In-memory caching** uses the one shared primitive at
   `src/server/cache/` (`createCache<T>({ namespace, ttlMs?, maxSize=500,
   immutable? })` → a handle with `get`/`set`/`getOrCompute`/`delete`/

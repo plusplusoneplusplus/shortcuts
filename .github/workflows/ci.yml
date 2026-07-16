@@ -7,6 +7,38 @@ on:
     branches: [main]
 
 jobs:
+  dependency-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            scripts/skillopt/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Audit production dependency graph
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit full dependency graph
+        run: npm audit --audit-level=high
+
+      - name: Install SkillOpt dependencies
+        run: npm ci
+        working-directory: scripts/skillopt
+
+      - name: Audit SkillOpt dependency graph
+        run: npm audit --audit-level=high
+        working-directory: scripts/skillopt
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -151,9 +183,9 @@ jobs:
         run: npm run build
         working-directory: packages/coc-memory
 
-      - name: Build teams-bot package
+      - name: Build coc-connector package
         run: npm run build
-        working-directory: packages/teams-bot
+        working-directory: packages/coc-connector
 
       - name: Build coc SPA client bundle
         run: npm run build:client
@@ -305,7 +337,7 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     container:
-      image: mcr.microsoft.com/playwright:v1.58.2-noble
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
       options: --ipc=host
     timeout-minutes: 15
 
@@ -357,9 +389,9 @@ jobs:
         run: npm run build
         working-directory: packages/coc-memory
 
-      - name: Build teams-bot package
+      - name: Build coc-connector package
         run: npm run build
-        working-directory: packages/teams-bot
+        working-directory: packages/coc-connector
 
       - name: Build coc SPA client bundle
         run: npm run build:client
@@ -469,10 +501,6 @@ jobs:
       - name: Build packages
         run: npm run build:packages
 
-      - name: Build whatsapp-bot package
-        run: npm run build
-        working-directory: packages/whatsapp-bot
-
       - name: Build coccontainer package
         run: npm run build
         working-directory: packages/coccontainer
@@ -551,12 +579,13 @@ jobs:
 
   ci:
     runs-on: ubuntu-latest
-    needs: [lint, forge-test, coc-test, coc-coverage, deep-wiki-test, e2e, coc-serve-smoke, coccontainer-serve-smoke, coc-desktop-test, workflow-policy-test]
+    needs: [dependency-security, lint, forge-test, coc-test, coc-coverage, deep-wiki-test, e2e, coc-serve-smoke, coccontainer-serve-smoke, coc-desktop-test, workflow-policy-test]
     if: always()
     steps:
       - name: Verify all required jobs succeeded
         run: |
           declare -A results=(
+            [dependency-security]="${{ needs.dependency-security.result }}"
             [lint]="${{ needs.lint.result }}"
             [forge-test]="${{ needs.forge-test.result }}"
             [coc-test]="${{ needs.coc-test.result }}"

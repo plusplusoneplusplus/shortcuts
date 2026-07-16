@@ -1,8 +1,25 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { formatRelativeTime, formatConversationAsText, formatConversationAsHtml, escapeHtml } from '../../../../src/server/spa/client/react/utils/format';
+import {
+    formatRelativeTime,
+    formatConversationAsText,
+    formatConversationAsHtml,
+    escapeHtml,
+    imageSrcToDataUri,
+    enrichSelectionHtmlWithInlineImages,
+    copySelectionWithInlineImages,
+} from '../../../../src/server/spa/client/react/utils/format';
+
+const originalFetch = globalThis.fetch;
+const originalClipboardItem = (globalThis as any).ClipboardItem;
+const originalClipboard = navigator.clipboard;
 
 afterEach(() => {
     vi.restoreAllMocks();
+    // These tests overwrite globals directly (not via spies) — restore them so
+    // the mutations don't leak into sibling spa tests sharing the worker.
+    globalThis.fetch = originalFetch;
+    (globalThis as any).ClipboardItem = originalClipboardItem;
+    Object.assign(navigator, { clipboard: originalClipboard });
 });
 
 function mockNow(ms: number) {
@@ -383,5 +400,212 @@ describe('formatConversationAsHtml', () => {
         expect(html).not.toContain('<script>');
         expect(html).not.toContain('<img src=x>');
         expect(html).toContain('&lt;script&gt;');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Inline-image selection copy (Ctrl+C → paste into Word / Google Docs / email)
+// ---------------------------------------------------------------------------
+
+/** Build a detached fragment holding an `img.chat-inline-image` between text. */
+function makeImageFragment(attrs: Record<string, string>): DocumentFragment {
+    const frag = document.createDocumentFragment();
+    const p = document.createElement('p');
+    p.appendChild(document.createTextNode('before '));
+    const img = document.createElement('img');
+    img.className = 'chat-inline-image';
+    for (const [k, v] of Object.entries(attrs)) img.setAttribute(k, v);
+    p.appendChild(img);
+    p.appendChild(document.createTextNode(' after'));
+    frag.appendChild(p);
+    return frag;
+}
+
+/** Read a Blob's text (jsdom Blob has no .text()). */
+function readBlobText(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(blob);
+    });
+}
+
+/** A minimal Selection stand-in (jsdom's Selection.toString is unreliable). */
+function stubSelection(fragment: DocumentFragment, text: string, opts: { rangeCount?: number; isCollapsed?: boolean } = {}): Selection {
+    return {
+        rangeCount: opts.rangeCount ?? 1,
+        isCollapsed: opts.isCollapsed ?? false,
+        getRangeAt: () => ({ cloneContents: () => fragment.cloneNode(true) }),
+        toString: () => text,
+    } as unknown as Selection;
+}
+
+describe('imageSrcToDataUri', () => {
+    it('returns a base64 data URI for a fetchable same-origin proxy image', async () => {
+        const blob = new Blob(['PNGBYTES'], { type: 'image/png' });
+        globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => blob }) as any;
+        const uri = await imageSrcToDataUri('/api/workspaces/ws-1/files/image?path=a.png');
+        expect(uri).toMatch(/^data:image\/png;base64,/);
+    });
+
+    it('passes an existing data: URI through unchanged without fetching', async () => {
+        const fetchSpy = vi.fn();
+        globalThis.fetch = fetchSpy as any;
+        const uri = await imageSrcToDataUri('data:image/png;base64,AAAA');
+        expect(uri).toBe('data:image/png;base64,AAAA');
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns null (never throws) when the fetch rejects — e.g. CORS', async () => {
+        globalThis.fetch = vi.fn().mockRejectedValue(new Error('CORS')) as any;
+        await expect(imageSrcToDataUri('https://example.com/x.png')).resolves.toBeNull();
+    });
+
+    it('returns null on a non-ok response', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, blob: async () => new Blob([]) }) as any;
+        await expect(imageSrcToDataUri('/api/img')).resolves.toBeNull();
+    });
+
+    it('returns null for an empty src', async () => {
+        await expect(imageSrcToDataUri('')).resolves.toBeNull();
+    });
+});
+
+describe('enrichSelectionHtmlWithInlineImages', () => {
+    it('inlines a proxy-URL image as a data: URI and strips app-only attributes', async () => {
+        const blob = new Blob(['PNGBYTES'], { type: 'image/png' });
+        globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => blob }) as any;
+        const frag = makeImageFragment({
+            src: '/api/workspaces/ws-1/files/image?path=a.png',
+            loading: 'lazy',
+            onerror: 'boom()',
+            'data-local-path': 'a.png',
+        });
+
+        const html = await enrichSelectionHtmlWithInlineImages(frag);
+
+        expect(html).toContain('data:image/png;base64,');
+        expect(html).not.toContain('/api/workspaces');
+        // App-only attributes are stripped from the emitted HTML.
+        expect(html).not.toContain('chat-inline-image');
+        expect(html).not.toContain('onerror');
+        expect(html).not.toContain('data-local-path');
+        expect(html).not.toContain('loading');
+        // Surrounding text is preserved.
+        expect(html).toContain('before ');
+        expect(html).toContain(' after');
+    });
+
+    it('keeps the original absolute URL when a remote image cannot be fetched', async () => {
+        globalThis.fetch = vi.fn().mockRejectedValue(new Error('CORS')) as any;
+        const frag = makeImageFragment({ src: 'https://example.com/pic.png' });
+
+        const html = await enrichSelectionHtmlWithInlineImages(frag);
+
+        expect(html).toContain('https://example.com/pic.png');
+        expect(html).not.toContain('data:');
+    });
+
+    it('does not mutate the passed fragment', async () => {
+        globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(['x'], { type: 'image/png' }) }) as any;
+        const frag = makeImageFragment({ src: '/api/img' });
+        await enrichSelectionHtmlWithInlineImages(frag);
+        const img = (frag.cloneNode(true) as DocumentFragment).querySelector('img');
+        expect(img?.getAttribute('class')).toBe('chat-inline-image');
+    });
+});
+
+describe('copySelectionWithInlineImages', () => {
+    function installClipboard() {
+        const write = vi.fn().mockResolvedValue(undefined);
+        const items: any[] = [];
+        // Capture ClipboardItem payloads so we can read the html flavor back.
+        (globalThis as any).ClipboardItem = vi.fn(function (this: any, payload: Record<string, Blob>) {
+            this.payload = payload;
+            items.push(this);
+        });
+        Object.assign(navigator, { clipboard: { write } });
+        return { write, items };
+    }
+
+    it('returns null and does nothing for a selection with no inline image', () => {
+        const frag = document.createDocumentFragment();
+        const p = document.createElement('p');
+        p.textContent = 'just text';
+        frag.appendChild(p);
+        const setData = vi.fn();
+        const preventDefault = vi.fn();
+
+        const result = copySelectionWithInlineImages(
+            stubSelection(frag, 'just text'),
+            { setData } as unknown as DataTransfer,
+            preventDefault,
+        );
+
+        expect(result).toBeNull();
+        expect(preventDefault).not.toHaveBeenCalled();
+        expect(setData).not.toHaveBeenCalled();
+    });
+
+    it('returns null for an empty/collapsed selection', () => {
+        const frag = makeImageFragment({ src: '/api/img' });
+        const setData = vi.fn();
+        const preventDefault = vi.fn();
+        const result = copySelectionWithInlineImages(
+            stubSelection(frag, '', { isCollapsed: true }),
+            { setData } as unknown as DataTransfer,
+            preventDefault,
+        );
+        expect(result).toBeNull();
+        expect(preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('returns null for a null selection', () => {
+        expect(copySelectionWithInlineImages(null, { setData: vi.fn() } as unknown as DataTransfer, vi.fn())).toBeNull();
+    });
+
+    it('prevents default, writes a sync fallback, then upgrades to inlined data-URI HTML', async () => {
+        const { write, items } = installClipboard();
+        globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(['P'], { type: 'image/png' }) }) as any;
+        const frag = makeImageFragment({ src: '/api/workspaces/ws-1/files/image?path=a.png' });
+        const setData = vi.fn();
+        const preventDefault = vi.fn();
+
+        const result = copySelectionWithInlineImages(
+            stubSelection(frag, 'before  after'),
+            { setData } as unknown as DataTransfer,
+            preventDefault,
+        );
+        expect(result).not.toBeNull();
+        expect(preventDefault).toHaveBeenCalledTimes(1);
+
+        // Synchronous best-effort fallback: original (un-inlined) HTML + text.
+        const htmlCall = setData.mock.calls.find(c => c[0] === 'text/html');
+        expect(htmlCall?.[1]).toContain('/api/workspaces');
+        expect(setData).toHaveBeenCalledWith('text/plain', 'before  after');
+
+        await result;
+
+        // Async upgrade: clipboard.write got inlined data-URI HTML, no proxy URL.
+        expect(write).toHaveBeenCalledTimes(1);
+        const upgradedHtml = await readBlobText(items[0].payload['text/html']);
+        expect(upgradedHtml).toContain('data:image/png;base64,');
+        expect(upgradedHtml).not.toContain('/api/workspaces');
+    });
+
+    it('rejects the returned promise when the async clipboard write fails (caller catches)', async () => {
+        const write = vi.fn().mockRejectedValue(new Error('denied'));
+        (globalThis as any).ClipboardItem = vi.fn();
+        Object.assign(navigator, { clipboard: { write } });
+        globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(['P'], { type: 'image/png' }) }) as any;
+        const frag = makeImageFragment({ src: '/api/img' });
+
+        const result = copySelectionWithInlineImages(
+            stubSelection(frag, 'before  after'),
+            { setData: vi.fn() } as unknown as DataTransfer,
+            vi.fn(),
+        );
+        await expect(result).rejects.toThrow('denied');
     });
 });

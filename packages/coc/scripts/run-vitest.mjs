@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
+import path from 'path';
+import { matchesGreenSummary, decideExitCode } from './run-vitest-lib.mjs';
 
 const require = createRequire(import.meta.url);
-const vitestEntry = require.resolve('vitest/vitest.mjs');
+const vitestPackageJsonPath = require.resolve('vitest/package.json');
+const vitestPackage = require(vitestPackageJsonPath);
+const vitestEntry = path.resolve(path.dirname(vitestPackageJsonPath), vitestPackage.bin.vitest);
 const args = ['run', ...process.argv.slice(2)];
 const greenExitGraceMs = Number(process.env.COC_VITEST_GREEN_EXIT_GRACE_MS ?? 1_000);
 
 let sawGreenSummary = false;
-let forcedGreenExit = false;
 let childClosed = false;
 let outputTail = '';
 let greenExitTimer;
@@ -26,12 +29,11 @@ function inspectOutput(chunk) {
 }
 
 function processOutput(text) {
-    if (/^\s*Test Files\s+(?!.*\bfailed\b)(?=.*\bpassed\b).*/m.test(text)) {
+    if (matchesGreenSummary(text)) {
         sawGreenSummary = true;
         if (!greenExitTimer) {
             greenExitTimer = setTimeout(() => {
                 if (!childClosed) {
-                    forcedGreenExit = true;
                     child.kill('SIGTERM');
                     forceKillTimer = setTimeout(() => {
                         if (!childClosed) child.kill('SIGKILL');
@@ -62,14 +64,14 @@ child.on('close', (code, signal) => {
     if (greenExitTimer) clearTimeout(greenExitTimer);
     if (forceKillTimer) clearTimeout(forceKillTimer);
 
-    if (forcedGreenExit && sawGreenSummary) {
-        process.exit(0);
-    }
-    if (typeof code === 'number') {
-        process.exit(code);
-    }
-    if (signal) {
+    // A green summary means every test file passed. vitest may still exit
+    // non-zero purely because of tolerated worker-crash "unhandled errors"
+    // (e.g. the flaky libuv fs.watch assertion on Windows), whether we
+    // force-killed it after the grace period or it self-exited first. Decide on
+    // the summary alone so that race can't fail CI; genuine failures never
+    // produce a green summary and keep their non-zero exit.
+    if (!sawGreenSummary && typeof code !== 'number' && signal) {
         console.error(`Vitest exited due to signal ${signal}`);
     }
-    process.exit(1);
+    process.exit(decideExitCode({ sawGreenSummary, code, signal }));
 });

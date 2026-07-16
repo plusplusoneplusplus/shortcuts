@@ -97,13 +97,13 @@ describe('NoteEditorCommentBackend', () => {
 
     describe('noopCommentBackend', () => {
         it('loadThreads returns an empty array', async () => {
-            const threads = await noopCommentBackend.loadThreads('ws1', 'page.md');
+            const threads = await noopCommentBackend.loadThreads('ws1', 'page.md', 'task:primary');
             expect(threads).toEqual([]);
         });
 
         it('updateThreadAnchor resolves without error', async () => {
             await expect(
-                noopCommentBackend.updateThreadAnchor('ws1', 'page.md', 't1', 'open'),
+                noopCommentBackend.updateThreadAnchor('ws1', 'page.md', 't1', 'open', 'task:primary'),
             ).resolves.toBeUndefined();
         });
     });
@@ -124,15 +124,15 @@ describe('NoteEditorCommentBackend', () => {
                 threads: { t1: thread },
             });
 
-            const result = await defaultCommentBackend.loadThreads('ws1', 'page.md');
-            expect(mockGetComments).toHaveBeenCalledWith('ws1', 'page.md');
+            const result = await defaultCommentBackend.loadThreads('ws1', 'page.md', 'task:primary');
+            expect(mockGetComments).toHaveBeenCalledWith('ws1', 'page.md', 'task:primary');
             expect(result).toEqual([thread]);
         });
 
         it('updateThreadAnchor delegates to notesApi.updateThread', async () => {
             mockUpdateThread.mockResolvedValue({ thread: {} });
-            await defaultCommentBackend.updateThreadAnchor('ws1', 'page.md', 't1', 'resolved');
-            expect(mockUpdateThread).toHaveBeenCalledWith('ws1', 'page.md', 't1', 'resolved');
+            await defaultCommentBackend.updateThreadAnchor('ws1', 'page.md', 't1', 'resolved', 'task:primary');
+            expect(mockUpdateThread).toHaveBeenCalledWith('ws1', 'page.md', 't1', 'resolved', 'task:primary');
         });
     });
 
@@ -219,7 +219,7 @@ describe('NoteEditorCommentBackend', () => {
             });
 
             await waitFor(() => {
-                expect(fakeBackend.loadThreads).toHaveBeenCalledWith('ws1', 'page.md');
+                expect(fakeBackend.loadThreads).toHaveBeenCalledWith('ws1', 'page.md', undefined);
             });
 
             // notesApi should NOT have been called directly
@@ -249,7 +249,7 @@ describe('NoteEditorCommentBackend', () => {
 
             await waitFor(() => {
                 // The default backend should delegate to notesApi.getComments
-                expect(mockGetComments).toHaveBeenCalledWith('ws1', 'p.md');
+                expect(mockGetComments).toHaveBeenCalledWith('ws1', 'p.md', undefined);
             });
         });
     });

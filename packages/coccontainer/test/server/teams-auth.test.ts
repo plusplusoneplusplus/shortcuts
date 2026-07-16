@@ -12,8 +12,8 @@ import * as path from 'path';
 import * as os from 'os';
 
 // Mock the teams-bot auth functions
-vi.mock('@plusplusoneplusplus/teams-bot', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/teams-bot')>();
+vi.mock('@plusplusoneplusplus/coc-connector/teams', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-connector/teams')>();
     return {
         ...actual,
         exchangeCodeForToken: vi.fn().mockResolvedValue('mock-access-token'),
@@ -139,7 +139,7 @@ describe('Teams Auth Endpoints', () => {
     });
 
     it('should return auth status as not authenticated when tokens missing', async () => {
-        const { acquireMcpOAuthToken } = await import('@plusplusoneplusplus/teams-bot');
+        const { acquireMcpOAuthToken } = await import('@plusplusoneplusplus/coc-connector/teams');
         vi.mocked(acquireMcpOAuthToken).mockRejectedValueOnce(new Error('No tokens'));
 
         const { status, body } = await httpRequest(`${containerUrl}/api/container/messaging/teams/auth/status`);
@@ -148,7 +148,7 @@ describe('Teams Auth Endpoints', () => {
     });
 
     it('should return authenticated when valid tokens exist', async () => {
-        const { acquireMcpOAuthToken } = await import('@plusplusoneplusplus/teams-bot');
+        const { acquireMcpOAuthToken } = await import('@plusplusoneplusplus/coc-connector/teams');
         vi.mocked(acquireMcpOAuthToken).mockResolvedValueOnce('valid-token');
 
         const { status, body } = await httpRequest(`${containerUrl}/api/container/messaging/teams/auth/status`);

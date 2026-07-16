@@ -9,35 +9,41 @@ import * as os from 'os';
 import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
 
 // Mock the teams-bot package
-vi.mock('@plusplusoneplusplus/teams-bot', () => ({
-    TeamsBot: vi.fn().mockImplementation((opts: any) => ({
-        start: vi.fn().mockImplementation(async () => {
-            opts.onStatusChange?.('connected');
-        }),
-        stop: vi.fn().mockResolvedValue(undefined),
-        send: vi.fn().mockResolvedValue('msg-123'),
-        setChannelId: vi.fn(),
-        isConnected: vi.fn().mockReturnValue(true),
-        getStatus: vi.fn().mockReturnValue('connected'),
-    })),
-    GraphClient: vi.fn().mockImplementation(() => ({
-        resolveOrCreateTeamAndChannel: vi.fn().mockResolvedValue({
-            teamId: 'team-id-resolved',
-            channelId: 'channel-id-resolved',
-        }),
-    })),
-    McpClient: vi.fn().mockImplementation(() => ({
-        initialize: vi.fn().mockResolvedValue(undefined),
-        callTool: vi.fn().mockImplementation(async (name: string) => {
-            if (name === 'ListTeams') {
-                return { content: [{ type: 'text', text: JSON.stringify({ teams: [{ id: 'team-id-resolved', displayName: 'TestTeam' }] }) }] };
-            }
-            if (name === 'ListChannels') {
-                return { content: [{ type: 'text', text: JSON.stringify({ channels: [{ id: 'channel-id-resolved', displayName: 'TestChannel' }] }) }] };
-            }
-            return { content: [{ type: 'text', text: '{}' }] };
-        }),
-    })),
+vi.mock('@plusplusoneplusplus/coc-connector/teams', () => ({
+    TeamsBot: vi.fn().mockImplementation(function (opts: any) {
+        return {
+            start: vi.fn().mockImplementation(async () => {
+                opts.onStatusChange?.('connected');
+            }),
+            stop: vi.fn().mockResolvedValue(undefined),
+            send: vi.fn().mockResolvedValue('msg-123'),
+            setChannelId: vi.fn(),
+            isConnected: vi.fn().mockReturnValue(true),
+            getStatus: vi.fn().mockReturnValue('connected'),
+        };
+    }),
+    GraphClient: vi.fn().mockImplementation(function () {
+        return {
+            resolveOrCreateTeamAndChannel: vi.fn().mockResolvedValue({
+                teamId: 'team-id-resolved',
+                channelId: 'channel-id-resolved',
+            }),
+        };
+    }),
+    McpClient: vi.fn().mockImplementation(function () {
+        return {
+            initialize: vi.fn().mockResolvedValue(undefined),
+            callTool: vi.fn().mockImplementation(async (name: string) => {
+                if (name === 'ListTeams') {
+                    return { content: [{ type: 'text', text: JSON.stringify({ teams: [{ id: 'team-id-resolved', displayName: 'TestTeam' }] }) }] };
+                }
+                if (name === 'ListChannels') {
+                    return { content: [{ type: 'text', text: JSON.stringify({ channels: [{ id: 'channel-id-resolved', displayName: 'TestChannel' }] }) }] };
+                }
+                return { content: [{ type: 'text', text: '{}' }] };
+            }),
+        };
+    }),
     acquireMcpOAuthToken: vi.fn().mockResolvedValue('fake-mcp-token-abc'),
     acquireTokenViaAzCli: vi.fn().mockResolvedValue('fake-mcp-token-abc'),
 }));

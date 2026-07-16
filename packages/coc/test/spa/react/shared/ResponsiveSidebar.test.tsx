@@ -22,7 +22,6 @@ afterEach(() => {
     (useBreakpoint as ReturnType<typeof vi.fn>).mockReturnValue({
         isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop',
     });
-    document.querySelectorAll('[data-testid="sidebar-backdrop"]').forEach(el => el.remove());
 });
 
 describe('ResponsiveSidebar — desktop mode', () => {

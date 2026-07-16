@@ -128,7 +128,7 @@ function renderWithOverflow(
 ) {
     // Mock ResizeObserver
     let observerCallback: ResizeObserverCallback | null = null;
-    const mockRO = vi.fn().mockImplementation((cb: ResizeObserverCallback) => {
+    const mockRO = vi.fn().mockImplementation(function (cb: ResizeObserverCallback) {
         observerCallback = cb;
         return {
             observe: vi.fn(),

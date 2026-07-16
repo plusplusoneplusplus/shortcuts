@@ -262,7 +262,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
         fetchWorkflows(workspaceId)
             .then(list => {
                 if (!cancelled) {
-                    setPipelines(list);
+                    setPipelines(Array.isArray(list) ? list : []);
                 }
             })
             .catch(() => {

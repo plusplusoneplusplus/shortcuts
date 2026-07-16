@@ -21,7 +21,6 @@ function PrefsLoader({ prefs, children }: { prefs: Record<string, unknown>; chil
 
 afterEach(() => {
     vi.unstubAllGlobals();
-    document.querySelectorAll('#welcome-tour').forEach(el => el.remove());
 });
 
 describe('Feature flag gates (SHOW_WELCOME_TUTORIAL = false)', () => {

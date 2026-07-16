@@ -16,7 +16,7 @@
  */
 
 import type { ProcessStore, AIProcess, ProcessFilter } from '@plusplusoneplusplus/forge';
-import type { InboundTeamsMessage } from '@plusplusoneplusplus/teams-bot';
+import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsUserStateStore } from './teams-user-state';
 
 // ============================================================================

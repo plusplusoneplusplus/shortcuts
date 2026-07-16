@@ -10,7 +10,6 @@ The repository is an npm workspaces monorepo for published Node packages. This f
 | **CoC Container** | `packages/coccontainer/` | Node.js | Container-oriented CoC server package with messaging integrations and service entry points |
 | **CoC Client** | `packages/coc-client/` | Node.js/browser | Framework-free TypeScript client for CoC REST and realtime APIs |
 | **Deep Wiki** | `packages/deep-wiki/` | Node.js | CLI that auto-generates comprehensive wikis for codebases (`deep-wiki seeds|discover|generate|theme|init`) |
-| **Teams Bot** | `packages/teams-bot/` | Node.js | Microsoft Teams bot integration for CoC-backed workflows |
 
 | Shared Package | Location | Description |
 |----------------|----------|-------------|
@@ -18,17 +17,17 @@ The repository is an npm workspaces monorepo for published Node packages. This f
 | **forge** | `packages/forge/` | Core AI utilities and compatibility surface: imports AI SDK from `coc-agent-sdk`, task queue, runtime policies, process store, git CLI, remote server connectors (`connectors` sub-path: SSH, DevTunnel), utilities, and workflow compatibility exports |
 | **coc-agent-sdk** | `packages/coc-agent-sdk/` | Provider-agnostic AI agent SDK: `CopilotSDKService`, `CodexSDKService`, `SDKServiceRegistry`, session lifecycle, streaming state machine, MCP config, model registry |
 | **coc-memory** | `packages/coc-memory/` | Memory V2 core package: SQLite-backed fact/episode stores, hybrid search, embedding provider abstraction, capture service, safety scanning |
-| **whatsapp-bot** | `packages/whatsapp-bot/` | Standalone WhatsApp bot via Baileys — no CoC/forge deps. Used by `coccontainer` when `messaging.whatsapp.enabled` is true |
+| **coc-connector** | `packages/coc-connector/` | Consolidated messaging connectors behind one `MessagingConnector` contract — no CoC/forge deps. Core interface at the root (`@plusplusoneplusplus/coc-connector`), Teams at `/teams` (Graph API + MCP, used by `coc` and `coccontainer`), WhatsApp at `/whatsapp` (Baileys, lazy-loaded; used by `coccontainer` when `messaging.whatsapp.enabled` is true). Baileys + qrcode-terminal are `optionalDependencies`. Subpath exports avoid the `BotStatus` name collision; physical `teams/` + `whatsapp/` proxy `package.json` dirs let `moduleResolution: node10` consumers resolve the subpaths |
 
 **Architectural boundary:** Shared behavior belongs in Node packages with explicit package contracts. UI-facing behavior for the CoC dashboard lives under `packages/coc/`; reusable REST clients live in `packages/coc-client/`; workflow, memory, SDK, and utility logic stay in their dedicated packages.
 
 ## Package Management & Publishing
 
-Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memory`, `coc-client`, `deep-wiki`, `coccontainer`, `whatsapp-bot`, `teams-bot`) are published to npm under the `@plusplusoneplusplus` scope with public access. Versioning and publishing are coordinated via **`@changesets/cli`** with an independent versioning strategy.
+Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memory`, `coc-client`, `deep-wiki`, `coccontainer`, `coc-connector`) are published to npm under the `@plusplusoneplusplus` scope with public access. Versioning and publishing are coordinated via **`@changesets/cli`** with an independent versioning strategy.
 
 **How workspace packages are consumed:** `coc` and `deep-wiki` depend on published workspace packages via caret ranges. During local development, npm workspaces symlink them automatically. There is no bundling or copying into consumer packages — packages are resolved from `node_modules` at runtime.
 
-**CoC build order:** `packages/coc-agent-sdk` builds before `coc-workflow`; `coc-workflow` builds before `forge` and `coc`; and `coc` depends on compiled `coc-agent-sdk`, `coc-client`, `coc-workflow`, and `coc-memory` output. The root `build:packages` script builds `coc-agent-sdk`, `coc-workflow`, `forge`, `coc-client`, and `coc-memory` before `coc`. Direct `packages/forge` builds run `scripts/prebuild.mjs` to build `coc-agent-sdk` and `coc-workflow` before `tsc`; direct `packages/coc` builds run `scripts/prebuild.mjs` to build `coc-agent-sdk`, `coc-client`, `coc-workflow`, and `coc-memory`, then clean `dist` before `tsc` emits package artifacts.
+**CoC build order:** `packages/coc-agent-sdk` builds before `coc-workflow`; `coc-workflow` builds before `forge` and `coc`; and `coc` depends on compiled `coc-agent-sdk`, `coc-client`, `coc-workflow`, `coc-memory`, and `coc-connector` output. The root `build:packages` script builds `coc-agent-sdk`, `coc-workflow`, `forge`, `coc-client`, `coc-memory`, and `coc-connector` before `coc`. Direct `packages/forge` builds run `scripts/prebuild.mjs` to build `coc-agent-sdk` and `coc-workflow` before `tsc`; direct `packages/coc` builds run `scripts/prebuild.mjs` to build `coc-agent-sdk`, `coc-client`, `coc-workflow`, and `coc-memory`, then clean `dist` before `tsc` emits package artifacts.
 
 **Versioning workflow:**
 1. Add a changeset: `npm run changeset` (interactive prompt for affected packages and semver bump)

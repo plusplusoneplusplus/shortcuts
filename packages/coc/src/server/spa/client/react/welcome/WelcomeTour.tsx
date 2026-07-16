@@ -7,6 +7,7 @@ import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 import { CocIcon } from './CocIcon';
 import { WELCOME_TOUR_STEPS } from './welcomeTourSteps';
 import { WELCOME_TOUR_STYLES } from './welcomeTourStyles';
+import { usePortalContainer } from '../ui/usePortalContainer';
 
 export interface WelcomeTourProps {
     /** Called after the tour is dismissed via "Get started". Parent may use this to scroll to FirstStepsCard. */
@@ -26,6 +27,7 @@ export function WelcomeTour({ onGetStarted }: WelcomeTourProps) {
         && state.preferencesLoaded
         && !state.preferencesLoadFailed
         && !state.hasSeenWelcome;
+    const portalContainer = usePortalContainer(open);
 
     const handleGetStarted = useCallback(async () => {
         if (saving) return;
@@ -86,7 +88,7 @@ export function WelcomeTour({ onGetStarted }: WelcomeTourProps) {
         if (!open) setStep(0);
     }, [open]);
 
-    if (!open) {
+    if (!open || !portalContainer) {
         return (
             <ToastContainer toasts={toasts} removeToast={removeToast} />
         );
@@ -244,7 +246,7 @@ export function WelcomeTour({ onGetStarted }: WelcomeTourProps) {
                         </footer>
                     </div>
                 </div>,
-                document.body,
+                portalContainer,
             )}
             <ToastContainer toasts={toasts} removeToast={removeToast} />
         </>

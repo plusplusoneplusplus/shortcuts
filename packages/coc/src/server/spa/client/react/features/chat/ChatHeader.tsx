@@ -32,6 +32,20 @@ const ICON_BTN_CLASS =
     + 'disabled:opacity-40 disabled:cursor-not-allowed '
     + 'transition-colors flex-shrink-0';
 
+/**
+ * Chat-header-specific wide breakpoint (CSS px).
+ *
+ * The header's wide tier renders the inline References button plus the full
+ * status pill on the left while the Thread/Agents view toggle, cascade, copy,
+ * and overflow controls occupy the right. That full action set needs more room
+ * than the generic 700px `useContainerWidth` default before it stops competing
+ * for the row, so a 700–900px pane (split view, source-canvas layout, browser
+ * zoom) uses the medium layout — References folds into the overflow menu and
+ * the status pill goes icon-only — instead of the References button painting
+ * beneath the non-shrinking right action group.
+ */
+const CHAT_HEADER_WIDE_THRESHOLD = 960;
+
 
 export interface ChatHeaderProps {
     task: any;
@@ -392,7 +406,7 @@ export function ChatHeader({
     const [copiedHtml, setCopiedHtml] = useState(false);
     const [refsSheetOpen, setRefsSheetOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
-    const { tier } = useContainerWidth(containerRef);
+    const { tier } = useContainerWidth(containerRef, { wideThreshold: CHAT_HEADER_WIDE_THRESHOLD });
 
     // Close the standalone refs BottomSheet when a file link opens the markdown review dialog
     useEffect(() => {
@@ -484,14 +498,23 @@ export function ChatHeader({
             ref={containerRef}
             data-testid="chat-header"
             className={cn(
-                'flex items-center justify-between',
+                'flex justify-between gap-2',
+                // Narrow panes let the action group wrap onto a full second row
+                // (see the right group's `w-full` below) instead of overlapping
+                // the identity/title. Wider tiers stay on a single centered row.
+                isNarrow ? 'flex-wrap items-center' : 'items-center',
                 variant === 'floating'
                     ? 'px-2 py-1'
                     : 'px-4 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
             )}
         >
-            {/* Left side */}
-            <div className="flex items-center gap-2 min-w-0">
+            {/* Left side — flexes to the remaining width and clips its own
+                overflow so the title truncates rather than bleeding under the
+                non-shrinking right action group. */}
+            <div
+                data-testid="chat-header-identity"
+                className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden"
+            >
                 {onBack && variant !== 'floating' && (
                     <button
                         className="inline-flex items-center justify-center px-2 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1 flex-shrink-0"
@@ -503,8 +526,10 @@ export function ChatHeader({
                 )}
                 <span
                     className={cn(
-                        'text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]',
-                        isNarrow && 'truncate max-w-[120px]',
+                        // Truncate on every tier: the title is the only left-group
+                        // child allowed to shrink (`min-w-0`), so it yields space
+                        // first and never forces the desktop header to wrap.
+                        'text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] min-w-0 truncate',
                         onRenameTitle && 'cursor-text select-none',
                     )}
                     title={onRenameTitle ? 'Double-click to rename' : undefined}
@@ -534,8 +559,17 @@ export function ChatHeader({
                 )}
             </div>
 
-            {/* Right side */}
-            <div className="flex items-center flex-shrink-0">
+            {/* Right side — never shrinks. In the narrow tier it wraps onto a
+                full second row and right-aligns its controls, keeping the
+                Thread/Agents switch, cascade control, copy action, and overflow
+                menu reachable instead of overlapping the identity. */}
+            <div
+                data-testid="chat-header-actions"
+                className={cn(
+                    'flex items-center flex-shrink-0',
+                    isNarrow && 'w-full justify-end',
+                )}
+            >
                 {/* View toggle (Thread / Agents), when provided by the host. */}
                 {viewToggle}
                 {/*

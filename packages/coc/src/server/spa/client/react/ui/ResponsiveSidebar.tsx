@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, type ReactNode } from 'react';
 import ReactDOM from 'react-dom';
 import { cn } from './cn';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
+import { usePortalContainer } from './usePortalContainer';
 
 const DRAWER_BACKDROP_Z = 9000;
 const DRAWER_PANEL_Z = 9001;
@@ -76,6 +77,7 @@ function MobileDrawer({ children, isOpen, onClose, className }: MobileDrawerProp
     const drawerRef = useRef<HTMLElement>(null);
     const triggerRef = useRef<Element | null>(null);
     const touchState = useRef<{ startX: number; startY: number; startTime: number } | null>(null);
+    const portalContainer = usePortalContainer(true);
 
     // Body scroll lock
     useEffect(() => {
@@ -170,6 +172,8 @@ function MobileDrawer({ children, isOpen, onClose, className }: MobileDrawerProp
         [onClose]
     );
 
+    if (!portalContainer) return null;
+
     return ReactDOM.createPortal(
         // eslint-disable-next-line jsx-a11y/no-static-element-interactions
         <div
@@ -208,6 +212,6 @@ function MobileDrawer({ children, isOpen, onClose, className }: MobileDrawerProp
                 {children}
             </aside>
         </div>,
-        document.body
+        portalContainer
     );
 }

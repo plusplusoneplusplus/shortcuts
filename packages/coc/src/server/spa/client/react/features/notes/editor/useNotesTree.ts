@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
     notesApi,
     type CreateNoteNodeResponse,
@@ -12,43 +12,87 @@ export interface UseNotesTreeResult {
     systemFolders: string[];
     loading: boolean;
     error: string | null;
-    refresh: () => void;
+    refresh: () => Promise<void>;
     createNode: (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => Promise<CreateNoteNodeResponse>;
     renameNode: (oldPath: string, newPath: string) => Promise<RenameNoteNodeResponse>;
     deleteNode: (path: string) => Promise<void>;
     reorderNodes: (parentPath: string, order: string[]) => Promise<void>;
 }
 
+interface NotesTreeState {
+    scopeKey: string;
+    tree: NoteTreeNode[] | null;
+    notesRoot: string | null;
+    systemFolders: string[];
+    loading: boolean;
+    error: string | null;
+}
+
+function emptyTreeState(scopeKey: string): NotesTreeState {
+    return {
+        scopeKey,
+        tree: null,
+        notesRoot: null,
+        systemFolders: [],
+        loading: true,
+        error: null,
+    };
+}
+
 export function useNotesTree(workspaceId: string, root?: string): UseNotesTreeResult {
-    const [tree, setTree] = useState<NoteTreeNode[] | null>(null);
-    const [notesRoot, setNotesRoot] = useState<string | null>(null);
-    const [systemFolders, setSystemFolders] = useState<string[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const scopeKey = `${workspaceId}\0${root ?? ''}`;
+    const [state, setState] = useState<NotesTreeState>(() => emptyTreeState(scopeKey));
+    const requestGenerationRef = useRef(0);
+    const activeScopeRef = useRef(scopeKey);
+    activeScopeRef.current = scopeKey;
+    const visibleState = state.scopeKey === scopeKey ? state : emptyTreeState(scopeKey);
 
     const fetchTree = useCallback(async () => {
-        setLoading(true);
-        setError(null);
+        if (activeScopeRef.current !== scopeKey) {
+            return;
+        }
+        const requestGeneration = ++requestGenerationRef.current;
+        setState(prev => prev.scopeKey === scopeKey
+            ? { ...prev, loading: true, error: null }
+            : emptyTreeState(scopeKey));
         try {
             const data = await notesApi.getTree(workspaceId, root);
-            setTree(data.tree);
-            setNotesRoot(data.notesRoot);
-            setSystemFolders(data.systemFolders ?? []);
+            if (requestGeneration !== requestGenerationRef.current || activeScopeRef.current !== scopeKey) {
+                return;
+            }
+            setState({
+                scopeKey,
+                tree: data.tree,
+                notesRoot: data.notesRoot,
+                systemFolders: data.systemFolders ?? [],
+                loading: false,
+                error: null,
+            });
         } catch (err: any) {
-            setError(err.message ?? 'Failed to load notes tree');
-        } finally {
-            setLoading(false);
+            if (requestGeneration !== requestGenerationRef.current || activeScopeRef.current !== scopeKey) {
+                return;
+            }
+            setState({
+                ...emptyTreeState(scopeKey),
+                loading: false,
+                error: err.message ?? 'Failed to load notes tree',
+            });
         }
-    }, [workspaceId, root]);
+    }, [scopeKey, workspaceId, root]);
 
     useEffect(() => {
-        fetchTree();
+        void fetchTree();
+        return () => {
+            requestGenerationRef.current += 1;
+        };
     }, [fetchTree]);
 
     useEffect(() => {
         const handler = (e: Event) => {
             const detail = (e as CustomEvent).detail as { wsId?: string } | undefined;
-            if (detail?.wsId !== workspaceId) return;
+            if (detail?.wsId !== workspaceId) {
+                return;
+            }
             void fetchTree();
         };
         window.addEventListener('notes-changed', handler);
@@ -78,5 +122,16 @@ export function useNotesTree(workspaceId: string, root?: string): UseNotesTreeRe
         await fetchTree();
     }, [workspaceId, root, fetchTree]);
 
-    return { tree, notesRoot, systemFolders, loading, error, refresh: fetchTree, createNode, renameNode, deleteNode, reorderNodes };
+    return {
+        tree: visibleState.tree,
+        notesRoot: visibleState.notesRoot,
+        systemFolders: visibleState.systemFolders,
+        loading: visibleState.loading,
+        error: visibleState.error,
+        refresh: fetchTree,
+        createNode,
+        renameNode,
+        deleteNode,
+        reorderNodes,
+    };
 }

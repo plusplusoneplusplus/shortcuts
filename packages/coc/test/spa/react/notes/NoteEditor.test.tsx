@@ -130,6 +130,7 @@ describe('NoteEditor', () => {
         mockClearContent.mockReset();
         mockGetHTML.mockReturnValue('<p>content</p>');
         mockEditor.isDestroyed = false;
+        mockEditor.state.doc = {};
         capturedOnChange = null;
         richEditorMountCount = 0;
         mockQueueDispatch.mockReset();
@@ -206,6 +207,94 @@ describe('NoteEditor', () => {
 
         // Backend's loadThreads should NOT have been called when threads prop is provided
         expect(mockBackend.loadThreads).not.toHaveBeenCalled();
+    });
+
+    it('passes the selected root to comment backend load fallback', async () => {
+        const mockBackend = {
+            loadThreads: vi.fn().mockResolvedValue([]),
+            updateThreadAnchor: vi.fn(),
+        };
+
+        mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'page.md' });
+
+        await act(async () => {
+            render(
+                <NoteEditor
+                    workspaceId="ws1"
+                    notePath="page.md"
+                    io={mockIo}
+                    commentBackend={mockBackend}
+                    commentsEnabled={true}
+                    root="task:primary"
+                />,
+            );
+        });
+
+        await waitFor(() => {
+            expect(mockBackend.loadThreads).toHaveBeenCalledWith('ws1', 'page.md', 'task:primary');
+        });
+    });
+
+    it('passes the selected root when updating comment thread anchors after save', async () => {
+        const fakeThread = {
+            id: 'thread-1',
+            anchor: { quotedText: 'old text', prefix: '', suffix: '' },
+            status: 'open' as const,
+            comments: [{ id: 'c1', body: 'Needs update', createdAt: '2025-01-01T00:00:00Z' }],
+            createdAt: '2025-01-01T00:00:00Z',
+        };
+        const mockBackend = {
+            loadThreads: vi.fn().mockResolvedValue([]),
+            updateThreadAnchor: vi.fn().mockResolvedValue(undefined),
+        };
+        let flushSave: (() => Promise<void>) | null = null;
+
+        mockLoadContent.mockResolvedValue({ content: 'new text', path: 'page.md' });
+        mockIOSaveContent.mockResolvedValue({ path: 'page.md', updated: true });
+        mockEditor.state.doc = {
+            textContent: 'new text',
+            content: { size: 8 },
+            textBetween: vi.fn(() => 'new text'),
+            descendants: (callback: (node: unknown, pos: number) => void) => {
+                callback({
+                    isText: true,
+                    type: { name: 'text' },
+                    text: 'new text',
+                    nodeSize: 8,
+                    marks: [{ type: { name: 'comment' }, attrs: { commentId: 'thread-1' } }],
+                }, 1);
+            },
+        };
+
+        await act(async () => {
+            render(
+                <NoteEditor
+                    workspaceId="ws1"
+                    notePath="page.md"
+                    io={mockIo}
+                    commentBackend={mockBackend}
+                    threads={[fakeThread]}
+                    commentsEnabled={true}
+                    root="task:primary"
+                    onFlushSave={(flush) => { flushSave = flush; }}
+                />,
+            );
+        });
+        await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+        await waitFor(() => expect(flushSave).not.toBeNull());
+
+        act(() => { capturedOnChange?.(mockEditor); });
+        await act(async () => { await flushSave?.(); });
+
+        await waitFor(() => {
+            expect(mockBackend.updateThreadAnchor).toHaveBeenCalledWith(
+                'ws1',
+                'page.md',
+                'thread-1',
+                'open',
+                'task:primary',
+            );
+        });
     });
 
     // ── Empty state ─────────────────────────────────────────────────────
@@ -1085,6 +1174,69 @@ describe('NoteEditor', () => {
             // Should NOT reload — the event is an echo of our own save
             expect(mockLoadContent).not.toHaveBeenCalled();
             expect(mockSetContent).not.toHaveBeenCalled();
+        });
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Conflict resolution (Keep mine / Load disk)
+    // ══════════════════════════════════════════════════════════════════════
+
+    describe('conflict resolution', () => {
+        // Load a note, edit it, and reject the debounced save with a 409 so the
+        // conflict banner is showing. Returns once the banner is in the DOM.
+        async function renderInConflict() {
+            mockLoadContent.mockResolvedValueOnce({ content: '# Original', path: 'page.md', mtime: 100 });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalledWith('<p># Original</p>', { emitUpdate: false }));
+
+            mockIOSaveContent.mockRejectedValue(
+                Object.assign(new Error('mtime_mismatch'), { status: 409, currentContent: '# Later external write' }),
+            );
+
+            vi.useFakeTimers();
+            act(() => { capturedOnChange?.(mockEditor); });
+            await act(async () => { vi.advanceTimersByTime(1600); });
+            await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+            expect(screen.getByTestId('note-conflict-banner')).toBeDefined();
+        }
+
+        it('Keep my version re-saves with a forced overwrite (no mtime check)', async () => {
+            await renderInConflict();
+
+            // The retry should succeed.
+            mockIOSaveContent.mockReset();
+            mockIOSaveContent.mockResolvedValue({ path: 'page.md', updated: true, mtime: 300 });
+
+            await act(async () => {
+                screen.getByTestId('conflict-keep-mine-btn').click();
+            });
+            await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+            // Forced overwrite → expectedMtime is undefined.
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', 'content', undefined, undefined);
+            expect(screen.queryByTestId('note-conflict-banner')).toBeNull();
+        });
+
+        it('Load disk version loads the external content into the editor and refreshes mtime', async () => {
+            await renderInConflict();
+
+            mockSetContent.mockClear();
+            mockLoadContent.mockClear();
+            mockLoadContent.mockResolvedValue({ content: '# Later external write', path: 'page.md', mtime: 400 });
+
+            await act(async () => {
+                screen.getByTestId('conflict-load-disk-btn').click();
+            });
+            await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+            // Disk content is converted and applied to the rich editor.
+            expect(mockSetContent).toHaveBeenCalledWith('<p># Later external write</p>', { emitUpdate: false });
+            // The banner is dismissed and the mtime baseline is refreshed from disk.
+            expect(screen.queryByTestId('note-conflict-banner')).toBeNull();
+            expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md', undefined);
         });
     });
 

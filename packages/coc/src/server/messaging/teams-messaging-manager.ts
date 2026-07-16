@@ -11,8 +11,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { BotStatus, InboundTeamsMessage } from '@plusplusoneplusplus/teams-bot';
-import { TeamsBot } from '@plusplusoneplusplus/teams-bot';
+import type { BotStatus, InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
+import { TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
 
 // ── Persisted Config ─────────────────────────────────────────
 
@@ -114,7 +114,7 @@ export class TeamsMessagingManager {
 
             // Step 2: Acquire token from cached MCP OAuth tokens (obtained via Copilot CLI)
             this._status = 'authenticating';
-            const { acquireMcpOAuthToken, McpClient } = await import('@plusplusoneplusplus/teams-bot');
+            const { acquireMcpOAuthToken, McpClient } = await import('@plusplusoneplusplus/coc-connector/teams');
             const token = await acquireMcpOAuthToken(TEAMS_MCP_SERVER_URL, this._homeDir);
 
             // Step 3: Resolve team and channel via MCP tools
@@ -156,7 +156,7 @@ export class TeamsMessagingManager {
      * Resolve team and channel IDs using MCP tools (ListTeams + ListChannels).
      * Creates the team/channel if they don't exist.
      */
-    private async resolveTeamAndChannelViaMcp(mcpClient: InstanceType<typeof import('@plusplusoneplusplus/teams-bot').McpClient>): Promise<{ teamId: string; channelId: string }> {
+    private async resolveTeamAndChannelViaMcp(mcpClient: InstanceType<typeof import('@plusplusoneplusplus/coc-connector/teams').McpClient>): Promise<{ teamId: string; channelId: string }> {
         // List teams to find the configured one
         const teamsResult = await mcpClient.callTool('ListTeams', {});
         const teamsText = teamsResult.content?.[0]?.text ?? '{}';

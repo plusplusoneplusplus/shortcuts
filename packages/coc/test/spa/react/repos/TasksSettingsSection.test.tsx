@@ -30,6 +30,14 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({ preferences: mocks.preferences, skills: mocks.skills }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
+    useGlobalToast: () => ({ addToast: vi.fn() }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
+    useRepos: () => ({ repos: [] }),
+}));
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function mockSettingsGet(data: { taskRootPath?: string; folderPaths?: string[] } = {}) {
@@ -296,14 +304,6 @@ describe('RepoSettingsTab tasks nav item', () => {
             if (url.includes('/preferences')) return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             if (url.includes('/instructions')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ base: null, ask: null, plan: null, autopilot: null }) });
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-        }));
-
-        // Mock ToastContext and ReposContext needed by RepoSettingsTab
-        vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
-            useGlobalToast: () => ({ addToast: vi.fn() }),
-        }));
-        vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
-            useRepos: () => ({ repos: [] }),
         }));
 
         const { RepoSettingsTab } = await import(

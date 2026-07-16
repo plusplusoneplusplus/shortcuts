@@ -5,8 +5,23 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { buildTargetPrompt } from '../rollout';
+import { runCopilotCli } from '../cli-driver';
+import { buildTargetPrompt, runRollout } from '../rollout';
 import { Task } from '../corpus';
+
+vi.mock('../cli-driver', () => ({
+    runCopilotCli: vi.fn(),
+    captureGitDiff: vi.fn().mockReturnValue(''),
+    CliError: class CliError extends Error {
+        exitCode: number;
+        stdout: string;
+        constructor(msg: string, code: number, out: string) {
+            super(msg);
+            this.exitCode = code;
+            this.stdout = out;
+        }
+    },
+}));
 
 // ─── buildTargetPrompt tests ──────────────────────────────────────────────────
 
@@ -108,24 +123,9 @@ describe('runRollout (mocked)', () => {
 
         if (!gitAvailable) return;
 
-        // Mock runCopilotCli to always fail
-        vi.mock('../cli-driver', () => ({
-            runCopilotCli: vi.fn().mockRejectedValue(
-                Object.assign(new Error('CLI failed'), { exitCode: 1, stdout: '' })
-            ),
-            captureGitDiff: vi.fn().mockReturnValue(''),
-            CliError: class CliError extends Error {
-                exitCode: number;
-                stdout: string;
-                constructor(msg: string, code: number, out: string) {
-                    super(msg);
-                    this.exitCode = code;
-                    this.stdout = out;
-                }
-            },
-        }));
-
-        const { runRollout } = await import('../rollout');
+        vi.mocked(runCopilotCli).mockRejectedValue(
+            Object.assign(new Error('CLI failed'), { exitCode: 1, stdout: '' })
+        );
         const task: Task = {
             id: 'cleanup-test',
             prompt: 'do something',

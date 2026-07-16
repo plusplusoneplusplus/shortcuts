@@ -14,7 +14,6 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.unstubAllGlobals();
-    document.querySelectorAll('[data-testid="dialog-overlay"]').forEach(el => el.remove());
 });
 
 describe('EditWikiDialog', () => {

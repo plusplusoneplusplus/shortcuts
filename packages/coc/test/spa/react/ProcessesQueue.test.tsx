@@ -3,7 +3,7 @@
  * Verifies rendering, filtering, and interaction behavior.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
@@ -50,6 +50,11 @@ vi.mock('../../../src/server/spa/client/react/utils/config', async (importOrigin
 function Wrap({ children }: { children: ReactNode }) {
     return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
 }
+
+afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+});
 
 function SeededProcessList({ processes, workspaces }: { processes: any[]; workspaces?: any[] }) {
     const { dispatch } = useApp();
@@ -1574,12 +1579,12 @@ describe('QueueView', () => {
     });
 
     it('does not fetch queue endpoints on mount (queue is hydrated by App bootstrap)', () => {
-        const spy = vi.spyOn(global, 'fetch');
+        const fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
         render(<Wrap><QueueView /></Wrap>);
-        const queueCalls = spy.mock.calls.filter(
+        const queueCalls = fetchMock.mock.calls.filter(
             ([url]) => typeof url === 'string' && url.includes('/queue')
         );
         expect(queueCalls).toHaveLength(0);
-        spy.mockRestore();
     });
 });

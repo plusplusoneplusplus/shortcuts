@@ -364,6 +364,12 @@ describe('Notes Multi-Root — write endpoints', { timeout: 30_000 }, () => {
         writeRepoPreferences(dataDir, wsId, { additionalNotesRoots: roots });
     }
 
+    function writeTaskSettings(folderPaths: string[]): void {
+        const settingsPath = getRepoDataPath(dataDir, wsId, 'tasks-settings.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify({ folderPaths }, null, 2), 'utf-8');
+    }
+
     function putJSON(urlStr: string, data: unknown): Promise<{ status: number; body: string }> {
         const body = JSON.stringify(data);
         return request(urlStr, {
@@ -385,6 +391,269 @@ describe('Notes Multi-Root — write endpoints', { timeout: 30_000 }, () => {
     function deleteReq(urlStr: string): Promise<{ status: number; body: string }> {
         return request(urlStr, { method: 'DELETE' });
     }
+
+    async function listRoots(srv: ExecutionServer): Promise<any[]> {
+        const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/roots`);
+        expect(res.status).toBe(200);
+        return JSON.parse(res.body).roots;
+    }
+
+    // ========================================================================
+    // Task-derived roots — normal Notes operations
+    // ========================================================================
+
+    describe('task-derived collections', () => {
+        it('browses and edits primary, legacy, relative, and absolute task roots in isolation', async () => {
+            const primaryRoot = getRepoDataPath(dataDir, wsId, 'tasks');
+            const legacyRoot = path.join(workspaceDir, '.vscode', 'tasks');
+            const relativeRoot = path.join(workspaceDir, 'plans', 'relative');
+            const absoluteRoot = path.join(workspaceDir, 'configured-absolute-plans');
+            const taskRoots = [
+                { label: 'Task Plans', directory: primaryRoot },
+                { label: 'Legacy Plans (.vscode/tasks)', directory: legacyRoot },
+                { label: 'plans/relative', directory: relativeRoot },
+                { label: absoluteRoot, directory: absoluteRoot },
+            ];
+
+            for (const [index, root] of taskRoots.entries()) {
+                fs.mkdirSync(root.directory, { recursive: true });
+                fs.writeFileSync(path.join(root.directory, 'shared.md'), `root-${index}`, 'utf-8');
+                fs.writeFileSync(path.join(root.directory, 'existing.plan.md'), `plan-${index}`, 'utf-8');
+                fs.writeFileSync(path.join(root.directory, 'existing.goal.md'), `goal-${index}`, 'utf-8');
+            }
+            writeTaskSettings(['plans/relative', absoluteRoot]);
+
+            const managedRoot = getRepoDataPath(dataDir, wsId, 'notes');
+            fs.mkdirSync(managedRoot, { recursive: true });
+            fs.writeFileSync(path.join(managedRoot, 'shared.md'), 'managed', 'utf-8');
+
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            const listed = await listRoots(srv);
+
+            for (const [index, root] of taskRoots.entries()) {
+                const entry = listed.find(candidate => candidate.label === root.label);
+                expect(entry).toMatchObject({ isDefault: false, isProtected: true });
+                expect(entry.rootId).toMatch(/^task:[a-f0-9]{64}$/);
+
+                const rootQuery = encodeURIComponent(entry.rootId);
+                const treeRes = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/tree?root=${rootQuery}`,
+                );
+                expect(treeRes.status).toBe(200);
+                const tree = JSON.parse(treeRes.body);
+                expect(tree.rootId).toBe(entry.rootId);
+                expect(tree.systemFolders).toEqual([]);
+                expect(flatNames(tree.tree)).toEqual(expect.arrayContaining([
+                    'shared.md',
+                    'existing.plan.md',
+                    'existing.goal.md',
+                ]));
+
+                for (const fileName of ['shared.md', 'existing.plan.md', 'existing.goal.md']) {
+                    const contentRes = await request(
+                        `${srv.url}/api/workspaces/${wsId}/notes/content?path=${encodeURIComponent(fileName)}&root=${rootQuery}`,
+                    );
+                    expect(contentRes.status).toBe(200);
+                }
+
+                const uniqueContent = `task-root-${index}-search-token`;
+                const saveRes = await putJSON(`${srv.url}/api/workspaces/${wsId}/notes/content`, {
+                    path: 'shared.md',
+                    content: uniqueContent,
+                    root: entry.rootId,
+                });
+                expect(saveRes.status).toBe(200);
+                expect(fs.readFileSync(path.join(root.directory, 'shared.md'), 'utf-8')).toBe(uniqueContent);
+
+                const createFolderRes = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/page`, {
+                    path: 'drafts',
+                    type: 'section',
+                    root: entry.rootId,
+                });
+                expect(createFolderRes.status).toBe(201);
+                const createPageRes = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/page`, {
+                    path: 'drafts/new-plan.plan',
+                    type: 'page',
+                    root: entry.rootId,
+                });
+                expect(createPageRes.status).toBe(201);
+
+                const renameRes = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                    oldPath: 'drafts/new-plan.plan.md',
+                    newPath: 'drafts/renamed.goal.md',
+                    root: entry.rootId,
+                });
+                expect(renameRes.status).toBe(200);
+                expect(fs.existsSync(path.join(root.directory, 'drafts', 'renamed.goal.md'))).toBe(true);
+
+                const orderRes = await putJSON(`${srv.url}/api/workspaces/${wsId}/notes/order`, {
+                    parentPath: 'drafts',
+                    order: ['renamed.goal.md'],
+                    root: entry.rootId,
+                });
+                expect(orderRes.status).toBe(200);
+                expect(JSON.parse(fs.readFileSync(path.join(root.directory, 'drafts', '.order.json'), 'utf-8')))
+                    .toEqual({ order: ['renamed.goal.md'] });
+
+                const searchRes = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/search?q=${uniqueContent}&root=${rootQuery}`,
+                );
+                expect(searchRes.status).toBe(200);
+                expect(JSON.parse(searchRes.body).results).toEqual([
+                    expect.objectContaining({ path: 'shared.md' }),
+                ]);
+
+                const deleteRes = await deleteReq(
+                    `${srv.url}/api/workspaces/${wsId}/notes/path?path=${encodeURIComponent('drafts/renamed.goal.md')}&root=${rootQuery}`,
+                );
+                expect(deleteRes.status).toBe(204);
+                expect(fs.existsSync(path.join(root.directory, 'drafts', 'renamed.goal.md'))).toBe(false);
+            }
+
+            expect(fs.readFileSync(path.join(managedRoot, 'shared.md'), 'utf-8')).toBe('managed');
+            for (const [index, root] of taskRoots.entries()) {
+                expect(fs.readFileSync(path.join(root.directory, 'shared.md'), 'utf-8'))
+                    .toBe(`task-root-${index}-search-token`);
+            }
+        });
+
+        it('rejects stale and cross-workspace task root identities', async () => {
+            const primaryRoot = getRepoDataPath(dataDir, wsId, 'tasks');
+            fs.mkdirSync(primaryRoot, { recursive: true });
+            fs.writeFileSync(path.join(primaryRoot, 'shared.md'), 'first workspace', 'utf-8');
+
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            const listed = await listRoots(srv);
+            const primaryEntry = listed.find(root => root.label === 'Task Plans');
+            expect(primaryEntry?.rootId).toMatch(/^task:[a-f0-9]{64}$/);
+
+            const otherWsId = `${wsId}-other`;
+            const otherWorkspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-task-root-other-ws-'));
+            try {
+                const otherPrimaryRoot = getRepoDataPath(dataDir, otherWsId, 'tasks');
+                fs.mkdirSync(otherPrimaryRoot, { recursive: true });
+                fs.writeFileSync(path.join(otherPrimaryRoot, 'shared.md'), 'second workspace', 'utf-8');
+                const registered = await postJSON(`${srv.url}/api/workspaces`, {
+                    id: otherWsId,
+                    name: 'Other Workspace',
+                    rootPath: otherWorkspaceDir,
+                });
+                expect(registered.status).toBe(201);
+
+                const crossWorkspace = await request(
+                    `${srv.url}/api/workspaces/${otherWsId}/notes/content?path=shared.md&root=${encodeURIComponent(primaryEntry.rootId)}`,
+                );
+                expect(crossWorkspace.status).toBe(400);
+                expect(fs.readFileSync(path.join(otherPrimaryRoot, 'shared.md'), 'utf-8')).toBe('second workspace');
+
+                fs.rmSync(primaryRoot, { recursive: true });
+                const stale = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/content?path=shared.md&root=${encodeURIComponent(primaryEntry.rootId)}`,
+                );
+                expect(stale.status).toBe(400);
+            } finally {
+                await safeRm(otherWorkspaceDir);
+            }
+        });
+
+        it('rejects symlink, encoded, absolute, parent, and Windows-style escapes for task roots', async () => {
+            const primaryRoot = getRepoDataPath(dataDir, wsId, 'tasks');
+            const outsideRoot = getRepoDataPath(dataDir, wsId, 'outside-task-root');
+            fs.mkdirSync(primaryRoot, { recursive: true });
+            fs.mkdirSync(outsideRoot, { recursive: true });
+            fs.writeFileSync(path.join(primaryRoot, 'inside.md'), 'inside search token', 'utf-8');
+            fs.writeFileSync(path.join(outsideRoot, 'secret.md'), 'outside search token', 'utf-8');
+            fs.symlinkSync(
+                outsideRoot,
+                path.join(primaryRoot, 'escape'),
+                process.platform === 'win32' ? 'junction' : 'dir',
+            );
+
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            const listed = await listRoots(srv);
+            const primaryEntry = listed.find(root => root.label === 'Task Plans');
+            expect(primaryEntry?.rootId).toMatch(/^task:[a-f0-9]{64}$/);
+            const rootId = primaryEntry.rootId as string;
+            const rootQuery = encodeURIComponent(rootId);
+
+            const treeRes = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/tree?root=${rootQuery}`,
+            );
+            expect(treeRes.status).toBe(200);
+            expect(flatNames(JSON.parse(treeRes.body).tree)).not.toContain('secret.md');
+
+            const searchRes = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/search?q=outside%20search%20token&root=${rootQuery}`,
+            );
+            expect(searchRes.status).toBe(200);
+            expect(JSON.parse(searchRes.body).results).toEqual([]);
+
+            const readRes = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/content?path=${encodeURIComponent('escape/secret.md')}&root=${rootQuery}`,
+            );
+            expect(readRes.status).toBe(403);
+
+            const createRes = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/page`, {
+                path: 'escape/created',
+                type: 'page',
+                root: rootId,
+            });
+            expect(createRes.status).toBe(403);
+
+            const saveRes = await putJSON(`${srv.url}/api/workspaces/${wsId}/notes/content`, {
+                path: 'escape/secret.md',
+                content: 'changed',
+                root: rootId,
+            });
+            expect(saveRes.status).toBe(403);
+
+            const renameSourceRes = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'escape/secret.md',
+                newPath: 'renamed.md',
+                root: rootId,
+            });
+            expect(renameSourceRes.status).toBe(403);
+            const renameTargetRes = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'inside.md',
+                newPath: 'escape/renamed.md',
+                root: rootId,
+            });
+            expect(renameTargetRes.status).toBe(403);
+
+            const deleteRes = await deleteReq(
+                `${srv.url}/api/workspaces/${wsId}/notes/path?path=${encodeURIComponent('escape/secret.md')}&root=${rootQuery}`,
+            );
+            expect(deleteRes.status).toBe(403);
+
+            const orderRes = await putJSON(`${srv.url}/api/workspaces/${wsId}/notes/order`, {
+                parentPath: 'escape',
+                order: ['secret.md'],
+                root: rootId,
+            });
+            expect(orderRes.status).toBe(403);
+
+            const invalidPaths = [
+                path.join(outsideRoot, 'secret.md'),
+                '../secret.md',
+                '..\\secret.md',
+                'C:\\outside\\secret.md',
+                '\\\\server\\share\\secret.md',
+            ];
+            for (const invalidPath of invalidPaths) {
+                const response = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/content?path=${encodeURIComponent(invalidPath)}&root=${rootQuery}`,
+                );
+                expect(response.status, invalidPath).toBe(403);
+            }
+
+            expect(fs.readFileSync(path.join(outsideRoot, 'secret.md'), 'utf-8')).toBe('outside search token');
+            expect(fs.existsSync(path.join(outsideRoot, 'created.md'))).toBe(false);
+            expect(fs.existsSync(path.join(outsideRoot, '.order.json'))).toBe(false);
+        });
+    });
 
     // ========================================================================
     // POST /notes/page — Create page in repo-folder root

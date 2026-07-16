@@ -134,6 +134,18 @@ describe('Notes Comments Multi-Root', { timeout: 30_000 }, () => {
         writeRepoPreferences(dataDir, wsId, { additionalNotesRoots: [REPO_ROOT] });
     }
 
+    function writeTaskSettings(folderPaths: string[]): void {
+        const settingsPath = getRepoDataPath(dataDir, wsId, 'tasks-settings.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify({ folderPaths }, null, 2), 'utf-8');
+    }
+
+    async function listRoots(srv: ExecutionServer): Promise<any[]> {
+        const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/roots`);
+        expect(res.status).toBe(200);
+        return JSON.parse(res.body).roots;
+    }
+
     function commentsUrl(srv: ExecutionServer, subpath = '', query = ''): string {
         const base = `${srv.url}/api/workspaces/${wsId}/notes/comments`;
         const full = subpath ? `${base}/${subpath}` : base;
@@ -264,6 +276,140 @@ describe('Notes Comments Multi-Root', { timeout: 30_000 }, () => {
         expect(JSON.parse(finalRes.body).threads).toEqual({});
     });
 
+    it('keeps full comment CRUD isolated across every task-derived collection', async () => {
+        const primaryRoot = getRepoDataPath(dataDir, wsId, 'tasks');
+        const legacyRoot = path.join(workspaceDir, '.vscode', 'tasks');
+        const relativeRoot = path.join(workspaceDir, 'plans', 'relative');
+        const absoluteRoot = path.join(workspaceDir, 'configured-absolute-plans');
+        const taskRoots = [
+            { label: 'Task Plans', directory: primaryRoot },
+            { label: 'Legacy Plans (.vscode/tasks)', directory: legacyRoot },
+            { label: 'plans/relative', directory: relativeRoot },
+            { label: absoluteRoot, directory: absoluteRoot },
+        ];
+
+        for (const root of taskRoots) {
+            fs.mkdirSync(root.directory, { recursive: true });
+            fs.writeFileSync(path.join(root.directory, 'shared.plan.md'), '# Shared plan', 'utf-8');
+        }
+        writeTaskSettings(['plans/relative', absoluteRoot]);
+
+        const srv = await startServer();
+        await registerWorkspace(srv);
+        const listed = await listRoots(srv);
+        const entries = taskRoots.map(root => {
+            const entry = listed.find(candidate => candidate.label === root.label);
+            expect(entry).toMatchObject({ isDefault: false, isProtected: true });
+            expect(entry.rootId).toMatch(/^task:[a-f0-9]{64}$/);
+            return { ...root, rootId: entry.rootId as string };
+        });
+        expect(new Set(entries.map(entry => entry.rootId)).size).toBe(taskRoots.length);
+
+        const created = [];
+        for (const [index, entry] of entries.entries()) {
+            const createRes = await postJSON(commentsUrl(srv, 'thread'), {
+                path: 'shared.plan.md',
+                root: entry.rootId,
+                thread: {
+                    anchor: { quotedText: 'Shared plan', prefix: '', suffix: '' },
+                    comments: [{ content: `root-${index}-initial` }],
+                },
+            });
+            expect(createRes.status).toBe(201);
+            const thread = JSON.parse(createRes.body).thread;
+            created.push({ ...entry, threadId: thread.id as string, commentId: thread.comments[0].id as string });
+
+            const managedPath = path.join(
+                dataDir,
+                'repos',
+                wsId,
+                'notes-comments',
+                encodeRootPath(entry.rootId),
+                'shared.plan.md.comments.json',
+            );
+            expect(fs.existsSync(managedPath)).toBe(true);
+            expect(fs.existsSync(path.join(entry.directory, 'shared.plan.md.comments.json'))).toBe(false);
+        }
+
+        for (const [index, entry] of created.entries()) {
+            const rootQuery = encodeURIComponent(entry.rootId);
+            const getRes = await request(
+                commentsUrl(srv, '', `path=shared.plan.md&root=${rootQuery}`),
+            );
+            expect(getRes.status).toBe(200);
+            const threads = Object.values(JSON.parse(getRes.body).threads) as any[];
+            expect(threads).toHaveLength(1);
+            expect(threads[0].comments.map((comment: any) => comment.content)).toEqual([
+                `root-${index}-initial`,
+            ]);
+
+            const addRes = await postJSON(commentsUrl(srv, `thread/${entry.threadId}/comment`), {
+                path: 'shared.plan.md',
+                root: entry.rootId,
+                content: `root-${index}-follow-up`,
+            });
+            expect(addRes.status).toBe(201);
+            const addedCommentId = JSON.parse(addRes.body).comment.id as string;
+
+            const resolveRes = await patchJSON(commentsUrl(srv, `thread/${entry.threadId}`), {
+                path: 'shared.plan.md',
+                root: entry.rootId,
+                status: 'resolved',
+            });
+            expect(resolveRes.status).toBe(200);
+            expect(JSON.parse(resolveRes.body).thread.status).toBe('resolved');
+
+            const editRes = await patchJSON(
+                commentsUrl(srv, `thread/${entry.threadId}/comment/${entry.commentId}`),
+                {
+                    path: 'shared.plan.md',
+                    root: entry.rootId,
+                    content: `root-${index}-edited`,
+                },
+            );
+            expect(editRes.status).toBe(200);
+            expect(JSON.parse(editRes.body).comment.content).toBe(`root-${index}-edited`);
+
+            const deleteCommentRes = await deleteRequest(
+                commentsUrl(
+                    srv,
+                    `thread/${entry.threadId}/comment/${addedCommentId}`,
+                    `path=shared.plan.md&root=${rootQuery}`,
+                ),
+            );
+            expect(deleteCommentRes.status).toBe(204);
+
+            const isolatedRes = await request(
+                commentsUrl(srv, '', `path=shared.plan.md&root=${rootQuery}`),
+            );
+            const isolatedThreads = Object.values(JSON.parse(isolatedRes.body).threads) as any[];
+            expect(isolatedThreads).toHaveLength(1);
+            expect(isolatedThreads[0].comments.map((comment: any) => comment.content)).toEqual([
+                `root-${index}-edited`,
+            ]);
+
+            const deleteThreadRes = await deleteRequest(
+                commentsUrl(
+                    srv,
+                    `thread/${entry.threadId}`,
+                    `path=shared.plan.md&root=${rootQuery}`,
+                ),
+            );
+            expect(deleteThreadRes.status).toBe(204);
+        }
+
+        for (const entry of created) {
+            const finalRes = await request(
+                commentsUrl(
+                    srv,
+                    '',
+                    `path=shared.plan.md&root=${encodeURIComponent(entry.rootId)}`,
+                ),
+            );
+            expect(JSON.parse(finalRes.body).threads).toEqual({});
+        }
+    });
+
     // ========================================================================
     // 4. Sidecar isolation: default and repo-folder roots don't interfere
     // ========================================================================
@@ -332,6 +478,76 @@ describe('Notes Comments Multi-Root', { timeout: 30_000 }, () => {
             },
         });
         expect(postRes.status).toBe(400);
+    });
+
+    it('rejects task-root comment paths that escape through traversal or symlinks', async () => {
+        const primaryRoot = getRepoDataPath(dataDir, wsId, 'tasks');
+        const outsideRoot = getRepoDataPath(dataDir, wsId, 'outside-comments-root');
+        fs.mkdirSync(primaryRoot, { recursive: true });
+        fs.mkdirSync(outsideRoot, { recursive: true });
+        fs.writeFileSync(path.join(primaryRoot, 'page.md'), '# Task plan', 'utf-8');
+        fs.writeFileSync(path.join(outsideRoot, 'secret.md'), '# Secret', 'utf-8');
+        fs.symlinkSync(
+            outsideRoot,
+            path.join(primaryRoot, 'escape'),
+            process.platform === 'win32' ? 'junction' : 'dir',
+        );
+
+        const srv = await startServer();
+        await registerWorkspace(srv);
+        const rootsRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/roots`);
+        expect(rootsRes.status).toBe(200);
+        const rootId = JSON.parse(rootsRes.body).roots.find((root: any) => root.label === 'Task Plans')?.rootId;
+        expect(rootId).toMatch(/^task:[a-f0-9]{64}$/);
+
+        const invalidPaths = [
+            'escape/secret.md',
+            '../secret.md',
+            '..\\secret.md',
+            'C:\\outside\\secret.md',
+            '\\\\server\\share\\secret.md',
+        ];
+        for (const invalidPath of invalidPaths) {
+            const response = await postJSON(commentsUrl(srv, 'thread'), {
+                path: invalidPath,
+                root: rootId,
+                thread: {
+                    anchor: { quotedText: 'Secret', prefix: '', suffix: '' },
+                    comments: [{ content: 'Must not escape' }],
+                },
+            });
+            expect(response.status, invalidPath).toBe(403);
+        }
+
+        const encodedTraversal = await request(
+            commentsUrl(srv, '', `path=${encodeURIComponent('../secret.md')}&root=${encodeURIComponent(rootId)}`),
+        );
+        expect(encodedTraversal.status).toBe(403);
+        expect(fs.existsSync(path.join(outsideRoot, 'secret.md.comments.json'))).toBe(false);
+
+        const sidecarLink = path.join(
+            dataDir,
+            'repos',
+            wsId,
+            'notes-comments',
+            encodeRootPath(rootId),
+        );
+        fs.mkdirSync(path.dirname(sidecarLink), { recursive: true });
+        fs.symlinkSync(
+            outsideRoot,
+            sidecarLink,
+            process.platform === 'win32' ? 'junction' : 'dir',
+        );
+        const sidecarEscape = await postJSON(commentsUrl(srv, 'thread'), {
+            path: 'page.md',
+            root: rootId,
+            thread: {
+                anchor: { quotedText: 'Task plan', prefix: '', suffix: '' },
+                comments: [{ content: 'Must stay in managed storage' }],
+            },
+        });
+        expect(sidecarEscape.status).toBe(403);
+        expect(fs.existsSync(path.join(outsideRoot, 'page.md.comments.json'))).toBe(false);
     });
 
     // ========================================================================

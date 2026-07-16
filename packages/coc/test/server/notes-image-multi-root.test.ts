@@ -27,7 +27,7 @@ import { safeRm } from '../helpers/safe-rm';
 function request(
     url: string,
     options: { method?: string; body?: string; headers?: Record<string, string> } = {},
-): Promise<{ status: number; body: string }> {
+): Promise<{ status: number; body: string; rawBody: Buffer }> {
     return new Promise((resolve, reject) => {
         const parsed = new URL(url);
         const req = http.request(
@@ -41,9 +41,14 @@ function request(
             (res) => {
                 const chunks: Buffer[] = [];
                 res.on('data', (chunk: Buffer) => chunks.push(chunk));
-                res.on('end', () =>
-                    resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf-8') }),
-                );
+                res.on('end', () => {
+                    const rawBody = Buffer.concat(chunks);
+                    resolve({
+                        status: res.statusCode ?? 0,
+                        body: rawBody.toString('utf-8'),
+                        rawBody,
+                    });
+                });
             },
         );
         req.on('error', reject);
@@ -52,7 +57,7 @@ function request(
     });
 }
 
-function postJSON(url: string, data: unknown): Promise<{ status: number; body: string }> {
+function postJSON(url: string, data: unknown): Promise<{ status: number; body: string; rawBody: Buffer }> {
     const body = JSON.stringify(data);
     return request(url, {
         method: 'POST',
@@ -107,6 +112,18 @@ describe('Notes Image Handler — Multi-Root', { timeout: 30_000 }, () => {
 
     function configureRoots(roots: string[]): void {
         writeRepoPreferences(dataDir, wsId, { additionalNotesRoots: roots });
+    }
+
+    function writeTaskSettings(folderPaths: string[]): void {
+        const settingsPath = getRepoDataPath(dataDir, wsId, 'tasks-settings.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify({ folderPaths }, null, 2), 'utf-8');
+    }
+
+    async function listRoots(srv: ExecutionServer): Promise<any[]> {
+        const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/roots`);
+        expect(res.status).toBe(200);
+        return JSON.parse(res.body).roots;
     }
 
     // ========================================================================
@@ -196,6 +213,115 @@ describe('Notes Image Handler — Multi-Root', { timeout: 30_000 }, () => {
 
             expect(res.status).toBe(400);
             expect(res.body).toContain('not configured');
+        });
+
+        it('rejects task-root image access through symlinks and Windows-style paths', async () => {
+            const primaryRoot = getRepoDataPath(dataDir, wsId, 'tasks');
+            const outsideRoot = getRepoDataPath(dataDir, wsId, 'outside-image-root');
+            fs.mkdirSync(primaryRoot, { recursive: true });
+            fs.mkdirSync(outsideRoot, { recursive: true });
+            fs.writeFileSync(path.join(outsideRoot, 'secret.png'), Buffer.from(TINY_PNG_BASE64, 'base64'));
+            fs.symlinkSync(
+                outsideRoot,
+                path.join(primaryRoot, '.images'),
+                process.platform === 'win32' ? 'junction' : 'dir',
+            );
+
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            const rootsRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/roots`);
+            expect(rootsRes.status).toBe(200);
+            const rootId = JSON.parse(rootsRes.body).roots.find((root: any) => root.label === 'Task Plans')?.rootId;
+            expect(rootId).toMatch(/^task:[a-f0-9]{64}$/);
+
+            const uploadRes = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/image`, {
+                fileName: 'diagram.png',
+                data: TINY_PNG_DATA_URL,
+                root: rootId,
+            });
+            expect(uploadRes.status).toBe(403);
+
+            const symlinkRead = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/image?path=${encodeURIComponent('.images/secret.png')}&root=${encodeURIComponent(rootId)}`,
+            );
+            expect(symlinkRead.status).toBe(403);
+
+            for (const invalidPath of ['C:\\outside\\secret.png', '\\\\server\\share\\secret.png']) {
+                const response = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/image?path=${encodeURIComponent(invalidPath)}&root=${encodeURIComponent(rootId)}`,
+                );
+                expect(response.status, invalidPath).toBe(403);
+            }
+
+            expect(fs.readdirSync(outsideRoot)).toEqual(['secret.png']);
+        });
+    });
+
+    describe('task-derived collections', () => {
+        it('uploads and serves images in isolation across every task-root source', async () => {
+            const primaryRoot = getRepoDataPath(dataDir, wsId, 'tasks');
+            const legacyRoot = path.join(workspaceDir, '.vscode', 'tasks');
+            const relativeRoot = path.join(workspaceDir, 'plans', 'relative');
+            const absoluteRoot = path.join(workspaceDir, 'configured-absolute-plans');
+            const taskRoots = [
+                { label: 'Task Plans', directory: primaryRoot },
+                { label: 'Legacy Plans (.vscode/tasks)', directory: legacyRoot },
+                { label: 'plans/relative', directory: relativeRoot },
+                { label: absoluteRoot, directory: absoluteRoot },
+            ];
+            const basePng = Buffer.from(TINY_PNG_BASE64, 'base64');
+            const seededImages = taskRoots.map((root, index) => {
+                const image = Buffer.concat([basePng, Buffer.from(`seed-root-${index}`)]);
+                fs.mkdirSync(path.join(root.directory, '.images'), { recursive: true });
+                fs.writeFileSync(path.join(root.directory, '.images', 'shared.png'), image);
+                return image;
+            });
+            writeTaskSettings(['plans/relative', absoluteRoot]);
+
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            const listed = await listRoots(srv);
+            const entries = taskRoots.map(root => {
+                const entry = listed.find(candidate => candidate.label === root.label);
+                expect(entry).toMatchObject({ isDefault: false, isProtected: true });
+                expect(entry.rootId).toMatch(/^task:[a-f0-9]{64}$/);
+                return { ...root, rootId: entry.rootId as string };
+            });
+            expect(new Set(entries.map(entry => entry.rootId)).size).toBe(taskRoots.length);
+
+            for (const [index, entry] of entries.entries()) {
+                const rootQuery = encodeURIComponent(entry.rootId);
+                const seededRes = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/image?path=${encodeURIComponent('.images/shared.png')}&root=${rootQuery}`,
+                );
+                expect(seededRes.status).toBe(200);
+                expect(seededRes.rawBody).toEqual(seededImages[index]);
+
+                const uploadedImage = Buffer.concat([basePng, Buffer.from(`uploaded-root-${index}`)]);
+                const uploadRes = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/image`, {
+                    fileName: 'diagram.png',
+                    data: `data:image/png;base64,${uploadedImage.toString('base64')}`,
+                    root: entry.rootId,
+                });
+                expect(uploadRes.status).toBe(201);
+                const upload = JSON.parse(uploadRes.body);
+                expect(upload.rootId).toBe(entry.rootId);
+                expect(upload.path).toMatch(/^\.images\/[0-9a-f-]+\.png$/);
+                expect(fs.readFileSync(path.join(entry.directory, upload.path))).toEqual(uploadedImage);
+
+                const reloadRes = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/image?path=${encodeURIComponent(upload.path)}&root=${rootQuery}`,
+                );
+                expect(reloadRes.status).toBe(200);
+                expect(reloadRes.rawBody).toEqual(uploadedImage);
+
+                for (const otherEntry of entries) {
+                    if (otherEntry.rootId === entry.rootId) {
+                        continue;
+                    }
+                    expect(fs.existsSync(path.join(otherEntry.directory, upload.path))).toBe(false);
+                }
+            }
         });
     });
 

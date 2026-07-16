@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { parseCommand, TeamsCommandRouter, type TeamsCommandRouterDeps } from '../../../src/server/messaging/teams-command-router';
 import { TeamsUserStateStore } from '../../../src/server/messaging/teams-user-state';
-import type { InboundTeamsMessage } from '@plusplusoneplusplus/teams-bot';
+import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 
 // ============================================================================
 // parseCommand

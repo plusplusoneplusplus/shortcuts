@@ -6,15 +6,30 @@
  * Additional roots are subfolders inside the workspace git repository.
  */
 
-import * as path from 'path';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { getRepoDataPath } from '../paths';
+import { resolveExistingTaskRoots, taskRootPathComparisonKey } from '../tasks/task-root-resolver';
+import { readTasksSettingsSync } from '../tasks/tasks-handler-utils';
 
 /** Maximum number of additional notes roots per workspace. */
 export const MAX_ADDITIONAL_NOTES_ROOTS = 10;
 
 /** Sentinel value representing the default managed notes root. */
 export const DEFAULT_ROOT_ID = 'default';
+
+/** Prefix for opaque roots derived from the workspace's task settings. */
+export const TASK_DERIVED_ROOT_ID_PREFIX = 'task:';
+
+export interface TaskDerivedNotesRoot {
+    /** Opaque root identity accepted by Notes file operations. */
+    rootId: string;
+    /** Canonical absolute directory path. */
+    absolutePath: string;
+    /** Display label derived from the task-root source. */
+    label: string;
+}
 
 export interface ResolvedNotesRoot {
     /** Absolute path to the notes root directory. */
@@ -23,6 +38,43 @@ export interface ResolvedNotesRoot {
     isDefault: boolean;
     /** The root identifier: 'default' for the managed root, or the relative path for repo-folder roots. */
     rootId: string;
+}
+
+function taskDerivedRootId(workspaceId: string, canonicalPath: string): string {
+    const identity = `${workspaceId}\0${taskRootPathComparisonKey(canonicalPath)}`;
+    const hash = crypto.createHash('sha256').update(identity).digest('hex');
+    return `${TASK_DERIVED_ROOT_ID_PREFIX}${hash}`;
+}
+
+/**
+ * Discover existing task folders for one workspace and expose stable opaque
+ * identities. Client-supplied paths are never decoded or treated as authority.
+ */
+export function discoverTaskDerivedNotesRoots(
+    dataDir: string,
+    workspaceId: string,
+    workspaceRoot: string | undefined,
+): TaskDerivedNotesRoot[] {
+    if (!workspaceRoot) return [];
+    const settings = readTasksSettingsSync(dataDir, workspaceId);
+    return resolveExistingTaskRoots(
+        { dataDir, rootPath: workspaceRoot, workspaceId },
+        settings.folderPaths,
+    ).map(root => ({
+        rootId: taskDerivedRootId(workspaceId, root.absolutePath),
+        absolutePath: root.absolutePath,
+        label: root.label,
+    }));
+}
+
+/** Return the canonical path for an existing directory, or undefined. */
+export function canonicalizeExistingNotesDirectory(directoryPath: string): string | undefined {
+    try {
+        if (!fs.statSync(directoryPath).isDirectory()) return undefined;
+        return fs.realpathSync.native(directoryPath);
+    } catch {
+        return undefined;
+    }
 }
 
 /**
@@ -54,6 +106,18 @@ export function resolveNotesRoot(
     // Normalize the requested root
     const normalized = rootParam.replace(/\\/g, '/').replace(/\/+$/, '');
 
+    // Task-derived identities are opaque. Recompute the workspace's currently
+    // valid roots and accept only an exact identity returned by discovery.
+    const taskRoots = discoverTaskDerivedNotesRoots(dataDir, workspaceId, workspaceRoot);
+    const requestedTaskRoot = taskRoots.find(root => root.rootId === normalized);
+    if (requestedTaskRoot) {
+        return {
+            absolutePath: requestedTaskRoot.absolutePath,
+            isDefault: false,
+            rootId: requestedTaskRoot.rootId,
+        };
+    }
+
     // Validate the root is in the configured list
     if (!additionalRoots || !additionalRoots.includes(normalized)) {
         return {
@@ -79,6 +143,22 @@ export function resolveNotesRoot(
         return {
             error: 'Resolved root path is outside the workspace directory.',
             statusCode: 403,
+        };
+    }
+
+    // If this configured Notes root resolves to a task-derived directory, use
+    // the protected task identity consistently even for an older relative id.
+    const canonicalPath = canonicalizeExistingNotesDirectory(absolutePath);
+    const overlappingTaskRoot = canonicalPath
+        ? taskRoots.find(root =>
+            taskRootPathComparisonKey(root.absolutePath) === taskRootPathComparisonKey(canonicalPath),
+        )
+        : undefined;
+    if (overlappingTaskRoot) {
+        return {
+            absolutePath: overlappingTaskRoot.absolutePath,
+            isDefault: false,
+            rootId: overlappingTaskRoot.rootId,
         };
     }
 

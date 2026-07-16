@@ -10,9 +10,11 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
-        GitOpsStore: vi.fn().mockImplementation(() => ({
-            markStaleRunningJobs: vi.fn().mockResolvedValue(undefined),
-        })),
+        GitOpsStore: vi.fn().mockImplementation(function () {
+            return {
+                markStaleRunningJobs: vi.fn().mockResolvedValue(undefined),
+            };
+        }),
     };
 });
 
@@ -125,4 +127,3 @@ describe('dashboard active workspace routes', () => {
         expect(blankWorkspace.status).toBe(400);
     });
 });
-

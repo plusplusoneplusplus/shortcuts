@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import {
     resolveNotesRoot, isRootResolveError, validateNotesRootPath, DEFAULT_ROOT_ID,
-    encodeRootPath, resolveCommentsSidecarPath,
+    discoverTaskDerivedNotesRoots, encodeRootPath, resolveCommentsSidecarPath,
 } from '../../src/server/notes/notes-root-resolver';
 import type { ResolvedNotesRoot } from '../../src/server/notes/notes-root-resolver';
+import { getRepoDataPath } from '@plusplusoneplusplus/forge';
 
 describe('resolveNotesRoot', () => {
     const dataDir = '/mock/coc-data';
@@ -77,6 +80,69 @@ describe('resolveNotesRoot', () => {
     it('returns error for empty additionalRoots', () => {
         const result = resolveNotesRoot(dataDir, workspaceId, workspaceRoot, 'docs/notes', undefined);
         expect(isRootResolveError(result)).toBe(true);
+    });
+
+    it('resolves only task identities currently derived for the requested workspace', () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-task-root-resolver-'));
+        try {
+            const currentWorkspaceRoot = path.join(tempDir, 'current-workspace');
+            const otherWorkspaceRoot = path.join(tempDir, 'other-workspace');
+            fs.mkdirSync(currentWorkspaceRoot, { recursive: true });
+            fs.mkdirSync(otherWorkspaceRoot, { recursive: true });
+            fs.mkdirSync(getRepoDataPath(tempDir, 'current', 'tasks'), { recursive: true });
+
+            const [taskRoot] = discoverTaskDerivedNotesRoots(tempDir, 'current', currentWorkspaceRoot);
+            const current = resolveNotesRoot(tempDir, 'current', currentWorkspaceRoot, taskRoot.rootId, []);
+            expect(isRootResolveError(current)).toBe(false);
+            if (!isRootResolveError(current)) {
+                expect(current.absolutePath).toBe(fs.realpathSync.native(getRepoDataPath(tempDir, 'current', 'tasks')));
+                expect(current.rootId).toBe(taskRoot.rootId);
+            }
+
+            const other = resolveNotesRoot(tempDir, 'other', otherWorkspaceRoot, taskRoot.rootId, []);
+            expect(isRootResolveError(other)).toBe(true);
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    it('stops resolving a task identity after its directory disappears', () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-task-root-missing-'));
+        try {
+            const currentWorkspaceRoot = path.join(tempDir, 'workspace');
+            const primary = getRepoDataPath(tempDir, 'current', 'tasks');
+            fs.mkdirSync(currentWorkspaceRoot, { recursive: true });
+            fs.mkdirSync(primary, { recursive: true });
+            const [taskRoot] = discoverTaskDerivedNotesRoots(tempDir, 'current', currentWorkspaceRoot);
+
+            fs.rmSync(primary, { recursive: true });
+            const result = resolveNotesRoot(tempDir, 'current', currentWorkspaceRoot, taskRoot.rootId, []);
+            expect(isRootResolveError(result)).toBe(true);
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    it('uses the protected task identity when an additional Notes root overlaps it', () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-task-root-overlap-'));
+        try {
+            const currentWorkspaceRoot = path.join(tempDir, 'workspace');
+            const shared = path.join(currentWorkspaceRoot, 'shared');
+            fs.mkdirSync(shared, { recursive: true });
+            const settingsPath = getRepoDataPath(tempDir, 'current', 'tasks-settings.json');
+            fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+            fs.writeFileSync(settingsPath, JSON.stringify({ folderPaths: ['shared'] }), 'utf-8');
+            const [taskRoot] = discoverTaskDerivedNotesRoots(tempDir, 'current', currentWorkspaceRoot);
+
+            const result = resolveNotesRoot(tempDir, 'current', currentWorkspaceRoot, 'shared', ['shared']);
+            expect(isRootResolveError(result)).toBe(false);
+            if (!isRootResolveError(result)) {
+                expect(result.rootId).toBe(taskRoot.rootId);
+                expect(result.absolutePath).toBe(fs.realpathSync.native(shared));
+            }
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
     });
 });
 

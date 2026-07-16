@@ -1,0 +1,4 @@
+{
+  "main": "../dist/teams/index.js",
+  "types": "../dist/teams/index.d.ts"
+}

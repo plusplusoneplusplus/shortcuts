@@ -12,8 +12,8 @@
  * - On process-updated (completed): sends the last tracked message to Teams.
  */
 
-import type { InboundTeamsMessage, BotStatus, TeamsTransport } from '@plusplusoneplusplus/teams-bot';
-import { TeamsBot, createTransport, acquireMcpOAuthToken } from '@plusplusoneplusplus/teams-bot';
+import type { InboundTeamsMessage, BotStatus, TeamsTransport } from '@plusplusoneplusplus/coc-connector/teams';
+import { TeamsBot, createTransport, acquireMcpOAuthToken } from '@plusplusoneplusplus/coc-connector/teams';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { SSERelay, SSEEvent } from '../proxy/sse-relay';
 import type { AgentStore } from '../store/agent-store';
@@ -788,7 +788,7 @@ export class TeamsBridge {
 
         try {
             const mentions = originalMsg.senderAadId && originalMsg.senderName
-                ? [{ aadId: originalMsg.senderAadId, displayName: originalMsg.senderName }]
+                ? [{ id: originalMsg.senderAadId, displayName: originalMsg.senderName }]
                 : undefined;
             const messageId = await this.bot.send(target, formatted, { mentions });
             console.log(`[teams-bridge] ✅ Command response sent: ${messageId} (${text.length} chars)`);
@@ -853,7 +853,7 @@ export class TeamsBridge {
 
         try {
             const mentions = sender
-                ? [{ aadId: sender.senderAadId, displayName: sender.senderName }]
+                ? [{ id: sender.senderAadId, displayName: sender.senderName }]
                 : undefined;
             const messageId = await this.bot.send(target, teamsText, { mentions });
             console.log(`[teams-bridge] ✅ Sent message ${messageId} for process ${processId} (role=${role}, ${content.length} chars)`);
@@ -877,7 +877,7 @@ export class TeamsBridge {
                     target = newTarget;
                     try {
                         const mentions = sender
-                            ? [{ aadId: sender.senderAadId, displayName: sender.senderName }]
+                            ? [{ id: sender.senderAadId, displayName: sender.senderName }]
                             : undefined;
                         const messageId = await this.bot.send(target, teamsText, { mentions });
                         console.log(`[teams-bridge] ✅ Sent message ${messageId} (after re-resolve) for process ${processId}`);

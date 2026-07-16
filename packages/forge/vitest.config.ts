@@ -16,10 +16,7 @@ export default defineConfig({
         testTimeout: 30000,
         hookTimeout: 30000,
         // See packages/coc/vitest.config.ts — forks isolate native-addon
-        // teardown to avoid macOS SIGSEGV / Windows ACCESS_VIOLATION;
-        // the unhandled-errors flag swallows the post-completion Windows
-        // "Worker exited unexpectedly" tinypool race fixed in vitest 4.x.
+        // teardown to avoid worker-thread native-addon crashes.
         pool: 'forks',
-        dangerouslyIgnoreUnhandledErrors: true,
     }
 });

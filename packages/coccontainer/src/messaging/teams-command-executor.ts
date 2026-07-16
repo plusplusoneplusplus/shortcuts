@@ -8,7 +8,7 @@
  * Per-user state (selected repo, selected topic) is tracked in memory.
  */
 
-import type { InboundTeamsMessage } from '@plusplusoneplusplus/teams-bot';
+import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import type { AgentManager, InboundAgent } from '../inbound/agent-manager';
 import type { AgentStore, Agent } from '../store/agent-store';
 import type { MessagingStore } from './messaging-store';

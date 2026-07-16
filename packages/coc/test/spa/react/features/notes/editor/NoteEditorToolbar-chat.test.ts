@@ -3,7 +3,7 @@
  *
  * Validates that the toolbar accepts and renders chat toggle props
  * alongside the existing comments toggle, and that the 🤖 button
- * only renders when onToggleChatPanel is provided.
+ * renders when the panel can be toggled or when chat is disabled.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -30,8 +30,8 @@ describe('NoteEditorToolbar — chat toggle', () => {
         expect(source).toContain('onToggleChatPanel?: () => void');
     });
 
-    it('renders 🤖 button when onToggleChatPanel is provided', () => {
-        expect(source).toContain('onToggleChatPanel &&');
+    it('renders 🤖 button when chat controls are available', () => {
+        expect(source).toContain('(onToggleChatPanel || chatDisabledReason)');
         expect(source).toContain("data-testid=\"chat-panel-toggle\"");
     });
 
@@ -78,12 +78,12 @@ describe('NoteEditorToolbar — chat toggle', () => {
         });
 
         it('title attribute reflects hasExistingChat state', () => {
-            const titleIdx = source.indexOf("title={chatPanelOpen ? 'Hide AI chat' : hasExistingChat");
+            const titleIdx = source.indexOf("title={chatDisabledReason ?? (chatPanelOpen ? 'Hide AI chat' : hasExistingChat");
             expect(titleIdx).toBeGreaterThan(-1);
         });
 
         it('aria-label reflects hasExistingChat state', () => {
-            const ariaIdx = source.indexOf("aria-label={chatPanelOpen ? 'Hide AI chat' : hasExistingChat");
+            const ariaIdx = source.indexOf("aria-label={chatDisabledReason ?? (chatPanelOpen ? 'Hide AI chat' : hasExistingChat");
             expect(ariaIdx).toBeGreaterThan(-1);
         });
     });

@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
-import { PassThrough, Writable } from 'stream';
+import { PassThrough, Writable } from 'node:stream';
 import { CodexSDKService } from '../../src/codex-sdk-service';
 import { execFileAsync } from '../../src/internal/exec-utils';
 import { resolveCodexExecutablePath } from '../../src/codex-exec-path';

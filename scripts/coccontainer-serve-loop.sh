@@ -58,7 +58,7 @@ build_coccontainer() {
     cd "$REPO_ROOT"
     npm install || { echo -e "\033[31mnpm install failed\033[0m"; return 1; }
 
-    echo -e "\n\033[36m=== Building all packages (coc-memory → coc-agent-sdk → forge → coc-client → coc-workflow → teams-bot → whatsapp-bot → coc → coccontainer) ===\033[0m"
+    echo -e "\n\033[36m=== Building all packages (coc-memory → coc-agent-sdk → forge → coc-client → coc-workflow → coc-connector → coc → coccontainer) ===\033[0m"
 
     cd "$REPO_ROOT/packages/coc-memory"
     npm run build || { echo -e "\033[31mcoc-memory build failed\033[0m"; return 1; }
@@ -76,11 +76,8 @@ build_coccontainer() {
     cd "$REPO_ROOT/packages/coc-workflow"
     npm run build || { echo -e "\033[31mcoc-workflow build failed\033[0m"; return 1; }
 
-    cd "$REPO_ROOT/packages/teams-bot"
-    npm run build || { echo -e "\033[31mteams-bot build failed\033[0m"; return 1; }
-
-    cd "$REPO_ROOT/packages/whatsapp-bot"
-    npm run build || { echo -e "\033[31mwhatsapp-bot build failed\033[0m"; return 1; }
+    cd "$REPO_ROOT/packages/coc-connector"
+    npm run build || { echo -e "\033[31mcoc-connector build failed\033[0m"; return 1; }
 
     cd "$REPO_ROOT/packages/coc"
     npm run build || { echo -e "\033[31mcoc build failed\033[0m"; return 1; }

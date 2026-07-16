@@ -21,7 +21,9 @@ vi.mock('../../src/server/providers/provider-factory', () => ({
 }));
 
 vi.mock('../../src/server/repos/tree-service', () => ({
-    RepoTreeService: vi.fn().mockImplementation(() => ({ resolveRepo: vi.fn() })),
+    RepoTreeService: vi.fn().mockImplementation(function () {
+        return { resolveRepo: vi.fn() };
+    }),
 }));
 
 vi.mock('../../src/server/providers/providers-config', () => ({
@@ -111,16 +113,18 @@ beforeEach(async () => {
     dataDir = path.join(tmpDir, 'data');
     fs.mkdirSync(dataDir, { recursive: true });
 
-    (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(() => ({
-        resolveRepo: mockResolveRepo = vi.fn().mockImplementation((repoId: string) => Promise.resolve({
-            id: repoId,
-            name: repoId,
-            localPath: path.join(tmpDir, repoId),
-            headSha: 'abc1234',
-            clonedAt: new Date().toISOString(),
-            remoteUrl: `https://github.com/org/${repoId}.git`,
-        })),
-    }));
+    (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(function () {
+        return {
+            resolveRepo: mockResolveRepo = vi.fn().mockImplementation((repoId: string) => Promise.resolve({
+                id: repoId,
+                name: repoId,
+                localPath: path.join(tmpDir, repoId),
+                headSha: 'abc1234',
+                clonedAt: new Date().toISOString(),
+                remoteUrl: `https://github.com/org/${repoId}.git`,
+            })),
+        };
+    });
 
     server = makeServer(dataDir);
     await startServer();
