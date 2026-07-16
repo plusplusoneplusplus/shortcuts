@@ -137,10 +137,8 @@ function buildOverflowItems(
         turns: ClientConversationTurn[];
         isPending: boolean;
         resumeSessionId: string | null | undefined;
-        resumeLaunching: boolean;
         onLaunchInteractiveResume: () => void;
         onCopyResumeCommand?: () => void;
-        metadataProcess: any;
         planPath: string;
         createdFiles: { filePath: string }[];
         wsId?: string;
@@ -169,7 +167,6 @@ function buildOverflowItems(
         forking?: boolean;
         onStartFreshSameContext?: () => Promise<boolean> | boolean | void;
         startingFreshSameContext?: boolean;
-        metadataExtraRows?: MetaRow[];
     },
 ): OverflowMenuItem[] {
     const items: OverflowMenuItem[] = [];
@@ -200,32 +197,9 @@ function buildOverflowItems(
         onClick: props.onExportPdf,
     });
 
-    // Metadata
-    if (!props.isPending && props.metadataProcess) {
-        items.push({
-            key: 'metadata',
-            label: 'Metadata',
-            icon: <span className="text-[10px] font-semibold">i</span>,
-            onClick: () => { /* handled via render */ },
-            render: () => (
-                <ConversationMetadataPopover
-                    process={props.metadataProcess}
-                    turnsCount={props.turns.length}
-                    extraRows={props.metadataExtraRows}
-                    resumeSessionId={props.isMobile ? undefined : props.resumeSessionId}
-                    resumeLaunching={props.resumeLaunching}
-                    onLaunchInteractiveResume={props.isMobile ? undefined : props.onLaunchInteractiveResume}
-                    onCopyResumeCommand={props.isMobile ? undefined : props.onCopyResumeCommand}
-                    onFork={props.onFork}
-                    forking={props.forking}
-                    onStartFreshSameContext={props.onStartFreshSameContext}
-                    startingFreshSameContext={props.startingFreshSameContext}
-                />
-            ),
-        });
-    }
+    // Metadata lives inline next to the title (see ChatHeader identity group), not in overflow.
 
-    // At wide tier, only the simplified buttons (HTML / PDF / Select / Metadata) live in overflow.
+    // At wide tier, only the simplified buttons (HTML / PDF / Select) live in overflow.
     // All other items (references, resume CLI, context window, etc.) remain inline at wide.
     if (tier === 'wide') return items;
 
@@ -458,10 +432,8 @@ export function ChatHeader({
         turns,
         isPending,
         resumeSessionId,
-        resumeLaunching,
         onLaunchInteractiveResume,
         onCopyResumeCommand,
-        metadataProcess,
         planPath,
         createdFiles,
         wsId,
@@ -490,8 +462,7 @@ export function ChatHeader({
         forking,
         onStartFreshSameContext,
         startingFreshSameContext,
-        metadataExtraRows,
-    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, sessionSystemTokens, sessionToolTokens, sessionConversationTokens, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, onCopyResumeCommand, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking, onStartFreshSameContext, startingFreshSameContext, metadataExtraRows]); // eslint-disable-line react-hooks/exhaustive-deps
+    }), [tier, task, loading, turns, isPending, resumeSessionId, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, sessionSystemTokens, sessionToolTokens, sessionConversationTokens, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, onCopyResumeCommand, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking, onStartFreshSameContext, startingFreshSameContext]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div
@@ -537,6 +508,23 @@ export function ChatHeader({
                 >
                     {title ?? 'Chat'}
                 </span>
+                {/* Conversation metadata ("i") — inline beside the title so it's
+                    always visible instead of buried in the overflow menu. */}
+                {!isPending && metadataProcess && (
+                    <ConversationMetadataPopover
+                        process={metadataProcess}
+                        turnsCount={turns.length}
+                        extraRows={metadataExtraRows}
+                        resumeSessionId={isMobile ? undefined : resumeSessionId}
+                        resumeLaunching={resumeLaunching}
+                        onLaunchInteractiveResume={isMobile ? undefined : onLaunchInteractiveResume}
+                        onCopyResumeCommand={isMobile ? undefined : onCopyResumeCommand}
+                        onFork={onFork}
+                        forking={forking}
+                        onStartFreshSameContext={onStartFreshSameContext}
+                        startingFreshSameContext={startingFreshSameContext}
+                    />
+                )}
                 {task && (
                     <ChatStatusPill
                         data-testid="badge"

@@ -647,7 +647,9 @@ icon-only; at `narrow` (<500px) the action group wraps onto a full, end-aligned
 second row and float/pop-out move into overflow. The left identity group is
 `flex-1 min-w-0 overflow-hidden` and the title is always `min-w-0 truncate`, so
 the title yields width first and can never bleed under the non-shrinking action
-group.
+group. The `ConversationMetadataPopover` "i" trigger sits inline in this identity
+group immediately after the title (rendered at every tier when the process is
+resolved and not pending), not in the `ChatHeaderOverflowMenu`.
 
 `QueuedFollowUps` renders pending messages as compact dashed-border cards with cancel buttons.
 
