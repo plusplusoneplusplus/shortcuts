@@ -49,7 +49,7 @@ Git-backed synchronization of My Work and My Life notes across multiple machines
 |------|---------|
 | `src/server/sync/sync-engine.ts` | `SyncEngine` class, `copyDirContents()`/`copyFileIfChanged()`, `nextSyncDelayMs()`, `resolveConflictSimple()`, `resolveConflictWithAI()`, `backupTagStamp()`, `SYNC_IGNORE_NAMES`; re-exports the interval constants. Also owns the private initial-reconcile phase — `reconcile()` and its helpers `readRemoteTree()`/`remoteDefaultBranch()`/`stageMergedTree()` — which runs git around the pure pieces in `sync-reconcile.ts`, plus the two branches into it (`needsReconcile()`, the `isUnrelatedHistoriesError` catch around the pull) and `recordSyncBaseline()`. |
 | `src/server/sync/sync-constants.ts` | Side-effect-free `DEFAULT_SYNC_INTERVAL_MINUTES` / `MAX_SYNC_BACKOFF_MINUTES` (no `child_process`/`fs`), so lightweight consumers avoid pulling in the engine |
-| `src/server/sync/sync-reconcile.ts` | Detection, planning, and apply for the initial-reconcile phase. Detection: `ReconcileMarker`, `reconcileMarkerPath()`/`readReconcileMarker()`/`writeReconcileMarker()`, `isUnrelatedHistoriesError()`, `shouldReconcile()`, `isNotesTreeNonEmpty()`. Planning: `planUnionMerge()` plus `isDecodableText()`/`localVariantPath()`. Apply: `scanTreeToMap()` reads a tree into `Map<posix path, Buffer>`, `buildConflictBlob()` synthesizes the add/add blob the existing resolvers consume (local = ours, remote = theirs), `applyMergePlan()` writes the merged tree — materializing every entry, skipping unchanged bytes, deleting nothing. Reporting: `reconcileCommitMessage()` builds the squashed commit's subject + the body that enumerates every AI-combined and flagged path. A leaf of the import graph — the engine imports it, so the ignore set and the conflict resolver are passed in rather than imported back. Runs no git. |
+| `src/server/sync/sync-reconcile.ts` | Detection, planning, and apply for the initial-reconcile phase. Detection: `ReconcileMarker`, `reconcileMarkerPath()`/`readReconcileMarker()`/`writeReconcileMarker()`, `isUnrelatedHistoriesError()`, `shouldReconcile()`, `isNotesTreeNonEmpty()`. Planning: `planUnionMerge()` plus `isDecodableText()`/`localVariantPath()`. Apply: `scanTreeToMap()` reads a tree into `Map<posix path, Buffer>`, `buildConflictBlob()` synthesizes the add/add blob the existing resolvers consume (local = ours, remote = theirs), `applyMergePlan()` writes the merged tree — materializing every entry, skipping unchanged bytes, deleting nothing. Reporting: `reconcileCommitMessage()` builds the squashed commit's subject + the body that enumerates every AI-combined and flagged path, and `summarizeMergePlan()`/`reconcileReport()` build the `SyncStatus` report the settings panel shows. A leaf of the import graph — the engine imports it, so the ignore set and the conflict resolver are passed in rather than imported back. Runs no git. |
 | `src/server/sync/sync-handler.ts` | REST route registration (`registerSyncRoutes`) — workspace-scoped |
 | `src/server/sync/index.ts` | Barrel exports |
 | `src/server/spa/client/react/features/repo-settings/SyncSettingsSection.tsx` | Per-report sync config UI (git remote, interval, status, trigger) |
@@ -112,7 +112,8 @@ no common commit. Reconcile replaces steps 2–10 for exactly one sync:
    Staging excludes `SYNC_IGNORE_NAMES` so the live `.lock` stays out of the commit.
    The push is raw `git push` — deliberately *not* `pushToRemote()`, which swallows
    failures to retry later; here a failed push must abort before the marker.
-6. **Copy back + retire** — `copyRepoToLocal()`, then `writeReconcileMarker()`.
+6. **Copy back + retire** — `copyRepoToLocal()`, then `writeReconcileMarker()`,
+   carrying the `ReconcileSummary` the report is served from.
 
 Ordering is the correctness property: **marker only after a successful push**. If
 anything fails, no marker is written and the next tick re-runs the merge, which is
@@ -127,6 +128,37 @@ The two entry points cover different states, and neither alone is enough:
 | Local notes + remote with commits, no marker | 1b detection | A mirror cloned from the remote shares its history, so the pull succeeds and step 2's mirror-delete gets pushed. |
 | Empty local + remote with commits | step-6 fallback | Detection needs local notes to contribute (`localTreeNonEmpty`). |
 | Marker present, remote re-pointed to an unrelated repo | step-6 fallback | The marker retires detection. |
+
+### The one-time report
+
+The merge is automatic and unattended, so the only account the user gets of what
+happened to their notes is what `SyncStatus` carries:
+
+- `reconcileInProgress` — true only while the merge runs. It reads both trees and
+  may call the AI once per colliding note, so it can far outlast a normal tick and
+  is worth naming as its own state rather than showing the usual "syncing".
+- `reconcileReport` — `ReconcileSummary` (`counts` straight off `MergePlan.counts`,
+  `total`, the `combined` list, `flagged` binaries with the path each local copy
+  was parked at, `backupTag`) plus the `mergedCommit`/`reconciledAt` it landed at.
+  `summarizeMergePlan()` derives it; `reconcileReport(marker)` reassembles it.
+
+Two rules about its lifetime, both load-bearing:
+
+1. **It is persisted on the marker, not held in memory.** `start()` reads it back,
+   so a server restart doesn't erase the summary. The marker is the natural home:
+   the merge it describes is the one the marker already anchors by SHA.
+2. **Nothing ever clears it.** Syncs run on a timer — clearing the report on the
+   next tick would mean a user who stepped away for five minutes never learns
+   which notes the AI combined. It describes a one-time event, so it stops
+   changing rather than expiring.
+
+An ordinary first push to an *empty* remote records a baseline marker with **no**
+report: nothing was merged, so there is nothing to report. `reconcileReport` stays
+null there.
+
+A report that can't be read back (corrupt/wrong-shaped) drops on its own and
+leaves the marker valid — losing it costs a summary, whereas dropping the marker
+would re-run the merge and unsuppress mirror-deletes.
 
 ## Scheduling & Backoff
 
@@ -153,6 +185,7 @@ Only `my_work` and `my_life` workspace IDs are valid for sync routes.
 - **Scope limited to notes**: Only files in workspace note directories are synced.
 - **Idle syncs are near-free**: An idle tick (no local edits, no remote commits) rewrites no files, re-hashes nothing, and issues no commit/pull/push/copy-back.
 - **First contact merges, never mirrors**: The first sync against a remote that already has commits union-merges the two sides (nothing deleted on either side) and leaves a `sync-backup/<stamp>` tag on the remote's pre-merge tip. Reconcile runs at most once per workspace; the marker that retires it is written only after the merge (or a normal first push) actually lands on the remote.
+- **An automatic merge always explains itself**: Every reconcile is auditable from two places that outlive the process — the squashed commit's body, and the `reconcileReport` persisted on the marker. Neither is ever cleared, and no raw conflict marker reaches the user in either.
 - **Changed-only copies**: Both copy directions rewrite only files whose content differs, keeping mtimes stable so `git add -A` doesn't re-hash the whole tree.
 - **`.git`/`.lock` are protected**: `SYNC_IGNORE_NAMES` is applied to both the copy and mirror-delete passes in both directions, so the sync repo's own `.git` and `.lock` are never copied over or deleted (no re-init/re-clone loop).
 - **Failure backoff**: Repeated failing syncs grow the next delay geometrically (cap 30 min); a success resets it to the base interval.

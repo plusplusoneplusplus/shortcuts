@@ -24,11 +24,13 @@ import {
     planUnionMerge,
     readReconcileMarker,
     reconcileCommitMessage,
+    reconcileReport,
     scanTreeToMap,
     shouldReconcile,
+    summarizeMergePlan,
     writeReconcileMarker,
 } from './sync-reconcile';
-import type { MergePlan } from './sync-reconcile';
+import type { MergePlan, ReconcileReport } from './sync-reconcile';
 
 const execFileAsync = promisify(execFile);
 
@@ -58,6 +60,20 @@ export interface SyncStatus {
     lastError: string | null;
     /** Whether sync is enabled (gitRemote configured) */
     enabled: boolean;
+    /**
+     * Whether the in-progress sync is the one-time initial merge. It can take a
+     * lot longer than an ordinary tick — it reads both trees and may call the AI
+     * once per colliding note — so it is worth saying so rather than showing the
+     * usual "syncing" for a minute.
+     */
+    reconcileInProgress: boolean;
+    /**
+     * What the initial merge did, or null if no merge established this mirror's
+     * baseline. Survives a restart (it is read back off the marker), and is never
+     * cleared: it describes a one-time event, and an automatic tick a few minutes
+     * later must not be what wipes the summary before the user has read it.
+     */
+    reconcileReport: ReconcileReport | null;
 }
 
 /** What the one-time initial reconcile did, for reporting and for tests. */
@@ -68,6 +84,8 @@ export interface ReconcileResult {
     mergedCommit: string;
     /** Tag holding the remote's pre-merge HEAD, or null when nothing was pushed. */
     backupTag: string | null;
+    /** The same outcome as the status reports it, as persisted on the marker. */
+    report: ReconcileReport;
 }
 
 export interface SyncEngineOptions {
@@ -290,6 +308,8 @@ export class SyncEngine {
         lastSyncTime: null,
         lastError: null,
         enabled: false,
+        reconcileInProgress: false,
+        reconcileReport: null,
     };
 
     private syncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -335,6 +355,11 @@ export class SyncEngine {
 
         this.status.enabled = true;
         this.logger.info(`Starting sync engine for ${this.workspaceId}`);
+
+        // The merge that made this mirror's baseline may have happened on a
+        // previous run of the server. Its summary is the user's one account of
+        // which notes got combined, so read it back rather than showing nothing.
+        this.status.reconcileReport = reconcileReport(await readReconcileMarker(this.syncRepoDir));
 
         // Fire-and-forget initial sync — don't block server startup
         this.performSync(gitRemote).catch(() => {});
@@ -758,7 +783,14 @@ export class SyncEngine {
      */
     private async runReconcile(reason: string): Promise<void> {
         this.logger.info(`Initial reconcile — ${reason}`);
-        await this.reconcile();
+        this.status.reconcileInProgress = true;
+        try {
+            // A failed merge leaves the report alone rather than blanking it: the
+            // marker still holds whatever last succeeded, and re-running is safe.
+            this.status.reconcileReport = (await this.reconcile()).report;
+        } finally {
+            this.status.reconcileInProgress = false;
+        }
         this.status.lastSyncTime = new Date().toISOString();
         this.status.lastError = null;
         this.logger.info(`Initial reconcile completed at ${this.status.lastSyncTime}`);
@@ -846,14 +878,19 @@ export class SyncEngine {
         await this.copyRepoToLocal();
 
         // Only now, with the merged tree on the remote and back on disk, does the
-        // marker retire this phase and unlock steady-state mirror-deletes.
+        // marker retire this phase and unlock steady-state mirror-deletes. It
+        // carries the summary too, so the panel can still show what this merge
+        // did after a restart — this is the only run that will ever produce it.
+        const summary = summarizeMergePlan(plan, backupTag);
+        const reconciledAt = new Date().toISOString();
         await writeReconcileMarker(this.syncRepoDir, {
             version: RECONCILE_MARKER_VERSION,
             mergedCommit,
-            reconciledAt: new Date().toISOString(),
+            reconciledAt,
+            report: summary,
         });
 
-        return { plan, mergedCommit, backupTag };
+        return { plan, mergedCommit, backupTag, report: { ...summary, mergedCommit, reconciledAt } };
     }
 
     /** Read a commit's full tree into memory, keyed the same way as a disk scan. */

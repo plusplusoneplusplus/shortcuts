@@ -1143,4 +1143,117 @@ describe('SyncEngine reconcile (real git)', () => {
         // Union merge again: this device's notes and the new remote's both live.
         expect(remoteFiles(other)).toEqual(['a.md', 'd.md', 'z.md']);
     });
+
+    // ── The one-time report (AC-06) ──────────────────────────────────────────
+
+    it('reports the merge on the status the settings panel reads', async () => {
+        writeNote('a.md', '# A local\n');
+        writeNote('b.md', '# B local edit\n');
+        writeNote('c.md', '# C local\n');
+        seedRemote({ 'b.md': '# B remote edit\n', 'd.md': '# D remote\n', 'e.md': '# E remote\n' });
+
+        const status = await engine.triggerSync(remoteUrl());
+
+        // The demo's wording comes straight off these numbers: "Merged 5 notes —
+        // 0 identical, 2 added from this device, 2 kept from remote, 1 combined
+        // by AI (b.md)."
+        expect(status.reconcileReport).toEqual({
+            counts: { identical: 0, addedFromLocal: 2, keptFromRemote: 2, combined: 1, keptBothBinary: 0 },
+            total: 5,
+            combined: ['b.md'],
+            flagged: [],
+            backupTag: expect.stringMatching(/^sync-backup\//),
+            mergedCommit: git(['rev-parse', 'HEAD'], remoteDir),
+            reconciledAt: expect.any(String),
+        });
+    });
+
+    it('reports a flagged binary with the path the local copy was parked at', async () => {
+        writeNote('img.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));
+        seedRemote({ 'img.png': Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x02]) });
+
+        const status = await engine.triggerSync(remoteUrl());
+
+        // "Review recommended" is only actionable if it says where to look.
+        expect(status.reconcileReport?.flagged).toEqual([
+            { path: 'img.png', localVariantPath: 'img.local.png' },
+        ]);
+        expect(remoteFiles()).toEqual(['img.local.png', 'img.png']);
+    });
+
+    it('says it is reconciling, not merely syncing, while the merge runs', async () => {
+        // The AI resolver runs mid-merge, so it is a window into the live status.
+        let during: SyncStatus | undefined;
+        const invoker: AIInvoker = vi.fn().mockImplementation(async () => {
+            during = engine.getStatus();
+            return { success: true, response: '# B combined\n' };
+        });
+        engine = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger, aiInvoker: invoker });
+        writeNote('b.md', '# B local\n');
+        seedRemote({ 'b.md': '# B remote\n' });
+
+        const status = await engine.triggerSync(remoteUrl());
+
+        expect(during?.reconcileInProgress).toBe(true);
+        expect(during?.inProgress).toBe(true);
+        expect(status.reconcileInProgress).toBe(false);
+    });
+
+    it('stops reporting reconcile in progress when the merge fails', async () => {
+        writeNote('a.md', '# A\n');
+        seedRemote({ 'd.md': '# D\n' });
+        vi.spyOn(engine as any, 'reconcile').mockRejectedValue(new Error('merge exploded'));
+
+        const status = await engine.triggerSync(remoteUrl());
+
+        expect(status.lastError).toBe('merge exploded');
+        expect(status.reconcileInProgress).toBe(false);
+        expect(status.reconcileReport).toBeNull();
+    });
+
+    it('keeps the report after a restart — it is the user\'s one account of the merge', async () => {
+        writeNote('a.md', '# A local\n');
+        writeNote('b.md', '# B local edit\n');
+        seedRemote({ 'b.md': '# B remote edit\n', 'd.md': '# D remote\n' });
+        const before = (await engine.triggerSync(remoteUrl())).reconcileReport;
+
+        // A new process, same data dir: nothing in memory survived, so the only
+        // way the panel can still explain the merge is the marker on disk.
+        const restarted = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger });
+        // The startup sync is a separate concern and would race the temp dir.
+        vi.spyOn(restarted as any, 'performSync').mockResolvedValue(undefined);
+        await restarted.start(remoteUrl(), 60);
+        restarted.stop();
+
+        expect(restarted.getStatus().reconcileReport).toEqual(before);
+        expect(restarted.getStatus().reconcileReport?.combined).toEqual(['b.md']);
+    });
+
+    it('an ordinary sync afterwards leaves the report alone', async () => {
+        writeNote('a.md', '# A local\n');
+        writeNote('b.md', '# B local edit\n');
+        seedRemote({ 'b.md': '# B remote edit\n' });
+        const merged = (await engine.triggerSync(remoteUrl())).reconcileReport;
+
+        // Demo step 5. Syncs run on a timer, so if a later tick cleared the
+        // summary, a user who stepped away would never learn b.md was combined.
+        writeNote('a.md', '# A edited\n');
+        const status = await engine.triggerSync(remoteUrl());
+
+        expect(reconcileReasons()).toEqual(['first sync with a remote that already has notes']);
+        expect(status.reconcileReport).toEqual(merged);
+    });
+
+    it('reports nothing for a baseline no merge produced', async () => {
+        writeNote('a.md', '# A\n');
+
+        // An empty remote takes the normal first push: there was no merge, so
+        // there is nothing to tell the user about.
+        const status = await engine.triggerSync(remoteUrl());
+
+        expect(reconcileReasons()).toEqual([]);
+        expect(await readReconcileMarker(syncRepoDir())).not.toBeNull();
+        expect(status.reconcileReport).toBeNull();
+        expect(status.reconcileInProgress).toBe(false);
+    });
 });

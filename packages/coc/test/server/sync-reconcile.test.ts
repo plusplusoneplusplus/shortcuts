@@ -29,9 +29,12 @@ import {
     scanTreeToMap,
     buildConflictBlob,
     applyMergePlan,
+    summarizeMergePlan,
+    reconcileReport,
     LOCAL_CONFLICT_LABEL,
     REMOTE_CONFLICT_LABEL,
     type ReconcileMarker,
+    type ReconcileSummary,
     type MergeOutcome,
 } from '../../src/server/sync/sync-reconcile';
 import { resolveConflictSimple } from '../../src/server/sync/sync-engine';
@@ -40,6 +43,15 @@ const SAMPLE: ReconcileMarker = {
     version: RECONCILE_MARKER_VERSION,
     mergedCommit: '0123456789abcdef0123456789abcdef01234567',
     reconciledAt: '2026-07-16T12:00:00.000Z',
+};
+
+/** The north-star demo's outcome: 5 notes, 2 from here, 2 from the remote, B combined. */
+const DEMO_SUMMARY: ReconcileSummary = {
+    counts: { identical: 0, addedFromLocal: 2, keptFromRemote: 2, combined: 1, keptBothBinary: 0 },
+    total: 5,
+    combined: ['b.md'],
+    flagged: [],
+    backupTag: 'sync-backup/2026-07-16T12-00-00-000Z',
 };
 
 // ── Marker path ──────────────────────────────────────────────────────────────
@@ -122,6 +134,34 @@ describe('reconcile marker read/write', () => {
         await fs.promises.mkdir(path.join(repoDir, '.git'), { recursive: true });
         await fs.promises.writeFile(reconcileMarkerPath(repoDir), JSON.stringify(payload));
         expect(await readReconcileMarker(repoDir)).toBeNull();
+    });
+
+    it('round-trips a marker carrying a merge report', async () => {
+        const withReport: ReconcileMarker = { ...SAMPLE, report: DEMO_SUMMARY };
+        await writeReconcileMarker(repoDir, withReport);
+        expect(await readReconcileMarker(repoDir)).toEqual(withReport);
+    });
+
+    it.each([
+        ['not an object', 'nope'],
+        ['null', null],
+        ['missing counts', { total: 5, combined: [], flagged: [], backupTag: null }],
+        ['counts missing an outcome', { ...DEMO_SUMMARY, counts: { identical: 0, combined: 1 } }],
+        ['a wrong-typed count', { ...DEMO_SUMMARY, counts: { ...DEMO_SUMMARY.counts, combined: 'one' } }],
+        ['missing total', { ...DEMO_SUMMARY, total: undefined }],
+        ['combined not a list', { ...DEMO_SUMMARY, combined: 'b.md' }],
+        ['a non-string in combined', { ...DEMO_SUMMARY, combined: ['b.md', 7] }],
+        ['a flagged entry without a path', { ...DEMO_SUMMARY, flagged: [{ localVariantPath: 'x.local.png' }] }],
+        ['a wrong-typed backupTag', { ...DEMO_SUMMARY, backupTag: 42 }],
+    ])('drops an unreadable report (%s) but keeps the baseline', async (_label, report) => {
+        await fs.promises.mkdir(path.join(repoDir, '.git'), { recursive: true });
+        await fs.promises.writeFile(reconcileMarkerPath(repoDir), JSON.stringify({ ...SAMPLE, report }));
+
+        // Losing the report costs a summary; losing the marker would re-run the
+        // merge and unsuppress mirror-deletes. Only the report may drop.
+        const marker = await readReconcileMarker(repoDir);
+        expect(marker).toEqual(SAMPLE);
+        expect(marker?.report).toBeUndefined();
     });
 
     it('treats an untrusted marker as absent, so reconcile re-runs and deletes stay guarded', async () => {
@@ -677,5 +717,91 @@ describe('applyMergePlan', () => {
             resolveText: simpleResolver,
         });
         expect(second.written).toEqual([]);
+    });
+});
+
+// ── Reporting ────────────────────────────────────────────────────────────────
+
+describe('summarizeMergePlan', () => {
+    const tree = (files: Record<string, string | Buffer>): Map<string, Buffer> =>
+        new Map(Object.entries(files).map(([p, c]) => [p, Buffer.isBuffer(c) ? c : Buffer.from(c)]));
+
+    const PNG_A = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]);
+    const PNG_B = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x02]);
+
+    const demoPlan = () => planUnionMerge(
+        tree({ 'a.md': 'A', 'b.md': 'B-local', 'c.md': 'C' }),
+        tree({ 'b.md': 'B-remote', 'd.md': 'D', 'e.md': 'E' }),
+    );
+
+    it('reports the north-star demo: 5 notes, 2 from here, 2 from the remote, 1 combined', () => {
+        const summary = summarizeMergePlan(demoPlan(), 'sync-backup/2026-07-16T12-00-00-000Z');
+        expect(summary).toEqual(DEMO_SUMMARY);
+    });
+
+    it('totals every note in the merged tree', () => {
+        const plan = demoPlan();
+        expect(summarizeMergePlan(plan, null).total).toBe(plan.entries.length);
+    });
+
+    it('names the AI-combined notes, so the report can say which ones to review', () => {
+        expect(summarizeMergePlan(demoPlan(), null).combined).toEqual(['b.md']);
+    });
+
+    it('tells the user where a flagged binary local copy was parked', () => {
+        const plan = planUnionMerge(tree({ 'img.png': PNG_A }), tree({ 'img.png': PNG_B }));
+        expect(summarizeMergePlan(plan, null).flagged).toEqual([
+            { path: 'img.png', localVariantPath: 'img.local.png' },
+        ]);
+    });
+
+    it('carries the backup tag through, and null when nothing was pushed', () => {
+        expect(summarizeMergePlan(demoPlan(), 'sync-backup/x').backupTag).toBe('sync-backup/x');
+        expect(summarizeMergePlan(demoPlan(), null).backupTag).toBeNull();
+    });
+
+    it('reports nothing to review for a merge with no collisions', () => {
+        const summary = summarizeMergePlan(planUnionMerge(tree({ 'a.md': 'A' }), tree({ 'd.md': 'D' })), null);
+        expect(summary.combined).toEqual([]);
+        expect(summary.flagged).toEqual([]);
+        expect(summary.counts).toEqual({
+            'identical': 0,
+            'addedFromLocal': 1,
+            'keptFromRemote': 1,
+            'combined': 0,
+            'keptBothBinary': 0,
+        });
+    });
+
+    it('copies the plan rather than aliasing it', () => {
+        const plan = demoPlan();
+        const summary = summarizeMergePlan(plan, null);
+        summary.combined.push('mutated');
+        summary.counts.combined = 99;
+        expect(plan.combined).toEqual(['b.md']);
+        expect(plan.counts.combined).toBe(1);
+    });
+});
+
+describe('reconcileReport', () => {
+    it('is null when no marker exists at all', () => {
+        expect(reconcileReport(null)).toBeNull();
+    });
+
+    it('is null for a baseline no merge produced — a first push has nothing to report', () => {
+        expect(reconcileReport(SAMPLE)).toBeNull();
+    });
+
+    it('puts the summary back together with where and when it landed', () => {
+        expect(reconcileReport({ ...SAMPLE, report: DEMO_SUMMARY })).toEqual({
+            ...DEMO_SUMMARY,
+            mergedCommit: SAMPLE.mergedCommit,
+            reconciledAt: SAMPLE.reconciledAt,
+        });
+    });
+
+    it('anchors the report to the marker, so the two cannot disagree about the SHA', () => {
+        const marker = { ...SAMPLE, mergedCommit: 'a'.repeat(40), report: DEMO_SUMMARY };
+        expect(reconcileReport(marker)?.mergedCommit).toBe('a'.repeat(40));
     });
 });

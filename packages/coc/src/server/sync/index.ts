@@ -25,12 +25,17 @@ export {
     buildConflictBlob,
     applyMergePlan,
     reconcileCommitMessage,
+    summarizeMergePlan,
+    reconcileReport,
 } from './sync-reconcile';
 export type {
     ReconcileMarker,
     MergeOutcome,
     MergeEntry,
     MergePlan,
+    FlaggedBinary,
+    ReconcileSummary,
+    ReconcileReport,
     ConflictResolver,
     ApplyMergePlanOptions,
     ApplyMergePlanResult,

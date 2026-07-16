@@ -16,7 +16,9 @@
  * It also holds the union-merge planner: given the two trees as bytes, it decides
  * what happens to every path without touching disk or git, so the rules that
  * decide whether a note is combined or parked as a binary variant are testable on
- * their own — and the apply layer that writes a plan back out to a directory.
+ * their own — and the apply layer that writes a plan back out to a directory, and
+ * the two ways a finished plan is told back to the user: the commit message and
+ * the status report.
  *
  * Nothing here runs git. The engine reads the two trees, hands them over, and
  * owns the tag/commit/push around the result.
@@ -49,6 +51,15 @@ export interface ReconcileMarker {
     mergedCommit: string;
     /** ISO timestamp of when that happened. */
     reconciledAt: string;
+    /**
+     * What the union merge did, when a merge is what established the baseline.
+     * Absent when a plain first push did (there was nothing to merge, so there is
+     * nothing to report). Storing it here rather than in memory is what lets the
+     * settings panel still show the summary after a server restart — the user
+     * gets one chance to see which notes the AI combined, and an automatic tick
+     * minutes later must not be what takes it away.
+     */
+    report?: ReconcileSummary;
 }
 
 /** Absolute path of the reconcile marker for a given sync repo. */
@@ -81,10 +92,39 @@ export async function readReconcileMarker(syncRepoDir: string): Promise<Reconcil
         ) {
             return null; // shape we can't trust as a baseline
         }
-        return { version: parsed.version, mergedCommit: parsed.mergedCommit, reconciledAt: parsed.reconciledAt };
+        const marker: ReconcileMarker = {
+            version: parsed.version,
+            mergedCommit: parsed.mergedCommit,
+            reconciledAt: parsed.reconciledAt,
+        };
+        // A report we can't read costs the user a summary; a marker we can't read
+        // re-runs the merge and unsuppresses deletes. So an unusable report drops
+        // on its own rather than taking the baseline down with it.
+        const report = validReconcileSummary(parsed.report);
+        if (report) marker.report = report;
+        return marker;
     } catch {
         return null; // truncated/corrupt JSON
     }
+}
+
+/** The summary as read back from JSON, or null if it isn't one we can render. */
+function validReconcileSummary(value: unknown): ReconcileSummary | null {
+    if (!value || typeof value !== 'object') return null;
+    const s = value as Partial<ReconcileSummary>;
+    if (typeof s.total !== 'number') return null;
+    if (typeof s.backupTag !== 'string' && s.backupTag !== null) return null;
+    if (!Array.isArray(s.combined) || s.combined.some(p => typeof p !== 'string')) return null;
+    if (!Array.isArray(s.flagged) || s.flagged.some(f => typeof f?.path !== 'string')) return null;
+    if (!s.counts || typeof s.counts !== 'object') return null;
+    if (MERGE_OUTCOMES.some(k => typeof s.counts![k] !== 'number')) return null;
+    return {
+        counts: Object.fromEntries(MERGE_OUTCOMES.map(k => [k, s.counts![k]])) as Record<MergeOutcome, number>,
+        total: s.total,
+        combined: s.combined,
+        flagged: s.flagged,
+        backupTag: s.backupTag ?? null,
+    };
 }
 
 /**
@@ -185,6 +225,19 @@ export interface MergeEntry {
     localVariantPath?: string;
 }
 
+/**
+ * A zeroed count per outcome.
+ *
+ * Its type makes the literal exhaustive, so it doubles as the single place the
+ * outcome names exist at runtime — `MERGE_OUTCOMES` reads them back off it
+ * rather than repeating a list that could drift from the union.
+ */
+function zeroMergeCounts(): Record<MergeOutcome, number> {
+    return { identical: 0, addedFromLocal: 0, keptFromRemote: 0, combined: 0, keptBothBinary: 0 };
+}
+
+const MERGE_OUTCOMES = Object.keys(zeroMergeCounts()) as MergeOutcome[];
+
 /** The full decision set for a reconcile, plus the numbers the report needs. */
 export interface MergePlan {
     /** Every path from either side, sorted, each with its outcome. */
@@ -246,13 +299,7 @@ export function planUnionMerge(
     local: ReadonlyMap<string, Buffer>,
     remote: ReadonlyMap<string, Buffer>,
 ): MergePlan {
-    const counts: Record<MergeOutcome, number> = {
-        identical: 0,
-        addedFromLocal: 0,
-        keptFromRemote: 0,
-        combined: 0,
-        keptBothBinary: 0,
-    };
+    const counts = zeroMergeCounts();
     const entries: MergeEntry[] = [];
     const combined: string[] = [];
     const flagged: string[] = [];
@@ -326,6 +373,70 @@ export function reconcileCommitMessage(opts: {
 
     if (sections.length === 0) return subject;
     return `${subject}\n\n${sections.join('\n\n')}`;
+}
+
+// ── Reporting ────────────────────────────────────────────────────────────────
+
+/** A binary both sides changed, and where this device's version was parked. */
+export interface FlaggedBinary {
+    /** Repo-relative POSIX path, holding the remote's version. */
+    path: string;
+    /** Where the local version was kept instead of being overwritten. */
+    localVariantPath: string;
+}
+
+/**
+ * What the union merge did, in the terms the user is told it in.
+ *
+ * Deliberately lean: the SHA and timestamp it happened at live on the
+ * `ReconcileMarker` that carries this, so there is one source of truth for them.
+ * `reconcileReport` puts the two back together for anyone reading the status.
+ */
+export interface ReconcileSummary {
+    /** How many paths landed in each outcome — the report's number set. */
+    counts: Record<MergeOutcome, number>;
+    /** How many notes the merged tree holds in total. */
+    total: number;
+    /** The notes whose two versions were combined into one. */
+    combined: string[];
+    /** Binaries kept in both versions, which a human should look at. */
+    flagged: FlaggedBinary[];
+    /** Tag holding the remote's pre-merge state, or null when nothing was pushed. */
+    backupTag: string | null;
+}
+
+/** The merge summary plus where it landed — what a status consumer renders. */
+export interface ReconcileReport extends ReconcileSummary {
+    /** SHA of the squashed merge commit. */
+    mergedCommit: string;
+    /** ISO timestamp of the merge. */
+    reconciledAt: string;
+}
+
+/**
+ * Boil a plan down to what gets reported.
+ *
+ * The counts come straight off the plan: its outcomes are exactly the set AC-06
+ * asks for, so the report describes what the merge actually did rather than a
+ * recount that could disagree with it.
+ */
+export function summarizeMergePlan(plan: MergePlan, backupTag: string | null): ReconcileSummary {
+    const variantFor = new Map(
+        plan.entries.filter(e => e.localVariantPath).map(e => [e.path, e.localVariantPath!]),
+    );
+    return {
+        counts: { ...plan.counts },
+        total: plan.entries.length,
+        combined: [...plan.combined],
+        flagged: plan.flagged.map(p => ({ path: p, localVariantPath: variantFor.get(p)! })),
+        backupTag,
+    };
+}
+
+/** The full report a marker carries, or null when no merge established it. */
+export function reconcileReport(marker: ReconcileMarker | null): ReconcileReport | null {
+    if (!marker?.report) return null;
+    return { ...marker.report, mergedCommit: marker.mergedCommit, reconciledAt: marker.reconciledAt };
 }
 
 // ── Applying a plan ──────────────────────────────────────────────────────────
