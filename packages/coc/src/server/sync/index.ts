@@ -18,6 +18,19 @@ export {
     isDecodableText,
     localVariantPath,
     planUnionMerge,
+    LOCAL_CONFLICT_LABEL,
+    REMOTE_CONFLICT_LABEL,
+    scanTreeToMap,
+    buildConflictBlob,
+    applyMergePlan,
 } from './sync-reconcile';
-export type { ReconcileMarker, MergeOutcome, MergeEntry, MergePlan } from './sync-reconcile';
+export type {
+    ReconcileMarker,
+    MergeOutcome,
+    MergeEntry,
+    MergePlan,
+    ConflictResolver,
+    ApplyMergePlanOptions,
+    ApplyMergePlanResult,
+} from './sync-reconcile';
 export { registerSyncRoutes } from './sync-handler';

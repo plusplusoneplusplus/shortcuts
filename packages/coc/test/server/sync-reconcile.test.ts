@@ -4,6 +4,10 @@
  * Covers the detection layer the initial-reconcile phase is built on: marker
  * location/round-trip, the "collapse to null" tolerance rules, unrelated-history
  * error matching, the reconcile predicate, and the notes-tree emptiness walk.
+ *
+ * Then the merge itself: the union-merge planner's outcome rules, and the apply
+ * layer that reads the two trees, synthesizes conflict blobs, and writes the
+ * merged tree back out without ever deleting a file.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -22,9 +26,15 @@ import {
     isDecodableText,
     localVariantPath,
     planUnionMerge,
+    scanTreeToMap,
+    buildConflictBlob,
+    applyMergePlan,
+    LOCAL_CONFLICT_LABEL,
+    REMOTE_CONFLICT_LABEL,
     type ReconcileMarker,
     type MergeOutcome,
 } from '../../src/server/sync/sync-reconcile';
+import { resolveConflictSimple } from '../../src/server/sync/sync-engine';
 
 const SAMPLE: ReconcileMarker = {
     version: RECONCILE_MARKER_VERSION,
@@ -441,5 +451,231 @@ describe('planUnionMerge', () => {
         expect(plan.counts.identical).toBe(5);
         expect(plan.combined).toEqual([]);
         expect(plan.flagged).toEqual([]);
+    });
+});
+
+// ── Tree scanning ────────────────────────────────────────────────────────────
+
+describe('scanTreeToMap', () => {
+    let dir: string;
+
+    beforeEach(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-scan-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    const write = (rel: string, content: string | Buffer): void => {
+        const abs = path.join(dir, ...rel.split('/'));
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, content);
+    };
+
+    it('keys files by their path relative to the scanned directory', async () => {
+        write('a.md', 'A');
+        write('b.md', 'B');
+        const tree = await scanTreeToMap(dir);
+        expect([...tree.keys()].sort()).toEqual(['a.md', 'b.md']);
+        expect(tree.get('a.md')!.toString()).toBe('A');
+    });
+
+    it('uses forward slashes for nested paths on every platform', async () => {
+        write('sub/deep/note.md', 'N');
+        const tree = await scanTreeToMap(dir);
+        // The keys reach the report and the commit body, so both sides of a sync
+        // have to agree on them regardless of host separator.
+        expect([...tree.keys()]).toEqual(['sub/deep/note.md']);
+    });
+
+    it('skips ignored names at the root and at depth', async () => {
+        write('note.md', 'N');
+        write('.git/config', 'x');
+        write('sub/.git/config', 'x');
+        write('sub/keep.md', 'K');
+        const tree = await scanTreeToMap(dir, new Set(['.git']));
+        expect([...tree.keys()].sort()).toEqual(['note.md', 'sub/keep.md']);
+    });
+
+    it('preserves binary bytes exactly', async () => {
+        const bytes = Buffer.from([0x89, 0x50, 0x00, 0xff, 0xfe]);
+        write('img.png', bytes);
+        const tree = await scanTreeToMap(dir);
+        expect(tree.get('img.png')!.equals(bytes)).toBe(true);
+    });
+
+    it('reads a missing directory as an empty tree', async () => {
+        const tree = await scanTreeToMap(path.join(dir, 'nope'));
+        expect(tree.size).toBe(0);
+    });
+
+    it('records no entry for a directory itself', async () => {
+        fs.mkdirSync(path.join(dir, 'empty-folder'));
+        const tree = await scanTreeToMap(dir);
+        expect(tree.size).toBe(0);
+    });
+});
+
+// ── Conflict blob ────────────────────────────────────────────────────────────
+
+describe('buildConflictBlob', () => {
+    it('puts local on the ours side and remote on the theirs side', () => {
+        const blob = buildConflictBlob('mine', 'theirs');
+        expect(blob).toBe(
+            `<<<<<<< ${LOCAL_CONFLICT_LABEL}\nmine\n=======\ntheirs\n>>>>>>> ${REMOTE_CONFLICT_LABEL}\n`,
+        );
+    });
+
+    it('feeds resolveConflictSimple a blob it can resolve marker-free', () => {
+        // The contract that actually matters: the synthesized blob has to survive
+        // the existing resolver, which is the no-AI fallback path for AC-03.
+        const resolved = resolveConflictSimple(buildConflictBlob('local line', 'remote line'));
+        expect(resolved).not.toContain('<<<<<<<');
+        expect(resolved).not.toContain('=======');
+        expect(resolved).not.toContain('>>>>>>>');
+        expect(resolved).toContain('local line');
+        expect(resolved).toContain('remote line');
+    });
+
+    it('does not let a trailing newline become a blank line in the merge', () => {
+        const resolved = resolveConflictSimple(buildConflictBlob('mine\n', 'theirs\n'));
+        expect(resolved.split('\n').filter(l => l.trim())).toEqual(['mine', 'theirs']);
+    });
+
+    it('keeps multi-line content on both sides intact', () => {
+        const resolved = resolveConflictSimple(buildConflictBlob('a\nb', 'c\nd'));
+        expect(resolved.split('\n').filter(l => l.trim())).toEqual(['a', 'b', 'c', 'd']);
+    });
+});
+
+// ── Applying a plan ──────────────────────────────────────────────────────────
+
+describe('applyMergePlan', () => {
+    let dest: string;
+
+    beforeEach(() => {
+        dest = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-apply-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(dest, { recursive: true, force: true });
+    });
+
+    const tree = (files: Record<string, string | Buffer>): Map<string, Buffer> =>
+        new Map(Object.entries(files).map(([p, c]) => [p, Buffer.isBuffer(c) ? c : Buffer.from(c)]));
+
+    const PNG_A = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]);
+    const PNG_B = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x02]);
+
+    /** Resolve via the real no-AI fallback, so the assertions test that path too. */
+    const simpleResolver = async (_p: string, blob: string): Promise<string> =>
+        resolveConflictSimple(blob);
+
+    const apply = (
+        local: Map<string, Buffer>,
+        remote: Map<string, Buffer>,
+        resolveText = simpleResolver,
+    ) => applyMergePlan({ destDir: dest, plan: planUnionMerge(local, remote), local, remote, resolveText });
+
+    const read = (rel: string): Buffer => fs.readFileSync(path.join(dest, ...rel.split('/')));
+
+    it('writes the whole merged tree for the north-star demo', async () => {
+        // Local A, B (edited), C vs remote B (different), D, E — all five survive.
+        const local = tree({ 'A.md': 'A', 'B.md': 'B local', 'C.md': 'C' });
+        const remote = tree({ 'B.md': 'B remote', 'D.md': 'D', 'E.md': 'E' });
+
+        await apply(local, remote);
+
+        expect(fs.readdirSync(dest).sort()).toEqual(['A.md', 'B.md', 'C.md', 'D.md', 'E.md']);
+        expect(read('A.md').toString()).toBe('A');
+        expect(read('C.md').toString()).toBe('C');
+        expect(read('D.md').toString()).toBe('D');
+        const b = read('B.md').toString();
+        expect(b).toContain('B local');
+        expect(b).toContain('B remote');
+        expect(b).not.toContain('<<<<<<<');
+    });
+
+    it('materializes remote-only files even when dest starts empty', async () => {
+        // The remote side may have been read out of git rather than off disk, so
+        // the apply cannot assume dest already holds it.
+        await apply(tree({}), tree({ 'D.md': 'D' }));
+        expect(read('D.md').toString()).toBe('D');
+    });
+
+    it('creates parent directories for nested paths', async () => {
+        await apply(tree({ 'x/y/local.md': 'L' }), tree({ 'p/q/remote.md': 'R' }));
+        expect(read('x/y/local.md').toString()).toBe('L');
+        expect(read('p/q/remote.md').toString()).toBe('R');
+    });
+
+    it('reports only the files it actually wrote', async () => {
+        const { written } = await apply(tree({ 'a.md': 'A' }), tree({ 'd.md': 'D' }));
+        expect(written).toEqual(['a.md', 'd.md']);
+    });
+
+    it('skips the write when the bytes on disk already match', async () => {
+        fs.writeFileSync(path.join(dest, 'same.md'), 'S');
+        const { written } = await apply(tree({ 'same.md': 'S' }), tree({ 'same.md': 'S' }));
+        // An identical file must not be rewritten: a churned mtime makes the
+        // engine's `git add -A` re-hash the whole notebook.
+        expect(written).toEqual([]);
+    });
+
+    it('hands the resolver a conflict blob and writes back what it returns', async () => {
+        const calls: Array<{ file: string; blob: string }> = [];
+        const resolver = async (file: string, blob: string): Promise<string> => {
+            calls.push({ file, blob });
+            return 'AI MERGED';
+        };
+
+        await apply(tree({ 'B.md': 'mine', 'A.md': 'A' }), tree({ 'B.md': 'theirs' }), resolver);
+
+        expect(calls).toHaveLength(1); // only the colliding path
+        expect(calls[0].file).toBe('B.md');
+        expect(calls[0].blob).toContain('<<<<<<<');
+        expect(calls[0].blob).toContain('mine');
+        expect(calls[0].blob).toContain('theirs');
+        expect(read('B.md').toString()).toBe('AI MERGED');
+    });
+
+    it('keeps both sides of a binary collision, remote at the original path', async () => {
+        await apply(tree({ 'img.png': PNG_A }), tree({ 'img.png': PNG_B }));
+        expect(read('img.png').equals(PNG_B)).toBe(true);
+        expect(read('img.local.png').equals(PNG_A)).toBe(true);
+    });
+
+    it('never runs the text resolver on a binary collision', async () => {
+        let called = false;
+        await apply(tree({ 'img.png': PNG_A }), tree({ 'img.png': PNG_B }), async (_p, b) => {
+            called = true;
+            return b;
+        });
+        expect(called).toBe(false);
+    });
+
+    it('deletes nothing that was already in the destination', async () => {
+        // Union merge's whole point: first contact never removes a file.
+        fs.writeFileSync(path.join(dest, 'bystander.md'), 'X');
+        await apply(tree({ 'a.md': 'A' }), tree({ 'd.md': 'D' }));
+        expect(read('bystander.md').toString()).toBe('X');
+    });
+
+    it('is idempotent: re-applying an already-merged tree writes nothing', async () => {
+        // A reconcile that died before writing its marker re-runs from scratch.
+        const local = tree({ 'A.md': 'A', 'B.md': 'B local' });
+        const remote = tree({ 'B.md': 'B remote', 'D.md': 'D' });
+        await apply(local, remote);
+
+        const merged = await scanTreeToMap(dest);
+        const second = await applyMergePlan({
+            destDir: dest,
+            plan: planUnionMerge(merged, merged),
+            local: merged,
+            remote: merged,
+            resolveText: simpleResolver,
+        });
+        expect(second.written).toEqual([]);
     });
 });

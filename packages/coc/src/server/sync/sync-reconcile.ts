@@ -16,7 +16,10 @@
  * It also holds the union-merge planner: given the two trees as bytes, it decides
  * what happens to every path without touching disk or git, so the rules that
  * decide whether a note is combined or parked as a binary variant are testable on
- * their own. Applying the plan is the engine's job.
+ * their own — and the apply layer that writes a plan back out to a directory.
+ *
+ * Nothing here runs git. The engine reads the two trees, hands them over, and
+ * owns the tag/commit/push around the result.
  */
 
 import * as fs from 'fs';
@@ -279,4 +282,177 @@ export function planUnionMerge(
     }
 
     return { entries, counts, combined, flagged };
+}
+
+// ── Applying a plan ──────────────────────────────────────────────────────────
+
+/** Conflict-marker label for the side that came from this device. */
+export const LOCAL_CONFLICT_LABEL = 'local (this device)';
+
+/** Conflict-marker label for the side that was already on the remote. */
+export const REMOTE_CONFLICT_LABEL = 'remote';
+
+/**
+ * Read every syncable file under `dir` into memory, keyed by POSIX-style path
+ * relative to `dir`.
+ *
+ * Paths are normalized to forward slashes so a plan made on Windows and one made
+ * on Linux key the same note the same way — the keys end up in the report and the
+ * commit body, and both sides of a sync have to agree on them.
+ *
+ * Like the emptiness walk, the ignore set is a parameter so this module stays a
+ * leaf of the import graph. A missing directory reads as an empty tree, which is
+ * the honest answer for a notebook that has never been written to.
+ */
+export async function scanTreeToMap(
+    dir: string,
+    ignore?: ReadonlySet<string>,
+): Promise<Map<string, Buffer>> {
+    const out = new Map<string, Buffer>();
+    await scanInto(dir, '', ignore, out);
+    return out;
+}
+
+async function scanInto(
+    dir: string,
+    prefix: string,
+    ignore: ReadonlySet<string> | undefined,
+    out: Map<string, Buffer>,
+): Promise<void> {
+    let entries: fs.Dirent[];
+    try {
+        entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch {
+        return; // missing or unreadable — an empty tree
+    }
+
+    for (const entry of entries) {
+        if (ignore?.has(entry.name)) continue;
+        const abs = path.join(dir, entry.name);
+        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+            await scanInto(abs, rel, ignore, out);
+        } else if (entry.isFile()) {
+            out.set(rel, await fs.promises.readFile(abs));
+        }
+        // Symlinks and other non-regular entries are skipped: notes are files.
+    }
+}
+
+/**
+ * Wrap two versions of a text file in git's add/add conflict markers.
+ *
+ * The reconcile has no common ancestor to hand `git merge-file`, so the blob is
+ * synthesized instead. The shape has to match what the existing resolvers expect:
+ * `resolveConflictWithAI` documents "ours" as this machine and "theirs" as the
+ * other one, and `resolveConflictSimple` splits on the same three markers — so
+ * local is always ours and remote is always theirs.
+ *
+ * Trailing newlines are trimmed off each side before the markers go on, so a file
+ * that ends with a newline doesn't contribute a blank line to the merged result.
+ */
+export function buildConflictBlob(localText: string, remoteText: string): string {
+    const ours = localText.replace(/\n+$/, '');
+    const theirs = remoteText.replace(/\n+$/, '');
+    return [
+        `<<<<<<< ${LOCAL_CONFLICT_LABEL}`,
+        ours,
+        '=======',
+        theirs,
+        `>>>>>>> ${REMOTE_CONFLICT_LABEL}`,
+        '',
+    ].join('\n');
+}
+
+/** Resolves an add/add conflict blob into final file content. Must not throw. */
+export type ConflictResolver = (filePath: string, conflictBlob: string) => Promise<string>;
+
+export interface ApplyMergePlanOptions {
+    /** Directory the merged tree is written into (the sync repo working tree). */
+    destDir: string;
+    plan: MergePlan;
+    local: ReadonlyMap<string, Buffer>;
+    remote: ReadonlyMap<string, Buffer>;
+    /** Called once per `combined` path; the engine wires AI → simple fallback. */
+    resolveText: ConflictResolver;
+}
+
+export interface ApplyMergePlanResult {
+    /** Paths actually written, sorted. Excludes files already correct on disk. */
+    written: string[];
+}
+
+/**
+ * Write a plan's merged tree into `destDir`.
+ *
+ * Every entry is materialized, including the ones sourced from the remote: the
+ * caller may have read the remote side out of git rather than off disk, so
+ * assuming `destDir` already holds it would silently skip real writes. Files
+ * whose bytes already match are left alone, which keeps mtimes stable so the
+ * engine's `git add -A` doesn't re-hash the whole notebook.
+ *
+ * Nothing is deleted — that is the union-merge rule, restated where it would be
+ * easiest to break — so re-applying a plan to an already-merged tree writes
+ * nothing and changes nothing.
+ */
+export async function applyMergePlan(opts: ApplyMergePlanOptions): Promise<ApplyMergePlanResult> {
+    const { destDir, plan, local, remote, resolveText } = opts;
+    const written: string[] = [];
+
+    for (const entry of plan.entries) {
+        switch (entry.outcome) {
+            case 'identical':
+            case 'keptFromRemote':
+                if (await writeIfChanged(destDir, entry.path, remote.get(entry.path)!)) {
+                    written.push(entry.path);
+                }
+                break;
+
+            case 'addedFromLocal':
+                if (await writeIfChanged(destDir, entry.path, local.get(entry.path)!)) {
+                    written.push(entry.path);
+                }
+                break;
+
+            case 'combined': {
+                const blob = buildConflictBlob(
+                    local.get(entry.path)!.toString('utf8'),
+                    remote.get(entry.path)!.toString('utf8'),
+                );
+                const resolved = await resolveText(entry.path, blob);
+                if (await writeIfChanged(destDir, entry.path, Buffer.from(resolved, 'utf8'))) {
+                    written.push(entry.path);
+                }
+                break;
+            }
+
+            case 'keptBothBinary': {
+                // Remote keeps the original path; the local bytes are parked next
+                // to it. Both survive — a binary is never merged or dropped.
+                if (await writeIfChanged(destDir, entry.path, remote.get(entry.path)!)) {
+                    written.push(entry.path);
+                }
+                if (await writeIfChanged(destDir, entry.localVariantPath!, local.get(entry.path)!)) {
+                    written.push(entry.localVariantPath!);
+                }
+                break;
+            }
+        }
+    }
+
+    written.sort();
+    return { written };
+}
+
+/** Write `content` at `relPath` under `destDir` unless the bytes already match. */
+async function writeIfChanged(destDir: string, relPath: string, content: Buffer): Promise<boolean> {
+    const target = path.join(destDir, ...relPath.split('/'));
+    try {
+        if ((await fs.promises.readFile(target)).equals(content)) return false;
+    } catch {
+        // Absent or unreadable — fall through and write it.
+    }
+    await fs.promises.mkdir(path.dirname(target), { recursive: true });
+    await fs.promises.writeFile(target, content);
+    return true;
 }
