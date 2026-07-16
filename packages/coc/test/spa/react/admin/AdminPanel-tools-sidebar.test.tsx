@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act, fireEvent, waitFor } from '@testing-library/react';
 import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
@@ -44,6 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
     delete (window as any).__DASHBOARD_CONFIG__;
+    delete (window as any).cocDesktop;
     if (typeof window !== 'undefined') {
         window.location.hash = '';
     }
@@ -55,6 +57,19 @@ function renderAdmin() {
             <AdminPanel />
         </AppProvider>,
     );
+}
+
+// The Server admin sub-tab renders a Runtime card that slices the commit hash
+// from GET /admin/version. Supply a valid version so navigating there does not
+// throw on `versionInfo.commit.slice(...)`.
+function mockServerTabFetch() {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/admin/version')) {
+            return Promise.resolve(jsonResponse({ version: '1.2.3', commit: 'abcdef1234567' }));
+        }
+        return Promise.resolve(jsonResponse({}));
+    });
 }
 
 function mockDreamsAdminConfig() {
@@ -164,6 +179,53 @@ describe('AdminPanel — sidebar layout zones', () => {
             (call: any[]) => typeof call[0] === 'string' && call[0].includes('/api/admin/restart')
         );
         expect(restartCall).toBeTruthy();
+    });
+});
+
+// ── Restart controls hidden inside the Electron desktop shell ──
+//
+// Restart is a two-part design (server exits 75, external supervisor re-forks).
+// coc-desktop has the exit half but no supervisor, so restart bricks the server
+// there. The SPA hides both restart controls whenever it detects the Electron
+// shell via the window.cocDesktop bridge. These tests stub that bridge; the
+// afterEach above deletes window.cocDesktop so no other suite sees it.
+
+describe('AdminPanel — restart controls hidden in the Electron desktop shell', () => {
+    it('hides the sidebar restart button when window.cocDesktop.isDesktop is true', async () => {
+        (window as any).cocDesktop = { isDesktop: true };
+        await act(async () => { renderAdmin(); });
+        // The sidebar footer zone still renders — only the restart button is gone.
+        await waitFor(() => expect(document.querySelector('.ar-sidebar-foot')).toBeTruthy());
+        expect(document.querySelector('[data-testid="sidebar-restart-btn"]')).toBeNull();
+    });
+
+    it('hides the Server-tab "Rebuild & Restart" row when in the desktop shell', async () => {
+        mockServerTabFetch();
+        (window as any).cocDesktop = { isDesktop: true };
+        await act(async () => { renderAdmin(); });
+        await waitFor(() => expect(document.querySelector('[data-testid="admin-tab-server"]')).toBeTruthy());
+
+        await act(async () => {
+            fireEvent.click(document.querySelector('[data-testid="admin-tab-server"]')!);
+        });
+
+        // The Server tab renders (Runtime card present) but the restart row does not.
+        await waitFor(() => expect(document.body.textContent).toContain('Runtime'));
+        expect(document.getElementById('admin-restart-btn')).toBeNull();
+        expect(document.getElementById('admin-restart-status')).toBeNull();
+    });
+
+    it('renders both restart controls when not in the desktop shell (web / CLI path)', async () => {
+        // No window.cocDesktop bridge → web-served SPA, where restart works.
+        mockServerTabFetch();
+        await act(async () => { renderAdmin(); });
+        await waitFor(() => expect(document.querySelector('[data-testid="sidebar-restart-btn"]')).toBeTruthy());
+
+        await act(async () => {
+            fireEvent.click(document.querySelector('[data-testid="admin-tab-server"]')!);
+        });
+
+        await waitFor(() => expect(document.getElementById('admin-restart-btn')).toBeTruthy());
     });
 });
 

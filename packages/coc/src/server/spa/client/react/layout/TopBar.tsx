@@ -33,6 +33,7 @@ import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
 import { findRepoBySelectionId } from '../repos/cloneIdentity';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
+import { isDesktopShell } from '../hooks/ui/useDesktopShell';
 import { getHostname } from '../utils/config';
 import { SHOW_WIKI_TAB, SHOW_MEMORY_TAB } from '../navFlags';
 import type { DashboardTab } from '../types/dashboard';
@@ -74,8 +75,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     // the hamburger button. Falls back to navigator.platform for builds where the
     // preload hasn't yet exposed cocDesktop.platform.
     const isMacDesktop =
-        typeof window !== 'undefined' &&
-        (window as { cocDesktop?: { isDesktop?: boolean; platform?: string } }).cocDesktop?.isDesktop === true &&
+        isDesktopShell() &&
         (
             (window as { cocDesktop?: { platform?: string } }).cocDesktop?.platform === 'darwin' ||
             /Mac/.test(navigator.platform)
