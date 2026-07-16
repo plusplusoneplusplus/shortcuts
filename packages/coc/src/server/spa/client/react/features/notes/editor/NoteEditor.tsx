@@ -76,6 +76,9 @@ export interface NoteEditorProps {
     notesRoot?: string;
     /** Whether the AI chat panel is currently open. */
     chatPanelOpen?: boolean;
+    /** Whether the AI chat is showing as a floating lens. The lens owns the editor's
+     *  bottom-right corner, so the AI-edit pill relocates to the top-right while it is up. */
+    chatLensOpen?: boolean;
     /** Called to toggle the AI chat panel. When provided, a 🤖 button appears in the toolbar. */
     onToggleChatPanel?: () => void;
     /** When set, the AI chat button stays visible but is disabled with this reason. */
@@ -190,6 +193,7 @@ export function NoteEditor({
     initialViewMode,
     notesRoot,
     chatPanelOpen,
+    chatLensOpen,
     onToggleChatPanel,
     chatDisabledReason,
     hasExistingChat,
@@ -1125,7 +1129,7 @@ export function NoteEditor({
 
             {/* Source editor + Rich editor wrapped in a row to accommodate the version history panel */}
             <div className="flex flex-1 min-h-0 overflow-hidden">
-                <div className="flex flex-col flex-1 min-h-0 min-w-0">
+                <div className="flex flex-col flex-1 min-h-0 min-w-0 relative">
                     {/* Source editor — mounted only when in source mode */}
                     {viewMode === 'source' && !editorHidden && (
                         <div
@@ -1223,6 +1227,18 @@ export function NoteEditor({
                             </div>
                         )}
                     </div>
+
+                    {/* AI edit navigator pill — anchored to the content column rather than
+                        the editor root, so it clears the toolbar however many rows it wraps to. */}
+                    {aiEditCount > 0 && viewMode === 'rich' && (
+                        <AIEditNavigator
+                            editCount={aiEditCount}
+                            onNext={handleAiEditNext}
+                            onDismiss={handleAiEditDismiss}
+                            narrow={chatLensOpen}
+                            placement={chatLensOpen ? 'top-right' : 'bottom-right'}
+                        />
+                    )}
                 </div>
 
                 {/* Version history side panel */}
@@ -1327,15 +1343,6 @@ export function NoteEditor({
                     </span>
                 )}
             </div>
-
-            {/* AI edit navigator pill */}
-            {aiEditCount > 0 && viewMode === 'rich' && (
-                <AIEditNavigator
-                    editCount={aiEditCount}
-                    onNext={handleAiEditNext}
-                    onDismiss={handleAiEditDismiss}
-                />
-            )}
 
             {/* Ralph launch dialog */}
             {ralphDialogOpen && isGoal && (

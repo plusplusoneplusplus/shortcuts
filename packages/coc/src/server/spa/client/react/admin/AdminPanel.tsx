@@ -12,6 +12,7 @@ import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { useApp } from '../contexts/AppContext';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
+import { isDesktopShell } from '../hooks/ui/useDesktopShell';
 import { invalidateHtmlEmbedPreference } from '../hooks/preferences/useHtmlEmbedPreference';
 import { useLinkHandlers } from '../hooks/useLinkHandlers';
 import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
@@ -471,6 +472,12 @@ export function AdminPanel() {
     // Restart
     const [restarting, setRestarting] = useState(false);
     const [restartStatus, setRestartStatus] = useState<string>('');
+    // Restart is broken inside the Electron desktop shell: the server exits with
+    // code 75 expecting an external supervisor to re-fork it, but coc-desktop has
+    // no such supervisor, so the server never comes back. Hide the restart
+    // controls there until a desktop-side supervisor is wired up. The plumbing
+    // (handleRestart / admin.restart) stays intact for the web/CLI-served path.
+    const isDesktop = isDesktopShell();
 
     // Version info
     const [versionInfo, setVersionInfo] = useState<{ version: string; commit: string } | null>(null);
@@ -1314,16 +1321,20 @@ export function AdminPanel() {
                     </div>
 
                     <div className="ar-sidebar-foot">
-                        <button
-                            type="button"
-                            className="ar-sidebar-restart"
-                            onClick={handleRestart}
-                            disabled={restarting}
-                            data-testid="sidebar-restart-btn"
-                            title={restarting ? restartStatus : 'Rebuild & restart the CoC server'}
-                        >
-                            {restarting ? <><Spinner size="sm" /> Restarting…</> : '↻ Restart Server'}
-                        </button>
+                        {/* Hidden in the Electron desktop shell: exit-75 restart has no
+                            supervisor there, so clicking it kills the server for good. */}
+                        {!isDesktop && (
+                            <button
+                                type="button"
+                                className="ar-sidebar-restart"
+                                onClick={handleRestart}
+                                disabled={restarting}
+                                data-testid="sidebar-restart-btn"
+                                title={restarting ? restartStatus : 'Rebuild & restart the CoC server'}
+                            >
+                                {restarting ? <><Spinner size="sm" /> Restarting…</> : '↻ Restart Server'}
+                            </button>
+                        )}
                     </div>
 
                     {/* Remote-first shell: dock the status/action cluster in the
@@ -2070,22 +2081,27 @@ export function AdminPanel() {
                                             </div>
                                         </header>
                                         <div className="ar-card-body">
-                                            <AdminRow
-                                                name="Rebuild & restart"
-                                                hint="Runs npm rebuild and re-launches the server."
-                                            >
-                                                <button
-                                                    id="admin-restart-btn"
-                                                    type="button"
-                                                    className="ar-btn ar-btn-secondary ar-btn-sm"
-                                                    onClick={handleRestart}
-                                                    disabled={restarting}
+                                            {/* Hidden in the Electron desktop shell: exit-75 restart has no
+                                                supervisor there, so the server never comes back. Drop the
+                                                whole row rather than leave an empty one. */}
+                                            {!isDesktop && (
+                                                <AdminRow
+                                                    name="Rebuild & restart"
+                                                    hint="Runs npm rebuild and re-launches the server."
                                                 >
-                                                    {restarting && <Spinner size="sm" />}
-                                                    {restarting ? 'Restarting…' : 'Rebuild & Restart'}
-                                                </button>
-                                                {restartStatus && <span id="admin-restart-status" className="ar-muted" style={{ fontSize: 12 }}>{restartStatus}</span>}
-                                            </AdminRow>
+                                                    <button
+                                                        id="admin-restart-btn"
+                                                        type="button"
+                                                        className="ar-btn ar-btn-secondary ar-btn-sm"
+                                                        onClick={handleRestart}
+                                                        disabled={restarting}
+                                                    >
+                                                        {restarting && <Spinner size="sm" />}
+                                                        {restarting ? 'Restarting…' : 'Rebuild & Restart'}
+                                                    </button>
+                                                    {restartStatus && <span id="admin-restart-status" className="ar-muted" style={{ fontSize: 12 }}>{restartStatus}</span>}
+                                                </AdminRow>
+                                            )}
                                         </div>
                                     </section>
                                 </>

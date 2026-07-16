@@ -76,10 +76,33 @@ export function cachedBindingPath(root, { name, version, abi, platform, arch }) 
 }
 
 /**
+ * Locate the installed Electron package through Node's resolution algorithm
+ * instead of a fixed `node_modules` location.
+ *
+ * npm hoists this package's `electron` devDependency to the workspace-root
+ * `node_modules` whenever nothing at the root conflicts, so
+ * `packages/coc-desktop/node_modules/electron` only exists on installs that
+ * happen to nest it. Probing that one path reports "Electron is not installed"
+ * on a perfectly healthy tree and blocks `dev:desktop` behind a `npm install`
+ * that cannot fix it. `requireResolve` is the caller's `require.resolve`, rooted
+ * in this package, so the nested and hoisted layouts both resolve.
+ */
+export function resolveElectronPkgPath(requireResolve) {
+    try {
+        return requireResolve('electron/package.json');
+    } catch {
+        throw new Error(
+            'Electron could not be resolved from packages/coc-desktop — it is in neither the ' +
+                'package-local nor the workspace-root node_modules. Run `npm install` first.',
+        );
+    }
+}
+
+/**
  * The version string electron-rebuild must target. electron-rebuild cannot infer
- * Electron's version here because Electron is a *nested* devDependency of this
- * package, not a dependency of the workspace-root project it would otherwise
- * scan — so we read it from electron's own package.json and pass it through.
+ * Electron's version here because Electron is a devDependency of this package,
+ * not of the workspace-root project it would otherwise scan — so we read it from
+ * electron's own package.json and pass it through.
  */
 export function resolveElectronVersion(electronPkg) {
     const version = electronPkg?.version;

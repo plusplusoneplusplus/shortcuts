@@ -145,13 +145,16 @@ function fireNotesChanged(wsId: string, changedPaths: string[]) {
     }));
 }
 
-async function renderEditor(notePath: string | null = 'test.md') {
+async function renderEditor(
+    notePath: string | null = 'test.md',
+    extraProps: { chatLensOpen?: boolean } = {},
+) {
     // Initial content load
     if (notePath) {
         mockLoadContent.mockResolvedValueOnce({ content: 'initial content', path: notePath });
     }
     await act(async () => {
-        render(<NoteEditor workspaceId="ws1" notePath={notePath} io={mockIo} />);
+        render(<NoteEditor workspaceId="ws1" notePath={notePath} io={mockIo} {...extraProps} />);
     });
     // Wait for initial content load + editor ready
     if (notePath) {
@@ -459,6 +462,96 @@ describe('NoteEditor diff-on-reload', () => {
         expect(region.chunks.length).toBeGreaterThan(0);
         // Should contain at least one 'add' or 'remove' chunk
         expect(region.chunks.some((c: any) => c.type === 'add' || c.type === 'remove')).toBe(true);
+    });
+});
+
+// ── AI-edit pill placement vs the Notes Chat lens ───────────────────────────
+
+describe('NoteEditor AI-edit pill placement', () => {
+    beforeEach(() => {
+        mockLoadContent.mockReset();
+        mockSetContent.mockClear();
+        mockSetAiEdits.mockClear();
+        mockGetHTML.mockReturnValue('<p>content</p>');
+        mockEditor.isDestroyed = false;
+        mockEditor.state.doc = makeDocWithText('');
+        currentDocText = '';
+    });
+
+    afterEach(() => {
+        cleanup();
+    });
+
+    /** Render the editor, then drive a small external edit so the pill appears. */
+    async function renderWithPendingEdits(extraProps: { chatLensOpen?: boolean } = {}) {
+        await renderEditor('test.md', extraProps);
+        mockLoadContent.mockResolvedValueOnce({ content: 'updated content', path: 'test.md' });
+        await act(async () => {
+            fireNotesChanged('ws1', ['test.md']);
+        });
+        await tickAsync();
+        return await screen.findByTestId('ai-edit-navigator');
+    }
+
+    it('anchors bottom-right with the full label when the chat is not a lens', async () => {
+        const nav = await renderWithPendingEdits({ chatLensOpen: false });
+
+        expect(nav.className).toContain('bottom-8 right-3');
+        expect(nav.className).not.toContain('top-2');
+        expect(nav.textContent).toContain('AI edit');
+    });
+
+    it('defaults to the bottom-right anchor when chatLensOpen is omitted', async () => {
+        const nav = await renderWithPendingEdits();
+
+        expect(nav.className).toContain('bottom-8 right-3');
+        expect(nav.textContent).toContain('AI edit');
+    });
+
+    it('relocates to the top-right in its narrow form when the chat is a lens', async () => {
+        const nav = await renderWithPendingEdits({ chatLensOpen: true });
+
+        expect(nav.className).toContain('top-2 right-3');
+        expect(nav.className).not.toContain('bottom-8');
+        // Narrow form drops the "AI edits" wording but keeps the count.
+        expect(nav.textContent).not.toContain('AI edit');
+        expect(nav.textContent).toContain('1');
+    });
+
+    it('keeps Keep reachable and working while the lens is open', async () => {
+        await renderWithPendingEdits({ chatLensOpen: true });
+
+        const dismissBtn = screen.getByTestId('ai-edit-navigator-dismiss');
+        expect(dismissBtn.textContent).toContain('Keep');
+
+        await act(async () => {
+            dismissBtn.click();
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('ai-edit-navigator')).toBeNull();
+        });
+    });
+
+    // Regression: the lens fix relocates the pill, it never hides it. Hiding the
+    // pill in lens mode is a different design (Keep moves into the chat footer).
+    it('still renders the pill when the lens is open', async () => {
+        const nav = await renderWithPendingEdits({ chatLensOpen: true });
+
+        expect(nav).toBeDefined();
+        expect(screen.getByTestId('ai-edit-navigator-next')).toBeDefined();
+        expect(screen.getByTestId('ai-edit-navigator-dismiss')).toBeDefined();
+    });
+
+    // The pill must live inside the content column, not the editor root: the
+    // toolbar wraps to extra rows, so a root-anchored top offset would collide.
+    it('anchors the pill to the content column rather than the editor root', async () => {
+        const nav = await renderWithPendingEdits({ chatLensOpen: true });
+
+        const positionedParent = nav.parentElement;
+        expect(positionedParent?.className).toContain('relative');
+        expect(positionedParent?.className).toContain('flex-1');
+        expect(positionedParent?.classList.contains('note-editor')).toBe(false);
     });
 });
 

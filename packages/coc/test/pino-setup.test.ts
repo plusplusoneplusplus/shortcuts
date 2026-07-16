@@ -234,5 +234,40 @@ describe('pino-setup', () => {
             const { root } = createCLIPinoLogger(makeResolved({ pretty: 'auto' }));
             expect(root.level).toBe('info');
         });
+
+        /**
+         * Regression: pretty mode loads pino-pretty in a worker thread, and the
+         * plain `pretty: false` tests above never boot one. A pino-pretty whose
+         * own dependency tree cannot be resolved from this package fails inside
+         * that worker, which surfaces as an `error` event on the ThreadStream
+         * rather than a throw from createCLIPinoLogger — killing the forked
+         * desktop server before it ever listened. Writing through a booted
+         * transport is the only assertion that covers it.
+         */
+        it('pretty transport boots and still writes the .ndjson files', async () => {
+            const logDir = path.join(tmpDir, 'pretty-logs');
+            const { ai, coc } = createCLIPinoLogger(makeResolved({
+                level: 'trace',
+                pretty: true,
+                dir: logDir,
+            }));
+
+            ai.info({ category: 'test' }, 'ai pretty message');
+            coc.info({ category: 'test' }, 'coc pretty message');
+
+            await new Promise<void>((resolve) => { ai.flush(() => setTimeout(resolve, 300)); });
+
+            // The worker booted: it routed records to the file targets that ride
+            // on the same multi-target transport as pino-pretty.
+            const aiFile = path.join(logDir, 'ai-service.ndjson');
+            expect(fs.existsSync(aiFile)).toBe(true);
+            expect(fs.readFileSync(aiFile, 'utf8')).toContain('ai pretty message');
+        });
+
+        it('pretty-only mode (no log dir) builds a logger that logs without throwing', () => {
+            const { root, ai } = createCLIPinoLogger(makeResolved({ pretty: true, level: 'info' }));
+            expect(root.level).toBe('info');
+            expect(() => ai.info({ category: 'test' }, 'pretty only')).not.toThrow();
+        });
     });
 });

@@ -4,6 +4,10 @@
  * Renders a compact "✦ N AI edits ↓ | Keep" pill that auto-hides when editCount is 0.
  * In narrow (chat-open) mode, shows icon-only "✦ N ↓ | Keep".
  *
+ * The pill floats over the editor, so it anchors away from whatever else owns the
+ * corner: the default bottom-right sits above the save indicator, while 'top-right'
+ * clears the bottom-anchored Notes Chat lens.
+ *
  * The dismiss action is labeled "Keep" rather than a bare ✕ so the hit target
  * matches the rest of the pill (~28px tall) and conveys that the user is
  * accepting the AI edits as-is.
@@ -20,14 +24,18 @@ export interface AIEditNavigatorProps {
     onDismiss: () => void;
     /** When true, use compact icon-only layout. */
     narrow?: boolean;
+    /** Which corner of the containing editor column to anchor to. Defaults to 'bottom-right'. */
+    placement?: 'bottom-right' | 'top-right';
 }
 
-export function AIEditNavigator({ editCount, onNext, onDismiss, narrow = false }: AIEditNavigatorProps): React.ReactElement | null {
+export function AIEditNavigator({ editCount, onNext, onDismiss, narrow = false, placement = 'bottom-right' }: AIEditNavigatorProps): React.ReactElement | null {
     if (editCount === 0) return null;
+
+    const anchor = placement === 'top-right' ? 'top-2 right-3' : 'bottom-8 right-3';
 
     return (
         <div
-            className="absolute bottom-8 right-3 z-10 flex items-center gap-1 bg-white dark:bg-[#252526] border border-[#c8e6c9] dark:border-[#2d4a2d] rounded-full shadow-md px-2.5 py-1 text-xs select-none"
+            className={`absolute ${anchor} z-10 flex items-center gap-1 bg-white dark:bg-[#252526] border border-[#c8e6c9] dark:border-[#2d4a2d] rounded-full shadow-md px-2.5 py-1 text-xs select-none`}
             data-testid="ai-edit-navigator"
             aria-live="polite"
             aria-label={`${editCount} AI edit${editCount !== 1 ? 's' : ''} applied`}

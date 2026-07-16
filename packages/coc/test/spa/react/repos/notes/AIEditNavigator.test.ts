@@ -59,6 +59,20 @@ describe('AIEditNavigator (source inspection)', () => {
         expect(source).toContain('narrow');
     });
 
+    it('declares a placement prop on AIEditNavigatorProps', () => {
+        expect(source).toContain('placement?');
+        expect(source).toContain("'bottom-right' | 'top-right'");
+    });
+
+    it('defaults placement to bottom-right', () => {
+        expect(source).toContain("placement = 'bottom-right'");
+    });
+
+    it('offers both corner anchors so the pill can clear the chat lens', () => {
+        expect(source).toContain('bottom-8 right-3');
+        expect(source).toContain('top-2 right-3');
+    });
+
     it('renders dismiss button with a "Keep" text label, not a bare \u2715', () => {
         // Capture the exact dismiss button block so we don't accidentally match
         // unrelated text elsewhere in the file.

@@ -558,6 +558,7 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
                     commentCount={wrappedComments.totalCount}
                     onFlushSave={(fn) => { flushSaveRef.current = fn; }}
                     chatPanelOpen={chatPanelOpen}
+                    chatLensOpen={chatVisible && noteChatPresentation === 'lens'}
                     onToggleChatPanel={handleToggleChatPanel}
                     chatDisabledReason={aiUnavailableReason}
                     hasExistingChat={hasNoteChat}
