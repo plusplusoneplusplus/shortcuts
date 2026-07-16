@@ -279,7 +279,7 @@ describe('ChatHeader', () => {
             render(<ChatHeader {...defaultProps()} />);
             expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
             expect(screen.queryByTestId('export-conversation-pdf-btn')).toBeNull();
-            // Metadata is accessible via the overflow menu at all tiers
+            // HTML/PDF stay in the overflow menu at all tiers (metadata is inline)
             const menu = screen.getByTestId('overflow-menu');
             expect(menu.getAttribute('data-keys')?.split(',')).toContain('copy-html');
             expect(menu.getAttribute('data-keys')?.split(',')).toContain('export-pdf');
@@ -320,8 +320,8 @@ describe('ChatHeader', () => {
             expect(screen.queryByTestId('context-window')).toBeNull();
             expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
             expect(screen.queryByTestId('export-conversation-pdf-btn')).toBeNull();
-            // Metadata is in overflow at all tiers; not an inline element
-            expect(screen.queryByTestId('metadata-popover')).toBeTruthy(); // via overflow menu
+            // Metadata "i" button stays inline beside the title at every tier
+            expect(screen.queryByTestId('metadata-popover')).toBeTruthy();
         });
 
         it('hides float/popout buttons (moved to overflow)', () => {
@@ -422,7 +422,7 @@ describe('ChatHeader', () => {
             render(<ChatHeader {...defaultProps()} />);
             const menu = screen.getByTestId('overflow-menu');
             const count = parseInt(menu.getAttribute('data-count') ?? '0');
-            expect(count).toBeGreaterThanOrEqual(5); // html, pdf, metadata, refs, resume-cli, duration, ctx-window
+            expect(count).toBeGreaterThanOrEqual(5); // html, pdf, refs, resume-cli, copy-resume-cli, duration, ctx-window
         });
 
         it('includes resume CLI in overflow at medium tier on desktop', () => {
@@ -705,7 +705,8 @@ describe('ChatHeader', () => {
             expect(keys).toContain('copy-html');
             expect(keys).toContain('select-turns');
             expect(keys).toContain('export-pdf');
-            expect(keys).toContain('metadata');
+            // Metadata is no longer an overflow item — it lives inline beside the title.
+            expect(keys).not.toContain('metadata');
             expect(keys).toContain('new-chat-same-context');
             expect(keys).toContain('fork');
             expect(menu.getAttribute('data-labels')?.split('|')).toContain('New chat with same context');
@@ -735,13 +736,15 @@ describe('ChatHeader', () => {
             expect(popover.getAttribute('data-extra-row-labels')).toBe('Repository|Branch');
         });
 
-        it('keeps the metadata item (which carries extra rows) in the overflow at medium tier', () => {
+        it('forwards metadataExtraRows to the inline popover at medium tier (metadata not in overflow)', () => {
             setTier('medium');
             render(<ChatHeader {...defaultProps({ metadataExtraRows: EXTRA_ROWS })} />);
-            // At medium tier the metadata popover moves into the overflow menu; its
-            // render closure forwards metadataExtraRows. The mock lists item keys.
+            // The metadata "i" button sits inline beside the title at every tier;
+            // it carries the extra rows and is absent from the overflow menu.
+            const popover = screen.getByTestId('metadata-popover');
+            expect(popover.getAttribute('data-extra-row-labels')).toBe('Repository|Branch');
             const menu = screen.getByTestId('overflow-menu');
-            expect(menu.getAttribute('data-keys')?.split(',')).toContain('metadata');
+            expect(menu.getAttribute('data-keys')?.split(',')).not.toContain('metadata');
         });
 
         it('passes no extra rows to the popover when metadataExtraRows is omitted (chat default unchanged)', () => {
@@ -749,6 +752,32 @@ describe('ChatHeader', () => {
             render(<ChatHeader {...defaultProps()} />);
             const popover = screen.getByTestId('metadata-popover');
             expect(popover.getAttribute('data-extra-row-labels')).toBe('');
+        });
+    });
+
+    describe('metadata info button placement', () => {
+        it('renders the metadata popover inline in the identity group (next to the title), not in overflow', () => {
+            setTier('wide');
+            render(<ChatHeader {...defaultProps()} />);
+            const identity = screen.getByTestId('chat-header-identity');
+            expect(identity.querySelector('[data-testid="metadata-popover"]')).toBeTruthy();
+            // No longer routed through the overflow menu.
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).not.toContain('metadata');
+        });
+
+        it('keeps the metadata popover inline beside the title at narrow tier', () => {
+            setTier('narrow');
+            render(<ChatHeader {...defaultProps()} />);
+            const identity = screen.getByTestId('chat-header-identity');
+            expect(identity.querySelector('[data-testid="metadata-popover"]')).toBeTruthy();
+        });
+
+        it('omits the inline metadata popover while the conversation is pending', () => {
+            setTier('wide');
+            render(<ChatHeader {...defaultProps({ isPending: true })} />);
+            const identity = screen.getByTestId('chat-header-identity');
+            expect(identity.querySelector('[data-testid="metadata-popover"]')).toBeNull();
         });
     });
 

@@ -40,6 +40,8 @@ import { ToastContext } from '../../contexts/ToastContext';
 import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/MonacoFileEditor';
 import { ExtensionCanvasView } from './ExtensionCanvasView';
 import { ExcalidrawSceneView, parseSceneContent } from '../diagrams';
+import { exportCanvasAsHtml } from './html-export/exportCanvasAsHtml';
+import { createHtmlExportDeps } from './html-export/htmlExportDeps';
 import type { CanvasUpdatedEvent } from '../chat/hooks/useChatSSE';
 
 const AUTOSAVE_DELAY_MS = 800;
@@ -533,6 +535,41 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         }
     }, [workspaceId, flashExportStatus]);
 
+    // Export the canvas as a single self-contained, portable HTML file (rendered,
+    // images inlined, diagrams pre-rasterized — see the html-export/ pipeline).
+    // The orchestrator never throws; the extra try/catch guarantees the panel
+    // stays mounted even if building the browser deps ever fails.
+    const handleExportHtml = useCallback(async () => {
+        const current = canvasRef.current;
+        if (!current) return;
+        setExportOpen(false);
+        try {
+            const result = await exportCanvasAsHtml(
+                {
+                    title: current.title,
+                    type: current.type,
+                    content: current.content,
+                    language: current.language,
+                    workspaceId,
+                },
+                createHtmlExportDeps(),
+            );
+            if (result.ok) {
+                if (result.warnings.length > 0) {
+                    const n = result.warnings.length;
+                    toast?.addToast(`Exported HTML with ${n} warning${n === 1 ? '' : 's'}`, 'info');
+                }
+                flashExportStatus('Exported HTML');
+            } else {
+                toast?.addToast(result.error ?? 'Export failed', 'error');
+                flashExportStatus('Export failed');
+            }
+        } catch {
+            toast?.addToast('Export failed', 'error');
+            flashExportStatus('Export failed');
+        }
+    }, [workspaceId, flashExportStatus, toast]);
+
     // ------------------------------------------------------------------
     // Rendering
     // ------------------------------------------------------------------
@@ -737,6 +774,26 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                                 <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={handleDownload} data-testid="canvas-panel-export-download">
                                     Download file
                                 </button>
+                                {canvas.type === 'extension' ? (
+                                    <button
+                                        type="button"
+                                        disabled
+                                        className="block w-full text-left px-3 py-1.5 text-[12px] text-[#848484] cursor-not-allowed"
+                                        title="Interactive canvases export as a view-only snapshot — coming soon."
+                                        data-testid="canvas-panel-export-html-disabled"
+                                    >
+                                        Export as HTML (view-only — soon)
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
+                                        onClick={() => void handleExportHtml()}
+                                        data-testid="canvas-panel-export-html"
+                                    >
+                                        Export as HTML
+                                    </button>
+                                )}
                                 {canvas.type === 'markdown' && (
                                     <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={() => void handleSaveToNotes()} data-testid="canvas-panel-export-notes">
                                         Save to Notes
