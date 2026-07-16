@@ -70,6 +70,10 @@ describe('NotesView (notes chat refactor)', () => {
         it('passes onToggleChatPanel to NoteEditor', () => {
             expect(source).toContain('onToggleChatPanel={handleToggleChatPanel}');
         });
+
+        it('tells NoteEditor when the chat is a lens, so the AI-edit pill moves clear of it', () => {
+            expect(source).toContain("chatLensOpen={chatVisible && noteChatPresentation === 'lens'}");
+        });
     });
 
     describe('Lens Chat inheritance', () => {
