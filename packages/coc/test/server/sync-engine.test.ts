@@ -682,9 +682,9 @@ describe('SyncEngine reconcile (real git)', () => {
     }
 
     /** Give the remote a real history, as if another machine had synced first. */
-    function seedRemote(files: Record<string, string | Buffer>): string {
+    function seedRemote(files: Record<string, string | Buffer>, into: string = remoteUrl()): string {
         const seed = path.join(tmpDir, `seed-${Object.keys(files).join('-').slice(0, 20)}`);
-        execFileSync('git', ['clone', remoteUrl(), seed], { stdio: 'ignore' });
+        execFileSync('git', ['clone', into, seed], { stdio: 'ignore' });
         for (const [rel, content] of Object.entries(files)) {
             const p = path.join(seed, rel);
             fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -699,9 +699,15 @@ describe('SyncEngine reconcile (real git)', () => {
     }
 
     /** The tree the remote actually holds, read back out of the bare repo. */
-    function remoteFiles(): string[] {
-        return git(['ls-tree', '-r', '--name-only', 'HEAD'], remoteDir)
+    function remoteFiles(bare: string = remoteDir): string[] {
+        return git(['ls-tree', '-r', '--name-only', 'HEAD'], bare)
             .split('\n').map(s => s.trim()).filter(Boolean).sort();
+    }
+
+    /** Why the engine entered the reconcile phase, once per entry, in order. */
+    function reconcileReasons(): string[] {
+        return logs.filter(l => l.startsWith('Initial reconcile —'))
+            .map(l => l.replace('Initial reconcile — ', ''));
     }
 
     function remoteFile(rel: string): string {
@@ -1004,5 +1010,137 @@ describe('SyncEngine reconcile (real git)', () => {
 
         expect(remoteFiles()).toEqual(['journal/2026-06.md', 'journal/2026-07.md']);
         expect(fs.existsSync(path.join(notesDir(), 'journal', '2026-06.md'))).toBe(true);
+    });
+
+    // ── AC-01: performSync routes into the phase ─────────────────────────────
+    //
+    // Same harness as above, driven through the public entry point the settings
+    // panel's "Sync Now" actually calls, so these pin the branch rather than the
+    // merge (which the tests above already cover).
+
+    it('the very first Sync Now merges instead of mirroring local over the remote', async () => {
+        writeNote('a.md', '# A local\n');
+        writeNote('b.md', '# B local edit\n');
+        writeNote('c.md', '# C local\n');
+        seedRemote({ 'b.md': '# B remote edit\n', 'd.md': '# D remote\n', 'e.md': '# E remote\n' });
+
+        const status = await engine.triggerSync(remoteUrl());
+
+        expect(reconcileReasons()).toEqual(['first sync with a remote that already has notes']);
+        // The demo: nothing on either side is lost by pointing at a live remote.
+        expect(remoteFiles()).toEqual(['a.md', 'b.md', 'c.md', 'd.md', 'e.md']);
+        expect(fs.readdirSync(notesDir()).sort()).toEqual(['a.md', 'b.md', 'c.md', 'd.md', 'e.md']);
+        expect(status.lastError).toBeNull();
+        expect(status.lastSyncTime).not.toBeNull();
+        expect(await readReconcileMarker(syncRepoDir())).not.toBeNull();
+    });
+
+    it('merges rather than mirroring even when the pull would have succeeded', async () => {
+        writeNote('a.md', '# A local\n');
+        seedRemote({ 'd.md': '# D remote\n' });
+        // A mirror cloned from the remote shares its history, so the pull can't
+        // fail and the fallback never fires. Detection running before the outbound
+        // copy is the only thing between d.md and a mirror-deleted remote.
+        execFileSync('git', ['clone', remoteUrl(), syncRepoDir()], { stdio: 'ignore' });
+
+        await engine.triggerSync(remoteUrl());
+
+        expect(remoteFiles()).toEqual(['a.md', 'd.md']);
+        expect(fs.readdirSync(notesDir()).sort()).toEqual(['a.md', 'd.md']);
+        expect(reconcileReasons()).toEqual(['first sync with a remote that already has notes']);
+    });
+
+    it('the next Sync Now skips reconcile and takes the normal 3-way flow', async () => {
+        writeNote('a.md', '# A local\n');
+        seedRemote({ 'd.md': '# D remote\n' });
+        await engine.triggerSync(remoteUrl());
+
+        // Demo step 5: edit a note, sync again — a plain fast sync from here.
+        writeNote('a.md', '# A edited after reconcile\n');
+        logs.length = 0;
+        const status = await engine.triggerSync(remoteUrl());
+
+        expect(reconcileReasons()).toEqual([]);
+        expect(status.lastError).toBeNull();
+        expect(remoteFile('a.md')).toBe('# A edited after reconcile');
+        // The normal flow's `git add -A` commits the sync lock — pre-existing, and
+        // the reason reconcile stages with an explicit exclude instead.
+        expect(remoteFiles().filter(f => f !== '.lock')).toEqual(['a.md', 'd.md']);
+        // seed + the one reconcile commit + this ordinary sync commit: the pull
+        // that used to refuse unrelated histories now has a shared ancestor.
+        expect(Number(git(['rev-list', '--count', 'HEAD'], remoteDir))).toBe(3);
+    });
+
+    it('does not reconcile against an empty remote — the normal first push is already right', async () => {
+        writeNote('a.md', '# A\n');
+
+        const status = await engine.triggerSync(remoteUrl());
+
+        expect(reconcileReasons()).toEqual([]);
+        expect(status.lastError).toBeNull();
+        expect(remoteFiles().filter(f => f !== '.lock')).toEqual(['a.md']);
+        // That first push *is* the shared history, so it earns the same baseline
+        // a merge would: the remote has commits from here on, and without a marker
+        // the next tick would re-enter the phase and merge a.md with itself.
+        expect(await readReconcileMarker(syncRepoDir())).not.toBeNull();
+
+        logs.length = 0;
+        await engine.triggerSync(remoteUrl());
+        expect(reconcileReasons()).toEqual([]);
+        expect(logs.some(l => /idle/i.test(l))).toBe(true);
+    });
+
+    it('records no baseline when the push never landed', async () => {
+        writeNote('a.md', '# A\n');
+        // pushToRemote swallows failures to retry next tick, so only the returned
+        // flag can tell a landed push from a lost one. Retiring the phase here
+        // would hand a remote we've never merged with a baseline it hasn't earned.
+        const hook = path.join(remoteDir, 'hooks', 'pre-receive');
+        fs.writeFileSync(hook, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+
+        await engine.triggerSync(remoteUrl());
+
+        expect(logs.some(l => /Push failed/.test(l))).toBe(true);
+        expect(await readReconcileMarker(syncRepoDir())).toBeNull();
+    });
+
+    it('pulls an existing remote onto a device with no notes yet, pushing no deletes', async () => {
+        fs.mkdirSync(notesDir(), { recursive: true });
+        const preMergeHead = seedRemote({ 'd.md': '# D remote\n' });
+
+        const status = await engine.triggerSync(remoteUrl());
+
+        // Detection needs local notes to contribute, so it stays quiet here; the
+        // failed pull is what catches this device. (`ensureSyncRepo`'s clone can't
+        // run — performSync's lock file is already sitting in the target dir — so
+        // a fresh mirror always starts on a history unrelated to the remote's.)
+        expect(reconcileReasons()).toEqual(['remote history is unrelated to this mirror']);
+        expect(status.lastError).toBeNull();
+        // The remote's note is untouched and lands on the device.
+        expect(remoteFiles()).toEqual(['d.md']);
+        expect(git(['rev-parse', 'HEAD'], remoteDir)).toBe(preMergeHead);
+        expect(fs.readFileSync(path.join(notesDir(), 'd.md'), 'utf8')).toBe('# D remote\n');
+    });
+
+    it('heals a remote whose history is unrelated, even with the phase already retired', async () => {
+        writeNote('a.md', '# A\n');
+        seedRemote({ 'd.md': '# D\n' });
+        await engine.triggerSync(remoteUrl());
+
+        // Re-point sync at a different repo that shares no commit with this
+        // mirror. The marker says reconcile is done, so the detection branch
+        // stays quiet and only the failed pull can catch this.
+        const other = path.join(tmpDir, 'other.git');
+        execFileSync('git', ['init', '--bare', other], { stdio: 'ignore' });
+        const otherUrl = other.replace(/\\/g, '/');
+        seedRemote({ 'z.md': '# Z\n' }, otherUrl);
+        logs.length = 0;
+
+        const status = await engine.triggerSync(otherUrl);
+
+        expect(reconcileReasons()).toEqual(['remote history is unrelated to this mirror']);
+        expect(status.lastError).toBeNull();
+        // Union merge again: this device's notes and the new remote's both live.
+        expect(remoteFiles(other)).toEqual(['a.md', 'd.md', 'z.md']);
     });
 });

@@ -32,17 +32,22 @@ export const RECONCILE_MARKER_NAME = 'coc-reconciled.json';
 export const RECONCILE_MARKER_VERSION = 1;
 
 /**
- * Records that the initial reconcile completed for a workspace. Its presence is
- * both the "skip reconcile" signal and the baseline that steady-state
- * mirror-deletes are guarded behind — without it, a deletion can't be
- * distinguished from a note the local tree has simply never seen.
+ * Records that a workspace's local notes and its remote share history. Its
+ * presence is both the "skip reconcile" signal and the baseline that
+ * steady-state mirror-deletes are guarded behind — without it, a deletion can't
+ * be distinguished from a note the local tree has simply never seen.
+ *
+ * The initial reconcile writes it once its merge lands. A normal sync writes it
+ * too when its push lands without ever needing a merge (the remote was empty, so
+ * the first push is itself the shared history) — either way, from here on the
+ * two sides have a common ancestor and the steady-state flow is correct.
  */
 export interface ReconcileMarker {
     /** Schema version of this marker. */
     version: number;
-    /** SHA of the squashed merge commit the reconcile pushed. */
+    /** SHA of the commit the two sides' shared history was established at. */
     mergedCommit: string;
-    /** ISO timestamp of when the reconcile completed. */
+    /** ISO timestamp of when that happened. */
     reconciledAt: string;
 }
 

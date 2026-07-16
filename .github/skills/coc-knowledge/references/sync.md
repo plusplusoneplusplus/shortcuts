@@ -47,7 +47,7 @@ Git-backed synchronization of My Work and My Life notes across multiple machines
 
 | Path | Purpose |
 |------|---------|
-| `src/server/sync/sync-engine.ts` | `SyncEngine` class, `copyDirContents()`/`copyFileIfChanged()`, `nextSyncDelayMs()`, `resolveConflictSimple()`, `resolveConflictWithAI()`, `backupTagStamp()`, `SYNC_IGNORE_NAMES`; re-exports the interval constants. Also owns the private initial-reconcile phase — `reconcile()` and its helpers `readRemoteTree()`/`remoteDefaultBranch()`/`stageMergedTree()` — which runs git around the pure pieces in `sync-reconcile.ts`. **`reconcile()` exists but nothing calls it yet**; `performSync` is unchanged, so runtime behavior is still pre-reconcile. |
+| `src/server/sync/sync-engine.ts` | `SyncEngine` class, `copyDirContents()`/`copyFileIfChanged()`, `nextSyncDelayMs()`, `resolveConflictSimple()`, `resolveConflictWithAI()`, `backupTagStamp()`, `SYNC_IGNORE_NAMES`; re-exports the interval constants. Also owns the private initial-reconcile phase — `reconcile()` and its helpers `readRemoteTree()`/`remoteDefaultBranch()`/`stageMergedTree()` — which runs git around the pure pieces in `sync-reconcile.ts`, plus the two branches into it (`needsReconcile()`, the `isUnrelatedHistoriesError` catch around the pull) and `recordSyncBaseline()`. |
 | `src/server/sync/sync-constants.ts` | Side-effect-free `DEFAULT_SYNC_INTERVAL_MINUTES` / `MAX_SYNC_BACKOFF_MINUTES` (no `child_process`/`fs`), so lightweight consumers avoid pulling in the engine |
 | `src/server/sync/sync-reconcile.ts` | Detection, planning, and apply for the initial-reconcile phase. Detection: `ReconcileMarker`, `reconcileMarkerPath()`/`readReconcileMarker()`/`writeReconcileMarker()`, `isUnrelatedHistoriesError()`, `shouldReconcile()`, `isNotesTreeNonEmpty()`. Planning: `planUnionMerge()` plus `isDecodableText()`/`localVariantPath()`. Apply: `scanTreeToMap()` reads a tree into `Map<posix path, Buffer>`, `buildConflictBlob()` synthesizes the add/add blob the existing resolvers consume (local = ours, remote = theirs), `applyMergePlan()` writes the merged tree — materializing every entry, skipping unchanged bytes, deleting nothing. Reporting: `reconcileCommitMessage()` builds the squashed commit's subject + the body that enumerates every AI-combined and flagged path. A leaf of the import graph — the engine imports it, so the ignore set and the conflict resolver are passed in rather than imported back. Runs no git. |
 | `src/server/sync/sync-handler.ts` | REST route registration (`registerSyncRoutes`) — workspace-scoped |
@@ -67,28 +67,30 @@ Server bootstrap creates two `SyncEngine` instances (`syncEngines: Map<string, S
 
 ## Sync Flow (performSync)
 
-1. **Ensure sync repo** — Clone from remote, or verify existing clone's remote URL matches.
+1. **Ensure sync repo** — Clone from remote, or verify existing clone's remote URL matches. In practice the clone always fails into the `git init` fallback: `performSync` takes the `.lock` first, so the target dir is never empty and `git clone <url> .` refuses it. A fresh mirror therefore starts on a history unrelated to the remote's, which is why the step-6 fallback below is a main road rather than an edge case.
+1b. **Reconcile?** — `needsReconcile()` = `shouldReconcile({markerPresent, localTreeNonEmpty, remoteHasCommits})`. When true, run the phase below and finish the tick; it pushes and copies back itself. Asked here, before step 2, because step 2 is the destructive step.
 2. **Copy local → repo** — Mirror workspace notes dir to sync repo root via `copyDirContents` with `ignore: SYNC_IGNORE_NAMES` (`.git`, `.lock`). Only changed files are rewritten (`copyFileIfChanged` skips a copy when size + content match and preserves mtime), so an unchanged tree costs stats/reads, not writes.
 3. **Stage local changes** — `git add -A`, then `git diff --cached --quiet` to detect whether anything is actually staged. After the changed-only copy this is a cheap stat pass with nothing to re-hash on an idle tree.
 4. **Idle short-circuit** — If nothing is staged **and** the remote has no new commits (`ls-remote origin HEAD` vs local `HEAD`), return early: no commit, pull, push, or copy-back. An idle tick writes nothing and issues no network mutation.
 5. **Commit local changes** — Only when there are staged changes: `git commit` with hostname + timestamp message.
-6. **Pull remote** — `git pull --no-rebase origin HEAD`. Detects conflicts via error output.
+6. **Pull remote** — `git pull --no-rebase origin HEAD`. Detects conflicts via error output. A pull that fails with `isUnrelatedHistoriesError` falls back into reconcile and finishes the tick there — the self-healing path for a mirror with no shared history and no marker to detect it by (a fresh `git init` mirror, or a remote re-pointed after reconcile already retired).
 7. **Resolve conflicts** — If merge conflicts, iterate conflicted files:
    - **AI path**: Send file with conflict markers to `AIInvoker`, validate response (strip code fences, reject residual markers).
    - **Fallback**: `resolveConflictSimple()` keeps both sides, deduplicates identical content.
    - **Last resort**: `git checkout --theirs <file>`.
-8. **Push to remote** — `git push -u origin HEAD`. Failure is non-fatal (retries next cycle).
+8. **Push to remote** — `git push -u origin HEAD`. Failure is non-fatal (retries next cycle) but is reported: `pushToRemote()` returns whether the push landed.
 9. **Copy repo → local** — Mirror resolved content back to local notes directory (changed files only; excludes `.git` and `.lock`).
+10. **Record the baseline** — Only when the push landed, and only if no marker exists: `recordSyncBaseline()` writes the same marker reconcile writes. A push that landed means the two sides now share history by the ordinary route (the remote was empty, so the first push *is* the shared history). Without it, the next tick would see a remote that suddenly has commits and no marker, re-enter reconcile, and union-merge the notes with the copies it just pushed.
 
 ## Initial Reconcile (SyncEngine.reconcile)
 
 The one-time union merge for pointing an existing notebook at a remote that already
-has content. **Not yet reachable at runtime** — the method is complete and tested,
-but `performSync` does not branch into it yet, so the flow above is still what runs.
+has content. Reached two ways, both of which finish the tick on it: the step-1b
+detection branch, and the step-6 pull fallback.
 
-The flow above is wrong twice over on first contact: step 2 mirror-deletes every
+The normal flow is wrong twice over on first contact: step 2 mirror-deletes every
 remote note missing locally, and step 6's pull refuses to merge two histories with
-no common commit. Reconcile replaces steps 2–9 for exactly one sync:
+no common commit. Reconcile replaces steps 2–10 for exactly one sync:
 
 1. **Read both trees** — local from the notes dir (`scanTreeToMap`); remote from
    **git objects** at the fetched `FETCH_HEAD` (`ls-tree -r --name-only -z` +
@@ -118,6 +120,14 @@ safe because the union merge is idempotent (a re-run stages nothing and pushes
 nothing). Both orderings are pinned by tests using a `pre-receive` hook that rejects
 only branch updates.
 
+The two entry points cover different states, and neither alone is enough:
+
+| State | Caught by | Why the other one can't |
+|-------|-----------|-------------------------|
+| Local notes + remote with commits, no marker | 1b detection | A mirror cloned from the remote shares its history, so the pull succeeds and step 2's mirror-delete gets pushed. |
+| Empty local + remote with commits | step-6 fallback | Detection needs local notes to contribute (`localTreeNonEmpty`). |
+| Marker present, remote re-pointed to an unrelated repo | step-6 fallback | The marker retires detection. |
+
 ## Scheduling & Backoff
 
 The periodic timer is a self-rescheduling `setTimeout` chain (not a fixed `setInterval`) so the delay can adapt:
@@ -142,6 +152,7 @@ Only `my_work` and `my_life` workspace IDs are valid for sync routes.
 - **No credential management**: Assumes SSH keys or Git credential helpers are pre-configured.
 - **Scope limited to notes**: Only files in workspace note directories are synced.
 - **Idle syncs are near-free**: An idle tick (no local edits, no remote commits) rewrites no files, re-hashes nothing, and issues no commit/pull/push/copy-back.
+- **First contact merges, never mirrors**: The first sync against a remote that already has commits union-merges the two sides (nothing deleted on either side) and leaves a `sync-backup/<stamp>` tag on the remote's pre-merge tip. Reconcile runs at most once per workspace; the marker that retires it is written only after the merge (or a normal first push) actually lands on the remote.
 - **Changed-only copies**: Both copy directions rewrite only files whose content differs, keeping mtimes stable so `git add -A` doesn't re-hash the whole tree.
 - **`.git`/`.lock` are protected**: `SYNC_IGNORE_NAMES` is applied to both the copy and mirror-delete passes in both directions, so the sync repo's own `.git` and `.lock` are never copied over or deleted (no re-init/re-clone loop).
 - **Failure backoff**: Repeated failing syncs grow the next delay geometrically (cap 30 min); a success resets it to the base interval.

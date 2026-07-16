@@ -19,9 +19,13 @@ import { DEFAULT_SYNC_INTERVAL_MINUTES, MAX_SYNC_BACKOFF_MINUTES } from './sync-
 import {
     RECONCILE_MARKER_VERSION,
     applyMergePlan,
+    isNotesTreeNonEmpty,
+    isUnrelatedHistoriesError,
     planUnionMerge,
+    readReconcileMarker,
     reconcileCommitMessage,
     scanTreeToMap,
+    shouldReconcile,
     writeReconcileMarker,
 } from './sync-reconcile';
 import type { MergePlan } from './sync-reconcile';
@@ -426,6 +430,16 @@ export class SyncEngine {
             // 1. Ensure the sync repo exists (clone or verify)
             await this.ensureSyncRepo(gitRemote);
 
+            // 1b. First contact with a remote that already has notes: union-merge
+            //     the two sides instead of running the flow below, which treats
+            //     local as authoritative and would mirror-delete every remote note
+            //     we don't have. Reconcile pushes and copies back itself, so the
+            //     tick is done once it returns.
+            if (await this.needsReconcile()) {
+                await this.runReconcile('first sync with a remote that already has notes');
+                return;
+            }
+
             // 2. Copy local notes → sync repo (changed files only)
             await this.copyLocalToRepo();
 
@@ -447,8 +461,20 @@ export class SyncEngine {
                 await this.commitLocalChanges();
             }
 
-            // 6. Pull remote changes (may produce conflicts)
-            const hasConflicts = await this.pullRemote();
+            // 6. Pull remote changes (may produce conflicts). Git refusing to
+            //    merge unrelated histories is the reconcile situation surfacing
+            //    late — a repo left in that state before this phase existed has
+            //    no marker to detect it by — so heal it here instead of failing
+            //    every tick forever.
+            let hasConflicts: boolean;
+            try {
+                hasConflicts = await this.pullRemote();
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                if (!isUnrelatedHistoriesError(message)) throw err;
+                await this.runReconcile('remote history is unrelated to this mirror');
+                return;
+            }
 
             // 7. If conflicts, resolve them
             if (hasConflicts) {
@@ -456,10 +482,18 @@ export class SyncEngine {
             }
 
             // 8. Push to remote
-            await this.pushToRemote();
+            const pushed = await this.pushToRemote();
 
             // 9. Copy sync repo → local notes
             await this.copyRepoToLocal();
+
+            // 10. A push that landed means this mirror and the remote now share
+            //     history by the ordinary route — typically the first push to a
+            //     remote that was empty. That earns the same baseline reconcile's
+            //     own merge would: without it the next tick would see a remote
+            //     that suddenly has commits and no marker, and try to union-merge
+            //     these notes with the copies it just pushed.
+            if (pushed) await this.recordSyncBaseline();
 
             this.status.lastSyncTime = new Date().toISOString();
             this.status.lastError = null;
@@ -639,13 +673,16 @@ export class SyncEngine {
         }
     }
 
-    private async pushToRemote(): Promise<void> {
+    /** Push, reporting whether it landed. A failure retries on the next tick. */
+    private async pushToRemote(): Promise<boolean> {
         try {
             await git(['push', '-u', 'origin', 'HEAD'], this.syncRepoDir);
             this.logger.info('Pushed to remote');
+            return true;
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
             this.logger.warn(`Push failed (will retry next cycle): ${message}`);
+            return false;
         }
     }
 
@@ -670,6 +707,62 @@ export class SyncEngine {
     }
 
     // ── Initial reconcile ────────────────────────────────────────────────────
+
+    /**
+     * Whether this tick has to reconcile before anything else. Asked after the
+     * repo exists but before the first copy, because that copy is the destructive
+     * step: it mirrors local over the sync repo, deleting whatever the remote had
+     * that this device doesn't.
+     */
+    private async needsReconcile(): Promise<boolean> {
+        return shouldReconcile({
+            markerPresent: await readReconcileMarker(this.syncRepoDir) !== null,
+            localTreeNonEmpty: await isNotesTreeNonEmpty(this.mapping.localDir, SYNC_IGNORE_NAMES),
+            remoteHasCommits: await this.remoteHasCommits(),
+        });
+    }
+
+    /**
+     * Whether the remote has any commits to reconcile against. An unreachable
+     * remote reports false: there's nothing to merge, and the normal flow's push
+     * will fail and back off on its own.
+     */
+    private async remoteHasCommits(): Promise<boolean> {
+        try {
+            const line = await git(['ls-remote', 'origin', 'HEAD'], this.syncRepoDir);
+            return !!line.split(/\s+/)[0]?.trim();
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Record the baseline a normal sync established, unless one already exists.
+     * Only called after a push actually landed: a swallowed push failure must
+     * leave the phase un-retired, so an unmerged remote is never treated as one
+     * this device shares history with.
+     */
+    private async recordSyncBaseline(): Promise<void> {
+        if (await readReconcileMarker(this.syncRepoDir)) return;
+        await writeReconcileMarker(this.syncRepoDir, {
+            version: RECONCILE_MARKER_VERSION,
+            mergedCommit: await git(['rev-parse', 'HEAD'], this.syncRepoDir),
+            reconciledAt: new Date().toISOString(),
+        });
+    }
+
+    /**
+     * Run the one-time merge and complete the tick on it. Both ways into the
+     * phase end here: reconcile has already pushed and copied the merged tree
+     * back, so the rest of `performSync` has nothing left to do.
+     */
+    private async runReconcile(reason: string): Promise<void> {
+        this.logger.info(`Initial reconcile — ${reason}`);
+        await this.reconcile();
+        this.status.lastSyncTime = new Date().toISOString();
+        this.status.lastError = null;
+        this.logger.info(`Initial reconcile completed at ${this.status.lastSyncTime}`);
+    }
 
     /**
      * One-time union merge of the local notes with a remote that already has
