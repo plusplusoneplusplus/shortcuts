@@ -39,7 +39,7 @@
     "js-md4": "^0.3.2",
     "js-yaml": "^4.3.0",
     "pino": "^9.x",
-    "pino-pretty": "^11.x",
+    "pino-pretty": "^13.x",
     "tunnel": "0.0.6",
     "underscore": "^1.13.8"
   },

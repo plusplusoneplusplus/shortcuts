@@ -50,6 +50,23 @@ function fileDestination(dest: string): pino.DestinationStream {
 }
 
 /**
+ * Open a pino transport with an error handler attached.
+ *
+ * `pino.transport()` loads its targets (pino-pretty, pino/file) inside a worker
+ * thread. If a target fails to boot — a broken or half-installed transport
+ * dependency, a worker that cannot be spawned — the returned ThreadStream emits
+ * an `error` event, and with no listener Node re-throws it as an uncaught
+ * exception that would crash the server at logger-construction time, before a
+ * caller can report why. Logging is best-effort, so swallow the error rather
+ * than take the process down; the caller keeps running with degraded logs.
+ */
+function guardedTransport(options: pino.TransportSingleOptions | pino.TransportMultiOptions): pino.DestinationStream {
+    const stream = pino.transport(options);
+    stream.on('error', () => { /* best-effort transport logging — never crash the process */ });
+    return stream;
+}
+
+/**
  * Create a root CLI Pino logger plus ai and coc child loggers.
  *
  * Level is taken from resolved.level. Pretty mode resolves 'auto' via TTY detection.
@@ -108,28 +125,22 @@ export function createCLIPinoLogger(resolved: ResolvedLoggingConfig): CLIPinoLog
                 level,
             });
         }
-        root = pino({
-            ...pinoOpts,
-            transport: {
-                targets: [
-                    {
-                        target: 'pino-pretty',
-                        options: { ...prettyTransportOptions, destination: 2 },
-                        level,
-                    },
-                    ...fileTargets,
-                ],
-            },
-        });
+        root = pino(pinoOpts, guardedTransport({
+            targets: [
+                {
+                    target: 'pino-pretty',
+                    options: { ...prettyTransportOptions, destination: 2 },
+                    level,
+                },
+                ...fileTargets,
+            ],
+        }));
     } else if (usePretty) {
         // Pretty stderr only
-        root = pino({
-            ...pinoOpts,
-            transport: {
-                target: 'pino-pretty',
-                options: prettyTransportOptions,
-            },
-        });
+        root = pino(pinoOpts, guardedTransport({
+            target: 'pino-pretty',
+            options: prettyTransportOptions,
+        }));
     } else if (aiFile || cocFile) {
         // JSON to stderr + .ndjson files via multistream
         const streams: pino.StreamEntry[] = [
