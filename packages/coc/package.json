@@ -63,7 +63,7 @@
     "azure-devops-node-api": "^14.1.0",
     "commander": "^12.1.0",
     "des.js": "^1.1.0",
-    "diff": "^5.2.0",
+    "diff": "^9.0.0",
     "js-md4": "^0.3.2",
     "js-yaml": "^4.3.0",
     "monaco-editor": "^0.55.1",
