@@ -49,7 +49,7 @@ Git-backed synchronization of My Work and My Life notes across multiple machines
 |------|---------|
 | `src/server/sync/sync-engine.ts` | `SyncEngine` class, `copyDirContents()`/`copyFileIfChanged()`, `nextSyncDelayMs()`, `resolveConflictSimple()`, `resolveConflictWithAI()`, `SYNC_IGNORE_NAMES`; re-exports the interval constants |
 | `src/server/sync/sync-constants.ts` | Side-effect-free `DEFAULT_SYNC_INTERVAL_MINUTES` / `MAX_SYNC_BACKOFF_MINUTES` (no `child_process`/`fs`), so lightweight consumers avoid pulling in the engine |
-| `src/server/sync/sync-reconcile.ts` | Detection primitives for the initial-reconcile phase: `ReconcileMarker`, `reconcileMarkerPath()`/`readReconcileMarker()`/`writeReconcileMarker()`, `isUnrelatedHistoriesError()`, `shouldReconcile()`, `isNotesTreeNonEmpty()`. A leaf of the import graph — the engine imports it, so the ignore set is passed in rather than imported back. Not yet wired into `performSync`. |
+| `src/server/sync/sync-reconcile.ts` | Detection + planning for the initial-reconcile phase. Detection: `ReconcileMarker`, `reconcileMarkerPath()`/`readReconcileMarker()`/`writeReconcileMarker()`, `isUnrelatedHistoriesError()`, `shouldReconcile()`, `isNotesTreeNonEmpty()`. Planning: `planUnionMerge()` plus `isDecodableText()`/`localVariantPath()`. A leaf of the import graph — the engine imports it, so the ignore set is passed in rather than imported back. Not yet wired into `performSync`. |
 | `src/server/sync/sync-handler.ts` | REST route registration (`registerSyncRoutes`) — workspace-scoped |
 | `src/server/sync/index.ts` | Barrel exports |
 | `src/server/spa/client/react/features/repo-settings/SyncSettingsSection.tsx` | Per-report sync config UI (git remote, interval, status, trigger) |

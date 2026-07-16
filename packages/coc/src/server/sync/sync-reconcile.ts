@@ -12,6 +12,11 @@
  * The marker is deliberately stored inside the sync repo's `.git` directory: it
  * is per-workspace state about the mirror, not note content, so it must never be
  * committed or pushed to the shared remote.
+ *
+ * It also holds the union-merge planner: given the two trees as bytes, it decides
+ * what happens to every path without touching disk or git, so the rules that
+ * decide whether a note is combined or parked as a binary variant are testable on
+ * their own. Applying the plan is the engine's job.
  */
 
 import * as fs from 'fs';
@@ -140,4 +145,138 @@ export async function isNotesTreeNonEmpty(dir: string, ignore?: ReadonlySet<stri
         }
     }
     return false;
+}
+
+// ── Union merge planning ─────────────────────────────────────────────────────
+
+/**
+ * What the union merge does with a single path.
+ *
+ * There is deliberately no "deleted" outcome: on first contact a path present on
+ * only one side is always kept, because the two sides have no shared history to
+ * tell an intentional delete apart from a note this side has simply never seen.
+ */
+export type MergeOutcome =
+    /** Present on both sides, byte-identical — nothing to do. */
+    | 'identical'
+    /** Local only — added to the merged tree. */
+    | 'addedFromLocal'
+    /** Remote only — preserved as-is. */
+    | 'keptFromRemote'
+    /** Present on both sides with differing text — hand to the conflict resolver. */
+    | 'combined'
+    /** Present on both sides, differing, and not safely decodable — keep both. */
+    | 'keptBothBinary';
+
+/** The union merge's decision for one path. */
+export interface MergeEntry {
+    /** Repo-relative POSIX path. */
+    path: string;
+    outcome: MergeOutcome;
+    /** Only for `kept-both-binary`: where the local version is parked. */
+    localVariantPath?: string;
+}
+
+/** The full decision set for a reconcile, plus the numbers the report needs. */
+export interface MergePlan {
+    /** Every path from either side, sorted, each with its outcome. */
+    entries: MergeEntry[];
+    /** How many paths landed in each outcome. */
+    counts: Record<MergeOutcome, number>;
+    /** Paths needing conflict resolution, for the status report and commit body. */
+    combined: string[];
+    /** Paths where both binaries were kept and a human should take a look. */
+    flagged: string[];
+}
+
+/**
+ * Whether a buffer can be treated as text for conflict resolution.
+ *
+ * Conservative on purpose: the conflict resolver works on strings, so anything
+ * that would survive decoding only by mangling bytes (invalid UTF-8) or that
+ * carries a NUL — the usual "this is binary" tell, and something no note has —
+ * must take the keep-both path instead of being silently corrupted.
+ */
+export function isDecodableText(buf: Buffer): boolean {
+    if (buf.includes(0)) return false;
+    try {
+        new TextDecoder('utf-8', { fatal: true }).decode(buf);
+        return true;
+    } catch {
+        return false; // invalid UTF-8 — decoding would corrupt it
+    }
+}
+
+/**
+ * Where a binary collision's local version is parked: `<name>.local<ext>`, next
+ * to the remote version that keeps the original path.
+ *
+ * `taken` guards the (unlikely but destructive) case where that name is already
+ * a real note on either side; a numbered variant is ugly, but overwriting
+ * someone's file to make room for a backup would defeat the point.
+ */
+export function localVariantPath(filePath: string, taken?: ReadonlySet<string>): string {
+    const ext = path.posix.extname(filePath);
+    const stem = filePath.slice(0, filePath.length - ext.length);
+    let candidate = `${stem}.local${ext}`;
+    for (let n = 2; taken?.has(candidate); n++) {
+        candidate = `${stem}.local-${n}${ext}`;
+    }
+    return candidate;
+}
+
+/**
+ * Decide what the union merge does with every path across the two trees.
+ *
+ * Pure: it reads bytes and returns decisions, so the engine can be tested for
+ * "does it apply a plan correctly" separately from "is the plan right". Paths
+ * are keyed POSIX-style and the entry list is sorted, so a given pair of trees
+ * always produces the same plan — which is what makes a crashed reconcile safe
+ * to re-run.
+ */
+export function planUnionMerge(
+    local: ReadonlyMap<string, Buffer>,
+    remote: ReadonlyMap<string, Buffer>,
+): MergePlan {
+    const counts: Record<MergeOutcome, number> = {
+        identical: 0,
+        addedFromLocal: 0,
+        keptFromRemote: 0,
+        combined: 0,
+        keptBothBinary: 0,
+    };
+    const entries: MergeEntry[] = [];
+    const combined: string[] = [];
+    const flagged: string[] = [];
+
+    // Variant names must dodge every real path, plus the ones already handed out.
+    const taken = new Set<string>([...local.keys(), ...remote.keys()]);
+    const allPaths = [...taken].sort();
+
+    for (const filePath of allPaths) {
+        const localBuf = local.get(filePath);
+        const remoteBuf = remote.get(filePath);
+
+        let entry: MergeEntry;
+        if (localBuf && !remoteBuf) {
+            entry = { path: filePath, outcome: 'addedFromLocal' };
+        } else if (!localBuf && remoteBuf) {
+            entry = { path: filePath, outcome: 'keptFromRemote' };
+        } else if (localBuf!.equals(remoteBuf!)) {
+            entry = { path: filePath, outcome: 'identical' };
+        } else if (isDecodableText(localBuf!) && isDecodableText(remoteBuf!)) {
+            entry = { path: filePath, outcome: 'combined' };
+            combined.push(filePath);
+        } else {
+            const variant = localVariantPath(filePath, taken);
+            taken.add(variant);
+            entry = { path: filePath, outcome: 'keptBothBinary', localVariantPath: variant };
+            flagged.push(filePath);
+        }
+
+        entries.push(entry);
+        counts[entry.outcome]++;
+    }
+
+    return { entries, counts, combined, flagged };
 }

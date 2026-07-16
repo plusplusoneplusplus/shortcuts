@@ -15,6 +15,9 @@ export {
     isUnrelatedHistoriesError,
     shouldReconcile,
     isNotesTreeNonEmpty,
+    isDecodableText,
+    localVariantPath,
+    planUnionMerge,
 } from './sync-reconcile';
-export type { ReconcileMarker } from './sync-reconcile';
+export type { ReconcileMarker, MergeOutcome, MergeEntry, MergePlan } from './sync-reconcile';
 export { registerSyncRoutes } from './sync-handler';

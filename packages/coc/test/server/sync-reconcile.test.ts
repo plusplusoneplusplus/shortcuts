@@ -19,7 +19,11 @@ import {
     isUnrelatedHistoriesError,
     shouldReconcile,
     isNotesTreeNonEmpty,
+    isDecodableText,
+    localVariantPath,
+    planUnionMerge,
     type ReconcileMarker,
+    type MergeOutcome,
 } from '../../src/server/sync/sync-reconcile';
 
 const SAMPLE: ReconcileMarker = {
@@ -247,5 +251,195 @@ describe('isNotesTreeNonEmpty', () => {
     it('treats every name as syncable when no ignore set is given', async () => {
         write(path.join('.git', 'HEAD'), 'ref: refs/heads/main\n');
         expect(await isNotesTreeNonEmpty(dir)).toBe(true);
+    });
+});
+
+// ── isDecodableText ──────────────────────────────────────────────────────────
+
+describe('isDecodableText', () => {
+    it.each([
+        ['plain ascii notes', Buffer.from('# Today\n- ship the thing\n')],
+        ['an empty file', Buffer.alloc(0)],
+        ['multi-byte UTF-8', Buffer.from('café — 日本語 🎉', 'utf8')],
+    ])('accepts %s', (_label, buf) => {
+        expect(isDecodableText(buf)).toBe(true);
+    });
+
+    it('rejects a buffer containing a NUL byte', () => {
+        expect(isDecodableText(Buffer.from([0x68, 0x69, 0x00, 0x21]))).toBe(false);
+    });
+
+    it('rejects invalid UTF-8 that decoding would corrupt', () => {
+        // 0xC3 starts a 2-byte sequence; 0x28 is not a valid continuation byte.
+        expect(isDecodableText(Buffer.from([0xc3, 0x28]))).toBe(false);
+    });
+
+    it('rejects a PNG header (binary with an early NUL)', () => {
+        expect(isDecodableText(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]))).toBe(false);
+    });
+});
+
+// ── localVariantPath ─────────────────────────────────────────────────────────
+
+describe('localVariantPath', () => {
+    it.each([
+        ['a simple extension', 'diagram.png', 'diagram.local.png'],
+        ['a nested path', 'notes/img/photo.jpg', 'notes/img/photo.local.jpg'],
+        ['no extension', 'README', 'README.local'],
+        ['a double extension (only the last counts)', 'archive.tar.gz', 'archive.tar.local.gz'],
+        ['a dotfile', '.gitignore', '.gitignore.local'],
+    ])('parks %s as <name>.local<ext>', (_label, input, expected) => {
+        expect(localVariantPath(input)).toBe(expected);
+    });
+
+    it('keeps the remote version at the original path', () => {
+        expect(localVariantPath('b.png')).not.toBe('b.png');
+    });
+
+    it('numbers the variant rather than overwriting a real file of that name', () => {
+        expect(localVariantPath('b.png', new Set(['b.png', 'b.local.png']))).toBe('b.local-2.png');
+    });
+
+    it('keeps numbering past several taken names', () => {
+        const taken = new Set(['b.local.png', 'b.local-2.png', 'b.local-3.png']);
+        expect(localVariantPath('b.png', taken)).toBe('b.local-4.png');
+    });
+});
+
+// ── planUnionMerge ───────────────────────────────────────────────────────────
+
+describe('planUnionMerge', () => {
+    const tree = (files: Record<string, string | Buffer>): Map<string, Buffer> =>
+        new Map(Object.entries(files).map(([p, c]) => [p, Buffer.isBuffer(c) ? c : Buffer.from(c)]));
+
+    const outcomeOf = (plan: ReturnType<typeof planUnionMerge>, p: string): MergeOutcome | undefined =>
+        plan.entries.find(e => e.path === p)?.outcome;
+
+    const PNG_A = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]);
+    const PNG_B = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x02]);
+
+    it('adds a local-only file', () => {
+        const plan = planUnionMerge(tree({ 'a.md': 'A' }), tree({}));
+        expect(outcomeOf(plan, 'a.md')).toBe('addedFromLocal');
+    });
+
+    it('keeps a remote-only file — the mirror-delete bug this fixes', () => {
+        const plan = planUnionMerge(tree({}), tree({ 'd.md': 'D' }));
+        expect(outcomeOf(plan, 'd.md')).toBe('keptFromRemote');
+    });
+
+    it('treats byte-identical files as a no-op', () => {
+        const plan = planUnionMerge(tree({ 'a.md': 'same' }), tree({ 'a.md': 'same' }));
+        expect(outcomeOf(plan, 'a.md')).toBe('identical');
+        expect(plan.combined).toEqual([]);
+    });
+
+    it('marks differing text on both sides for combining', () => {
+        const plan = planUnionMerge(tree({ 'b.md': 'mine' }), tree({ 'b.md': 'theirs' }));
+        expect(outcomeOf(plan, 'b.md')).toBe('combined');
+        expect(plan.combined).toEqual(['b.md']);
+    });
+
+    it('never deletes: every path from either side survives the plan', () => {
+        const plan = planUnionMerge(
+            tree({ 'a.md': 'A', 'b.md': 'B-local', 'c.md': 'C' }),
+            tree({ 'b.md': 'B-remote', 'd.md': 'D', 'e.md': 'E' }),
+        );
+        expect(plan.entries.map(e => e.path)).toEqual(['a.md', 'b.md', 'c.md', 'd.md', 'e.md']);
+    });
+
+    it('produces the north-star demo counts', () => {
+        // Local A, B (edited), C  ×  remote B (different), D, E → 5 notes, B combined.
+        const plan = planUnionMerge(
+            tree({ 'a.md': 'A', 'b.md': 'B-local', 'c.md': 'C' }),
+            tree({ 'b.md': 'B-remote', 'd.md': 'D', 'e.md': 'E' }),
+        );
+        expect(plan.counts).toEqual({
+            'identical': 0,
+            'addedFromLocal': 2,
+            'keptFromRemote': 2,
+            'combined': 1,
+            'keptBothBinary': 0,
+        });
+        expect(plan.combined).toEqual(['b.md']);
+        expect(plan.flagged).toEqual([]);
+    });
+
+    it('keeps both sides of a differing binary and flags it for review', () => {
+        const plan = planUnionMerge(tree({ 'img.png': PNG_A }), tree({ 'img.png': PNG_B }));
+        const entry = plan.entries.find(e => e.path === 'img.png');
+        expect(entry?.outcome).toBe('keptBothBinary');
+        // Remote keeps the original path; local is parked beside it.
+        expect(entry?.localVariantPath).toBe('img.local.png');
+        expect(plan.flagged).toEqual(['img.png']);
+    });
+
+    it('does not send a binary collision to the text conflict resolver', () => {
+        const plan = planUnionMerge(tree({ 'img.png': PNG_A }), tree({ 'img.png': PNG_B }));
+        expect(plan.combined).toEqual([]);
+    });
+
+    it('treats identical binaries as a no-op rather than keeping both', () => {
+        const plan = planUnionMerge(tree({ 'img.png': PNG_A }), tree({ 'img.png': PNG_A }));
+        expect(outcomeOf(plan, 'img.png')).toBe('identical');
+        expect(plan.flagged).toEqual([]);
+    });
+
+    it('keeps both when only one side is binary', () => {
+        const plan = planUnionMerge(tree({ 'note.md': 'text' }), tree({ 'note.md': PNG_A }));
+        expect(outcomeOf(plan, 'note.md')).toBe('keptBothBinary');
+    });
+
+    it('dodges a real remote file when naming a binary variant', () => {
+        const plan = planUnionMerge(
+            tree({ 'img.png': PNG_A }),
+            tree({ 'img.png': PNG_B, 'img.local.png': Buffer.from([0x01, 0x00]) }),
+        );
+        const entry = plan.entries.find(e => e.path === 'img.png');
+        expect(entry?.localVariantPath).toBe('img.local-2.png');
+        // ...and the pre-existing remote file is itself preserved, not clobbered.
+        expect(outcomeOf(plan, 'img.local.png')).toBe('keptFromRemote');
+    });
+
+    it('gives two binary collisions distinct variant paths', () => {
+        const plan = planUnionMerge(
+            tree({ 'x/img.png': PNG_A, 'y/img.png': PNG_A }),
+            tree({ 'x/img.png': PNG_B, 'y/img.png': PNG_B }),
+        );
+        const variants = plan.entries.filter(e => e.localVariantPath).map(e => e.localVariantPath);
+        expect(variants).toEqual(['x/img.local.png', 'y/img.local.png']);
+        expect(new Set(variants).size).toBe(2);
+    });
+
+    it('counts add up to the total number of paths', () => {
+        const plan = planUnionMerge(
+            tree({ 'a.md': 'A', 'same.md': 'S', 'b.md': 'mine', 'img.png': PNG_A }),
+            tree({ 'same.md': 'S', 'b.md': 'theirs', 'img.png': PNG_B, 'd.md': 'D' }),
+        );
+        const total = Object.values(plan.counts).reduce((a, b) => a + b, 0);
+        expect(total).toBe(plan.entries.length);
+        expect(total).toBe(5);
+    });
+
+    it('is empty for two empty trees', () => {
+        const plan = planUnionMerge(tree({}), tree({}));
+        expect(plan.entries).toEqual([]);
+        expect(plan.combined).toEqual([]);
+        expect(plan.flagged).toEqual([]);
+    });
+
+    it('sorts entries so the same trees always plan the same way', () => {
+        const plan = planUnionMerge(tree({ 'z.md': 'Z', 'a.md': 'A' }), tree({ 'm.md': 'M' }));
+        expect(plan.entries.map(e => e.path)).toEqual(['a.md', 'm.md', 'z.md']);
+    });
+
+    it('is idempotent: re-planning an applied merge is a pure no-op', () => {
+        // A reconcile that died before writing its marker re-runs against the tree
+        // it already merged; nothing may be combined or flagged a second time.
+        const merged = tree({ 'a.md': 'A', 'b.md': 'B-combined', 'c.md': 'C', 'd.md': 'D', 'e.md': 'E' });
+        const plan = planUnionMerge(merged, merged);
+        expect(plan.counts.identical).toBe(5);
+        expect(plan.combined).toEqual([]);
+        expect(plan.flagged).toEqual([]);
     });
 });
