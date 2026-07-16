@@ -115,6 +115,119 @@ async function dataUrlToPngBlob(dataUrl: string): Promise<Blob> {
     );
 }
 
+function blobToDataUri(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
+        reader.readAsDataURL(blob);
+    });
+}
+
+/**
+ * Fetch an image `src` and return it as a base64 `data:` URI, or `null` when it
+ * cannot be inlined. Same-origin proxy URLs
+ * (`/api/workspaces/:id/files/image?path=…`) inline reliably; cross-origin
+ * remote URLs may reject the fetch (CORS), in which case the caller keeps the
+ * original URL. Never throws. A `src` that is already a `data:` URI is returned
+ * unchanged.
+ */
+export async function imageSrcToDataUri(src: string): Promise<string | null> {
+    if (!src) return null;
+    if (src.startsWith('data:')) return src;
+    try {
+        const resp = await fetch(src);
+        if (!resp.ok) return null;
+        const blob = await resp.blob();
+        return await blobToDataUri(blob);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Walk a cloned selection fragment, inline every `img.chat-inline-image` as a
+ * base64 `data:` URI (falling back to the resolved absolute URL when the image
+ * cannot be fetched), strip app-only attributes, and return the serialized
+ * HTML. This is what lets inline images survive a paste into Word / Google
+ * Docs / rich email, where relative proxy URLs are dropped. The passed fragment
+ * is not mutated.
+ */
+export async function enrichSelectionHtmlWithInlineImages(fragment: DocumentFragment): Promise<string> {
+    const container = document.createElement('div');
+    container.appendChild(fragment.cloneNode(true));
+    const images = Array.from(container.querySelectorAll('img.chat-inline-image')) as HTMLImageElement[];
+    await Promise.all(images.map(async (img) => {
+        const resolved = img.currentSrc || img.src || img.getAttribute('src') || '';
+        const dataUri = await imageSrcToDataUri(resolved);
+        // On success inline the data-URI; on failure keep the resolved
+        // (absolute) URL so external editors at least have a URL to try.
+        if (dataUri || resolved) img.setAttribute('src', dataUri || resolved);
+        img.removeAttribute('onerror');
+        img.removeAttribute('data-local-path');
+        img.removeAttribute('loading');
+        img.removeAttribute('class');
+    }));
+    return container.innerHTML;
+}
+
+/** Serialize a document fragment to an HTML string without mutating it. */
+function serializeFragment(fragment: DocumentFragment): string {
+    const container = document.createElement('div');
+    container.appendChild(fragment.cloneNode(true));
+    return container.innerHTML;
+}
+
+/**
+ * Handle a native `copy` gesture over a rendered markdown preview so a mixed
+ * text+image selection keeps its inline images when pasted into an external
+ * rich-text app.
+ *
+ * Returns `null` when the selection is empty or contains no inline image — the
+ * caller must NOT `preventDefault`, leaving the browser's normal copy intact
+ * (no regression for plain-text/rich copies). When it returns a Promise the
+ * handler has already:
+ *   1. called `preventDefault()`, and
+ *   2. written a synchronous best-effort `text/html` + `text/plain` fallback to
+ *      `clipboardData` (un-inlined, but guarantees the clipboard has content).
+ * The returned Promise performs the async upgrade — inline each image as a
+ * `data:` URI and overwrite the clipboard via `navigator.clipboard.write`. It
+ * resolves on success and rejects if the async write fails; callers should
+ * attach a `.catch` (e.g. to surface a toast) to avoid an unhandled rejection.
+ */
+export function copySelectionWithInlineImages(
+    selection: Selection | null,
+    clipboardData: DataTransfer | null,
+    preventDefault: () => void,
+): Promise<void> | null {
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < selection.rangeCount; i++) {
+        fragment.appendChild(selection.getRangeAt(i).cloneContents());
+    }
+    if (fragment.querySelectorAll('img.chat-inline-image').length === 0) return null;
+
+    preventDefault();
+
+    const text = selection.toString();
+    const rawHtml = serializeFragment(fragment);
+    if (clipboardData) {
+        clipboardData.setData('text/html', rawHtml);
+        clipboardData.setData('text/plain', text);
+    }
+
+    return enrichSelectionHtmlWithInlineImages(fragment).then(async (enrichedHtml) => {
+        if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return;
+        await navigator.clipboard.write([
+            new ClipboardItem({
+                'text/html': new Blob([enrichedHtml], { type: 'text/html' }),
+                'text/plain': new Blob([text], { type: 'text/plain' }),
+            }),
+        ]);
+    });
+}
+
 export function statusIcon(status: string): string {
     const map: Record<string, string> = { running: '\u{1F504}', cancelling: '\u{1F504}', completed: '\u2705', failed: '\u274C', cancelled: '\u{1F6AB}', queued: '\u23F3' };
     return map[status] || '';

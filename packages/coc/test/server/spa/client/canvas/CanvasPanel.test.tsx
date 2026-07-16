@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 
@@ -120,6 +120,17 @@ describe('CanvasPanel', () => {
         mocks.deleteComment.mockReset();
         mocks.notesSaveContent.mockReset();
         mocks.copyImageToClipboard.mockReset().mockResolvedValue(undefined);
+    });
+
+    const originalFetch = globalThis.fetch;
+    const originalClipboardItem = (globalThis as any).ClipboardItem;
+    const originalClipboard = navigator.clipboard;
+    afterEach(() => {
+        // Selection-copy tests overwrite these globals directly; restore them
+        // so the mutations don't leak into sibling tests in the worker.
+        globalThis.fetch = originalFetch;
+        (globalThis as any).ClipboardItem = originalClipboardItem;
+        Object.assign(navigator, { clipboard: originalClipboard });
     });
 
     it('loads and renders the canvas title, revision, and preview', async () => {
@@ -771,5 +782,125 @@ describe('CanvasPanel', () => {
         fireEvent.click(screen.getByTestId('context-menu-item-0'));
 
         await waitFor(() => expect(addToast).toHaveBeenCalledWith('Failed to copy image', 'error'));
+    });
+
+    // --- Native Ctrl+C selection copy with inline images -------------------
+
+    function readBlobText(blob: Blob): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.onerror = () => reject(reader.error);
+            reader.readAsText(blob);
+        });
+    }
+
+    /** Stub window.getSelection with a range whose clone contains `img`. */
+    function stubSelectionSpanning(img: Element, text: string) {
+        const frag = document.createDocumentFragment();
+        const wrap = document.createElement('p');
+        wrap.appendChild(document.createTextNode(text + ' '));
+        wrap.appendChild(img.cloneNode(true));
+        frag.appendChild(wrap);
+        return vi.spyOn(window, 'getSelection').mockReturnValue({
+            rangeCount: 1,
+            isCollapsed: false,
+            getRangeAt: () => ({ cloneContents: () => frag.cloneNode(true) }),
+            toString: () => text,
+        } as unknown as Selection);
+    }
+
+    it('copies a text+image selection with the image inlined as a data-URI (native Ctrl+C)', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: '![diagram](assets/diagram.png)' }));
+        const write = vi.fn().mockResolvedValue(undefined);
+        const captured: Array<{ payload: Record<string, Blob> }> = [];
+        (globalThis as any).ClipboardItem = vi.fn(function (this: any, payload: Record<string, Blob>) {
+            this.payload = payload;
+            captured.push(this);
+        });
+        Object.assign(navigator, { clipboard: { write } });
+        globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(['P'], { type: 'image/png' }) }) as any;
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
+
+        const preview = screen.getByTestId('canvas-panel-preview');
+        const img = preview.querySelector('img.chat-inline-image');
+        expect(img).toBeTruthy();
+        const selSpy = stubSelectionSpanning(img!, 'diagram');
+        try {
+            const setData = vi.fn();
+            fireEvent.copy(preview, { clipboardData: { setData } });
+
+            // Synchronous fallback: original proxy-URL HTML is written immediately.
+            const htmlCall = setData.mock.calls.find(c => c[0] === 'text/html');
+            expect(htmlCall?.[1]).toContain('/api/workspaces/ws-1/files/image');
+            expect(setData).toHaveBeenCalledWith('text/plain', 'diagram');
+
+            // Async upgrade: clipboard.write receives inlined data-URI HTML.
+            await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+            const upgraded = await readBlobText(captured[0].payload['text/html']);
+            expect(upgraded).toContain('data:image/png;base64,');
+            expect(upgraded).not.toContain('/api/workspaces');
+        } finally {
+            selSpy.mockRestore();
+        }
+    });
+
+    it('leaves a text-only selection to the browser native copy (no preventDefault, no clipboard.write)', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: 'plain text, no image' }));
+        const write = vi.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { write } });
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
+
+        const preview = screen.getByTestId('canvas-panel-preview');
+        const frag = document.createDocumentFragment();
+        const p = document.createElement('p');
+        p.textContent = 'plain text';
+        frag.appendChild(p);
+        const selSpy = vi.spyOn(window, 'getSelection').mockReturnValue({
+            rangeCount: 1,
+            isCollapsed: false,
+            getRangeAt: () => ({ cloneContents: () => frag.cloneNode(true) }),
+            toString: () => 'plain text',
+        } as unknown as Selection);
+        try {
+            const setData = vi.fn();
+            // Not prevented (returns true) → browser keeps its native copy.
+            const notPrevented = fireEvent.copy(preview, { clipboardData: { setData } });
+            expect(notPrevented).toBe(true);
+            expect(setData).not.toHaveBeenCalled();
+            expect(write).not.toHaveBeenCalled();
+        } finally {
+            selSpy.mockRestore();
+        }
+    });
+
+    it('surfaces a toast when the async inline-image clipboard upgrade fails', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: '![diagram](assets/diagram.png)' }));
+        (globalThis as any).ClipboardItem = vi.fn();
+        Object.assign(navigator, { clipboard: { write: vi.fn().mockRejectedValue(new Error('denied')) } });
+        globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(['P'], { type: 'image/png' }) }) as any;
+        const addToast = vi.fn();
+        const toastValue: ToastContextValue = { addToast, removeToast: vi.fn(), toasts: [] };
+
+        render(
+            <ToastContext.Provider value={toastValue}>
+                <CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />
+            </ToastContext.Provider>,
+        );
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
+
+        const preview = screen.getByTestId('canvas-panel-preview');
+        const img = preview.querySelector('img.chat-inline-image');
+        const selSpy = stubSelectionSpanning(img!, 'diagram');
+        try {
+            fireEvent.copy(preview, { clipboardData: { setData: vi.fn() } });
+            await waitFor(() => expect(addToast).toHaveBeenCalledWith('Failed to copy image with formatting', 'error'));
+        } finally {
+            selSpy.mockRestore();
+        }
     });
 });

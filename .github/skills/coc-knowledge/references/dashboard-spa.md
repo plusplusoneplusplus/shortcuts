@@ -333,7 +333,14 @@ ref) with a prompt quoting the selection plus the canvas id/revision, and
 comments render in a footer list with a **Send N to AI** action that posts one
 batch message through ChatDetail's `onSendToAi` (`sendFollowUp(message,
 'enqueue')`, so a busy AI receives it at the next turn boundary) and then
-marks those comments `sent`. Code canvases (`type: 'code'`) show a language
+marks those comments `sent`. Right-clicking an inline image in the preview
+opens a custom **Copy image** menu that writes an `image/png` bitmap via
+`copyImageToClipboard`; a native Ctrl+C over a preview selection that contains
+an inline image inlines each image as a base64 `data:` URI in the `text/html`
+clipboard flavor (`copySelectionWithInlineImages` in `utils/format.ts`, sync
+`clipboardData` fallback + async `navigator.clipboard.write` upgrade) so images
+survive a paste into Word/Google Docs/email — text-only selections fall through
+to the browser's native copy untouched. Code canvases (`type: 'code'`) show a language
 chip, render the preview as a fenced highlighted block, and use
 `MonacoFileEditor` (shared with the repo explorer) in Edit mode with the same
 debounced autosave; selection actions stay available in preview mode. The

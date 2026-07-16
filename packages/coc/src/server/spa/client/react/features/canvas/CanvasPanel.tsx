@@ -35,7 +35,7 @@ import { useCocClient } from '../../repos/cloneRouting';
 import { MarkdownView } from '../../shared/MarkdownView';
 import { chatMarkdownToHtml } from '../chat/conversation/ConversationTurnBubble';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
-import { copyImageToClipboard } from '../../utils/format';
+import { copyImageToClipboard, copySelectionWithInlineImages } from '../../utils/format';
 import { ToastContext } from '../../contexts/ToastContext';
 import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/MonacoFileEditor';
 import { ExtensionCanvasView } from './ExtensionCanvasView';
@@ -409,6 +409,21 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
             }
         },
     }], [imageMenu, toast]);
+
+    // Native Ctrl+C over the preview: when the selection includes an inline
+    // image, inline it as a base64 data-URI so it survives a paste into Word /
+    // Google Docs / rich email (relative proxy URLs are otherwise dropped).
+    // Text-only selections fall through to the browser's native copy untouched.
+    const handlePreviewCopy = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+        const result = copySelectionWithInlineImages(
+            window.getSelection(),
+            e.clipboardData,
+            () => e.preventDefault(),
+        );
+        if (result) {
+            result.catch(() => toast?.addToast('Failed to copy image with formatting', 'error'));
+        }
+    }, [toast]);
 
     const handleEditorSelect = useCallback((e: React.SyntheticEvent<HTMLTextAreaElement>) => {
         const target = e.currentTarget;
@@ -907,6 +922,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                             data-testid="canvas-panel-preview"
                             onMouseUp={handlePreviewMouseUp}
                             onContextMenu={handlePreviewContextMenu}
+                            onCopy={handlePreviewCopy}
                         >
                             {previewMarkdown.trim()
                                 ? <MarkdownView html={previewHtml} />
