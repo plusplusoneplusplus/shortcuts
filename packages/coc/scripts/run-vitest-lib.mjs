@@ -11,8 +11,20 @@
  */
 export const GREEN_SUMMARY_RE = /^\s*Test Files\s+(?!.*\bfailed\b)(?=.*\bpassed\b).*/m;
 
+/**
+ * Strips ANSI SGR color escapes. vitest colorizes its summary in CI, so the
+ * raw line looks like `\x1b[2m Test Files \x1b[22m ... 337 passed ...`; the
+ * leading escape means it does NOT start with whitespace and the summary regex
+ * would never match. Stripping first restores the plain ` Test Files  337
+ * passed (340)` form the regex expects.
+ */
+export function stripAnsi(text) {
+    // eslint-disable-next-line no-control-regex
+    return text.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
 export function matchesGreenSummary(text) {
-    return GREEN_SUMMARY_RE.test(text);
+    return GREEN_SUMMARY_RE.test(stripAnsi(text));
 }
 
 /**

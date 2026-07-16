@@ -33,6 +33,20 @@ describe('run-vitest green-summary detection', () => {
     it('does not match when there is no summary yet', () => {
         expect(matchesGreenSummary('running tests...\n')).toBe(false);
     });
+
+    // Regression: vitest colorizes its summary in CI, so the line starts with an
+    // ANSI escape (`\x1b[2m Test Files ...`) rather than whitespace. The matcher
+    // must strip ANSI first, otherwise green runs are never detected and the
+    // wrapper propagates vitest's non-zero exit from tolerated worker crashes.
+    it('matches an ANSI-colored all-passed summary', () => {
+        const colored = '\x1b[2m Test Files \x1b[22m \x1b[1m\x1b[32m337 passed\x1b[39m\x1b[22m\x1b[90m (340)\x1b[39m\n';
+        expect(matchesGreenSummary(colored)).toBe(true);
+    });
+
+    it('does not match an ANSI-colored summary with failures', () => {
+        const colored = '\x1b[2m Test Files \x1b[22m \x1b[1m\x1b[31m2 failed\x1b[39m \x1b[90m|\x1b[39m \x1b[32m335 passed\x1b[39m (337)\n';
+        expect(matchesGreenSummary(colored)).toBe(false);
+    });
 });
 
 describe('run-vitest exit decision', () => {
