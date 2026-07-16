@@ -16,11 +16,13 @@ import {
     SyncEngine,
     copyDirContents,
     nextSyncDelayMs,
+    backupTagStamp,
     SYNC_IGNORE_NAMES,
     DEFAULT_SYNC_INTERVAL_MINUTES,
     MAX_SYNC_BACKOFF_MINUTES,
 } from '../../src/server/sync/sync-engine';
-import type { SyncStatus } from '../../src/server/sync/sync-engine';
+import type { SyncStatus, ReconcileResult } from '../../src/server/sync/sync-engine';
+import { readReconcileMarker } from '../../src/server/sync/sync-reconcile';
 import type { AIInvoker } from '@plusplusoneplusplus/forge';
 
 // ── resolveConflictSimple ────────────────────────────────────────────────────
@@ -628,5 +630,379 @@ describe('SyncEngine performSync (real git)', () => {
             .map(s => s.trim())
             .filter(Boolean);
         expect(changed).toEqual(['a.md']);
+    });
+});
+
+// ── backupTagStamp ───────────────────────────────────────────────────────────
+
+describe('backupTagStamp', () => {
+    it('produces a stamp git accepts in a ref name', () => {
+        const stamp = backupTagStamp(new Date('2026-07-16T15:30:00.123Z'));
+        expect(stamp).toBe('2026-07-16T15-30-00-123Z');
+        // Colons are what git rejects; the tag is built as sync-backup/<stamp>.
+        expect(stamp).not.toContain(':');
+    });
+});
+
+// ── SyncEngine reconcile (real git) ──────────────────────────────────────────
+
+/**
+ * The initial-reconcile phase against a real remote that already has commits.
+ *
+ * These drive `reconcile()` directly (via ensureSyncRepo, exactly as performSync
+ * will) so the merge, tag, commit and push are pinned before the phase gets
+ * wired into the sync flow.
+ */
+describe('SyncEngine reconcile (real git)', () => {
+    let tmpDir: string;
+    let remoteDir: string;
+    let engine: SyncEngine;
+    let logs: string[];
+    let prevGlobal: string | undefined;
+    let prevNoSystem: string | undefined;
+
+    const logger = {
+        info: (m: string) => logs.push(m),
+        warn: (m: string) => logs.push(m),
+        error: (m: string) => logs.push(m),
+    };
+
+    const notesDir = () => path.join(tmpDir, 'repos', 'my_work', 'notes');
+    const syncRepoDir = () => path.join(tmpDir, 'sync', 'my-work');
+    const remoteUrl = () => remoteDir.replace(/\\/g, '/');
+
+    function git(args: string[], cwd: string): string {
+        return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+    }
+
+    function writeNote(rel: string, content: string | Buffer): void {
+        const p = path.join(notesDir(), rel);
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(p, content);
+    }
+
+    /** Give the remote a real history, as if another machine had synced first. */
+    function seedRemote(files: Record<string, string | Buffer>): string {
+        const seed = path.join(tmpDir, `seed-${Object.keys(files).join('-').slice(0, 20)}`);
+        execFileSync('git', ['clone', remoteUrl(), seed], { stdio: 'ignore' });
+        for (const [rel, content] of Object.entries(files)) {
+            const p = path.join(seed, rel);
+            fs.mkdirSync(path.dirname(p), { recursive: true });
+            fs.writeFileSync(p, content);
+        }
+        git(['add', '-A'], seed);
+        git(['commit', '-m', 'from another machine'], seed);
+        git(['push', 'origin', 'HEAD'], seed);
+        const head = git(['rev-parse', 'HEAD'], seed);
+        fs.rmSync(seed, { recursive: true, force: true });
+        return head;
+    }
+
+    /** The tree the remote actually holds, read back out of the bare repo. */
+    function remoteFiles(): string[] {
+        return git(['ls-tree', '-r', '--name-only', 'HEAD'], remoteDir)
+            .split('\n').map(s => s.trim()).filter(Boolean).sort();
+    }
+
+    function remoteFile(rel: string): string {
+        return git(['show', `HEAD:${rel}`], remoteDir);
+    }
+
+    async function runReconcile(): Promise<ReconcileResult> {
+        await (engine as any).ensureSyncRepo(remoteUrl());
+        return (engine as any).reconcile();
+    }
+
+    beforeEach(() => {
+        logs = [];
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sync-rec-'));
+
+        const gitconfig = path.join(tmpDir, 'test.gitconfig');
+        fs.writeFileSync(gitconfig, [
+            '[user]', '\tname = Sync Test', '\temail = sync-test@example.test',
+            '[core]', '\tautocrlf = false', '\teol = lf',
+            '[init]', '\tdefaultBranch = main',
+            '[commit]', '\tgpgsign = false',
+            '',
+        ].join('\n'));
+        prevGlobal = process.env.GIT_CONFIG_GLOBAL;
+        prevNoSystem = process.env.GIT_CONFIG_NOSYSTEM;
+        process.env.GIT_CONFIG_GLOBAL = gitconfig;
+        process.env.GIT_CONFIG_NOSYSTEM = '1';
+
+        remoteDir = path.join(tmpDir, 'remote.git');
+        execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
+
+        engine = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger });
+    });
+
+    afterEach(() => {
+        engine?.stop();
+        if (prevGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+        else process.env.GIT_CONFIG_GLOBAL = prevGlobal;
+        if (prevNoSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
+        else process.env.GIT_CONFIG_NOSYSTEM = prevNoSystem;
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    // The goal's north-star demo, end to end through real git.
+    it('merges local A/B/C with remote B\'/D/E — nothing deleted on either side', async () => {
+        writeNote('a.md', '# A local\n');
+        writeNote('b.md', '# B local edit\n');
+        writeNote('c.md', '# C local\n');
+        seedRemote({ 'b.md': '# B remote edit\n', 'd.md': '# D remote\n', 'e.md': '# E remote\n' });
+
+        const result = await runReconcile();
+
+        // Remote ends with all five notes.
+        expect(remoteFiles()).toEqual(['a.md', 'b.md', 'c.md', 'd.md', 'e.md']);
+        // Local ends with all five too, via the copy-back.
+        expect(fs.readdirSync(notesDir()).sort()).toEqual(['a.md', 'b.md', 'c.md', 'd.md', 'e.md']);
+
+        // The demo's exact counts: 2 added from this device, 2 kept from remote,
+        // 1 combined, 0 identical.
+        expect(result.plan.counts).toEqual({
+            identical: 0,
+            addedFromLocal: 2,
+            keptFromRemote: 2,
+            combined: 1,
+            keptBothBinary: 0,
+        });
+        expect(result.plan.combined).toEqual(['b.md']);
+    });
+
+    it('the combined note keeps both sides and carries no conflict markers', async () => {
+        writeNote('b.md', '# B local edit\n');
+        seedRemote({ 'b.md': '# B remote edit\n' });
+
+        await runReconcile();
+
+        const merged = remoteFile('b.md');
+        expect(merged).toContain('# B local edit');
+        expect(merged).toContain('# B remote edit');
+        expect(merged).not.toContain('<<<<<<<');
+        expect(merged).not.toContain('=======');
+        expect(merged).not.toContain('>>>>>>>');
+        // And the same content is what the user sees locally.
+        expect(fs.readFileSync(path.join(notesDir(), 'b.md'), 'utf8')).toBe(merged + '\n');
+    });
+
+    it('lands one commit on top of the remote head, so later syncs share an ancestor', async () => {
+        writeNote('a.md', '# A\n');
+        const preMergeHead = seedRemote({ 'd.md': '# D\n' });
+
+        const result = await runReconcile();
+
+        // Exactly one new commit — the reconcile is squashed, not a history graft.
+        expect(Number(git(['rev-list', '--count', 'HEAD'], remoteDir))).toBe(2);
+        expect(git(['rev-parse', 'HEAD'], remoteDir)).toBe(result.mergedCommit);
+        // Descends from the remote's pre-merge tip: this is what makes the
+        // steady-state 3-way pull work from here on.
+        expect(git(['rev-list', '--parents', '-n', '1', 'HEAD'], remoteDir).split(' ')[1])
+            .toBe(preMergeHead);
+    });
+
+    it('tags the remote pre-merge head as sync-backup/<ts> and pushes the tag', async () => {
+        writeNote('a.md', '# A\n');
+        const preMergeHead = seedRemote({ 'd.md': '# D\n' });
+
+        const result = await runReconcile();
+
+        expect(result.backupTag).toMatch(/^sync-backup\/\d{4}-\d{2}-\d{2}T[\d-]+Z$/);
+        // The tag is on the remote, pointing at what HEAD was before the merge —
+        // one `git reset` away from undo.
+        const tags = git(['tag', '-l'], remoteDir).split('\n').map(s => s.trim()).filter(Boolean);
+        expect(tags).toEqual([result.backupTag]);
+        expect(git(['rev-parse', `${result.backupTag}^{commit}`], remoteDir)).toBe(preMergeHead);
+    });
+
+    it('summarizes the merge in the commit subject and enumerates AI-combined files', async () => {
+        writeNote('a.md', '# A\n');
+        writeNote('b.md', '# B local\n');
+        seedRemote({ 'b.md': '# B remote\n', 'd.md': '# D\n' });
+
+        await runReconcile();
+
+        const message = git(['log', '-1', '--pretty=%B'], remoteDir);
+        expect(message).toContain('Initial sync: merged 2 local + 2 remote notes (1 combined by AI)');
+        // Auditable from git history alone, per the no-raw-markers constraint.
+        expect(message).toContain('Combined by AI:');
+        expect(message).toContain('- b.md');
+    });
+
+    it('writes the reconcile marker with the pushed commit only after the push lands', async () => {
+        writeNote('a.md', '# A\n');
+        seedRemote({ 'd.md': '# D\n' });
+
+        const result = await runReconcile();
+
+        const marker = await readReconcileMarker(syncRepoDir());
+        expect(marker).not.toBeNull();
+        expect(marker!.mergedCommit).toBe(result.mergedCommit);
+        expect(marker!.mergedCommit).toBe(git(['rev-parse', 'HEAD'], remoteDir));
+        expect(Date.parse(marker!.reconciledAt)).not.toBeNaN();
+    });
+
+    it('leaves no marker when the push fails, so the next tick retries', async () => {
+        writeNote('a.md', '# A\n');
+        const preMergeHead = seedRemote({ 'd.md': '# D\n' });
+        await (engine as any).ensureSyncRepo(remoteUrl());
+        // Let the merge succeed and reject only the push, so this pins the
+        // marker-after-push ordering rather than an early bail-out.
+        const hook = path.join(remoteDir, 'hooks', 'pre-receive');
+        fs.writeFileSync(hook, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+
+        await expect((engine as any).reconcile()).rejects.toThrow(/pre-receive|push|remote rejected/i);
+
+        // The merge itself completed — the local tree holds the merged note — so
+        // this pins the push→marker ordering rather than an early bail-out.
+        expect(fs.existsSync(path.join(syncRepoDir(), 'a.md'))).toBe(true);
+        // Reconcile stays un-retired and the remote is untouched.
+        expect(await readReconcileMarker(syncRepoDir())).toBeNull();
+        expect(git(['rev-parse', 'HEAD'], remoteDir)).toBe(preMergeHead);
+        expect(git(['tag', '-l'], remoteDir)).toBe('');
+    });
+
+    it('gets the backup tag onto the remote before the branch push, and writes no marker if that push fails', async () => {
+        writeNote('a.md', '# A\n');
+        const preMergeHead = seedRemote({ 'd.md': '# D\n' });
+        await (engine as any).ensureSyncRepo(remoteUrl());
+        // Accept the tag, reject the branch: the exact window where a half-done
+        // reconcile must still be undoable and must not retire itself.
+        const hook = path.join(remoteDir, 'hooks', 'pre-receive');
+        fs.writeFileSync(hook, [
+            '#!/bin/sh',
+            'while read -r old new ref; do',
+            '  case "$ref" in refs/heads/*) echo "branch rejected" >&2; exit 1 ;; esac',
+            'done',
+            'exit 0',
+            '',
+        ].join('\n'), { mode: 0o755 });
+
+        await expect((engine as any).reconcile()).rejects.toThrow();
+
+        // The backup landed first, so the pre-merge state is still recoverable
+        // from the remote even though the merge never completed.
+        expect(git(['tag', '-l'], remoteDir)).toMatch(/^sync-backup\//);
+        expect(git(['rev-parse', `${git(['tag', '-l'], remoteDir)}^{commit}`], remoteDir)).toBe(preMergeHead);
+        expect(git(['rev-parse', 'HEAD'], remoteDir)).toBe(preMergeHead);
+        // No marker: the next tick re-runs the (idempotent) reconcile.
+        expect(await readReconcileMarker(syncRepoDir())).toBeNull();
+    });
+
+    it('reads the remote side from git objects, not the working tree', async () => {
+        // The unrelated-histories case: the sync repo has its own history and its
+        // working tree holds the local mirror, so a disk read would merge local
+        // against itself and lose every remote-only note.
+        writeNote('a.md', '# A\n');
+        seedRemote({ 'd.md': '# D\n', 'e.md': '# E\n' });
+
+        fs.mkdirSync(syncRepoDir(), { recursive: true });
+        git(['init'], syncRepoDir());
+        git(['remote', 'add', 'origin', remoteUrl()], syncRepoDir());
+        fs.writeFileSync(path.join(syncRepoDir(), 'a.md'), '# A\n');
+        git(['add', '-A'], syncRepoDir());
+        git(['commit', '-m', 'unrelated local history'], syncRepoDir());
+
+        const result = await (engine as any).reconcile() as ReconcileResult;
+
+        expect(remoteFiles()).toEqual(['a.md', 'd.md', 'e.md']);
+        expect(result.plan.counts.keptFromRemote).toBe(2);
+    });
+
+    it('keeps both versions of a conflicting binary, remote at the original path', async () => {
+        const localPng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0xff, 0xfe]);
+        const remotePng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x02, 0xaa, 0xbb]);
+        writeNote('img.png', localPng);
+        seedRemote({ 'img.png': remotePng });
+
+        const result = await runReconcile();
+
+        expect(remoteFiles()).toEqual(['img.local.png', 'img.png']);
+        // Remote keeps the original path; local is parked beside it. Bytes intact
+        // on both — a binary is never merged, mangled, or dropped.
+        expect(execFileSync('git', ['show', 'HEAD:img.png'], { cwd: remoteDir, encoding: 'buffer' }))
+            .toEqual(remotePng);
+        expect(execFileSync('git', ['show', 'HEAD:img.local.png'], { cwd: remoteDir, encoding: 'buffer' }))
+            .toEqual(localPng);
+        expect(result.plan.flagged).toEqual(['img.png']);
+        expect(git(['log', '-1', '--pretty=%B'], remoteDir)).toContain('img.local.png');
+    });
+
+    it('uses the AI resolver for text collisions and falls back when it fails', async () => {
+        const invoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: true,
+            response: '# B combined by AI\n',
+        });
+        engine = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger, aiInvoker: invoker });
+        writeNote('b.md', '# B local\n');
+        seedRemote({ 'b.md': '# B remote\n' });
+
+        await runReconcile();
+
+        expect(invoker).toHaveBeenCalledTimes(1);
+        // The AI saw a real add/add blob with both sides in it.
+        const prompt = (invoker as any).mock.calls[0][0] as string;
+        expect(prompt).toContain('# B local');
+        expect(prompt).toContain('# B remote');
+        expect(remoteFile('b.md')).toBe('# B combined by AI');
+    });
+
+    it('falls back to the simple resolver when the AI call fails', async () => {
+        const invoker: AIInvoker = vi.fn().mockRejectedValue(new Error('offline'));
+        engine = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger, aiInvoker: invoker });
+        writeNote('b.md', '# B local\n');
+        seedRemote({ 'b.md': '# B remote\n' });
+
+        await runReconcile();
+
+        // Both sides survive with no markers — the AC-03 fallback contract.
+        const merged = remoteFile('b.md');
+        expect(merged).toContain('# B local');
+        expect(merged).toContain('# B remote');
+        expect(merged).not.toContain('<<<<<<<');
+    });
+
+    it('re-running reconcile pushes nothing and still records the marker', async () => {
+        writeNote('a.md', '# A\n');
+        writeNote('b.md', '# B local\n');
+        seedRemote({ 'b.md': '# B remote\n', 'd.md': '# D\n' });
+
+        const first = await runReconcile();
+        const headAfterFirst = git(['rev-parse', 'HEAD'], remoteDir);
+
+        // Idempotent: a reconcile that died before writing its marker re-runs
+        // safely, because the union merge decides the same thing twice.
+        fs.rmSync(path.join(syncRepoDir(), '.git', 'coc-reconciled.json'));
+        const second = await (engine as any).reconcile() as ReconcileResult;
+
+        expect(git(['rev-parse', 'HEAD'], remoteDir)).toBe(headAfterFirst);
+        expect(second.backupTag).toBeNull();
+        expect(second.mergedCommit).toBe(first.mergedCommit);
+        expect(remoteFiles()).toEqual(['a.md', 'b.md', 'd.md']);
+        expect(await readReconcileMarker(syncRepoDir())).not.toBeNull();
+    });
+
+    it('keeps the sync lock out of the merged commit', async () => {
+        writeNote('a.md', '# A\n');
+        seedRemote({ 'd.md': '# D\n' });
+        await (engine as any).ensureSyncRepo(remoteUrl());
+        // performSync holds this lock for the whole phase, so it sits in the
+        // working tree while the merged tree is staged.
+        fs.writeFileSync(path.join(syncRepoDir(), '.lock'), String(process.pid));
+
+        await (engine as any).reconcile();
+
+        expect(remoteFiles()).toEqual(['a.md', 'd.md']);
+    });
+
+    it('a nested note keeps its path through the merge', async () => {
+        writeNote(path.join('journal', '2026-07.md'), '# July\n');
+        seedRemote({ 'journal/2026-06.md': '# June\n' });
+
+        await runReconcile();
+
+        expect(remoteFiles()).toEqual(['journal/2026-06.md', 'journal/2026-07.md']);
+        expect(fs.existsSync(path.join(notesDir(), 'journal', '2026-06.md'))).toBe(true);
     });
 });

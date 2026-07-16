@@ -16,6 +16,15 @@ import { promisify } from 'util';
 import { safeExistsAsync, safeReadDirAsync, safeReadFileAsync } from '@plusplusoneplusplus/forge';
 import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import { DEFAULT_SYNC_INTERVAL_MINUTES, MAX_SYNC_BACKOFF_MINUTES } from './sync-constants';
+import {
+    RECONCILE_MARKER_VERSION,
+    applyMergePlan,
+    planUnionMerge,
+    reconcileCommitMessage,
+    scanTreeToMap,
+    writeReconcileMarker,
+} from './sync-reconcile';
+import type { MergePlan } from './sync-reconcile';
 
 const execFileAsync = promisify(execFile);
 
@@ -45,6 +54,16 @@ export interface SyncStatus {
     lastError: string | null;
     /** Whether sync is enabled (gitRemote configured) */
     enabled: boolean;
+}
+
+/** What the one-time initial reconcile did, for reporting and for tests. */
+export interface ReconcileResult {
+    /** Every path's outcome, plus the counts the status report is built from. */
+    plan: MergePlan;
+    /** SHA of the squashed merge commit, or the remote's HEAD when nothing changed. */
+    mergedCommit: string;
+    /** Tag holding the remote's pre-merge HEAD, or null when nothing was pushed. */
+    backupTag: string | null;
 }
 
 export interface SyncEngineOptions {
@@ -87,6 +106,23 @@ async function git(args: string[], cwd: string): Promise<string> {
         timeout: 120_000,
     });
     return stdout.trim();
+}
+
+/**
+ * Run git and hand back raw stdout.
+ *
+ * The text helper decodes as utf8 and trims, which would corrupt an image and
+ * strip a note's trailing newline. Reading blobs out of git objects has to be
+ * byte-exact, so those calls come through here instead.
+ */
+async function gitBuffer(args: string[], cwd: string): Promise<Buffer> {
+    const { stdout } = await execFileAsync('git', args, {
+        cwd,
+        encoding: 'buffer',
+        maxBuffer: 64 * 1024 * 1024,
+        timeout: 120_000,
+    });
+    return stdout;
 }
 
 async function isGitRepo(dir: string): Promise<boolean> {
@@ -632,6 +668,153 @@ export class SyncEngine {
             }
         }
     }
+
+    // ── Initial reconcile ────────────────────────────────────────────────────
+
+    /**
+     * One-time union merge of the local notes with a remote that already has
+     * content. Runs instead of the normal copy/stage/push flow on first contact,
+     * because that flow assumes local is authoritative: it would mirror-delete
+     * every remote note missing locally, and its `git pull` can't merge two
+     * histories that have no common commit.
+     *
+     * Nothing on either side is deleted here. A path only one side has is kept;
+     * a path both sides have with different text is combined by the same
+     * AI-then-simple resolver the steady-state flow uses; a binary both sides
+     * changed keeps both copies. The result lands as a single commit on top of
+     * the remote's history, so the push fast-forwards and every later sync has
+     * this commit as the common ancestor that makes a normal 3-way merge work.
+     *
+     * Safe to re-run: the merge is idempotent, and the marker that retires this
+     * phase is only written once the push has actually landed.
+     */
+    private async reconcile(): Promise<ReconcileResult> {
+        // The remote side must come out of git objects rather than the working
+        // tree. When we get here by way of a failed pull, the tree on disk holds
+        // the local mirror — reading it would merge local against itself.
+        await git(['fetch', 'origin', 'HEAD'], this.syncRepoDir);
+        const remoteHead = await git(['rev-parse', 'FETCH_HEAD'], this.syncRepoDir);
+
+        const [local, remote] = await Promise.all([
+            scanTreeToMap(this.mapping.localDir, SYNC_IGNORE_NAMES),
+            this.readRemoteTree(remoteHead),
+        ]);
+
+        const plan = planUnionMerge(local, remote);
+        this.logger.info(
+            `Reconciling ${local.size} local + ${remote.size} remote note(s): ` +
+            `${plan.counts.combined} to combine, ${plan.counts.keptBothBinary} binary conflict(s)`,
+        );
+
+        // Re-parent onto the remote's branch without disturbing the working tree:
+        // `symbolic-ref` moves HEAD, `reset --mixed` points that branch at the
+        // remote's tip and loads its tree into the index. The merged tree is then
+        // just the difference we stage on top.
+        const branch = await this.remoteDefaultBranch();
+        if (branch) await git(['symbolic-ref', 'HEAD', `refs/heads/${branch}`], this.syncRepoDir);
+        await git(['reset', '--mixed', remoteHead], this.syncRepoDir);
+
+        await applyMergePlan({
+            destDir: this.syncRepoDir,
+            plan,
+            local,
+            remote,
+            resolveText: (filePath, blob) => this.resolveFileConflict(filePath, blob),
+        });
+
+        let mergedCommit = remoteHead;
+        let backupTag: string | null = null;
+
+        if (await this.stageMergedTree()) {
+            // Tag the remote's pre-merge tip and get that tag onto the remote
+            // before its branch moves, so the reconcile is one `git reset` away
+            // from undo even if this machine dies mid-push.
+            backupTag = `sync-backup/${backupTagStamp(new Date())}`;
+            await git(['tag', backupTag, remoteHead], this.syncRepoDir);
+            await git(['push', 'origin', `refs/tags/${backupTag}`], this.syncRepoDir);
+
+            const message = reconcileCommitMessage({
+                localCount: local.size,
+                remoteCount: remote.size,
+                plan,
+            });
+            await git(['commit', '-m', message], this.syncRepoDir);
+            mergedCommit = await git(['rev-parse', 'HEAD'], this.syncRepoDir);
+
+            // Deliberately not pushToRemote(): that swallows failures to retry
+            // next tick, but here a failed push must abort before the marker is
+            // written, or reconcile would retire having pushed nothing.
+            await git(['push', '-u', 'origin', 'HEAD'], this.syncRepoDir);
+            this.logger.info(`Reconcile pushed ${mergedCommit.slice(0, 8)} (backup tag ${backupTag})`);
+        } else {
+            this.logger.info('Reconcile: local and remote already agree, nothing to push');
+        }
+
+        await this.copyRepoToLocal();
+
+        // Only now, with the merged tree on the remote and back on disk, does the
+        // marker retire this phase and unlock steady-state mirror-deletes.
+        await writeReconcileMarker(this.syncRepoDir, {
+            version: RECONCILE_MARKER_VERSION,
+            mergedCommit,
+            reconciledAt: new Date().toISOString(),
+        });
+
+        return { plan, mergedCommit, backupTag };
+    }
+
+    /** Read a commit's full tree into memory, keyed the same way as a disk scan. */
+    private async readRemoteTree(ref: string): Promise<Map<string, Buffer>> {
+        // -z keeps unusual filenames intact; git would otherwise quote them.
+        const listing = await git(['ls-tree', '-r', '--name-only', '-z', ref], this.syncRepoDir);
+        const tree = new Map<string, Buffer>();
+        for (const filePath of listing.split('\0')) {
+            if (!filePath) continue;
+            // A remote that was pushed by an older version may carry our own
+            // `.lock`; it is never note content, so it never enters the merge.
+            if (filePath.split('/').some(seg => SYNC_IGNORE_NAMES.has(seg))) continue;
+            tree.set(filePath, await gitBuffer(['show', `${ref}:${filePath}`], this.syncRepoDir));
+        }
+        return tree;
+    }
+
+    /**
+     * The branch the remote's HEAD points at, or null when it can't be read.
+     * Reconcile targets the remote's default branch, so the merged commit has to
+     * land on that branch rather than whatever this mirror happens to be on.
+     */
+    private async remoteDefaultBranch(): Promise<string | null> {
+        try {
+            const out = await git(['ls-remote', '--symref', 'origin', 'HEAD'], this.syncRepoDir);
+            return out.match(/^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m)?.[1] ?? null;
+        } catch {
+            return null; // fall back to the branch we're already on
+        }
+    }
+
+    /**
+     * Stage the merged tree and report whether it differs from the remote's.
+     * The ignored names are excluded explicitly: the sync lock lives in the
+     * working tree, and the one clean reconcile commit shouldn't carry it.
+     */
+    private async stageMergedTree(): Promise<boolean> {
+        const excludes = [...SYNC_IGNORE_NAMES].map(name => `:(exclude)${name}`);
+        await git(['add', '-A', '--', '.', ...excludes], this.syncRepoDir);
+        try {
+            await git(['diff', '--cached', '--quiet'], this.syncRepoDir);
+            return false; // merged tree already matches the remote
+        } catch {
+            return true;
+        }
+    }
+}
+
+/**
+ * Timestamp for a `sync-backup/<stamp>` tag. Git ref names can't contain a
+ * colon, so the ISO form is flattened rather than used as-is.
+ */
+export function backupTagStamp(when: Date): string {
+    return when.toISOString().replace(/[:.]/g, '-');
 }
 
 // ── Utilities ────────────────────────────────────────────────────────────────

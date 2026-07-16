@@ -2,10 +2,11 @@ export {
     SyncEngine,
     resolveConflictSimple,
     nextSyncDelayMs,
+    backupTagStamp,
     DEFAULT_SYNC_INTERVAL_MINUTES,
     MAX_SYNC_BACKOFF_MINUTES,
 } from './sync-engine';
-export type { SyncStatus, SyncEngineOptions, SyncLogger } from './sync-engine';
+export type { SyncStatus, SyncEngineOptions, SyncLogger, ReconcileResult } from './sync-engine';
 export {
     RECONCILE_MARKER_NAME,
     RECONCILE_MARKER_VERSION,
@@ -23,6 +24,7 @@ export {
     scanTreeToMap,
     buildConflictBlob,
     applyMergePlan,
+    reconcileCommitMessage,
 } from './sync-reconcile';
 export type {
     ReconcileMarker,

@@ -284,6 +284,45 @@ export function planUnionMerge(
     return { entries, counts, combined, flagged };
 }
 
+/**
+ * The message for the single squashed commit the reconcile pushes.
+ *
+ * The body enumerates every automatically-resolved path, so the resolution is
+ * auditable from `git log` alone — the user never sees a conflict marker, which
+ * makes the commit the only durable record of what was decided for them.
+ *
+ * `localCount`/`remoteCount` are the sizes of the two source trees rather than
+ * anything derived from the plan: they say what went in, while the plan's counts
+ * say what came out.
+ */
+export function reconcileCommitMessage(opts: {
+    localCount: number;
+    remoteCount: number;
+    plan: MergePlan;
+}): string {
+    const { localCount, remoteCount, plan } = opts;
+    const subject =
+        `Initial sync: merged ${localCount} local + ${remoteCount} remote notes ` +
+        `(${plan.combined.length} combined by AI)`;
+
+    const sections: string[] = [];
+    if (plan.combined.length > 0) {
+        sections.push(['Combined by AI:', ...plan.combined.map(p => `- ${p}`)].join('\n'));
+    }
+    if (plan.flagged.length > 0) {
+        const variantFor = new Map(
+            plan.entries.filter(e => e.localVariantPath).map(e => [e.path, e.localVariantPath!]),
+        );
+        sections.push([
+            'Kept both versions (binary — review recommended):',
+            ...plan.flagged.map(p => `- ${p} (local copy kept at ${variantFor.get(p)})`),
+        ].join('\n'));
+    }
+
+    if (sections.length === 0) return subject;
+    return `${subject}\n\n${sections.join('\n\n')}`;
+}
+
 // ── Applying a plan ──────────────────────────────────────────────────────────
 
 /** Conflict-marker label for the side that came from this device. */

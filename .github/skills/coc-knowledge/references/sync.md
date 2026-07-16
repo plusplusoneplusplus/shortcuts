@@ -47,9 +47,9 @@ Git-backed synchronization of My Work and My Life notes across multiple machines
 
 | Path | Purpose |
 |------|---------|
-| `src/server/sync/sync-engine.ts` | `SyncEngine` class, `copyDirContents()`/`copyFileIfChanged()`, `nextSyncDelayMs()`, `resolveConflictSimple()`, `resolveConflictWithAI()`, `SYNC_IGNORE_NAMES`; re-exports the interval constants |
+| `src/server/sync/sync-engine.ts` | `SyncEngine` class, `copyDirContents()`/`copyFileIfChanged()`, `nextSyncDelayMs()`, `resolveConflictSimple()`, `resolveConflictWithAI()`, `backupTagStamp()`, `SYNC_IGNORE_NAMES`; re-exports the interval constants. Also owns the private initial-reconcile phase — `reconcile()` and its helpers `readRemoteTree()`/`remoteDefaultBranch()`/`stageMergedTree()` — which runs git around the pure pieces in `sync-reconcile.ts`. **`reconcile()` exists but nothing calls it yet**; `performSync` is unchanged, so runtime behavior is still pre-reconcile. |
 | `src/server/sync/sync-constants.ts` | Side-effect-free `DEFAULT_SYNC_INTERVAL_MINUTES` / `MAX_SYNC_BACKOFF_MINUTES` (no `child_process`/`fs`), so lightweight consumers avoid pulling in the engine |
-| `src/server/sync/sync-reconcile.ts` | Detection, planning, and apply for the initial-reconcile phase. Detection: `ReconcileMarker`, `reconcileMarkerPath()`/`readReconcileMarker()`/`writeReconcileMarker()`, `isUnrelatedHistoriesError()`, `shouldReconcile()`, `isNotesTreeNonEmpty()`. Planning: `planUnionMerge()` plus `isDecodableText()`/`localVariantPath()`. Apply: `scanTreeToMap()` reads a tree into `Map<posix path, Buffer>`, `buildConflictBlob()` synthesizes the add/add blob the existing resolvers consume (local = ours, remote = theirs), `applyMergePlan()` writes the merged tree — materializing every entry, skipping unchanged bytes, deleting nothing. A leaf of the import graph — the engine imports it, so the ignore set and the conflict resolver are passed in rather than imported back. Runs no git. Not yet wired into `performSync`. |
+| `src/server/sync/sync-reconcile.ts` | Detection, planning, and apply for the initial-reconcile phase. Detection: `ReconcileMarker`, `reconcileMarkerPath()`/`readReconcileMarker()`/`writeReconcileMarker()`, `isUnrelatedHistoriesError()`, `shouldReconcile()`, `isNotesTreeNonEmpty()`. Planning: `planUnionMerge()` plus `isDecodableText()`/`localVariantPath()`. Apply: `scanTreeToMap()` reads a tree into `Map<posix path, Buffer>`, `buildConflictBlob()` synthesizes the add/add blob the existing resolvers consume (local = ours, remote = theirs), `applyMergePlan()` writes the merged tree — materializing every entry, skipping unchanged bytes, deleting nothing. Reporting: `reconcileCommitMessage()` builds the squashed commit's subject + the body that enumerates every AI-combined and flagged path. A leaf of the import graph — the engine imports it, so the ignore set and the conflict resolver are passed in rather than imported back. Runs no git. |
 | `src/server/sync/sync-handler.ts` | REST route registration (`registerSyncRoutes`) — workspace-scoped |
 | `src/server/sync/index.ts` | Barrel exports |
 | `src/server/spa/client/react/features/repo-settings/SyncSettingsSection.tsx` | Per-report sync config UI (git remote, interval, status, trigger) |
@@ -79,6 +79,44 @@ Server bootstrap creates two `SyncEngine` instances (`syncEngines: Map<string, S
    - **Last resort**: `git checkout --theirs <file>`.
 8. **Push to remote** — `git push -u origin HEAD`. Failure is non-fatal (retries next cycle).
 9. **Copy repo → local** — Mirror resolved content back to local notes directory (changed files only; excludes `.git` and `.lock`).
+
+## Initial Reconcile (SyncEngine.reconcile)
+
+The one-time union merge for pointing an existing notebook at a remote that already
+has content. **Not yet reachable at runtime** — the method is complete and tested,
+but `performSync` does not branch into it yet, so the flow above is still what runs.
+
+The flow above is wrong twice over on first contact: step 2 mirror-deletes every
+remote note missing locally, and step 6's pull refuses to merge two histories with
+no common commit. Reconcile replaces steps 2–9 for exactly one sync:
+
+1. **Read both trees** — local from the notes dir (`scanTreeToMap`); remote from
+   **git objects** at the fetched `FETCH_HEAD` (`ls-tree -r --name-only -z` +
+   `git show <ref>:<path>` through a buffer-safe `gitBuffer()`, so binaries and
+   trailing newlines survive). Reading the remote off disk would be wrong: on the
+   unrelated-histories path the working tree holds the *local* mirror.
+2. **Plan** — `planUnionMerge()` decides every path (see `sync-reconcile.ts`).
+3. **Re-parent** — `symbolic-ref HEAD refs/heads/<remote default branch>` then
+   `reset --mixed <remoteHead>`: moves HEAD onto the remote's branch and loads its
+   tree into the index **without touching the working tree**. The merged tree is
+   then just the diff staged on top, so the commit lands as a child of the remote's
+   tip and the push fast-forwards. This is what gives later syncs the common
+   ancestor a 3-way pull needs.
+4. **Apply** — `applyMergePlan()` with the engine's private `resolveFileConflict`
+   injected as the resolver (AI → `resolveConflictSimple` fallback, never throws).
+5. **Backup, then push** — tag the remote's pre-merge tip `sync-backup/<stamp>`
+   (`backupTagStamp()` flattens the ISO colons git rejects in ref names) and push
+   **the tag before the branch**, so a half-done reconcile is still undoable.
+   Staging excludes `SYNC_IGNORE_NAMES` so the live `.lock` stays out of the commit.
+   The push is raw `git push` — deliberately *not* `pushToRemote()`, which swallows
+   failures to retry later; here a failed push must abort before the marker.
+6. **Copy back + retire** — `copyRepoToLocal()`, then `writeReconcileMarker()`.
+
+Ordering is the correctness property: **marker only after a successful push**. If
+anything fails, no marker is written and the next tick re-runs the merge, which is
+safe because the union merge is idempotent (a re-run stages nothing and pushes
+nothing). Both orderings are pinned by tests using a `pre-receive` hook that rejects
+only branch updates.
 
 ## Scheduling & Backoff
 
