@@ -75,6 +75,8 @@ body {
 }
 .canvas-export__body pre code { background: transparent; padding: 0; font-size: 90%; }
 .canvas-export__body svg { max-width: 100%; height: auto; }
+.canvas-export__mermaid { margin: 0 0 16px; text-align: center; }
+.canvas-export__mermaid svg { max-width: 100%; height: auto; }
 .canvas-export__excalidraw { text-align: center; }
 .canvas-export__placeholder {
   display: inline-block;
