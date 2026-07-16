@@ -426,6 +426,23 @@ describe('copyDirContents', () => {
         expect(fs.existsSync(path.join(dest, 'keep.md'))).toBe(true);
     });
 
+    it('keeps files missing from the source when mirrorDeletes is off', async () => {
+        fs.writeFileSync(path.join(dest, 'absent.md'), 'dest-only');
+        // A dir on BOTH sides, holding a file only dest has — the recursive call
+        // has to carry the flag down, or this one gets deleted.
+        fs.mkdirSync(path.join(src, 'sub'));
+        fs.mkdirSync(path.join(dest, 'sub'));
+        fs.writeFileSync(path.join(dest, 'sub', 'nested.md'), 'dest-only');
+        fs.writeFileSync(path.join(src, 'keep.md'), 'keep');
+
+        await copyDirContents(src, dest, { mirrorDeletes: false });
+
+        // Copying still happens; only the delete pass is off, at every depth.
+        expect(fs.existsSync(path.join(dest, 'absent.md'))).toBe(true);
+        expect(fs.existsSync(path.join(dest, 'sub', 'nested.md'))).toBe(true);
+        expect(fs.readFileSync(path.join(dest, 'keep.md'), 'utf8')).toBe('keep');
+    });
+
     it('preserves ignored names in the destination (never deletes .git/.lock)', async () => {
         // .git and .lock exist only in dest (the sync repo), not the notes source.
         fs.mkdirSync(path.join(dest, '.git'));
@@ -630,6 +647,25 @@ describe('SyncEngine performSync (real git)', () => {
             .map(s => s.trim())
             .filter(Boolean);
         expect(changed).toEqual(['a.md']);
+    });
+
+    it('still propagates a real deletion once a baseline exists', async () => {
+        writeNote('a.md', '# A\n');
+        writeNote('b.md', '# B\n');
+        await engine.triggerSync(remoteUrl());
+        // The first push to an empty remote *is* the shared history, so it earns
+        // the baseline that tells a deleted note from one this device never had.
+        expect(await readReconcileMarker(syncRepoDir())).not.toBeNull();
+
+        fs.unlinkSync(path.join(notesDir(), 'b.md'));
+        await engine.triggerSync(remoteUrl());
+
+        // Suppressing deletes past the baseline would make sync append-only: the
+        // user deleted b.md, and every other device has to learn that.
+        expect(fs.existsSync(path.join(syncRepoDir(), 'b.md'))).toBe(false);
+        const remoteTree = git(['ls-tree', '-r', '--name-only', 'HEAD'], remoteDir)
+            .split('\n').map(s => s.trim()).filter(f => f && f !== '.lock').sort();
+        expect(remoteTree).toEqual(['a.md']);
     });
 });
 
@@ -1048,6 +1084,28 @@ describe('SyncEngine reconcile (real git)', () => {
         expect(remoteFiles()).toEqual(['a.md', 'd.md']);
         expect(fs.readdirSync(notesDir()).sort()).toEqual(['a.md', 'd.md']);
         expect(reconcileReasons()).toEqual(['first sync with a remote that already has notes']);
+    });
+
+    it('never pushes deletes from a notes tree that has no baseline behind it', async () => {
+        seedRemote({ 'd.md': '# D remote\n', 'e.md': '# E remote\n' });
+        // The one state neither branch into reconcile can catch: a mirror cloned
+        // from the remote shares its history, so the pull can't fail; and an empty
+        // notes tree can't trip detection, which needs local notes to contribute.
+        // The outbound copy would read "absent locally" as "deleted by the user"
+        // and push that — with no baseline, nothing has ever established that this
+        // device once held d.md and e.md at all.
+        execFileSync('git', ['clone', remoteUrl(), syncRepoDir()], { stdio: 'ignore' });
+        fs.mkdirSync(notesDir(), { recursive: true });
+
+        const status = await engine.triggerSync(remoteUrl());
+
+        // The remote keeps its notes. (The normal flow commits the sync lock —
+        // pre-existing, and why .lock is filtered here rather than in remoteFiles.)
+        expect(remoteFiles().filter(f => f !== '.lock')).toEqual(['d.md', 'e.md']);
+        expect(status.lastError).toBeNull();
+        expect(reconcileReasons()).toEqual([]);
+        // And the notes land on the device, which is what it was missing.
+        expect(fs.readdirSync(notesDir()).sort()).toEqual(['d.md', 'e.md']);
     });
 
     it('the next Sync Now skips reconcile and takes the normal 3-way flow', async () => {

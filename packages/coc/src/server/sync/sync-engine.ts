@@ -30,7 +30,7 @@ import {
     summarizeMergePlan,
     writeReconcileMarker,
 } from './sync-reconcile';
-import type { MergePlan, ReconcileReport } from './sync-reconcile';
+import type { MergePlan, ReconcileMarker, ReconcileReport } from './sync-reconcile';
 
 const execFileAsync = promisify(execFile);
 
@@ -195,6 +195,15 @@ function isProcessRunning(pid: number): boolean {
 interface CopyDirOptions {
     /** Basenames to never copy from the source or delete from the destination. */
     ignore?: ReadonlySet<string>;
+    /**
+     * Whether a path missing from `src` should be deleted from `dest`.
+     * Defaults to true — that mirror-delete is what makes this a mirror.
+     *
+     * Pass false when `src` is not yet known to describe the whole tree, so
+     * "absent here" cannot be read as "deleted by the user". The outbound
+     * copy does exactly that until reconcile has established a baseline.
+     */
+    mirrorDeletes?: boolean;
 }
 
 /**
@@ -215,16 +224,18 @@ export async function copyDirContents(src: string, dest: string, options?: CopyD
     await fs.promises.mkdir(dest, { recursive: true });
 
     // Remove files in dest that don't exist in src (mirror-delete), skipping ignored names.
-    const destEntries = await safeReadDirAsync(dest, true);
-    if (destEntries.success) {
-        for (const entry of destEntries.data!) {
-            if (ignore?.has(entry.name)) continue;
-            const destPath = path.join(dest, entry.name);
-            if (!await safeExistsAsync(path.join(src, entry.name))) {
-                if (entry.isDirectory()) {
-                    await fs.promises.rm(destPath, { recursive: true, force: true });
-                } else {
-                    await fs.promises.unlink(destPath);
+    if (options?.mirrorDeletes !== false) {
+        const destEntries = await safeReadDirAsync(dest, true);
+        if (destEntries.success) {
+            for (const entry of destEntries.data!) {
+                if (ignore?.has(entry.name)) continue;
+                const destPath = path.join(dest, entry.name);
+                if (!await safeExistsAsync(path.join(src, entry.name))) {
+                    if (entry.isDirectory()) {
+                        await fs.promises.rm(destPath, { recursive: true, force: true });
+                    } else {
+                        await fs.promises.unlink(destPath);
+                    }
                 }
             }
         }
@@ -460,13 +471,18 @@ export class SyncEngine {
             //     local as authoritative and would mirror-delete every remote note
             //     we don't have. Reconcile pushes and copies back itself, so the
             //     tick is done once it returns.
-            if (await this.needsReconcile()) {
+            //
+            //     Read the baseline once and hand it to both users below: two
+            //     reads a tick could disagree, and they'd disagree on exactly the
+            //     question of whether deleting the remote's notes is allowed.
+            const baseline = await readReconcileMarker(this.syncRepoDir);
+            if (await this.needsReconcile(baseline)) {
                 await this.runReconcile('first sync with a remote that already has notes');
                 return;
             }
 
             // 2. Copy local notes → sync repo (changed files only)
-            await this.copyLocalToRepo();
+            await this.copyLocalToRepo(baseline !== null);
 
             // 3. Stage local changes and see whether anything actually changed.
             const hasLocalChanges = await this.stageLocalChanges();
@@ -561,10 +577,27 @@ export class SyncEngine {
         }
     }
 
-    private async copyLocalToRepo(): Promise<void> {
+    /**
+     * Copy local notes over the sync repo.
+     *
+     * `hasBaseline` decides whether a note the local tree lacks is a deletion to
+     * propagate or a note this device simply hasn't been told about yet. Only a
+     * reconcile baseline can tell those apart: it is the point at which the two
+     * sides were proven to hold the same notes, so anything missing since is the
+     * user's doing. Without one — a fresh mirror, an unrelated remote, a notes
+     * dir that hasn't been restored yet — an empty or partial local tree would
+     * otherwise mirror-delete the remote's notes and push the result.
+     *
+     * The parameter is required rather than defaulted: this is the destructive
+     * direction, and a caller that forgets should not compile.
+     */
+    private async copyLocalToRepo(hasBaseline: boolean): Promise<void> {
         if (await safeExistsAsync(this.mapping.localDir)) {
             // Never touch the sync repo's own .git / .lock on the outbound copy.
-            await copyDirContents(this.mapping.localDir, this.syncRepoDir, { ignore: SYNC_IGNORE_NAMES });
+            await copyDirContents(this.mapping.localDir, this.syncRepoDir, {
+                ignore: SYNC_IGNORE_NAMES,
+                mirrorDeletes: hasBaseline,
+            });
         }
     }
 
@@ -738,10 +771,13 @@ export class SyncEngine {
      * repo exists but before the first copy, because that copy is the destructive
      * step: it mirrors local over the sync repo, deleting whatever the remote had
      * that this device doesn't.
+     *
+     * Takes the baseline the tick already read rather than reading it again —
+     * see `performSync`.
      */
-    private async needsReconcile(): Promise<boolean> {
+    private async needsReconcile(baseline: ReconcileMarker | null): Promise<boolean> {
         return shouldReconcile({
-            markerPresent: await readReconcileMarker(this.syncRepoDir) !== null,
+            markerPresent: baseline !== null,
             localTreeNonEmpty: await isNotesTreeNonEmpty(this.mapping.localDir, SYNC_IGNORE_NAMES),
             remoteHasCommits: await this.remoteHasCommits(),
         });
