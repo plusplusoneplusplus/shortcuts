@@ -41,6 +41,7 @@ import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/Mon
 import { ExtensionCanvasView } from './ExtensionCanvasView';
 import { ExcalidrawSceneView, parseSceneContent } from '../diagrams';
 import { exportCanvasAsHtml } from './html-export/exportCanvasAsHtml';
+import type { ExtensionExportSource } from './html-export/exportCanvasAsHtml';
 import { createHtmlExportDeps } from './html-export/htmlExportDeps';
 import type { CanvasUpdatedEvent } from '../chat/hooks/useChatSSE';
 
@@ -544,6 +545,24 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         if (!current) return;
         setExportOpen(false);
         try {
+            // Extension canvases render from a UI document stored apart from their
+            // JSON state `content`. Fetch it through the workspace-routed client so
+            // it resolves for remote/clone workspaces too (mirrors the live
+            // ExtensionCanvasView path), and hand the exporter `{ uiHtml, revision }`.
+            // `capabilitiesJs` is deliberately never fetched — capability code must
+            // not ship in a view-only snapshot. A retrieval failure surfaces a toast
+            // and aborts before any download, so no broken/partial file is produced.
+            let extension: ExtensionExportSource | undefined;
+            if (current.type === 'extension') {
+                try {
+                    const doc = await cloneClient.canvases.getExtension(workspaceId, current.id);
+                    extension = { uiHtml: doc.uiHtml, revision: current.revision };
+                } catch {
+                    toast?.addToast('Could not load the extension to export as HTML', 'error');
+                    flashExportStatus('Export failed');
+                    return;
+                }
+            }
             const result = await exportCanvasAsHtml(
                 {
                     title: current.title,
@@ -551,6 +570,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                     content: current.content,
                     language: current.language,
                     workspaceId,
+                    extension,
                 },
                 createHtmlExportDeps(),
             );
@@ -568,7 +588,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
             toast?.addToast('Export failed', 'error');
             flashExportStatus('Export failed');
         }
-    }, [workspaceId, flashExportStatus, toast]);
+    }, [workspaceId, flashExportStatus, toast, cloneClient]);
 
     // ------------------------------------------------------------------
     // Rendering
@@ -774,26 +794,15 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                                 <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={handleDownload} data-testid="canvas-panel-export-download">
                                     Download file
                                 </button>
-                                {canvas.type === 'extension' ? (
-                                    <button
-                                        type="button"
-                                        disabled
-                                        className="block w-full text-left px-3 py-1.5 text-[12px] text-[#848484] cursor-not-allowed"
-                                        title="Interactive canvases export as a view-only snapshot — coming soon."
-                                        data-testid="canvas-panel-export-html-disabled"
-                                    >
-                                        Export as HTML (view-only — soon)
-                                    </button>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
-                                        onClick={() => void handleExportHtml()}
-                                        data-testid="canvas-panel-export-html"
-                                    >
-                                        Export as HTML
-                                    </button>
-                                )}
+                                <button
+                                    type="button"
+                                    className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
+                                    onClick={() => void handleExportHtml()}
+                                    title={canvas.type === 'extension' ? 'Exports a self-contained, view-only snapshot of the current state.' : undefined}
+                                    data-testid="canvas-panel-export-html"
+                                >
+                                    {canvas.type === 'extension' ? 'Export as HTML (view-only)' : 'Export as HTML'}
+                                </button>
                                 {canvas.type === 'markdown' && (
                                     <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={() => void handleSaveToNotes()} data-testid="canvas-panel-export-notes">
                                         Save to Notes
