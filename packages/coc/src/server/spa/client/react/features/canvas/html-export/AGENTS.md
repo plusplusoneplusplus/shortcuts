@@ -69,7 +69,12 @@ needed — B, D, E, F, and the Layer-G pipeline use it; A, C, code-highlight don
 - `htmlExportPipeline.test.ts` (**G**) — full-pipeline integration: real E over
   real A/B/C + `chatMarkdownToHtml`, only `fetch`/`mermaidApi`/`exportToSvg`
   stubbed. Asserts the full portability contract on a doc with an image +
-  mermaid + code + table. Keep every string assertion path-separator agnostic.
+  mermaid + code + table. A second suite drives the real E → D-ext → A extension
+  path: a state-rendering UI in the offline sandboxed iframe, asserting
+  allow-scripts-only sandbox, inert offline `CanvasHost`, frozen state visible in
+  the `srcdoc`, no `capabilitiesJs`/network, byte-identical determinism, plus a
+  dirty-UI case (external `<script src>`/`<link>` neutralized with warnings, still
+  exports). Keep every string assertion path-separator agnostic.
 
 Run one file / the whole dir (from `packages/coc`):
 
