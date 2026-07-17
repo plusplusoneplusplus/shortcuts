@@ -210,4 +210,39 @@ describe('useNotesSelection', () => {
             expect([...prev.selectedPaths]).toEqual(prevSnapshot);
         });
     });
+
+    describe('folders are selectable (AC-02)', () => {
+        // Flat list interleaves folder rows (NB1, NB1/sec) with page rows, as
+        // flattenVisibleNodePaths produces.
+        const MIXED_LIST = ['NB1', 'NB1/a.md', 'NB1/sec', 'NB1/sec/b.md', 'NB1/d.md'];
+
+        it('plain-click selects a folder row on its own', () => {
+            const { result } = renderHook(() => useNotesSelection());
+            act(() => result.current.handleSelect('NB1', { shift: false, ctrl: false }, MIXED_LIST));
+            expect([...result.current.selectedPaths]).toEqual(['NB1']);
+            expect(result.current.anchorPath).toBe('NB1');
+        });
+
+        it('a range spanning folders and pages selects the folder paths too', () => {
+            const { result } = renderHook(() => useNotesSelection());
+            // Anchor on a page, shift-click a later page: the intervening folder
+            // row (NB1/sec) must be pulled into the selection.
+            act(() => result.current.handleSelect('NB1/a.md', { shift: false, ctrl: false }, MIXED_LIST));
+            act(() => result.current.handleSelect('NB1/d.md', { shift: true, ctrl: false }, MIXED_LIST));
+            expect([...result.current.selectedPaths].sort()).toEqual([
+                'NB1/a.md', 'NB1/d.md', 'NB1/sec', 'NB1/sec/b.md',
+            ]);
+            // Folder path explicitly present.
+            expect(result.current.selectedPaths.has('NB1/sec')).toBe(true);
+        });
+
+        it('ctrl-click adds a folder to a page selection', () => {
+            const { result } = renderHook(() => useNotesSelection());
+            act(() => result.current.handleSelect('NB1/a.md', { shift: false, ctrl: false }, MIXED_LIST));
+            act(() => result.current.handleSelect('NB1', { shift: false, ctrl: true }, MIXED_LIST));
+            expect(result.current.selectedPaths.has('NB1')).toBe(true);
+            expect(result.current.selectedPaths.has('NB1/a.md')).toBe(true);
+            expect(result.current.selectedPaths.size).toBe(2);
+        });
+    });
 });

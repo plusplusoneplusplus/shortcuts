@@ -62,9 +62,19 @@ export function NotesTreeItem({
         : node.name;
 
     const handleClick = (e: React.MouseEvent) => {
+        const hasModifier = e.shiftKey || e.ctrlKey || e.metaKey;
         if (folder) {
-            onToggleExpand(node.path);
-        } else if (onSelectWithModifiers && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+            if (hasModifier && onSelectWithModifiers) {
+                // Shift/Ctrl-click a folder: extend/toggle the multi-selection
+                // only — don't expand/collapse while the user is selecting.
+                onSelectWithModifiers(node.path, e.shiftKey, e.ctrlKey || e.metaKey);
+            } else {
+                // Plain click: expand/collapse and additionally select the folder
+                // (single) so it participates in the selection highlight.
+                onToggleExpand(node.path);
+                onSelectWithModifiers?.(node.path, false, false);
+            }
+        } else if (onSelectWithModifiers && hasModifier) {
             onSelectWithModifiers(node.path, e.shiftKey, e.ctrlKey || e.metaKey);
         } else {
             onSelectPage(node.path);

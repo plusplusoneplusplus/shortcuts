@@ -52,10 +52,12 @@ function countTotalPages(tree: NoteTreeNode[]): number {
 }
 
 /**
- * Flatten the tree into an ordered list of page paths respecting expanded state
- * and optional visibility filter. Folder nodes are excluded from the result.
+ * Flatten the tree into an ordered list of selectable row paths respecting
+ * expanded state and optional visibility filter. Both folder rows and page rows
+ * are included, in the same top-to-bottom order they render, so range-selection
+ * (Shift+Click) can span folders and pages alike.
  */
-export function flattenVisiblePagePaths(
+export function flattenVisibleNodePaths(
     nodes: NoteTreeNode[],
     expandedPaths: Set<string>,
     visiblePaths?: Set<string> | null,
@@ -64,9 +66,10 @@ export function flattenVisiblePagePaths(
     const walk = (children: NoteTreeNode[]) => {
         for (const node of children) {
             if (visiblePaths && !visiblePaths.has(node.path)) continue;
-            if (node.type === 'page') {
-                result.push(node.path);
-            } else if (expandedPaths.has(node.path) && node.children) {
+            // Every visible row — folder or page — is selectable and counts
+            // toward range/bulk selection.
+            result.push(node.path);
+            if (node.type !== 'page' && expandedPaths.has(node.path) && node.children) {
                 walk(node.children);
             }
         }
@@ -596,9 +599,9 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         return combined;
     }, [filter, expandedPaths]);
 
-    /** Ordered list of visible page paths for range-selection computation. */
+    /** Ordered list of visible row paths (folders + pages) for range selection. */
     const flatPageList = useMemo(
-        () => (tree ? flattenVisiblePagePaths(tree, effectiveExpanded, filter?.visible ?? null) : []),
+        () => (tree ? flattenVisibleNodePaths(tree, effectiveExpanded, filter?.visible ?? null) : []),
         [tree, effectiveExpanded, filter],
     );
 

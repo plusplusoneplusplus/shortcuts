@@ -256,4 +256,60 @@ describe('NotesTreeItem', () => {
         expect(onSelectPage).toHaveBeenCalledWith('nb/page1');
         expect(onSelectWithModifiers).not.toHaveBeenCalled();
     });
+
+    // --- AC-02: folders are selectable ---
+
+    it('plain-click on a folder expands AND single-selects it', () => {
+        const onToggleExpand = vi.fn();
+        const onSelectWithModifiers = vi.fn();
+        const node = makeNode({ path: 'mynotebook', name: 'NB', type: 'notebook' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={onToggleExpand} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onSelectWithModifiers={onSelectWithModifiers} />,
+        );
+        fireEvent.click(getByTestId('notes-tree-item-NB'));
+        expect(onToggleExpand).toHaveBeenCalledWith('mynotebook');
+        expect(onSelectWithModifiers).toHaveBeenCalledWith('mynotebook', false, false);
+    });
+
+    it('shift-click on a folder selects (range) without toggling expand', () => {
+        const onToggleExpand = vi.fn();
+        const onSelectWithModifiers = vi.fn();
+        const node = makeNode({ path: 'mynotebook', name: 'NB', type: 'notebook' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={onToggleExpand} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onSelectWithModifiers={onSelectWithModifiers} />,
+        );
+        fireEvent.click(getByTestId('notes-tree-item-NB'), { shiftKey: true });
+        expect(onSelectWithModifiers).toHaveBeenCalledWith('mynotebook', true, false);
+        expect(onToggleExpand).not.toHaveBeenCalled();
+    });
+
+    it('ctrl-click on a folder toggles it in selection without toggling expand', () => {
+        const onToggleExpand = vi.fn();
+        const onSelectWithModifiers = vi.fn();
+        const node = makeNode({ path: 'mynotebook', name: 'NB', type: 'section' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={onToggleExpand} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onSelectWithModifiers={onSelectWithModifiers} />,
+        );
+        fireEvent.click(getByTestId('notes-tree-item-NB'), { ctrlKey: true });
+        expect(onSelectWithModifiers).toHaveBeenCalledWith('mynotebook', false, true);
+        expect(onToggleExpand).not.toHaveBeenCalled();
+    });
+
+    it('applies the multi-selected highlight to a folder row', () => {
+        const node = makeNode({ path: 'mynotebook', name: 'NB', type: 'notebook' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                isMultiSelected
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+        );
+        const el = getByTestId('notes-tree-item-NB');
+        expect(el.className).toContain('bg-[#ddf4ff]');
+        expect(el.getAttribute('aria-selected')).toBe('true');
+    });
 });
