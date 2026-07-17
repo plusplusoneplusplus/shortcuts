@@ -34,4 +34,4 @@ export { LoopsClient } from './loops';
 export { TriggersClient } from './triggers';
 export { MapReduceClient } from './map-reduce';
 export { SyncClient } from './sync';
-export type { SyncStatus } from './sync';
+export type { FlaggedBinary, MergeOutcome, ReconcileReport, SyncStatus } from './sync';

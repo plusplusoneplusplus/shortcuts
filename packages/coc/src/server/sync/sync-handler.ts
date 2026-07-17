@@ -6,7 +6,7 @@
  */
 
 import type { Route } from '../types';
-import type { SyncEngine } from './sync-engine';
+import type { SyncEngine, SyncStatus } from './sync-engine';
 import type { PerRepoPreferences } from '../preferences-handler';
 
 /** Valid workspace IDs that support sync. */
@@ -30,12 +30,15 @@ export function registerSyncRoutes(
             const engine = getSyncEngine(workspaceId);
             if (!engine) {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({
+                const noEngine: SyncStatus = {
                     enabled: false,
                     inProgress: false,
                     lastSyncTime: null,
                     lastError: null,
-                }));
+                    reconcileInProgress: false,
+                    reconcileReport: null,
+                };
+                res.end(JSON.stringify(noEngine));
                 return;
             }
             res.writeHead(200, { 'Content-Type': 'application/json' });
