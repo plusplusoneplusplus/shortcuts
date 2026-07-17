@@ -4,7 +4,10 @@
 
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useNotesSelection } from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesSelection';
+import {
+    useNotesSelection,
+    reduceNotesSelection,
+} from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesSelection';
 
 const FLAT_LIST = ['nb/a.md', 'nb/b.md', 'nb/c.md', 'nb/d.md', 'nb/e.md'];
 
@@ -106,6 +109,47 @@ describe('useNotesSelection', () => {
         });
     });
 
+    describe('shift click re-scope (AC-01)', () => {
+        it('grows the range when the second shift-click moves further from the anchor', () => {
+            const { result } = renderHook(() => useNotesSelection());
+            act(() => result.current.handleSelect('nb/a.md', { shift: false, ctrl: false }, FLAT_LIST));
+            act(() => result.current.handleSelect('nb/c.md', { shift: true, ctrl: false }, FLAT_LIST));
+            expect([...result.current.selectedPaths].sort()).toEqual(['nb/a.md', 'nb/b.md', 'nb/c.md']);
+            act(() => result.current.handleSelect('nb/e.md', { shift: true, ctrl: false }, FLAT_LIST));
+            expect([...result.current.selectedPaths].sort()).toEqual([
+                'nb/a.md', 'nb/b.md', 'nb/c.md', 'nb/d.md', 'nb/e.md',
+            ]);
+        });
+
+        it('re-scopes (shrinks) the range on a second shift-click toward the anchor', () => {
+            const { result } = renderHook(() => useNotesSelection());
+            act(() => result.current.handleSelect('nb/a.md', { shift: false, ctrl: false }, FLAT_LIST));
+            act(() => result.current.handleSelect('nb/e.md', { shift: true, ctrl: false }, FLAT_LIST));
+            expect(result.current.selectedPaths.size).toBe(5);
+            // Second shift-click from the SAME anchor must replace, not union.
+            act(() => result.current.handleSelect('nb/c.md', { shift: true, ctrl: false }, FLAT_LIST));
+            expect([...result.current.selectedPaths].sort()).toEqual(['nb/a.md', 'nb/b.md', 'nb/c.md']);
+            // d and e are dropped — this is the union-only bug fix.
+            expect(result.current.selectedPaths.has('nb/d.md')).toBe(false);
+            expect(result.current.selectedPaths.has('nb/e.md')).toBe(false);
+        });
+
+        it('re-scope preserves ctrl-committed selections outside the range', () => {
+            const { result } = renderHook(() => useNotesSelection());
+            // Commit a via plain click, then ctrl-toggle e (anchor moves to e).
+            act(() => result.current.handleSelect('nb/a.md', { shift: false, ctrl: false }, FLAT_LIST));
+            act(() => result.current.handleSelect('nb/e.md', { shift: false, ctrl: true }, FLAT_LIST));
+            // Shift back to c → range e..c = c,d,e; union with base {a,e}.
+            act(() => result.current.handleSelect('nb/c.md', { shift: true, ctrl: false }, FLAT_LIST));
+            expect([...result.current.selectedPaths].sort()).toEqual([
+                'nb/a.md', 'nb/c.md', 'nb/d.md', 'nb/e.md',
+            ]);
+            // Re-scope the range to just d..e; the ctrl-committed a must survive.
+            act(() => result.current.handleSelect('nb/d.md', { shift: true, ctrl: false }, FLAT_LIST));
+            expect([...result.current.selectedPaths].sort()).toEqual(['nb/a.md', 'nb/d.md', 'nb/e.md']);
+        });
+    });
+
     describe('clearSelection', () => {
         it('resets selection and anchor', () => {
             const { result } = renderHook(() => useNotesSelection());
@@ -128,6 +172,42 @@ describe('useNotesSelection', () => {
             act(() => result.current.handleSelect('nb/c.md', { shift: false, ctrl: false }, FLAT_LIST));
             act(() => result.current.handleSelect('nb/c.md', { shift: true, ctrl: false }, FLAT_LIST));
             expect([...result.current.selectedPaths]).toEqual(['nb/c.md']);
+        });
+    });
+
+    describe('reduceNotesSelection (pure reducer — grow/re-scope/toggle/reset)', () => {
+        const EMPTY = { selectedPaths: new Set<string>(), anchorPath: null, baseSelection: new Set<string>() };
+
+        it('reset: plain click replaces everything with a single row', () => {
+            const seeded = reduceNotesSelection(EMPTY, 'nb/a.md', { shift: true, ctrl: true }, FLAT_LIST);
+            const next = reduceNotesSelection(seeded, 'nb/d.md', { shift: false, ctrl: false }, FLAT_LIST);
+            expect([...next.selectedPaths]).toEqual(['nb/d.md']);
+            expect(next.anchorPath).toBe('nb/d.md');
+        });
+
+        it('toggle: ctrl click adds then removes and moves the anchor', () => {
+            const one = reduceNotesSelection(EMPTY, 'nb/a.md', { shift: false, ctrl: false }, FLAT_LIST);
+            const two = reduceNotesSelection(one, 'nb/c.md', { shift: false, ctrl: true }, FLAT_LIST);
+            expect([...two.selectedPaths].sort()).toEqual(['nb/a.md', 'nb/c.md']);
+            expect(two.anchorPath).toBe('nb/c.md');
+            const three = reduceNotesSelection(two, 'nb/c.md', { shift: false, ctrl: true }, FLAT_LIST);
+            expect([...three.selectedPaths]).toEqual(['nb/a.md']);
+        });
+
+        it('grow then re-scope from a stable anchor', () => {
+            const anchor = reduceNotesSelection(EMPTY, 'nb/a.md', { shift: false, ctrl: false }, FLAT_LIST);
+            const grown = reduceNotesSelection(anchor, 'nb/e.md', { shift: true, ctrl: false }, FLAT_LIST);
+            expect(grown.selectedPaths.size).toBe(5);
+            const rescoped = reduceNotesSelection(grown, 'nb/b.md', { shift: true, ctrl: false }, FLAT_LIST);
+            expect([...rescoped.selectedPaths].sort()).toEqual(['nb/a.md', 'nb/b.md']);
+            expect(rescoped.anchorPath).toBe('nb/a.md');
+        });
+
+        it('does not mutate the previous state object', () => {
+            const prev = reduceNotesSelection(EMPTY, 'nb/a.md', { shift: false, ctrl: false }, FLAT_LIST);
+            const prevSnapshot = [...prev.selectedPaths];
+            reduceNotesSelection(prev, 'nb/c.md', { shift: false, ctrl: true }, FLAT_LIST);
+            expect([...prev.selectedPaths]).toEqual(prevSnapshot);
         });
     });
 });
