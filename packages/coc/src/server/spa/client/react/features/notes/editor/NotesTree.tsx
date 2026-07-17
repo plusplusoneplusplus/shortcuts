@@ -45,6 +45,14 @@ export interface NotesTreeProps {
     selectionDragItems?: NoteDragItem[];
     /** Multi-selection handler forwarding modifier key state. */
     onSelectWithModifiers?: (path: string, shiftKey: boolean, ctrlKey: boolean) => void;
+    /** Path of the row currently being inline-renamed (AC-06); null = none. */
+    renamingPath?: string | null;
+    /** Double-click on a row's name requests inline rename. */
+    onStartRename?: (node: NoteTreeNode) => void;
+    /** Commit an inline rename with the typed display name. */
+    onRenameCommit?: (node: NoteTreeNode, newName: string) => void;
+    /** Cancel the inline rename (Esc). */
+    onRenameCancel?: () => void;
 }
 
 function hasNodeUpdate(node: NoteTreeNode, isNoteUpdated?: (node: NoteTreeNode) => boolean): boolean {
@@ -69,6 +77,10 @@ export function NotesTree({
     multiSelectedPaths,
     selectionDragItems,
     onSelectWithModifiers,
+    renamingPath,
+    onStartRename,
+    onRenameCommit,
+    onRenameCancel,
 }: NotesTreeProps) {
     return (
         <div role="tree" data-testid={depth === 0 ? 'notes-tree' : undefined}>
@@ -113,6 +125,10 @@ export function NotesTree({
                             onSelectPage={onSelectPage}
                             onContextMenu={onContextMenu}
                             onSelectWithModifiers={onSelectWithModifiers}
+                            isRenaming={renamingPath != null && renamingPath === node.path}
+                            onStartRename={onStartRename}
+                            onRenameCommit={onRenameCommit}
+                            onRenameCancel={onRenameCancel}
                             draggable={!!dragDrop && !isSysFolder}
                             isDragOver={isDragOver}
                             dropPosition={isDragOver ? dragDrop!.dropPosition : null}
@@ -142,6 +158,10 @@ export function NotesTree({
                                 multiSelectedPaths={multiSelectedPaths}
                                 selectionDragItems={selectionDragItems}
                                 onSelectWithModifiers={onSelectWithModifiers}
+                                renamingPath={renamingPath}
+                                onStartRename={onStartRename}
+                                onRenameCommit={onRenameCommit}
+                                onRenameCancel={onRenameCancel}
                             />
                         )}
                     </div>

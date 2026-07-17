@@ -17,6 +17,9 @@ import { useGlobalToast } from '../../../contexts/ToastContext';
 /** Synthetic root node used when right-clicking empty space in the sidebar. */
 const ROOT_NODE: NoteTreeNode = { name: '', path: '', type: 'notebook' };
 
+/** Characters a note/folder name may not contain (mirrors NotesDialogs). */
+const INVALID_NODE_NAME = /[/\\:*?<>|"]/;
+
 /** Compute ancestor folder paths that need to be expanded for a given note path. */
 function getAncestorPaths(notePath: string): string[] {
     const segments = notePath.split('/');
@@ -174,6 +177,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const { selectedPaths: multiSelectedPaths, handleSelect: handleMultiSelect, clearSelection } = useNotesSelection();
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+    const [renamingPath, setRenamingPath] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [gitInitialized, setGitInitialized] = useState(false);
     const deepLinkAppliedRef = useRef<string | null>(null);
@@ -424,6 +428,33 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         onNoteRenamed?.(renamed.oldPath, renamed.newPath);
     }, [renameNode, onNoteRenamed]);
 
+    // ── Inline rename (AC-06) ──────────────────────────────────────────────
+    // Double-click on a row name (or the context-menu Rename action) turns the
+    // label into an editable field. Create/Delete keep their modal dialogs.
+    const handleStartInlineRename = useCallback((node: NoteTreeNode) => {
+        closeContextMenu();
+        setRenamingPath(node.path);
+    }, [closeContextMenu]);
+
+    const handleCancelInlineRename = useCallback(() => {
+        setRenamingPath(null);
+    }, []);
+
+    const handleCommitInlineRename = useCallback(async (node: NoteTreeNode, rawNewName: string) => {
+        setRenamingPath(null);
+        const trimmed = rawNewName.trim();
+        // Reject empty or invalid names — keep the original (like Esc).
+        if (!trimmed || INVALID_NODE_NAME.test(trimmed)) return;
+        // Preserve the .md extension for page files (the editor shows it stripped).
+        const newName = node.type === 'page' && node.name.endsWith('.md') && !trimmed.endsWith('.md')
+            ? `${trimmed}.md`
+            : trimmed;
+        const parentPath = getNotesParentPath(node.path);
+        const newPath = parentPath ? `${parentPath}/${newName}` : newName;
+        if (newPath === node.path) return; // unchanged
+        await handleRenameNode(node.path, newPath);
+    }, [handleRenameNode]);
+
     const handleDeleteNode = useCallback(async (path: string) => {
         await deleteNode(path);
         onNoteDeleted?.(path);
@@ -591,7 +622,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             if (!isSys) {
                 items.push(
                     { separator: true, label: '', onClick: () => {} },
-                    { label: 'Rename', onClick: () => openDialog('rename', node) },
+                    { label: 'Rename', onClick: () => handleStartInlineRename(node) },
                     { label: 'Delete', onClick: () => openDialog('delete', node) },
                 );
             }
@@ -602,7 +633,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             { label: 'Copy Link', onClick: () => copyTextAndRestoreFocus(`[[note:${node.path}]]`) },
             { label: 'Copy Absolute Path', onClick: () => copyTextAndRestoreFocus(notesRoot ? notesRoot + '/' + node.path : null) },
             { separator: true, label: '', onClick: () => {} },
-            { label: 'Rename', onClick: () => openDialog('rename', node) },
+            { label: 'Rename', onClick: () => handleStartInlineRename(node) },
             { label: 'Delete', onClick: () => openDialog('delete', node) },
         ];
     };
@@ -1051,6 +1082,10 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                         multiSelectedPaths={multiSelectedPaths}
                         selectionDragItems={selectionDragItems}
                         onSelectWithModifiers={handleSelectWithModifiers}
+                        renamingPath={renamingPath}
+                        onStartRename={handleStartInlineRename}
+                        onRenameCommit={handleCommitInlineRename}
+                        onRenameCancel={handleCancelInlineRename}
                         dragDrop={{
                             createDragStartHandler: dragDrop.createDragStartHandler,
                             createDragEndHandler: dragDrop.createDragEndHandler,

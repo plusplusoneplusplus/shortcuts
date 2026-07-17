@@ -389,7 +389,7 @@ describe('NotesSidebar', () => {
         });
     });
 
-    it('opens rename dialog pre-filled with current name', async () => {
+    it('context-menu Rename opens an inline editor pre-filled with the current name (AC-06)', async () => {
         const { findByTestId } = renderSidebar();
 
         const nb1 = await findByTestId('notes-tree-item-Notebook1');
@@ -403,14 +403,16 @@ describe('NotesSidebar', () => {
         const renameBtn = Array.from(menu.querySelectorAll('[role="menuitem"]')).find(i => i.textContent === 'Rename') as HTMLElement;
         fireEvent.click(renameBtn);
 
+        // Inline editor appears in the tree row — NOT a modal dialog.
         await waitFor(() => {
-            const input = document.querySelector('[data-testid="notes-dialog-input"]') as HTMLInputElement;
+            const input = document.querySelector('[data-testid="notes-inline-rename-input"]') as HTMLInputElement;
             expect(input).toBeTruthy();
             expect(input.value).toBe('TopPage');
         });
+        expect(document.querySelector('[data-testid="notes-dialog-input"]')).toBeNull();
     });
 
-    it('renames a node and reports the server-returned path', async () => {
+    it('inline rename commits via renameNode and reports the server-returned path (AC-06)', async () => {
         mockRenameNode.mockResolvedValueOnce({
             oldPath: 'Notebook1/TopPage',
             newPath: 'Notebook1/RenamedPage.md',
@@ -429,20 +431,68 @@ describe('NotesSidebar', () => {
         const renameBtn = Array.from(menu.querySelectorAll('[role="menuitem"]')).find(i => i.textContent === 'Rename') as HTMLElement;
         fireEvent.click(renameBtn);
 
-        await waitFor(() => expect(document.querySelector('[data-testid="notes-dialog-input"]')).toBeTruthy());
+        await waitFor(() => expect(document.querySelector('[data-testid="notes-inline-rename-input"]')).toBeTruthy());
 
-        const input = document.querySelector('[data-testid="notes-dialog-input"]') as HTMLInputElement;
+        const input = document.querySelector('[data-testid="notes-inline-rename-input"]') as HTMLInputElement;
         fireEvent.change(input, { target: { value: 'RenamedPage' } });
-
-        const confirmBtn = document.querySelector('[data-testid="notes-dialog-confirm"]') as HTMLButtonElement;
         await act(async () => {
-            fireEvent.click(confirmBtn);
+            fireEvent.keyDown(input, { key: 'Enter' });
         });
 
         await waitFor(() => {
             expect(mockRenameNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage', 'Notebook1/RenamedPage', undefined);
             expect(onNoteRenamed).toHaveBeenCalledWith('Notebook1/TopPage', 'Notebook1/RenamedPage.md');
         });
+        // Editor closes after commit.
+        await waitFor(() => expect(document.querySelector('[data-testid="notes-inline-rename-input"]')).toBeNull());
+    });
+
+    it('inline rename via double-click on the name commits (AC-06)', async () => {
+        mockRenameNode.mockResolvedValueOnce({
+            oldPath: 'Notebook1/TopPage',
+            newPath: 'Notebook1/Renamed2.md',
+        });
+        const { findByTestId } = renderSidebar();
+
+        const nb1 = await findByTestId('notes-tree-item-Notebook1');
+        fireEvent.click(nb1);
+
+        const page = await findByTestId('notes-tree-item-TopPage');
+        const nameEl = page.querySelector('[data-testid="notes-tree-item-name"]') as HTMLElement;
+        fireEvent.doubleClick(nameEl);
+
+        await waitFor(() => expect(document.querySelector('[data-testid="notes-inline-rename-input"]')).toBeTruthy());
+        const input = document.querySelector('[data-testid="notes-inline-rename-input"]') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'Renamed2' } });
+        await act(async () => {
+            fireEvent.keyDown(input, { key: 'Enter' });
+        });
+
+        await waitFor(() => {
+            expect(mockRenameNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage', 'Notebook1/Renamed2', undefined);
+        });
+    });
+
+    it('inline rename Esc cancels without calling renameNode and restores the label (AC-06)', async () => {
+        const { findByTestId } = renderSidebar();
+
+        const nb1 = await findByTestId('notes-tree-item-Notebook1');
+        fireEvent.click(nb1);
+
+        const page = await findByTestId('notes-tree-item-TopPage');
+        const nameEl = page.querySelector('[data-testid="notes-tree-item-name"]') as HTMLElement;
+        fireEvent.doubleClick(nameEl);
+
+        await waitFor(() => expect(document.querySelector('[data-testid="notes-inline-rename-input"]')).toBeTruthy());
+        const input = document.querySelector('[data-testid="notes-inline-rename-input"]') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'ShouldNotStick' } });
+        fireEvent.keyDown(input, { key: 'Escape' });
+
+        await waitFor(() => expect(document.querySelector('[data-testid="notes-inline-rename-input"]')).toBeNull());
+        expect(mockRenameNode).not.toHaveBeenCalled();
+        // Original label restored.
+        const restored = await findByTestId('notes-tree-item-TopPage');
+        expect(restored.querySelector('[data-testid="notes-tree-item-name"]')!.textContent).toBe('TopPage');
     });
 
     it('disables confirm button when input is empty', async () => {
