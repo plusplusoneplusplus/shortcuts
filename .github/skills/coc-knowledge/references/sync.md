@@ -11,7 +11,7 @@ Git-backed synchronization of My Work and My Life notes across multiple machines
 | **SyncEngine** | Core class that manages the sync lifecycle: clone/pull/push, conflict resolution, periodic scheduling, and status tracking. One instance per virtual workspace (my_work, my_life). |
 | **Sync repo** | Per-workspace Git repos at `~/.coc/sync/my-work/` and `~/.coc/sync/my-life/`. Each maps to the root of its sync remote. |
 | **Folder mapping** | `~/.coc/repos/my_work/notes/` ↔ `~/.coc/sync/my-work/` (repo root) and `~/.coc/repos/my_life/notes/` ↔ `~/.coc/sync/my-life/` (repo root). |
-| **Lock file** | `~/.coc/sync/<subfolder>/.lock` prevents concurrent sync operations per workspace. Includes stale-lock detection via PID check. |
+| **Lock file** | `~/.coc/sync/<subfolder>.lock` prevents concurrent sync operations per workspace. Includes stale-lock detection via PID check. It sits *beside* the mirror, never inside it: a lock in the working tree is one `git clone .` refuses to clone into, `git add -A` commits into the user's notes, and a rebuild deletes out from under the tick holding it. |
 
 ## Architecture
 
@@ -68,13 +68,13 @@ Server bootstrap creates two `SyncEngine` instances (`syncEngines: Map<string, S
 
 ## Sync Flow (performSync)
 
-1. **Ensure sync repo** — Clone from remote, or verify existing clone's remote URL matches. In practice the clone always fails into the `git init` fallback: `performSync` takes the `.lock` first, so the target dir is never empty and `git clone <url> .` refuses it. A fresh mirror therefore starts on a history unrelated to the remote's, which is why the step-6 fallback below is a main road rather than an edge case.
+1. **Ensure sync repo** — Reuse the mirror when `isUsableGitRepo()` says it is one, fixing up `origin` if the configured remote changed; otherwise clear the directory and `git clone <url> .` into it. `isUsableGitRepo()` is `rev-parse --is-inside-work-tree` **plus `for-each-ref`**: the first only proves a worktree exists and still passes on a mirror whose branch names a missing object, which poisons every later fetch (the connectivity check fails and git reports `did not send all necessary objects`, blaming the remote for local damage). `for-each-ref` resolves every ref through to its object, and stays quiet on a repo with no refs, so a clone of an empty remote (unborn HEAD) is not mistaken for damage. There is no `git init` fallback: cloning an empty remote succeeds on its own, so every way clone fails — unreachable host, rejected key, non-empty target — fails the tick and is retried rather than manufacturing a history the remote has never seen.
 1b. **Reconcile?** — `needsReconcile(baseline)` = `shouldReconcile({markerPresent, localTreeNonEmpty, remoteHasCommits})`. When true, run the phase below and finish the tick; it pushes and copies back itself. Asked here, before step 2, because step 2 is the destructive step. The tick reads the marker once here and hands it to step 2 as well — two reads could disagree, and they'd disagree on whether deleting the remote's notes is allowed.
 2. **Copy local → repo** — Mirror workspace notes dir to sync repo root via `copyDirContents` with `ignore: SYNC_IGNORE_NAMES` (`.git`, `.lock`). Only changed files are rewritten (`copyFileIfChanged` skips a copy when size + content match and preserves mtime), so an unchanged tree costs stats/reads, not writes. **The mirror-delete is gated on the baseline**: `copyLocalToRepo(hasBaseline)` passes `mirrorDeletes` through to `copyDirContents`, so a path missing locally is pushed as a deletion only once a marker exists. Without one, "absent locally" isn't yet known to mean "deleted" — see the invariant below.
-3. **Stage local changes** — `git add -A`, then `git diff --cached --quiet` to detect whether anything is actually staged. After the changed-only copy this is a cheap stat pass with nothing to re-hash on an idle tree.
-4. **Idle short-circuit** — If nothing is staged **and** the remote has no new commits (`ls-remote origin HEAD` vs local `HEAD`), return early: no commit, pull, push, or copy-back. An idle tick writes nothing and issues no network mutation.
+3. **Stage local changes** — `git add -A -- . :(exclude)<ignored>`, then `git diff --cached --quiet` to detect whether anything is actually staged. The exclusions match `stageMergedTree`: the ignored names are the engine's own, not notes, and a remote written before the lock moved out of the working tree still carries a `.lock` that must not be staged again. After the changed-only copy this is a cheap stat pass with nothing to re-hash on an idle tree.
+4. **Idle short-circuit** — If nothing is staged **and** the remote has no new commits (`ls-remote origin HEAD` vs local `HEAD`), skip the commit, pull and push, and finish the tick after the copy-back. The copy-back is not skipped: the mirror can hold notes this device has never had on disk (one cloned by an earlier tick, or a notes dir restored empty), and no other step puts them there. It is a stat pass over an unchanged tree and writes nothing when the device already agrees.
 5. **Commit local changes** — Only when there are staged changes: `git commit` with hostname + timestamp message.
-6. **Pull remote** — `git pull --no-rebase origin HEAD`. Detects conflicts via error output. A pull that fails with `isUnrelatedHistoriesError` falls back into reconcile and finishes the tick there — the self-healing path for a mirror with no shared history and no marker to detect it by (a fresh `git init` mirror, or a remote re-pointed after reconcile already retired).
+6. **Pull remote** — `git pull --no-rebase origin HEAD`. Detects conflicts via error output. A pull that fails with `isUnrelatedHistoriesError` falls back into reconcile and finishes the tick there — the self-healing path for a mirror with no shared history and no marker to detect it by (one left on its own history by an older version, or a remote re-pointed after reconcile already retired).
 7. **Resolve conflicts** — If merge conflicts, iterate conflicted files:
    - **AI path**: Send file with conflict markers to `AIInvoker`, validate response (strip code fences, reject residual markers).
    - **Fallback**: `resolveConflictSimple()` keeps both sides, deduplicates identical content.
@@ -113,7 +113,8 @@ one sync:
 5. **Backup, then push** — tag the remote's pre-merge tip `sync-backup/<stamp>`
    (`backupTagStamp()` flattens the ISO colons git rejects in ref names) and push
    **the tag before the branch**, so a half-done reconcile is still undoable.
-   Staging excludes `SYNC_IGNORE_NAMES` so the live `.lock` stays out of the commit.
+   Staging excludes `SYNC_IGNORE_NAMES`, so a `.lock` inherited from a remote an
+   older version wrote stays out of the commit.
    The push is raw `git push` — deliberately *not* `pushToRemote()`, which swallows
    failures to retry later; here a failed push must abort before the marker.
 6. **Copy back + retire** — `copyRepoToLocal()`, then `writeReconcileMarker()`,
@@ -130,7 +131,7 @@ The two entry points cover different states, and neither alone is enough:
 | State | Caught by | Why the others can't |
 |-------|-----------|----------------------|
 | Local notes + remote with commits, no marker | 1b detection | A mirror cloned from the remote shares its history, so the pull succeeds and step 2's mirror-delete gets pushed. |
-| Empty local + fresh (`git init`) mirror | step-6 fallback | Detection needs local notes to contribute (`localTreeNonEmpty`). |
+| Empty local + a mirror on an unrelated history | step-6 fallback | Detection needs local notes to contribute (`localTreeNonEmpty`). Step 1 no longer creates such a mirror, but one left by an older version still syncs through here. |
 | Marker present, remote re-pointed to an unrelated repo | step-6 fallback | The marker retires detection. |
 | Empty local + mirror cloned from the remote | **neither** — the step-2 baseline gate | Detection needs local notes; the shared history means the pull can't fail. Nothing merges here, and nothing needs to: suppressing the delete leaves the tick idle, the pull brings the notes down, and the landed push records the baseline. |
 
@@ -214,12 +215,12 @@ Only `my_work` and `my_life` workspace IDs are valid for sync routes.
 - **Repo-scoped data**: Sync repos live at `~/.coc/sync/my-work/` and `~/.coc/sync/my-life/`.
 - **No credential management**: Assumes SSH keys or Git credential helpers are pre-configured.
 - **Scope limited to notes**: Only files in workspace note directories are synced.
-- **Idle syncs are near-free**: An idle tick (no local edits, no remote commits) rewrites no files, re-hashes nothing, and issues no commit/pull/push/copy-back.
+- **Idle syncs are near-free**: An idle tick (no local edits, no remote commits) rewrites no files, re-hashes nothing, and issues no commit/pull/push. It still runs the copy-back, which writes nothing once the device already holds the mirror's notes.
 - **First contact merges, never mirrors**: The first sync against a remote that already has commits union-merges the two sides (nothing deleted on either side) and leaves a `sync-backup/<stamp>` tag on the remote's pre-merge tip. Reconcile runs at most once per workspace; the marker that retires it is written only after the merge (or a normal first push) actually lands on the remote.
 - **An automatic merge always explains itself**: Every reconcile is auditable from two places that outlive the process — the squashed commit's body, and the `reconcileReport` persisted on the marker. Neither is ever cleared, and no raw conflict marker reaches the user in either.
 - **A deletion needs a baseline behind it**: The outbound copy propagates a deletion only when the workspace has a reconcile marker. The marker is the point at which both sides were proven to hold the same notes, so a note missing after it is the user's doing; before it, "absent locally" may just mean this device was never told. This is what stops an empty or half-restored notes dir from mirror-deleting a remote it has never merged with — the one state neither route into reconcile catches, since a mirror cloned from the remote pulls cleanly and an empty tree can't trip detection. Past the baseline, a real delete propagates normally: the guard is about first contact, not about making sync append-only.
 - **Changed-only copies**: Both copy directions rewrite only files whose content differs, keeping mtimes stable so `git add -A` doesn't re-hash the whole tree.
-- **`.git`/`.lock` are protected**: `SYNC_IGNORE_NAMES` is applied to both the copy and mirror-delete passes in both directions, so the sync repo's own `.git` and `.lock` are never copied over or deleted (no re-init/re-clone loop).
+- **`.git`/`.lock` are protected**: `SYNC_IGNORE_NAMES` is applied to both the copy and mirror-delete passes in both directions, so the sync repo's own `.git` is never copied over or deleted (no re-init/re-clone loop). `.lock` stays in the set for remotes written before the lock moved beside the mirror: those carry a committed `.lock`, which must not be copied onto a device or staged again.
 - **Failure backoff**: Repeated failing syncs grow the next delay geometrically (cap 30 min); a success resets it to the base interval.
 - **Non-blocking startup**: Initial sync is fire-and-forget — server startup never waits for sync to complete.
 - **Error isolation**: Sync failures are logged and surfaced in status but never crash the server.
