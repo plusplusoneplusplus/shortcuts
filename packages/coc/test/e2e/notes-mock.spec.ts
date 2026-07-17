@@ -393,3 +393,227 @@ test.describe('Notes page — states (loading / empty / error / conflict)', () =
         }
     });
 });
+
+/**
+ * AC-05 — create / rename / delete tree mutations.
+ *
+ * Exercises the three notes tree-mutation verbs against the mock and asserts
+ * both (a) the outgoing request fired with the correct payload/path and (b) the
+ * tree state updates afterwards. The fixture mutates its in-memory tree on
+ * POST/PATCH/DELETE, so `useNotesTree`'s post-mutation re-fetch (GET notes/tree)
+ * reflects the change — that is what makes the tree-state assertions real.
+ *
+ * Verb → affordance (discovered from source, no new production testids added):
+ *  - create: the "New" dropdown (`add-note-btn` → `add-note-dropdown` →
+ *    `add-note-new-page`) → create dialog (`notes-dialog-input` /
+ *    `notes-dialog-confirm`) → POST notes/page. `add-note-new-page` is disabled
+ *    until a page/notebook is selected (findCurrentNotebook), so a page is
+ *    opened first.
+ *  - rename: inline rename — double-click the row name (`notes-tree-item-name`)
+ *    → `notes-inline-rename-input` → Enter → PATCH notes/path. (The context-menu
+ *    "Rename" action routes to the same inline editor; the rename *dialog* is
+ *    unreachable dead code.)
+ *  - delete: context menu (right-click row) → "Delete" menuitem → confirm dialog
+ *    (`notes-dialog-confirm`) → DELETE notes/path.
+ */
+test.describe('Notes page — create / rename / delete (tree mutations)', () => {
+    /** Seed the two-page notebook with content — shared across the three verbs. */
+    function seededStore() {
+        return createNotesStore({
+            tree: seedTree(),
+            content: {
+                'Journal/getting-started.md':
+                    '# Getting Started\n\nWelcome to the mocked notebook.',
+                'Journal/second-page.md': '# Second Page\n\nAnother mocked note body.',
+            },
+        });
+    }
+
+    test('creates a page via the New dropdown → POST notes/page → new page appears', async ({
+        page,
+        serverUrl,
+    }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-notes-mock-'));
+        try {
+            const repoDir = createRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, WS_ID, `${WS_ID}-repo`, repoDir);
+
+            const store = seededStore();
+            const pageErrors = trackPageErrors(page);
+            await mockNotesApi(page, store);
+            await openNotesPage(page, serverUrl, WS_ID);
+
+            // "New Page" is enabled only once a page/notebook is selected
+            // (findCurrentNotebook derives from selectedPath). Expand the notebook
+            // and open a page so the selection resolves to the Journal notebook.
+            await page.locator('[data-testid="notes-tree-item-Journal"]').click();
+            const firstPage = page.locator('[data-testid="notes-tree-item-getting-started.md"]');
+            await expect(firstPage).toBeVisible({ timeout: 5_000 });
+            await firstPage.click();
+            await expect(page.locator('.ProseMirror')).toContainText('Welcome to the mocked notebook', {
+                timeout: 10_000,
+            });
+
+            // Open the New dropdown and pick "New Page".
+            await page.locator('[data-testid="add-note-btn"]').click();
+            await expect(page.locator('[data-testid="add-note-dropdown"]')).toBeVisible();
+            const newPageBtn = page.locator('[data-testid="add-note-new-page"]');
+            await expect(newPageBtn).toBeEnabled();
+
+            // Register the POST wait BEFORE confirming so the request is not missed.
+            const postRequest = page.waitForRequest(
+                (req) => req.method() === 'POST' && /\/notes\/page(\?|$)/.test(req.url()),
+                { timeout: 15_000 },
+            );
+            await newPageBtn.click();
+
+            // Fill the create dialog and confirm.
+            const input = page.locator('[data-testid="notes-dialog-input"]');
+            await expect(input).toBeVisible({ timeout: 5_000 });
+            await input.fill('new-mock-page');
+            await page.locator('[data-testid="notes-dialog-confirm"]').click();
+
+            // AC-05: POST fired with the correct payload (parent path + type). The
+            // handler auto-appends `.md`; the outgoing body carries the raw path.
+            const post = await postRequest;
+            expect(post.postDataJSON()).toMatchObject({
+                path: 'Journal/new-mock-page',
+                type: 'page',
+            });
+
+            // The new page appears in the tree (the fixture appended `.md` and the
+            // post-create GET notes/tree re-fetch reflects it; Journal stays open).
+            await expect(page.locator('[data-testid="notes-tree-item-new-mock-page.md"]')).toBeVisible({
+                timeout: 10_000,
+            });
+
+            // Sanity: the mock recorded the same documented POST.
+            const posts = store.requestsFor('page-post');
+            expect(posts.length).toBeGreaterThanOrEqual(1);
+            expect(posts[posts.length - 1].body).toMatchObject({
+                path: 'Journal/new-mock-page',
+                type: 'page',
+            });
+            expect(pageErrors.map((e) => e.message)).toEqual([]);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('renames a page inline → PATCH notes/path → tree reflects the new name', async ({
+        page,
+        serverUrl,
+    }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-notes-mock-'));
+        try {
+            const repoDir = createRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, WS_ID, `${WS_ID}-repo`, repoDir);
+
+            const store = seededStore();
+            const pageErrors = trackPageErrors(page);
+            await mockNotesApi(page, store);
+            await openNotesPage(page, serverUrl, WS_ID);
+
+            // Expand the notebook so the page row is visible.
+            await page.locator('[data-testid="notes-tree-item-Journal"]').click();
+            const pageRow = page.locator('[data-testid="notes-tree-item-getting-started.md"]');
+            await expect(pageRow).toBeVisible({ timeout: 5_000 });
+
+            // Double-click the row NAME to start the inline rename editor. The input
+            // seeds with the display name (`.md` stripped) and selects it, so
+            // `fill` replaces it wholesale.
+            await pageRow.locator('[data-testid="notes-tree-item-name"]').dblclick();
+            const renameInput = page.locator('[data-testid="notes-inline-rename-input"]');
+            await expect(renameInput).toBeVisible({ timeout: 5_000 });
+
+            const patchRequest = page.waitForRequest(
+                (req) => req.method() === 'PATCH' && /\/notes\/path(\?|$)/.test(req.url()),
+                { timeout: 15_000 },
+            );
+            await renameInput.fill('renamed-page');
+            await renameInput.press('Enter');
+
+            // AC-05: PATCH fired with old/new paths. The commit re-appends `.md`
+            // for page files, so newPath keeps the extension.
+            const patch = await patchRequest;
+            expect(patch.postDataJSON()).toMatchObject({
+                oldPath: 'Journal/getting-started.md',
+                newPath: 'Journal/renamed-page.md',
+            });
+
+            // The tree reflects the rename: the new row appears, the old one is gone.
+            await expect(page.locator('[data-testid="notes-tree-item-renamed-page.md"]')).toBeVisible({
+                timeout: 10_000,
+            });
+            await expect(
+                page.locator('[data-testid="notes-tree-item-getting-started.md"]'),
+            ).toHaveCount(0);
+
+            const patches = store.requestsFor('path-patch');
+            expect(patches.length).toBeGreaterThanOrEqual(1);
+            expect(patches[patches.length - 1].body).toMatchObject({
+                oldPath: 'Journal/getting-started.md',
+                newPath: 'Journal/renamed-page.md',
+            });
+            expect(pageErrors.map((e) => e.message)).toEqual([]);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('deletes a page via the context menu → DELETE notes/path → node leaves the tree', async ({
+        page,
+        serverUrl,
+    }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-notes-mock-'));
+        try {
+            const repoDir = createRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, WS_ID, `${WS_ID}-repo`, repoDir);
+
+            const store = seededStore();
+            const pageErrors = trackPageErrors(page);
+            await mockNotesApi(page, store);
+            await openNotesPage(page, serverUrl, WS_ID);
+
+            // Expand the notebook so the page row is visible.
+            await page.locator('[data-testid="notes-tree-item-Journal"]').click();
+            const pageRow = page.locator('[data-testid="notes-tree-item-getting-started.md"]');
+            await expect(pageRow).toBeVisible({ timeout: 5_000 });
+
+            // Right-click the row → the notes context menu → "Delete".
+            await pageRow.click({ button: 'right' });
+            const menu = page.locator('[data-testid="context-menu"]');
+            await expect(menu).toBeVisible({ timeout: 5_000 });
+            await menu.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+
+            // Confirm the delete in the modal.
+            const confirm = page.locator('[data-testid="notes-dialog-confirm"]');
+            await expect(confirm).toBeVisible({ timeout: 5_000 });
+
+            const deleteRequest = page.waitForRequest(
+                (req) => req.method() === 'DELETE' && /\/notes\/path(\?|$)/.test(req.url()),
+                { timeout: 15_000 },
+            );
+            await confirm.click();
+
+            // AC-05: DELETE fired for the right path (carried in the query string).
+            const del = await deleteRequest;
+            expect(new URL(del.url()).searchParams.get('path')).toBe('Journal/getting-started.md');
+
+            // The node leaves the tree; its sibling remains.
+            await expect(
+                page.locator('[data-testid="notes-tree-item-getting-started.md"]'),
+            ).toHaveCount(0, { timeout: 10_000 });
+            await expect(
+                page.locator('[data-testid="notes-tree-item-second-page.md"]'),
+            ).toBeVisible();
+
+            const deletes = store.requestsFor('path-delete');
+            expect(deletes.length).toBeGreaterThanOrEqual(1);
+            expect(deletes[deletes.length - 1].query.path).toBe('Journal/getting-started.md');
+            expect(pageErrors.map((e) => e.message)).toEqual([]);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
