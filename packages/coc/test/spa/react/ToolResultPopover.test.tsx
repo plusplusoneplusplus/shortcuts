@@ -314,6 +314,46 @@ describe('ToolResultPopover', () => {
         expect(document.querySelector('[data-testid="popover-image"]')).toBeNull();
     });
 
+    // --- image lightbox wiring (AC-04) ---
+
+    it('calls onImageClick with the src and alt when the preview image is clicked', () => {
+        const onImageClick = vi.fn();
+        const imgDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA';
+        render(
+            <ToolResultPopover
+                result={imgDataUrl}
+                toolName="view"
+                args={{ path: '/project/screenshot.png' }}
+                anchorRect={makeAnchorRect()}
+                onImageClick={onImageClick}
+                {...defaultHandlers}
+            />
+        );
+
+        const img = document.querySelector('[data-testid="popover-image"]') as HTMLImageElement;
+        expect(img.className).toContain('cursor-zoom-in');
+        fireEvent.click(img);
+
+        expect(onImageClick).toHaveBeenCalledTimes(1);
+        expect(onImageClick).toHaveBeenCalledWith(imgDataUrl, expect.stringContaining('screenshot.png'));
+    });
+
+    it('leaves the image non-interactive when onImageClick is not provided', () => {
+        const imgDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA';
+        render(
+            <ToolResultPopover
+                result={imgDataUrl}
+                anchorRect={makeAnchorRect()}
+                {...defaultHandlers}
+            />
+        );
+
+        const img = document.querySelector('[data-testid="popover-image"]') as HTMLImageElement;
+        expect(img.className).not.toContain('cursor-zoom-in');
+        // No handler wired — a click must not throw.
+        expect(() => fireEvent.click(img)).not.toThrow();
+    });
+
     // --- bash tool: terminal-style rendering ---
 
     it('renders terminal-style popover for bash tool', () => {

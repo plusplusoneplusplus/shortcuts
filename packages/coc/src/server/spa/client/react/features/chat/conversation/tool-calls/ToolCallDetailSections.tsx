@@ -114,11 +114,15 @@ function EditToolView({ args }: { args: Record<string, any> }) {
     );
 }
 
-function CreateToolView({ args }: { args: Record<string, any> }) {
+function CreateToolView({ args, onImageClick }: { args: Record<string, any>; onImageClick?: (src: string, alt?: string) => void }) {
     const filePath = args.path || args.filePath || '';
     const fileText = typeof args.file_text === 'string' ? args.file_text : '';
     const mime = filePath ? getImageMimeType(filePath) : null;
     const isImage = filePath ? isImageFile(filePath) : false;
+    const imageAlt = shortenPath(filePath);
+    const imageSrc = fileText && isImage && mime
+        ? `data:${mime};base64,${btoa(unescape(encodeURIComponent(fileText)))}`
+        : null;
 
     return (
         <div className="space-y-1.5">
@@ -127,12 +131,13 @@ function CreateToolView({ args }: { args: Record<string, any> }) {
                     📁 <FilePathLink path={filePath} noTruncate />
                 </div>
             )}
-            {fileText && isImage && mime ? (
+            {imageSrc ? (
                 <div className="file-preview-image-container rounded border border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <img
-                        className="file-preview-image"
-                        src={`data:${mime};base64,${btoa(unescape(encodeURIComponent(fileText)))}`}
-                        alt={shortenPath(filePath)}
+                        className={'file-preview-image' + (onImageClick ? ' cursor-zoom-in' : '')}
+                        src={imageSrc}
+                        alt={imageAlt}
+                        onClick={onImageClick ? (e) => { e.stopPropagation(); onImageClick(imageSrc, imageAlt); } : undefined}
                     />
                 </div>
             ) : fileText ? (
@@ -192,7 +197,7 @@ function CodexFileChangeView({ args }: { args: Record<string, any> }) {
     );
 }
 
-function ViewToolView({ args, result }: { args: Record<string, any>; result: string }) {
+function ViewToolView({ args, result, onImageClick }: { args: Record<string, any>; result: string; onImageClick?: (src: string, alt?: string) => void }) {
     const filePath = args.path || args.filePath || '';
     const viewRange = Array.isArray(args.view_range) ? args.view_range : null;
 
@@ -221,8 +226,9 @@ function ViewToolView({ args, result }: { args: Record<string, any>; result: str
                 <img
                     src={result}
                     alt={shortenPath(filePath)}
-                    className="max-w-full max-h-64 rounded border border-[#e0e0e0] dark:border-[#3c3c3c]"
+                    className={'max-w-full max-h-64 rounded border border-[#e0e0e0] dark:border-[#3c3c3c]' + (onImageClick ? ' cursor-zoom-in' : '')}
                     data-testid="tool-result-image"
+                    onClick={onImageClick ? (e) => { e.stopPropagation(); onImageClick(result, shortenPath(filePath)); } : undefined}
                 />
             </div>
         );
@@ -268,6 +274,8 @@ export interface ToolCallDetailSectionsProps {
     model: ToolCallRenderModel;
     /** Tailwind color class for the Error label + body (variant-specific). */
     errorClassName: string;
+    /** When provided, tool-result/preview images become click-to-lightbox. */
+    onImageClick?: (src: string, alt?: string) => void;
 }
 
 /**
@@ -275,7 +283,7 @@ export interface ToolCallDetailSectionsProps {
  * and gating exactly mirror the historical inline JSX so both variants show the
  * same facts.
  */
-export function ToolCallDetailSections({ model, errorClassName }: ToolCallDetailSectionsProps) {
+export function ToolCallDetailSections({ model, errorClassName, onImageClick }: ToolCallDetailSectionsProps) {
     const {
         name,
         argsObj,
@@ -361,8 +369,8 @@ export function ToolCallDetailSections({ model, errorClassName }: ToolCallDetail
                 </div>
             )}
             {name === 'edit' && argsObj && <EditToolView args={argsObj} />}
-            {name === 'create' && argsObj && <CreateToolView args={argsObj} />}
-            {name === 'view' && argsObj && <ViewToolView args={argsObj} result={visibleResult} />}
+            {name === 'create' && argsObj && <CreateToolView args={argsObj} onImageClick={onImageClick} />}
+            {name === 'view' && argsObj && <ViewToolView args={argsObj} result={visibleResult} onImageClick={onImageClick} />}
             {name === 'apply_patch' && applyPatchText && <ApplyPatchToolView patchText={applyPatchText} />}
             {name === 'apply_patch' && !applyPatchText && codexFileChanges.length > 0 && argsObj && <CodexFileChangeView args={argsObj} />}
             {showGenericArgs && (
@@ -387,8 +395,9 @@ export function ToolCallDetailSections({ model, errorClassName }: ToolCallDetail
                         <img
                             src={resultText}
                             alt="Tool result image"
-                            className="max-w-full max-h-64 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] cursor-pointer"
+                            className={'max-w-full max-h-64 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] ' + (onImageClick ? 'cursor-zoom-in' : 'cursor-pointer')}
                             data-testid="tool-result-image"
+                            onClick={onImageClick ? (e) => { e.stopPropagation(); onImageClick(resultText, 'Tool result image'); } : undefined}
                         />
                     ) : (
                         <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">

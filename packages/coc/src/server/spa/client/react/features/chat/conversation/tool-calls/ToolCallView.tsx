@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { cn } from '../../../../ui';
+import { cn, ImageLightbox } from '../../../../ui';
 import { ToolResultPopover } from './ToolResultPopover';
 import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
 import { useToolCallVariant } from './ToolCallVariant';
@@ -52,6 +52,9 @@ export function ToolCallView({
     const [expanded, setExpanded] = useState(model.isTaskComplete);
     const [hoverVisible, setHoverVisible] = useState(false);
     const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+    // Owned here (not in the popover/detail body) so the lightbox survives when
+    // the hover popover unmounts on mouse-leave.
+    const [lightbox, setLightbox] = useState<{ src: string; alt?: string } | null>(null);
     const headerRef = useRef<HTMLDivElement | null>(null);
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,6 +92,9 @@ export function ToolCallView({
         setHoverVisible(false);
     }, []);
 
+    const openLightbox = useCallback((src: string, alt?: string) => setLightbox({ src, alt }), []);
+    const closeLightbox = useCallback(() => setLightbox(null), []);
+
     const handleMobilePreviewTap = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
         if (!hasHoverResult) return;
@@ -111,6 +117,7 @@ export function ToolCallView({
             anchorRect={anchorRect}
             onMouseEnter={handlePopoverMouseEnter}
             onMouseLeave={handlePopoverMouseLeave}
+            onImageClick={openLightbox}
         />
     ) : null;
 
@@ -224,7 +231,7 @@ export function ToolCallView({
                 </div>
                 {hasDetails && expanded && (
                     <div className="tool-call-row-body border-t border-[#ececec] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#1e1e1e] px-3 py-1.5 space-y-1.5 text-xs select-text">
-                        <ToolCallDetailSections model={model} errorClassName="text-[#cf222e]" />
+                        <ToolCallDetailSections model={model} errorClassName="text-[#cf222e]" onImageClick={openLightbox} />
                     </div>
                 )}
                 {children && (
@@ -233,6 +240,7 @@ export function ToolCallView({
                     </div>
                 )}
                 {hoverPopover}
+                <ImageLightbox src={lightbox?.src ?? null} alt={lightbox?.alt} onClose={closeLightbox} />
             </div>
         );
     }
@@ -313,7 +321,7 @@ export function ToolCallView({
                     !expanded && 'collapsed',
                     !expanded && 'hidden'
                 )}>
-                    <ToolCallDetailSections model={model} errorClassName="text-[#f14c4c]" />
+                    <ToolCallDetailSections model={model} errorClassName="text-[#f14c4c]" onImageClick={openLightbox} />
                 </div>
             )}
             {children && (
@@ -322,6 +330,7 @@ export function ToolCallView({
                 </div>
             )}
             {hoverPopover}
+            <ImageLightbox src={lightbox?.src ?? null} alt={lightbox?.alt} onClose={closeLightbox} />
         </div>
     );
 }
