@@ -638,8 +638,8 @@ green when provider metadata is missing.
 `ChatHeader` measures its own container via `useContainerWidth` with a
 chat-header-specific `wideThreshold` of 960px (raised above the generic 700px
 default) because its wide tier renders the inline `ReferencesDropdown` plus the
-full status pill on the left while the right side carries the `Thread | Agents`
-view toggle, cascade, copy, and `ChatHeaderOverflowMenu` controls. At `wide`
+full status pill on the left while the right side carries the agent tree
+popover, copy, and `ChatHeaderOverflowMenu` controls. At `wide`
 (≥960px) References is inline and the status pill shows its label + duration; at
 `medium` (500–959px, including 700–900px split-pane, source-canvas, and
 browser-zoom widths) References folds into the overflow menu and the pill goes
@@ -747,24 +747,20 @@ client.
 
 ### Agents view (sub-agent canvas)
 
-`ChatHeader` exposes a `Thread | Agents` segmented toggle (`ChatViewToggle`,
-under `features/chat/agent-canvas/`) via its `viewToggle` slot. `ChatDetail`
-owns the `view` state and, in `agents` mode, swaps the `ConversationArea` inner
-row for `AgentCanvas` — a pannable/zoomable spatial tree of the chat's
-recursive sub-agent runs — while keeping the composer/scratchpad and hiding the
-thread-only flow cards (Ralph start, Implement-plan). The toggle is hidden when
-the chat has no sub-agents (`hasSubAgents = agentRoot.children.length > 0`), in
-the `floating` variant, and while loading/pending. Rendering keys off
-`effectiveView` (= `view` only when sub-agents exist, otherwise `thread`), so a
-stale `?view=agents` deep-link can't strand the user on an empty canvas — it
-"waits", revealing the canvas the moment the first sub-agent appears. In the
-main inline context
-the view is deep-linked: a `?view=agents` query param on the chat hash
-(`#repos/<ws>/<tab>/<taskId>?view=agents`) is read on mount (so a
-shared/bookmarked URL reopens straight into the canvas) and written via
-`history.replaceState` on toggle (`chatViewHash.ts`). `parseActivityDeepLink`
-strips the `?query` so the param never corrupts the taskId. `view` resets to
-`thread` on chat switch (honoring a deep-linked view on first mount).
+`ChatHeader` exposes one agent navigation control through its `viewToggle` slot:
+`AgentTreeMenu` (`features/chat/agent-canvas/AgentTreeMenu.tsx`). `ChatDetail`
+owns one `AgentNav` state union (`thread`, `map`, or `agent`) and derives
+`effectiveNav` from it, forcing `thread` when the chat has no sub-agents
+(`hasSubAgents = agentRoot.children.length > 0`) or a selected agent id no
+longer resolves. The control is hidden when the chat has no sub-agents, in the
+`floating` variant, and while loading/pending, so stale `?view=agents` links
+land on the thread instead of an empty map. Inline chat hashes read and write
+through `agentNavHash.ts`: legacy `?agent=<id>` opens that detail view and wins
+over `view`, legacy `?view=agents` opens the map, and the default/no-param state
+is the thread. Writing keeps `?view=agents` for the map so old links stay in the
+same vocabulary. `parseActivityDeepLink` strips the `?query` so these params
+never corrupt the taskId. Agent navigation resets from the current hash on chat
+switch after the initial mount, and a stale `agent` id clears to `thread`.
 
 `buildAgentRunTreeFromTurns(turns, root)` derives the tree with no extra fetch:
 the orchestrator (this process) is the root and each `Task` tool call becomes a
@@ -792,37 +788,40 @@ takes over. The toolbar's % is a dropdown of preset levels
 (25/50/75/100/150/200% + Fit) backed by `useZoomPan`'s `zoomTo(scale)`
 (zooms about the viewport center); the Fit button zooms to fit the whole tree.
 `useZoomPan`'s wheel-zoom and pan-drag both skip events originating inside a
-`[data-no-drag]` overlay — the toolbar, legend, and the open inspector — so
-those scroll/click natively instead of zooming/panning the canvas behind them.
+`[data-no-drag]` overlay — the toolbar and legend — so those scroll/click
+natively instead of zooming/panning the canvas behind them.
 It renders curved SVG edges + node cards (role glyph, name, live elapsed,
 spawn-count pill, status dot, progress bar) and a live 1s clock for running
-nodes. Clicking a sub-agent node opens `AgentInspector` — a right-side panel
-with the run's name/type/status/elapsed, a details list (model, mode, summary),
-the task prompt, its result, and its children (clickable to drill in); clicking
-the orchestrator root closes it.
-`AgentCanvas` owns the inspector selection; the inspector's "Open sub-agent
-detail" button calls `onOpenAgentDetail`, which `ChatDetail` routes through the
-same `handleSelectAgent` path as the cascade menu so the read-only
-`SubAgentDetailView` opens for that node.
+nodes. The map is opened from `AgentTreeMenu`'s footer when the tree is large
+enough to benefit from spatial shape (`countRuns(root) > 6`). Clicking any
+canvas node routes through `onOpenAgentDetail`: sub-agent nodes open the same
+read-only detail view as tree rows, while the orchestrator root returns to the
+main thread.
 
-**Cascading dropdown + in-place sub-agent detail.** Beside the toggle,
-`AgentCascadeMenu` lists the tree's depth levels (`flattenAgentLevels` → L0…Ln,
-only existing levels) in a left pane and that level's agents on the right;
-picking an agent opens its conversation **in-place, read-only**
-(`SubAgentDetailView`), picking the orchestrator (L0) returns to the main
-thread (`handleSelectAgent` derives the view via `viewForAgentSelection`: a
-sub-agent id → `agents` canvas, the orchestrator/null → `thread`). The selected sub-agent rides the hash as `?agent=<id>` alongside
-`?view=agents` (`chatAgentHash.ts`), composed into one `replaceState`; a
-stale/invalid id clears itself and resets on chat switch (parity with
-`effectiveView`). `buildSubAgentTurns(turns, id)` reconstructs the sub-agent's
-conversation as `[userTurn(prompt), assistantTurn(steps + result)]` by collecting
-its full descendant subtree via `parentToolCallId`, then renders it through the
-**same** `ConversationArea` / `ConversationTurnBubble` as the main thread —
-identical tool-call rendering. The filtered steps keep their `parentToolCallId`:
-the sub-agent's own Task id is absent from the synthetic turn, so the renderer
-leaves its direct steps at top level and nests deeper descendants under their
-parents (nested sub-agents render as Task cards), re-rooting the subtree. There
-is no follow-up input in detail mode, and the sub-agent's status (not the
+**Tree popover + in-place sub-agent detail.** `AgentTreeMenu` renders the real
+tree as ARIA `tree`/`treeitem` rows with indentation, twisty expand/collapse,
+status dot, role glyph, name, role, elapsed text, selected state, and keyboard
+navigation (Up/Down, Right/Left, Enter/Space, Escape). The root row is
+`Main thread`; selecting it sets `{ kind: 'thread' }`. Selecting a sub-agent sets
+`{ kind: 'agent', id }`; selecting the footer map action sets `{ kind: 'map' }`.
+Expansion is seeded once: every parent expands in small trees (<= 12 runs), and
+large trees expand the root plus the selected agent's ancestor chain. Because the
+live `agentRoot` object is rebuilt as turns stream in, the menu does not reseed
+on root identity changes; it only unions in selected ancestors when the selected
+id changes, so user collapse state survives streaming updates.
+
+`buildSubAgentTurns(turns, id)` reconstructs a selected sub-agent's conversation
+as `[userTurn(prompt), assistantTurn(steps + result)]` by collecting its full
+descendant subtree via `parentToolCallId`, then renders it through the **same**
+`ConversationArea` / `ConversationTurnBubble` as the main thread — identical
+tool-call rendering. The filtered steps keep their `parentToolCallId`: the
+sub-agent's own Task id is absent from the synthetic turn, so the renderer leaves
+its direct steps at top level and nests deeper descendants under their parents
+(nested sub-agents render as Task cards), re-rooting the subtree. The
+`SubAgentDetailView` header shows the full breadcrumb plus status, duration,
+model, mode, and spawned-count metadata; it does not duplicate the task prompt or
+result, because those are already the synthetic user/assistant turns. There is no
+follow-up input in detail mode, and the sub-agent's status (not the
 orchestrator's) drives the streaming tail. For background sub-agents, the closing
 content uses the matching `read_agent` final output when available, rather than
 the `task` startup acknowledgement. Limitation: `content`-type timeline items

@@ -1,9 +1,9 @@
 /**
  * @vitest-environment node
  *
- * Static-analysis test: the Thread/Agents toggle must only appear once a chat
- * has actually spawned sub-agents, and the canvas must never render without
- * them — even via a stale `?view=agents` deep-link.
+ * Static-analysis test: the agent tree control must only appear once a chat
+ * has actually spawned sub-agents, and the map must never render without them
+ * even via a stale `?view=agents` deep-link.
  *
  * ChatDetail is too heavyweight (SSE, queue/app contexts, the coc client,
  * model hooks) to render in a unit test, so — mirroring the other ChatDetail
@@ -18,31 +18,38 @@ import { resolve } from 'path';
 const SPA_ROOT = resolve(__dirname, '../../../../../src/server/spa/client/react');
 const source = readFileSync(resolve(SPA_ROOT, 'features/chat/ChatDetail.tsx'), 'utf-8');
 
-describe('ChatDetail Agents toggle visibility', () => {
+describe('ChatDetail agent navigation visibility', () => {
     it('derives hasSubAgents from the agent tree children', () => {
         expect(source).toMatch(/const\s+hasSubAgents\s*=\s*agentRoot\.children\.length\s*>\s*0/);
     });
 
-    it('pins the rendered view to thread when there are no sub-agents', () => {
-        expect(source).toMatch(/const\s+effectiveView\s*:\s*ChatView\s*=\s*hasSubAgents\s*\?\s*view\s*:\s*'thread'/);
+    it('tracks agent navigation as one state variable', () => {
+        expect(source).toMatch(/const\s+\[nav,\s*setNav\]\s*=\s*useState<AgentNav>/);
+        expect(source).not.toMatch(/const\s+\[view,\s*setView\]\s*=\s*useState/);
+        expect(source).not.toMatch(/const\s+\[selectedAgentId,\s*setSelectedAgentId\]\s*=\s*useState/);
     });
 
-    it('gates the Thread/Agents toggle on hasSubAgents', () => {
-        // The toggle must be hidden when no sub-agents exist; `hasSubAgents`
-        // is the first guard in the viewToggle expression.
+    it('pins the rendered nav to thread when there are no sub-agents', () => {
+        expect(source).toMatch(/const\s+effectiveNav:\s*AgentNav\s*=\s*!hasSubAgents[\s\S]*\?\s*\{\s*kind:\s*'thread'\s*\}[\s\S]*:\s*nav/);
+    });
+
+    it('gates the single agent tree control on hasSubAgents', () => {
         expect(source).toMatch(/viewToggle=\{hasSubAgents\s*&&/);
+        expect(source).toContain('<AgentTreeMenu');
+        expect(source).not.toContain('<ChatViewToggle');
+        expect(source).not.toContain('<AgentCascadeMenu');
     });
 
-    it('renders the canvas from effectiveView, not the raw view state', () => {
-        expect(source).toMatch(/effectiveView\s*===\s*'agents'\s*\?/);
-        expect(source).not.toMatch(/\{view\s*===\s*'agents'\s*\?/);
+    it('renders the map from effectiveNav, not raw nav state', () => {
+        expect(source).toMatch(/effectiveNav\.kind\s*===\s*'map'\s*\?/);
+        expect(source).not.toMatch(/nav\.kind\s*===\s*'map'\s*\?/);
     });
 
-    it('gates the thread-only side panels on effectiveView', () => {
+    it('gates the thread-only side panels on effectiveNav', () => {
         // Ralph start + ImplementPlan cards should show when we fall back to
-        // the thread, so they must key off effectiveView rather than `view`.
-        expect(source).not.toMatch(/\{view\s*===\s*'thread'\s*&&/);
-        const threadGuards = source.match(/effectiveView\s*===\s*'thread'\s*&&/g) ?? [];
+        // the thread, so they must key off effectiveNav rather than raw `nav`.
+        expect(source).not.toMatch(/\{nav\.kind\s*===\s*'thread'\s*&&/);
+        const threadGuards = source.match(/effectiveNav\.kind\s*===\s*'thread'\s*&&/g) ?? [];
         expect(threadGuards.length).toBeGreaterThanOrEqual(2);
     });
 });

@@ -408,11 +408,11 @@ describe('ChatDetail', () => {
 
         it('hides chat input when noSessionForFollowUp is true', () => {
             // The composer is also suppressed in the read-only sub-agent detail view.
-            expect(source).toContain('!isPending && !noSessionForFollowUp && !readOnly && !showSubAgentDetail && (');
+            expect(source).toContain("!isPending && !noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (");
         });
 
         it('shows informational message when follow-up is unavailable', () => {
-            expect(source).toContain('!isPending && noSessionForFollowUp && !readOnly && !showSubAgentDetail && (');
+            expect(source).toContain("!isPending && noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (");
             expect(source).toContain('Follow-up chat is not available for this process type.');
         });
 

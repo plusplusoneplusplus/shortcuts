@@ -1,12 +1,12 @@
 /**
  * @vitest-environment node
  *
- * Static-analysis test: the in-place sub-agent detail view + cascade dropdown
+ * Static-analysis test: the in-place sub-agent detail view + tree popover
  * wiring in ChatDetail. ChatDetail is too heavyweight (SSE, queue/app contexts,
  * the coc client, model hooks) to render in a unit test, so — mirroring the
  * sibling ChatDetail-*.test.ts files — we assert the wiring against the source.
- * The pieces themselves (levels, sub-agent turns, hash helpers, the menu, the
- * detail view) are covered by their own unit/component tests.
+ * The pieces themselves (tree rows, sub-agent turns, hash helpers, the menu,
+ * the detail view) are covered by their own unit/component tests.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -15,79 +15,75 @@ import { resolve } from 'path';
 const SPA_ROOT = resolve(__dirname, '../../../../../src/server/spa/client/react');
 const source = readFileSync(resolve(SPA_ROOT, 'features/chat/ChatDetail.tsx'), 'utf-8');
 const canvasSource = readFileSync(resolve(SPA_ROOT, 'features/chat/agent-canvas/AgentCanvas.tsx'), 'utf-8');
-const inspectorSource = readFileSync(resolve(SPA_ROOT, 'features/chat/agent-canvas/AgentInspector.tsx'), 'utf-8');
 
 describe('ChatDetail sub-agent drill-in wiring', () => {
-    it('imports the cascade menu, detail view, and the supporting helpers', () => {
+    it('imports the tree menu, detail view, and the supporting helpers', () => {
         for (const name of [
-            'AgentCascadeMenu', 'SubAgentDetailView', 'buildSubAgentTurns',
-            'flattenAgentLevels', 'findAgentNode', 'pathToAgent',
-            'readAgentFromHash', 'applyAgentToHash',
+            'AgentTreeMenu', 'SubAgentDetailView', 'buildSubAgentTurns',
+            'findAgentNode', 'pathToAgent',
+            'readAgentNavFromHash', 'applyAgentNavToHash',
         ]) {
             expect(source).toContain(name);
         }
     });
 
-    it('tracks the selected sub-agent in state, seeded from the hash', () => {
-        expect(source).toMatch(/const\s+\[selectedAgentId,\s*setSelectedAgentId\]\s*=\s*useState/);
-        expect(source).toMatch(/readAgentFromHash\(window\.location\.hash\)/);
+    it('tracks one nav state seeded from the hash', () => {
+        expect(source).toMatch(/const\s+\[nav,\s*setNav\]\s*=\s*useState<AgentNav>/);
+        expect(source).toMatch(/readAgentNavFromHash\(window\.location\.hash\)/);
     });
 
-    it('derives showSubAgentDetail from a resolvable selected node', () => {
-        expect(source).toMatch(/const\s+showSubAgentDetail\s*=\s*hasSubAgents\s*&&\s*selectedAgentNode\s*!=\s*null/);
+    it('derives the selected agent from nav and a resolvable node', () => {
+        expect(source).toMatch(/const\s+rawSelectedAgentId\s*=\s*nav\.kind\s*===\s*'agent'\s*\?\s*nav\.id\s*:\s*null/);
+        expect(source).toMatch(/const\s+showAgentDetail\s*=\s*effectiveNav\.kind\s*===\s*'agent'\s*&&\s*selectedAgentNode\s*!=\s*null/);
     });
 
-    it('renders the detail view BEFORE the canvas branch (precedence)', () => {
-        const detailIdx = source.indexOf('showSubAgentDetail ?');
-        const canvasIdx = source.indexOf("effectiveView === 'agents' ?");
+    it('renders the detail view BEFORE the map branch (precedence)', () => {
+        const detailIdx = source.indexOf('showAgentDetail ?');
+        const canvasIdx = source.indexOf("effectiveNav.kind === 'map' ?");
         expect(detailIdx).toBeGreaterThan(-1);
         expect(canvasIdx).toBeGreaterThan(-1);
         expect(detailIdx).toBeLessThan(canvasIdx);
     });
 
-    it('mounts the cascade menu in the viewToggle slot', () => {
-        expect(source).toMatch(/<AgentCascadeMenu/);
+    it('mounts the tree menu in the viewToggle slot', () => {
+        expect(source).toMatch(/<AgentTreeMenu/);
         expect(source).toMatch(/onSelectAgent=\{handleSelectAgent\}/);
+        expect(source).toMatch(/onOpenMap=\{handleOpenMap\}/);
     });
 
-    it('routes the view from the selection so the orchestrator returns to the thread', () => {
-        // handleSelectAgent(null) (Orchestrator breadcrumb / cascade item /
-        // canvas root) must switch the view back to the thread instead of
-        // leaving the user on the agents canvas — delegated to the pure
-        // viewForAgentSelection helper (covered directly in ChatViewToggle.test).
-        expect(source).toContain('viewForAgentSelection');
-        expect(source).toMatch(/setView\(viewForAgentSelection\(agentId\)\)/);
+    it('routes selection through the AgentNav union', () => {
+        expect(source).toMatch(/setNav\(agentId\s*\?\s*\{\s*kind:\s*'agent',\s*id:\s*agentId\s*\}\s*:\s*\{\s*kind:\s*'thread'\s*\}\)/);
+        expect(source).toMatch(/setNav\(\{\s*kind:\s*'map'\s*\}\)/);
     });
 
-    it('wires the canvas inspector action through the same selected-agent detail path', () => {
+    it('wires canvas clicks through the same selected-agent detail path', () => {
         expect(source).toMatch(/const\s+openAgentDetail\s*=\s*useCallback/);
         expect(source).toContain('handleSelectAgent(node.isRoot ? null : node.id)');
         expect(source).toContain('<AgentCanvas root={agentRoot} onOpenAgentDetail={openAgentDetail} />');
         expect(source).not.toContain('onOpenInThread={openAgentInThread}');
     });
 
-    it('labels the inspector action as opening the sub-agent detail view', () => {
+    it('keeps the canvas free of inspector state', () => {
         expect(canvasSource).toContain('onOpenAgentDetail');
-        expect(canvasSource).not.toContain('onOpenInThread');
-        expect(inspectorSource).toContain('data-testid="agent-inspector-open-detail"');
-        expect(inspectorSource).toContain('title="Open sub-agent detail"');
-        expect(inspectorSource).toContain('Open sub-agent detail');
-        expect(inspectorSource).not.toContain('Open in thread');
+        expect(canvasSource).not.toContain('AgentInspector');
+        expect(canvasSource).not.toContain('selectedNode');
+        expect(canvasSource).not.toContain('selectedId');
     });
 
     it('suppresses the follow-up composer in detail mode (read-only)', () => {
-        // Every FollowUpInputArea render guard must include !showSubAgentDetail.
-        const composerGuards = source.match(/!isPending && !noSessionForFollowUp && !readOnly && !showSubAgentDetail/g) ?? [];
+        const composerGuards = source.match(/!isPending && !noSessionForFollowUp && !readOnly && effectiveNav\.kind !== 'agent'/g) ?? [];
         expect(composerGuards.length).toBeGreaterThanOrEqual(2);
     });
 
-    it('composes both view and agent params into the hash mirror', () => {
-        expect(source).toMatch(/applyAgentToHash\(applyChatViewToHash\(window\.location\.hash,\s*view\),\s*selectedAgentId\)/);
+    it('mirrors nav into the hash with one codec call', () => {
+        expect(source).toMatch(/applyAgentNavToHash\(window\.location\.hash,\s*nav\)/);
+        expect(source).not.toContain('applyChatViewToHash');
+        expect(source).not.toContain('applyAgentToHash');
     });
 
-    it('resets and clears the selected agent appropriately', () => {
-        // reset on chat switch + clear when the id no longer resolves to a node
-        expect(source).toMatch(/setSelectedAgentId\(hashViewSync \? readAgentFromHash/);
-        expect(source).toMatch(/if\s*\(selectedAgentId\s*&&\s*!selectedAgentNode\)/);
+    it('resets and clears stale nav appropriately', () => {
+        expect(source).toMatch(/setNav\(hashViewSync \? readAgentNavFromHash/);
+        expect(source).toMatch(/if\s*\(nav\.kind\s*===\s*'agent'\s*&&\s*!selectedAgentNode\)/);
+        expect(source).toMatch(/setNav\(\{\s*kind:\s*'thread'\s*\}\)/);
     });
 });

@@ -36,8 +36,8 @@ const ICON_BTN_CLASS =
  * Chat-header-specific wide breakpoint (CSS px).
  *
  * The header's wide tier renders the inline References button plus the full
- * status pill on the left while the Thread/Agents view toggle, cascade, copy,
- * and overflow controls occupy the right. That full action set needs more room
+ * status pill on the left while the agent tree control, copy, and overflow
+ * controls occupy the right. That action set needs more room
  * than the generic 700px `useContainerWidth` default before it stops competing
  * for the row, so a 700–900px pane (split view, source-canvas layout, browser
  * zoom) uses the medium layout — References folds into the overflow menu and
@@ -549,7 +549,7 @@ export function ChatHeader({
 
             {/* Right side — never shrinks. In the narrow tier it wraps onto a
                 full second row and right-aligns its controls, keeping the
-                Thread/Agents switch, cascade control, copy action, and overflow
+                agent tree control, copy action, and overflow
                 menu reachable instead of overlapping the identity. */}
             <div
                 data-testid="chat-header-actions"

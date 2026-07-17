@@ -40,39 +40,27 @@ describe('AgentCanvas', () => {
         expect(screen.getByTestId('agent-canvas-node-root')).toBeTruthy();
     });
 
-    it('opens the inspector with the clicked sub-agent details and highlights the node', () => {
-        render(<AgentCanvas root={tree([sub('explore', { name: 'map data', prompt: 'go map it', result: 'mapped ok' })])} />);
-        expect(screen.queryByTestId('agent-inspector')).toBeNull();
-        fireEvent.click(screen.getByTestId('agent-canvas-node-explore'));
-        const inspector = screen.getByTestId('agent-inspector');
-        expect(within(inspector).getByText('map data')).toBeTruthy();
-        expect(within(inspector).getByText('go map it')).toBeTruthy();
-        expect(within(inspector).getByText('mapped ok')).toBeTruthy();
-        expect(screen.getByTestId('agent-canvas-node-explore').className).toContain('sel');
-    });
-
-    it('closes the inspector when the root node is clicked', () => {
-        render(<AgentCanvas root={tree([sub('explore')])} />);
-        fireEvent.click(screen.getByTestId('agent-canvas-node-explore'));
-        expect(screen.getByTestId('agent-inspector')).toBeTruthy();
-        fireEvent.click(screen.getByTestId('agent-canvas-node-root'));
-        expect(screen.queryByTestId('agent-inspector')).toBeNull();
-    });
-
-    it('closes the inspector via the close button', () => {
-        render(<AgentCanvas root={tree([sub('explore')])} />);
-        fireEvent.click(screen.getByTestId('agent-canvas-node-explore'));
-        fireEvent.click(within(screen.getByTestId('agent-inspector')).getByLabelText('Close inspector'));
-        expect(screen.queryByTestId('agent-inspector')).toBeNull();
-    });
-
-    it('calls onOpenAgentDetail from the inspector', () => {
+    it('routes a clicked sub-agent to the shared detail view', () => {
         const onOpenAgentDetail = vi.fn();
-        render(<AgentCanvas root={tree([sub('explore')])} onOpenAgentDetail={onOpenAgentDetail} />);
+        render(<AgentCanvas root={tree([sub('explore', { name: 'map data' })])} onOpenAgentDetail={onOpenAgentDetail} />);
         fireEvent.click(screen.getByTestId('agent-canvas-node-explore'));
-        fireEvent.click(screen.getByTestId('agent-inspector-open-detail'));
         expect(onOpenAgentDetail).toHaveBeenCalledTimes(1);
         expect(onOpenAgentDetail.mock.calls[0][0]).toMatchObject({ id: 'explore' });
+        expect(screen.queryByTestId('agent-inspector')).toBeNull();
+    });
+
+    it('routes a clicked root node through the same navigation callback', () => {
+        const onOpenAgentDetail = vi.fn();
+        render(<AgentCanvas root={tree([sub('explore')])} onOpenAgentDetail={onOpenAgentDetail} />);
+        fireEvent.click(screen.getByTestId('agent-canvas-node-root'));
+        expect(onOpenAgentDetail).toHaveBeenCalledTimes(1);
+        expect(onOpenAgentDetail.mock.calls[0][0]).toMatchObject({ id: 'root', isRoot: true });
+    });
+
+    it('keeps the legend visible after node clicks', () => {
+        render(<AgentCanvas root={tree([sub('explore')])} onOpenAgentDetail={vi.fn()} />);
+        fireEvent.click(screen.getByTestId('agent-canvas-node-explore'));
+        expect(screen.getByText('drag to pan · scroll to zoom')).toBeTruthy();
     });
 
     it('renders the zoom toolbar with a percentage label', () => {

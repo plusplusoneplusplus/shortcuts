@@ -845,7 +845,7 @@ describe('ChatHeader', () => {
     });
 
     describe('700–900px split/zoom pane (medium tier)', () => {
-        it('folds References into the overflow menu (not inline) and keeps the view-toggle slot', () => {
+        it('folds References into the overflow menu (not inline) and keeps the view slot', () => {
             setTier('medium');
             mockContainerWidth.width = 800;
             render(<ChatHeader {...defaultProps({ viewToggle: <span data-testid="view-toggle-slot">VT</span> })} />);
@@ -860,7 +860,7 @@ describe('ChatHeader', () => {
             expect(menu.getAttribute('data-keys')?.split(',')).toContain('references');
             expect(menu.getAttribute('data-labels')?.split('|')).toContain('References (2)');
 
-            // The Thread/Agents view-toggle slot stays rendered in the action group.
+            // The agent navigation slot stays rendered in the action group.
             expect(screen.getByTestId('view-toggle-slot')).toBeTruthy();
         });
     });

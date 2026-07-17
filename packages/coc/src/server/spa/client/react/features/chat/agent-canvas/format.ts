@@ -1,4 +1,4 @@
-// Display formatting shared by the canvas node cards and the inspector.
+// Display formatting shared by canvas node cards and sub-agent detail metadata.
 
 /**
  * Compact human duration for run timers:

@@ -1,19 +1,18 @@
 // AgentCanvas — a pannable / zoomable spatial map of a chat's recursive
 // sub-agent runs. The orchestrator root branches left→right into its
-// sub-agents, recursively. Driven by live run status; clicking a node opens an
-// inspector with that run's details (clicking the root closes it).
+// sub-agents, recursively. Driven by live run status; clicking a node routes
+// to the shared detail/thread destination.
 //
 // Ported from the coc-chat design (agent-canvas.jsx), with pan/zoom delegated
 // to the repo's shared useZoomPan hook and the prototype's clock scrubber
 // dropped (the real app is live-streaming, not replayable).
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useZoomPan } from '../../../hooks/ui/useZoomPan';
 import { buildLayout, edgePath, spineVars, COLW, NODEW, PAD, type PositionedNode } from './layout';
 import type { AgentRunNode } from './types';
 import { AcIcons, roleIcon } from './icons';
 import { formatRunDuration } from './format';
-import { AgentInspector } from './AgentInspector';
 import './agent-canvas.css';
 
 export interface AgentCanvasProps {
@@ -21,20 +20,6 @@ export interface AgentCanvasProps {
     root: AgentRunNode;
     /** Open a run in the shared read-only sub-agent detail view. */
     onOpenAgentDetail?: (node: AgentRunNode) => void;
-}
-
-/** Depth-first lookup of a node by id within the run tree. */
-function findNode(node: AgentRunNode, id: string): AgentRunNode | null {
-    if (node.id === id) {
-        return node;
-    }
-    for (const child of node.children || []) {
-        const found = findNode(child, id);
-        if (found) {
-            return found;
-        }
-    }
-    return null;
 }
 
 // Preset zoom levels offered by the % menu (within useZoomPan's 25%–220% range).
@@ -70,9 +55,8 @@ function nodeTimeText(node: AgentRunNode, now: number): string {
     }
 }
 
-function CanvasNode({ entry, selected, onSelect, now }: {
+function CanvasNode({ entry, onSelect, now }: {
     entry: PositionedNode;
-    selected: boolean;
     onSelect?: (node: AgentRunNode) => void;
     now: number;
 }) {
@@ -87,7 +71,7 @@ function CanvasNode({ entry, selected, onSelect, now }: {
     return (
         <button
             type="button"
-            className={'cnode' + (selected ? ' sel' : '') + (isRoot ? ' root' : '')}
+            className={'cnode' + (isRoot ? ' root' : '')}
             data-status={status}
             data-testid={`agent-canvas-node-${node.id}`}
             style={{ left: entry.x + PAD, top: entry.y + PAD, ...styleVars }}
@@ -115,15 +99,6 @@ function CanvasNode({ entry, selected, onSelect, now }: {
 
 export function AgentCanvas({ root, onOpenAgentDetail }: AgentCanvasProps) {
     const layout = useMemo(() => buildLayout(root), [root]);
-
-    // Selected run drives the inspector. Resolve from the live tree so a node
-    // that disappears (e.g. tree changes) simply closes the panel.
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const selectedNode = useMemo(() => (selectedId ? findNode(root, selectedId) : null), [root, selectedId]);
-    const handleNodeClick = useCallback((node: AgentRunNode) => {
-        // The root (orchestrator) closes the inspector; a sub-agent opens it.
-        setSelectedId(node.isRoot ? null : node.id);
-    }, []);
 
     const { containerRef, state, zoomIn, zoomOut, fitToView, centerContent, zoomTo, zoomLabel } = useZoomPan({
         contentWidth: layout.worldW,
@@ -247,8 +222,7 @@ export function AgentCanvas({ root, onOpenAgentDetail }: AgentCanvasProps) {
                         key={id}
                         entry={layout.pos[id]}
                         now={now}
-                        selected={selectedId === id}
-                        onSelect={handleNodeClick}
+                        onSelect={onOpenAgentDetail}
                     />
                 ))}
             </div>
@@ -258,16 +232,6 @@ export function AgentCanvas({ root, onOpenAgentDetail }: AgentCanvasProps) {
                     <span className="ce-title">No sub-agent runs</span>
                     <span>Agents this chat spawns will appear here as a tree.</span>
                 </div>
-            )}
-
-            {selectedNode && (
-                <AgentInspector
-                    node={selectedNode}
-                    now={now}
-                    onClose={() => setSelectedId(null)}
-                    onSelectChild={(child) => setSelectedId(child.id)}
-                    onOpenAgentDetail={onOpenAgentDetail}
-                />
             )}
 
             <div className="canvas-toolbar" data-no-drag>
@@ -320,14 +284,12 @@ export function AgentCanvas({ root, onOpenAgentDetail }: AgentCanvasProps) {
                 </button>
             </div>
 
-            {!selectedNode && (
-                <div className="canvas-legend" data-no-drag>
-                    <span className="cl-item"><span className="cl-dot" data-status="running" />running</span>
-                    <span className="cl-item"><span className="cl-dot" data-status="done" />done</span>
-                    <span className="cl-item"><span className="cl-dot" data-status="queued" />queued</span>
-                    <span className="cl-hint">drag to pan · scroll to zoom</span>
-                </div>
-            )}
+            <div className="canvas-legend" data-no-drag>
+                <span className="cl-item"><span className="cl-dot" data-status="running" />running</span>
+                <span className="cl-item"><span className="cl-dot" data-status="done" />done</span>
+                <span className="cl-item"><span className="cl-dot" data-status="queued" />queued</span>
+                <span className="cl-hint">drag to pan · scroll to zoom</span>
+            </div>
         </div>
     );
 }
