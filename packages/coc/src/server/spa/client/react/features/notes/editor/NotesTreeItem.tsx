@@ -14,6 +14,8 @@ export interface NotesTreeItemProps {
     pageCount?: number;
     /** Whether this item is part of a multi-selection (highlight without left accent bar). */
     isMultiSelected?: boolean;
+    /** Whether this row is staged for a pending cut (AC-04) — dims until pasted. */
+    isCut?: boolean;
     onToggleExpand: (path: string) => void;
     onSelectPage: (path: string) => void;
     onContextMenu: (node: NoteTreeNode, x: number, y: number) => void;
@@ -51,6 +53,7 @@ export function NotesTreeItem({
     hasUpdate,
     pageCount,
     isMultiSelected,
+    isCut,
     onToggleExpand,
     onSelectPage,
     onContextMenu,
@@ -140,10 +143,12 @@ export function NotesTreeItem({
                     showInsideFolderHighlight && 'ring-1 ring-inset ring-[#0969da] bg-[#0969da]/10',
                     folder && 'font-semibold',
                     draggable && 'select-none',
+                    isCut && 'opacity-50',
                 )}
                 style={{ paddingLeft }}
                 data-testid={`notes-tree-item-${node.name}`}
                 data-node-path={node.path}
+                data-cut={isCut ? 'true' : undefined}
                 onClick={handleClick}
                 onMouseDown={handleMouseDown}
                 onContextMenu={handleContextMenu}

@@ -37,6 +37,8 @@ export interface NotesTreeProps {
     dragDrop?: NotesDragDropHandlers;
     /** Set of paths in the current multi-selection. */
     multiSelectedPaths?: Set<string>;
+    /** Paths staged for a pending cut (AC-04) — their rows dim until pasted. */
+    cutPaths?: Set<string>;
     /**
      * Drag payload for the current multi-selection (path/name/type per selected
      * row). Attached to a dragged row that is itself part of the selection so a
@@ -75,6 +77,7 @@ export function NotesTree({
     countDescendantPages,
     dragDrop,
     multiSelectedPaths,
+    cutPaths,
     selectionDragItems,
     onSelectWithModifiers,
     renamingPath,
@@ -121,6 +124,7 @@ export function NotesTree({
                             hasUpdate={hasNodeUpdate(node, isNoteUpdated)}
                             pageCount={folderCount}
                             isMultiSelected={multiSelectedPaths ? multiSelectedPaths.has(node.path) : false}
+                            isCut={cutPaths ? cutPaths.has(node.path) : false}
                             onToggleExpand={onToggleExpand}
                             onSelectPage={onSelectPage}
                             onContextMenu={onContextMenu}
@@ -156,6 +160,7 @@ export function NotesTree({
                                 countDescendantPages={countDescendantPages}
                                 dragDrop={dragDrop}
                                 multiSelectedPaths={multiSelectedPaths}
+                                cutPaths={cutPaths}
                                 selectionDragItems={selectionDragItems}
                                 onSelectWithModifiers={onSelectWithModifiers}
                                 renamingPath={renamingPath}

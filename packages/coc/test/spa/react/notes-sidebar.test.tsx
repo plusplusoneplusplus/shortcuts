@@ -29,6 +29,8 @@ const mockDeleteNode = vi.fn();
 const mockRemoveRoot = vi.fn();
 const mockCreateWithAI = vi.fn();
 const mockGetGitStatus = vi.fn().mockResolvedValue({ initialized: false });
+const mockGetContent = vi.fn();
+const mockSaveContent = vi.fn();
 const mockClipboardWriteText = vi.fn();
 const mockAddToast = vi.fn();
 
@@ -41,6 +43,8 @@ vi.mock('../../../src/server/spa/client/react/features/notes/notesApi', () => ({
         removeRoot: (...args: any[]) => mockRemoveRoot(...args),
         createWithAI: (...args: any[]) => mockCreateWithAI(...args),
         getGitStatus: (...args: any[]) => mockGetGitStatus(...args),
+        getContent: (...args: any[]) => mockGetContent(...args),
+        saveContent: (...args: any[]) => mockSaveContent(...args),
     },
 }));
 
@@ -114,6 +118,8 @@ describe('NotesSidebar', () => {
         mockDeleteNode.mockResolvedValue(undefined);
         mockRemoveRoot.mockResolvedValue({ removed: 'docs' });
         mockGetGitStatus.mockResolvedValue({ initialized: false });
+        mockGetContent.mockResolvedValue({ content: 'body', path: 'x', mtime: 0 });
+        mockSaveContent.mockResolvedValue({ path: 'x', mtime: 1 });
     });
 
     afterEach(() => {
@@ -1532,5 +1538,123 @@ describe('NotesSidebar', () => {
         await act(async () => { await new Promise(r => setTimeout(r, 100)); });
 
         expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    });
+
+    // ── Cut / Copy / Paste (AC-04) + bulk copy-paths (AC-05) ──────────────
+    describe('cut / copy / paste', () => {
+        /** Open the context menu on a row and click the item with the given label. */
+        async function clickMenuItem(row: HTMLElement, label: string) {
+            fireEvent.contextMenu(row, { clientX: 40, clientY: 40 });
+            await waitFor(() => expect(document.querySelector('[data-testid="context-menu"]')).toBeTruthy());
+            const menu = document.querySelector('[data-testid="context-menu"]')!;
+            const item = Array.from(menu.querySelectorAll('[role="menuitem"]')).find(i => i.textContent === label) as HTMLElement;
+            expect(item).toBeTruthy();
+            await act(async () => { fireEvent.click(item); });
+        }
+
+        it('cut → paste moves the row via renameNode and clears the clipboard', async () => {
+            const onNoteRenamed = vi.fn();
+            const { findByTestId } = renderSidebar(null, vi.fn(), { onNoteRenamed });
+
+            // Expand Notebook1 and reset selection with a plain page click.
+            fireEvent.click(await findByTestId('notes-tree-item-Notebook1'));
+            const topPage = await findByTestId('notes-tree-item-TopPage');
+            fireEvent.click(topPage);
+
+            // Cut TopPage → it dims (data-cut) until pasted.
+            await clickMenuItem(topPage, 'Cut');
+            await waitFor(() => expect(topPage.getAttribute('data-cut')).toBe('true'));
+
+            // Paste into Notebook2.
+            const notebook2 = await findByTestId('notes-tree-item-Notebook2');
+            await clickMenuItem(notebook2, 'Paste');
+
+            await waitFor(() => expect(mockRenameNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage', 'Notebook2/TopPage', undefined));
+            expect(onNoteRenamed).toHaveBeenCalled();
+
+            // Clipboard cleared → the pending-cut affordance is gone.
+            await waitFor(() => {
+                const row = document.querySelector('[data-node-path="Notebook1/TopPage"]');
+                expect(row?.getAttribute('data-cut')).toBeNull();
+            });
+        });
+
+        it('copy → paste duplicates with a de-duped "copy" name (read + create)', async () => {
+            mockGetContent.mockResolvedValue({ content: 'hello world', path: 'Notebook1/TopPage', mtime: 5 });
+            const { findByTestId } = renderSidebar();
+
+            fireEvent.click(await findByTestId('notes-tree-item-Notebook1'));
+            const topPage = await findByTestId('notes-tree-item-TopPage');
+            fireEvent.click(topPage);
+
+            // Copy TopPage, then paste back into Notebook1 (which already holds it).
+            await clickMenuItem(topPage, 'Copy');
+            const notebook1 = await findByTestId('notes-tree-item-Notebook1');
+            await clickMenuItem(notebook1, 'Paste');
+
+            await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage', undefined));
+            expect(mockCreateNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage copy', 'page', undefined);
+            expect(mockSaveContent).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage copy', 'hello world', undefined, undefined);
+        });
+
+        it('keyboard Ctrl+X then Ctrl+V moves the selection', async () => {
+            const { findByTestId } = renderSidebar();
+            const treeArea = await findByTestId('notes-tree-area');
+
+            fireEvent.click(await findByTestId('notes-tree-item-Notebook1'));
+            const topPage = await findByTestId('notes-tree-item-TopPage');
+            // Reset the folder-select from the expand click, then Ctrl+click to
+            // build a 1-row selection whose anchor drives the shortcut.
+            fireEvent.click(topPage);
+            fireEvent.click(topPage, { ctrlKey: true });
+
+            // Cut via keyboard → row dims.
+            fireEvent.keyDown(treeArea, { key: 'x', ctrlKey: true });
+            await waitFor(() => expect(topPage.getAttribute('data-cut')).toBe('true'));
+
+            // Plain-click Notebook2 to make it the paste target, then Ctrl+V.
+            fireEvent.click(await findByTestId('notes-tree-item-Notebook2'));
+            await act(async () => { fireEvent.keyDown(treeArea, { key: 'v', ctrlKey: true }); });
+
+            await waitFor(() => expect(mockRenameNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage', 'Notebook2/TopPage', undefined));
+        });
+
+        it('keyboard Ctrl+C then Ctrl+V duplicates the row with a copy name', async () => {
+            mockGetContent.mockResolvedValue({ content: 'kbd body', path: 'Notebook1/TopPage', mtime: 1 });
+            const { findByTestId } = renderSidebar();
+            const treeArea = await findByTestId('notes-tree-area');
+
+            fireEvent.click(await findByTestId('notes-tree-item-Notebook1'));
+            const topPage = await findByTestId('notes-tree-item-TopPage');
+            // Reset the folder-select, then Ctrl+click so anchor = TopPage and
+            // the selection is exactly {TopPage}; paste targets its folder.
+            fireEvent.click(topPage);
+            fireEvent.click(topPage, { ctrlKey: true });
+
+            fireEvent.keyDown(treeArea, { key: 'c', ctrlKey: true });
+            await act(async () => { fireEvent.keyDown(treeArea, { key: 'v', ctrlKey: true }); });
+
+            await waitFor(() => expect(mockCreateNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage copy', 'page', undefined));
+            expect(mockSaveContent).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage copy', 'kbd body', undefined, undefined);
+        });
+
+        it('multi-selection context menu copies all selected paths, newline-joined (AC-05)', async () => {
+            const { findByTestId } = renderSidebar();
+
+            fireEvent.click(await findByTestId('notes-tree-item-Notebook1'));
+            // Reset the folder-select from the expand click, then build a
+            // folder+page selection spanning Section1 and TopPage.
+            fireEvent.click(await findByTestId('notes-tree-item-TopPage'));
+            fireEvent.click(await findByTestId('notes-tree-item-Section1'), { ctrlKey: true });
+            const topPage = await findByTestId('notes-tree-item-TopPage');
+            fireEvent.click(topPage, { ctrlKey: true });
+
+            const badge = await findByTestId('notes-selection-badge');
+            expect(badge.textContent).toContain('2 selected');
+
+            await clickMenuItem(topPage, 'Copy Paths');
+
+            expect(mockClipboardWriteText).toHaveBeenCalledWith('Notebook1/Section1\nNotebook1/TopPage');
+        });
     });
 });

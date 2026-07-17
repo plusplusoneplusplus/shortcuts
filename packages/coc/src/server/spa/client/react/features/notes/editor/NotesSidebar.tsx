@@ -10,6 +10,7 @@ import { useNotesContextMenu } from './useNotesContextMenu';
 import { useNotesDragDrop, getNotesParentPath, getDraggedItems, planBulkMove, type NoteDragItem, type DropPosition } from '../hooks/useNotesDragDrop';
 import { useNoteSeenState } from '../hooks/useNoteSeenState';
 import { useNotesSelection } from '../hooks/useNotesSelection';
+import { useNotesClipboard, planClipboardPaste } from '../hooks/useNotesClipboard';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { notesApi } from '../notesApi';
 import { useGlobalToast } from '../../../contexts/ToastContext';
@@ -28,6 +29,31 @@ function getAncestorPaths(notePath: string): string[] {
         ancestors.push(segments.slice(0, i).join('/'));
     }
     return ancestors;
+}
+
+/** Find a node anywhere in the tree by its path (null when absent). */
+function findNodeByPath(nodes: NoteTreeNode[], path: string): NoteTreeNode | null {
+    for (const n of nodes) {
+        if (n.path === path) return n;
+        if (n.children) {
+            const found = findNodeByPath(n.children, path);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+/** Names of the direct children of `parentPath` (`''` = tree root). */
+function namesInFolder(tree: NoteTreeNode[], parentPath: string): Set<string> {
+    const children = parentPath === '' ? tree : findNodeByPath(tree, parentPath)?.children ?? [];
+    return new Set(children.map(c => c.name));
+}
+
+/** The folder a paste lands in for a reference row: the folder itself, or a page's parent. */
+function pasteParentForNode(node: NoteTreeNode | null): string {
+    if (!node || node.path === '') return '';
+    const isFolder = node.type === 'notebook' || node.type === 'section';
+    return isFolder ? node.path : getNotesParentPath(node.path);
 }
 
 /** Recursively count `page` nodes inside the subtree (excluding the root node itself). */
@@ -175,7 +201,8 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId, rootParam);
     const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
-    const { selectedPaths: multiSelectedPaths, handleSelect: handleMultiSelect, clearSelection } = useNotesSelection();
+    const { selectedPaths: multiSelectedPaths, anchorPath, handleSelect: handleMultiSelect, clearSelection } = useNotesSelection();
+    const { clipboard, cutPaths, setCut, setCopy, clearClipboard } = useNotesClipboard();
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     const [renamingPath, setRenamingPath] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -466,6 +493,116 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         onRestoreEditorFocus?.();
     }, [closeContextMenu, onRestoreEditorFocus]);
 
+    /** A top-level system folder (e.g. managed root) — cannot be moved/copied/cut. */
+    const isSysFolderItem = useCallback(
+        (item: { type: NoteTreeNode['type']; name: string; path: string }) =>
+            item.type === 'notebook' && systemFolders.includes(item.name) && !getNotesParentPath(item.path),
+        [systemFolders],
+    );
+
+    // ── Cut / Copy / Paste (AC-04) ─────────────────────────────────────────
+    // The clipboard captures a snapshot of the selected rows. Cut dims them
+    // until pasted (a move); Copy duplicates them with collision-safe naming.
+
+    /** Collect {path,name,type} for a set of paths, in tree order. */
+    const collectItemsForPaths = useCallback((paths: Iterable<string>): NoteDragItem[] => {
+        if (!tree) return [];
+        const wanted = new Set(paths);
+        const items: NoteDragItem[] = [];
+        const walk = (nodes: NoteTreeNode[]) => {
+            for (const n of nodes) {
+                if (wanted.has(n.path)) items.push({ path: n.path, name: n.name, type: n.type });
+                if (n.children) walk(n.children);
+            }
+        };
+        walk(tree);
+        return items;
+    }, [tree]);
+
+    /** Paths the current cut/copy/keyboard action operates on: the multi-selection, else the active row. */
+    const currentSelectionPaths = useCallback((): string[] => {
+        if (multiSelectedPaths.size > 0) return [...multiSelectedPaths];
+        return selectedPath ? [selectedPath] : [];
+    }, [multiSelectedPaths, selectedPath]);
+
+    const handleCutPaths = useCallback((paths: Iterable<string>) => {
+        closeContextMenu();
+        setCut(collectItemsForPaths(paths));
+    }, [closeContextMenu, setCut, collectItemsForPaths]);
+
+    const handleCopyPaths = useCallback((paths: Iterable<string>) => {
+        closeContextMenu();
+        setCopy(collectItemsForPaths(paths));
+    }, [closeContextMenu, setCopy, collectItemsForPaths]);
+
+    /** Recursively duplicate a source node (page content or a folder subtree) to `toPath`. */
+    const copyNodeRecursive = useCallback(async (source: NoteTreeNode, toPath: string): Promise<void> => {
+        if (source.type === 'page') {
+            const { content } = await notesApi.getContent(workspaceId, source.path, rootParam);
+            await notesApi.createNode(workspaceId, toPath, 'page', rootParam);
+            await notesApi.saveContent(workspaceId, toPath, content, undefined, rootParam);
+        } else {
+            await notesApi.createNode(workspaceId, toPath, source.type, rootParam);
+            for (const child of source.children ?? []) {
+                await copyNodeRecursive(child, `${toPath}/${child.name}`);
+            }
+        }
+    }, [workspaceId, rootParam]);
+
+    /** Paste the clipboard into the folder of `referenceNode` (or root). */
+    const handlePaste = useCallback(async (referenceNode: NoteTreeNode | null) => {
+        closeContextMenu();
+        if (!clipboard || !tree) return;
+        const destParent = pasteParentForNode(referenceNode);
+        const { moves, copies } = planClipboardPaste(
+            clipboard,
+            destParent,
+            namesInFolder(tree, destParent),
+            isSysFolderItem,
+        );
+
+        if (clipboard.mode === 'cut') {
+            for (const move of moves) {
+                try {
+                    const renamed = await renameNode(move.from, move.to);
+                    onNoteRenamed?.(renamed.oldPath, renamed.newPath);
+                } catch {
+                    // Move failed — tree already refreshed by renameNode
+                }
+            }
+            clearClipboard();
+        } else {
+            let created = false;
+            for (const copy of copies) {
+                const source = findNodeByPath(tree, copy.from);
+                if (!source) continue;
+                try {
+                    await copyNodeRecursive(source, copy.toPath);
+                    onNoteCreated?.(copy.toPath);
+                    created = true;
+                } catch {
+                    // Copy failed — refresh below still reconciles the tree
+                }
+            }
+            if (created) await refresh();
+            // Copy clipboard persists so it can be pasted again.
+        }
+        clearSelection();
+    }, [clipboard, tree, isSysFolderItem, renameNode, onNoteRenamed, clearClipboard, copyNodeRecursive, onNoteCreated, refresh, clearSelection, closeContextMenu]);
+
+    /** Copy path / link / absolute path for every selected row, newline-joined (AC-05). */
+    const copySelectionPaths = useCallback((kind: 'path' | 'link' | 'absolute') => {
+        const items = collectItemsForPaths(multiSelectedPaths);
+        const text = items.map(it => {
+            if (kind === 'path') return it.path;
+            if (kind === 'link') {
+                return it.type === 'page' ? `[[note:${it.path}]]` : `[[note:${it.path}/]]`;
+            }
+            return notesRoot ? `${notesRoot}/${it.path}` : it.path;
+        }).join('\n');
+        copyTextAndRestoreFocus(text);
+    }, [collectItemsForPaths, multiSelectedPaths, notesRoot, copyTextAndRestoreFocus]);
+
     /**
      * Handle a drop in the notes tree.
      *
@@ -483,10 +620,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         if (!tree) return;
 
         // System folders cannot be moved or reordered
-        const isSysFolder = (item: NoteDragItem) =>
-            item.type === 'notebook' &&
-            systemFolders.includes(item.name) &&
-            !getNotesParentPath(item.path);
+        const isSysFolder = isSysFolderItem;
 
         // ── Bulk move: the drag carries a whole multi-selection ────────────
         const draggedItems = getDraggedItems(dragged);
@@ -586,7 +720,33 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 // Rename failed
             }
         }
-    }, [tree, systemFolders, renameNode, reorderNodes, onNoteRenamed, clearSelection]);
+    }, [tree, isSysFolderItem, renameNode, reorderNodes, onNoteRenamed, clearSelection]);
+
+    /** Keyboard shortcuts on the tree area: Ctrl/Cmd+X cut, +C copy, +V paste. */
+    const handleTreeKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        const key = e.key.toLowerCase();
+        if (key !== 'x' && key !== 'c' && key !== 'v') return;
+        // Never hijack typing in the search box, inline rename, or a text field.
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+        if (dialog || renamingPath) return;
+
+        if (key === 'v') {
+            if (!clipboard) return;
+            e.preventDefault();
+            const refPath = anchorPath ?? selectedPath ?? '';
+            const refNode = refPath && tree ? findNodeByPath(tree, refPath) : null;
+            void handlePaste(refNode);
+            return;
+        }
+
+        const paths = currentSelectionPaths();
+        if (paths.length === 0) return;
+        e.preventDefault();
+        if (key === 'c') handleCopyPaths(paths);
+        else handleCutPaths(paths);
+    }, [dialog, renamingPath, clipboard, anchorPath, selectedPath, tree, handlePaste, currentSelectionPaths, handleCopyPaths, handleCutPaths]);
 
     const buildContextMenuItems = (): ContextMenuItem[] => {
         if (!ctxMenu) return [];
@@ -594,9 +754,22 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
 
         // Multi-selection context menu: show bulk actions when right-clicking a selected item
         if (multiSelectedPaths.size > 1 && multiSelectedPaths.has(node.path)) {
-            return [
-                { label: `Delete Selected (${multiSelectedPaths.size})`, onClick: () => void handleBulkDelete() },
+            const items: ContextMenuItem[] = [
+                { label: 'Cut', onClick: () => handleCutPaths(multiSelectedPaths) },
+                { label: 'Copy', onClick: () => handleCopyPaths(multiSelectedPaths) },
             ];
+            if (clipboard) {
+                items.push({ label: 'Paste', onClick: () => void handlePaste(node) });
+            }
+            items.push(
+                { separator: true, label: '', onClick: () => {} },
+                { label: 'Copy Paths', onClick: () => copySelectionPaths('path') },
+                { label: 'Copy Links', onClick: () => copySelectionPaths('link') },
+                { label: 'Copy Absolute Paths', onClick: () => copySelectionPaths('absolute') },
+                { separator: true, label: '', onClick: () => {} },
+                { label: `Delete Selected (${multiSelectedPaths.size})`, onClick: () => void handleBulkDelete() },
+            );
+            return items;
         }
 
         // Root-level context menu (right-click on empty space)
@@ -615,10 +788,27 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 { label: 'Copy Path', onClick: () => copyTextAndRestoreFocus(node.path) },
                 { label: 'Copy Link', onClick: () => copyTextAndRestoreFocus(`[[note:${node.path}/]]`) },
                 { label: 'Copy Absolute Path', onClick: () => copyTextAndRestoreFocus(notesRoot ? notesRoot + '/' + node.path : null) },
+            ];
+            // Cut/Copy the folder subtree; Paste into it. System folders can't be
+            // cut/copied (managed roots), but you can still paste rows into them.
+            const fileOps: ContextMenuItem[] = [];
+            if (!isSys) {
+                fileOps.push(
+                    { label: 'Cut', onClick: () => handleCutPaths([node.path]) },
+                    { label: 'Copy', onClick: () => handleCopyPaths([node.path]) },
+                );
+            }
+            if (clipboard) {
+                fileOps.push({ label: 'Paste', onClick: () => void handlePaste(node) });
+            }
+            if (fileOps.length > 0) {
+                items.push({ separator: true, label: '', onClick: () => {} }, ...fileOps);
+            }
+            items.push(
                 { separator: true, label: '', onClick: () => {} },
                 { label: 'Create Page', onClick: () => openDialog('create-page', node) },
                 { label: 'Create Section', onClick: () => openDialog('create-section', node) },
-            ];
+            );
             if (!isSys) {
                 items.push(
                     { separator: true, label: '', onClick: () => {} },
@@ -632,6 +822,10 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             { label: 'Copy Path', onClick: () => copyTextAndRestoreFocus(node.path) },
             { label: 'Copy Link', onClick: () => copyTextAndRestoreFocus(`[[note:${node.path}]]`) },
             { label: 'Copy Absolute Path', onClick: () => copyTextAndRestoreFocus(notesRoot ? notesRoot + '/' + node.path : null) },
+            { separator: true, label: '', onClick: () => {} },
+            { label: 'Cut', onClick: () => handleCutPaths([node.path]) },
+            { label: 'Copy', onClick: () => handleCopyPaths([node.path]) },
+            ...(clipboard ? [{ label: 'Paste', onClick: () => void handlePaste(node) }] : []),
             { separator: true, label: '', onClick: () => {} },
             { label: 'Rename', onClick: () => handleStartInlineRename(node) },
             { label: 'Delete', onClick: () => openDialog('delete', node) },
@@ -1048,7 +1242,14 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             </div>
 
             {/* Tree area */}
-            <div className="flex-1 overflow-y-auto py-1" data-testid="notes-tree-area" onContextMenu={handleBackgroundContextMenu}>
+            <div
+                ref={treeAreaRef}
+                className="flex-1 overflow-y-auto py-1 outline-none"
+                data-testid="notes-tree-area"
+                tabIndex={-1}
+                onKeyDown={handleTreeKeyDown}
+                onContextMenu={handleBackgroundContextMenu}
+            >
                 {loading && (
                     <div className="flex items-center justify-center py-6" data-testid="notes-loading">
                         <Spinner size="md" />
@@ -1080,6 +1281,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                         visiblePaths={filter?.visible ?? null}
                         countDescendantPages={countDescendantPages}
                         multiSelectedPaths={multiSelectedPaths}
+                        cutPaths={cutPaths}
                         selectionDragItems={selectionDragItems}
                         onSelectWithModifiers={handleSelectWithModifiers}
                         renamingPath={renamingPath}
