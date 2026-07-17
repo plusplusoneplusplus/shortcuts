@@ -7,11 +7,12 @@
  * is an injected mock, so this exercises the wiring only.
  *
  * Covers: per-type dispatch (markdown → B→C→A wiring, code → A, excalidraw →
- * D→A); download trigger with the `<slug(title)>.html` filename and the built
- * html; warning aggregation across layers; extension → not exported (no
- * download); a caught failure → `{ ok: false, error }`; and the `refToUrl` /
- * `htmlExportFilename` helpers. Plus a mini portability check on the markdown
- * output (no proxy URL / local path survives).
+ * D→A, extension → D-ext→A wiring with a frozen state + sandboxed offline
+ * iframe); download trigger with the `<slug(title)>.html` filename and the built
+ * html; warning aggregation across layers; a missing extension UI / a caught
+ * failure → `{ ok: false, error }`; and the `refToUrl` / `htmlExportFilename`
+ * helpers. Plus mini portability checks (no proxy URL / local path / external
+ * script survives).
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -161,7 +162,98 @@ describe('exportCanvasAsHtml — excalidraw', () => {
     });
 });
 
-describe('exportCanvasAsHtml — download + extension + failure', () => {
+/** An extension canvas: `content` is the JSON state; `extension.uiHtml` is the UI doc. */
+function extCanvas(over: Partial<ExportableCanvas> = {}): ExportableCanvas {
+    return {
+        title: 'Widget',
+        type: 'extension',
+        content: '{"count":2}',
+        workspaceId: 'ws1',
+        extension: {
+            uiHtml: '<div id="app">hi</div>\n<script>CanvasHost.onState(function (s) {});</script>',
+            revision: 3,
+        },
+        ...over,
+    };
+}
+
+describe('exportCanvasAsHtml — extension', () => {
+    it('wires D-ext→A: hosts the UI in a sandboxed offline iframe with the frozen state, embeds the state as source, downloads', async () => {
+        const triggerDownload = vi.fn();
+        // None of the markdown/asset/mermaid/excalidraw deps should be touched.
+        const renderMarkdown = vi.fn(() => '');
+        const exportToSvg = vi.fn();
+        const fetchSpy = vi.fn(async () => pngResp());
+        const deps = makeDeps({ triggerDownload, renderMarkdown, exportToSvg, fetch: fetchSpy });
+
+        const result = await exportCanvasAsHtml(extCanvas(), deps);
+
+        expect(result.ok).toBe(true);
+        const html = result.html ?? '';
+        // Sandboxed iframe hosting the extension UI — allow-scripts ONLY.
+        expect(html).toContain('sandbox="allow-scripts"');
+        expect(html).not.toContain('allow-same-origin');
+        // Offline host is present; capability code is never shipped.
+        expect(html).toContain('window.CanvasHost');
+        expect(html).not.toContain('capabilitiesJs');
+        // Frozen state embedded in the iframe srcdoc (attribute-escaped)…
+        expect(html).toContain('&quot;count&quot;');
+        // …and as the recoverable JSON source (Layer A, pretty-printed).
+        expect(html).toContain('<script type="application/json" id="source">');
+        expect(html).toContain('"count": 2');
+        // Download uses the slug filename.
+        expect(triggerDownload).toHaveBeenCalledTimes(1);
+        expect(triggerDownload.mock.calls[0][0]).toBe('widget.html');
+        // The other renderers were never invoked for an extension canvas.
+        expect(renderMarkdown).not.toHaveBeenCalled();
+        expect(exportToSvg).not.toHaveBeenCalled();
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('fails gracefully with no download when the extension UI document is missing', async () => {
+        const triggerDownload = vi.fn();
+        const deps = makeDeps({ triggerDownload });
+        const result = await exportCanvasAsHtml(
+            { title: 'Widget', type: 'extension', content: '{}', workspaceId: 'ws1' },
+            deps,
+        );
+        expect(result.ok).toBe(false);
+        expect(result.error).toMatch(/unavailable|extension/i);
+        expect(triggerDownload).not.toHaveBeenCalled();
+    });
+
+    it('malformed state content → still exports with an empty state and a warning', async () => {
+        const triggerDownload = vi.fn();
+        const deps = makeDeps({ triggerDownload });
+        const result = await exportCanvasAsHtml(extCanvas({ content: '{not json' }), deps);
+
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => /not valid json/i.test(w))).toBe(true);
+        // Recoverable source degraded to an empty object, not the broken input.
+        expect(result.html).toContain('<script type="application/json" id="source">{}</script>');
+        expect(result.html).not.toContain('{not json');
+        expect(triggerDownload).toHaveBeenCalledTimes(1);
+    });
+
+    it('portability: no /api route, external script, or same-origin sandbox survives', async () => {
+        const deps = makeDeps();
+        const { html = '' } = await exportCanvasAsHtml(
+            extCanvas({
+                extension: {
+                    uiHtml: '<script src="https://cdn.example.com/app.js"></script><div>x</div>',
+                },
+            }),
+            deps,
+        );
+        expect(html).not.toContain('/api/');
+        expect(html).not.toContain('allow-same-origin');
+        // The external <script src> was neutralized, not shipped.
+        expect(html).not.toMatch(/<script[^>]+src=/i);
+        expect(html).not.toContain('cdn.example.com');
+    });
+});
+
+describe('exportCanvasAsHtml — download + failure', () => {
     it('triggers the download with the slugified filename and the built html', async () => {
         const triggerDownload = vi.fn();
         const deps = makeDeps({ renderMarkdown: () => '<p>hi</p>', triggerDownload });
@@ -170,18 +262,6 @@ describe('exportCanvasAsHtml — download + extension + failure', () => {
         const [filename, html] = triggerDownload.mock.calls[0];
         expect(filename).toBe('my-canvas.html');
         expect(html).toBe(result.html);
-    });
-
-    it('does not export an extension canvas (no download, ok=false with a reason)', async () => {
-        const triggerDownload = vi.fn();
-        const deps = makeDeps({ triggerDownload });
-        const result = await exportCanvasAsHtml(
-            { title: 'Widget', type: 'extension', content: '{}', workspaceId: 'ws1' },
-            deps,
-        );
-        expect(result.ok).toBe(false);
-        expect(result.error).toMatch(/view-only|coming soon/i);
-        expect(triggerDownload).not.toHaveBeenCalled();
     });
 
     it('returns { ok: false, error } and does not download when a layer throws', async () => {

@@ -7,8 +7,9 @@
  *     bake code highlighting → (A: serialize).
  *   - code     → (A: serialize; Layer A highlights the source itself).
  *   - excalidraw → (D: rasterize scene to SVG) → (A: serialize).
- *   - extension → not exportable in Phase 1 (Layer F shows a view-only note);
- *     returns `{ ok: false }` with a reason rather than throwing.
+ *   - extension → (D-ext: freeze state + host UI in a sandboxed offline iframe)
+ *     → (A: serialize, body shipped verbatim). Needs the separately-fetched
+ *     `canvas.extension` UI; without it the export fails with `{ ok: false }`.
  *
  * Every browser-only capability (markdown render, `fetch`, `mermaid.render`,
  * excalidraw `exportToSvg`, and the DOM download) is INJECTED via `deps`, so the
@@ -29,7 +30,23 @@ import type { MermaidRenderApi } from './mermaid';
 import { excalidrawToInlineSvg } from './excalidraw';
 import type { ExcalidrawExportToSvgFn } from './excalidraw';
 import { highlightMarkdownCodeBlocks } from './codeHighlight';
+import { buildExtensionExportBody } from './extension';
 import type { CanvasHtmlExportType } from './types';
+
+/**
+ * The extension UI document an `extension` canvas needs to export. It is stored
+ * and fetched separately from the canvas `content` (which holds the JSON state),
+ * so the caller retrieves it (clone-aware) and passes it in here.
+ */
+export interface ExtensionExportSource {
+    /**
+     * The extension's self-contained UI HTML (`CanvasExtension.uiHtml`). NEVER
+     * `capabilitiesJs` — capability code stays server-only and is never shipped.
+     */
+    uiHtml: string;
+    /** Current canvas revision, surfaced to the extension via `onState` meta. */
+    revision?: number;
+}
 
 /** The minimal canvas shape the exporter needs (the full `Canvas` satisfies it). */
 export interface ExportableCanvas {
@@ -37,12 +54,21 @@ export interface ExportableCanvas {
     title: string;
     /** Canvas type; drives the render pipeline. */
     type: CanvasHtmlExportType;
-    /** Raw canvas source (markdown text, code, or excalidraw scene JSON). */
+    /**
+     * Raw canvas source: markdown text, code, excalidraw scene JSON, or — for an
+     * `extension` canvas — the current JSON state string.
+     */
     content: string;
     /** Language hint for `code` canvases. */
     language?: string;
     /** Workspace id — used to resolve local image proxy URLs. */
     workspaceId: string;
+    /**
+     * For `extension` canvases only: the separately-fetched UI document the
+     * offline snapshot renders. Absent for other types; when absent for an
+     * extension canvas the export fails gracefully with a clear reason.
+     */
+    extension?: ExtensionExportSource;
 }
 
 /** Injected side-effecting dependencies. Keeps Layer E pure of DOM/library imports. */
@@ -186,6 +212,42 @@ async function buildExcalidrawDocument(
 }
 
 /**
+ * Build the extension export document: freeze the current JSON state and host
+ * the extension UI in a sandboxed, offline iframe (Layer D-ext), then serialize
+ * it (Layer A, which ships the extension body verbatim — no image rewrite). The
+ * frozen state doubles as the recoverable `<script id="source">` payload.
+ *
+ * Requires `canvas.extension` — the separately-fetched UI document. When it is
+ * missing (the caller could not retrieve it), this throws so the orchestrator's
+ * catch returns `{ ok: false, error }` and NO partial/broken file is downloaded.
+ */
+function buildExtensionDocument(canvas: ExportableCanvas, warnings: string[]): string {
+    const source = canvas.extension;
+    if (!source || typeof source.uiHtml !== 'string') {
+        throw new Error(
+            'Extension UI is unavailable — cannot export this canvas as a view-only snapshot.',
+        );
+    }
+    const body = buildExtensionExportBody({
+        uiHtml: source.uiHtml,
+        stateContent: canvas.content,
+        title: canvas.title,
+        revision: source.revision,
+    });
+    warnings.push(...body.warnings);
+
+    const built = buildCanvasHtmlDocument({
+        type: 'extension',
+        title: canvas.title,
+        bodyHtml: body.bodyHtml,
+        // The frozen state (not the raw content) is the recoverable source.
+        sourceText: body.stateJson,
+    });
+    warnings.push(...built.warnings);
+    return built.html;
+}
+
+/**
  * Export a canvas to a self-contained, portable HTML file and trigger its
  * download. Returns `{ ok, html, filename, warnings }` on success, or
  * `{ ok: false, error, warnings }` for an unsupported type or a caught failure.
@@ -208,11 +270,8 @@ export async function exportCanvasAsHtml(
                 html = await buildExcalidrawDocument(canvas, deps, warnings);
                 break;
             case 'extension':
-                return {
-                    ok: false,
-                    warnings,
-                    error: 'Extension canvases export as a view-only snapshot — coming soon.',
-                };
+                html = buildExtensionDocument(canvas, warnings);
+                break;
             default:
                 return { ok: false, warnings, error: `Unsupported canvas type "${String(canvas.type)}".` };
         }
