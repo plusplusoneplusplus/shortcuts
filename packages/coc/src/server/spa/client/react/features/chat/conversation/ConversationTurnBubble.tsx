@@ -2,11 +2,12 @@
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
 import React, { useState, useMemo, useCallback } from 'react';
-import { cn, ImageGallery, Spinner } from '../../../ui';
+import { cn, ImageGallery, ImageLightbox, Spinner } from '../../../ui';
 import type { ClientConversationTurn, ClientTokenUsage } from '../../../types/dashboard';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { MarkdownView } from '../../../shared/MarkdownView';
+import { useInlineImageLightbox } from '../../../shared/useInlineImageLightbox';
 import { ToolCallView } from './tool-calls/ToolCallView';
 import { JsonResponseView } from '../../../ui/JsonResponseView';
 import { isJsonResponse } from '../../../ui/json-utils';
@@ -1340,6 +1341,13 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
     const [fetchedImages, setFetchedImages] = useState<string[]>([]);
 
+    // Click-to-lightbox for user-message inline images. Assistant content wires
+    // this through MarkdownView; user content is injected via
+    // dangerouslySetInnerHTML and bypasses MarkdownView, so it gets the same
+    // shared handler here. Reuses the exact img.chat-inline-image detection so
+    // both paths open the identical zoomable ImageLightbox.
+    const { lightboxSrc, openFromTarget, closeLightbox } = useInlineImageLightbox();
+
     const hasInlineImages = turn.images && turn.images.length > 0;
     const needsLazyImages = isUser && !hasInlineImages && !!taskId && (turn.imagesCount ?? 0) > 0;
 
@@ -1858,6 +1866,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     ))}
                     {isUser && !showRaw && visibleUserContentText.trim() && (
                         <div className="whitespace-pre-wrap break-words text-[13px] text-[#1e1e1e] dark:text-[#cccccc]" data-testid="user-plain-text"
+                            onClick={(e) => openFromTarget(e.target)}
                             dangerouslySetInnerHTML={{ __html: userContentHtml }}
                         />
                     )}
@@ -2025,6 +2034,10 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     Y
                 </span>
             )}
+            {/* Zoomable lightbox for inline images in the user-content path
+                (assistant content renders its own via MarkdownView). Portals to
+                document.body and renders null while closed. */}
+            <ImageLightbox src={lightboxSrc} onClose={closeLightbox} />
         </div>
     );
 }

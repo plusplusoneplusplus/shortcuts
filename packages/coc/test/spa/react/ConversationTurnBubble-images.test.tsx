@@ -89,6 +89,48 @@ describe('ConversationTurnBubble — user image gallery', () => {
     });
 });
 
+describe('ConversationTurnBubble — user image lightbox (AC-03)', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        mockQueueImages.mockReset();
+    });
+
+    it('opens the zoomable lightbox when a user gallery image is clicked', () => {
+        render(<ConversationTurnBubble turn={makeTurn({ images: ['data:image/png;base64,aaaa'] })} />);
+        fireEvent.click(screen.getAllByTestId('image-gallery-item')[0]);
+
+        // The real user-message image path (pasted images → ImageGallery) opens
+        // the shared ImageLightbox; its AC-01 zoom controls confirm the enhanced
+        // (zoomable) lightbox rather than a plain overlay.
+        expect(screen.getByTestId('image-lightbox')).toBeTruthy();
+        expect(screen.getByTestId('lightbox-zoom-in')).toBeTruthy();
+        expect(screen.getByTestId('lightbox-zoom-out')).toBeTruthy();
+        expect(screen.getByTestId('lightbox-reset')).toBeTruthy();
+    });
+
+    it('opens the lightbox when an inline image in the user-content path is clicked', () => {
+        render(<ConversationTurnBubble turn={makeTurn({ content: 'see image' })} />);
+        const container = screen.getByTestId('user-plain-text');
+        // The user-content path escapes HTML (plain/linkified text), so inject the
+        // exact markup the image() renderer emits to exercise the delegated handler
+        // wired onto this dangerouslySetInnerHTML container.
+        container.insertAdjacentHTML('beforeend', '<img class="chat-inline-image" src="https://example.com/a.png" alt="a">');
+        fireEvent.click(container.querySelector('img.chat-inline-image')!);
+
+        const lightbox = screen.getByTestId('image-lightbox');
+        expect(lightbox.querySelector('img')?.getAttribute('src')).toBe('https://example.com/a.png');
+    });
+
+    it('ignores a broken inline image (chat-inline-image--error) in the user-content path', () => {
+        render(<ConversationTurnBubble turn={makeTurn({ content: 'see image' })} />);
+        const container = screen.getByTestId('user-plain-text');
+        container.insertAdjacentHTML('beforeend', '<img class="chat-inline-image chat-inline-image--error" src="https://example.com/broken.png" alt="x">');
+        fireEvent.click(container.querySelector('img.chat-inline-image')!);
+
+        expect(screen.queryByTestId('image-lightbox')).toBeNull();
+    });
+});
+
 describe('ConversationTurnBubble — lazy image fetch', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
