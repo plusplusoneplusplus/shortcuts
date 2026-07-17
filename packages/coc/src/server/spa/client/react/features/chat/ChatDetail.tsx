@@ -57,8 +57,8 @@ import { buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { ConversationMiniMap } from './conversation/ConversationMiniMap';
-import { AgentCanvas, AgentCascadeMenu, SubAgentDetailView, ChatViewToggle, viewForAgentSelection, buildAgentRunTreeFromTurns, buildSubAgentTurns, flattenAgentLevels, findAgentNode, pathToAgent, readChatViewFromHash, applyChatViewToHash, readAgentFromHash, applyAgentToHash } from './agent-canvas';
-import type { AgentRunNode, ChatView } from './agent-canvas';
+import { AgentCanvas, AgentTreeMenu, SubAgentDetailView, buildAgentRunTreeFromTurns, buildSubAgentTurns, findAgentNode, pathToAgent, readAgentNavFromHash, applyAgentNavToHash } from './agent-canvas';
+import type { AgentNav, AgentRunNode } from './agent-canvas';
 import { useConversationSelection } from './hooks/useConversationSelection';
 import { snapshotConversation } from '../../utils/snapshot-copy-utils';
 import { copyHtmlToClipboard, copyToClipboard } from '../../utils/format';
@@ -231,14 +231,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // before its restore runs.
     const openCanvasMemoryRef = useRef<Map<string, OpenCanvasMemory>>(new Map());
     const openCanvasDescriptorRef = useRef<OpenCanvasMemory>(null);
-    // Thread vs. Agents (spatial sub-agent run tree) view. In the main inline
-    // context the view is deep-linked via a `?view=agents` hash param, so a
-    // shared/bookmarked URL reopens straight into the canvas.
+    // Thread / agent-detail / map navigation. In the main inline context this
+    // is deep-linked through legacy-compatible `?view=agents` and `?agent=<id>`
+    // hash params.
     const hashViewSync = variant === 'inline' && !standalone;
-    const [view, setView] = useState<ChatView>(() => (hashViewSync ? (readChatViewFromHash(window.location.hash) ?? 'thread') : 'thread'));
-    // Selected sub-agent for the in-place read-only detail view. Rides the chat
-    // hash as `?agent=<id>` alongside `?view=agents`.
-    const [selectedAgentId, setSelectedAgentId] = useState<string | null>(() => (hashViewSync ? readAgentFromHash(window.location.hash) : null));
+    const [nav, setNav] = useState<AgentNav>(() => (hashViewSync ? readAgentNavFromHash(window.location.hash) : { kind: 'thread' }));
     const [noteEdits, setNoteEdits] = useState<Array<{
         editId: string; notePath: string; preEditContent: string;
         postEditContent?: string; timestamp: string; turnIndex: number; tooLarge?: boolean;
@@ -540,25 +537,23 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         status: effectiveStatus,
     }), [turns, task?.customTitle, task?.title, task?.displayName, title, effectiveStatus]);
 
-    // The Agents view only makes sense once this chat has actually spawned
-    // sub-agents. With none, hide the Thread/Agents toggle and pin the thread,
-    // so a stale `?view=agents` deep-link can't strand the user on an empty
-    // canvas with no toggle to escape. Keeping `view` state untouched means a
-    // deep-link "waits": the canvas appears the moment the first sub-agent does.
+    // Agent navigation only makes sense once this chat has spawned sub-agents.
+    // With none, hide the header control and pin rendering to the thread, so a
+    // stale `?view=agents` deep-link cannot strand the user on an empty map.
     const hasSubAgents = agentRoot.children.length > 0;
-    const effectiveView: ChatView = hasSubAgents ? view : 'thread';
-
-    // ── Sub-agent drill-in: the cascade dropdown lists levels/agents; clicking
-    // one opens its conversation in-place (read-only) over the thread/canvas. ──
-    const agentLevels = useMemo(() => flattenAgentLevels(agentRoot), [agentRoot]);
+    const rawSelectedAgentId = nav.kind === 'agent' ? nav.id : null;
     const selectedAgentNode = useMemo(
-        () => (selectedAgentId ? findAgentNode(agentRoot, selectedAgentId) : null),
-        [agentRoot, selectedAgentId],
+        () => (rawSelectedAgentId ? findAgentNode(agentRoot, rawSelectedAgentId) : null),
+        [agentRoot, rawSelectedAgentId],
     );
-    const showSubAgentDetail = hasSubAgents && selectedAgentNode != null;
+    const effectiveNav: AgentNav = !hasSubAgents || (nav.kind === 'agent' && !selectedAgentNode)
+        ? { kind: 'thread' }
+        : nav;
+    const selectedAgentId = effectiveNav.kind === 'agent' ? effectiveNav.id : null;
+    const showAgentDetail = effectiveNav.kind === 'agent' && selectedAgentNode != null;
     const subAgentTurns = useMemo(
-        () => (showSubAgentDetail && selectedAgentId ? buildSubAgentTurns(turns, selectedAgentId) : null),
-        [showSubAgentDetail, turns, selectedAgentId],
+        () => (showAgentDetail && selectedAgentId ? buildSubAgentTurns(turns, selectedAgentId) : null),
+        [showAgentDetail, turns, selectedAgentId],
     );
     const subAgentPath = useMemo(
         () => (selectedAgentNode && selectedAgentId ? pathToAgent(agentRoot, selectedAgentId) : []),
@@ -572,14 +567,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const canRetryFailedTask = effectiveStatus === 'failed'
         && processDetails !== null
         && !readOnly
-        && !showSubAgentDetail
+        && effectiveNav.kind !== 'agent'
         && !isPending;
-    // Open a sub-agent (forcing the agents context so closing returns to the
-    // canvas) or return to the orchestrator (null), which lands back on the
-    // main thread rather than the agents canvas.
+
     const handleSelectAgent = useCallback((agentId: string | null) => {
-        setSelectedAgentId(agentId);
-        setView(viewForAgentSelection(agentId));
+        setNav(agentId ? { kind: 'agent', id: agentId } : { kind: 'thread' });
+    }, []);
+
+    const handleOpenMap = useCallback(() => {
+        setNav({ kind: 'map' });
     }, []);
 
     const openAgentDetail = useCallback((node: AgentRunNode) => {
@@ -759,7 +755,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setLocalCompactInstructions(undefined);
     }, [taskId]);
 
-    // Reset the Agents view when switching chats, but honor a deep-linked view
+    // Reset agent navigation when switching chats, but honor a deep-linked nav
     // on first mount (the useState initializer already read it from the hash).
     const viewResetMountRef = useRef(true);
     useEffect(() => {
@@ -767,29 +763,28 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             viewResetMountRef.current = false;
             return;
         }
-        setView(hashViewSync ? (readChatViewFromHash(window.location.hash) ?? 'thread') : 'thread');
-        setSelectedAgentId(hashViewSync ? readAgentFromHash(window.location.hash) : null);
+        setNav(hashViewSync ? readAgentNavFromHash(window.location.hash) : { kind: 'thread' });
     }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Mirror the active view + selected sub-agent into the chat hash
-    // (`?view=agents&agent=<id>`) so it can be shared/bookmarked. replaceState
-    // avoids history spam and doesn't refire the router's hashchange handler.
+    // Mirror the active agent navigation into the chat hash so it can be
+    // shared/bookmarked. replaceState avoids history spam and doesn't refire
+    // the router's hashchange handler.
     useEffect(() => {
         if (!hashViewSync || !window.location.hash) return;
-        const next = applyAgentToHash(applyChatViewToHash(window.location.hash, view), selectedAgentId);
+        const next = applyAgentNavToHash(window.location.hash, nav);
         if (next !== window.location.hash) {
             window.history.replaceState(null, '', next);
         }
-    }, [view, selectedAgentId, hashViewSync]);
+    }, [nav, hashViewSync]);
 
     // A stale `?agent=<id>` (or a sub-agent that vanished after a refresh)
-    // resolves to no node — clear it so the user lands on the thread/canvas
-    // rather than an empty detail pane (parity with effectiveView's guarantee).
+    // resolves to no node — clear it so the user lands on the thread rather
+    // than an empty detail pane.
     useEffect(() => {
-        if (selectedAgentId && !selectedAgentNode) {
-            setSelectedAgentId(null);
+        if (nav.kind === 'agent' && !selectedAgentNode) {
+            setNav({ kind: 'thread' });
         }
-    }, [selectedAgentId, selectedAgentNode]);
+    }, [nav, selectedAgentNode]);
 
     // ── Resolve existing implementation runs from task metadata ─────────
     const rawImplementations: ImplementationRecord[] = useMemo(() => {
@@ -2288,14 +2283,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     startingFreshSameContext={startingFreshSameContext}
                     viewToggle={hasSubAgents && !loading && !isPending && variant !== 'floating'
                         ? (
-                            <>
-                                <ChatViewToggle view={view} onChange={setView} />
-                                <AgentCascadeMenu
-                                    levels={agentLevels}
-                                    selectedAgentId={selectedAgentId}
-                                    onSelectAgent={handleSelectAgent}
-                                />
-                            </>
+                            <AgentTreeMenu
+                                root={agentRoot}
+                                selectedAgentId={selectedAgentId}
+                                mapOpen={effectiveNav.kind === 'map'}
+                                onSelectAgent={handleSelectAgent}
+                                onOpenMap={handleOpenMap}
+                            />
                         )
                         : undefined}
                 />
@@ -2328,7 +2322,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 >
                     {/* Inner row: ConversationArea + MiniMap, or the Agents canvas */}
                     <div className="relative flex flex-1 min-h-0 overflow-hidden min-w-0">
-                    {showSubAgentDetail ? (
+                    {showAgentDetail ? (
                     <SubAgentDetailView
                         node={selectedAgentNode}
                         path={subAgentPath}
@@ -2342,7 +2336,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         provider={sessionProvider}
                         variant={variant}
                     />
-                    ) : effectiveView === 'agents' ? (
+                    ) : effectiveNav.kind === 'map' ? (
                     <AgentCanvas root={agentRoot} onOpenAgentDetail={openAgentDetail} />
                     ) : (
                     <>
@@ -2408,7 +2402,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     )}
                     </div>
                     {/* Ralph grilling complete — show Start Ralph panel (thread view only) */}
-                    {effectiveView === 'thread' && !showSubAgentDetail && (() => {
+                    {effectiveNav.kind === 'thread' && (() => {
                         const ralphCtx = getRalphContext(task);
                         const goalPath = detectedGoalFile || (task?.metadata?.goalFilePath as string | undefined) || '';
                         // Path 1: traditional grilling-phase → start
@@ -2452,7 +2446,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         return null;
                     })()}
                     {/* Plan file complete — offer one-click handoff to autopilot (thread view only) */}
-                    {effectiveView === 'thread' && !showSubAgentDetail && isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
+                    {effectiveNav.kind === 'thread' && isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
                         <ImplementPlanCard
                             planFilePath={effectivePlanPath}
                             planFiles={switchablePlanFiles}
@@ -2492,10 +2486,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             }}
                         />
                     )}
-                    {isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && !showSubAgentDetail && (
+                    {isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (
                         noSessionNotice
                     )}
-                    {isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && !showSubAgentDetail && (
+                    {isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (
                         <FollowUpInputArea
                             richTextRef={richTextRef}
                             inputDisabled={inputDisabled}
@@ -2635,10 +2629,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 )}
             </div>
             {/* Mobile tab bar — shown when isMobileScratchpad, positioned below follow-up input */}
-            {!isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && !showSubAgentDetail && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
+            {!isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
                 noSessionNotice
             )}
-            {!isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && !showSubAgentDetail && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
+            {!isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
                 <FollowUpInputArea
                     richTextRef={richTextRef}
                     inputDisabled={inputDisabled}

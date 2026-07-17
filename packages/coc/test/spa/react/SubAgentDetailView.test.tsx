@@ -25,7 +25,15 @@ function node(id: string, extra: Partial<AgentRunNode> = {}): AgentRunNode {
 
 const root = node('root', { isRoot: true, role: 'orchestrator', name: 'Orch' });
 const mid = node('mid', { name: 'middle-agent' });
-const leaf = node('leaf', { name: 'leaf-agent', status: 'done' });
+const leaf = node('leaf', {
+    name: 'leaf-agent',
+    status: 'done',
+    startedAt: 1000,
+    completedAt: 10000,
+    model: 'gpt-test',
+    mode: 'background',
+    children: [node('spawned-child')],
+});
 const path = [root, mid, leaf];
 const turns: ClientConversationTurn[] = [
     { role: 'user', content: 'do it', turnIndex: 0, timeline: [] },
@@ -90,5 +98,27 @@ describe('SubAgentDetailView', () => {
     it('marks the view read-only', () => {
         renderView();
         expect(screen.getByText('read-only')).toBeTruthy();
+    });
+
+    it('renders status, duration, model, mode and spawned metadata', () => {
+        renderView();
+        expect(screen.getByTestId('sub-agent-status').textContent).toContain('Done');
+        expect(screen.getByTestId('sub-agent-duration').textContent).toContain('0:09');
+        expect(screen.getByTestId('sub-agent-model').textContent).toContain('gpt-test');
+        expect(screen.getByTestId('sub-agent-mode').textContent).toContain('background');
+        expect(screen.getByTestId('sub-agent-spawned').textContent).toContain('1 spawned');
+    });
+
+    it('does not duplicate task prompt or result outside ConversationArea', () => {
+        renderView({
+            node: node('no-dupe', {
+                name: 'no-dupe',
+                prompt: 'unique task prompt',
+                result: 'unique task result',
+            }),
+            path: [root, node('no-dupe', { name: 'no-dupe' })],
+        });
+        expect(screen.queryByText('unique task prompt')).toBeNull();
+        expect(screen.queryByText('unique task result')).toBeNull();
     });
 });

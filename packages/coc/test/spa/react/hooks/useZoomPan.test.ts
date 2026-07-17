@@ -10,7 +10,7 @@ const defaultOptions = { contentWidth: 400, contentHeight: 200 };
  * `containerRef.current`, so it only exists when the ref points at a live node
  * (the `renderHook` tests above poke a mock ref and never exercise the wheel).
  * The container holds a bare canvas surface and a `[data-no-drag]` overlay
- * (mirroring the inspector/toolbar) so we can dispatch wheel events at each.
+ * (mirroring toolbar/legend overlays) so we can dispatch wheel events at each.
  */
 function ZoomPanHarness(): ReactElement {
     const { containerRef, zoomLabel } = useZoomPan(defaultOptions);
@@ -216,8 +216,8 @@ describe('useZoomPan wheel handling', () => {
     });
 
     it('does NOT zoom when the wheel fires inside a [data-no-drag] overlay', () => {
-        // Regression: scrolling inside the inspector panel must scroll the panel,
-        // not zoom the canvas underneath it.
+        // Regression: scrolling inside an overlay must scroll the overlay, not
+        // zoom the canvas underneath it.
         const { getByTestId } = render(createElement(ZoomPanHarness));
         const notPrevented = fireEvent.wheel(getByTestId('overlay-content'), { deltaY: -100, clientX: 10, clientY: 10 });
         expect(getByTestId('label').textContent).toBe('100%');

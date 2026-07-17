@@ -102,8 +102,8 @@ describe('buildAgentRunTreeFromTurns', () => {
     });
 
     it('uses the agent name as the title and drops a redundant description', () => {
-        // No explicit name → title falls back to description, which is then cleared
-        // so the inspector does not show it twice.
+        // No explicit name -> title falls back to description, which is then
+        // cleared so the detail header does not show it twice.
         const child = buildAgentRunTreeFromTurns([
             assistantTurn([tc({ id: 't1', args: { agent_type: 'explore', description: 'map data' } })]),
         ]).children[0];

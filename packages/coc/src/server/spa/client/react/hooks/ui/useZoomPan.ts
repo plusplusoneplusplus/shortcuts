@@ -83,8 +83,8 @@ export function useZoomPan(options: UseZoomPanOptions): UseZoomPanReturn {
 
         const onWheel = (e: WheelEvent) => {
             if (requireModifierKey && !e.ctrlKey && !e.metaKey) return;
-            // Don't hijack the wheel over interactive overlays (toolbars, an
-            // open inspector panel, etc.). They opt out with [data-no-drag] —
+            // Don't hijack the wheel over interactive overlays (toolbars,
+            // legends, etc.). They opt out with [data-no-drag] —
             // the same marker the pan-drag handler honors — so their own
             // content can scroll natively instead of zooming the canvas behind.
             const target = e.target as HTMLElement | null;
