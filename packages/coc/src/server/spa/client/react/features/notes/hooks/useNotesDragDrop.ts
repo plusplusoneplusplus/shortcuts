@@ -22,6 +22,18 @@ export interface NoteDragItem {
     /** Basename of the item (last path segment). */
     name: string;
     type: NoteTreeNode['type'];
+    /**
+     * When the dragged row is part of a multi-selection, this carries the full
+     * set of dragged rows (including this one). Absent for single-item drags, so
+     * the wire format stays backward-compatible with existing single drags.
+     */
+    items?: NoteDragItem[];
+}
+
+/** A single move produced by {@link planBulkMove}: rename `from` → `to`. */
+export interface NoteMove {
+    from: string;
+    to: string;
 }
 
 /** Where the drop indicator should appear relative to the hovered item. */
@@ -77,30 +89,59 @@ function computeDropPosition(e: React.DragEvent, isFolder: boolean): DropPositio
 }
 
 /**
- * Validate a potential drop.
- * Returns false for:
- *   - dropping an item onto itself
- *   - dropping a folder into itself or a descendant (circular)
+ * Resolve the full set of rows a drag carries: the multi-selection when present,
+ * otherwise just the single dragged item.
  */
-export function canNoteDrop(dragged: NoteDragItem, target: NoteDragItem, position: DropPosition): boolean {
-    if (dragged.path === target.path) return false;
+export function getDraggedItems(dragged: NoteDragItem): NoteDragItem[] {
+    return dragged.items && dragged.items.length > 0 ? dragged.items : [dragged];
+}
 
-    // Folder cannot be dropped inside itself or a descendant
-    const isFolder = dragged.type !== 'page';
-    if (isFolder && position === 'inside') {
-        if (target.path === dragged.path || target.path.startsWith(dragged.path + '/')) {
-            return false;
-        }
+/**
+ * Validate a potential drop. Considers every row carried by the drag (a
+ * multi-selection drags the whole set), rejecting when ANY dragged row would be:
+ *   - dropped onto itself
+ *   - a folder dropped into itself or a descendant (circular)
+ */
+export function canNoteDrop(dragged: NoteDragItem, target: NoteDragItem, _position: DropPosition): boolean {
+    for (const item of getDraggedItems(dragged)) {
+        // Dropping onto itself is never valid.
+        if (item.path === target.path) return false;
+        // A folder cannot be dropped into itself or any descendant (any position).
+        const isFolder = item.type !== 'page';
+        if (isFolder && target.path.startsWith(item.path + '/')) return false;
     }
-
-    // Also prevent dropping a folder before/after itself (same path)
-    if (isFolder) {
-        if (target.path === dragged.path || target.path.startsWith(dragged.path + '/')) {
-            return false;
-        }
-    }
-
     return true;
+}
+
+/**
+ * Plan the renames for moving a multi-selection into `destParent` (`''` = root).
+ *
+ * - Only selection "roots" move: if a selected folder and one of its selected
+ *   descendants are both present, moving the folder already carries the child,
+ *   so the nested descendant is dropped from the plan.
+ * - System folders and rows already living in `destParent` are skipped.
+ * - Rows whose move would land inside themselves/a descendant are skipped
+ *   (descendant-drop guard).
+ */
+export function planBulkMove(
+    items: NoteDragItem[],
+    destParent: string,
+    isSystemFolder: (item: NoteDragItem) => boolean,
+): NoteMove[] {
+    const roots = items.filter(
+        it => !items.some(other => other.path !== it.path && it.path.startsWith(other.path + '/')),
+    );
+
+    const moves: NoteMove[] = [];
+    for (const item of roots) {
+        if (isSystemFolder(item)) continue;
+        // Descendant-drop guard: cannot move a folder into itself or its subtree.
+        if (destParent === item.path || destParent.startsWith(item.path + '/')) continue;
+        // Already in the destination → nothing to do.
+        if (getNotesParentPath(item.path) === destParent) continue;
+        moves.push({ from: item.path, to: destParent ? `${destParent}/${item.name}` : item.name });
+    }
+    return moves;
 }
 
 // ── Hook ───────────────────────────────────────────────────────────────

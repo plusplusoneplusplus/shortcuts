@@ -1175,6 +1175,106 @@ describe('NotesSidebar', () => {
         expect(page.getAttribute('aria-selected')).toBe('true');
     });
 
+    // ── Bulk drag-move (AC-03) ────────────────────────────────────────────
+
+    // Minimal DataTransfer stub good enough for the notes DnD handlers:
+    // setData/getData round-trip plus a live `types` getter.
+    function createDataTransfer(): DataTransfer {
+        const store = new Map<string, string>();
+        return {
+            setData: (type: string, val: string) => { store.set(type, val); },
+            getData: (type: string) => store.get(type) ?? '',
+            get types() { return Array.from(store.keys()); },
+            effectAllowed: 'all',
+            dropEffect: 'none',
+        } as unknown as DataTransfer;
+    }
+
+    const BULK_TREE: NoteTreeNode[] = [
+        {
+            name: 'Notebook1',
+            path: 'Notebook1',
+            type: 'notebook',
+            children: [
+                { name: 'TopPage', path: 'Notebook1/TopPage', type: 'page' },
+                { name: 'PageA', path: 'Notebook1/PageA', type: 'page' },
+                { name: 'Section1', path: 'Notebook1/Section1', type: 'section', children: [] },
+            ],
+        },
+        { name: 'Notebook2', path: 'Notebook2', type: 'notebook', children: [] },
+        {
+            name: 'Notebook3',
+            path: 'Notebook3',
+            type: 'notebook',
+            children: [
+                { name: 'PageB', path: 'Notebook3/PageB', type: 'page' },
+            ],
+        },
+    ];
+
+    it('bulk drag-move drops a 3-item selection onto a folder (3 move calls via renameNode)', async () => {
+        mockGetTree.mockResolvedValue({ tree: BULK_TREE, notesRoot: '/mock/notes' });
+        const onNoteRenamed = vi.fn();
+        const { findByTestId } = renderSidebar(null, vi.fn(), { onNoteRenamed });
+
+        // Expand both notebooks so the target pages render. (A plain folder
+        // click also single-selects the folder, so reset via a plain page click
+        // before building the page-only multi-selection below.)
+        fireEvent.click(await findByTestId('notes-tree-item-Notebook1'));
+        fireEvent.click(await findByTestId('notes-tree-item-Notebook3'));
+
+        const topPage = await findByTestId('notes-tree-item-TopPage');
+        fireEvent.click(topPage); // plain click clears the folder selection
+
+        // Ctrl+click builds a 3-page multi-selection spanning two notebooks.
+        fireEvent.click(topPage, { ctrlKey: true });
+        fireEvent.click(await findByTestId('notes-tree-item-PageA'), { ctrlKey: true });
+        fireEvent.click(await findByTestId('notes-tree-item-PageB'), { ctrlKey: true });
+
+        // Selection footer confirms 3 rows are selected.
+        const badge = await findByTestId('notes-selection-badge');
+        expect(badge.textContent).toContain('3 selected');
+
+        // Drag one selected row and drop it INTO the empty Notebook2 folder.
+        const dt = createDataTransfer();
+        fireEvent.dragStart(topPage, { dataTransfer: dt });
+        const notebook2 = await findByTestId('notes-tree-item-Notebook2');
+        await act(async () => {
+            fireEvent.drop(notebook2, { dataTransfer: dt });
+        });
+
+        // All three selected rows move into Notebook2 (root stays undefined).
+        await waitFor(() => expect(mockRenameNode).toHaveBeenCalledTimes(3));
+        expect(mockRenameNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage', 'Notebook2/TopPage', undefined);
+        expect(mockRenameNode).toHaveBeenCalledWith('ws1', 'Notebook1/PageA', 'Notebook2/PageA', undefined);
+        expect(mockRenameNode).toHaveBeenCalledWith('ws1', 'Notebook3/PageB', 'Notebook2/PageB', undefined);
+    });
+
+    it('bulk drag-move rejects a drop into a descendant of a selected folder', async () => {
+        mockGetTree.mockResolvedValue({ tree: BULK_TREE, notesRoot: '/mock/notes' });
+        const { findByTestId } = renderSidebar();
+
+        // Plain-click Notebook1: expands it AND single-selects the folder, so
+        // its Section1 child becomes a visible drop target.
+        const notebook1 = await findByTestId('notes-tree-item-Notebook1');
+        fireEvent.click(notebook1);
+
+        // Ctrl+click Notebook2 to grow the selection to 2 rows (Notebook1 already
+        // selected from the plain click above).
+        fireEvent.click(await findByTestId('notes-tree-item-Notebook2'), { ctrlKey: true });
+
+        // Drag the selection and try to drop it inside Notebook1/Section1 — a
+        // descendant of the selected Notebook1. The whole drop must be rejected.
+        const dt = createDataTransfer();
+        fireEvent.dragStart(notebook1, { dataTransfer: dt });
+        const section1 = await findByTestId('notes-tree-item-Section1');
+        await act(async () => {
+            fireEvent.drop(section1, { dataTransfer: dt });
+        });
+
+        expect(mockRenameNode).not.toHaveBeenCalled();
+    });
+
     // ── Redesigned header / meta / search ─────────────────────────────────
 
     it('renders the redesigned panel header with Notes title and "New" button', async () => {

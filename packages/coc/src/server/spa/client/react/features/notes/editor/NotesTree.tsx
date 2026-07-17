@@ -37,6 +37,12 @@ export interface NotesTreeProps {
     dragDrop?: NotesDragDropHandlers;
     /** Set of paths in the current multi-selection. */
     multiSelectedPaths?: Set<string>;
+    /**
+     * Drag payload for the current multi-selection (path/name/type per selected
+     * row). Attached to a dragged row that is itself part of the selection so a
+     * drag carries the whole set. Ignored for single-row drags.
+     */
+    selectionDragItems?: NoteDragItem[];
     /** Multi-selection handler forwarding modifier key state. */
     onSelectWithModifiers?: (path: string, shiftKey: boolean, ctrlKey: boolean) => void;
 }
@@ -61,6 +67,7 @@ export function NotesTree({
     countDescendantPages,
     dragDrop,
     multiSelectedPaths,
+    selectionDragItems,
     onSelectWithModifiers,
 }: NotesTreeProps) {
     return (
@@ -72,8 +79,20 @@ export function NotesTree({
                 const isExpanded = expandedPaths.has(node.path);
                 const isSysFolder = !!(systemFolders && systemFolders.includes(node.name) && node.type === 'notebook' && depth === 0);
 
+                // When the dragged row is part of a multi-selection, carry the
+                // whole set so the drop moves every selected row at once.
+                const inMultiSelection = !!multiSelectedPaths
+                    && multiSelectedPaths.size > 1
+                    && multiSelectedPaths.has(node.path);
                 const dragItem: NoteDragItem | undefined = (dragDrop && !isSysFolder)
-                    ? { path: node.path, name: node.name, type: node.type }
+                    ? {
+                        path: node.path,
+                        name: node.name,
+                        type: node.type,
+                        ...(inMultiSelection && selectionDragItems && selectionDragItems.length > 1
+                            ? { items: selectionDragItems }
+                            : {}),
+                    }
                     : undefined;
 
                 const isDragOver = dragDrop ? dragDrop.dropTargetPath === node.path : false;
@@ -121,6 +140,7 @@ export function NotesTree({
                                 countDescendantPages={countDescendantPages}
                                 dragDrop={dragDrop}
                                 multiSelectedPaths={multiSelectedPaths}
+                                selectionDragItems={selectionDragItems}
                                 onSelectWithModifiers={onSelectWithModifiers}
                             />
                         )}

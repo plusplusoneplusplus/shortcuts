@@ -7,7 +7,7 @@ import { NotesTree } from './NotesTree';
 import { NotesDialogs } from './NotesDialogs';
 import { useNotesTree } from './useNotesTree';
 import { useNotesContextMenu } from './useNotesContextMenu';
-import { useNotesDragDrop, getNotesParentPath, type NoteDragItem, type DropPosition } from '../hooks/useNotesDragDrop';
+import { useNotesDragDrop, getNotesParentPath, getDraggedItems, planBulkMove, type NoteDragItem, type DropPosition } from '../hooks/useNotesDragDrop';
 import { useNoteSeenState } from '../hooks/useNoteSeenState';
 import { useNotesSelection } from '../hooks/useNotesSelection';
 import { getSpaCocClient } from '../../../api/cocClient';
@@ -456,6 +456,35 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             item.type === 'notebook' &&
             systemFolders.includes(item.name) &&
             !getNotesParentPath(item.path);
+
+        // ── Bulk move: the drag carries a whole multi-selection ────────────
+        const draggedItems = getDraggedItems(dragged);
+        if (draggedItems.length > 1) {
+            // Destination folder: the target itself for 'inside', else its parent
+            // (so before/after also moves the selection into that sibling group).
+            let destParent: string;
+            if (position === 'inside') {
+                if (target.type === 'page') return; // 'inside' only valid on folders
+                destParent = target.path;
+            } else {
+                destParent = getNotesParentPath(target.path);
+            }
+
+            const moves = planBulkMove(draggedItems, destParent, isSysFolder);
+            if (moves.length === 0) return;
+
+            for (const move of moves) {
+                try {
+                    const renamed = await renameNode(move.from, move.to);
+                    onNoteRenamed?.(renamed.oldPath, renamed.newPath);
+                } catch {
+                    // Move failed — tree already refreshed by renameNode
+                }
+            }
+            clearSelection();
+            return;
+        }
+
         if (isSysFolder(dragged)) return;
 
         if (position === 'inside') {
@@ -526,7 +555,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 // Rename failed
             }
         }
-    }, [tree, renameNode, reorderNodes, onNoteRenamed]);
+    }, [tree, systemFolders, renameNode, reorderNodes, onNoteRenamed, clearSelection]);
 
     const buildContextMenuItems = (): ContextMenuItem[] => {
         if (!ctxMenu) return [];
@@ -604,6 +633,26 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         () => (tree ? flattenVisibleNodePaths(tree, effectiveExpanded, filter?.visible ?? null) : []),
         [tree, effectiveExpanded, filter],
     );
+
+    /**
+     * Drag payload for the current multi-selection: {path,name,type} for every
+     * selected row, in tree order. Attached to a dragged row so bulk drag-move
+     * carries the whole selection (AC-03).
+     */
+    const selectionDragItems = useMemo<NoteDragItem[]>(() => {
+        if (!tree || multiSelectedPaths.size < 2) return [];
+        const items: NoteDragItem[] = [];
+        const walk = (nodes: NoteTreeNode[]) => {
+            for (const n of nodes) {
+                if (multiSelectedPaths.has(n.path)) {
+                    items.push({ path: n.path, name: n.name, type: n.type });
+                }
+                if (n.children) walk(n.children);
+            }
+        };
+        walk(tree);
+        return items;
+    }, [tree, multiSelectedPaths]);
 
     /** Handler for Shift/Ctrl+Click on page items (multi-selection). */
     const handleSelectWithModifiers = useCallback((path: string, shiftKey: boolean, ctrlKey: boolean) => {
@@ -1000,6 +1049,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                         visiblePaths={filter?.visible ?? null}
                         countDescendantPages={countDescendantPages}
                         multiSelectedPaths={multiSelectedPaths}
+                        selectionDragItems={selectionDragItems}
                         onSelectWithModifiers={handleSelectWithModifiers}
                         dragDrop={{
                             createDragStartHandler: dragDrop.createDragStartHandler,
