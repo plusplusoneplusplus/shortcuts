@@ -7,8 +7,29 @@
 import { describe, it, expect } from 'vitest';
 import {
     getDefaultEffortTiers,
+    isEffortTierKey,
     mergeEffortTiersWithDefaults,
 } from '../src/effort-tier-defaults';
+
+describe('isEffortTierKey', () => {
+    it('accepts every tier key', () => {
+        for (const key of ['very-low', 'low', 'medium', 'high']) {
+            expect(isEffortTierKey(key)).toBe(true);
+        }
+    });
+
+    it('rejects inherited object members so callers cannot index a tier map with them', () => {
+        for (const key of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+            expect(isEffortTierKey(key)).toBe(false);
+        }
+    });
+
+    it('rejects non-tier values', () => {
+        for (const value of ['', 'medium ', 'MEDIUM', 'xhigh', undefined, null, 0, {}, ['high']]) {
+            expect(isEffortTierKey(value)).toBe(false);
+        }
+    });
+});
 
 describe('getDefaultEffortTiers', () => {
     it('returns the copilot defaults', () => {

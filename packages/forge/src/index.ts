@@ -264,6 +264,7 @@ export {
     // Effort-tier defaults
     getDefaultEffortTiers,
     mergeEffortTiersWithDefaults,
+    isEffortTierKey,
     type EffortTierDefaultEntry,
     type EffortTierDefaultsMap,
     type DefaultedProvider,

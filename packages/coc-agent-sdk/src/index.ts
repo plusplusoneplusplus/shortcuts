@@ -257,6 +257,7 @@ export { initSDKLogger, resetSDKLogger, getSDKLogger } from './logger';
 export {
     getDefaultEffortTiers,
     mergeEffortTiersWithDefaults,
+    isEffortTierKey,
 } from './effort-tier-defaults';
 
 export type {

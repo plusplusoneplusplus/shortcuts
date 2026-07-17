@@ -23,6 +23,17 @@ export interface EffortTierDefaultEntry {
 
 export type EffortTierDefaultsMap = Record<EffortTierKey, EffortTierDefaultEntry>;
 
+const EFFORT_TIER_KEYS: readonly EffortTierKey[] = ['very-low', 'low', 'medium', 'high'];
+
+/**
+ * Narrows an arbitrary value to a tier key. Callers that index a tier map with
+ * a string from a request body or a persisted task config must go through this
+ * first — a bare `tiers[value]` would hit inherited members like `constructor`.
+ */
+export function isEffortTierKey(value: unknown): value is EffortTierKey {
+    return typeof value === 'string' && (EFFORT_TIER_KEYS as readonly string[]).includes(value);
+}
+
 /** Known provider IDs that ship hardcoded defaults. */
 export type DefaultedProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 

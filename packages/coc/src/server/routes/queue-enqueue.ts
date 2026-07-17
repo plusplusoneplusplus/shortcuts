@@ -11,7 +11,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getActiveModels, modelMetadataStore, ensureQueueProcessId, toQueueProcessId, isQueueProcessId, toTaskId, SqliteProcessStore, sdkServiceRegistry, mergeEffortTiersWithDefaults, resolveModelForProvider, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { getActiveModels, modelMetadataStore, ensureQueueProcessId, toQueueProcessId, isQueueProcessId, toTaskId, SqliteProcessStore, sdkServiceRegistry, mergeEffortTiersWithDefaults, isEffortTierKey, resolveModelForProvider, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import { setStaticConfigCacheHeaders } from '../shared/router';
@@ -37,7 +37,6 @@ import { normalizeRelativeNotePath } from '../notes/note-chat-bindings-handler';
 import { isInheritedLensChatMode, type ChatProvider } from '../tasks/task-types';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 
-const EFFORT_TIER_KEYS = new Set(['very-low', 'low', 'medium', 'high']);
 type ResolvedDefaultProviderResolution = AutoProviderResolutionResult & { provider: ChatProvider };
 
 export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteContext): void {
@@ -640,7 +639,7 @@ export function resolveEffortTierConfig(input: CreateTaskInput, ctx: Pick<QueueR
     if (rawTier === undefined) return;
     delete config.effortTier;
 
-    if (typeof rawTier !== 'string' || !EFFORT_TIER_KEYS.has(rawTier)) return;
+    if (!isEffortTierKey(rawTier)) return;
 
     // Preserve the launched tier on the task config so process creation can seed
     // it onto the conversation record as `metadata.afterEffortTier` (AC-01).
@@ -649,12 +648,20 @@ export function resolveEffortTierConfig(input: CreateTaskInput, ctx: Pick<QueueR
     // the lifecycle runner for per-chat after-tier read-back.
     config.afterEffortTier = rawTier;
 
-    const payload = input.payload as { provider?: unknown } | undefined;
+    const payload = input.payload as Record<string, unknown> | undefined;
+
+    // Auto routing picks the provider at execution, not here. Seeding a model now
+    // would resolve the tier against whichever provider happens to be the default,
+    // and execution would then coerce that model away for the provider Auto really
+    // chose — dropping the tier the user asked for. Leave model/reasoningEffort
+    // unset and let the runner resolve `afterEffortTier` once the provider is known.
+    if (payload && !isChatProvider(payload.provider) && isAutoProviderRoutingRequested(payload)) return;
+
     const provider = isChatProvider(payload?.provider)
         ? payload.provider
         : (ctx.getDefaultProvider?.() ?? 'copilot');
     const tiers = mergeEffortTiersWithDefaults(provider, ctx.getEffortTiersForProvider?.(provider));
-    const tier = tiers[rawTier as 'very-low' | 'low' | 'medium' | 'high'];
+    const tier = tiers[rawTier];
     if (!tier) return;
 
     if (typeof config.model !== 'string' || config.model.length === 0) {

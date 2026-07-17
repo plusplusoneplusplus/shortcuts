@@ -218,9 +218,47 @@ describe('prepareTaskForEnqueue', () => {
         expect(resolveDefaultProvider).not.toHaveBeenCalled();
         expect((input.payload as any).provider).toBeUndefined();
         expect((input.payload as any).context.autoProviderRouting).toEqual({ requested: true });
-        expect(input.config.model).toBe('copilot-configured-high');
-        expect(input.config.reasoningEffort).toBe('high');
+        // Auto defers the tier→model choice to execution, where the provider is
+        // actually known. Seeding here would resolve against the default provider
+        // and get coerced away for whatever provider Auto really picks.
+        expect(input.config.model).toBeUndefined();
+        expect(input.config.reasoningEffort).toBeUndefined();
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
+        expect((input.config as Record<string, unknown>).afterEffortTier).toBe('high');
+    });
+
+    it('keeps a caller-supplied model under Auto rather than clearing it', async () => {
+        const input = makeInput({
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'test',
+                context: { autoProviderRouting: { requested: true } },
+            },
+            config: { effortTier: 'high', model: 'caller-pinned-model' } as CreateTaskInput['config'] & { effortTier: string },
+        });
+
+        await prepareTaskForEnqueue(input, makeContext({
+            isAutoProviderRoutingActive: () => true,
+        }));
+
+        expect(input.config.model).toBe('caller-pinned-model');
+        expect((input.config as Record<string, unknown>).afterEffortTier).toBe('high');
+    });
+
+    it('still seeds the tier at enqueue for an explicit provider', async () => {
+        const input = makeInput({
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', provider: 'claude' },
+            config: { effortTier: 'medium' } as CreateTaskInput['config'] & { effortTier: string },
+        });
+
+        await prepareTaskForEnqueue(input, makeContext({
+            isAutoProviderRoutingActive: () => true,
+        }));
+
+        expect(input.config.model).toBe('opus');
+        expect(input.config.reasoningEffort).toBe('medium');
+        expect((input.config as Record<string, unknown>).afterEffortTier).toBe('medium');
     });
 
     it('marks Auto for non-chat task types that carry a chat payload', async () => {

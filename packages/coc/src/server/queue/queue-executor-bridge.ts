@@ -2,7 +2,7 @@ import type { ChatPayload, ChatMode } from '../tasks/task-types';
 import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode } from '../tasks/task-types';
 import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
-import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
+import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { BaseExecutor } from '../executors/base-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
@@ -22,6 +22,8 @@ import type { DreamRunExecutor } from '../dreams/dream-runner';
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
 export type ResolveDefaultProviderForExecution = (options?: { forceAuto?: boolean }) => Promise<AutoProviderResolutionResult>;
+
+export type GetEffortTiersForProvider = (provider: import('../tasks/task-types').ChatProvider) => StoredEffortTiersMap | undefined;
 
 export interface CLITaskExecutorOptions {
     approvePermissions?: boolean; workingDirectory?: string; dataDir?: string;
@@ -47,6 +49,8 @@ export interface CLITaskExecutorOptions {
     getGlobalSystemPrompt?: () => string | undefined;
     /** Resolve Auto provider routing when a queued chat task starts execution. */
     resolveDefaultProvider?: ResolveDefaultProviderForExecution;
+    /** Live read of admin-configured effort tiers, for execution-time tier resolution. */
+    getEffortTiersForProvider?: GetEffortTiersForProvider;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
     getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined;
@@ -94,6 +98,8 @@ export interface QueueExecutorBridge {
     resumePendingAskUser?(processId: string): Promise<void>;
     /** Update the execution-time Auto provider resolver for existing bridges. */
     setResolveDefaultProvider?(resolveDefaultProvider: ResolveDefaultProviderForExecution): void;
+    /** Update the execution-time effort-tier resolver for existing bridges. */
+    setEffortTiersForProvider?(getEffortTiersForProvider: GetEffortTiersForProvider): void;
     /** Late-bind the Dreams runner after route composition creates it. */
     setDreamRunExecutor?(dreamRunExecutor: DreamRunExecutor): void;
 }
@@ -139,6 +145,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined;
     private readonly onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     private resolveDefaultProvider?: ResolveDefaultProviderForExecution;
+    private getEffortTiersForProvider?: GetEffortTiersForProvider;
     private dreamRunExecutor?: DreamRunExecutor;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
@@ -149,6 +156,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.getWsServer = options.getWsServer;
         this.onRalphSessionComplete = options.onRalphSessionComplete;
         this.resolveDefaultProvider = options.resolveDefaultProvider;
+        this.getEffortTiersForProvider = options.getEffortTiersForProvider;
         this.dreamRunExecutor = options.dreamRunExecutor;
         this.titleGenerationService = new TitleGenerationService({
             store,
@@ -205,6 +213,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     setQueueExecutor(qe: QueueExecutor): void { this.queueExecutor = qe; }
     setResolveDefaultProvider(resolveDefaultProvider: ResolveDefaultProviderForExecution): void {
         this.resolveDefaultProvider = resolveDefaultProvider;
+    }
+    setEffortTiersForProvider(getEffortTiersForProvider: GetEffortTiersForProvider): void {
+        this.getEffortTiersForProvider = getEffortTiersForProvider;
     }
     setDreamRunExecutor(dreamRunExecutor: DreamRunExecutor): void {
         this.dreamRunExecutor = dreamRunExecutor;
@@ -418,6 +429,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 executeByTypeFn: (t, p) => this.executors.dispatch(t, p),
                 getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t),
                 resolveDefaultProvider: this.resolveDefaultProvider,
+                getEffortTiersForProvider: this.getEffortTiersForProvider,
                 onDrainPendingMessages: (processId, taskId) => this.drainPendingMessages(processId, taskId),
                 onRalphNext: (processId, completedTask, responseText) => this.enqueueRalphNextIteration(processId, completedTask, responseText),
                 onLoopTickComplete: (loopId, success) => {

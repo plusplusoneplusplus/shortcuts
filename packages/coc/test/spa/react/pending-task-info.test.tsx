@@ -629,6 +629,42 @@ describe('PendingTaskInfoPanel', () => {
         }
     });
 
+    // An Auto task reaches the queue with no model (execution resolves the tier
+    // once the provider is known), carrying the tier as `afterEffortTier`.
+    it('shows the Effort Tier row from afterEffortTier with no Model row for an Auto task', async () => {
+        const task = makePendingTask({ config: { afterEffortTier: 'medium' } });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Effort Tier')).toBeTruthy();
+        });
+        expect(screen.getByText('medium')).toBeTruthy();
+        expect(screen.queryByText('Model')).toBeNull();
+    });
+
+    it('shows the Effort Tier row from afterEffortTier alongside a seeded model', async () => {
+        const task = makePendingTask({ config: { model: 'gpt-4', afterEffortTier: 'high' } });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededChatDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Effort Tier')).toBeTruthy();
+        });
+        expect(screen.getByText('high')).toBeTruthy();
+        expect(screen.getByText('Model')).toBeTruthy();
+    });
+
     it('does not show Effort Tier row when effortTier is absent', async () => {
         const task = makePendingTask({ config: { model: 'gpt-4' } });
         setupFetchForTask(task);

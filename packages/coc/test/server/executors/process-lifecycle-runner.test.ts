@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
+import { getLogger } from '@plusplusoneplusplus/forge';
 import { ProcessLifecycleRunner } from '../../../src/server/executors/process-lifecycle-runner';
 import type { LifecycleRunnerOptions } from '../../../src/server/executors/process-lifecycle-runner';
 import { createMockProcessStore } from '../helpers/mock-process-store';
@@ -1657,6 +1658,140 @@ describe('ProcessLifecycleRunner — provider attribution', () => {
         const assistantTurn = proc?.conversationTurns?.find(turn => turn.role === 'assistant');
         expect(assistantTurn?.model).toBe('gpt-5.4-mini');
         expect(proc?.metadata?.model).toBe('gpt-5.4-mini');
+    });
+});
+
+// ============================================================================
+// Execution-time effort-tier resolution (Auto provider routing)
+// ============================================================================
+
+describe('ProcessLifecycleRunner — effort tier resolved against the Auto-selected provider', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+    });
+
+    function makeAutoTask(config: Record<string, unknown>): QueuedTask {
+        return makeTask({
+            config: config as any,
+            payload: {
+                kind: 'chat',
+                prompt: 'Auto with a tier',
+                workspaceId: 'ws-abc',
+                context: { autoProviderRouting: { requested: true } },
+            } as any,
+        });
+    }
+
+    function autoResolverFor(provider: string) {
+        return vi.fn().mockResolvedValue({
+            provider,
+            selectedByAuto: true,
+            fallbackUsed: false,
+            warnings: [],
+            decisions: [],
+        });
+    }
+
+    // Each provider's own `medium` tier, per the hardcoded defaults. Whichever
+    // provider Auto lands on must get that provider's tier model — not the
+    // default provider's model coerced away to a fallback.
+    const MEDIUM_TIER_BY_PROVIDER: Array<[string, string, string | undefined]> = [
+        ['copilot', 'claude-opus-4.8', 'xhigh'],
+        ['codex', 'gpt-5.6-sol', 'medium'],
+        ['claude', 'opus', 'medium'],
+        ['opencode', 'anthropic/claude-sonnet', 'high'],
+    ];
+
+    it.each(MEDIUM_TIER_BY_PROVIDER)(
+        'runs the %s medium-tier model when Auto picks %s',
+        async (provider, expectedModel, expectedEffort) => {
+            const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
+            const task = makeAutoTask({ afterEffortTier: 'medium' });
+
+            await runner.run(task, makeOpts({ resolveDefaultProvider: autoResolverFor(provider) }));
+
+            expect(task.config.model).toBe(expectedModel);
+            expect(task.config.reasoningEffort).toBe(expectedEffort);
+        },
+    );
+
+    it('prefers admin-configured tiers over the hardcoded defaults', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
+        const task = makeAutoTask({ afterEffortTier: 'high' });
+
+        await runner.run(task, makeOpts({
+            resolveDefaultProvider: autoResolverFor('claude'),
+            getEffortTiersForProvider: (provider) => provider === 'claude'
+                ? { high: { model: 'claude-configured-high', reasoningEffort: 'high' } }
+                : undefined,
+        }));
+
+        expect(task.config.model).toBe('claude-configured-high');
+        expect(task.config.reasoningEffort).toBe('high');
+    });
+
+    it('pins no reasoningEffort when the resolved tier pins none', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
+        const task = makeAutoTask({ afterEffortTier: 'very-low', reasoningEffort: '' });
+
+        // The claude very-low tier (haiku) advertises no effort levels.
+        await runner.run(task, makeOpts({ resolveDefaultProvider: autoResolverFor('claude') }));
+
+        expect(task.config.model).toBe('haiku');
+        expect(task.config.reasoningEffort).toBeUndefined();
+    });
+
+    it('keeps an explicitly requested reasoningEffort over the tier default', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
+        const task = makeAutoTask({ afterEffortTier: 'medium', reasoningEffort: 'xhigh' });
+
+        await runner.run(task, makeOpts({ resolveDefaultProvider: autoResolverFor('claude') }));
+
+        expect(task.config.model).toBe('opus');
+        expect(task.config.reasoningEffort).toBe('xhigh');
+    });
+
+    it('leaves an explicitly requested model alone', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
+        const task = makeAutoTask({ afterEffortTier: 'medium', model: 'opus' });
+
+        await runner.run(task, makeOpts({ resolveDefaultProvider: autoResolverFor('claude') }));
+
+        expect(task.config.model).toBe('opus');
+    });
+
+    it('leaves a task with no tier untouched', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
+        const task = makeAutoTask({});
+
+        await runner.run(task, makeOpts({ resolveDefaultProvider: autoResolverFor('claude') }));
+
+        expect(task.config.model).toBeUndefined();
+    });
+
+    it('ignores a non-tier string rather than indexing the tier map with it', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
+        const task = makeAutoTask({ afterEffortTier: 'constructor' });
+
+        await runner.run(task, makeOpts({ resolveDefaultProvider: autoResolverFor('claude') }));
+
+        expect(task.config.model).toBeUndefined();
+    });
+
+    it('does not log a model-coercion warning for a tier-only Auto task', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
+        const task = makeAutoTask({ afterEffortTier: 'medium' });
+        const warn = vi.spyOn(getLogger(), 'warn');
+
+        await runner.run(task, makeOpts({ resolveDefaultProvider: autoResolverFor('claude') }));
+
+        expect(warn).not.toHaveBeenCalledWith(
+            expect.anything(),
+            expect.stringContaining('Dropping model'),
+        );
     });
 });
 
