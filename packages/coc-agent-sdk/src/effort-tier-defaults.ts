@@ -34,10 +34,10 @@ const COPILOT_DEFAULTS: EffortTierDefaultsMap = {
 };
 
 const CODEX_DEFAULTS: EffortTierDefaultsMap = {
-    'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low'   },
-    low:    { model: 'gpt-5.4-mini',  reasoningEffort: 'xhigh' },
-    medium: { model: 'gpt-5.5',       reasoningEffort: 'high'  },
-    high:   { model: 'gpt-5.5',       reasoningEffort: 'xhigh' },
+    'very-low': { model: 'gpt-5.6-luna',  reasoningEffort: 'xhigh'  },
+    low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh'  },
+    medium: { model: 'gpt-5.6-sol',   reasoningEffort: 'medium' },
+    high:   { model: 'gpt-5.6-sol',   reasoningEffort: 'xhigh'  },
 };
 
 // Claude tier models use the Claude CLI catalog aliases ('opus', 'sonnet',

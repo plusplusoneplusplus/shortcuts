@@ -95,8 +95,8 @@ describe('resolveEffortTierConfig', () => {
 
         resolveEffortTierConfig(input, makeContext());
 
-        expect(input.config.model).toBe('gpt-5.4-mini');
-        expect(input.config.reasoningEffort).toBe('low');
+        expect(input.config.model).toBe('gpt-5.6-luna');
+        expect(input.config.reasoningEffort).toBe('xhigh');
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 

@@ -24,10 +24,10 @@ describe('getDefaultEffortTiers', () => {
     it('returns the codex defaults', () => {
         const defaults = getDefaultEffortTiers('codex');
         expect(defaults).toEqual({
-            'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low'   },
-            low:    { model: 'gpt-5.4-mini',  reasoningEffort: 'xhigh' },
-            medium: { model: 'gpt-5.5',       reasoningEffort: 'high'  },
-            high:   { model: 'gpt-5.5',       reasoningEffort: 'xhigh' },
+            'very-low': { model: 'gpt-5.6-luna',  reasoningEffort: 'xhigh'  },
+            low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh'  },
+            medium: { model: 'gpt-5.6-sol',   reasoningEffort: 'medium' },
+            high:   { model: 'gpt-5.6-sol',   reasoningEffort: 'xhigh'  },
         });
     });
 
@@ -82,10 +82,10 @@ describe('mergeEffortTiersWithDefaults', () => {
 
     it('returns all four tiers as defaults when stored config is null/undefined', () => {
         expect(mergeEffortTiersWithDefaults('codex', undefined)).toEqual({
-            'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low',   source: 'default' },
-            low:    { model: 'gpt-5.4-mini',  reasoningEffort: 'xhigh', source: 'default' },
-            medium: { model: 'gpt-5.5',       reasoningEffort: 'high',  source: 'default' },
-            high:   { model: 'gpt-5.5',       reasoningEffort: 'xhigh', source: 'default' },
+            'very-low': { model: 'gpt-5.6-luna',  reasoningEffort: 'xhigh',  source: 'default' },
+            low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh',  source: 'default' },
+            medium: { model: 'gpt-5.6-sol',   reasoningEffort: 'medium', source: 'default' },
+            high:   { model: 'gpt-5.6-sol',   reasoningEffort: 'xhigh',  source: 'default' },
         });
         expect(mergeEffortTiersWithDefaults('claude', null)).toMatchObject({
             'very-low': { source: 'default' },
