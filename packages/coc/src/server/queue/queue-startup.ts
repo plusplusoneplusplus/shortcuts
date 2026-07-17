@@ -102,6 +102,7 @@ export function initializeQueueStartup(options: QueueStartupOptions): QueueStart
 
     // Set provider resolver on bridge so queue routes can access it
     bridge.setResolveDefaultProvider((opts) => providerResolver.resolveDefaultProvider(opts));
+    bridge.setEffortTiersForProvider((p) => providerResolver.getEffortTiersForProvider(p));
 
     // Publish the enqueue-chat capability for executors
     setEnqueueChat?.(async (input: CreateTaskInput): Promise<string> => {

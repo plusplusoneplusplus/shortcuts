@@ -20,6 +20,7 @@ describe('initializeQueueStartup', () => {
         mockBridge = {
             enqueue: vi.fn().mockResolvedValue('task-123'),
             setResolveDefaultProvider: vi.fn(),
+            setEffortTiersForProvider: vi.fn(),
             getOrCreateBridge: vi.fn(),
             getRepoIdForPath: vi.fn().mockReturnValue('test-repo'),
             findManagerForTask: vi.fn(),
@@ -111,6 +112,15 @@ describe('initializeQueueStartup', () => {
             initializeQueueStartup(createOptions());
 
             expect(mockBridge.setResolveDefaultProvider).toHaveBeenCalled();
+        });
+
+        // Execution-time tier resolution for Auto tasks depends on this reaching
+        // the executor; without it every Auto tier falls back to the hardcoded
+        // defaults and admin-configured tiers are silently ignored.
+        it('should wire the effort-tier resolver on bridge', () => {
+            initializeQueueStartup(createOptions());
+
+            expect(mockBridge.setEffortTiersForProvider).toHaveBeenCalled();
         });
     });
 

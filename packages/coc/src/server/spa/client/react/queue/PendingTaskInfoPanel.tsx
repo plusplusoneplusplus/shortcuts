@@ -40,7 +40,10 @@ export function PendingTaskInfoPanel({ task, onCancel, onMoveToTop }: PendingTas
     const priorityLabel = task.priority || 'normal';
     const created = task.createdAt ? new Date(task.createdAt).toLocaleString() : '';
     const model = task.config?.model || '';
-    const effortTier = task.config?.effortTier || '';
+    // `effortTier` is consumed at enqueue; `afterEffortTier` is what survives on
+    // the task config. Auto tasks have no model until execution picks a provider,
+    // so the tier is the only honest thing to show in the Model row's place.
+    const effortTier = task.config?.afterEffortTier || task.config?.effortTier || '';
     const workingDir = task.payload?.workingDirectory || '';
     const planFilePath = task.payload?.planFilePath || '';
     const filePath = task.payload?.filePath || '';

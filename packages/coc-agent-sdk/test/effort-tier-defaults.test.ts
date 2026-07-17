@@ -7,8 +7,29 @@
 import { describe, it, expect } from 'vitest';
 import {
     getDefaultEffortTiers,
+    isEffortTierKey,
     mergeEffortTiersWithDefaults,
 } from '../src/effort-tier-defaults';
+
+describe('isEffortTierKey', () => {
+    it('accepts every tier key', () => {
+        for (const key of ['very-low', 'low', 'medium', 'high']) {
+            expect(isEffortTierKey(key)).toBe(true);
+        }
+    });
+
+    it('rejects inherited object members so callers cannot index a tier map with them', () => {
+        for (const key of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+            expect(isEffortTierKey(key)).toBe(false);
+        }
+    });
+
+    it('rejects non-tier values', () => {
+        for (const value of ['', 'medium ', 'MEDIUM', 'xhigh', undefined, null, 0, {}, ['high']]) {
+            expect(isEffortTierKey(value)).toBe(false);
+        }
+    });
+});
 
 describe('getDefaultEffortTiers', () => {
     it('returns the copilot defaults', () => {
@@ -24,10 +45,10 @@ describe('getDefaultEffortTiers', () => {
     it('returns the codex defaults', () => {
         const defaults = getDefaultEffortTiers('codex');
         expect(defaults).toEqual({
-            'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low'   },
-            low:    { model: 'gpt-5.4-mini',  reasoningEffort: 'xhigh' },
-            medium: { model: 'gpt-5.5',       reasoningEffort: 'high'  },
-            high:   { model: 'gpt-5.5',       reasoningEffort: 'xhigh' },
+            'very-low': { model: 'gpt-5.6-luna',  reasoningEffort: 'xhigh'  },
+            low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh'  },
+            medium: { model: 'gpt-5.6-sol',   reasoningEffort: 'medium' },
+            high:   { model: 'gpt-5.6-sol',   reasoningEffort: 'xhigh'  },
         });
     });
 
@@ -82,10 +103,10 @@ describe('mergeEffortTiersWithDefaults', () => {
 
     it('returns all four tiers as defaults when stored config is null/undefined', () => {
         expect(mergeEffortTiersWithDefaults('codex', undefined)).toEqual({
-            'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low',   source: 'default' },
-            low:    { model: 'gpt-5.4-mini',  reasoningEffort: 'xhigh', source: 'default' },
-            medium: { model: 'gpt-5.5',       reasoningEffort: 'high',  source: 'default' },
-            high:   { model: 'gpt-5.5',       reasoningEffort: 'xhigh', source: 'default' },
+            'very-low': { model: 'gpt-5.6-luna',  reasoningEffort: 'xhigh',  source: 'default' },
+            low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh',  source: 'default' },
+            medium: { model: 'gpt-5.6-sol',   reasoningEffort: 'medium', source: 'default' },
+            high:   { model: 'gpt-5.6-sol',   reasoningEffort: 'xhigh',  source: 'default' },
         });
         expect(mergeEffortTiersWithDefaults('claude', null)).toMatchObject({
             'very-low': { source: 'default' },

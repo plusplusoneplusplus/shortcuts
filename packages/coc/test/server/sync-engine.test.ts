@@ -1099,9 +1099,9 @@ describe('SyncEngine reconcile (real git)', () => {
 
         const status = await engine.triggerSync(remoteUrl());
 
-        // The remote keeps its notes. (The normal flow commits the sync lock —
-        // pre-existing, and why .lock is filtered here rather than in remoteFiles.)
-        expect(remoteFiles().filter(f => f !== '.lock')).toEqual(['d.md', 'e.md']);
+        // The remote keeps its notes, and only its notes: the sync lock lives
+        // beside the mirror rather than inside it, so it is never staged.
+        expect(remoteFiles()).toEqual(['d.md', 'e.md']);
         expect(status.lastError).toBeNull();
         expect(reconcileReasons()).toEqual([]);
         // And the notes land on the device, which is what it was missing.
@@ -1168,11 +1168,12 @@ describe('SyncEngine reconcile (real git)', () => {
 
         const status = await engine.triggerSync(remoteUrl());
 
-        // Detection needs local notes to contribute, so it stays quiet here; the
-        // failed pull is what catches this device. (`ensureSyncRepo`'s clone can't
-        // run — performSync's lock file is already sitting in the target dir — so
-        // a fresh mirror always starts on a history unrelated to the remote's.)
-        expect(reconcileReasons()).toEqual(['remote history is unrelated to this mirror']);
+        // Nothing to reconcile: the mirror is a real clone, so it already shares
+        // the remote's history and the pull has nothing to fail on. (This used to
+        // read 'remote history is unrelated to this mirror' — the lock file sat in
+        // the target directory, `git clone` refuses a non-empty one, and every
+        // fresh mirror was therefore born on a history the remote had never seen.)
+        expect(reconcileReasons()).toEqual([]);
         expect(status.lastError).toBeNull();
         // The remote's note is untouched and lands on the device.
         expect(remoteFiles()).toEqual(['d.md']);
@@ -1313,5 +1314,254 @@ describe('SyncEngine reconcile (real git)', () => {
         expect(await readReconcileMarker(syncRepoDir())).not.toBeNull();
         expect(status.reconcileReport).toBeNull();
         expect(status.reconcileInProgress).toBe(false);
+    });
+});
+
+/**
+ * A sync mirror can end up holding refs that no longer resolve to objects it
+ * has — an interrupted clone, a pruned object store, a half-written ref. Git
+ * hides this well: `rev-parse` still prints the ref's sha, so the mirror looks
+ * healthy right up until a fetch, whose connectivity check fails and is
+ * reported as `did not send all necessary objects` — blaming the remote for
+ * local damage.
+ *
+ * Nothing downstream can recover: reconcile opens with a fetch, and the
+ * unrelated-histories path routes back into reconcile, so a mirror in this
+ * state fails every tick forever. `ensureSyncRepo` is the only place that can
+ * break the loop, by rebuilding the mirror rather than trusting it.
+ */
+describe('SyncEngine — unusable sync repo is rebuilt (real git)', () => {
+    let tmpDir: string;
+    let remoteDir: string;
+    let engine: SyncEngine;
+    let logs: string[];
+    let prevGlobal: string | undefined;
+    let prevNoSystem: string | undefined;
+
+    const logger = {
+        info: (m: string) => logs.push(m),
+        warn: (m: string) => logs.push(m),
+        error: (m: string) => logs.push(m),
+    };
+
+    const notesDir = () => path.join(tmpDir, 'repos', 'my_work', 'notes');
+    const syncRepoDir = () => path.join(tmpDir, 'sync', 'my-work');
+    const remoteUrl = () => remoteDir.replace(/\\/g, '/');
+
+    function git(args: string[], cwd: string): string {
+        return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+    }
+
+    function writeNote(rel: string, content: string): void {
+        const p = path.join(notesDir(), rel);
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(p, content);
+    }
+
+    /** Point the mirror's branch at an object it doesn't have. */
+    function breakMirrorRef(): void {
+        const missing = 'e8c56ac18fa5e54454d5c3b1225599ec1eb2e602';
+        const branch = git(['symbolic-ref', '--short', 'HEAD'], syncRepoDir());
+        git(['pack-refs', '--all'], syncRepoDir());
+        const ref = path.join(syncRepoDir(), '.git', 'refs', 'heads', branch);
+        fs.mkdirSync(path.dirname(ref), { recursive: true });
+        fs.writeFileSync(ref, `${missing}\n`);
+    }
+
+    const rebuildCount = () => logs.filter(l => /rebuilding it from the remote/.test(l)).length;
+    const cloneCount = () => logs.filter(l => /Cloned sync repo/.test(l)).length;
+
+    beforeEach(() => {
+        logs = [];
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sync-heal-'));
+
+        const gitconfig = path.join(tmpDir, 'test.gitconfig');
+        fs.writeFileSync(gitconfig, [
+            '[user]', '\tname = Sync Test', '\temail = sync-test@example.test',
+            '[core]', '\tautocrlf = false', '\teol = lf',
+            '[init]', '\tdefaultBranch = main',
+            '[commit]', '\tgpgsign = false',
+            '',
+        ].join('\n'));
+        prevGlobal = process.env.GIT_CONFIG_GLOBAL;
+        prevNoSystem = process.env.GIT_CONFIG_NOSYSTEM;
+        process.env.GIT_CONFIG_GLOBAL = gitconfig;
+        process.env.GIT_CONFIG_NOSYSTEM = '1';
+
+        remoteDir = path.join(tmpDir, 'remote.git');
+        execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
+
+        engine = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger });
+    });
+
+    afterEach(() => {
+        engine?.stop();
+        if (prevGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+        else process.env.GIT_CONFIG_GLOBAL = prevGlobal;
+        if (prevNoSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
+        else process.env.GIT_CONFIG_NOSYSTEM = prevNoSystem;
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('syncs through a mirror whose ref points at a missing object', async () => {
+        writeNote('a.md', '# A\n');
+        await engine.triggerSync(remoteUrl());
+        expect(engine.getStatus().lastError).toBeNull();
+
+        breakMirrorRef();
+        logs.length = 0;
+
+        // Before the repair this failed every tick: `rev-parse` still resolves
+        // the dangling ref, so the engine got as far as the fetch and reported
+        // the remote as the broken side.
+        writeNote('b.md', '# B\n');
+        const status = await engine.triggerSync(remoteUrl());
+
+        expect(status.lastError).toBeNull();
+        expect(rebuildCount()).toBe(1);
+    });
+
+    it('leaves the rebuilt mirror healthy enough to fetch', async () => {
+        writeNote('a.md', '# A\n');
+        await engine.triggerSync(remoteUrl());
+        breakMirrorRef();
+
+        await (engine as any).ensureSyncRepo(remoteUrl());
+
+        // The two commands the broken mirror failed: every ref resolves, and a
+        // fetch completes its connectivity check.
+        expect(() => git(['for-each-ref'], syncRepoDir())).not.toThrow();
+        expect(() => git(['fetch', 'origin', 'HEAD'], syncRepoDir())).not.toThrow();
+    });
+
+    it('keeps notes and remote history across a rebuild', async () => {
+        writeNote('a.md', '# A\n');
+        await engine.triggerSync(remoteUrl());
+        const headBefore = git(['rev-parse', 'HEAD'], remoteDir);
+
+        breakMirrorRef();
+        writeNote('b.md', '# B\n');
+        await engine.triggerSync(remoteUrl());
+
+        // The rebuild re-clones the remote rather than starting a new history,
+        // so the remote's existing commit is still an ancestor.
+        expect(git(['merge-base', '--is-ancestor', headBefore, 'HEAD'], remoteDir)).toBe('');
+        const files = git(['ls-tree', '-r', '--name-only', 'HEAD'], remoteDir).split('\n').map(s => s.trim()).sort();
+        expect(files).toContain('a.md');
+        expect(files).toContain('b.md');
+    });
+
+    // The exact shape of the reported failure. A mirror that never finished a
+    // reconcile has no marker, so every tick routes back into reconcile, whose
+    // opening act is the fetch the dangling ref makes impossible. The message
+    // git prints there names the remote, which is what made this read as a
+    // problem on the server rather than damage on this disk.
+    it('recovers a broken mirror that never completed a reconcile', async () => {
+        // Another machine synced first: the remote has notes, and this mirror
+        // has no marker, so the union merge is still pending.
+        const seed = path.join(tmpDir, 'seed');
+        execFileSync('git', ['clone', remoteUrl(), seed], { stdio: 'ignore' });
+        fs.writeFileSync(path.join(seed, 'remote-note.md'), '# from elsewhere\n');
+        git(['add', '-A'], seed);
+        git(['commit', '-m', 'remote note'], seed);
+        git(['push', 'origin', 'HEAD'], seed);
+
+        execFileSync('git', ['clone', remoteUrl(), syncRepoDir()], { stdio: 'ignore' });
+        breakMirrorRef();
+        writeNote('a.md', '# A\n');
+
+        const status = await engine.triggerSync(remoteUrl());
+
+        expect(status.lastError).toBeNull();
+        // Reconcile still did its job: neither side lost a note.
+        const files = git(['ls-tree', '-r', '--name-only', 'HEAD'], remoteDir)
+            .split('\n').map(s => s.trim()).filter(Boolean).sort();
+        expect(files).toEqual(['a.md', 'remote-note.md']);
+    });
+
+    // The guard on the health check itself: a mirror cloned from an empty
+    // remote has no refs and an unborn HEAD. That is healthy, and a check that
+    // called it damage (`rev-parse --verify HEAD` would) rebuilds the mirror on
+    // every single tick.
+    it('does not rebuild a healthy mirror, including one with an unborn HEAD', async () => {
+        await (engine as any).ensureSyncRepo(remoteUrl());
+        expect(cloneCount()).toBe(1);
+        expect(() => git(['rev-parse', '--verify', 'HEAD'], syncRepoDir())).toThrow();
+
+        await (engine as any).ensureSyncRepo(remoteUrl());
+        writeNote('a.md', '# A\n');
+        await engine.triggerSync(remoteUrl());
+        await engine.triggerSync(remoteUrl());
+
+        expect(rebuildCount()).toBe(0);
+        expect(cloneCount()).toBe(1);
+    });
+
+    // The lock used to live in the working tree, where it was note-shaped enough
+    // for `git add -A` to sweep it into a commit and push it to the user's notes.
+    it('never commits or pushes the sync lock', async () => {
+        writeNote('a.md', '# A\n');
+        await engine.triggerSync(remoteUrl());
+        writeNote('b.md', '# B\n');
+        await engine.triggerSync(remoteUrl());
+
+        expect(engine.getStatus().lastError).toBeNull();
+        const remote = git(['ls-tree', '-r', '--name-only', 'HEAD'], remoteDir)
+            .split('\n').map(s => s.trim()).filter(Boolean).sort();
+        expect(remote).toEqual(['a.md', 'b.md']);
+        expect(git(['ls-files'], syncRepoDir()).split('\n').map(s => s.trim()).filter(Boolean).sort())
+            .toEqual(['a.md', 'b.md']);
+    });
+
+    // An idle tick still has to hand the mirror's notes to the device: nothing
+    // else will, and a device restored from an empty notes dir would otherwise
+    // sit there in sync with the remote and show the user nothing.
+    it('copies the mirror down to a device whose notes lag it, even when idle', async () => {
+        const seed = path.join(tmpDir, 'seed');
+        execFileSync('git', ['clone', remoteUrl(), seed], { stdio: 'ignore' });
+        fs.writeFileSync(path.join(seed, 'remote-note.md'), '# from elsewhere\n');
+        git(['add', '-A'], seed);
+        git(['commit', '-m', 'remote note'], seed);
+        git(['push', 'origin', 'HEAD'], seed);
+
+        // A mirror already level with the remote, and a device with nothing.
+        execFileSync('git', ['clone', remoteUrl(), syncRepoDir()], { stdio: 'ignore' });
+        fs.mkdirSync(notesDir(), { recursive: true });
+
+        const status = await engine.triggerSync(remoteUrl());
+
+        expect(status.lastError).toBeNull();
+        expect(fs.readFileSync(path.join(notesDir(), 'remote-note.md'), 'utf8')).toBe('# from elsewhere\n');
+    });
+
+    it('fails the tick instead of inventing a history when the remote is unreachable', async () => {
+        const missingRemote = path.join(tmpDir, 'not-there.git').replace(/\\/g, '/');
+
+        await expect((engine as any).ensureSyncRepo(missingRemote)).rejects.toThrow();
+
+        // The old fallback turned any clone failure into `git init`, leaving a
+        // repo whose history the remote had never seen and could never merge.
+        expect(fs.existsSync(path.join(syncRepoDir(), '.git'))).toBe(false);
+    });
+
+    it('clears a non-empty sync dir rather than init-ing an unrelated history', async () => {
+        // Seed the remote so there is a real history the mirror must land on.
+        const seed = path.join(tmpDir, 'seed');
+        execFileSync('git', ['clone', remoteUrl(), seed], { stdio: 'ignore' });
+        fs.writeFileSync(path.join(seed, 'remote-note.md'), '# from elsewhere\n');
+        git(['add', '-A'], seed);
+        git(['commit', '-m', 'remote note'], seed);
+        git(['push', 'origin', 'HEAD'], seed);
+        const remoteHead = git(['rev-parse', 'HEAD'], seed);
+
+        // A stray tree with no .git — `git clone .` refuses this directory, and
+        // the old catch answered that refusal with `git init`.
+        fs.mkdirSync(syncRepoDir(), { recursive: true });
+        fs.writeFileSync(path.join(syncRepoDir(), 'leftover.md'), '# stray\n');
+
+        await (engine as any).ensureSyncRepo(remoteUrl());
+
+        expect(git(['rev-parse', 'HEAD'], syncRepoDir())).toBe(remoteHead);
+        expect(fs.existsSync(path.join(syncRepoDir(), 'remote-note.md'))).toBe(true);
     });
 });

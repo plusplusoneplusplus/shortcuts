@@ -27,13 +27,16 @@ import type {
     ConversationTurn,
     ProcessStore,
     QueuedTask,
+    StoredEffortTiersMap,
     TaskExecutionResult,
     TurnSource,
 } from '@plusplusoneplusplus/forge';
 import {
     getLogger,
+    isEffortTierKey,
     LogCategory,
     mergeConsecutiveContentItems,
+    mergeEffortTiersWithDefaults,
     modelMetadataStore,
     resolveModelForProvider,
     toQueueProcessId,
@@ -170,6 +173,12 @@ export interface LifecycleRunnerOptions {
     getWorkingDirectoryFn: (task: QueuedTask) => string | undefined;
     /** Resolve Auto default-provider routing when a queued task starts. */
     resolveDefaultProvider?: (options?: { forceAuto?: boolean }) => Promise<AutoProviderResolutionResult>;
+    /**
+     * Live read of the admin-configured effort tiers for a provider. Needed at
+     * execution because Auto tasks defer tier resolution until their provider is
+     * known. Absent resolvers fall back to the hardcoded defaults.
+     */
+    getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
     /** Drain one pending message after task completes (server-side follow-up drain). */
     onDrainPendingMessages?: (processId: string, taskId: string) => Promise<void>;
     /**
@@ -318,6 +327,33 @@ async function resolveExecutionProvider(
     };
 
     return resolution.provider;
+}
+
+/**
+ * Resolves the launched effort tier into a model + reasoning effort now that the
+ * real provider is known. Auto tasks reach execution with no model seeded (see
+ * `resolveEffortTierConfig`), so this is where their tier finally lands. Tasks
+ * that already carry a model — every non-Auto task, plus dream-runs and anyone
+ * who named a model explicitly — are left exactly as they are.
+ */
+function applyEffortTierForProvider(task: QueuedTask, provider: ChatProvider, opts: LifecycleRunnerOptions): void {
+    const rawTier = (task.config as { afterEffortTier?: unknown }).afterEffortTier;
+    if (!isEffortTierKey(rawTier)) return;
+    if (typeof task.config.model === 'string' && task.config.model.length > 0) return;
+
+    const tiers = mergeEffortTiersWithDefaults(provider, opts.getEffortTiersForProvider?.(provider));
+    const tier = tiers[rawTier];
+    if (!tier) return;
+
+    task.config.model = tier.model;
+    if (typeof task.config.reasoningEffort !== 'string' || task.config.reasoningEffort.length === 0) {
+        // Tier efforts are free-form strings in stored config, and the enqueue path
+        // assigns them just as loosely; cast rather than narrow so an Auto task ends
+        // up with the same config an explicit-provider task would have gotten.
+        const config = task.config as { reasoningEffort?: string };
+        if (tier.reasoningEffort !== null) config.reasoningEffort = tier.reasoningEffort;
+        else delete config.reasoningEffort;
+    }
 }
 
 // ============================================================================
@@ -485,6 +521,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const displayPrompt = prependSelectedSkillsDirective(prompt, selectedSkills);
         const workingDirectory = opts.getWorkingDirectoryFn(task);
         const taskProvider = await resolveExecutionProvider(task, opts, this.provider);
+        applyEffortTierForProvider(task, taskProvider, opts);
         const providerModel = resolveModelForProvider(taskProvider, task.config.model);
         if (providerModel.coerced) {
             logger.warn(

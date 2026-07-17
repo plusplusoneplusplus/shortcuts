@@ -29,6 +29,7 @@ import {
     QueueExecutorBridge,
     createQueueExecutorBridge,
     type ResolveDefaultProviderForExecution,
+    type GetEffortTiersForProvider,
     type RalphSessionCompleteEvent,
 } from './queue-executor-bridge';
 import { normalizeChatMode } from '../tasks/task-types';
@@ -92,6 +93,13 @@ export class MultiRepoQueueRouter extends EventEmitter {
         this.defaultOptions = { ...this.defaultOptions, resolveDefaultProvider };
         for (const { bridge } of this.bridges.values()) {
             bridge.setResolveDefaultProvider?.(resolveDefaultProvider);
+        }
+    }
+
+    setEffortTiersForProvider(getEffortTiersForProvider: GetEffortTiersForProvider): void {
+        this.defaultOptions = { ...this.defaultOptions, getEffortTiersForProvider };
+        for (const { bridge } of this.bridges.values()) {
+            bridge.setEffortTiersForProvider?.(getEffortTiersForProvider);
         }
     }
 
