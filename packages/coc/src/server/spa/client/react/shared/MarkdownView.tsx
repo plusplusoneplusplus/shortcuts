@@ -26,6 +26,8 @@ import { ExcalidrawPreview } from './ExcalidrawPreview';
 import { mountHtmlEmbeds } from './htmlEmbedMount';
 import { mountMapEmbeds } from './mapEmbedMount';
 import { SHOW_EXCALIDRAW_DIAGRAMS } from '../featureFlags';
+import { ImageLightbox } from '../ui/ImageLightbox';
+import { useInlineImageLightbox } from './useInlineImageLightbox';
 
 export interface MarkdownSectionData {
     heading: string;
@@ -79,6 +81,7 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
     >([]);
     const [canvasPortals, setCanvasPortals] = React.useState<CanvasPortal[]>([]);
     const [excalidrawPortals, setExcalidrawPortals] = React.useState<ExcalidrawPortal[]>([]);
+    const { lightboxSrc, openFromTarget, closeLightbox } = useInlineImageLightbox();
 
     useMermaid(containerRef, html);
 
@@ -88,6 +91,14 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
 
         const handleClick = (event: MouseEvent) => {
             if (!(event.target instanceof Element)) return;
+
+            // An inline conversation image opens the lightbox. This takes
+            // precedence over a wrapping link so a linked image zooms in place
+            // rather than navigating away.
+            if (openFromTarget(event.target)) {
+                event.preventDefault();
+                return;
+            }
 
             const link = event.target.closest('a[href]');
             if (!link || !container.contains(link)) return;
@@ -103,7 +114,7 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
 
         container.addEventListener('click', handleClick);
         return () => container.removeEventListener('click', handleClick);
-    }, []);
+    }, [openFromTarget]);
 
     useEffect(() => {
         const hljs = (window as any).hljs;
@@ -331,6 +342,7 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
                     mountEl
                 )
             )}
+            <ImageLightbox src={lightboxSrc} onClose={closeLightbox} />
         </>
     );
 }
