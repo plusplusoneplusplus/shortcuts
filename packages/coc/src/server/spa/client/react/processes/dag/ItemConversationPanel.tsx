@@ -10,6 +10,7 @@ import { getSpaCocClient } from '../../api/cocClient';
 import { Badge, Button, Spinner, SendButton } from '../../ui';
 import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
 import { ConversationTurnBubble } from '../../features/chat/conversation/ConversationTurnBubble';
+import { WhisperSkillDetailDialogProvider } from '../../features/chat/conversation/tool-calls/WhisperSkillDetailDialog';
 import { formatDuration, statusIcon, statusLabel } from '../../utils/format';
 import { getProcessWorkspaceId } from '../../utils/workspace';
 import { RichTextInput } from '../../shared/RichTextInput';
@@ -279,6 +280,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
     const wsId = getProcessWorkspaceId(proc) ?? undefined;
 
     const panelContent = (
+        <WhisperSkillDetailDialogProvider boundaryRef={panelRef} scopeKey={processId}>
         <div
             ref={panelRef}
             data-testid="item-conversation-panel"
@@ -412,6 +414,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                 </div>
             </div>
         </div>
+        </WhisperSkillDetailDialogProvider>
     );
 
     // Portal rendering for proper z-index stacking

@@ -94,6 +94,8 @@ export interface HoverPopoverController<T extends HTMLElement> {
     showPopover: () => void;
     /** Starts the grace timer that hides the popover. */
     hidePopover: () => void;
+    /** Immediately closes the popover and clears any pending grace timer. */
+    dismissPopover: () => void;
 }
 
 /**
@@ -126,7 +128,7 @@ export function useHoverPopover<T extends HTMLElement = HTMLSpanElement>(): Hove
 
     useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
 
-    return { hovered, anchorRef, popoverRef, showPopover, hidePopover };
+    return { hovered, anchorRef, popoverRef, showPopover, hidePopover, dismissPopover };
 }
 
 /** Handlers a summary span passes down to its portaled popover component. */

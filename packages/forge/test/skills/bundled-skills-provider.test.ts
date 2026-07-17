@@ -115,6 +115,44 @@ describe('BundledSkill version field', () => {
 describe('SKILL.md metadata', () => {
     const bundledPath = getBundledSkillsPath();
 
+    it('registers delegate and resolves its expected SKILL.md', () => {
+        const entry = getBundledSkillsRegistry().find(skill => skill.name === 'delegate');
+        expect(entry).toMatchObject({
+            name: 'delegate',
+            description: 'Delegate a job from the current chat to a new conversation. Use when the user asks to delegate or hand off work.',
+            relativePath: 'delegate',
+        });
+
+        const skillFile = path.join(bundledPath, entry!.relativePath, 'SKILL.md');
+        const content = fs.readFileSync(skillFile, 'utf-8').replace(/\r\n/g, '\n');
+        const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+        expect(fmMatch, 'delegate/SKILL.md should have YAML frontmatter').toBeTruthy();
+
+        const parsed = yaml.parse(fmMatch![1]);
+        expect(parsed).toMatchObject({
+            name: 'delegate',
+            description: entry!.description,
+            metadata: {
+                author: 'Yiheng Tao',
+                version: '0.0.1',
+            },
+        });
+        expect(fmMatch![2].trim()).toBe('# Delegate\n\nBased on this conversation, delegate the requested job to a new conversation with the relevant context, constraints, and expected outcome.');
+
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegate-resolve-'));
+        try {
+            const discovered = getBundledSkills(tmpDir).find(skill => skill.name === 'delegate');
+            expect(discovered).toMatchObject({
+                name: 'delegate',
+                description: entry!.description,
+                path: path.dirname(skillFile),
+                alreadyExists: false,
+            });
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
     it('every bundled SKILL.md has valid YAML frontmatter with metadata.version', () => {
         const skillDirs = fs.readdirSync(bundledPath).filter(d =>
             fs.statSync(path.join(bundledPath, d)).isDirectory()
@@ -311,6 +349,25 @@ describe('autoInstallDefaultSkills', () => {
         if (didInstall) {
             expect(fs.existsSync(path.join(installDir, skillName, 'SKILL.md'))).toBe(true);
         }
+    });
+
+    it('installs delegate when missing and preserves an existing installed copy', async () => {
+        const result = await autoInstallDefaultSkills(installDir, ['delegate']);
+        expect(result.errors).toHaveLength(0);
+        expect(result.installed).toContain('delegate');
+        expect(result.skipped).not.toContain('delegate');
+
+        const skillFile = path.join(installDir, 'delegate', 'SKILL.md');
+        expect(fs.readFileSync(skillFile, 'utf-8')).toBe(
+            fs.readFileSync(path.join(getBundledSkillsPath(), 'delegate', 'SKILL.md'), 'utf-8'),
+        );
+
+        fs.writeFileSync(path.join(installDir, 'delegate', 'SENTINEL'), 'keep-me');
+        const secondResult = await autoInstallDefaultSkills(installDir, ['delegate']);
+        expect(secondResult.errors).toHaveLength(0);
+        expect(secondResult.installed).not.toContain('delegate');
+        expect(secondResult.skipped).toContain('delegate');
+        expect(fs.readFileSync(path.join(installDir, 'delegate', 'SENTINEL'), 'utf-8')).toBe('keep-me');
     });
 
     it('does not overwrite an already-installed skill without a parseable version', async () => {
