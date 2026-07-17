@@ -22,6 +22,15 @@
  * reference / `.attachments/` ref / absolute filesystem path / external
  * `<link rel=stylesheet>` / external `<script src>` / non-namespace `http(s)` URL
  * survives. Every string check is path-separator agnostic.
+ *
+ * A second suite drives the REAL extension path (Layer E → D-ext → A): it hosts a
+ * realistic state-rendering extension UI in the offline sandboxed iframe and
+ * enforces the same portability contract plus the extension-specific guarantees —
+ * an `allow-scripts`-only sandbox, an offline `CanvasHost` whose `invoke`/`setState`
+ * are inert, the frozen state visible in the `srcdoc`, `capabilitiesJs` never
+ * shipped, no network dependency, and byte-identical determinism. A dirty-UI case
+ * proves external `<script src>` / `<link>` refs are neutralized (with warnings)
+ * and the export still completes offline rather than crashing.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -179,5 +188,151 @@ describe('canvas HTML export — full pipeline (Layer G)', () => {
         expect(first.ok).toBe(true);
         expect(second.ok).toBe(true);
         expect(second.html).toBe(first.html);
+    });
+});
+
+/** A realistic extension UI: it reads its state through the offline `CanvasHost`
+ *  and renders it, plus an action button that would call `invoke` — a mutation
+ *  that is inert in the offline snapshot (hence the view-only banner). Fully
+ *  self-contained: no external `<script>`/`<link>` and no network URLs. */
+const EXTENSION_UI_HTML = [
+    '<div id="app">',
+    '  <h2 id="label"></h2>',
+    '  <p id="count"></p>',
+    '  <button id="inc" type="button">Increment</button>',
+    '</div>',
+    '<script>',
+    '  window.CanvasHost.onState(function (state) {',
+    "    document.getElementById('label').textContent = state.label || '';",
+    "    document.getElementById('count').textContent = 'count=' + (state.count || 0);",
+    '  });',
+    "  document.getElementById('inc').addEventListener('click', function () {",
+    "    window.CanvasHost.invoke('increment', {});",
+    '  });',
+    '</script>',
+].join('\n');
+
+/** An extension canvas: `content` holds the current JSON state, and
+ *  `extension.uiHtml` is the separately-fetched UI document (never
+ *  `capabilitiesJs` — capability code stays server-only). */
+function makeExtensionCanvas(over: Partial<ExportableCanvas> = {}): ExportableCanvas {
+    return {
+        title: 'Counter Widget',
+        type: 'extension',
+        content: '{"count":7,"label":"Hello"}',
+        workspaceId: WORKSPACE_ID,
+        extension: { uiHtml: EXTENSION_UI_HTML, revision: 5 },
+        ...over,
+    };
+}
+
+describe('canvas HTML export — extension full pipeline (Layer G)', () => {
+    it('hosts the extension UI + frozen state in an offline, view-only, portable snapshot', async () => {
+        // Wrap the real deps in spies: the extension path must touch NONE of them
+        // (no markdown render, no fetch, no mermaid, no excalidraw). It is a pure,
+        // network-free string build (E → D-ext → A).
+        const renderMarkdown = vi.fn((c: string, w: string) => chatMarkdownToHtml(c, w));
+        const fetchSpy = vi.fn(async () => pngResp());
+        const exportToSvg = vi.fn();
+        const triggerDownload = vi.fn();
+        const deps = makeDeps({ renderMarkdown, fetch: fetchSpy, exportToSvg, triggerDownload });
+
+        const result = await exportCanvasAsHtml(makeExtensionCanvas(), deps);
+
+        expect(result.ok).toBe(true);
+        expect(result.warnings).toHaveLength(0);
+        const html = result.html ?? '';
+
+        // --- Render surface: exactly one sandboxed, allow-scripts-ONLY iframe. ---
+        expect(html.match(/<iframe\b/gi) ?? []).toHaveLength(1);
+        expect(html).toContain('sandbox="allow-scripts"');
+        expect(html).not.toContain('allow-same-origin');
+
+        // The view-only banner is shown (interactive actions cannot run offline).
+        expect(html).toContain('canvas-export__viewonly-banner');
+        expect(html).toContain('View-only snapshot');
+
+        // Offline CanvasHost: onState delivers the frozen state; invoke/setState are
+        // inert, so nothing in the file can run a capability or persist state.
+        expect(html).toContain('window.CanvasHost');
+        expect(html).toContain('invoke: inert');
+        expect(html).toContain('setState: inert');
+        // Capability code is NEVER shipped.
+        expect(html).not.toContain('capabilitiesJs');
+
+        // The extension UI itself ships inside the (attribute-escaped) srcdoc.
+        expect(html).toContain('id=&quot;app&quot;');
+        expect(html).toContain('Increment');
+
+        // Frozen state is visible in the srcdoc (attribute-escaped `"` → &quot;),
+        // so a file:// open renders exactly the state captured at export time.
+        expect(html).toContain('&quot;count&quot;:7');
+        expect(html).toContain('&quot;label&quot;:&quot;Hello&quot;');
+        // The revision is surfaced to the extension via the onState meta.
+        expect(html).toContain('&quot;revision&quot;:5');
+
+        // Recoverable, pretty-printed JSON source (Layer A embeds the frozen state).
+        expect(html).toContain('<script type="application/json" id="source">');
+        expect(html).toContain('"count": 7');
+        expect(html).toContain('"label": "Hello"');
+
+        // --- Portability contract (path-separator agnostic), same as markdown. ---
+        expect(html).not.toContain('/api/');
+        expect(html).not.toContain('.attachments/');
+        expect(html).not.toContain('data-local-path');
+        expect(html).not.toMatch(/<link\b[^>]*rel=["']?stylesheet/i);
+        expect(html).not.toMatch(/<script\b[^>]*\bsrc=/i);
+        expect(html).not.toMatch(/\/home\//);
+        expect(html).not.toMatch(/\/Users\//);
+        expect(html).not.toMatch(/(?<![A-Za-z0-9])[A-Za-z]:[\\/]/);
+        // A clean, self-contained extension ships ZERO external URLs.
+        expect(externalUrls(html)).toHaveLength(0);
+
+        // No render/network dep was touched — the export made no network request.
+        expect(renderMarkdown).not.toHaveBeenCalled();
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(exportToSvg).not.toHaveBeenCalled();
+
+        // Download used the slugified filename and the built document.
+        expect(triggerDownload).toHaveBeenCalledTimes(1);
+        expect(triggerDownload.mock.calls[0][0]).toBe('counter-widget.html');
+        expect(triggerDownload.mock.calls[0][1]).toBe(html);
+    });
+
+    it('is deterministic: the same extension canvas produces byte-identical output', async () => {
+        const first = await exportCanvasAsHtml(makeExtensionCanvas(), makeDeps());
+        const second = await exportCanvasAsHtml(makeExtensionCanvas(), makeDeps());
+        expect(first.ok).toBe(true);
+        expect(second.ok).toBe(true);
+        expect(second.html).toBe(first.html);
+    });
+
+    it('neutralizes external <script src>/<link> refs (with warnings) and still exports offline', async () => {
+        const dirtyUi = [
+            '<link rel="stylesheet" href="https://cdn.example.com/theme.css">',
+            '<script src="https://cdn.example.com/app.js"></script>',
+            '<div id="app">offline</div>',
+            '<script>window.CanvasHost.onState(function (s) {});</script>',
+        ].join('\n');
+
+        const result = await exportCanvasAsHtml(
+            makeExtensionCanvas({ extension: { uiHtml: dirtyUi, revision: 1 } }),
+            makeDeps(),
+        );
+
+        expect(result.ok).toBe(true);
+        const html = result.html ?? '';
+        // The removable external references were stripped, not shipped.
+        expect(html).not.toMatch(/<script\b[^>]*\bsrc=/i);
+        expect(html).not.toMatch(/<link\b/i);
+        expect(html).not.toContain('cdn.example.com/app.js');
+        expect(html).not.toContain('cdn.example.com/theme.css');
+        // …and each removal is reported so the export never silently degrades.
+        expect(result.warnings.some((w) => /script src/i.test(w))).toBe(true);
+        expect(result.warnings.some((w) => /link/i.test(w))).toBe(true);
+        // Still portable + sandboxed despite the dirty input.
+        expect(html).not.toContain('/api/');
+        expect(html).toContain('sandbox="allow-scripts"');
+        expect(html).not.toContain('allow-same-origin');
     });
 });
