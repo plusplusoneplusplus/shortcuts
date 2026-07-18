@@ -9,8 +9,8 @@ import { Button, Spinner } from '../ui';
 import { cn } from '../ui/cn';
 import { getSpaCocClient } from '../api/cocClient';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
+import { tryParseWikiMarkdown } from './wikiMarked';
 
-declare const marked: { parse(md: string): string } | undefined;
 declare const hljs: { highlightElement(el: Element): void } | undefined;
 
 interface AskMessage {
@@ -194,7 +194,8 @@ export function WikiAsk({ wikiId, wikiName, currentComponentId }: WikiAskProps) 
     }, [sessionId, wikiId]);
 
     const renderContent = (content: string): string => {
-        if (typeof marked !== 'undefined') return marked.parse(content);
+        const html = tryParseWikiMarkdown(content);
+        if (html != null) return html;
         return content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     };
 
