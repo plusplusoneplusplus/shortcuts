@@ -31,6 +31,7 @@ import { CONFIG_FILE_NAME, resolveConfig } from '../../config';
 import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
+import { createExplorationTools } from '../llm-tools/exploration-tools';
 import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn, type CreateUpdateWorkItemToolDeps } from '../llm-tools/create-update-work-item-tool';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
@@ -747,6 +748,38 @@ export function buildCanvasToolsAddon(
     const suffix = '';
 
     return { tools: [write, read, extension], suffix };
+}
+
+// ============================================================================
+// Exploration Tools (gated by the `exploration.enabled` config flag)
+// ============================================================================
+
+export function buildExplorationToolsAddon(
+    dataDir: string | undefined,
+    store: ProcessStore | undefined,
+    workspaceId: string | undefined,
+    processId: string | undefined,
+    opts?: { enabled?: boolean },
+): { tools: Tool<any>[]; suffix: string } {
+    if (!dataDir || !workspaceId) {
+        return { tools: [], suffix: '' };
+    }
+
+    const enabled = opts?.enabled
+        ?? resolveConfig(path.join(dataDir, CONFIG_FILE_NAME)).exploration.enabled;
+    if (!enabled) {
+        return { tools: [], suffix: '' };
+    }
+
+    const { kustoQuery } = createExplorationTools({
+        dataDir,
+        workspaceId,
+        processId,
+        processStore: store,
+    });
+
+    // No prose suffix — the tool description carries its own guidance.
+    return { tools: [kustoQuery], suffix: '' };
 }
 
 // ============================================================================

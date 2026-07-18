@@ -83,3 +83,9 @@ export {
     type ReadCanvasArgs,
     type ExtensionCanvasArgs,
 } from './canvas-tools';
+export {
+    createExplorationTools,
+    KUSTO_QUERY_ROW_SAMPLE,
+    type ExplorationToolsDeps,
+    type KustoQueryArgs,
+} from './exploration-tools';

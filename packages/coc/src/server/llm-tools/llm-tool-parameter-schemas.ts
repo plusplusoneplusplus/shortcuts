@@ -201,6 +201,27 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: [],
     },
+    kusto_query: {
+        type: 'object',
+        properties: {
+            query: { type: 'string' },
+            clusterUrl: { type: 'string' },
+            database: { type: 'string' },
+            canvasId: { type: 'string' },
+            title: { type: 'string' },
+            chartConfig: {
+                type: 'object',
+                properties: {
+                    type: { type: 'string' },
+                    x: { type: 'string' },
+                    y: { type: 'array', items: { type: 'string' } },
+                    series: { type: 'string' },
+                },
+                required: ['type'],
+            },
+        },
+        required: ['query', 'clusterUrl', 'database'],
+    },
     tavily_web_search: {
         type: 'object',
         properties: {
