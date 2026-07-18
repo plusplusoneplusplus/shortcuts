@@ -1664,7 +1664,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             >
                 <div
                     className={cn(
-                        'flex items-center flex-nowrap gap-1.5 text-[11px] text-[#848484] mb-1',
+                        'flex items-center flex-nowrap gap-1.5 text-[11px] text-[#848484] mb-1 select-none',
                         isUser
                             ? 'absolute -top-4 right-2 z-10 px-1 bg-transparent opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none [&>*]:pointer-events-auto'
                             : 'min-h-[16px]'
