@@ -144,6 +144,68 @@ describe('InteractiveTable', () => {
         });
     });
 
+    describe('chrome excluded from text selection', () => {
+        it('marks the toolbar non-selectable', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const toolbar = container.querySelector('.interactive-table-toolbar');
+            expect(toolbar?.classList.contains('select-none')).toBe(true);
+        });
+
+        it('marks the aggregation footer row non-selectable', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const aggRow = container.querySelector('.interactive-table-agg-row');
+            expect(aggRow?.classList.contains('select-none')).toBe(true);
+        });
+
+        it('marks the sort indicator non-selectable', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(container.querySelectorAll('th')[0]);
+            const indicator = container.querySelector('.interactive-table-sort-indicator');
+            expect(indicator?.classList.contains('select-none')).toBe(true);
+        });
+
+        it('marks the filter inputs non-selectable', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Show filters'));
+            const inputs = container.querySelectorAll('.interactive-table-filter-input');
+            expect(inputs.length).toBeGreaterThan(0);
+            inputs.forEach(input => {
+                expect(input.classList.contains('select-none')).toBe(true);
+            });
+        });
+
+        it('marks the column-picker dropdown non-selectable', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Toggle column visibility'));
+            const picker = screen.getByTestId('col-picker');
+            expect(picker.classList.contains('select-none')).toBe(true);
+        });
+
+        it('marks pagination controls non-selectable', () => {
+            const rows = Array.from({ length: 30 }, (_, i) => [`Item ${i}`, `${i}`]);
+            const { container } = render(<InteractiveTable {...defaultProps} rows={rows} />);
+            const pagination = container.querySelector('.interactive-table-pagination');
+            expect(pagination?.classList.contains('select-none')).toBe(true);
+        });
+
+        it('keeps body data cells selectable', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const tds = container.querySelectorAll('tbody td');
+            expect(tds.length).toBeGreaterThan(0);
+            tds.forEach(td => {
+                expect(td.classList.contains('select-none')).toBe(false);
+            });
+        });
+
+        it('keeps header cells selectable so the label text can be copied', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const ths = container.querySelectorAll('th');
+            ths.forEach(th => {
+                expect(th.classList.contains('select-none')).toBe(false);
+            });
+        });
+    });
+
     describe('sorting', () => {
         it('sorts ascending on first click', () => {
             const { container } = render(<InteractiveTable {...defaultProps} />);
