@@ -67,3 +67,26 @@ export function renderMath(tex: string, options?: RenderMathOptions): string {
         );
     }
 }
+
+/**
+ * Probe a TeX string for parse errors, returning the error message or `null`
+ * when it is valid. `renderMath` itself uses `throwOnError: false` so live
+ * surfaces never break; the rich-editor formula editor uses this to surface an
+ * "invalid TeX" hint to the author while keeping the same trust/size bounds.
+ */
+export function getMathError(tex: string, options?: RenderMathOptions): string | null {
+    try {
+        katex.renderToString(tex, {
+            displayMode: options?.display === true,
+            throwOnError: true,
+            trust: false,
+            strict: 'ignore',
+            output: 'htmlAndMathml',
+            maxExpand: 1000,
+            maxSize: 500,
+        });
+        return null;
+    } catch (err) {
+        return err instanceof Error ? err.message : 'Invalid math expression';
+    }
+}

@@ -38,7 +38,7 @@ interface MathToken extends Tokens.Generic {
  * stops at a `$` that turns out to be currency (which would otherwise risk a
  * stall). Used by the inline extension's `start` hook.
  */
-function nextInlineMathStart(src: string): number | undefined {
+export function nextInlineMathStart(src: string): number | undefined {
     let offset = 0;
     while (offset < src.length) {
         let candidate = -1;

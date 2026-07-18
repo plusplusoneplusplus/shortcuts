@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
     tokenizeMath,
     hasMath,
+    wrapMathDelimiters,
     type MarkdownMathSegment,
     type MathSegment,
 } from '../../../../../src/server/spa/client/shared/math/mathTokenizer';
@@ -132,5 +133,23 @@ describe('tokenizeMath — round trip', () => {
         expect(hasMath('plain text')).toBe(false);
         expect(hasMath('has $x$ math')).toBe(true);
         expect(hasMath('costs $5')).toBe(false);
+    });
+});
+
+describe('wrapMathDelimiters', () => {
+    it('reconstructs each delimiter form', () => {
+        expect(wrapMathDelimiters('dollar', 'x')).toBe('$x$');
+        expect(wrapMathDelimiters('double-dollar', 'x')).toBe('$$x$$');
+        expect(wrapMathDelimiters('paren', 'x')).toBe('\\(x\\)');
+        expect(wrapMathDelimiters('bracket', 'x')).toBe('\\[x\\]');
+    });
+
+    it('round-trips a tokenized segment back to its raw source', () => {
+        const src = 'Given $x$, $$y^2$$, \\(z\\), \\[w\\].';
+        for (const seg of tokenizeMath(src)) {
+            if (seg.type === 'math') {
+                expect(wrapMathDelimiters(seg.delimiter, seg.tex)).toBe(seg.raw);
+            }
+        }
     });
 });

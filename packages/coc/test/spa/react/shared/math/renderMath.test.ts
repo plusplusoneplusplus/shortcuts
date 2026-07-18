@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderMath } from '../../../../../src/server/spa/client/shared/math/renderMath';
+import { renderMath, getMathError } from '../../../../../src/server/spa/client/shared/math/renderMath';
 
 describe('renderMath — safe rendering', () => {
     it('renders inline math to HTML+MathML markup', () => {
@@ -40,5 +40,21 @@ describe('renderMath — safe rendering', () => {
 
     it('degrades unsupported/unsafe input without throwing', () => {
         expect(() => renderMath('\\includegraphics{evil.png}', { display: true })).not.toThrow();
+    });
+});
+
+describe('getMathError — validation probe', () => {
+    it('returns null for valid TeX', () => {
+        expect(getMathError('E=mc^2')).toBeNull();
+        expect(getMathError('\\frac{a}{b}', { display: true })).toBeNull();
+    });
+
+    it('returns a message for a parse error', () => {
+        expect(getMathError('\\frac{1}{')).not.toBeNull();
+        expect(getMathError('\\begin{matrix}')).not.toBeNull();
+    });
+
+    it('never throws', () => {
+        expect(() => getMathError('\\href{javascript:alert(1)}{x}')).not.toThrow();
     });
 });

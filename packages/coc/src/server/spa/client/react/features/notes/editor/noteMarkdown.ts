@@ -8,6 +8,8 @@
 import { marked } from 'marked';
 import TurndownService from 'turndown';
 import { isEmbeddableMapUrl } from '@plusplusoneplusplus/forge/editor/rendering';
+import { mathNodeMarkedExtension } from './mathNodeMarked';
+import { wrapMathDelimiters, type MathDelimiter } from '../../../../shared/math/mathTokenizer';
 
 // ── marked configuration ────────────────────────────────────────────────────
 
@@ -158,6 +160,11 @@ const highlightExtension: marked.MarkedExtension = {
     ],
 };
 marked.use(highlightExtension);
+
+// Math: parse the four TeX delimiter forms into editable Tiptap formula
+// placeholders (`<span/div data-math=… data-tex=… data-delim=…>`). The rendered
+// KaTeX lives only in the runtime NodeView — never in the persisted Markdown.
+marked.use(mathNodeMarkedExtension);
 
 // ── turndown singleton ──────────────────────────────────────────────────────
 
@@ -388,6 +395,46 @@ turndown.addRule('filePathRef', {
     },
     replacement(_content, node) {
         return (node as HTMLElement).getAttribute('data-file-path') ?? '';
+    },
+});
+
+// Math formula nodes: rebuild the exact original delimited source from the
+// node's stored delimiter + TeX. Because the TeX is preserved verbatim in
+// `data-tex`, an unedited formula round-trips byte-for-byte, and no rendered
+// KaTeX/MathML is ever serialized into the Markdown source.
+function mathDelimiterFromNode(node: HTMLElement, fallback: MathDelimiter): MathDelimiter {
+    const raw = node.getAttribute('data-delim');
+    if (raw === 'dollar' || raw === 'double-dollar' || raw === 'paren' || raw === 'bracket') {
+        return raw;
+    }
+    return fallback;
+}
+
+turndown.addRule('mathInline', {
+    filter(node) {
+        return (
+            node.nodeName === 'SPAN' &&
+            (node as Element).getAttribute('data-math') === 'inline'
+        );
+    },
+    replacement(_content, node) {
+        const el = node as HTMLElement;
+        const tex = el.getAttribute('data-tex') ?? '';
+        return wrapMathDelimiters(mathDelimiterFromNode(el, 'dollar'), tex);
+    },
+});
+
+turndown.addRule('mathDisplay', {
+    filter(node) {
+        return (
+            node.nodeName === 'DIV' &&
+            (node as Element).getAttribute('data-math') === 'display'
+        );
+    },
+    replacement(_content, node) {
+        const el = node as HTMLElement;
+        const tex = el.getAttribute('data-tex') ?? '';
+        return `\n\n${wrapMathDelimiters(mathDelimiterFromNode(el, 'double-dollar'), tex)}\n\n`;
     },
 });
 

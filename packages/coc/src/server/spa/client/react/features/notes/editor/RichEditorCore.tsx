@@ -23,6 +23,7 @@ import { TextAlign } from '@tiptap/extension-text-align';
 import { IndentExtension } from './extensions/indentExtension';
 import { ResizableImage } from './extensions/resizableImage';
 import { MermaidBlock } from './extensions/mermaidBlock';
+import { MathInline, MathDisplay } from './extensions/mathNode';
 import { MapBlock } from './extensions/mapBlock';
 import { CommentExtension } from './extensions/commentExtension';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
@@ -90,6 +91,8 @@ export function RichEditorCore({
         extensions: [
             MapBlock,
             MermaidBlock,           // must precede StarterKit so its parseHTML rule wins
+            MathInline,
+            MathDisplay,
             StarterKit.configure({
                 heading: { levels: [1, 2, 3] },
                 link: false,

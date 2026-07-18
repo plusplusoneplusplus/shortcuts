@@ -256,6 +256,25 @@ export function hasMath(text: string): boolean {
     return tokenizeMath(text).some(s => s.type === 'math');
 }
 
+/**
+ * Reconstruct the exact delimited source for a formula from its delimiter kind
+ * and inner TeX. Because a segment's `raw` is always `open + tex + close`, and
+ * `tex` is stored verbatim, this returns the original source byte-for-byte for
+ * an unedited formula — the contract the rich-editor round trip relies on.
+ */
+export function wrapMathDelimiters(delimiter: MathDelimiter, tex: string): string {
+    switch (delimiter) {
+        case 'dollar':
+            return `$${tex}$`;
+        case 'double-dollar':
+            return `$$${tex}$$`;
+        case 'paren':
+            return `\\(${tex}\\)`;
+        case 'bracket':
+            return `\\[${tex}\\]`;
+    }
+}
+
 export interface MathMatch {
     tex: string;
     raw: string;

@@ -2931,3 +2931,84 @@
 .dark .math-error {
     color: #f48771;
 }
+
+/* ── Rich-editor formula nodes (AC-02) ──────────────────────────────────
+   Tiptap `mathInline` / `mathDisplay` node views: a clickable rendered
+   formula plus an inline TeX editor. Presentation only; the rendered KaTeX is
+   never persisted (turndown re-emits the original delimiters + TeX). */
+
+.math-node--inline {
+    display: inline;
+    cursor: pointer;
+}
+
+.math-node--display {
+    display: block;
+    cursor: pointer;
+}
+
+.math-node .math-node-render {
+    border-radius: 3px;
+}
+
+.math-node--selected .math-node-render,
+.math-node--editing .math-node-render {
+    outline: 2px solid rgba(59, 130, 246, 0.6);
+    outline-offset: 1px;
+}
+
+.math-node-editor {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-left: 6px;
+    padding: 4px 6px;
+    border: 1px solid rgba(120, 120, 120, 0.4);
+    border-radius: 4px;
+    background: rgba(127, 127, 127, 0.08);
+    vertical-align: middle;
+}
+
+.math-node--display .math-node-editor {
+    display: flex;
+    margin-left: 0;
+    margin-top: 6px;
+}
+
+.math-node-editor-input {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85em;
+    min-width: 12ch;
+    padding: 2px 4px;
+    border: 1px solid rgba(120, 120, 120, 0.5);
+    border-radius: 3px;
+    background: var(--md-editor-bg, #fff);
+    color: inherit;
+    resize: vertical;
+}
+
+.dark .math-node-editor-input {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.math-node-editor-error {
+    color: #cc0000;
+    font-size: 0.8em;
+}
+
+.dark .math-node-editor-error {
+    color: #f48771;
+}
+
+.math-node-editor-actions {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.math-node-editor-actions button {
+    font-size: 0.8em;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+}
