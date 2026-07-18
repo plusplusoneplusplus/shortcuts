@@ -8,6 +8,7 @@ import { detectPullRequestsInToolGroup, type DetectedPullRequest } from '../pull
 import { detectPushesInToolGroup, type DetectedPush } from '../pushDetection';
 import { getApplyPatchText, parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
 import { getCodexFileChanges, normalizeToolName } from './toolNormalization';
+import { classifyShellCommand, type ShellSemanticFamily } from './shellCommandClassifier';
 
 export type ToolGroupCategory = 'read' | 'write' | 'shell' | 'agent';
 
@@ -78,6 +79,53 @@ export function getCategoryLabel(
         .join(', ');
     const noun = category === 'shell' ? 'shell operations' : `${category} operations`;
     return detail ? `${total} ${noun} (${detail})` : `${total} ${noun}`;
+}
+
+/** Reads a shell command string out of a (possibly JSON-string) args value. */
+function extractShellCommand(args: unknown): string | null {
+    let obj: Record<string, unknown> | null = null;
+    if (isRecord(args)) {
+        obj = args;
+    } else if (typeof args === 'string') {
+        try {
+            const parsed = JSON.parse(args);
+            if (isRecord(parsed)) obj = parsed;
+        } catch {
+            return null;
+        }
+    }
+    if (!obj) return null;
+    const cmd = obj.command ?? obj.cmd;
+    return typeof cmd === 'string' ? cmd : null;
+}
+
+/**
+ * When every call in a shell group classifies into the same semantic family,
+ * returns a homogeneous summary such as `4 searches` / `3 reads` /
+ * `2 Git commands`. Returns null for mixed or partially-unknown groups so the
+ * caller keeps the generic `N shell operations` summary.
+ */
+export function getShellGroupSemanticLabel(
+    toolCalls: readonly { toolName: string; args?: unknown }[],
+): string | null {
+    if (toolCalls.length === 0) return null;
+    const families: ShellSemanticFamily[] = [];
+    for (const tc of toolCalls) {
+        const command = extractShellCommand(tc.args);
+        if (!command) return null;
+        const info = classifyShellCommand(command);
+        if (!info) return null;
+        families.push(info.family);
+    }
+    const first = families[0];
+    if (!families.every(f => f === first)) return null;
+    const n = families.length;
+    switch (first) {
+        case 'search': return `${n} search${n !== 1 ? 'es' : ''}`;
+        case 'read': return `${n} read${n !== 1 ? 's' : ''}`;
+        case 'files': return `${n} file listing${n !== 1 ? 's' : ''}`;
+        case 'git': return `${n} Git command${n !== 1 ? 's' : ''}`;
+    }
 }
 
 /**

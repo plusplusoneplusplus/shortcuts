@@ -289,6 +289,82 @@ describe('ToolCallView — whisper-row variant', () => {
     });
 });
 
+describe('ToolCallView — semantic shell display', () => {
+    it('renders a Search pill (green) for a wrapped rg shell command', () => {
+        const { getByTestId, container } = renderInWhisper({
+            id: 's1',
+            toolName: 'command_execution',
+            args: { command: "/bin/zsh -lc 'rg foo src'" },
+            result: 'a.ts:1: foo\nb.ts:2: foo',
+            status: 'completed',
+        });
+        const kind = getByTestId('tool-call-kind');
+        expect(kind.textContent).toBe('Search');
+        expect(kind.className).toContain('bg-[#dafbe1]');
+        expect(kind.getAttribute('title')).toBe('Executed through shell; expand for the exact command');
+        expect(container.querySelector('.tool-call-row-path')?.textContent).toBe('foo in src');
+        expect(getByTestId('tool-call-metric').textContent).toBe('2 hits');
+    });
+
+    it('renders a Read pill (blue) for a sed -n shell command', () => {
+        const { getByTestId } = renderInWhisper({
+            id: 's2',
+            toolName: 'shell',
+            args: { command: "sed -n '1,5p' file.ts" },
+            result: '1\n2\n3',
+            status: 'completed',
+        });
+        const kind = getByTestId('tool-call-kind');
+        expect(kind.textContent).toBe('Read');
+        expect(kind.className).toContain('bg-[#ddf4ff]');
+        expect(getByTestId('tool-call-metric').textContent).toBe('3 lines');
+    });
+
+    it('keeps a Shell pill (purple, no tooltip) for an unclassifiable command', () => {
+        const { getByTestId } = renderInWhisper({
+            id: 's3',
+            toolName: 'shell',
+            args: { command: 'npm run build' },
+            result: 'done',
+            status: 'completed',
+        });
+        const kind = getByTestId('tool-call-kind');
+        expect(kind.textContent).toBe('Shell');
+        expect(kind.className).toContain('bg-[#f0e7ff]');
+        expect(kind.getAttribute('title')).toBeNull();
+    });
+
+    it('preserves the exact wrapped command in the expanded body and copy button', () => {
+        const raw = "/bin/zsh -lc 'rg foo src'";
+        const { container } = renderInWhisper({
+            id: 's4',
+            toolName: 'command_execution',
+            args: { command: raw },
+            result: 'hit',
+            status: 'completed',
+        });
+        act(() => { fireEvent.click(container.querySelector('.tool-call-row-header')!); });
+        const cmd = container.querySelector('.tool-call-row-body code');
+        expect(cmd?.textContent).toBe(`$ ${raw}`);
+    });
+});
+
+describe('ToolCallView — card variant title', () => {
+    it('shows the title-cased semantic label instead of the lowercase shell name', () => {
+        const { container } = render(
+            <ToolCallVariantProvider value="card">
+                <ToolCallView toolCall={{
+                    id: 'c1',
+                    toolName: 'shell',
+                    args: { command: 'git status' },
+                    status: 'completed',
+                }} />
+            </ToolCallVariantProvider>
+        );
+        expect(container.querySelector('.tool-call-name')?.textContent).toBe('Git');
+    });
+});
+
 describe('ToolCallView — default card variant unchanged', () => {
     it('renders the legacy tool-call-card when no provider is present', () => {
         const { container } = render(

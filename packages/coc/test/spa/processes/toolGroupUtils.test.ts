@@ -8,6 +8,7 @@ import {
     filterWhisperChunks,
     extractDeletedPathsFromCommand,
     isDeletePathMatch,
+    getShellGroupSemanticLabel,
 } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 import type { WhisperGroupChunk, FileEdit } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 
@@ -2274,5 +2275,52 @@ describe('isDeletePathMatch', () => {
     it('returns false for empty paths', () => {
         expect(isDeletePathMatch('', 'src/file.ts')).toBe(false);
         expect(isDeletePathMatch('src/file.ts', '')).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// getShellGroupSemanticLabel
+// ---------------------------------------------------------------------------
+
+describe('getShellGroupSemanticLabel', () => {
+    const call = (command: string) => ({ toolName: 'shell', args: { command } });
+
+    it('summarizes a homogeneous search group', () => {
+        expect(getShellGroupSemanticLabel([call('rg a'), call('grep b'), call('rg c'), call('rg d')]))
+            .toBe('4 searches');
+    });
+
+    it('summarizes a homogeneous read group', () => {
+        expect(getShellGroupSemanticLabel([call('cat a'), call("sed -n '1,2p' b")]))
+            .toBe('2 reads');
+    });
+
+    it('summarizes a homogeneous git group', () => {
+        expect(getShellGroupSemanticLabel([call('git status'), call('git log')]))
+            .toBe('2 Git commands');
+    });
+
+    it('summarizes a homogeneous files group', () => {
+        expect(getShellGroupSemanticLabel([call('ls src'), call('rg --files pkg')]))
+            .toBe('2 file listings');
+    });
+
+    it('returns null for a mixed group (falls back to generic summary)', () => {
+        expect(getShellGroupSemanticLabel([call('rg a'), call('git status')])).toBeNull();
+    });
+
+    it('returns null when any call is unclassifiable', () => {
+        expect(getShellGroupSemanticLabel([call('rg a'), call('npm test')])).toBeNull();
+    });
+
+    it('parses a JSON-string args value', () => {
+        expect(getShellGroupSemanticLabel([
+            { toolName: 'shell', args: JSON.stringify({ command: 'rg a' }) },
+            { toolName: 'shell', args: JSON.stringify({ command: 'rg b' }) },
+        ])).toBe('2 searches');
+    });
+
+    it('returns null for an empty group', () => {
+        expect(getShellGroupSemanticLabel([])).toBeNull();
     });
 });

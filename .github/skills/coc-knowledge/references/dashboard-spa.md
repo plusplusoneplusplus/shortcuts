@@ -863,7 +863,25 @@ Inside `WhisperCollapsedGroup`, tool calls render as compact "whisper-row" varia
 `ToolCallView` display policy is a pure kernel: `buildToolCallRenderModel`
 (`toolCallRenderModel.ts`) derives normalized identity, summary, truncation,
 preview eligibility, and the whisper-row metric; the whisper-row and card
-variants share one `ToolCallDetailSections` body. Whisper header parts and the
+variants share one `ToolCallDetailSections` body. For generic `shell`/`bash`
+calls (Codex routes every command through the canonical `shell` tool), the
+display-only `shellCommandClassifier.ts` reads the command *string* — never
+executing it — and, when it is confidently one clear family, relabels the call
+to Search / Read / Files / Git: it unwraps one `sh|bash|zsh -c/-lc` interpreter
+wrapper, refuses redirection / substitution / subshells / `&` / assignments /
+mutating variants (`sed -i`, `find -delete/-exec`, `tee`, `fd --exec`), allows
+same-family chains and read-only presentation pipelines (`| head`, `| sed -n`),
+and returns null (keep Shell) otherwise. The render model then overrides the
+kind pill/label (reusing green Search, blue Read, green Files, purple Git
+colors), the concise summary (a human `description` wins when present, else a
+derived pattern/path/subcommand, else the unwrapped command text), the
+whisper-row metric noun (hits/files/lines), the card `displayName` (title-cased,
+so `shell` reads as "Shell"), and an `isSemanticShell` flag driving the honest
+"executed through shell" pill tooltip. The canonical stored name, raw args, and
+`bashCommand` (Copy Command source, expanded Command section) are untouched.
+Homogeneous shell groups get a semantic summary (`4 searches`, `2 Git commands`)
+via `getShellGroupSemanticLabel` (`toolGroupUtils.ts`); mixed/unknown groups keep
+`N shell operations`. PowerShell is not classified in this version. Whisper header parts and the
 group's reconstructable tool calls come from `buildWhisperGroupModel` /
 `collectGroupToolCalls` (`whisperGroupModel.ts`). The whisper summary spans
 (skills/memories/files/commits/PRs/pushes) share the `useHoverPopover` /

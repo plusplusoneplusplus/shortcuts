@@ -182,3 +182,22 @@ export function getToolMetric(
             return null;
     }
 }
+
+/**
+ * Compact whisper-row metric for a shell call that classified into a semantic
+ * family. Mirrors getToolMetric's shell branch but labels the count by family
+ * (hits for Search, files for Files, lines for Read/Git). Pure, best-effort.
+ */
+export function getSemanticShellMetric(
+    metricKind: 'hits' | 'lines' | 'files',
+    result: string | undefined,
+    error: string | undefined,
+): { kind: 'plain'; text: string } | null {
+    if (error) return { kind: 'plain', text: 'error' };
+    const trimmed = (result ?? '').trim();
+    if (!trimmed) return null;
+    const n = countLines(trimmed);
+    if (n <= 0) return null;
+    const noun = metricKind === 'hits' ? 'hit' : metricKind === 'files' ? 'file' : 'line';
+    return { kind: 'plain', text: `${formatCount(n)} ${noun}${n !== 1 ? 's' : ''}` };
+}

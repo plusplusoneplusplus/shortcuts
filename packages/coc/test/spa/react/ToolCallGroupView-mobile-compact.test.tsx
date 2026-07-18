@@ -51,6 +51,41 @@ function renderGroup(overrides: Record<string, unknown> = {}) {
     );
 }
 
+describe('ToolCallGroupView — semantic shell group summary', () => {
+    const shellCalls = [
+        { id: 'sh-1', toolName: 'shell', args: { command: 'rg foo' }, status: 'completed' },
+        { id: 'sh-2', toolName: 'shell', args: { command: 'grep bar src' }, status: 'completed' },
+    ];
+
+    it('uses a homogeneous semantic label for an all-search shell group', () => {
+        render(
+            <ToolCallGroupView
+                category="shell"
+                toolCalls={shellCalls}
+                compactness={1}
+                renderToolTree={(id) => <div data-testid={`tool-${id}`}>{id}</div>}
+            />
+        );
+        expect(document.querySelector('.tool-call-group-label')?.textContent).toContain('2 searches');
+    });
+
+    it('falls back to the generic summary for a mixed shell group', () => {
+        render(
+            <ToolCallGroupView
+                category="shell"
+                toolCalls={[
+                    { id: 'm-1', toolName: 'shell', args: { command: 'rg foo' }, status: 'completed' },
+                    { id: 'm-2', toolName: 'shell', args: { command: 'npm test' }, status: 'completed' },
+                ]}
+                compactness={1}
+                renderToolTree={(id) => <div data-testid={`tool-${id}`}>{id}</div>}
+            />
+        );
+        const label = document.querySelector('.tool-call-group-label')?.textContent ?? '';
+        expect(label).toContain('shell operations');
+    });
+});
+
 describe('ToolCallGroupView — mobile compact header', () => {
     it('applies compact padding classes', () => {
         viewportCleanup = mockViewport(375);

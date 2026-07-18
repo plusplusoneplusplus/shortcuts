@@ -274,3 +274,85 @@ describe('buildToolCallRenderModel', () => {
         expect(buildToolCallRenderModel({ toolName: 'random', args: {}, error: 'e' }, 'card').hasDetails).toBe(true);
     });
 });
+
+describe('semantic shell display', () => {
+    it('relabels a wrapped rg command as Search with a concise summary', () => {
+        const model = buildToolCallRenderModel({
+            toolName: 'command_execution',
+            args: { command: "/bin/zsh -lc 'rg foo src'" },
+            result: 'a\nb\nc',
+        }, 'whisper-row');
+        expect(model.name).toBe('shell');           // canonical identity unchanged
+        expect(model.displayName).toBe('Search');    // title-cased semantic label
+        expect(model.kindInfo.label).toBe('Search');
+        expect(model.kindInfo.cls).toBe('grep');
+        expect(model.isSemanticShell).toBe(true);
+        expect(model.summary).toBe('foo in src');
+        expect(model.metric).toEqual({ kind: 'plain', text: '3 hits' });
+        // Raw command (with the interpreter wrapper) is preserved for copy/detail.
+        expect(model.bashCommand).toBe("/bin/zsh -lc 'rg foo src'");
+    });
+
+    it('labels a read-only sed -n as Read with a lines metric', () => {
+        const model = buildToolCallRenderModel({
+            toolName: 'shell',
+            args: { command: "sed -n '1,5p' file.ts" },
+            result: '1\n2\n3',
+        }, 'whisper-row');
+        expect(model.displayName).toBe('Read');
+        expect(model.kindInfo.cls).toBe('read');
+        expect(model.summary).toBe('file.ts, lines 1–5');
+        expect(model.metric).toEqual({ kind: 'plain', text: '3 lines' });
+    });
+
+    it('labels rg --files as Files with a files metric', () => {
+        const model = buildToolCallRenderModel({
+            toolName: 'shell',
+            args: { command: 'rg --files src' },
+            result: 'a.ts\nb.ts',
+        }, 'whisper-row');
+        expect(model.displayName).toBe('Files');
+        expect(model.kindInfo.cls).toBe('glob');
+        expect(model.metric).toEqual({ kind: 'plain', text: '2 files' });
+    });
+
+    it('keeps ambiguous/mutating commands as Shell with the raw command summary', () => {
+        const model = buildToolCallRenderModel({
+            toolName: 'shell',
+            args: { command: 'npm run build' },
+            result: 'done',
+        }, 'whisper-row');
+        expect(model.displayName).toBe('Shell');
+        expect(model.kindInfo.label).toBe('Shell');
+        expect(model.kindInfo.cls).toBe('shell');
+        expect(model.isSemanticShell).toBe(false);
+        expect(model.summary).toBe('npm run build');
+        expect(model.metric).toEqual({ kind: 'plain', text: '1 line' });
+    });
+
+    it('prefers a human-written description as the summary while keeping the family', () => {
+        const model = buildToolCallRenderModel({
+            toolName: 'shell',
+            args: { command: 'rg foo src', description: 'Look for foo' },
+        }, 'whisper-row');
+        expect(model.kindInfo.label).toBe('Search');
+        expect(model.summary).toBe('Look for foo');
+    });
+
+    it('does not classify PowerShell', () => {
+        const model = buildToolCallRenderModel({
+            toolName: 'powershell',
+            args: { command: 'Select-String foo' },
+        }, 'whisper-row');
+        expect(model.displayName).toBe('powershell'); // PowerShell card retains its existing name
+        expect(model.isSemanticShell).toBe(false);
+    });
+
+    it('marks summaryIsPath false for a semantic shell call', () => {
+        const model = buildToolCallRenderModel({
+            toolName: 'shell',
+            args: { command: 'cat src/index.ts' },
+        }, 'card');
+        expect(model.summaryIsPath).toBe(false);
+    });
+});
