@@ -123,6 +123,21 @@ describe('GlobalStatusDock', () => {
         expect(container.firstChild).toBeNull();
     });
 
+    it('renders nothing on the workspace pull-requests sub-tab (PullRequestsTab docks the cluster in its PR queue footer)', () => {
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'pull-requests' };
+        const { container } = render(<GlobalStatusDock />);
+        // The PR queue column is independently resizable, so the global band
+        // would not line up under it — the tab hosts its own sidebar footer.
+        expect(screen.queryByTestId('status-actions')).toBeNull();
+        expect(container.firstChild).toBeNull();
+    });
+
+    it('still renders when a stale pull-requests sub-tab lingers but the active tab is not a workspace', () => {
+        mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: 'pull-requests' };
+        render(<GlobalStatusDock />);
+        expect(screen.getByTestId('status-actions')).toBeTruthy();
+    });
+
     it('still renders when a stale notes sub-tab lingers but the active tab is not a workspace', () => {
         // `activeRepoSubTab` can retain 'notes' after leaving the repos tab; the
         // notes stand-down is scoped to activeTab === 'repos' + a selected repo
