@@ -8,10 +8,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-const mocks = vi.hoisted(() => ({ run: vi.fn() }));
+const mocks = vi.hoisted(() => ({ run: vi.fn(), save: vi.fn() }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => {
-    const canvases = { run: mocks.run };
+    const canvases = { run: mocks.run, save: mocks.save };
     return {
         getSpaCocClient: () => ({ canvases }),
         getCocClientFor: () => ({ canvases }),
@@ -53,6 +53,7 @@ const SUCCESS_STATE: Partial<ExplorationState> = {
 
 beforeEach(() => {
     mocks.run.mockReset();
+    mocks.save.mockReset();
 });
 
 describe('parseExplorationContent', () => {
@@ -136,5 +137,50 @@ describe('ExplorationView run', () => {
     it('disables Run when the query is empty', () => {
         render(<ExplorationView workspaceId="ws-1" canvas={makeCanvas({ query: '' })} />);
         expect(screen.getByTestId('exploration-run')).toBeDisabled();
+    });
+});
+
+describe('ExplorationView charts (AC-05)', () => {
+    it('defaults to the table view and toggles to the chart view', () => {
+        render(<ExplorationView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} />);
+        expect(screen.getByTestId('interactive-table-exploration-expl-abc123-1')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('exploration-view-chart'));
+        expect(screen.getByTestId('exploration-chart-controls')).toBeInTheDocument();
+    });
+
+    it('offers only numeric columns in the Y picker', () => {
+        render(<ExplorationView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} />);
+        fireEvent.click(screen.getByTestId('exploration-view-chart'));
+        // Count is a long → offered; State is a string → not offered.
+        expect(screen.getByTestId('exploration-chart-y-Count')).toBeInTheDocument();
+        expect(screen.queryByTestId('exploration-chart-y-State')).toBeNull();
+    });
+
+    it('persists a chart-config change via canvases.save', async () => {
+        const saved = makeCanvas(SUCCESS_STATE, { revision: 2 });
+        mocks.save.mockResolvedValue(saved);
+        const onCanvasSaved = vi.fn();
+        render(<ExplorationView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} onCanvasSaved={onCanvasSaved} />);
+        fireEvent.click(screen.getByTestId('exploration-view-chart'));
+        fireEvent.change(screen.getByTestId('exploration-chart-type'), { target: { value: 'line' } });
+
+        await waitFor(() => expect(mocks.save).toHaveBeenCalled());
+        const [, , req] = mocks.save.mock.calls[0];
+        const state = JSON.parse(req.content);
+        expect(state.chartConfig.type).toBe('line');
+        expect(req.expectedRevision).toBe(1);
+        await waitFor(() => expect(onCanvasSaved).toHaveBeenCalledWith(saved));
+    });
+
+    it('applies an AI-supplied initial chart config on first open', () => {
+        const canvas = makeCanvas({
+            ...SUCCESS_STATE,
+            chartConfig: { type: 'bar', x: 'State', y: ['Count'] },
+        });
+        render(<ExplorationView workspaceId="ws-1" canvas={canvas} />);
+        // Opens directly into the chart view because a config exists.
+        expect(screen.getByTestId('exploration-chart-view')).toBeInTheDocument();
+        expect(screen.getByTestId('exploration-chart-svg')).toBeInTheDocument();
+        expect((screen.getByTestId('exploration-chart-type') as HTMLSelectElement).value).toBe('bar');
     });
 });

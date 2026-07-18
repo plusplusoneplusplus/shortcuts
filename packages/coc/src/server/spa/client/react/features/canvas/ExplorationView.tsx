@@ -12,9 +12,17 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import type { Canvas, ExplorationCellValue, ExplorationColumn, ExplorationState } from '@plusplusoneplusplus/coc-client';
+import type {
+    Canvas,
+    ExplorationCellValue,
+    ExplorationChartConfig,
+    ExplorationChartType,
+    ExplorationColumn,
+    ExplorationState,
+} from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { InteractiveTable, tableToCsv } from '../../shared/InteractiveTable';
+import { ExplorationChart, numericColumnNames } from './ExplorationChart';
 
 export interface ExplorationViewProps {
     workspaceId: string;
@@ -82,6 +90,10 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
     const [query, setQuery] = useState(parsed.query);
     const [clusterUrl, setClusterUrl] = useState(parsed.clusterUrl);
     const [database, setDatabase] = useState(parsed.database);
+    // View toggle + local chart config. The AI-supplied initial config is
+    // applied on first open by defaulting the view to 'chart' when one exists.
+    const [view, setView] = useState<'table' | 'chart'>(parsed.chartConfig ? 'chart' : 'table');
+    const [chartConfig, setChartConfig] = useState<ExplorationChartConfig | undefined>(parsed.chartConfig);
     // Track which canvas revision the local drafts were seeded from so a live
     // AI update (new content) re-seeds the editors instead of clobbering them.
     const [seededFrom, setSeededFrom] = useState(canvas.content);
@@ -90,6 +102,7 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
         setQuery(parsed.query);
         setClusterUrl(parsed.clusterUrl);
         setDatabase(parsed.database);
+        setChartConfig(parsed.chartConfig);
     }
 
     const [running, setRunning] = useState(false);
@@ -112,6 +125,47 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
     }, [client, workspaceId, canvas.id, query, clusterUrl, database, running, onCanvasSaved]);
 
     const { columns, rows, truncated, lastRun } = parsed;
+    const numericColumns = useMemo(() => numericColumnNames(columns, rows), [columns, rows]);
+
+    // Persist a chart-config change back into the canvas content JSON, keeping
+    // the current columns/rows/query. Updates local state immediately for
+    // responsiveness; the returned canvas re-seeds via onCanvasSaved.
+    const persistChartConfig = useCallback(
+        async (next: ExplorationChartConfig | undefined) => {
+            setChartConfig(next);
+            const state: ExplorationState = { ...parsed };
+            if (next) state.chartConfig = next;
+            else delete state.chartConfig;
+            try {
+                const saved = await client.canvases.save(workspaceId, canvas.id, {
+                    content: JSON.stringify(state),
+                    expectedRevision: canvas.revision,
+                });
+                onCanvasSaved?.(saved);
+            } catch {
+                // Keep the local config even if the save races a revision bump.
+            }
+        },
+        [parsed, client, workspaceId, canvas.id, canvas.revision, onCanvasSaved],
+    );
+
+    const updateConfig = useCallback(
+        (patch: Partial<ExplorationChartConfig>) => {
+            const base: ExplorationChartConfig = chartConfig ?? { type: 'bar', y: [] };
+            void persistChartConfig({ ...base, ...patch });
+        },
+        [chartConfig, persistChartConfig],
+    );
+
+    const toggleY = useCallback(
+        (name: string) => {
+            const current = chartConfig?.y ?? [];
+            const next = current.includes(name) ? current.filter(y => y !== name) : [...current, name];
+            updateConfig({ y: next });
+        },
+        [chartConfig, updateConfig],
+    );
+
     const headers = useMemo(() => columns.map(c => c.name), [columns]);
     const stringRows = useMemo(
         () => rows.map(row => columns.map((_, i) => escapeHtml(cellText(row[i] ?? null)))),
@@ -199,6 +253,26 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                         {status === 'idle' && !running && <span className="text-[#848484]">Not run yet</span>}
                     </span>
                     {columns.length > 0 && (
+                        <div className="inline-flex rounded border border-[#e0e0e0] dark:border-[#474749] overflow-hidden" role="group" aria-label="View">
+                            <button
+                                type="button"
+                                className={`px-2 py-1 text-[11px] ${view === 'table' ? 'bg-[#0078d4] text-white' : 'text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]'}`}
+                                onClick={() => setView('table')}
+                                data-testid="exploration-view-table"
+                            >
+                                Table
+                            </button>
+                            <button
+                                type="button"
+                                className={`px-2 py-1 text-[11px] ${view === 'chart' ? 'bg-[#0078d4] text-white' : 'text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]'}`}
+                                onClick={() => setView('chart')}
+                                data-testid="exploration-view-chart"
+                            >
+                                Chart
+                            </button>
+                        </div>
+                    )}
+                    {columns.length > 0 && (
                         <button
                             type="button"
                             className="px-2 py-1 text-[11px] rounded border border-[#e0e0e0] dark:border-[#474749] text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
@@ -214,11 +288,30 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                 )}
             </div>
 
-            {/* Results table */}
+            {/* Results — table or chart */}
             <div className="flex-1 min-h-0 overflow-auto p-3">
                 {columns.length === 0 ? (
                     <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="exploration-empty">
                         {status === 'error' ? 'Run failed — see the error above.' : 'Run a query to see results.'}
+                    </div>
+                ) : view === 'chart' ? (
+                    <div className="flex flex-col gap-3" data-testid="exploration-chart-view">
+                        <ChartControls
+                            columns={columns}
+                            numericColumns={numericColumns}
+                            config={chartConfig}
+                            onType={t => updateConfig({ type: t })}
+                            onX={x => updateConfig({ x: x || undefined })}
+                            onToggleY={toggleY}
+                            onSeries={s => updateConfig({ series: s || undefined })}
+                        />
+                        {chartConfig ? (
+                            <ExplorationChart columns={columns} rows={rows} config={chartConfig} />
+                        ) : (
+                            <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="exploration-chart-unconfigured">
+                                Pick a chart type and a Y column to draw a chart.
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <InteractiveTable
@@ -230,6 +323,97 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                     />
                 )}
             </div>
+        </div>
+    );
+}
+
+const CHART_TYPES: { value: ExplorationChartType; label: string }[] = [
+    { value: 'line', label: 'Line' },
+    { value: 'bar', label: 'Bar' },
+    { value: 'scatter', label: 'Scatter' },
+    { value: 'pie', label: 'Pie' },
+    { value: 'stackedArea', label: 'Stacked area' },
+];
+
+interface ChartControlsProps {
+    columns: ExplorationColumn[];
+    numericColumns: string[];
+    config: ExplorationChartConfig | undefined;
+    onType: (t: ExplorationChartType) => void;
+    onX: (x: string) => void;
+    onToggleY: (name: string) => void;
+    onSeries: (s: string) => void;
+}
+
+const SELECT_CLASS =
+    'text-[11px] px-1.5 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] '
+    + 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]';
+
+function ChartControls({ columns, numericColumns, config, onType, onX, onToggleY, onSeries }: ChartControlsProps) {
+    const selectedY = config?.y ?? [];
+    return (
+        <div className="flex flex-wrap items-start gap-3" data-testid="exploration-chart-controls">
+            <label className="flex flex-col gap-0.5">
+                <span className="text-[9px] uppercase text-[#848484]">Type</span>
+                <select
+                    className={SELECT_CLASS}
+                    value={config?.type ?? 'bar'}
+                    onChange={e => onType(e.target.value as ExplorationChartType)}
+                    data-testid="exploration-chart-type"
+                >
+                    {CHART_TYPES.map(t => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                </select>
+            </label>
+            <label className="flex flex-col gap-0.5">
+                <span className="text-[9px] uppercase text-[#848484]">X axis</span>
+                <select
+                    className={SELECT_CLASS}
+                    value={config?.x ?? ''}
+                    onChange={e => onX(e.target.value)}
+                    data-testid="exploration-chart-x"
+                >
+                    <option value="">(row number)</option>
+                    {columns.map(c => (
+                        <option key={c.name} value={c.name}>{c.name}</option>
+                    ))}
+                </select>
+            </label>
+            <div className="flex flex-col gap-0.5">
+                <span className="text-[9px] uppercase text-[#848484]">Y (numeric)</span>
+                <div className="flex flex-wrap gap-x-2 gap-y-0.5 max-w-[220px]" data-testid="exploration-chart-y">
+                    {numericColumns.length === 0 ? (
+                        <span className="text-[10px] italic text-[#848484]">No numeric columns</span>
+                    ) : (
+                        numericColumns.map(name => (
+                            <label key={name} className="inline-flex items-center gap-1 text-[11px]">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedY.includes(name)}
+                                    onChange={() => onToggleY(name)}
+                                    data-testid={`exploration-chart-y-${name}`}
+                                />
+                                {name}
+                            </label>
+                        ))
+                    )}
+                </div>
+            </div>
+            <label className="flex flex-col gap-0.5">
+                <span className="text-[9px] uppercase text-[#848484]">Series</span>
+                <select
+                    className={SELECT_CLASS}
+                    value={config?.series ?? ''}
+                    onChange={e => onSeries(e.target.value)}
+                    data-testid="exploration-chart-series"
+                >
+                    <option value="">(none)</option>
+                    {columns.map(c => (
+                        <option key={c.name} value={c.name}>{c.name}</option>
+                    ))}
+                </select>
+            </label>
         </div>
     );
 }
