@@ -227,6 +227,28 @@ describe('parseApplyPatchFileChanges — unified git diff format', () => {
         expect(entry.deletions).toBe(1);
     });
 
+    it('parses a Codex `/dev/null` create header as a single create with no fromPath', () => {
+        const patch = [
+            'diff --git /dev/null b/src/new.ts',
+            'index e69de29bb..50661e98b 100644',
+            '--- /dev/null',
+            '+++ b/src/new.ts',
+            '@@ -0,0 +1,3 @@',
+            '+line1',
+            '+line2',
+            '+line3',
+        ].join('\n');
+        const result = parseApplyPatchFileChanges(patch);
+        expect(result).toHaveLength(1);
+        const [entry] = result;
+        expect(entry.path).toBe('src/new.ts');
+        expect(entry.isCreate).toBe(true);
+        expect(entry.isDelete).toBe(false);
+        expect(entry.insertions).toBe(3);
+        expect(entry.deletions).toBe(0);
+        expect(entry.fromPath).toBeUndefined();
+    });
+
     it('handles CRLF line endings', () => {
         const patch = [
             'diff --git a/src/a.ts b/src/a.ts',

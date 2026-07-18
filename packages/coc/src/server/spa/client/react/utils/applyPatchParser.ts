@@ -30,6 +30,31 @@ export function getApplyPatchText(args: unknown): string {
 /** Lines matching these patterns are git metadata inside a unified diff section. */
 const GIT_METADATA_RE = /^(index |similarity index |rename from |rename to |old mode |new mode )/;
 
+/**
+ * Parse a unified-diff section header line (`diff --git <old> b/<new>`).
+ *
+ * Handles both the normal git form (`a/<path> b/<path>`) and the Codex
+ * new-file form where the old side is `/dev/null` (`diff --git /dev/null b/<path>`).
+ * Returns `null` for any line that is not a diff header.
+ *
+ * `isCreate`/`isDelete` are seeded from `/dev/null` on either side; inner
+ * `new file mode` / `--- /dev/null` / `+++ /dev/null` lines still refine them.
+ */
+export function parseUnifiedDiffHeader(
+    line: string,
+): { oldPath: string; newPath: string; isCreate: boolean; isDelete: boolean } | null {
+    const match = line.match(/^diff --git (?:a\/)?(.+) b\/(.+)$/);
+    if (!match) return null;
+    const oldPath = match[1];
+    const newPath = match[2];
+    return {
+        oldPath,
+        newPath,
+        isCreate: oldPath === '/dev/null',
+        isDelete: newPath === '/dev/null',
+    };
+}
+
 export function parseApplyPatchFileChanges(patchText: string): ApplyPatchFileChange[] {
     const fileMap = new Map<string, ApplyPatchFileChange>();
     let current: ApplyPatchFileChange | null = null;
@@ -75,12 +100,13 @@ export function parseApplyPatchFileChanges(patchText: string): ApplyPatchFileCha
     };
 
     for (const line of patchText.split(/\r?\n/)) {
-        // Unified diff section header: diff --git a/<old> b/<new>
-        const gitDiff = line.match(/^diff --git a\/(.+) b\/(.+)$/);
-        if (gitDiff) {
-            const oldPath = gitDiff[1];
-            const newPath = gitDiff[2];
-            startSection(newPath, false, false, oldPath !== newPath ? oldPath : undefined, true);
+        // Unified diff section header: diff --git [a/]<old> b/<new> (old may be /dev/null for creates)
+        const header = parseUnifiedDiffHeader(line);
+        if (header) {
+            const { oldPath, newPath, isCreate, isDelete } = header;
+            // A `/dev/null` old side is a create, not a rename — don't set fromPath.
+            const fromPath = isCreate || oldPath === newPath ? undefined : oldPath;
+            startSection(newPath, isCreate, isDelete, fromPath, true);
             continue;
         }
 
