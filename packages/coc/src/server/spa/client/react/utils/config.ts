@@ -21,6 +21,7 @@ interface DashboardConfig {
     terminalEnabled?: boolean;
     notesEnabled?: boolean;
     myWorkEnabled?: boolean;
+    myWorkTodayViewEnabled?: boolean;
     myLifeEnabled?: boolean;
     scratchpadEnabled?: boolean;
     scratchpadLayout?: 'horizontal' | 'vertical';
@@ -295,6 +296,11 @@ export function isNotesEnabled(): boolean {
 
 export function isMyWorkEnabled(): boolean {
     return getConfig().myWorkEnabled === true;
+}
+
+/** Returns true when the My Work "Today view" tab is enabled (default off). */
+export function isMyWorkTodayViewEnabled(): boolean {
+    return getConfig().myWorkTodayViewEnabled === true;
 }
 
 export function isMyLifeEnabled(): boolean {
