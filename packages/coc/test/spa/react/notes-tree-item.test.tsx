@@ -256,4 +256,161 @@ describe('NotesTreeItem', () => {
         expect(onSelectPage).toHaveBeenCalledWith('nb/page1');
         expect(onSelectWithModifiers).not.toHaveBeenCalled();
     });
+
+    // --- AC-02: folders are selectable ---
+
+    it('plain-click on a folder expands AND single-selects it', () => {
+        const onToggleExpand = vi.fn();
+        const onSelectWithModifiers = vi.fn();
+        const node = makeNode({ path: 'mynotebook', name: 'NB', type: 'notebook' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={onToggleExpand} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onSelectWithModifiers={onSelectWithModifiers} />,
+        );
+        fireEvent.click(getByTestId('notes-tree-item-NB'));
+        expect(onToggleExpand).toHaveBeenCalledWith('mynotebook');
+        expect(onSelectWithModifiers).toHaveBeenCalledWith('mynotebook', false, false);
+    });
+
+    it('shift-click on a folder selects (range) without toggling expand', () => {
+        const onToggleExpand = vi.fn();
+        const onSelectWithModifiers = vi.fn();
+        const node = makeNode({ path: 'mynotebook', name: 'NB', type: 'notebook' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={onToggleExpand} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onSelectWithModifiers={onSelectWithModifiers} />,
+        );
+        fireEvent.click(getByTestId('notes-tree-item-NB'), { shiftKey: true });
+        expect(onSelectWithModifiers).toHaveBeenCalledWith('mynotebook', true, false);
+        expect(onToggleExpand).not.toHaveBeenCalled();
+    });
+
+    it('ctrl-click on a folder toggles it in selection without toggling expand', () => {
+        const onToggleExpand = vi.fn();
+        const onSelectWithModifiers = vi.fn();
+        const node = makeNode({ path: 'mynotebook', name: 'NB', type: 'section' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={onToggleExpand} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onSelectWithModifiers={onSelectWithModifiers} />,
+        );
+        fireEvent.click(getByTestId('notes-tree-item-NB'), { ctrlKey: true });
+        expect(onSelectWithModifiers).toHaveBeenCalledWith('mynotebook', false, true);
+        expect(onToggleExpand).not.toHaveBeenCalled();
+    });
+
+    it('applies the multi-selected highlight to a folder row', () => {
+        const node = makeNode({ path: 'mynotebook', name: 'NB', type: 'notebook' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                isMultiSelected
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+        );
+        const el = getByTestId('notes-tree-item-NB');
+        expect(el.className).toContain('bg-[#ddf4ff]');
+        expect(el.getAttribute('aria-selected')).toBe('true');
+    });
+
+    // --- AC-06: inline rename ---
+
+    it('starts inline rename on double-click of the name', () => {
+        const onStartRename = vi.fn();
+        const node = makeNode({ path: 'nb/page1.md', name: 'page1.md', type: 'page' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onStartRename={onStartRename} />,
+        );
+        fireEvent.doubleClick(getByTestId('notes-tree-item-name'));
+        expect(onStartRename).toHaveBeenCalledWith(node);
+    });
+
+    it('does not start inline rename on a system folder', () => {
+        const onStartRename = vi.fn();
+        const node = makeNode({ path: 'Attachments', name: 'Attachments', type: 'notebook' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                isSystemFolder
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onStartRename={onStartRename} />,
+        );
+        fireEvent.doubleClick(getByTestId('notes-tree-item-name'));
+        expect(onStartRename).not.toHaveBeenCalled();
+    });
+
+    it('renders an editable input seeded with the display name (extension stripped) when isRenaming', () => {
+        const node = makeNode({ path: 'nb/page1.md', name: 'page1.md', type: 'page' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                isRenaming
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onRenameCommit={vi.fn()} onRenameCancel={vi.fn()} />,
+        );
+        const input = getByTestId('notes-inline-rename-input') as HTMLInputElement;
+        expect(input.value).toBe('page1');
+    });
+
+    it('commits inline rename on Enter with the typed name', () => {
+        const onRenameCommit = vi.fn();
+        const node = makeNode({ path: 'nb/page1.md', name: 'page1.md', type: 'page' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                isRenaming
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onRenameCommit={onRenameCommit} onRenameCancel={vi.fn()} />,
+        );
+        const input = getByTestId('notes-inline-rename-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'renamed' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(onRenameCommit).toHaveBeenCalledWith(node, 'renamed');
+    });
+
+    it('commits inline rename on blur', () => {
+        const onRenameCommit = vi.fn();
+        const node = makeNode({ path: 'nb/page1.md', name: 'page1.md', type: 'page' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                isRenaming
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onRenameCommit={onRenameCommit} onRenameCancel={vi.fn()} />,
+        );
+        const input = getByTestId('notes-inline-rename-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'blurred' } });
+        fireEvent.blur(input);
+        expect(onRenameCommit).toHaveBeenCalledWith(node, 'blurred');
+    });
+
+    it('cancels inline rename on Esc without committing', () => {
+        const onRenameCommit = vi.fn();
+        const onRenameCancel = vi.fn();
+        const node = makeNode({ path: 'nb/page1.md', name: 'page1.md', type: 'page' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                isRenaming
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onRenameCommit={onRenameCommit} onRenameCancel={onRenameCancel} />,
+        );
+        const input = getByTestId('notes-inline-rename-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'discarded' } });
+        fireEvent.keyDown(input, { key: 'Escape' });
+        expect(onRenameCancel).toHaveBeenCalled();
+        expect(onRenameCommit).not.toHaveBeenCalled();
+    });
+
+    it('does not fire row select/expand handlers while renaming', () => {
+        const onSelectPage = vi.fn();
+        const onToggleExpand = vi.fn();
+        const node = makeNode({ path: 'nb/page1.md', name: 'page1.md', type: 'page' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                isRenaming
+                onToggleExpand={onToggleExpand} onSelectPage={onSelectPage} onContextMenu={vi.fn()}
+                onRenameCommit={vi.fn()} onRenameCancel={vi.fn()} />,
+        );
+        fireEvent.click(getByTestId('notes-tree-item-page1.md'));
+        expect(onSelectPage).not.toHaveBeenCalled();
+        expect(onToggleExpand).not.toHaveBeenCalled();
+    });
 });

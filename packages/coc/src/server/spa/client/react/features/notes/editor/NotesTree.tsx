@@ -37,8 +37,24 @@ export interface NotesTreeProps {
     dragDrop?: NotesDragDropHandlers;
     /** Set of paths in the current multi-selection. */
     multiSelectedPaths?: Set<string>;
+    /** Paths staged for a pending cut (AC-04) — their rows dim until pasted. */
+    cutPaths?: Set<string>;
+    /**
+     * Drag payload for the current multi-selection (path/name/type per selected
+     * row). Attached to a dragged row that is itself part of the selection so a
+     * drag carries the whole set. Ignored for single-row drags.
+     */
+    selectionDragItems?: NoteDragItem[];
     /** Multi-selection handler forwarding modifier key state. */
     onSelectWithModifiers?: (path: string, shiftKey: boolean, ctrlKey: boolean) => void;
+    /** Path of the row currently being inline-renamed (AC-06); null = none. */
+    renamingPath?: string | null;
+    /** Double-click on a row's name requests inline rename. */
+    onStartRename?: (node: NoteTreeNode) => void;
+    /** Commit an inline rename with the typed display name. */
+    onRenameCommit?: (node: NoteTreeNode, newName: string) => void;
+    /** Cancel the inline rename (Esc). */
+    onRenameCancel?: () => void;
 }
 
 function hasNodeUpdate(node: NoteTreeNode, isNoteUpdated?: (node: NoteTreeNode) => boolean): boolean {
@@ -61,7 +77,13 @@ export function NotesTree({
     countDescendantPages,
     dragDrop,
     multiSelectedPaths,
+    cutPaths,
+    selectionDragItems,
     onSelectWithModifiers,
+    renamingPath,
+    onStartRename,
+    onRenameCommit,
+    onRenameCancel,
 }: NotesTreeProps) {
     return (
         <div role="tree" data-testid={depth === 0 ? 'notes-tree' : undefined}>
@@ -72,8 +94,20 @@ export function NotesTree({
                 const isExpanded = expandedPaths.has(node.path);
                 const isSysFolder = !!(systemFolders && systemFolders.includes(node.name) && node.type === 'notebook' && depth === 0);
 
+                // When the dragged row is part of a multi-selection, carry the
+                // whole set so the drop moves every selected row at once.
+                const inMultiSelection = !!multiSelectedPaths
+                    && multiSelectedPaths.size > 1
+                    && multiSelectedPaths.has(node.path);
                 const dragItem: NoteDragItem | undefined = (dragDrop && !isSysFolder)
-                    ? { path: node.path, name: node.name, type: node.type }
+                    ? {
+                        path: node.path,
+                        name: node.name,
+                        type: node.type,
+                        ...(inMultiSelection && selectionDragItems && selectionDragItems.length > 1
+                            ? { items: selectionDragItems }
+                            : {}),
+                    }
                     : undefined;
 
                 const isDragOver = dragDrop ? dragDrop.dropTargetPath === node.path : false;
@@ -90,10 +124,15 @@ export function NotesTree({
                             hasUpdate={hasNodeUpdate(node, isNoteUpdated)}
                             pageCount={folderCount}
                             isMultiSelected={multiSelectedPaths ? multiSelectedPaths.has(node.path) : false}
+                            isCut={cutPaths ? cutPaths.has(node.path) : false}
                             onToggleExpand={onToggleExpand}
                             onSelectPage={onSelectPage}
                             onContextMenu={onContextMenu}
                             onSelectWithModifiers={onSelectWithModifiers}
+                            isRenaming={renamingPath != null && renamingPath === node.path}
+                            onStartRename={onStartRename}
+                            onRenameCommit={onRenameCommit}
+                            onRenameCancel={onRenameCancel}
                             draggable={!!dragDrop && !isSysFolder}
                             isDragOver={isDragOver}
                             dropPosition={isDragOver ? dragDrop!.dropPosition : null}
@@ -121,7 +160,13 @@ export function NotesTree({
                                 countDescendantPages={countDescendantPages}
                                 dragDrop={dragDrop}
                                 multiSelectedPaths={multiSelectedPaths}
+                                cutPaths={cutPaths}
+                                selectionDragItems={selectionDragItems}
                                 onSelectWithModifiers={onSelectWithModifiers}
+                                renamingPath={renamingPath}
+                                onStartRename={onStartRename}
+                                onRenameCommit={onRenameCommit}
+                                onRenameCancel={onRenameCancel}
                             />
                         )}
                     </div>
