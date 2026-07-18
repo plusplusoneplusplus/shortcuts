@@ -365,6 +365,15 @@ Excalidraw keeps the view-only preview, extension canvases mount
 `ExtensionCanvasView`, and markdown/code canvases use a document preview. Legacy
 `.md-excalidraw-embed` placeholders remain supported for historical message HTML.
 
+`shared/svg/sanitizeSvg.ts` is the client SVG trust boundary. It rejects
+malformed/non-SVG XML, runs DOMPurify's SVG profile, removes scripts, event
+handlers, `foreignObject`, script-bearing CSS/SMIL values, and external resource
+references, and preserves safe SVG styles, gradients, filters, and animation.
+Direct `href`/`xlink:href`/`src` values are limited to base64 raster `data:`
+URIs; internal paint references such as `fill="url(#gradient)"` remain valid.
+Any surface that mounts the sanitized result must use a shadow root so allowed
+SVG `<style>` rules cannot affect the surrounding dashboard document.
+
 `features/chat/source-canvas/` renders the docked, read-only source-file canvas
 for local file references clicked inside assistant chat responses. The global
 file-path delegation normalizes bare `.file-path-link` spans, shared renderer
