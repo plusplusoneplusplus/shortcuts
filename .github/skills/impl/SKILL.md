@@ -63,7 +63,7 @@ Use this skill when the user asks you to **implement** a change in the codebase 
    - Write a clear commit message describing the change and the test additions.
 
 11. **Archive the task file**
-   - If the task/plan file you followed lives under `.vscode/` or `~/.coc/repos/<repoId>/tasks/`, you must archive it after the commit succeeds:
+   - If the task/plan file you followed lives under `.vscode/`, `~/.coc/repos/<repoId>/tasks/`, or `~/.coc/repos/<repoId>/notes/` (e.g. a plan under `notes/Plans/`), you must archive it after the commit succeeds:
 ```bash
      python3 .github/skills/impl/scripts/archive-task-file.py --task <path-to-task-file>
 ```
@@ -78,4 +78,4 @@ Use this skill when the user asks you to **implement** a change in the codebase 
 
 ## Scripts
 
-- `scripts/archive-task-file.py` - Archives a task file from `.vscode/` (legacy) or `~/.coc/repos/<repoId>/tasks/` (modern) into the corresponding `archive/` subdirectory after a successful commit.
+- `scripts/archive-task-file.py` - Archives a task/plan file from `.vscode/` (legacy), `~/.coc/repos/<repoId>/tasks/`, or `~/.coc/repos/<repoId>/notes/` (modern) into the corresponding `archive/` subdirectory after a successful commit.
