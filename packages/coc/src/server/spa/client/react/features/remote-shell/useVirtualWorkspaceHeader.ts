@@ -40,10 +40,16 @@ export function useVirtualWorkspaceHeader(config: VirtualWorkspaceHeaderConfig):
         [schedulesInScheduledSlideEnabled, config.tabs],
     );
 
-    // Default to Notes when the current sub-tab is not one of the visible tabs.
+    // Fall back to the config's landing tab (default `notes`) when the current
+    // sub-tab is not one of the visible tabs. Guard the fallback against being a
+    // hidden tab so we never land on something the header doesn't show.
+    const fallbackTab: RepoSubTab =
+        config.defaultTab && visibleTabs.some(t => t.key === config.defaultTab)
+            ? config.defaultTab
+            : 'notes';
     const activeTab: RepoSubTab = visibleTabs.some(t => t.key === state.activeRepoSubTab)
         ? state.activeRepoSubTab
-        : 'notes';
+        : fallbackTab;
 
     const switchTab = useCallback((tab: RepoSubTab) => {
         dispatch({ type: 'SET_REPO_SUB_TAB', tab });

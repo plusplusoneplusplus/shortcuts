@@ -10,6 +10,7 @@ const mockDispatch = vi.fn();
 let mockActiveRepoSubTab = 'notes';
 let mockSelectedNotePath: string | null = null;
 let mockSchedulesInScheduledSlideEnabled = false;
+let mockTodayViewEnabled = false;
 let mockRemoteShell = false;
 let mockIsMobile = false;
 
@@ -90,6 +91,18 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useSched
     useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled,
 }));
 
+// Feature flag: myWork.todayView (default off → no Today tab, Notes lands)
+vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkTodayViewEnabled', () => ({
+    useMyWorkTodayViewEnabled: () => mockTodayViewEnabled,
+}));
+
+// Stub the Today tab — render a marker div that captures props
+vi.mock('../../../../../src/server/spa/client/react/features/my-work/MyWorkTodayTab', () => ({
+    MyWorkTodayTab: (props: any) => (
+        <div data-testid="my-work-today-tab" data-workspace-id={props.workspaceId} data-active={String(!!props.active)} />
+    ),
+}));
+
 // Remote-first shell gate — when on (desktop) the header lives in the TopBar so
 // the in-body header stands down. Defaults off so the in-body header renders.
 vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
@@ -120,6 +133,7 @@ describe('MyWorkView', () => {
         mockActiveRepoSubTab = 'notes';
         mockSelectedNotePath = null;
         mockSchedulesInScheduledSlideEnabled = false;
+        mockTodayViewEnabled = false;
         mockRemoteShell = false;
         mockIsMobile = false;
         mockDispatch.mockClear();
@@ -436,6 +450,65 @@ describe('MyWorkView', () => {
 
             expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
             expect(location.hash).toBe('#repos/my_work/settings');
+        });
+    });
+
+    describe('Today view flag (myWork.todayView)', () => {
+        it('with the flag OFF, no Today tab exists and Notes stays the landing tab', () => {
+            mockTodayViewEnabled = false;
+            mockActiveRepoSubTab = 'templates'; // not a My Work tab → falls back to default
+            renderView();
+
+            expect(screen.queryByTestId('my-work-tab-today')).toBeNull();
+            expect(screen.queryByTestId('my-work-today-tab')).toBeNull();
+            // Notes is the landing tab (visible, not display:none).
+            const notesContainer = screen.getByTestId('notes-view').parentElement!;
+            expect(notesContainer.style.display).not.toBe('none');
+        });
+
+        it('with the flag ON, a Today tab appears and lands by default', () => {
+            mockTodayViewEnabled = true;
+            mockActiveRepoSubTab = 'templates'; // not a My Work tab → falls back to default (today)
+            renderView();
+
+            expect(screen.getByTestId('my-work-tab-today')).toBeTruthy();
+            // Today content is visible (landing tab); Notes is hidden.
+            const todayContainer = screen.getByTestId('my-work-today-tab').parentElement!;
+            expect(todayContainer.style.display).not.toBe('none');
+            const notesContainer = screen.getByTestId('notes-view').parentElement!;
+            expect(notesContainer.style.display).toBe('none');
+        });
+
+        it('passes the My Work workspace id and active flag to the Today tab', () => {
+            mockTodayViewEnabled = true;
+            mockActiveRepoSubTab = 'today';
+            renderView();
+
+            const todayTab = screen.getByTestId('my-work-today-tab');
+            expect(todayTab.getAttribute('data-workspace-id')).toBe(MY_WORK_WORKSPACE_ID);
+            expect(todayTab.getAttribute('data-active')).toBe('true');
+        });
+
+        it('with the flag ON, an explicit Notes sub-tab still shows Notes', () => {
+            mockTodayViewEnabled = true;
+            mockActiveRepoSubTab = 'notes';
+            renderView();
+
+            const notesContainer = screen.getByTestId('notes-view').parentElement!;
+            expect(notesContainer.style.display).not.toBe('none');
+            const todayContainer = screen.getByTestId('my-work-today-tab').parentElement!;
+            expect(todayContainer.style.display).toBe('none');
+        });
+
+        it('clicking the Today tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
+            mockTodayViewEnabled = true;
+            mockActiveRepoSubTab = 'notes';
+            renderView();
+
+            fireEvent.click(screen.getByTestId('my-work-tab-today'));
+
+            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'today' });
+            expect(location.hash).toBe('#repos/my_work/today');
         });
     });
 

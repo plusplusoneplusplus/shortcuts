@@ -14,7 +14,9 @@ import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { NotesGitTab } from '../features/notes/NotesGitTab';
 import { RepoSchedulesTab } from '../features/schedules/RepoSchedulesTab';
 import { RepoSettingsTab } from '../features/repo-settings/RepoSettingsTab';
+import { MyWorkTodayTab } from '../features/my-work/MyWorkTodayTab';
 import { useSchedulesInScheduledSlideEnabled } from '../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
+import { useMyWorkTodayViewEnabled } from '../hooks/feature-flags/useMyWorkTodayViewEnabled';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
@@ -33,6 +35,11 @@ const MY_WORK_TABS: VirtualWorkspaceHeaderConfig['tabs'] = [
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
     { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
 ];
+
+/** Today tab, prepended (as the default landing tab) only when the
+ *  `myWork.todayView` flag is on. Kept off `MY_WORK_TABS` so the flag-off shape
+ *  is byte-for-byte today's behavior. */
+const MY_WORK_TODAY_TAB: VirtualWorkspaceHeaderConfig['tabs'][number] = { key: 'today', label: 'Today', shortcut: 'Alt+T' };
 
 /** Header identity + tabs + actions for the My Work virtual workspace, shared by
  *  the TopBar (`VirtualWorkspaceShellHeader`) and in-body (`VirtualWorkspaceInlineHeader`)
@@ -76,6 +83,21 @@ export const MY_WORK_HEADER_CONFIG: VirtualWorkspaceHeaderConfig = {
     ],
 };
 
+/**
+ * The My Work header config, gated by the `myWork.todayView` flag. When on, a
+ * Today tab is prepended and becomes the default landing tab; when off the
+ * config is `MY_WORK_HEADER_CONFIG` unchanged (Notes stays the landing tab).
+ * Shared by the in-body header here and the remote-shell TopBar so both agree.
+ */
+export function getMyWorkHeaderConfig(todayViewEnabled: boolean): VirtualWorkspaceHeaderConfig {
+    if (!todayViewEnabled) return MY_WORK_HEADER_CONFIG;
+    return {
+        ...MY_WORK_HEADER_CONFIG,
+        tabs: [MY_WORK_TODAY_TAB, ...MY_WORK_TABS],
+        defaultTab: 'today',
+    };
+}
+
 const VIRTUAL_REPO: RepoData = {
     workspace: { id: MY_WORK_WORKSPACE_ID, rootPath: '', color: undefined, description: undefined, remoteUrl: undefined },
 };
@@ -93,22 +115,36 @@ export function MyWorkView() {
     // the chat-list "Scheduled" slide (feature flag). The Activity tab reuses
     // RepoChatTab, which hosts that slide, so nothing is stranded.
     const schedulesInScheduledSlideEnabled = useSchedulesInScheduledSlideEnabled();
+    // Today view (default-off flag): prepends a Today tab that becomes the
+    // landing tab. Off → tabs + default are byte-for-byte today's behavior.
+    const todayViewEnabled = useMyWorkTodayViewEnabled();
+    const headerConfig = useMemo(() => getMyWorkHeaderConfig(todayViewEnabled), [todayViewEnabled]);
     const visibleTabs = useMemo(
-        () => schedulesInScheduledSlideEnabled ? MY_WORK_TABS.filter(t => t.key !== 'schedules') : MY_WORK_TABS,
-        [schedulesInScheduledSlideEnabled],
+        () => (schedulesInScheduledSlideEnabled ? headerConfig.tabs.filter(t => t.key !== 'schedules') : headerConfig.tabs),
+        [schedulesInScheduledSlideEnabled, headerConfig.tabs],
     );
 
-    // Default to 'notes' when the current sub-tab is not one of the visible My Work tabs
+    // Landing tab when the current sub-tab is not one of the visible My Work
+    // tabs. Mirrors useVirtualWorkspaceHeader so the highlighted header tab and
+    // the content pane always agree.
+    const fallbackTab = headerConfig.defaultTab && visibleTabs.some(t => t.key === headerConfig.defaultTab)
+        ? headerConfig.defaultTab
+        : 'notes';
     const activeTab = visibleTabs.some(t => t.key === state.activeRepoSubTab)
         ? state.activeRepoSubTab
-        : 'notes';
+        : fallbackTab;
 
     return (
         <div className="flex flex-col h-full" data-testid="my-work-view">
-            {!headerInTopBar && <VirtualWorkspaceInlineHeader config={MY_WORK_HEADER_CONFIG} />}
+            {!headerInTopBar && <VirtualWorkspaceInlineHeader config={headerConfig} />}
 
             {/* Tab content */}
             <div className="flex-1 min-h-0 overflow-hidden">
+                {todayViewEnabled && (
+                    <div style={{ display: activeTab === 'today' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                        <MyWorkTodayTab workspaceId={MY_WORK_WORKSPACE_ID} active={activeTab === 'today'} />
+                    </div>
+                )}
                 <div style={{ display: activeTab === 'activity' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                     <RepoChatTab workspaceId={MY_WORK_WORKSPACE_ID} />
                 </div>
