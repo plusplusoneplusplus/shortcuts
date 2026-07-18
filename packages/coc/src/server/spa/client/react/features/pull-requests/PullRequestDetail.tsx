@@ -16,13 +16,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Marked } from 'marked';
 import { cn } from '../../ui';
 import { useApp } from '../../contexts/AppContext';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useCocClient } from '../../repos/cloneRouting';
 import { formatTimestamp, prStatusBadge, autoMergeBadge } from './pr-utils';
-import { ReviewerBadge } from './ReviewerBadge';
 import { ThreadList } from './ThreadList';
 import { PrReviewSummaryPanel } from './PrReviewSummaryPanel';
 import { PrConversationPanel } from './PrConversationPanel';
@@ -56,17 +54,6 @@ import {
 import type { PullRequest, PullRequestCommit, CommentThread, PullRequestCheck } from './pr-utils';
 import { parseDiffFileList, type FileChange } from '../git/diff';
 import type { PrDetailTab } from '../../types/dashboard';
-
-const descRenderer = {
-    link(href: string, _title: string | null | undefined, text: string) {
-        if (href && /^mailto:/i.test(href)) {
-            return `<span>${text}</span>`;
-        }
-        return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
-    },
-};
-
-const descMarked = new Marked({ gfm: true, breaks: true, renderer: descRenderer });
 
 export interface PullRequestDetailProps {
     repoId: string;
@@ -345,7 +332,6 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
     const badge = prStatusBadge(pr.status);
     const reviewers = pr.reviewers ?? [];
     const labels = pr.labels ?? [];
-    const descHtml = pr.description ? String(descMarked.parse(pr.description)) : '';
     const unresolvedCount = reviewSummary?.unresolvedCount ?? 0;
     const deltaText = diffStats
         ? `+${diffStats.additions} / -${diffStats.deletions}`
@@ -571,15 +557,15 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
                     <div className="w-full px-2.5 pb-7 pt-2" data-testid="overview-tab">
                         <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_264px]">
                             <div className="grid gap-2">
-                                {reviewSummary && <PrReviewSummaryPanel summary={reviewSummary} />}
+                                {reviewSummary && (
+                                    <PrReviewSummaryPanel
+                                        summary={reviewSummary}
+                                        reviewers={reviewers}
+                                        labels={labels}
+                                        url={pr.url}
+                                    />
+                                )}
                                 <PrConversationPanel events={timeline} />
-                                <DescriptionAndMeta
-                                    descHtml={descHtml}
-                                    description={pr.description ?? ''}
-                                    url={pr.url}
-                                    reviewers={reviewers}
-                                    labels={labels}
-                                />
                                 {threads.length > 0 && (
                                     <div
                                         className="overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
@@ -718,118 +704,3 @@ function tabCount(
     }
 }
 
-interface DescriptionAndMetaProps {
-    descHtml: string;
-    description: string;
-    url?: string;
-    reviewers: PullRequest['reviewers'];
-    labels: string[];
-}
-
-function DescriptionAndMeta({ descHtml, description, url, reviewers, labels }: DescriptionAndMetaProps) {
-    const reviewerList = reviewers ?? [];
-    const hasMeta = reviewerList.length > 0 || labels.length > 0;
-
-    if (!description && !hasMeta) {
-        return (
-            <div
-                className="flex flex-col gap-1.5 rounded-[5px] border border-dashed border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-900"
-                data-testid="pr-description-empty"
-            >
-                <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
-                    <span aria-hidden="true">📝</span>
-                    <span className="text-[13px] font-medium">No description</span>
-                </div>
-                <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                    This pull request has no description yet.
-                </p>
-                {url && (
-                    <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 self-start text-[11px] text-blue-600 hover:underline dark:text-blue-400"
-                        data-testid="pr-description-open-link"
-                    >
-                        Open in browser to add one 🔗
-                    </a>
-                )}
-            </div>
-        );
-    }
-
-    return (
-        <div
-            className="overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
-            data-testid="pr-description-card"
-        >
-            <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
-                <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
-                    Description
-                </h2>
-                {url && (
-                    <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] text-blue-600 hover:underline dark:text-blue-400"
-                    >
-                        Open in browser
-                    </a>
-                )}
-            </header>
-            <div className="space-y-2 p-2">
-                {description ? (
-                    descHtml ? (
-                        <div
-                            className="markdown-body text-[13px] leading-snug text-gray-700 dark:text-gray-300"
-                            dangerouslySetInnerHTML={{ __html: descHtml }}
-                            data-testid="pr-description"
-                        />
-                    ) : (
-                        <pre
-                            className="whitespace-pre-wrap text-[13px] leading-snug text-gray-700 dark:text-gray-300"
-                            data-testid="pr-description"
-                        >
-                            {description}
-                        </pre>
-                    )
-                ) : (
-                    <p className="text-[11px] italic text-gray-500 dark:text-gray-400">No description provided.</p>
-                )}
-
-                {reviewerList.length > 0 && (
-                    <div data-testid="reviewers-section">
-                        <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:text-gray-400">
-                            Reviewers
-                        </h3>
-                        <div className="space-y-1">
-                            {reviewerList.map((reviewer, idx) => (
-                                <ReviewerBadge key={idx} reviewer={reviewer} />
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {labels.length > 0 && (
-                    <div data-testid="labels-section">
-                        <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:text-gray-400">
-                            Labels
-                        </h3>
-                        <div className="flex flex-wrap gap-1">
-                            {labels.map((label, idx) => (
-                                <span
-                                    key={idx}
-                                    className="rounded bg-gray-100 px-1 py-px text-[11px] text-gray-700 dark:bg-gray-700 dark:text-gray-300"
-                                    data-testid="label-chip"
-                                >
-                                    {label}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}

@@ -238,27 +238,27 @@ describe('successful render', () => {
         expect(branches).toContain('feature/retry-logic');
     });
 
-    it('renders description as markdown', async () => {
+    it('renders the description inside the merged review-summary card', async () => {
         mockFetchDetail(makePr({ description: 'Fix flaky network calls.' }));
         await act(async () => { await renderDetail(); });
-        await waitFor(() => expect(screen.getByTestId('pr-description')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByTestId('pr-review-summary')).toBeInTheDocument());
+        expect(screen.getByTestId('pr-review-summary-copy').textContent).toContain('Fix flaky network calls.');
     });
 
-    it('shows actionable empty-description card when description is absent', async () => {
+    it('shows the fallback copy and Open-in-browser link when description is absent', async () => {
         mockFetchDetail(makePr({ description: undefined, url: 'https://example.com/pr/142' }));
         await act(async () => { await renderDetail(); });
-        await waitFor(() => expect(screen.getByTestId('pr-description-empty')).toBeInTheDocument());
-        expect(screen.getByTestId('pr-description-empty').textContent).toContain('No description');
-        const openLink = screen.getByTestId('pr-description-open-link');
-        expect(openLink).toBeInTheDocument();
+        await waitFor(() => expect(screen.getByTestId('pr-review-summary')).toBeInTheDocument());
+        expect(screen.getByTestId('pr-review-summary-copy').textContent).toContain('No PR description provided.');
+        const openLink = screen.getByRole('link', { name: 'Open in browser' });
         expect(openLink).toHaveAttribute('href', 'https://example.com/pr/142');
     });
 
-    it('does not render open-link in empty-description card when no url', async () => {
+    it('does not render an Open-in-browser link when no url', async () => {
         mockFetchDetail(makePr({ description: undefined, url: undefined }));
         await act(async () => { await renderDetail(); });
-        await waitFor(() => expect(screen.getByTestId('pr-description-empty')).toBeInTheDocument());
-        expect(screen.queryByTestId('pr-description-open-link')).not.toBeInTheDocument();
+        await waitFor(() => expect(screen.getByTestId('pr-review-summary')).toBeInTheDocument());
+        expect(screen.queryByRole('link', { name: 'Open in browser' })).not.toBeInTheDocument();
     });
 
     it('renders reviewer list with correct vote icons', async () => {

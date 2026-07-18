@@ -111,7 +111,7 @@ test.describe('Pull Requests — detail view', () => {
     });
 
     test('shows PR description', async ({ page }) => {
-        await expect(page.getByTestId('pr-description')).toContainText(
+        await expect(page.getByTestId('pr-review-summary-copy')).toContainText(
             MOCK_PR_OPEN.description!,
             { timeout: 10000 },
         );
