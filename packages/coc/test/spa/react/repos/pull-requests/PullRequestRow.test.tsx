@@ -120,6 +120,36 @@ describe('PullRequestRow — state dot', () => {
         expect(screen.queryByTestId('pr-state-dot')).toBeNull();
         expect(screen.getByTestId('pr-row-checkbox')).toBeTruthy();
     });
+
+    it('exposes a plain-language hover tooltip and aria-label on the dot (normal row)', () => {
+        render(<PullRequestRow pr={makePr({ status: 'open' })} onClick={vi.fn()} risk="low" />);
+        const dot = screen.getByTestId('pr-state-dot');
+        expect(dot.getAttribute('title')).toBe('Open — awaiting review');
+        expect(dot.getAttribute('aria-label')).toBe('Open — awaiting review');
+        expect(dot.getAttribute('role')).toBe('img');
+        expect(dot.getAttribute('aria-hidden')).toBeNull();
+    });
+
+    it('labels a high-risk (blocked) dot with its meaning (normal row)', () => {
+        render(<PullRequestRow pr={makePr({ status: 'open' })} onClick={vi.fn()} risk="high" />);
+        const dot = screen.getByTestId('pr-state-dot');
+        expect(dot.getAttribute('title')).toBe('High-risk change — large diff');
+        expect(dot.getAttribute('aria-label')).toBe('High-risk change — large diff');
+    });
+
+    it('exposes the dot tooltip and aria-label in compact mode', () => {
+        render(<PullRequestRow pr={makePr({ status: 'open' })} onClick={vi.fn()} compact risk="low" />);
+        const dot = screen.getByTestId('pr-state-dot');
+        expect(dot.getAttribute('title')).toBe('Open — awaiting review');
+        expect(dot.getAttribute('aria-label')).toBe('Open — awaiting review');
+        expect(dot.getAttribute('aria-hidden')).toBeNull();
+    });
+
+    it('labels a high-risk (blocked) dot with its meaning in compact mode', () => {
+        render(<PullRequestRow pr={makePr({ status: 'open' })} onClick={vi.fn()} compact risk="high" />);
+        const dot = screen.getByTestId('pr-state-dot');
+        expect(dot.getAttribute('title')).toBe('High-risk change — large diff');
+    });
 });
 
 describe('PullRequestRow — risk pill', () => {

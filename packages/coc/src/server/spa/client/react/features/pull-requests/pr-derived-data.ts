@@ -358,6 +358,19 @@ export function queueDotClass(state: QueueDotState): string {
     }
 }
 
+export function queueDotLabel(state: QueueDotState): string {
+    switch (state) {
+        case 'open':
+            return 'Open — awaiting review';
+        case 'draft':
+            return 'Draft — not ready for review';
+        case 'blocked':
+            return 'High-risk change — large diff';
+        case 'ready':
+            return 'Merged or closed';
+    }
+}
+
 export interface QueueFilterCounts {
     all: number;
     mine: number;
