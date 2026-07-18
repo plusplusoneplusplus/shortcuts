@@ -106,10 +106,16 @@ function optionByPath(path: string): HTMLElement {
 }
 
 describe('WhisperDiffPanel — header dropdown selector (AC-01)', () => {
-    it('defaults to "All files" and shows the N-files totals subtitle', () => {
+    it('defaults to "All files" and shows the N-files totals on the same row', () => {
         render(<WhisperDiffPanel state={multiFileState()} workspaceRootPath="/home/u/proj" onClose={() => {}} />);
-        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('All files');
-        expect(screen.getByTestId('whisper-diff-totals')).toHaveTextContent('4 files (+7 −3)');
+        const headerMain = screen.getByTestId('whisper-diff-header-main');
+        const filename = screen.getByTestId('whisper-diff-filename');
+        const totals = screen.getByTestId('whisper-diff-totals');
+        expect(filename).toHaveTextContent('All files');
+        expect(totals).toHaveTextContent('4 files (+7 −3)');
+        expect(headerMain).toHaveClass('flex', 'items-center');
+        expect(headerMain).toContainElement(filename);
+        expect(headerMain).toContainElement(totals);
         expect(screen.queryByTestId('whisper-diff-path')).toBeNull();
     });
 
