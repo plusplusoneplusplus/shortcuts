@@ -6,12 +6,12 @@ import { NoteTocPanel } from './NoteTocPanel';
 
 export interface NoteEditorToolbarProps {
     editor: Editor | null;
-    /** When true, formatting buttons are hidden but the right-end controls (mode toggle, comments) remain visible. */
+    /** When true, formatting buttons are hidden but the mode toggle and right-end controls (comments) remain visible. */
     hidden?: boolean;
     commentsPanelOpen?: boolean;
     onToggleCommentsPanel?: () => void;
     commentCount?: number;
-    /** Inline Rich/Source mode toggle rendered at the right end of the toolbar. */
+    /** Inline Rich/Source mode toggle rendered at the left end of the toolbar. */
     modeToggle?: ReactNode;
     /** Number of active AI edit regions in the editor. */
     aiEditCount?: number;
@@ -308,6 +308,14 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
             aria-label="Formatting toolbar"
             data-testid="note-editor-toolbar"
         >
+            {/* Mode toggle — leftmost, always visible */}
+            {modeToggle && (
+                <>
+                    {modeToggle}
+                    {!hidden && <Sep />}
+                </>
+            )}
+
             {/* Formatting buttons — hidden in source mode */}
             {!hidden && (
                 <>
@@ -364,7 +372,7 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
             )}
 
             {/* Right-end controls — always visible */}
-            {(onToggleCommentsPanel || modeToggle || toolbarRight || onRefresh || onToggleChatPanel || chatDisabledReason || onToggleToc || (aiEditCount ?? 0) > 0) && (
+            {(onToggleCommentsPanel || toolbarRight || onRefresh || onToggleChatPanel || chatDisabledReason || onToggleToc || (aiEditCount ?? 0) > 0) && (
                 <>
                     <div className="ml-auto" />
                     {(aiEditCount ?? 0) > 0 && onToggleAiEdits && (
@@ -469,7 +477,6 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                         </button>
                     )}
                     {toolbarRight}
-                    {modeToggle}
                 </>
             )}
         </div>
