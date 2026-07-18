@@ -1085,29 +1085,54 @@ export function NoteEditor({
                     onTocJump={handleTocJump}
                     modeToggle={
                         <div className="flex items-center gap-1" data-testid="note-mode-toggle">
-                            <div className="flex h-5 rounded border border-[#c0c0c0] dark:border-[#555] overflow-hidden text-[10px]">
+                            <div
+                                role="group"
+                                aria-label="Note editor view"
+                                className="flex h-7 rounded-md border border-[#c0c0c0] dark:border-[#555] bg-[#f3f3f3] dark:bg-[#2a2a2a] overflow-hidden"
+                            >
                                 <button
                                     type="button"
-                                    className={`px-1.5 h-full flex items-center transition-colors ${
+                                    aria-pressed={viewMode === 'rich'}
+                                    className={`w-7 h-full flex items-center justify-center transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4] ${
                                         viewMode === 'rich'
-                                            ? 'bg-[#0078d4] text-white active'
-                                            : 'bg-transparent text-[#888] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#3c3c3c]'
+                                            ? 'bg-white dark:bg-[#3c3c3c] text-[#1a1a1a] dark:text-[#eee] shadow-sm active'
+                                            : 'bg-transparent text-[#888] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#333]'
                                     }`}
                                     onClick={() => viewMode !== 'rich' && switchToRich()}
-                                    title="Rich editor"
+                                    title="Visual Markdown editor"
+                                    aria-label="Visual Markdown editor"
                                     data-testid="note-mode-rich"
-                                >Rich</button>
+                                >
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                        <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                </button>
                                 <button
                                     type="button"
-                                    className={`px-1.5 h-full flex items-center transition-colors ${
+                                    aria-pressed={viewMode === 'source'}
+                                    className={`relative w-7 h-full flex items-center justify-center transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4] ${
                                         viewMode === 'source'
-                                            ? 'bg-[#0078d4] text-white active'
-                                            : 'bg-transparent text-[#888] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#3c3c3c]'
+                                            ? 'bg-white dark:bg-[#3c3c3c] text-[#1a1a1a] dark:text-[#eee] shadow-sm active'
+                                            : 'bg-transparent text-[#888] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#333]'
                                     }`}
                                     onClick={() => viewMode !== 'source' && switchToSource()}
-                                    title={sourceDirty ? 'MD (modified)' : 'Source editor'}
+                                    title={sourceDirty && viewMode === 'source' ? 'Markdown source (modified)' : 'Markdown source'}
+                                    aria-label={sourceDirty && viewMode === 'source' ? 'Markdown source (modified)' : 'Markdown source'}
                                     data-testid="note-mode-source"
-                                >{sourceDirty && viewMode === 'source' ? 'MD ●' : 'MD'}</button>
+                                >
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                        <polyline points="16 18 22 12 16 6" />
+                                        <polyline points="8 6 2 12 8 18" />
+                                    </svg>
+                                    {sourceDirty && viewMode === 'source' && (
+                                        <span
+                                            aria-hidden="true"
+                                            className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[#0078d4]"
+                                            data-testid="note-mode-source-dirty"
+                                        />
+                                    )}
+                                </button>
                             </div>
                             {viewMode === 'source' && sourceDirty && (
                                 <button className="save-btn" onClick={() => flushSave()} disabled={saveState === 'saving'} data-testid="note-source-save-btn">
