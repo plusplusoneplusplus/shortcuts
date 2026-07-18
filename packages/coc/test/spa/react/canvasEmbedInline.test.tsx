@@ -120,6 +120,37 @@ describe('inline canvas:// embed', () => {
         expect(screen.queryByTestId('mock-excalidraw')).toBeNull();
     });
 
+    it('renders an exploration canvas through the interactive exploration view', async () => {
+        mocks.get.mockResolvedValue({
+            id: 'expl-canvas',
+            workspaceId: 'ws-1',
+            title: 'Storm data',
+            type: 'exploration',
+            content: JSON.stringify({
+                query: 'StormEvents | take 5',
+                clusterUrl: 'https://help.kusto.windows.net',
+                database: 'Samples',
+                columns: [{ name: 'State', type: 'string' }],
+                rows: [['Texas']],
+                truncated: false,
+                lastRun: { timestamp: '2026-07-18T01:00:00.000Z', status: 'success', rowCount: 1 },
+            }),
+            revision: 3,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            lastEditor: 'ai',
+        });
+
+        const html = chatMarkdownToHtml('canvas://expl-canvas', 'ws-1', { canvasEmbedEnabled: true });
+        render(<MarkdownView html={html} />);
+
+        const embed = await screen.findByTestId('canvas-embed-exploration');
+        expect(mocks.get).toHaveBeenCalledWith('ws-1', 'expl-canvas');
+        expect(embed.querySelector('[data-testid="exploration-query"]')).toBeTruthy();
+        expect(screen.getByText('Texas')).toBeInTheDocument();
+        expect(screen.queryByTestId('mock-excalidraw')).toBeNull();
+    });
+
     it.each([
         { type: 'markdown', content: '# Project brief', label: 'markdown' },
         { type: 'code', content: 'const scope = "note";', label: 'typescript', language: 'typescript' },

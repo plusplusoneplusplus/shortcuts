@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Canvas } from '@plusplusoneplusplus/coc-client';
 import { ExtensionCanvasView } from '../features/canvas/ExtensionCanvasView';
+import { ExplorationView } from '../features/canvas/ExplorationView';
 import { useCocClient } from '../repos/cloneRouting';
 import { ExcalidrawPreview } from './ExcalidrawPreview';
 
@@ -53,6 +54,18 @@ export function CanvasEmbed({ workspaceId, canvasId }: CanvasEmbedProps) {
     }
     if (canvas.type === 'excalidraw') {
         return <ExcalidrawPreview workspaceId={workspaceId} canvasId={canvasId} canvas={canvas} />;
+    }
+    if (canvas.type === 'exploration') {
+        return (
+            <div className="my-3 h-[460px] overflow-hidden rounded-md border border-[#dce3ee] dark:border-[#3c3c3c]" data-testid="canvas-embed-exploration">
+                <ExplorationView
+                    workspaceId={workspaceId}
+                    canvas={canvas}
+                    onCanvasSaved={setCanvas}
+                    compact
+                />
+            </div>
+        );
     }
     if (canvas.type === 'extension') {
         return (

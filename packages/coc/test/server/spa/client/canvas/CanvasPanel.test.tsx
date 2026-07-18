@@ -1126,4 +1126,30 @@ describe('CanvasPanel', () => {
             selSpy.mockRestore();
         }
     });
+
+    it('renders an exploration canvas with the exploration view and no markdown edit toggle', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({
+            id: 'expl-abc123',
+            title: 'Storm exploration',
+            type: 'exploration',
+            content: JSON.stringify({
+                query: 'StormEvents | take 3',
+                clusterUrl: 'https://help.kusto.windows.net',
+                database: 'Samples',
+                columns: [{ name: 'State', type: 'string' }],
+                rows: [['Texas']],
+                truncated: false,
+                lastRun: { timestamp: '2026-07-18T01:00:00.000Z', status: 'success', rowCount: 1 },
+            }),
+        }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="expl-abc123" liveEvent={null} />);
+
+        await waitFor(() => expect(screen.getByTestId('exploration-view')).toBeTruthy());
+        expect(screen.getByTestId('canvas-panel-exploration-badge')).toBeInTheDocument();
+        // Explorations own their editing surface — no markdown Preview/Edit toggle.
+        expect(screen.queryByTestId('canvas-panel-mode-edit')).toBeNull();
+        expect(screen.getByTestId('exploration-query')).toHaveValue('StormEvents | take 3');
+        expect(screen.getByText('Texas')).toBeInTheDocument();
+    });
 });

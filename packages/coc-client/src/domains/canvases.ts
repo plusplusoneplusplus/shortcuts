@@ -51,6 +51,23 @@ export class CanvasesClient {
     return response.canvas;
   }
 
+  /**
+   * Run an exploration canvas's query server-side (AC-02/AC-04). Optional
+   * overrides update the stored query/cluster/database before executing. The
+   * updated canvas (with fresh columns/rows/lastRun) is returned.
+   */
+  async run(
+    workspaceId: string,
+    canvasId: string,
+    overrides?: { query?: string; clusterUrl?: string; database?: string },
+  ): Promise<Canvas> {
+    const response = await this.transport.request<CanvasResponse>(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/run`),
+      { method: 'POST', body: overrides ?? {} },
+    );
+    return response.canvas;
+  }
+
   async listVersions(workspaceId: string, canvasId: string): Promise<CanvasVersionMeta[]> {
     const response = await this.transport.request<ListCanvasVersionsResponse>(
       canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/versions`),
