@@ -680,6 +680,16 @@ timeout: 300
             expect(result.canvas.enabled).toBe(true);
         });
 
+        it('should default exploration.enabled to false', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {});
+            expect(result.exploration.enabled).toBe(false);
+        });
+
+        it('should override exploration.enabled from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { exploration: { enabled: true } });
+            expect(result.exploration.enabled).toBe(true);
+        });
+
         it('should preserve auto provider routing defaults when not overridden', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
             expect(result.features.autoAgentProviderRouting).toBe(false);
@@ -1018,6 +1028,8 @@ timeout: 300
                 '  enabled: true',
                 'canvas:',
                 '  enabled: true',
+                'exploration:',
+                '  enabled: true',
                 'containerDefaultAgent:',
                 '  enabled: true',
                 'agentProviderRouting:',
@@ -1270,6 +1282,9 @@ timeout: 300
                   "excalidraw": {
                     "enabled": false,
                   },
+                  "exploration": {
+                    "enabled": false,
+                  },
                   "features": {
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
@@ -1451,6 +1466,7 @@ timeout: 300
                   "dreams.timeoutMs": "default",
                   "effortLevels.enabled": "default",
                   "excalidraw.enabled": "default",
+                  "exploration.enabled": "default",
                   "features.autoAgentProviderRouting": "default",
                   "features.autoMemoryPromotion": "file",
                   "features.commitChatLens": "default",

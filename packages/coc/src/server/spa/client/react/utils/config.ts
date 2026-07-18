@@ -39,6 +39,7 @@ interface DashboardConfig {
     dreamsEnabled?: boolean;
     excalidrawEnabled?: boolean;
     canvasEnabled?: boolean;
+    explorationEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
     sessionContextAttachmentsEnabled?: boolean;
@@ -416,6 +417,11 @@ export function isExcalidrawEnabled(): boolean {
 /** Returns true when the chat canvas side panel is enabled. */
 export function isCanvasEnabled(): boolean {
     return getConfig().canvasEnabled === true;
+}
+
+/** Returns true when the Kusto data-exploration canvas is enabled. */
+export function isExplorationEnabled(): boolean {
+    return getConfig().explorationEnabled === true;
 }
 
 export function isMcpOauthEnabled(): boolean {
