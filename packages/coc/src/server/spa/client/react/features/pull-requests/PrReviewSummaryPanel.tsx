@@ -55,21 +55,6 @@ export function PrReviewSummaryPanel({ summary }: PrReviewSummaryPanelProps) {
                     data-testid="pr-review-summary-copy"
                     dangerouslySetInnerHTML={{ __html: summaryHtml }}
                 />
-                <div className="mb-1.5 grid grid-cols-2 gap-[5px] sm:grid-cols-5" data-testid="pr-review-metrics">
-                    {summary.metrics.map(metric => (
-                        <div
-                            key={metric.key}
-                            className="rounded-md border border-gray-200 bg-gray-50 px-[7px] py-[5px] dark:border-gray-700 dark:bg-gray-800/60"
-                        >
-                            <div className="text-[10px] font-semibold uppercase tracking-normal text-gray-500 dark:text-gray-400">
-                                {metric.key}
-                            </div>
-                            <div className="mt-px text-[16px] font-semibold leading-[1.08] tabular-nums text-gray-900 dark:text-gray-100">
-                                {metric.value}
-                            </div>
-                        </div>
-                    ))}
-                </div>
                 <ul className="m-0 grid list-none gap-1 p-0" data-testid="pr-review-findings">
                     {summary.findings.map((finding, idx) => (
                         <li

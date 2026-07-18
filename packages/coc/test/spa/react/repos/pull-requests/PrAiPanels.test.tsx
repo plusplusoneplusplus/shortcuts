@@ -74,7 +74,7 @@ const sampleReviewers: Reviewer[] = [
 ];
 
 describe('PrReviewSummaryPanel', () => {
-    it('renders deterministic metric and finding facts', () => {
+    it('renders deterministic finding facts', () => {
         const summary = buildPrReviewSummary({
             pr: samplePr,
             diffStats: { additions: 240, deletions: 60, changedFiles: 6 },
@@ -97,7 +97,7 @@ describe('PrReviewSummaryPanel', () => {
         render(<PrReviewSummaryPanel summary={summary} />);
         expect(screen.getByTestId('pr-review-summary')).toBeInTheDocument();
         expect(screen.getByTestId('pr-review-summary-copy').textContent?.trim()).toBe(samplePr.description);
-        expect(screen.getByTestId('pr-review-metrics').children.length).toBe(5);
+        expect(screen.queryByTestId('pr-review-metrics')).not.toBeInTheDocument();
         expect(screen.getByTestId('pr-review-findings').textContent).toContain('lint: eslint failed');
         expect(screen.getByTestId('pr-review-findings').textContent).toContain('src/stream.ts:42');
     });

@@ -80,13 +80,6 @@ describe('buildPrReviewSummary', () => {
 
         expect(summary.summary).toBe(basePr.description);
         expect(summary.risk).toBe('Medium');
-        expect(summary.metrics).toEqual([
-            { key: 'Files', value: '5' },
-            { key: 'Lines', value: '+120 / -40' },
-            { key: 'Checks', value: '1/2 passing' },
-            { key: 'Reviewers', value: '1/2 approved' },
-            { key: 'Threads', value: '1/1 unresolved' },
-        ]);
         expect(summary.findings.map(finding => finding.body)).toEqual([
             'lint: eslint failed',
             'Unresolved blocking thread at src/worker.ts:21: Please handle abort replay before merge.',
@@ -119,7 +112,6 @@ describe('buildPrReviewSummary', () => {
         });
 
         expect(summary.risk).toBe('Unknown');
-        expect(summary.metrics[0]).toEqual({ key: 'Files', value: 'n/a' });
     });
 });
 

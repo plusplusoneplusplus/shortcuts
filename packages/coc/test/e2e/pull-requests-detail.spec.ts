@@ -160,9 +160,9 @@ test.describe('Pull Requests — detail view', () => {
             MOCK_PR_OPEN.description!,
             { timeout: 10000 },
         );
-        await expect(page.getByTestId('pr-review-metrics')).toBeVisible({ timeout: 10000 });
-        await expect(page.getByTestId('pr-review-metrics')).toContainText('Files', { timeout: 10000 });
-        await expect(page.getByTestId('pr-review-metrics')).toContainText('+2 / -1', { timeout: 10000 });
+        await expect(page.getByTestId('pr-review-metrics')).toHaveCount(0);
+        await expect(page.getByTestId('pr-delta')).toBeVisible({ timeout: 10000 });
+        await expect(page.getByTestId('pr-delta')).toContainText('+2 / -1', { timeout: 10000 });
     });
 
     test('switching to Files tab renders the AI files panel', async ({ page }) => {

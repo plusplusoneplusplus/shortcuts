@@ -362,11 +362,7 @@ describe('hero metadata', () => {
         await waitFor(() => expect(screen.getByTestId('pr-review-summary')).toBeInTheDocument());
 
         expect(screen.getByTestId('pr-review-summary-copy').textContent?.trim()).toBe('Fix flaky network calls with bounded retries.');
-        const metrics = screen.getByTestId('pr-review-metrics').textContent ?? '';
-        expect(metrics).toContain('+2 / -1');
-        expect(metrics).toContain('0/1 passing');
-        expect(metrics).toContain('1/2 approved');
-        expect(metrics).toContain('1/1 unresolved');
+        expect(screen.queryByTestId('pr-review-metrics')).not.toBeInTheDocument();
         const findings = screen.getByTestId('pr-review-findings').textContent ?? '';
         expect(findings).toContain('lint: eslint failed');
         expect(findings).toContain('src/retry.ts:44');

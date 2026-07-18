@@ -1,5 +1,5 @@
 import type { FileChange } from '../git/diff';
-import { deriveQueueRisk, isApprovedReviewerVote } from './pr-utils';
+import { deriveQueueRisk } from './pr-utils';
 import type {
     CommentThread,
     PullRequest,
@@ -12,11 +12,6 @@ import type {
 export type PrReviewFindingTag = 'good' | 'risk' | 'note';
 export type PrReviewRiskLevel = 'Low' | 'Medium' | 'High' | 'Unknown';
 
-export interface PrReviewMetric {
-    key: string;
-    value: string;
-}
-
 export interface PrReviewFinding {
     tag: PrReviewFindingTag;
     label: string;
@@ -26,7 +21,6 @@ export interface PrReviewFinding {
 export interface PrReviewSummary {
     risk: PrReviewRiskLevel;
     summary: string;
-    metrics: PrReviewMetric[];
     findings: PrReviewFinding[];
     blockingThreadCount: number;
     unresolvedCount: number;
@@ -73,11 +67,9 @@ export function buildPrReviewSummary(params: {
     reviewers: Reviewer[];
     threads: CommentThread[];
 }): PrReviewSummary {
-    const { pr, diffStats, checks, reviewers, threads } = params;
+    const { pr, diffStats, checks, threads } = params;
     const failingChecks = checks.filter(isFailingPullRequestCheck);
     const unresolvedThreads = threads.filter(isUnresolvedPullRequestThread);
-    const approvedReviewers = reviewers.filter(reviewer => isApprovedReviewerVote(reviewer.vote));
-    const passingChecks = checks.filter(check => check.status === 'success');
     const risk = riskLevelFromQueueRisk(deriveQueueRisk(diffStats, {
         hasFailingCheck: failingChecks.length > 0,
         hasUnresolvedBlockingThread: unresolvedThreads.length > 0,
@@ -107,13 +99,6 @@ export function buildPrReviewSummary(params: {
     return {
         risk,
         summary: getPullRequestReviewSummaryText(pr) || 'No PR description provided.',
-        metrics: [
-            { key: 'Files', value: diffStats ? String(diffStats.changedFiles) : 'n/a' },
-            { key: 'Lines', value: diffStats ? `+${diffStats.additions} / -${diffStats.deletions}` : 'n/a' },
-            { key: 'Checks', value: checks.length > 0 ? `${passingChecks.length}/${checks.length} passing` : '0 reported' },
-            { key: 'Reviewers', value: reviewers.length > 0 ? `${approvedReviewers.length}/${reviewers.length} approved` : '0 assigned' },
-            { key: 'Threads', value: threads.length > 0 ? `${unresolvedThreads.length}/${threads.length} unresolved` : '0 open' },
-        ],
         findings,
         blockingThreadCount: unresolvedThreads.length,
         unresolvedCount: unresolvedThreads.length,
