@@ -776,7 +776,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             if (!ws) return;
             // Static config — short-lived private cache (both branches below are 200s).
             setStaticConfigCacheHeaders(res);
-            const liveFlags = ctx.getLiveFeatureFlags?.() ?? { excalidrawEnabled: false, canvasEnabled: false };
+            const liveFlags = ctx.getLiveFeatureFlags?.() ?? { excalidrawEnabled: false, canvasEnabled: false, explorationEnabled: false };
             const effectiveRegistry = withToolParameterMetadata(getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, canvasEnabled: liveFlags.canvasEnabled }));
             const conversationRetrievalAvailable = typeof ctx.store.searchConversations === 'function';
             if (!ctx.dataDir) {

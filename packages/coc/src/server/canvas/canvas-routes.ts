@@ -27,6 +27,8 @@ import { emitCanvasUpdated } from '../streaming/sse-handler';
 import { CanvasStore, isValidCanvasId } from './canvas-store';
 import type { CanvasEdit, CanvasCommentStatus, CanvasRecord } from './canvas-store';
 import { runCanvasCapability, isValidCapabilityName } from './canvas-capability-runner';
+import { runExploration } from '../exploration/exploration-service';
+import type { KustoClientFactory } from '../exploration/kusto-exec';
 
 const listPattern = /^\/api\/workspaces\/([^/]+)\/canvases$/;
 const detailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)$/;
@@ -36,6 +38,7 @@ const commentsPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/comment
 const commentDetailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/comments\/([^/]+)$/;
 const extensionPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/extension$/;
 const capabilityPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/capabilities\/([^/]+)$/;
+const runPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/run$/;
 
 const COMMENT_STATUSES: readonly CanvasCommentStatus[] = ['open', 'sent', 'resolved'];
 
@@ -51,6 +54,10 @@ export function registerCanvasRoutes(
     dataDir: string,
     getWsServer?: () => ProcessWebSocketServer | undefined,
     processStore?: ProcessStore,
+    /** Live gate for the exploration feature (AC-08). When it returns false the Run route 404s. */
+    getExplorationEnabled?: () => boolean,
+    /** Injectable Kusto client factory; defaults to the real SDK. Overridden in tests. */
+    explorationClientFactory?: KustoClientFactory,
 ): void {
     const store = new CanvasStore(dataDir);
 
@@ -350,6 +357,54 @@ export function registerCanvasRoutes(
 
             broadcastCanvasUpdated(wsId, result.canvas, 'user');
             sendJSON(res, 200, { canvas: result.canvas });
+        },
+    });
+
+    // AC-02 — run an exploration's query server-side (no AI turn). Gated on the
+    // exploration feature flag so the route is unreachable when disabled (AC-08).
+    routes.push({
+        method: 'POST',
+        pattern: runPattern,
+        handler: async (req, res, match) => {
+            if (!getExplorationEnabled?.()) {
+                return sendError(res, 404, 'Not found');
+            }
+            const wsId = decodeURIComponent(match![1]);
+            const canvasId = decodeURIComponent(match![2]);
+            if (!isValidCanvasId(canvasId)) {
+                return sendError(res, 400, 'Invalid canvas ID');
+            }
+
+            let body: { query?: string; clusterUrl?: string; database?: string };
+            try {
+                body = (await parseBody(req)) as { query?: string; clusterUrl?: string; database?: string };
+            } catch {
+                return sendError(res, 400, 'Invalid JSON body');
+            }
+
+            const overrides: { query?: string; clusterUrl?: string; database?: string } = {};
+            if (typeof body.query === 'string') overrides.query = body.query;
+            if (typeof body.clusterUrl === 'string') overrides.clusterUrl = body.clusterUrl;
+            if (typeof body.database === 'string') overrides.database = body.database;
+
+            const outcome = await runExploration(store, wsId, canvasId, {
+                overrides,
+                editor: 'user',
+                ...(explorationClientFactory ? { clientFactory: explorationClientFactory } : {}),
+            });
+
+            if (!outcome.ok) {
+                if (outcome.reason === 'not-found') {
+                    return sendError(res, 404, 'Exploration not found');
+                }
+                if (outcome.reason === 'wrong-type') {
+                    return sendError(res, 400, 'Canvas is not an exploration');
+                }
+                return sendError(res, 500, `Failed to persist run: ${outcome.error}`);
+            }
+
+            broadcastCanvasUpdated(wsId, outcome.canvas, 'user');
+            sendJSON(res, 200, { canvas: outcome.canvas });
         },
     });
 }
