@@ -57,7 +57,7 @@ export function PrAiGroupedThreads({ groups, totalThreads }: PrAiGroupedThreadsP
                         No comment threads on this pull request yet.
                     </p>
                 )}
-                {groups.map(group => (
+                {totalThreads > 0 && groups.map(group => (
                     <div
                         key={group.id}
                         className={cn(

@@ -168,6 +168,7 @@ describe('PrAiGroupedThreads', () => {
     it('renders an empty-state message when there are no threads', () => {
         render(<PrAiGroupedThreads groups={buildThreadGroupsFromThreads([])} totalThreads={0} />);
         expect(screen.getByText(/No comment threads/i)).toBeTruthy();
+        expect(screen.queryAllByTestId('pr-ai-thread-group')).toHaveLength(0);
     });
 });
 
