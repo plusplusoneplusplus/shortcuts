@@ -3444,7 +3444,7 @@ export function ChatListPane({
                                         'font-mono text-[10px] font-semibold tracking-[0.08em] whitespace-nowrap',
                                         isPaused
                                             ? 'text-amber-700 dark:text-amber-400'
-                                            : 'text-[#606060] dark:text-[#9d9d9d]',
+                                            : 'text-emerald-700 dark:text-emerald-400',
                                     )}
                                 >
                                     ALL
@@ -3490,7 +3490,7 @@ export function ChatListPane({
                                                 'font-mono text-[10px] font-semibold tracking-[0.08em] whitespace-nowrap',
                                                 isAutopilotPaused
                                                     ? 'text-amber-700 dark:text-amber-400'
-                                                    : 'text-[#606060] dark:text-[#9d9d9d]',
+                                                    : 'text-emerald-700 dark:text-emerald-400',
                                             )}
                                         >
                                             AP
