@@ -83,6 +83,26 @@ function formatTimestamp(iso: string): string {
     }
 }
 
+/**
+ * Build the follow-up message sent into the owning conversation for AC-06's
+ * "Ask AI" loop. It embeds the exploration's current query text and the target
+ * canvas id so the AI can improve the query and persist the result back to the
+ * same exploration via the `kusto_query` tool. The current query is always
+ * included so the AI reasons from the real starting point.
+ */
+export function buildAskAiMessage(query: string, instruction: string, canvasId: string): string {
+    const trimmedQuery = query.trim();
+    const queryBlock = trimmedQuery
+        ? `Current KQL query:\n\`\`\`kql\n${trimmedQuery}\n\`\`\``
+        : 'The exploration has no query yet.';
+    return [
+        `Please update the Kusto exploration (canvasId: "${canvasId}") using the `
+        + '`kusto_query` tool so the change persists to this existing exploration canvas.',
+        queryBlock,
+        `Requested change: ${instruction.trim()}`,
+    ].join('\n\n');
+}
+
 export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = false }: ExplorationViewProps) {
     const client = useCocClient(workspaceId);
     const parsed = useMemo(() => parseExplorationContent(canvas.content), [canvas.content]);
@@ -107,6 +127,35 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
 
     const [running, setRunning] = useState(false);
     const [runError, setRunError] = useState<string | null>(null);
+
+    // AC-06 Ask-AI loop: a small prompt box that sends a follow-up into the
+    // owning conversation (canvas.processId) with the current query + the
+    // user's instruction, so the AI improves the query via the kusto_query tool.
+    const [askInstruction, setAskInstruction] = useState('');
+    const [asking, setAsking] = useState(false);
+    const [askError, setAskError] = useState<string | null>(null);
+    const [askSent, setAskSent] = useState(false);
+
+    const handleAskAi = useCallback(async () => {
+        const instruction = askInstruction.trim();
+        if (!instruction || !canvas.processId || asking) return;
+        setAsking(true);
+        setAskError(null);
+        setAskSent(false);
+        try {
+            await client.processes.sendMessage(
+                canvas.processId,
+                { content: buildAskAiMessage(query, instruction, canvas.id), mode: 'autopilot' },
+                { workspace: workspaceId },
+            );
+            setAskInstruction('');
+            setAskSent(true);
+        } catch (err) {
+            setAskError(err instanceof Error ? err.message : 'Ask AI failed');
+        } finally {
+            setAsking(false);
+        }
+    }, [askInstruction, canvas.processId, canvas.id, asking, client, query, workspaceId]);
 
     const handleRun = useCallback(async () => {
         if (running) return;
@@ -285,6 +334,39 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                 </div>
                 {runError && (
                     <div className="text-[10px] text-red-500" data-testid="exploration-run-error">{runError}</div>
+                )}
+
+                {/* AC-06 Ask-AI loop — only when the exploration is linked to a chat. */}
+                {!compact && canvas.processId && (
+                    <div className="flex flex-col gap-1 pt-1 border-t border-dashed border-[#e0e0e0] dark:border-[#474749]" data-testid="exploration-ask-ai">
+                        <span className="block text-[9px] uppercase text-[#848484]">Ask AI to improve this query</span>
+                        <div className="flex items-start gap-2">
+                            <textarea
+                                className={`${INPUT_CLASS} resize-y min-h-[32px]`}
+                                value={askInstruction}
+                                onChange={e => { setAskInstruction(e.target.value); setAskSent(false); }}
+                                placeholder="e.g. add a 7-day rolling average"
+                                data-testid="exploration-ask-input"
+                            />
+                            <button
+                                type="button"
+                                className="shrink-0 px-3 py-1 text-[11px] rounded bg-[#8b5cf6] text-white font-medium hover:bg-[#7c3aed] disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={() => void handleAskAi()}
+                                disabled={asking || !askInstruction.trim()}
+                                data-testid="exploration-ask-send"
+                            >
+                                {asking ? 'Asking…' : 'Ask AI'}
+                            </button>
+                        </div>
+                        {askSent && (
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400" data-testid="exploration-ask-sent">
+                                Sent to the conversation — the AI will update this exploration.
+                            </span>
+                        )}
+                        {askError && (
+                            <span className="text-[10px] text-red-500" data-testid="exploration-ask-error">{askError}</span>
+                        )}
+                    </div>
                 )}
             </div>
 
