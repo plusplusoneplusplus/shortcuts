@@ -205,6 +205,25 @@ describe('GitClient', () => {
     expect(adapter.calls[25].options).toMatchObject({ method: 'POST' });
   });
 
+  it('sends current-branch-only scope for Git tab fetch and pull actions', async () => {
+    const adapter = createMockAdapter({});
+    const client = new GitClient(adapter);
+
+    await client.fetch('repo/a', { currentBranchOnly: true });
+    await client.pull('repo/a', { rebase: true, currentBranchOnly: true });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/workspaces/repo%2Fa/git/fetch',
+        options: { method: 'POST', body: { currentBranchOnly: true } },
+      },
+      {
+        path: '/workspaces/repo%2Fa/git/pull',
+        options: { method: 'POST', body: { rebase: true, currentBranchOnly: true } },
+      },
+    ]);
+  });
+
   it('calls diff-comment and commit-chat routes with encoded identifiers', async () => {
     const adapter = createMockAdapter({});
     const client = new GitClient(adapter);

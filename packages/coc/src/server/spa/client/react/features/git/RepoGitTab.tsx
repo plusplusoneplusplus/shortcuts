@@ -676,7 +676,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         setFetching(true);
         setActionError(null);
         try {
-            const result = await cloneClient.git.fetch(workspaceId);
+            const result = await cloneClient.git.fetch(workspaceId, { currentBranchOnly: true });
             if (result.success === false) throw new Error(result.error || 'Fetch failed');
             refreshAll();
         } catch (err: any) {
@@ -691,7 +691,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         setPulling(true);
         setActionError(null);
         try {
-            const result = await cloneClient.git.pull(workspaceId, { rebase: true });
+            const result = await cloneClient.git.pull(workspaceId, { rebase: true, currentBranchOnly: true });
             if (result.jobId) {
                 // Async pull — start polling for job completion
                 startPullPolling(result.jobId);
