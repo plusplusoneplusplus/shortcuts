@@ -138,10 +138,13 @@ function rewriteBareExcalidrawLinks(html: string): string {
     );
 }
 
+let svgFenceIndex = 0;
+
 function createChatMarked(
     htmlEmbedEnabled: boolean,
     excalidrawEmbedEnabled: boolean = false,
     canvasEmbedEnabled: boolean = false,
+    svgFenceEnabled: boolean = false,
 ): Marked {
     let mermaidBlockIndex = 0;
 
@@ -151,6 +154,15 @@ function createChatMarked(
         renderer: {
             code(code: string, infostring: string | undefined, escaped: boolean): string {
                 const language = (infostring ?? '').trim().split(/\s+/)[0] || '';
+                if (svgFenceEnabled && language.toLowerCase() === 'svg') {
+                    svgFenceIndex++;
+                    const escapedSource = escaped ? code : escapeHtml(code);
+                    return (
+                        `<div class="md-svg-fence" data-fence-id="md-svg-${svgFenceIndex}">` +
+                        `<pre class="md-svg-source" style="display:none"><code>${escapedSource}</code></pre>` +
+                        '</div>\n'
+                    );
+                }
                 if (language.toLowerCase() === 'mermaid') {
                     mermaidBlockIndex++;
                     const block: CodeBlock = {
@@ -263,7 +275,7 @@ function rewriteLocalImagePaths(html: string, wsId: string): string {
 export function chatMarkdownToHtml(
     content: string,
     wsId?: string,
-    options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean; canvasEmbedEnabled?: boolean },
+    options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean; canvasEmbedEnabled?: boolean; svgFenceEnabled?: boolean },
 ): string {
     if (!content || !content.trim()) return '';
     // Order matters: normalizeMarkdownLinkUrls fixes link/image URLs first (handles
@@ -274,8 +286,9 @@ export function chatMarkdownToHtml(
     // Keep existing callers that only enable Excalidraw embeds working while
     // allowing canvas references to render when only the Canvas feature is on.
     const canvasEnabled = options?.canvasEmbedEnabled === true || excalidrawEnabled;
+    const svgEnabled = options?.svgFenceEnabled === true;
     let html = linkifyFilePaths(
-        createChatMarked(options?.htmlEmbedEnabled === true, excalidrawEnabled, canvasEnabled).parse(normalized) as string,
+        createChatMarked(options?.htmlEmbedEnabled === true, excalidrawEnabled, canvasEnabled, svgEnabled).parse(normalized) as string,
     );
     if (wsId) {
         html = rewriteLocalImagePaths(html, wsId);

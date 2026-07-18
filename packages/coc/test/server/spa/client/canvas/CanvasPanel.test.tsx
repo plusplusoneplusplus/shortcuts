@@ -288,6 +288,22 @@ describe('CanvasPanel', () => {
         expect(preview.innerHTML).not.toContain('**bold**');
     });
 
+    it('renders an svg fence inside a markdown canvas as an inline sanitized image (AC-04)', async () => {
+        const svgSource = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><rect width="100" height="50" fill="red"/></svg>';
+        const content = '```svg\n' + svgSource + '\n```';
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'markdown', content }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
+
+        const preview = screen.getByTestId('canvas-panel-preview');
+        const fence = preview.querySelector('.md-svg-fence');
+        expect(fence).toBeTruthy();
+        expect(fence?.getAttribute('data-svg-ready')).toBe('1');
+        const host = fence?.querySelector('.md-svg-fence-host') as HTMLElement | null;
+        expect(host?.shadowRoot?.querySelector('svg')).toBeTruthy();
+    });
+
     it('marks the preview for canvas-specific Mermaid sizing', async () => {
         mocks.get.mockResolvedValue(makeCanvas({
             content: '```mermaid\nflowchart TD\n  A --> B\n```',

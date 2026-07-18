@@ -132,8 +132,11 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
     const write = defineTool<WriteCanvasArgs>('write_canvas', {
         description:
             'Create or update a canvas — a live document beside the chat the user iterates on. '
-            + 'Markdown renders Mermaid blocks as diagrams. Omit canvasId to create (needs title + content; '
-            + 'set type "code" + language for code). For an Excalidraw diagram, set type "excalidraw" and pass '
+            + 'Markdown renders Mermaid blocks as diagrams and ```svg fenced blocks as inline visual images. '
+            + 'Omit canvasId to create (needs title + content; set type "code" + language for code). '
+            + 'Use type "code" + language "svg" to create a dedicated SVG canvas that renders as a visual '
+            + 'image with Source/Rendered toggle, zoom, pan, and export. '
+            + 'For an Excalidraw diagram, set type "excalidraw" and pass '
             + 'the scene JSON ({ elements, appState }) as content — the result carries an `embed` reference '
             + '(canvas://<id>); put that marker in your chat reply to render the diagram inline (it also shows in '
             + 'the panel). Updates must pass the full scene as content (edits are rejected for excalidraw). To update, pass '
@@ -159,7 +162,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                     },
                 },
                 type: { type: 'string', enum: ['markdown', 'code', 'excalidraw'], description: 'Create only. Default "markdown". Use "excalidraw" for a diagram whose content is the scene JSON.' },
-                language: { type: 'string', description: 'Create only, for type "code" (e.g. "typescript").' },
+                language: { type: 'string', description: 'Create only, for type "code" (e.g. "typescript"). Use "svg" to create an SVG canvas that renders as a visual image with zoom/pan/export chrome.' },
                 purpose: {
                     type: 'string',
                     description: 'Optional semantic role for this canvas, e.g. "plan", "goal", "notes". Helps the system understand the intended use of the canvas.',

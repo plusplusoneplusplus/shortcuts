@@ -643,9 +643,12 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
     // source markers (###, **, backticks, >, list bullets, link URL syntax) are
     // fully rendered instead of shown as faded hint spans. Diff/file/task
     // previews keep the editor-style forge renderer (useMarkdownPreview).
+    // SVG fences only activate for markdown canvases; code canvases already
+    // route to SvgCanvasView, and ordinary code canvases stay as source.
+    const isSvgFenceEnabled = !isCodeCanvas && !isExcalidrawCanvas && !isExtensionCanvas;
     const previewHtml = useMemo(
-        () => chatMarkdownToHtml(previewMarkdown, workspaceId),
-        [previewMarkdown, workspaceId],
+        () => chatMarkdownToHtml(previewMarkdown, workspaceId, { svgFenceEnabled: isSvgFenceEnabled }),
+        [previewMarkdown, workspaceId, isSvgFenceEnabled],
     );
 
     const handleExtensionCanvasSaved = useCallback((saved: Canvas) => {
