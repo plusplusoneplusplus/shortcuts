@@ -63,6 +63,14 @@ function postJSON(url: string, data?: unknown) {
     });
 }
 
+function patchJSON(url: string, data?: unknown) {
+    return request(url, {
+        method: 'PATCH',
+        body: data ? JSON.stringify(data) : undefined,
+        headers: data ? { 'Content-Type': 'application/json' } : undefined,
+    });
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -306,6 +314,161 @@ describe('My Work Handler', () => {
             const weeklyPath = path.join(notesDir, 'Weekly', body.path.replace('Weekly/', ''));
             const content = fs.readFileSync(weeklyPath, 'utf-8');
             expect(content).toContain('New completed item');
+        });
+    });
+
+    // ── Task routes (Today view) ─────────────────────────────────────────
+
+    describe('Task routes', () => {
+        function notesDir() {
+            return getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+        }
+        function writeActionItems(content: string) {
+            fs.writeFileSync(path.join(notesDir(), 'Action Items.md'), content, 'utf-8');
+        }
+        function writeFollowUps(content: string) {
+            fs.writeFileSync(path.join(notesDir(), 'Follow Ups.md'), content, 'utf-8');
+        }
+        function readActionItems() {
+            return fs.readFileSync(path.join(notesDir(), 'Action Items.md'), 'utf-8');
+        }
+        function readFollowUps() {
+            return fs.readFileSync(path.join(notesDir(), 'Follow Ups.md'), 'utf-8');
+        }
+
+        // ── GET /api/my-work/tasks ───────────────────────────────────────
+
+        it('GET returns parsed action items and follow-ups', async () => {
+            writeActionItems('# Action Items\n- [ ] Ship the slice\n- [x] Write parser\n');
+            writeFollowUps('# Follow Ups\n## Sarah\n- [ ] API timeline\n');
+
+            const res = await request(`${baseUrl}/api/my-work/tasks`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.actionItems).toHaveLength(2);
+            expect(body.actionItems[0]).toMatchObject({ text: 'Ship the slice', checked: false });
+            expect(body.actionItems[1]).toMatchObject({ text: 'Write parser', checked: true });
+            expect(body.followUps).toHaveLength(1);
+            expect(body.followUps[0]).toMatchObject({ text: 'API timeline', person: 'Sarah' });
+            expect(typeof body.actionItems[0].id).toBe('string');
+        });
+
+        it('GET treats missing files as empty', async () => {
+            fs.unlinkSync(path.join(notesDir(), 'Action Items.md'));
+            fs.unlinkSync(path.join(notesDir(), 'Follow Ups.md'));
+
+            const res = await request(`${baseUrl}/api/my-work/tasks`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.actionItems).toEqual([]);
+            expect(body.followUps).toEqual([]);
+        });
+
+        // ── PATCH /api/my-work/tasks/:id ─────────────────────────────────
+
+        it('PATCH toggles a checkbox, flipping only the target line', async () => {
+            writeActionItems('# Action Items\n- [ ] First\n- [ ] Second\n- [ ] Third\n');
+
+            const list = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+            const second = list.actionItems.find((t: any) => t.text === 'Second');
+
+            const res = await patchJSON(`${baseUrl}/api/my-work/tasks/${second.id}`, { checked: true });
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body)).toEqual({ ok: true });
+
+            const content = readActionItems();
+            expect(content).toBe('# Action Items\n- [ ] First\n- [x] Second\n- [ ] Third\n');
+        });
+
+        it('PATCH edits item text', async () => {
+            writeActionItems('# Action Items\n- [ ] Old text\n');
+            const list = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+            const id = list.actionItems[0].id;
+
+            const res = await patchJSON(`${baseUrl}/api/my-work/tasks/${id}`, { text: 'New text' });
+            expect(res.status).toBe(200);
+            expect(readActionItems()).toBe('# Action Items\n- [ ] New text\n');
+        });
+
+        it('PATCH toggles a follow-up item', async () => {
+            writeFollowUps('# Follow Ups\n## Bob\n- [ ] Waiting on review\n');
+            const list = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+            const id = list.followUps[0].id;
+
+            const res = await patchJSON(`${baseUrl}/api/my-work/tasks/${id}`, { checked: true });
+            expect(res.status).toBe(200);
+            expect(readFollowUps()).toBe('# Follow Ups\n## Bob\n- [x] Waiting on review\n');
+        });
+
+        it('PATCH returns 404 for an unknown id', async () => {
+            writeActionItems('# Action Items\n- [ ] Only item\n');
+            const res = await patchJSON(`${baseUrl}/api/my-work/tasks/deadbeef0000`, { checked: true });
+            expect(res.status).toBe(404);
+        });
+
+        // ── POST /api/my-work/tasks ──────────────────────────────────────
+
+        it('POST quick-adds an action item', async () => {
+            writeActionItems('# Action Items\n- [ ] Existing\n');
+            const res = await postJSON(`${baseUrl}/api/my-work/tasks`, {
+                list: 'action',
+                text: 'Brand new task',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(typeof body.id).toBe('string');
+            expect(readActionItems()).toContain('- [ ] Brand new task');
+        });
+
+        it('POST quick-adds a follow-up under a person', async () => {
+            writeFollowUps('# Follow Ups\n## Sarah\n- [ ] Existing\n');
+            const res = await postJSON(`${baseUrl}/api/my-work/tasks`, {
+                list: 'followup',
+                person: 'Sarah',
+                text: 'Ping about design',
+            });
+            expect(res.status).toBe(201);
+            const content = readFollowUps();
+            expect(content).toContain('## Sarah');
+            expect(content).toContain('- [ ] Ping about design');
+        });
+
+        it('POST rejects empty text', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/tasks`, { list: 'action', text: '  ' });
+            expect(res.status).toBe(400);
+        });
+
+        it('POST rejects an unknown list', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/tasks`, { list: 'bogus', text: 'x' });
+            expect(res.status).toBe(400);
+        });
+
+        // ── POST /api/my-work/tasks/archive ──────────────────────────────
+
+        it('POST archive moves only checked action items', async () => {
+            writeActionItems('# Action Items\n- [ ] Keep me\n- [x] Done one\n- [x] Done two\n');
+            const res = await postJSON(`${baseUrl}/api/my-work/tasks/archive`);
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body)).toEqual({ archived: 2 });
+
+            const content = readActionItems();
+            expect(content).toContain('- [ ] Keep me');
+            expect(content).toContain('## Archive');
+            expect(content).toContain('- [x] Done one');
+            expect(content).toContain('- [x] Done two');
+            // Only one unchecked item remains in the active region (before Archive).
+            const active = content.split('## Archive')[0];
+            expect(active).toContain('- [ ] Keep me');
+            expect(active).not.toContain('Done one');
+        });
+
+        it('POST archive reports 0 when nothing is checked', async () => {
+            writeActionItems('# Action Items\n- [ ] Nothing done\n');
+            const before = readActionItems();
+            const res = await postJSON(`${baseUrl}/api/my-work/tasks/archive`);
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body)).toEqual({ archived: 0 });
+            expect(readActionItems()).toBe(before);
         });
     });
 });
