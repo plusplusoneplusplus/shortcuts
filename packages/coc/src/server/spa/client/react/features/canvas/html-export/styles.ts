@@ -78,6 +78,23 @@ body {
 .canvas-export__mermaid { margin: 0 0 16px; text-align: center; }
 .canvas-export__mermaid svg { max-width: 100%; height: auto; }
 .canvas-export__excalidraw { text-align: center; }
+.canvas-export__extension { margin: 0; }
+.canvas-export__viewonly-banner {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #7a5c00;
+  background: #fff8e1;
+  border: 1px solid #f2d98a;
+  border-radius: 6px;
+}
+.canvas-export__extension-frame {
+  width: 100%;
+  min-height: 480px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #ffffff;
+}
 .canvas-export__placeholder {
   display: inline-block;
   padding: 8px 12px;

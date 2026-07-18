@@ -153,10 +153,18 @@ export function buildCanvasHtmlDocument(
     const assets = input.assets ?? new Map<string, string>();
     const displayTitle = input.title && input.title.trim() ? input.title : 'Untitled canvas';
 
-    const body =
-        type === 'code'
-            ? renderCodeBody(sourceText, language, warnings)
-            : rewriteImages(input.bodyHtml ?? '', assets, warnings);
+    let body: string;
+    if (type === 'code') {
+        body = renderCodeBody(sourceText, language, warnings);
+    } else if (type === 'extension') {
+        // The extension body is a fully-built, self-contained sandboxed iframe
+        // (Layer D-ext). Its `<img>` tags live inside the escaped `srcdoc`
+        // attribute, so running `rewriteImages` over it would corrupt the
+        // markup — ship the body verbatim instead.
+        body = input.bodyHtml ?? '';
+    } else {
+        body = rewriteImages(input.bodyHtml ?? '', assets, warnings);
+    }
 
     const bodyClass =
         type === 'excalidraw'
