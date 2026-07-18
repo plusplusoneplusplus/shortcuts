@@ -1,12 +1,12 @@
 /**
- * Run-and-persist orchestration for exploration canvases (AC-02).
+ * Run-and-persist orchestration for Kusto canvases (AC-02).
  *
- * Loads an exploration canvas, applies optional query/cluster/database
- * overrides, executes the query server-side ({@link executeKustoQuery}), writes
- * the typed columns + rows and a `lastRun` outcome back into the canvas content,
- * and returns the persisted record. Query/auth failures are captured as the
- * exploration's error state rather than thrown, so the panel and the AI tool
- * both see a stored error.
+ * Loads a Kusto canvas, applies optional query/cluster/database overrides,
+ * executes the query server-side ({@link executeKustoQuery}), writes the typed
+ * columns + rows and a `lastRun` outcome back into the canvas content, and
+ * returns the persisted record. Query/auth failures are captured as the
+ * canvas's error state rather than thrown, so the panel and the AI tool both
+ * see a stored error.
  *
  * Shared by the AC-02 Run endpoint and the AC-03 `kusto_query` tool so both
  * paths agree on execution, truncation, and persistence.
@@ -14,21 +14,21 @@
 
 import type { CanvasStore, CanvasRecord, CanvasEditor } from '../canvas/canvas-store';
 import {
-    parseExplorationState,
-    serializeExplorationState,
-    type ExplorationState,
-} from '../canvas/exploration-state';
+    parseKustoState,
+    serializeKustoState,
+    type KustoCanvasState,
+} from '../canvas/kusto-state';
 import { executeKustoQuery, type KustoClientFactory } from './kusto-exec';
 
-/** Per-run overrides for the exploration's stored query/cluster/database. */
-export interface RunExplorationOverrides {
+/** Per-run overrides for the Kusto canvas's stored query/cluster/database. */
+export interface RunKustoCanvasOverrides {
     query?: string;
     clusterUrl?: string;
     database?: string;
 }
 
-export interface RunExplorationOptions {
-    overrides?: RunExplorationOverrides;
+export interface RunKustoCanvasOptions {
+    overrides?: RunKustoCanvasOverrides;
     /** Who the persisted edit is attributed to. Defaults to 'user'. */
     editor?: CanvasEditor;
     /** Injectable clock for deterministic tests. */
@@ -37,48 +37,48 @@ export interface RunExplorationOptions {
     clientFactory?: KustoClientFactory;
 }
 
-export type RunExplorationOutcome =
-    | { ok: true; canvas: CanvasRecord; state: ExplorationState }
+export type RunKustoCanvasOutcome =
+    | { ok: true; canvas: CanvasRecord; state: KustoCanvasState }
     | { ok: false; reason: 'not-found' }
     | { ok: false; reason: 'wrong-type' }
     | { ok: false; reason: 'persist-failed'; error: string };
 
 /**
- * Execute the (possibly overridden) query for an exploration canvas and persist
- * the result. Success and failure both land as a stored `lastRun`; only
- * missing canvas / wrong type / a store write failure return `ok: false`.
+ * Execute the (possibly overridden) query for a Kusto canvas and persist the
+ * result. Success and failure both land as a stored `lastRun`; only missing
+ * canvas / wrong type / a store write failure return `ok: false`.
  */
-export async function runExploration(
+export async function runKustoCanvas(
     store: CanvasStore,
     workspaceId: string,
     canvasId: string,
-    opts: RunExplorationOptions = {},
-): Promise<RunExplorationOutcome> {
+    opts: RunKustoCanvasOptions = {},
+): Promise<RunKustoCanvasOutcome> {
     const record = store.getCanvas(workspaceId, canvasId);
     if (!record) {
         return { ok: false, reason: 'not-found' };
     }
-    if (record.type !== 'exploration') {
+    if (record.type !== 'kusto') {
         return { ok: false, reason: 'wrong-type' };
     }
 
     const now = opts.now ?? (() => new Date().toISOString());
     const editor: CanvasEditor = opts.editor ?? 'user';
 
-    const prev = parseExplorationState(record.content);
+    const prev = parseKustoState(record.content);
     const query = opts.overrides?.query ?? prev.query;
     const clusterUrl = opts.overrides?.clusterUrl ?? prev.clusterUrl;
     const database = opts.overrides?.database ?? prev.database;
 
     // Base state keeps the chart config and carries the (possibly edited) inputs.
-    const base: ExplorationState = {
+    const base: KustoCanvasState = {
         ...prev,
         query,
         clusterUrl,
         database,
     };
 
-    let next: ExplorationState;
+    let next: KustoCanvasState;
     if (!query.trim() || !clusterUrl.trim() || !database.trim()) {
         next = {
             ...base,
@@ -118,7 +118,7 @@ export async function runExploration(
     }
 
     const saved = store.updateCanvas(workspaceId, canvasId, {
-        content: serializeExplorationState(next),
+        content: serializeKustoState(next),
         editor,
     });
     if (!saved.ok) {

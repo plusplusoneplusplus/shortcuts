@@ -4,7 +4,7 @@ import {
     executeKustoQuery,
     type KustoClientFactory,
     type KustoClientLike,
-} from '../../../src/server/exploration/kusto-exec';
+} from '../../../src/server/kusto/kusto-exec';
 
 /** Build a mock KustoResultTable-shaped response from columns + raw rows. */
 function mockResponse(

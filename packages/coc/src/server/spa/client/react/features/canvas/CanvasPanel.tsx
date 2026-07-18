@@ -39,10 +39,10 @@ import { copyImageToClipboard, copySelectionWithInlineImages } from '../../utils
 import { ToastContext } from '../../contexts/ToastContext';
 import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/MonacoFileEditor';
 import { ExtensionCanvasView } from './ExtensionCanvasView';
-import { ExplorationView } from './ExplorationView';
+import { KustoView } from './KustoView';
 import { SvgCanvasView } from './SvgCanvasView';
-import { buildBlankExplorationContent, extractExplorationSeed, pickLatestExploration } from './explorationCreate';
-import { isExplorationEnabled } from '../../utils/config';
+import { buildBlankKustoContent, extractKustoSeed, pickLatestKustoCanvas } from './kustoCreate';
+import { isKustoEnabled } from '../../utils/config';
 import { ExcalidrawSceneView, parseSceneContent } from '../diagrams';
 import { exportCanvasAsHtml } from './html-export/exportCanvasAsHtml';
 import type { ExtensionExportSource } from './html-export/exportCanvasAsHtml';
@@ -158,7 +158,7 @@ function isSvgCodeCanvas(canvas: Pick<Canvas, 'type' | 'language' | 'content'>):
 function downloadFilenameFor(canvas: Canvas): string {
     const slug = canvas.id.replace(/-[0-9a-f]{6}$/, '') || 'canvas';
     if (canvas.type === 'extension') return `${slug}.json`;
-    if (canvas.type === 'exploration') return `${slug}.json`;
+    if (canvas.type === 'kusto') return `${slug}.json`;
     if (canvas.type === 'excalidraw') return `${slug}.excalidraw`;
     if (canvas.type !== 'code') return `${slug}.md`;
     if (isSvgCodeCanvas(canvas)) return `${slug}.svg`;
@@ -561,9 +561,9 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
     const handleExportHtml = useCallback(async () => {
         const current = canvasRef.current;
         if (!current) return;
-        // Exploration canvases are interactive (live query + table/chart) and
+        // Kusto canvases are interactive (live query + table/chart) and
         // have no meaningful static-HTML snapshot — not HTML-exportable.
-        if (current.type === 'exploration') return;
+        if (current.type === 'kusto') return;
         setExportOpen(false);
         try {
             // Extension canvases render from a UI document stored apart from their
@@ -624,7 +624,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
     }));
     const isExtensionCanvas = canvas?.type === 'extension';
     const isExcalidrawCanvas = canvas?.type === 'excalidraw';
-    const isExplorationCanvas = canvas?.type === 'exploration';
+    const isKustoCanvas = canvas?.type === 'kusto';
     // Excalidraw canvases are host-rendered (view-only) straight from their
     // scene JSON content — including history views — so they never go through
     // the markdown pipeline.
@@ -651,7 +651,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         [previewMarkdown, workspaceId, isSvgFenceEnabled],
     );
 
-    const handleExtensionCanvasSaved = useCallback((saved: Canvas) => {
+    const handleInteractiveCanvasSaved = useCallback((saved: Canvas) => {
         setCanvas(saved);
         setDraft(saved.content);
         setDirty(false);
@@ -665,21 +665,21 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         onSelectCanvas?.(nextCanvasId);
     }, [onSelectCanvas]);
 
-    // AC-07 — create a blank exploration, prefilling cluster/database from the
-    // workspace's most recent exploration, then select it in the panel.
-    const [creatingExploration, setCreatingExploration] = useState(false);
-    const explorationEnabled = isExplorationEnabled();
-    const handleCreateExploration = useCallback(async () => {
-        if (creatingExploration) return;
-        setCreatingExploration(true);
+    // AC-07 — create a blank Kusto canvas, prefilling cluster/database from the
+    // workspace's most recent Kusto canvas, then select it in the panel.
+    const [creatingKusto, setCreatingKusto] = useState(false);
+    const kustoEnabled = isKustoEnabled();
+    const handleCreateKusto = useCallback(async () => {
+        if (creatingKusto) return;
+        setCreatingKusto(true);
         try {
             let seed = { clusterUrl: '', database: '' };
             try {
                 const all = await cloneClient.canvases.list(workspaceId);
-                const latest = pickLatestExploration(all);
+                const latest = pickLatestKustoCanvas(all);
                 if (latest) {
                     const full = await cloneClient.canvases.get(workspaceId, latest.id);
-                    seed = extractExplorationSeed(full.content);
+                    seed = extractKustoSeed(full.content);
                 }
             } catch {
                 // Prefill is best-effort — fall back to an empty seed.
@@ -687,19 +687,19 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
             const processId = canvasRef.current?.processId
                 ?? availableCanvases.find(c => c.processId)?.processId;
             const created = await cloneClient.canvases.create(workspaceId, {
-                type: 'exploration',
-                title: 'Exploration',
-                content: buildBlankExplorationContent(seed),
+                type: 'kusto',
+                title: 'Kusto Query',
+                content: buildBlankKustoContent(seed),
                 ...(processId ? { processId } : {}),
             });
             onCanvasCreated?.(created.id);
             onSelectCanvas?.(created.id);
         } catch {
-            toast?.addToast('Failed to create exploration', 'error');
+            toast?.addToast('Failed to create Kusto query', 'error');
         } finally {
-            setCreatingExploration(false);
+            setCreatingKusto(false);
         }
-    }, [creatingExploration, cloneClient, workspaceId, availableCanvases, onCanvasCreated, onSelectCanvas, toast]);
+    }, [creatingKusto, cloneClient, workspaceId, availableCanvases, onCanvasCreated, onSelectCanvas, toast]);
 
     const statusLabel = saveState === 'saving' ? 'Saving…'
         : saveState === 'saved' ? 'Saved'
@@ -784,9 +784,9 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         diagram
                     </span>
                 )}
-                {isExplorationCanvas && (
-                    <span className="text-[9px] uppercase px-1 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300 shrink-0" data-testid="canvas-panel-exploration-badge">
-                        exploration
+                {isKustoCanvas && (
+                    <span className="text-[9px] uppercase px-1 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300 shrink-0" data-testid="canvas-panel-kusto-badge">
+                        kusto
                     </span>
                 )}
                 {canvas && (
@@ -822,8 +822,8 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         {statusLabel}
                     </span>
                 )}
-                {/* Excalidraw + exploration canvases have their own view — no md Edit affordance. */}
-                {!viewingVersion && !isExcalidrawCanvas && !isExplorationCanvas && (
+                {/* Excalidraw + Kusto canvases have their own view — no md Edit affordance. */}
+                {!viewingVersion && !isExcalidrawCanvas && !isKustoCanvas && (
                     <div className="flex rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden shrink-0">
                         <button
                             type="button"
@@ -865,7 +865,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                                 <button type="button" className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]" onClick={handleDownload} data-testid="canvas-panel-export-download">
                                     Download file
                                 </button>
-                                {canvas.type !== 'exploration' && (
+                                {canvas.type !== 'kusto' && (
                                     <button
                                         type="button"
                                         className="block w-full text-left px-3 py-1.5 text-[12px] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
@@ -885,16 +885,16 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                         )}
                     </div>
                 )}
-                {explorationEnabled && (
+                {kustoEnabled && (
                     <button
                         type="button"
                         className="px-2 py-0.5 text-[11px] rounded text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                        onClick={() => void handleCreateExploration()}
-                        disabled={creatingExploration}
-                        title="Create a new blank exploration"
-                        data-testid="canvas-panel-new-exploration"
+                        onClick={() => void handleCreateKusto()}
+                        disabled={creatingKusto}
+                        title="Create a new blank Kusto query"
+                        data-testid="canvas-panel-new-kusto"
                     >
-                        {creatingExploration ? 'Creating…' : 'New exploration'}
+                        {creatingKusto ? 'Creating…' : 'New Kusto query'}
                     </button>
                 )}
                 {onPopOut && !isFullscreen && (
@@ -1037,17 +1037,17 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                             className="h-full min-h-[200px]"
                             data-testid="canvas-panel-excalidraw"
                         />
-                    ) : !viewingVersion && isExplorationCanvas && canvas ? (
-                        <ExplorationView
+                    ) : !viewingVersion && isKustoCanvas && canvas ? (
+                        <KustoView
                             workspaceId={workspaceId}
                             canvas={canvas}
-                            onCanvasSaved={handleExtensionCanvasSaved}
+                            onCanvasSaved={handleInteractiveCanvasSaved}
                         />
                     ) : !viewingVersion && mode === 'preview' && isExtensionCanvas && canvas ? (
                         <ExtensionCanvasView
                             workspaceId={workspaceId}
                             canvas={canvas}
-                            onCanvasSaved={handleExtensionCanvasSaved}
+                            onCanvasSaved={handleInteractiveCanvasSaved}
                         />
                     ) : !viewingVersion && mode === 'edit' && isCodeCanvas ? (
                         <div className="h-full min-h-[200px]" data-testid="canvas-panel-code-editor">

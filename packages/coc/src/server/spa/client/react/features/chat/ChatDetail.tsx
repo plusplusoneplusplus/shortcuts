@@ -1481,7 +1481,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     availableCanvases={conversationCanvases}
                     onSelectCanvas={setActiveCanvasId}
                     onCanvasCreated={() => {
-                        // AC-07 — a manually-created exploration is linked to this
+                        // AC-07 — a manually-created Kusto canvas is linked to this
                         // conversation; refresh the linked list so it appears in the switcher.
                         if (workspaceId && canvasPid) {
                             client.canvases.list(workspaceId, { processId: canvasPid })

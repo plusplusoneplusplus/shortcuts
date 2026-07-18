@@ -1,27 +1,27 @@
 /**
  * @vitest-environment jsdom
  *
- * ExplorationChart (AC-05) — pure data helpers (numeric-column gating,
+ * KustoChart (AC-05) — pure data helpers (numeric-column gating,
  * config → series mapping) and the config → render mapping for each chart type.
  */
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import type { ExplorationCellValue, ExplorationColumn } from '@plusplusoneplusplus/coc-client';
+import type { KustoCellValue, KustoColumn } from '@plusplusoneplusplus/coc-client';
 import {
-    ExplorationChart,
+    KustoChart,
     buildChartSeries,
     cellToNumber,
     isNumericColumn,
     numericColumnNames,
-} from '../../../../../src/server/spa/client/react/features/canvas/ExplorationChart';
+} from '../../../../../src/server/spa/client/react/features/canvas/KustoChart';
 
-const columns: ExplorationColumn[] = [
+const columns: KustoColumn[] = [
     { name: 'State', type: 'string' },
     { name: 'Count', type: 'long' },
     { name: 'Damage', type: 'real' },
     { name: 'CodeAsText', type: 'string' },
 ];
-const rows: ExplorationCellValue[][] = [
+const rows: KustoCellValue[][] = [
     ['Texas', 100, 3.5, '7'],
     ['Kansas', 55, 1.2, '9'],
     ['Iowa', 20, 0.5, 'n/a'],
@@ -54,8 +54,8 @@ describe('isNumericColumn / numericColumnNames', () => {
     });
 
     it('accepts a string column whose cells are all numeric', () => {
-        const strNumCols: ExplorationColumn[] = [{ name: 'Port', type: 'string' }];
-        const strNumRows: ExplorationCellValue[][] = [['80'], ['443'], ['8080']];
+        const strNumCols: KustoColumn[] = [{ name: 'Port', type: 'string' }];
+        const strNumRows: KustoCellValue[][] = [['80'], ['443'], ['8080']];
         expect(isNumericColumn(strNumCols[0], strNumRows, 0)).toBe(true);
     });
 
@@ -74,12 +74,12 @@ describe('buildChartSeries', () => {
     });
 
     it('groups by the series column when set', () => {
-        const cols: ExplorationColumn[] = [
+        const cols: KustoColumn[] = [
             { name: 'Month', type: 'string' },
             { name: 'Region', type: 'string' },
             { name: 'Sales', type: 'long' },
         ];
-        const rws: ExplorationCellValue[][] = [
+        const rws: KustoCellValue[][] = [
             ['Jan', 'East', 10],
             ['Jan', 'West', 20],
             ['Feb', 'East', 15],
@@ -103,29 +103,29 @@ describe('buildChartSeries', () => {
     });
 });
 
-describe('ExplorationChart render mapping', () => {
+describe('KustoChart render mapping', () => {
     const base = { columns, rows };
 
     it.each(['line', 'bar', 'scatter', 'stackedArea'] as const)('renders an SVG for %s charts', type => {
-        render(<ExplorationChart {...base} config={{ type, x: 'State', y: ['Count'] }} />);
-        const svg = screen.getByTestId('exploration-chart-svg');
+        render(<KustoChart {...base} config={{ type, x: 'State', y: ['Count'] }} />);
+        const svg = screen.getByTestId('kusto-chart-svg');
         expect(svg).toBeInTheDocument();
         expect(svg.getAttribute('aria-label')).toContain(type);
     });
 
     it('renders a pie chart with slices', () => {
-        render(<ExplorationChart {...base} config={{ type: 'pie', x: 'State', y: ['Count'] }} />);
-        const svg = screen.getByTestId('exploration-chart-svg');
+        render(<KustoChart {...base} config={{ type: 'pie', x: 'State', y: ['Count'] }} />);
+        const svg = screen.getByTestId('kusto-chart-svg');
         expect(svg.getAttribute('aria-label')).toContain('pie');
     });
 
     it('prompts to configure when no Y column is chosen', () => {
-        render(<ExplorationChart {...base} config={{ type: 'bar', x: 'State', y: [] }} />);
-        expect(screen.getByTestId('exploration-chart-unconfigured')).toBeInTheDocument();
+        render(<KustoChart {...base} config={{ type: 'bar', x: 'State', y: [] }} />);
+        expect(screen.getByTestId('kusto-chart-unconfigured')).toBeInTheDocument();
     });
 
     it('shows an empty state when there is no data', () => {
-        render(<ExplorationChart columns={columns} rows={[]} config={{ type: 'bar', x: 'State', y: ['Count'] }} />);
-        expect(screen.getByTestId('exploration-chart-empty')).toBeInTheDocument();
+        render(<KustoChart columns={columns} rows={[]} config={{ type: 'bar', x: 'State', y: ['Count'] }} />);
+        expect(screen.getByTestId('kusto-chart-empty')).toBeInTheDocument();
     });
 });

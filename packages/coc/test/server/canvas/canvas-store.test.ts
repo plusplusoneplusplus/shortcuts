@@ -472,12 +472,12 @@ describe('excalidraw canvases inherit canvas features (AC-06)', () => {
     });
 });
 
-describe('exploration canvases persist state as content JSON (AC-01)', () => {
+describe('Kusto canvases persist state as content JSON (AC-01)', () => {
     let dataDir: string;
     let store: CanvasStore;
 
     beforeEach(() => {
-        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-canvas-exploration-'));
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-canvas-kusto-'));
         store = new CanvasStore(dataDir);
     });
 
@@ -495,21 +495,21 @@ describe('exploration canvases persist state as content JSON (AC-01)', () => {
         lastRun: { timestamp: '2026-07-18T00:00:00.000Z', status: 'success', rowCount: 2 },
     });
 
-    it('creates an exploration canvas of type "exploration"', () => {
-        const c = store.createCanvas({ workspaceId: WS, title: 'Storms', content: state('StormEvents | take 2'), type: 'exploration' });
-        expect(c.type).toBe('exploration');
+    it('creates a Kusto canvas of type "kusto"', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Storms', content: state('StormEvents | take 2'), type: 'kusto' });
+        expect(c.type).toBe('kusto');
         expect(JSON.parse(c.content).query).toBe('StormEvents | take 2');
     });
 
     it('survives a reload (fresh store instance) with state intact', () => {
-        const c = store.createCanvas({ workspaceId: WS, title: 'Storms', content: state('StormEvents | take 2'), type: 'exploration' });
+        const c = store.createCanvas({ workspaceId: WS, title: 'Storms', content: state('StormEvents | take 2'), type: 'kusto' });
         const reloaded = new CanvasStore(dataDir).getCanvas(WS, c.id);
-        expect(reloaded?.type).toBe('exploration');
+        expect(reloaded?.type).toBe('kusto');
         expect(JSON.parse(reloaded!.content).database).toBe('Samples');
     });
 
     it('re-runs (query edits) bump revision and snapshot versions', () => {
-        const c = store.createCanvas({ workspaceId: WS, title: 'Storms', content: state('StormEvents | take 2'), type: 'exploration' });
+        const c = store.createCanvas({ workspaceId: WS, title: 'Storms', content: state('StormEvents | take 2'), type: 'kusto' });
         const r = store.updateCanvas(WS, c.id, { content: state('StormEvents | take 5'), editor: 'user', expectedRevision: 1 });
         expect(r.ok).toBe(true);
         expect(store.getCanvas(WS, c.id)?.revision).toBe(2);

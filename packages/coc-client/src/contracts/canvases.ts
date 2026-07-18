@@ -6,33 +6,33 @@
 
 export type CanvasEditor = 'ai' | 'user';
 
-export type CanvasType = 'markdown' | 'code' | 'extension' | 'excalidraw' | 'exploration';
+export type CanvasType = 'markdown' | 'code' | 'extension' | 'excalidraw' | 'kusto';
 
 // ---------------------------------------------------------------------------
-// Exploration canvases (type 'exploration')
+// Kusto query canvases (type 'kusto')
 //
-// An exploration is an interactive Kusto data-exploration surface: an editable
-// KQL query run server-side against a cluster/database, the resulting typed
-// columns + rows (capped), a chart config, and the last-run status. The whole
-// state is serialized as JSON into the canvas `content` field so it rides the
-// existing canvas persistence/versioning/revision machinery unchanged.
+// A Kusto canvas is an interactive Kusto query surface: an editable KQL query
+// run server-side against a cluster/database, the resulting typed columns +
+// rows (capped), a chart config, and the last-run status. The whole state is
+// serialized as JSON into the canvas `content` field so it rides the existing
+// canvas persistence/versioning/revision machinery unchanged.
 // ---------------------------------------------------------------------------
 
-/** Hard cap on the number of result rows stored/rendered per exploration. */
-export const MAX_EXPLORATION_ROWS = 10000;
+/** Hard cap on the number of result rows stored/rendered per Kusto canvas. */
+export const MAX_KUSTO_ROWS = 10000;
 
 /** A result column: name plus the Kusto column type (e.g. "string", "long", "real"). */
-export interface ExplorationColumn {
+export interface KustoColumn {
   name: string;
   type: string;
 }
 
-/** Native chart kinds an exploration can render from its stored rows. */
-export type ExplorationChartType = 'line' | 'bar' | 'scatter' | 'pie' | 'stackedArea';
+/** Native chart kinds a Kusto canvas can render from its stored rows. */
+export type KustoChartType = 'line' | 'bar' | 'scatter' | 'pie' | 'stackedArea';
 
 /** Which columns map to the chart axes; `y` may list several numeric columns. */
-export interface ExplorationChartConfig {
-  type: ExplorationChartType;
+export interface KustoChartConfig {
+  type: KustoChartType;
   /** Column name for the x-axis / category. */
   x?: string;
   /** Numeric column name(s) for the y-axis / value series. */
@@ -41,13 +41,13 @@ export interface ExplorationChartConfig {
   series?: string;
 }
 
-export type ExplorationRunStatus = 'idle' | 'loading' | 'success' | 'error';
+export type KustoRunStatus = 'idle' | 'loading' | 'success' | 'error';
 
 /** Outcome of the most recent query execution. */
-export interface ExplorationRunInfo {
+export interface KustoRunInfo {
   /** ISO timestamp of when the run finished (or was attempted). */
   timestamp: string;
-  status: ExplorationRunStatus;
+  status: KustoRunStatus;
   /** SDK/auth error message when `status === 'error'`. */
   error?: string;
   /** Number of rows returned before truncation, when known. */
@@ -55,11 +55,11 @@ export interface ExplorationRunInfo {
 }
 
 /**
- * Full persisted state of an exploration canvas. Stored as JSON in the canvas
+ * Full persisted state of a Kusto query canvas. Stored as JSON in the canvas
  * `content` string. `rows` is row-major (each row an array of cell values
- * aligned to `columns`) and never exceeds {@link MAX_EXPLORATION_ROWS}.
+ * aligned to `columns`) and never exceeds {@link MAX_KUSTO_ROWS}.
  */
-export interface ExplorationState {
+export interface KustoCanvasState {
   /** KQL query text. */
   query: string;
   /** Target cluster URL, e.g. "https://help.kusto.windows.net". */
@@ -67,19 +67,19 @@ export interface ExplorationState {
   /** Target database name. */
   database: string;
   /** Result column schema (empty until the first successful run). */
-  columns: ExplorationColumn[];
-  /** Result rows, row-major, capped at {@link MAX_EXPLORATION_ROWS}. */
-  rows: ExplorationCellValue[][];
+  columns: KustoColumn[];
+  /** Result rows, row-major, capped at {@link MAX_KUSTO_ROWS}. */
+  rows: KustoCellValue[][];
   /** True when the result set was truncated to the row cap. */
   truncated: boolean;
   /** Optional chart configuration; absent until the user/AI sets one. */
-  chartConfig?: ExplorationChartConfig;
+  chartConfig?: KustoChartConfig;
   /** Most recent run outcome; absent before the first run. */
-  lastRun?: ExplorationRunInfo;
+  lastRun?: KustoRunInfo;
 }
 
 /** A single result cell value. Kusto values reduce to these JSON-safe shapes. */
-export type ExplorationCellValue = string | number | boolean | null;
+export type KustoCellValue = string | number | boolean | null;
 
 export interface CanvasSummary {
   id: string;
@@ -115,9 +115,9 @@ export interface SaveCanvasRequest {
 }
 
 /**
- * Body for creating a new canvas from the UI (AC-07 manual exploration create).
- * The server currently only accepts `type: 'exploration'` and gates the route
- * on the exploration feature flag.
+ * Body for creating a new canvas from the UI (AC-07 manual Kusto create).
+ * The server currently only accepts `type: 'kusto'` and gates the route
+ * on the Kusto feature flag.
  */
 export interface CreateCanvasRequest {
   type: CanvasType;

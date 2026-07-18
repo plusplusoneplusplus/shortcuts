@@ -30,7 +30,7 @@ spa/client/react/
 ├── hooks/              # 30+ custom hooks
 ├── layout/             # Layout (Router, TopBar, BottomNav, ThemeProvider)
 ├── features/
-│   ├── canvas/         # Canvas side panel: CanvasPanel + ExtensionCanvasView (sandboxed iframe) for AI co-edited documents, code, and custom extension canvases
+│   ├── canvas/         # Canvas side panel: CanvasPanel + ExtensionCanvasView (sandboxed iframe) + KustoView/KustoChart (Kusto query canvas) for AI co-edited documents, code, custom extension, and Kusto canvases
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
 │   ├── dreams/         # Workspace Dreams review panel with feature/opt-in states, queue-backed run-now task summary, provider-attributed Activity/Admin AI Provider visibility, filters, plain-language card guidance, source evidence links, and card lifecycle actions
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
@@ -367,8 +367,23 @@ JSON shared state. Inline `canvas://<canvasId>` references are rendered by
 `shared/CanvasEmbed.tsx`, which fetches the descriptor through the same
 workspace-routed client and chooses the renderer from its persisted `type`:
 Excalidraw keeps the view-only preview, extension canvases mount
-`ExtensionCanvasView`, and markdown/code canvases use a document preview. Legacy
+`ExtensionCanvasView`, `type: 'kusto'` canvases mount a compact `KustoView`, and
+markdown/code canvases use a document preview. Legacy
 `.md-excalidraw-embed` placeholders remain supported for historical message HTML.
+
+Kusto query canvases (`type: 'kusto'`) render `features/canvas/KustoView.tsx` (and
+`KustoChart.tsx` for the native SVG charts), gated by the `kusto.enabled` runtime
+flag (`isKustoEnabled()` in `utils/config.ts`, default off). The view exposes an
+editable KQL query, cluster URL, and database, a Run button that executes
+server-side via `client.canvases.run(...)` (no AI turn) through the
+workspace-routed client, table/chart views, CSV download, and — when the canvas is
+linked to a chat — an Ask AI box that sends a follow-up naming `kusto_query`. When
+the flag is on, `CanvasPanel`'s header shows a **New Kusto query** action
+(`data-testid="canvas-panel-new-kusto"`) that creates a blank `type: 'kusto'`
+canvas titled `Kusto Query`, best-effort seeding cluster/database from the
+workspace's most recent Kusto canvas (`kustoCreate.ts`). Kusto canvases carry a
+`kusto` badge, own their editing surface (no markdown Preview/Edit toggle or HTML
+export), and are rendered inline from `canvas://` links by `CanvasEmbed`.
 
 `shared/svg/sanitizeSvg.ts` is the client SVG trust boundary. It rejects
 malformed/non-SVG XML, runs DOMPurify's SVG profile, removes scripts, event

@@ -11,7 +11,7 @@ import {
     applyLlmToolPreferences,
     buildAskUserAddon,
     buildCanvasToolsAddon,
-    buildExplorationToolsAddon,
+    buildKustoToolsAddon,
     buildSendToConversationAddon,
     buildCreateWorkItemAddon,
     buildFollowUpSuggestionsAddon,
@@ -60,9 +60,9 @@ export interface ChatToolBundleOptions {
     includeCanvasTools?: boolean;
     /** Overrides the `canvas.enabled` config flag (used by tests). */
     canvasToolsEnabled?: boolean;
-    includeExplorationTools?: boolean;
-    /** Overrides the `exploration.enabled` config flag (used by tests). */
-    explorationToolsEnabled?: boolean;
+    includeKustoTools?: boolean;
+    /** Overrides the `kusto.enabled` config flag (used by tests). */
+    kustoToolsEnabled?: boolean;
     excludeTools?: string[];
 }
 
@@ -155,13 +155,13 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         ));
     }
 
-    if (options.includeExplorationTools !== false) {
-        addons.push(buildExplorationToolsAddon(
+    if (options.includeKustoTools !== false) {
+        addons.push(buildKustoToolsAddon(
             options.dataDir,
             options.store,
             options.workspaceId,
             options.processId,
-            options.explorationToolsEnabled !== undefined ? { enabled: options.explorationToolsEnabled } : undefined,
+            options.kustoToolsEnabled !== undefined ? { enabled: options.kustoToolsEnabled } : undefined,
         ));
     }
 

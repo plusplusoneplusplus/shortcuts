@@ -8,7 +8,7 @@ import { registerCanvasRoutes } from '../../../src/server/canvas/canvas-routes';
 import { CanvasStore } from '../../../src/server/canvas/canvas-store';
 import type { Route } from '../../../src/server/types';
 import type { ProcessWebSocketServer } from '../../../src/server/streaming/websocket';
-import { parseExplorationState } from '../../../src/server/canvas/exploration-state';
+import { parseKustoState } from '../../../src/server/canvas/kusto-state';
 
 const WS = 'create-route-ws';
 
@@ -43,7 +43,7 @@ function request(handler: ReturnType<typeof createRouter>, method: string, url: 
     });
 }
 
-function build(explorationEnabled: boolean) {
+function build(kustoEnabled: boolean) {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-create-route-'));
     const store = new CanvasStore(dataDir);
     const broadcastProcessEvent = vi.fn();
@@ -53,44 +53,53 @@ function build(explorationEnabled: boolean) {
         dataDir,
         () => ({ broadcastProcessEvent } as unknown as ProcessWebSocketServer),
         undefined,
-        () => explorationEnabled,
+        () => kustoEnabled,
     );
     return { dataDir, store, handler: createRouter({ routes, spaHtml: '' }), broadcastProcessEvent };
 }
 
 const blankContent = JSON.stringify({ query: '', clusterUrl: 'https://c.kusto.windows.net', database: 'DB', columns: [], rows: [], truncated: false });
 
-describe('POST /canvases (manual exploration create, AC-07)', () => {
+describe('POST /canvases (manual Kusto create, AC-07)', () => {
     let ctx: ReturnType<typeof build>;
     afterEach(() => {
         if (ctx) fs.rmSync(ctx.dataDir, { recursive: true, force: true });
     });
 
-    it('404s when the exploration feature is disabled (AC-08)', async () => {
+    it('404s when the Kusto feature is disabled (AC-08)', async () => {
         ctx = build(false);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases`, {
-            type: 'exploration', title: 'Exploration', content: blankContent,
+            type: 'kusto', title: 'Kusto Query', content: blankContent,
         });
         expect(res.status).toBe(404);
     });
 
-    it('creates an exploration canvas and persists the seeded content', async () => {
+    it('creates a Kusto canvas and persists the seeded content', async () => {
         ctx = build(true);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases`, {
-            type: 'exploration', title: 'Exploration', content: blankContent, processId: 'proc-1',
+            type: 'kusto', title: 'Kusto Query', content: blankContent, processId: 'proc-1',
         });
         expect(res.status).toBe(201);
-        expect(res.body.canvas.type).toBe('exploration');
+        expect(res.body.canvas.type).toBe('kusto');
         expect(res.body.canvas.processId).toBe('proc-1');
-        const state = parseExplorationState(res.body.canvas.content);
+        const state = parseKustoState(res.body.canvas.content);
         expect(state.clusterUrl).toBe('https://c.kusto.windows.net');
         expect(state.database).toBe('DB');
         // Round-trips through the store.
-        expect(ctx.store.getCanvas(WS, res.body.canvas.id)?.type).toBe('exploration');
+        expect(ctx.store.getCanvas(WS, res.body.canvas.id)?.type).toBe('kusto');
         expect(ctx.broadcastProcessEvent).toHaveBeenCalled();
     });
 
-    it('400s for a non-exploration type', async () => {
+    it('defaults the title to "Kusto Query" when none is provided', async () => {
+        ctx = build(true);
+        const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases`, {
+            type: 'kusto', content: blankContent,
+        });
+        expect(res.status).toBe(201);
+        expect(res.body.canvas.title).toBe('Kusto Query');
+    });
+
+    it('400s for a non-Kusto type', async () => {
         ctx = build(true);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases`, {
             type: 'markdown', title: 'md', content: '# hi',
@@ -101,7 +110,7 @@ describe('POST /canvases (manual exploration create, AC-07)', () => {
     it('400s when content is missing', async () => {
         ctx = build(true);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases`, {
-            type: 'exploration', title: 'Exploration',
+            type: 'kusto', title: 'Kusto Query',
         });
         expect(res.status).toBe(400);
     });

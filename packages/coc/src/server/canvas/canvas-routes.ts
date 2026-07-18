@@ -27,8 +27,8 @@ import { emitCanvasUpdated } from '../streaming/sse-handler';
 import { CanvasStore, isValidCanvasId } from './canvas-store';
 import type { CanvasEdit, CanvasCommentStatus, CanvasRecord } from './canvas-store';
 import { runCanvasCapability, isValidCapabilityName } from './canvas-capability-runner';
-import { runExploration } from '../exploration/exploration-service';
-import type { KustoClientFactory } from '../exploration/kusto-exec';
+import { runKustoCanvas } from '../kusto/kusto-service';
+import type { KustoClientFactory } from '../kusto/kusto-exec';
 
 const listPattern = /^\/api\/workspaces\/([^/]+)\/canvases$/;
 const detailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)$/;
@@ -54,10 +54,10 @@ export function registerCanvasRoutes(
     dataDir: string,
     getWsServer?: () => ProcessWebSocketServer | undefined,
     processStore?: ProcessStore,
-    /** Live gate for the exploration feature (AC-08). When it returns false the Run route 404s. */
-    getExplorationEnabled?: () => boolean,
+    /** Live gate for the Kusto feature (AC-08). When it returns false the Run route 404s. */
+    getKustoEnabled?: () => boolean,
     /** Injectable Kusto client factory; defaults to the real SDK. Overridden in tests. */
-    explorationClientFactory?: KustoClientFactory,
+    kustoClientFactory?: KustoClientFactory,
 ): void {
     const store = new CanvasStore(dataDir);
 
@@ -97,14 +97,14 @@ export function registerCanvasRoutes(
         },
     });
 
-    // AC-07 — manual exploration create. Gated on the exploration feature flag
-    // so the route is unreachable when disabled (AC-08); only `exploration`
-    // canvases may be created here (the AI creates other types via its tools).
+    // AC-07 — manual Kusto create. Gated on the Kusto feature flag so the route
+    // is unreachable when disabled (AC-08); only `kusto` canvases may be created
+    // here (the AI creates other types via its tools).
     routes.push({
         method: 'POST',
         pattern: listPattern,
         handler: async (req, res, match) => {
-            if (!getExplorationEnabled?.()) {
+            if (!getKustoEnabled?.()) {
                 return sendError(res, 404, 'Not found');
             }
             const wsId = decodeURIComponent(match![1]);
@@ -114,16 +114,16 @@ export function registerCanvasRoutes(
             } catch {
                 return sendError(res, 400, 'Invalid JSON body');
             }
-            if (body.type !== 'exploration') {
-                return sendError(res, 400, 'Only exploration canvases can be created here');
+            if (body.type !== 'kusto') {
+                return sendError(res, 400, 'Only Kusto canvases can be created here');
             }
             if (typeof body.content !== 'string') {
                 return sendError(res, 400, 'content is required');
             }
             const canvas = store.createCanvas({
                 workspaceId: wsId,
-                type: 'exploration',
-                title: typeof body.title === 'string' && body.title.trim() ? body.title : 'Exploration',
+                type: 'kusto',
+                title: typeof body.title === 'string' && body.title.trim() ? body.title : 'Kusto Query',
                 content: body.content,
                 ...(typeof body.processId === 'string' ? { processId: body.processId } : {}),
                 editor: 'user',
@@ -396,13 +396,13 @@ export function registerCanvasRoutes(
         },
     });
 
-    // AC-02 — run an exploration's query server-side (no AI turn). Gated on the
-    // exploration feature flag so the route is unreachable when disabled (AC-08).
+    // AC-02 — run a Kusto canvas's query server-side (no AI turn). Gated on the
+    // Kusto feature flag so the route is unreachable when disabled (AC-08).
     routes.push({
         method: 'POST',
         pattern: runPattern,
         handler: async (req, res, match) => {
-            if (!getExplorationEnabled?.()) {
+            if (!getKustoEnabled?.()) {
                 return sendError(res, 404, 'Not found');
             }
             const wsId = decodeURIComponent(match![1]);
@@ -423,18 +423,18 @@ export function registerCanvasRoutes(
             if (typeof body.clusterUrl === 'string') overrides.clusterUrl = body.clusterUrl;
             if (typeof body.database === 'string') overrides.database = body.database;
 
-            const outcome = await runExploration(store, wsId, canvasId, {
+            const outcome = await runKustoCanvas(store, wsId, canvasId, {
                 overrides,
                 editor: 'user',
-                ...(explorationClientFactory ? { clientFactory: explorationClientFactory } : {}),
+                ...(kustoClientFactory ? { clientFactory: kustoClientFactory } : {}),
             });
 
             if (!outcome.ok) {
                 if (outcome.reason === 'not-found') {
-                    return sendError(res, 404, 'Exploration not found');
+                    return sendError(res, 404, 'Kusto canvas not found');
                 }
                 if (outcome.reason === 'wrong-type') {
-                    return sendError(res, 400, 'Canvas is not an exploration');
+                    return sendError(res, 400, 'Canvas is not a Kusto canvas');
                 }
                 return sendError(res, 500, `Failed to persist run: ${outcome.error}`);
             }

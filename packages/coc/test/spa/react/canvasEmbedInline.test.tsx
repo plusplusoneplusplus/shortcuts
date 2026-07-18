@@ -120,12 +120,12 @@ describe('inline canvas:// embed', () => {
         expect(screen.queryByTestId('mock-excalidraw')).toBeNull();
     });
 
-    it('renders an exploration canvas through the interactive exploration view', async () => {
+    it('renders a Kusto canvas through the interactive Kusto view', async () => {
         mocks.get.mockResolvedValue({
             id: 'expl-canvas',
             workspaceId: 'ws-1',
             title: 'Storm data',
-            type: 'exploration',
+            type: 'kusto',
             content: JSON.stringify({
                 query: 'StormEvents | take 5',
                 clusterUrl: 'https://help.kusto.windows.net',
@@ -144,9 +144,9 @@ describe('inline canvas:// embed', () => {
         const html = chatMarkdownToHtml('canvas://expl-canvas', 'ws-1', { canvasEmbedEnabled: true });
         render(<MarkdownView html={html} />);
 
-        const embed = await screen.findByTestId('canvas-embed-exploration');
+        const embed = await screen.findByTestId('canvas-embed-kusto');
         expect(mocks.get).toHaveBeenCalledWith('ws-1', 'expl-canvas');
-        expect(embed.querySelector('[data-testid="exploration-query"]')).toBeTruthy();
+        expect(embed.querySelector('[data-testid="kusto-query"]')).toBeTruthy();
         expect(screen.getByText('Texas')).toBeInTheDocument();
         expect(screen.queryByTestId('mock-excalidraw')).toBeNull();
     });

@@ -1,5 +1,5 @@
 /**
- * ExplorationChart — native in-browser charts for an exploration canvas (AC-05).
+ * KustoChart — native in-browser charts for a Kusto canvas (AC-05).
  *
  * Renders the stored result rows as one of five chart kinds (line, bar,
  * scatter, pie, stacked area) using hand-drawn inline SVG — no chart-library
@@ -11,9 +11,9 @@
 
 import { useMemo } from 'react';
 import type {
-    ExplorationCellValue,
-    ExplorationChartConfig,
-    ExplorationColumn,
+    KustoCellValue,
+    KustoChartConfig,
+    KustoColumn,
 } from '@plusplusoneplusplus/coc-client';
 
 /** Kusto scalar types that count as numeric (case-insensitive). */
@@ -22,7 +22,7 @@ const NUMERIC_KUSTO_TYPES = new Set([
 ]);
 
 /** Coerce a cell to a finite number, or null when it is not numeric. */
-export function cellToNumber(value: ExplorationCellValue): number | null {
+export function cellToNumber(value: KustoCellValue): number | null {
     if (typeof value === 'number') return Number.isFinite(value) ? value : null;
     if (typeof value === 'string' && value.trim() !== '') {
         const n = Number(value);
@@ -37,8 +37,8 @@ export function cellToNumber(value: ExplorationCellValue): number | null {
  * that actually carry numbers still qualify, and text columns are rejected).
  */
 export function isNumericColumn(
-    column: ExplorationColumn,
-    rows: ExplorationCellValue[][],
+    column: KustoColumn,
+    rows: KustoCellValue[][],
     columnIndex: number,
 ): boolean {
     if (NUMERIC_KUSTO_TYPES.has((column.type ?? '').toLowerCase())) return true;
@@ -55,8 +55,8 @@ export function isNumericColumn(
 
 /** Names of the numeric columns, in column order. */
 export function numericColumnNames(
-    columns: ExplorationColumn[],
-    rows: ExplorationCellValue[][],
+    columns: KustoColumn[],
+    rows: KustoCellValue[][],
 ): string[] {
     return columns.filter((c, i) => isNumericColumn(c, rows, i)).map(c => c.name);
 }
@@ -73,7 +73,7 @@ export interface ChartData {
     series: ChartSeries[];
 }
 
-function cellLabel(value: ExplorationCellValue): string {
+function cellLabel(value: KustoCellValue): string {
     if (value === null || value === undefined) return '';
     return String(value);
 }
@@ -86,9 +86,9 @@ function cellLabel(value: ExplorationCellValue): string {
  * Labels come from the x column (or the row index when x is unset).
  */
 export function buildChartSeries(
-    columns: ExplorationColumn[],
-    rows: ExplorationCellValue[][],
-    config: ExplorationChartConfig,
+    columns: KustoColumn[],
+    rows: KustoCellValue[][],
+    config: KustoChartConfig,
 ): ChartData {
     const indexOf = (name: string | undefined): number =>
         name ? columns.findIndex(c => c.name === name) : -1;
@@ -99,7 +99,7 @@ export function buildChartSeries(
 
     const labels: string[] = [];
     const labelPos = new Map<string, number>();
-    const labelFor = (rowIndex: number, row: ExplorationCellValue[]): string =>
+    const labelFor = (rowIndex: number, row: KustoCellValue[]): string =>
         xIndex >= 0 ? cellLabel(row[xIndex]) : String(rowIndex + 1);
     const ensureLabel = (label: string): number => {
         let pos = labelPos.get(label);
@@ -226,7 +226,7 @@ function AxisChart({ data, kind }: AxisChartProps) {
             preserveAspectRatio="xMidYMid meet"
             role="img"
             aria-label={`${kind} chart`}
-            data-testid="exploration-chart-svg"
+            data-testid="kusto-chart-svg"
         >
             {/* Y grid + labels */}
             {yTicks.map((t, i) => (
@@ -391,7 +391,7 @@ function PieChart({ data }: { data: ChartData }) {
     const r = Math.min(PLOT_W, PLOT_H) / 2 - 8;
     let angle = -Math.PI / 2;
     return (
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="pie chart" data-testid="exploration-chart-svg">
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="pie chart" data-testid="kusto-chart-svg">
             {total <= 0 ? (
                 <text x={cx} y={cy} textAnchor="middle" fontSize={12} fill="#888">No positive values to chart</text>
             ) : (
@@ -415,7 +415,7 @@ function PieChart({ data }: { data: ChartData }) {
 function Legend({ names }: { names: string[] }) {
     if (names.length <= 1) return null;
     return (
-        <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-1" data-testid="exploration-chart-legend">
+        <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-1" data-testid="kusto-chart-legend">
             {names.map((name, i) => (
                 <span key={name} className="inline-flex items-center gap-1 text-[10px] text-[#616161] dark:text-[#cccccc]">
                     <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: CHART_PALETTE[i % CHART_PALETTE.length] }} />
@@ -426,26 +426,26 @@ function Legend({ names }: { names: string[] }) {
     );
 }
 
-export interface ExplorationChartProps {
-    columns: ExplorationColumn[];
-    rows: ExplorationCellValue[][];
-    config: ExplorationChartConfig;
+export interface KustoChartProps {
+    columns: KustoColumn[];
+    rows: KustoCellValue[][];
+    config: KustoChartConfig;
 }
 
 /** Full chart surface: an SVG plot plus a legend, driven by the config. */
-export function ExplorationChart({ columns, rows, config }: ExplorationChartProps) {
+export function KustoChart({ columns, rows, config }: KustoChartProps) {
     const data = useMemo(() => buildChartSeries(columns, rows, config), [columns, rows, config]);
 
     if (!config.y || config.y.length === 0) {
         return (
-            <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="exploration-chart-unconfigured">
+            <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="kusto-chart-unconfigured">
                 Pick a Y column to draw a chart.
             </div>
         );
     }
     if (data.labels.length === 0) {
         return (
-            <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="exploration-chart-empty">
+            <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="kusto-chart-empty">
                 No data to chart.
             </div>
         );
@@ -453,7 +453,7 @@ export function ExplorationChart({ columns, rows, config }: ExplorationChartProp
 
     if (config.type === 'pie') {
         return (
-            <div data-testid="exploration-chart">
+            <div data-testid="kusto-chart">
                 <PieChart data={data} />
                 <Legend names={data.labels} />
             </div>
@@ -461,7 +461,7 @@ export function ExplorationChart({ columns, rows, config }: ExplorationChartProp
     }
 
     return (
-        <div data-testid="exploration-chart">
+        <div data-testid="kusto-chart">
             <AxisChart data={data} kind={config.type} />
             <Legend names={data.series.map(s => s.name)} />
         </div>

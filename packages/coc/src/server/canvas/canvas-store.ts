@@ -32,9 +32,9 @@ import { getRepoDataPath } from '../paths';
 
 export type CanvasEditor = 'ai' | 'user';
 
-export type CanvasType = 'markdown' | 'code' | 'extension' | 'excalidraw' | 'exploration';
+export type CanvasType = 'markdown' | 'code' | 'extension' | 'excalidraw' | 'kusto';
 
-export const CANVAS_TYPES: readonly CanvasType[] = ['markdown', 'code', 'extension', 'excalidraw', 'exploration'];
+export const CANVAS_TYPES: readonly CanvasType[] = ['markdown', 'code', 'extension', 'excalidraw', 'kusto'];
 
 export interface CanvasDescriptor {
     id: string;
@@ -237,7 +237,7 @@ export class CanvasStore {
     createCanvas(input: CreateCanvasInput): CanvasRecord {
         const id = generateCanvasId(input.title);
         const now = new Date().toISOString();
-        const type: CanvasType = input.type === 'code' || input.type === 'extension' || input.type === 'excalidraw' || input.type === 'exploration'
+        const type: CanvasType = input.type === 'code' || input.type === 'extension' || input.type === 'excalidraw' || input.type === 'kusto'
             ? input.type
             : 'markdown';
         const language = type === 'code' ? normalizeCanvasLanguage(input.language) : undefined;

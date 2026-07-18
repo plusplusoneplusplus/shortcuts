@@ -194,7 +194,7 @@ all have their own `references/*.md`.
   `task-group-copy-info.ts` (context-menu copy text) under
   `src/server/spa/client/react/features/chat/`.
 - **Chat canvas** (`canvas.enabled`, default off) persists markdown, code,
-  extension, or excalidraw artifacts (descriptor `type` + normalized
+  extension, excalidraw, or kusto artifacts (descriptor `type` + normalized
   `language`) under
   `~/.coc/repos/<wsId>/canvases/<canvasId>/` through
   `src/server/canvas/canvas-store.ts` with revision-checked updates. AI edits
@@ -217,6 +217,18 @@ all have their own `references/*.md`.
   (`node:vm`, no require/process, 1s timeout, 1 MB cap) — never execute
   extension scripts outside that runner. Do not write canvas files directly
   from other features.
+- **Kusto query canvas** (`kusto.enabled`, default off) is a
+  `type: 'kusto'` canvas branch on the generic canvas infrastructure. Its full
+  state (KQL query, cluster/database, typed columns+rows capped at
+  `MAX_KUSTO_ROWS`, chart config, last-run) serializes as JSON into the canvas
+  `content` via `src/server/canvas/kusto-state.ts`. Queries execute server-side
+  through `src/server/kusto/` (`kusto-exec.ts` = `azure-kusto-data` SDK +
+  `AzureCliCredential`; `kusto-service.ts` = `runKustoCanvas` execute/truncate/
+  persist), shared by the `POST /canvases/:id/run` route and the `kusto_query`
+  LLM tool (`src/server/llm-tools/kusto-tools.ts`, gated by `buildKustoToolsAddon`
+  reading `kusto.enabled`). Manual create is a `kusto`-only branch of the canvas
+  create route, also gated on the flag. The SPA renders it with `KustoView`.
+  Keep the tool name exactly `kusto_query` and the serialized state keys stable.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
