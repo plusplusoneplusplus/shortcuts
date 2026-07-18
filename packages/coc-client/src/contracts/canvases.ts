@@ -114,6 +114,19 @@ export interface SaveCanvasRequest {
   title?: string;
 }
 
+/**
+ * Body for creating a new canvas from the UI (AC-07 manual exploration create).
+ * The server currently only accepts `type: 'exploration'` and gates the route
+ * on the exploration feature flag.
+ */
+export interface CreateCanvasRequest {
+  type: CanvasType;
+  title: string;
+  content: string;
+  /** Links the new canvas to a conversation so it appears in that chat's panel. */
+  processId?: string;
+}
+
 /** Body of the HTTP 409 response when a save hits a stale revision. */
 export interface CanvasConflictResponse {
   error: 'revision-conflict';

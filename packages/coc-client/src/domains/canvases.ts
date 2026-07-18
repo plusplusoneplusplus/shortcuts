@@ -11,6 +11,7 @@ import type {
   CanvasVersion,
   CanvasVersionMeta,
   CanvasVersionResponse,
+  CreateCanvasRequest,
   ListCanvasCommentsResponse,
   ListCanvasesResponse,
   ListCanvasVersionsResponse,
@@ -34,6 +35,19 @@ export class CanvasesClient {
       canvasesPath(workspaceId, queryString ? `?${queryString}` : ''),
     );
     return response.canvases ?? [];
+  }
+
+  /**
+   * Create a new canvas (AC-07 manual exploration create). The server gates
+   * this on the exploration feature flag and currently accepts only
+   * `type: 'exploration'`.
+   */
+  async create(workspaceId: string, request: CreateCanvasRequest): Promise<Canvas> {
+    const response = await this.transport.request<CanvasResponse>(
+      canvasesPath(workspaceId),
+      { method: 'POST', body: request },
+    );
+    return response.canvas;
   }
 
   async get(workspaceId: string, canvasId: string): Promise<Canvas> {

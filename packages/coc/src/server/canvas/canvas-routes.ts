@@ -97,6 +97,42 @@ export function registerCanvasRoutes(
         },
     });
 
+    // AC-07 — manual exploration create. Gated on the exploration feature flag
+    // so the route is unreachable when disabled (AC-08); only `exploration`
+    // canvases may be created here (the AI creates other types via its tools).
+    routes.push({
+        method: 'POST',
+        pattern: listPattern,
+        handler: async (req, res, match) => {
+            if (!getExplorationEnabled?.()) {
+                return sendError(res, 404, 'Not found');
+            }
+            const wsId = decodeURIComponent(match![1]);
+            let body: { type?: string; title?: string; content?: string; processId?: string };
+            try {
+                body = (await parseBody(req)) as typeof body;
+            } catch {
+                return sendError(res, 400, 'Invalid JSON body');
+            }
+            if (body.type !== 'exploration') {
+                return sendError(res, 400, 'Only exploration canvases can be created here');
+            }
+            if (typeof body.content !== 'string') {
+                return sendError(res, 400, 'content is required');
+            }
+            const canvas = store.createCanvas({
+                workspaceId: wsId,
+                type: 'exploration',
+                title: typeof body.title === 'string' && body.title.trim() ? body.title : 'Exploration',
+                content: body.content,
+                ...(typeof body.processId === 'string' ? { processId: body.processId } : {}),
+                editor: 'user',
+            });
+            broadcastCanvasUpdated(wsId, canvas, 'user');
+            sendJSON(res, 201, { canvas });
+        },
+    });
+
     routes.push({
         method: 'GET',
         pattern: detailPattern,

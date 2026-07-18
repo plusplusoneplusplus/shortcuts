@@ -40,6 +40,8 @@ import { ToastContext } from '../../contexts/ToastContext';
 import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/MonacoFileEditor';
 import { ExtensionCanvasView } from './ExtensionCanvasView';
 import { ExplorationView } from './ExplorationView';
+import { buildBlankExplorationContent, extractExplorationSeed, pickLatestExploration } from './explorationCreate';
+import { isExplorationEnabled } from '../../utils/config';
 import { ExcalidrawSceneView, parseSceneContent } from '../diagrams';
 import { exportCanvasAsHtml } from './html-export/exportCanvasAsHtml';
 import type { ExtensionExportSource } from './html-export/exportCanvasAsHtml';
@@ -69,6 +71,8 @@ export interface CanvasPanelProps {
     availableCanvases?: CanvasSummary[];
     /** Switches the host panel to another linked agent canvas. */
     onSelectCanvas?: (canvasId: string) => void;
+    /** Notifies the host that a new canvas was created here (AC-07) so it can refresh its list. */
+    onCanvasCreated?: (canvasId: string) => void;
     /** Bumping this value forces a reload from the server (used by the pop-out window on focus). */
     reloadNonce?: number;
 }
@@ -158,7 +162,7 @@ function fenceCode(content: string, language: string | undefined): string {
     return `\`\`\`\`${language ?? ''}\n${content}\n\`\`\`\``;
 }
 
-export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange, onPopOut, availableCanvases = [], onSelectCanvas, reloadNonce }: CanvasPanelProps) {
+export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange, onPopOut, availableCanvases = [], onSelectCanvas, onCanvasCreated, reloadNonce }: CanvasPanelProps) {
     // AC-07: canvas get/save/versions/comments + save-to-notes target the clone.
     const cloneClient = useCocClient(workspaceId);
     const [canvas, setCanvas] = useState<Canvas | null>(null);
@@ -641,6 +645,42 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         onSelectCanvas?.(nextCanvasId);
     }, [onSelectCanvas]);
 
+    // AC-07 — create a blank exploration, prefilling cluster/database from the
+    // workspace's most recent exploration, then select it in the panel.
+    const [creatingExploration, setCreatingExploration] = useState(false);
+    const explorationEnabled = isExplorationEnabled();
+    const handleCreateExploration = useCallback(async () => {
+        if (creatingExploration) return;
+        setCreatingExploration(true);
+        try {
+            let seed = { clusterUrl: '', database: '' };
+            try {
+                const all = await cloneClient.canvases.list(workspaceId);
+                const latest = pickLatestExploration(all);
+                if (latest) {
+                    const full = await cloneClient.canvases.get(workspaceId, latest.id);
+                    seed = extractExplorationSeed(full.content);
+                }
+            } catch {
+                // Prefill is best-effort — fall back to an empty seed.
+            }
+            const processId = canvasRef.current?.processId
+                ?? availableCanvases.find(c => c.processId)?.processId;
+            const created = await cloneClient.canvases.create(workspaceId, {
+                type: 'exploration',
+                title: 'Exploration',
+                content: buildBlankExplorationContent(seed),
+                ...(processId ? { processId } : {}),
+            });
+            onCanvasCreated?.(created.id);
+            onSelectCanvas?.(created.id);
+        } catch {
+            toast?.addToast('Failed to create exploration', 'error');
+        } finally {
+            setCreatingExploration(false);
+        }
+    }, [creatingExploration, cloneClient, workspaceId, availableCanvases, onCanvasCreated, onSelectCanvas, toast]);
+
     const statusLabel = saveState === 'saving' ? 'Saving…'
         : saveState === 'saved' ? 'Saved'
         : saveState === 'conflict' ? 'Save conflict'
@@ -824,6 +864,18 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                             </div>
                         )}
                     </div>
+                )}
+                {explorationEnabled && (
+                    <button
+                        type="button"
+                        className="px-2 py-0.5 text-[11px] rounded text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                        onClick={() => void handleCreateExploration()}
+                        disabled={creatingExploration}
+                        title="Create a new blank exploration"
+                        data-testid="canvas-panel-new-exploration"
+                    >
+                        {creatingExploration ? 'Creating…' : 'New exploration'}
+                    </button>
                 )}
                 {onPopOut && !isFullscreen && (
                     <button
