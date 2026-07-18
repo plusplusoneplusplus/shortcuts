@@ -261,6 +261,15 @@ export function ImplementPlanLaunchDialog({
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // AC-01/AC-02: the full plan content shown in the read-only preview. Loaded
+    // from the SOURCE server (never the execution target), so it is correct for
+    // local and remote-clone sources alike. `null` means "not yet resolved" —
+    // Implement stays disabled until it resolves so an unread plan can never be
+    // enqueued.
+    const [previewContent, setPreviewContent] = useState<string | null>(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const [previewError, setPreviewError] = useState<string | null>(null);
+
     // Reset transient state whenever the dialog (re)opens.
     useEffect(() => {
         if (!open) return;
@@ -268,6 +277,35 @@ export function ImplementPlanLaunchDialog({
         setSubmitting(false);
         setSelectedTargetId(defaultTargetId);
     }, [open, defaultTargetId]);
+
+    // AC-01/AC-02: load the selected plan's content for the preview. Reruns when
+    // the panel opens, the selected file changes, the canvas changes, or the
+    // source client changes. A `cancelled` guard makes late responses inert so a
+    // stale first-file read can never overwrite the newer selection's preview.
+    useEffect(() => {
+        if (!open) return;
+        let cancelled = false;
+        setPreviewLoading(true);
+        setPreviewError(null);
+        setPreviewContent(null);
+        (async () => {
+            try {
+                const content = planCanvasId
+                    ? await readSourceCanvasContent(planCanvasId)
+                    : await readSourcePlanContent(activePlanFilePath);
+                if (!cancelled) setPreviewContent(content);
+            } catch (err) {
+                if (!cancelled) {
+                    setPreviewError(getSpaCocClientErrorMessage(err, 'Could not read the plan'));
+                }
+            } finally {
+                if (!cancelled) setPreviewLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+        // readSource* are stable given sourceClient; depend on the identifying inputs.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, activePlanFilePath, planCanvasId, sourceClient, workspaceId]);
 
     // Escape closes the panel without enqueuing (AC-01), except mid-launch.
     useEffect(() => {
@@ -281,9 +319,9 @@ export function ImplementPlanLaunchDialog({
 
     if (!open) return null;
 
-    async function readSourcePlanContent(): Promise<string> {
+    async function readSourcePlanContent(path: string): Promise<string> {
         try {
-            const blob = await sourceClient.explorer.readTrustedBlob(activePlanFilePath);
+            const blob = await sourceClient.explorer.readTrustedBlob(path);
             if (blob.encoding === 'base64') {
                 try {
                     return typeof atob === 'function' ? atob(blob.content) : blob.content;
@@ -312,6 +350,8 @@ export function ImplementPlanLaunchDialog({
 
     async function handleConfirm() {
         if (submitting) return;
+        // AC-02: never enqueue while the plan content is unresolved.
+        if (previewContent === null) return;
         setSubmitting(true);
         setError(null);
         try {
@@ -321,15 +361,16 @@ export function ImplementPlanLaunchDialog({
             const targetWorkspaceId = selectedTarget?.workspaceId ?? workspaceId;
             const targetWorkingDirectory = selectedTarget?.workingDirectory ?? workingDirectory;
 
+            // Reuse the content already loaded for the preview (AC-03): the
+            // canvas and remote/remote-source paths inline it; the purely-local
+            // path launch keeps its file-path prompt + context.files.
             let prompt: string;
             let baseContext: Record<string, unknown> | undefined;
             if (planCanvasId) {
-                const planContent = await readSourceCanvasContent(planCanvasId);
-                prompt = buildCanvasPrompt(activePlanFilePath, planContent);
+                prompt = buildCanvasPrompt(activePlanFilePath, previewContent);
                 baseContext = undefined;
             } else if (isRemote || sourceIsRemote) {
-                const planContent = await readSourcePlanContent();
-                prompt = buildRemotePrompt(activePlanFilePath, planContent);
+                prompt = buildRemotePrompt(activePlanFilePath, previewContent);
                 baseContext = undefined;
             } else {
                 prompt = `Read and implement the plan file at ${activePlanFilePath}`;
@@ -494,15 +535,41 @@ export function ImplementPlanLaunchDialog({
                 </div>
             </div>
 
-            {/* Read-only plan summary */}
+            {/* Plan preview — compact provenance + read-only content (AC-01). */}
             <div>
-                <div className="text-xs text-[#848484] mb-1">Plan to implement:</div>
-                <div
-                    className="text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#1a1a1a] px-2 py-1 font-mono text-[#1e1e1e] dark:text-[#cccccc] break-all"
-                    data-testid="implement-launch-summary"
-                >
-                    {planSummaryLabel}
+                <div className="flex items-center justify-between mb-1">
+                    <div className="text-xs text-[#848484]">Plan to implement:</div>
+                    <div
+                        className="min-w-0 max-w-[65%] truncate text-[11px] font-mono text-[#848484] text-right"
+                        title={planSummaryLabel}
+                        data-testid="implement-launch-summary"
+                    >
+                        {planSummaryLabel}
+                    </div>
                 </div>
+                {previewLoading ? (
+                    <div
+                        className="text-xs rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#1a1a1a] px-2 py-2 text-[#848484]"
+                        data-testid="implement-launch-preview-loading"
+                    >
+                        Loading plan…
+                    </div>
+                ) : previewError ? (
+                    <p
+                        className="text-xs text-[#f14c4c]"
+                        data-testid="implement-launch-preview-error"
+                    >
+                        {previewError}
+                    </p>
+                ) : (
+                    <textarea
+                        readOnly
+                        data-testid="implement-launch-preview"
+                        value={previewContent ?? ''}
+                        rows={10}
+                        className="w-full rounded border border-[#d0d0d0] dark:border-[#4a4a4a] bg-[#f5f5f5] dark:bg-[#1a1a1a] text-xs text-[#1e1e1e] dark:text-[#cccccc] p-2 font-mono resize-y"
+                    />
+                )}
             </div>
 
             {/* Error */}
@@ -518,10 +585,12 @@ export function ImplementPlanLaunchDialog({
                     type="button"
                     data-testid="implement-launch-confirm-btn"
                     onClick={handleConfirm}
-                    disabled={submitting}
+                    disabled={submitting || previewLoading || previewContent === null}
                     className={
                         'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white transition-colors '
-                        + (submitting ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700')
+                        + (submitting || previewLoading || previewContent === null
+                            ? 'bg-blue-400 cursor-not-allowed'
+                            : 'bg-blue-600 hover:bg-blue-700')
                     }
                 >
                     {submitting ? '⏳ Starting…' : '🚀 Implement'}
