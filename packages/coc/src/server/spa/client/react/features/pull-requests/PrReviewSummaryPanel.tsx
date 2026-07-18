@@ -5,6 +5,7 @@
 
 import { useMemo } from 'react';
 import { Marked } from 'marked';
+import { mathMarkedExtension } from '../../../shared/math/mathMarkedExtension';
 import { cn } from '../../ui';
 import { findingTagClass } from './pr-derived-data';
 import { ReviewerBadge } from './ReviewerBadge';
@@ -22,7 +23,7 @@ const summaryMarked = new Marked({
             return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
         },
     },
-});
+}).use(mathMarkedExtension);
 
 interface PrReviewSummaryPanelProps {
     summary: PrReviewSummary;

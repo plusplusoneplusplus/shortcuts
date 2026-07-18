@@ -14,6 +14,7 @@ import { isJsonResponse } from '../../../ui/json-utils';
 import { mergeConsecutiveContentItems } from './timeline-utils';
 import { LoopIcon } from '../icons/LoopIcon';
 import { Marked } from 'marked';
+import { mathMarkedExtension } from '../../../../shared/math/mathMarkedExtension';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
 import { isExcalidrawEnabled, isCanvasEnabled } from '../../../utils/config';
@@ -222,7 +223,7 @@ function createChatMarked(
                 return `<img data-local-path="${escapeAttr(href)}" alt="${escapedAlt}"${titleAttr} class="chat-inline-image">`;
             },
         },
-    });
+    }).use(mathMarkedExtension);
 }
 
 /**

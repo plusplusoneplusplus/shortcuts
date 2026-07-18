@@ -255,3 +255,40 @@ export function tokenizeMath(text: string): MarkdownMathSegment[] {
 export function hasMath(text: string): boolean {
     return tokenizeMath(text).some(s => s.type === 'math');
 }
+
+export interface MathMatch {
+    tex: string;
+    raw: string;
+    delimiter: MathDelimiter;
+    display: boolean;
+    /** Length of the matched region (== the number of chars consumed from index 0). */
+    length: number;
+}
+
+/**
+ * Try to match a single math token anchored at the START of `text` (index 0).
+ *
+ * Returns null when the text does not begin with a valid, closed math region.
+ * This is the primitive the Marked adapter uses: Marked hands it a source slice
+ * beginning at a candidate delimiter, and this decides whether — and how far —
+ * a math token extends. It reuses the exact same delimiter rules and guards as
+ * `tokenizeMath`, so currency/shell/template/escaped cases are rejected here too.
+ */
+export function matchMathAtStart(text: string): MathMatch | null {
+    const ch = text[0];
+    if (ch === '\\') {
+        // `\$` is an escaped literal dollar, never a delimiter.
+        if (text[1] === '$') return null;
+        const m = matchBackslashDelim(text, 0);
+        return m ? { tex: m.tex, raw: m.raw, delimiter: m.delimiter, display: m.display, length: m.end } : null;
+    }
+    if (ch === '$') {
+        if (text[1] === '$') {
+            const m = matchDoubleDollar(text, 0);
+            return m ? { tex: m.tex, raw: m.raw, delimiter: m.delimiter, display: m.display, length: m.end } : null;
+        }
+        const m = matchDollar(text, 0);
+        return m ? { tex: m.tex, raw: m.raw, delimiter: m.delimiter, display: m.display, length: m.end } : null;
+    }
+    return null;
+}
