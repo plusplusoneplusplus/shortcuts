@@ -63,9 +63,6 @@ export function PrReviewSummaryPanel({ summary, reviewers, labels, url }: PrRevi
                             Open in browser
                         </a>
                     )}
-                    <span className="inline-flex min-h-[20px] items-center gap-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
-                        Provider facts
-                    </span>
                 </div>
             </header>
             <div className="p-2">
