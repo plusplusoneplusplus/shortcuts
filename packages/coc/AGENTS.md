@@ -205,7 +205,11 @@ all have their own `references/*.md`.
   revision also writes a version snapshot (capped at 50) used by the panel's
   history stepper and restore-as-new-revision flow, and anchored comments
   (`comments.json`, open|sent|resolved) are delivered to the AI through the
-  normal follow-up enqueue path — not a custom channel. Extension canvases
+  normal follow-up enqueue path — not a custom channel. SVG code canvases
+  (`language: svg`, or SVG-rooted `xml`/unset source) render sanitized output in
+  an isolated ShadowRoot with Source/Rendered views, wheel zoom, drag pan, raw
+  `.svg` export, and escaped-source fallback for malformed input; never mount
+  raw SVG source in the DOM. Extension canvases
   store `extension/{manifest.json,ui.html,capabilities.js}`; both the AI
   (`extension_canvas` RUN mode) and the panel's sandboxed iframe (capability
   REST route) mutate shared state only through capabilities run as pure

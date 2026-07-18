@@ -40,6 +40,7 @@ import { ToastContext } from '../../contexts/ToastContext';
 import { MonacoFileEditor, getMonacoLanguage } from '../repo-detail/explorer/MonacoFileEditor';
 import { ExtensionCanvasView } from './ExtensionCanvasView';
 import { ExplorationView } from './ExplorationView';
+import { SvgCanvasView } from './SvgCanvasView';
 import { buildBlankExplorationContent, extractExplorationSeed, pickLatestExploration } from './explorationCreate';
 import { isExplorationEnabled } from '../../utils/config';
 import { ExcalidrawSceneView, parseSceneContent } from '../diagrams';
@@ -144,8 +145,15 @@ function monacoLanguageFor(language: string | undefined): string {
 const LANGUAGE_TO_FILE_EXT: Record<string, string> = {
     typescript: 'ts', javascript: 'js', python: 'py', shell: 'sh', bash: 'sh',
     csharp: 'cs', cpp: 'cpp', ruby: 'rb', rust: 'rs', go: 'go', java: 'java',
-    kotlin: 'kt', php: 'php', powershell: 'ps1', markdown: 'md',
+    kotlin: 'kt', php: 'php', powershell: 'ps1', markdown: 'md', svg: 'svg',
 };
+
+function isSvgCodeCanvas(canvas: Pick<Canvas, 'type' | 'language' | 'content'>): boolean {
+    if (canvas.type !== 'code') return false;
+    const language = canvas.language?.trim().toLowerCase();
+    return language === 'svg'
+        || ((!language || language === 'xml') && canvas.content.trimStart().startsWith('<svg'));
+}
 
 function downloadFilenameFor(canvas: Canvas): string {
     const slug = canvas.id.replace(/-[0-9a-f]{6}$/, '') || 'canvas';
@@ -153,6 +161,7 @@ function downloadFilenameFor(canvas: Canvas): string {
     if (canvas.type === 'exploration') return `${slug}.json`;
     if (canvas.type === 'excalidraw') return `${slug}.excalidraw`;
     if (canvas.type !== 'code') return `${slug}.md`;
+    if (isSvgCodeCanvas(canvas)) return `${slug}.svg`;
     const language = canvas.language ?? '';
     return `${slug}.${LANGUAGE_TO_FILE_EXT[language] ?? (language || 'txt')}`;
 }
@@ -515,7 +524,10 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
         const current = canvasRef.current;
         if (!current) return;
         try {
-            const blob = new Blob([current.content], { type: 'text/plain;charset=utf-8' });
+            const blob = new Blob(
+                [current.content],
+                { type: isSvgCodeCanvas(current) ? 'image/svg+xml' : 'text/plain;charset=utf-8' },
+            );
             const url = URL.createObjectURL(blob);
             const anchor = document.createElement('a');
             anchor.href = url;
@@ -605,6 +617,11 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
 
     const displayedContent = viewingVersion ? viewingVersion.content : (canvas?.content ?? '');
     const isCodeCanvas = canvas?.type === 'code';
+    const isSvgCanvas = Boolean(canvas && isSvgCodeCanvas({
+        type: canvas.type,
+        language: canvas.language,
+        content: displayedContent,
+    }));
     const isExtensionCanvas = canvas?.type === 'extension';
     const isExcalidrawCanvas = canvas?.type === 'excalidraw';
     const isExplorationCanvas = canvas?.type === 'exploration';
@@ -1052,6 +1069,12 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                             }}
                             onSelect={handleEditorSelect}
                             data-testid="canvas-panel-editor"
+                        />
+                    ) : isSvgCanvas ? (
+                        <SvgCanvasView
+                            key={`${canvasId}:${viewingRevision}`}
+                            source={displayedContent}
+                            sourceHtml={previewHtml}
                         />
                     ) : (
                         <div

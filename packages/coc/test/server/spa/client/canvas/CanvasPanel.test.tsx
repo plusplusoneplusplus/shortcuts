@@ -578,6 +578,118 @@ describe('CanvasPanel', () => {
         expect(screen.queryByTestId('canvas-panel-editor')).toBeNull();
     });
 
+    it('renders SVG code canvases by default and toggles to highlighted source', async () => {
+        const source = '<svg viewBox="0 0 100 50"><rect width="100" height="50" fill="red"/></svg>';
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'code', language: 'svg', content: source }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+
+        const host = await screen.findByTestId('svg-canvas-shadow-host');
+        expect(host.shadowRoot?.querySelector('svg')).toBeTruthy();
+        expect(host.shadowRoot?.querySelector('rect')?.getAttribute('fill')).toBe('red');
+        expect(screen.getByTestId('svg-canvas-viewport').className).toContain('block');
+
+        fireEvent.click(screen.getByTestId('svg-canvas-source'));
+
+        expect(screen.getByTestId('svg-canvas-source-view').className).toContain('block');
+        const highlighted = screen.getByTestId('svg-canvas-source-view').querySelector('code');
+        expect(highlighted?.className).toContain('language-svg');
+        expect(highlighted?.textContent).toContain('<svg');
+
+        fireEvent.click(screen.getByTestId('canvas-panel-mode-edit'));
+        expect((screen.getByTestId('mock-monaco') as HTMLTextAreaElement).value).toBe(source);
+    });
+
+    it.each([
+        ['xml', ' \n<svg viewBox="0 0 10 10"><circle r="4"/></svg>'],
+        [undefined, '<svg viewBox="0 0 10 10"><path d="M0 0L10 10"/></svg>'],
+    ])('renders %s code canvases as SVG when the content starts with an SVG root', async (language, content) => {
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'code', language, content }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+
+        const host = await screen.findByTestId('svg-canvas-shadow-host');
+        expect(host.shadowRoot?.querySelector('svg')).toBeTruthy();
+    });
+
+    it('shows an inline error and escaped source when SVG is malformed', async () => {
+        const source = '<svg><rect></svg>';
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'code', language: 'svg', content: source }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+
+        const error = await screen.findByTestId('svg-canvas-error');
+        expect(error.textContent).toContain('Invalid SVG');
+        expect(error.querySelector('pre')?.textContent).toBe(source);
+        expect(error.querySelector('svg')).toBeNull();
+    });
+
+    it('mounts only sanitized SVG inside the isolated render surface', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({
+            type: 'code',
+            language: 'svg',
+            content: '<svg onload="steal()"><script>steal()</script><rect onclick="steal()" width="10" height="10"/></svg>',
+        }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+
+        const shadowRoot = (await screen.findByTestId('svg-canvas-shadow-host')).shadowRoot;
+        expect(shadowRoot?.querySelector('script')).toBeNull();
+        expect(shadowRoot?.querySelector('svg')?.hasAttribute('onload')).toBe(false);
+        expect(shadowRoot?.querySelector('rect')?.hasAttribute('onclick')).toBe(false);
+    });
+
+    it('zooms and pans the rendered SVG viewport', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({
+            type: 'code',
+            language: 'svg',
+            content: '<svg viewBox="0 0 100 100"><rect width="100" height="100"/></svg>',
+        }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        const viewport = await screen.findByTestId('svg-canvas-viewport');
+        vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({
+            x: 0, y: 0, left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300,
+            toJSON: () => ({}),
+        });
+
+        fireEvent.wheel(viewport, { deltaY: -100, clientX: 50, clientY: 50 });
+        await waitFor(() => expect(viewport.getAttribute('data-scale')).toBe('1.15'));
+
+        fireEvent.mouseDown(viewport, { button: 0, clientX: 10, clientY: 10 });
+        fireEvent.mouseMove(document, { clientX: 30, clientY: 40 });
+        fireEvent.mouseUp(document);
+        await waitFor(() => {
+            expect(Number(viewport.getAttribute('data-translate-x'))).not.toBe(0);
+            expect(Number(viewport.getAttribute('data-translate-y'))).not.toBe(0);
+        });
+    });
+
+    it('downloads raw SVG source with the SVG MIME type and extension', async () => {
+        const source = '<svg viewBox="0 0 10 10"><circle r="4"/></svg>';
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'code', language: 'svg', content: source }));
+        const createObjectURL = vi.fn().mockReturnValue('blob:svg');
+        const revokeObjectURL = vi.fn();
+        Object.assign(URL, { createObjectURL, revokeObjectURL });
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+        try {
+            render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+            await screen.findByTestId('svg-canvas-shadow-host');
+
+            fireEvent.click(screen.getByTestId('canvas-panel-export'));
+            fireEvent.click(screen.getByTestId('canvas-panel-export-download'));
+
+            const blob = createObjectURL.mock.calls[0][0] as Blob;
+            expect(blob.type).toBe('image/svg+xml');
+            expect(await readBlobText(blob)).toBe(source);
+            expect(click.mock.instances[0].download).toBe('doc.svg');
+            expect(revokeObjectURL).toHaveBeenCalledWith('blob:svg');
+        } finally {
+            click.mockRestore();
+        }
+    });
+
     it('autosaves Monaco edits on code canvases', async () => {
         vi.useFakeTimers();
         try {

@@ -340,14 +340,19 @@ an inline image inlines each image as a base64 `data:` URI in the `text/html`
 clipboard flavor (`copySelectionWithInlineImages` in `utils/format.ts`, sync
 `clipboardData` fallback + async `navigator.clipboard.write` upgrade) so images
 survive a paste into Word/Google Docs/email — text-only selections fall through
-to the browser's native copy untouched. Code canvases (`type: 'code'`) show a language
-chip, render the preview as a fenced highlighted block, and use
-`MonacoFileEditor` (shared with the repo explorer) in Edit mode with the same
-debounced autosave; selection actions stay available in preview mode. The
-header Export menu offers Copy content, Download file (extension derived from
-the language), and — for markdown canvases — Save to Notes, which writes the
-content to `canvases/<slug>.md` in the workspace Notes tree via
-`notes.saveContent`. Extension canvases (`type: 'extension'`) render
+to the browser's native copy untouched. Code canvases (`type: 'code'`) show a
+language chip and use `MonacoFileEditor` (shared with the repo explorer) in Edit
+mode with the same debounced autosave. Their preview is normally a fenced,
+highlighted block. `language: 'svg'`, or `xml`/unset content whose trimmed source
+starts with `<svg`, instead mounts `SvgCanvasView`: rendered mode is the default,
+Source shows the highlighted XML, and wheel/drag provide zoom/pan. The view
+inserts only `sanitizeSvg` output into a ShadowRoot so SVG styles stay isolated;
+invalid SVG shows the sanitizer error and escaped source. SVG downloads use the
+raw persisted source in an `image/svg+xml` blob with a `.svg` filename. Selection
+actions stay available in preview mode. The header Export menu also offers Copy
+content and — for markdown canvases — Save to Notes, which writes the content to
+`canvases/<slug>.md` in the workspace Notes tree via `notes.saveContent`.
+Extension canvases (`type: 'extension'`) render
 `ExtensionCanvasView` in preview mode: the extension's `ui.html` runs inside an
 `<iframe sandbox="allow-scripts">` whose injected `window.CanvasHost` bridge
 (`onState`/`invoke`/`setState`) talks to the host over `postMessage`. The host
