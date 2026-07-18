@@ -119,6 +119,16 @@ describe('WhisperDiffPanel — header dropdown selector (AC-01)', () => {
         expect(screen.queryByTestId('whisper-diff-path')).toBeNull();
     });
 
+    it('uses compact header spacing and controls', () => {
+        render(<WhisperDiffPanel state={multiFileState()} onClose={() => {}} />);
+        const header = screen.getByTestId('whisper-diff-header');
+        const closeButton = screen.getByTestId('whisper-diff-close-btn');
+        expect(header).toHaveClass('py-1', 'items-center');
+        expect(header).not.toHaveClass('py-2', 'items-start');
+        expect(closeButton).toHaveClass('w-7', 'h-7');
+        expect(closeButton).not.toHaveClass('w-8', 'h-8');
+    });
+
     it('lists "All files" plus every file in group order with +/- stats', () => {
         render(<WhisperDiffPanel state={multiFileState()} workspaceRootPath="/home/u/proj" onClose={() => {}} />);
         const menu = openMenu();
