@@ -110,6 +110,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
             } else {
                 state.globalPaused = true;
                 state.globalPausedUntil = pause.until;
+                state.globalPauseSource = 'manual';
                 for (const m of bridge.registry.getAllQueues().values()) {
                     m.pause(pause.until);
                 }
@@ -141,6 +142,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
             } else {
                 state.globalPaused = false;
                 state.globalPausedUntil = undefined;
+                state.globalPauseSource = undefined;
                 for (const m of bridge.registry.getAllQueues().values()) {
                     m.resume();
                 }
@@ -176,6 +178,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
             } else {
                 state.globalAutopilotPaused = true;
                 state.globalAutopilotPausedUntil = pause.until;
+                state.globalAutopilotPauseSource = 'manual';
                 for (const m of bridge.registry.getAllQueues().values()) {
                     m.pauseAutopilot(pause.until);
                 }
@@ -207,6 +210,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
             } else {
                 state.globalAutopilotPaused = false;
                 state.globalAutopilotPausedUntil = undefined;
+                state.globalAutopilotPauseSource = undefined;
                 for (const m of bridge.registry.getAllQueues().values()) {
                     m.resumeAutopilot();
                 }
