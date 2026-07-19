@@ -452,30 +452,12 @@ export function createCreateUpdateWorkItemTool(
 
     const tool = defineTool<CreateUpdateWorkItemArgs>('create_update_work_item', {
         description:
-            'Create a new typed work item, patch fields on an existing one, save a revised plan, or link/move/unlink ' +
-            'an item in the work-item hierarchy in this repository. ' +
-            'Create mode: omit `workItemId`, `target`, and `workItemNumber`; include a non-blank `title`, optional ' +
-            '`type` (default `work-item`; use `bug` to file bugs), `description`, `priority`, `tags`, and a full `plan`. ' +
-            'To create it under a parent (Epic → Feature → PBI → Work Item/Bug/Goal), also pass `parentId`, ' +
-            '`parentTarget`, or `parentWorkItemNumber`. ' +
-            'Field-update mode: give an existing target plus any of `title`, `description`, `priority`, `tags`, ' +
-            '`type`, or `status`; this preserves plan history and creates no plan version. `status` (e.g. `done`) ' +
-            'transitions or closes the item without editing the plan and syncs to the GitHub/Azure Boards mirror. ' +
-            'Update-plan mode: give an existing target and the complete revised Markdown plan in `plan`; this saves a ' +
-            'new plan version, resets status to `planning`, opens a change record, and broadcasts a dashboard update. ' +
-            'Hierarchy-link mode: give an existing target plus `parentId`/`parentTarget`/`parentWorkItemNumber` to ' +
-            'reparent the item, or `parentId: null` to unlink it. Link changes can combine with field or plan updates ' +
-            'and are validated against the allowed parent/child hierarchy. ' +
-            'In update mode, `type` may be changed: the switch is applied when the resulting parent and children ' +
-            'still satisfy the hierarchy rules (supply a valid new parent in the same call if the old one no longer ' +
-            'fits), and it preserves the plan and status. ' +
-            'Pass `targetWorkspaceId` to scope the create/update to a different workspace of the same upstream repo ' +
-            '(e.g. to file under a mirrored parent); omit to use the active workspace. ' +
-            'Do not append raw text or a partial diff for `plan`; always send the full revised plan. ' +
-            'IMPORTANT: Before calling this tool, you MUST first present a draft summary to the user ' +
-            'and only call this tool once the user confirms. ' +
-            'Once confirmed, IMMEDIATELY call this tool — do not deliberate or plan further. ' +
-            `Plan template:\n${WORK_ITEM_PLAN_TEMPLATE}`,
+            'Create a new typed work item, patch fields on an existing one, save a complete revised `plan` as a new ' +
+            'version, or reparent/unlink it in the Epic → Feature → PBI → Work Item/Bug/Goal hierarchy. ' +
+            'Omit `workItemId`/`target`/`workItemNumber` and pass a non-blank `title` to create; provide one of them ' +
+            'to update. Always send the full revised plan (never a diff); a create call without a `plan` returns the ' +
+            'standard plan template in its result for use on a follow-up update. ' +
+            'IMPORTANT: first present a draft summary to the user, and call this tool immediately once they confirm.',
         parameters: {
             type: 'object',
             properties: {
@@ -494,8 +476,8 @@ export function createCreateUpdateWorkItemTool(
                 type: {
                     type: 'string',
                     enum: [...WORK_ITEM_TYPES],
-                    description: 'Work item type. On create, sets the type (default: work-item). In update mode, '
-                        + 'a different value changes the type when the resulting parent/child hierarchy stays valid.',
+                    description: 'Work item type (create default: work-item; use bug to file bugs). '
+                        + 'In update mode, a different value changes the type.',
                 },
                 title: {
                     type: 'string',
@@ -513,10 +495,7 @@ export function createCreateUpdateWorkItemTool(
                 status: {
                     type: 'string',
                     enum: [...WORK_ITEM_STATUSES],
-                    description:
-                        'Lifecycle status for an existing item, e.g. "done" to close it. Update mode only; the '
-                        + 'transition is validated against the status rules and synced to the GitHub/Azure Boards '
-                        + 'mirror (a terminal status closes the mirrored issue). Ignored in create mode.',
+                    description: 'Lifecycle status for an existing item, e.g. "done" to close it. Update mode only.',
                 },
                 tags: {
                     type: 'array',
@@ -525,10 +504,7 @@ export function createCreateUpdateWorkItemTool(
                 },
                 plan: {
                     type: 'string',
-                    description:
-                        'Full Markdown plan following the standard template sections (## Objective, ## Background, ' +
-                        '## Steps with - [ ] checkboxes, ## Acceptance Criteria, ## Notes). Optional in both create ' +
-                        'and update mode.',
+                    description: 'Full Markdown plan following the standard plan template. Optional in both create and update mode.',
                 },
                 summary: {
                     type: 'string',
@@ -536,9 +512,7 @@ export function createCreateUpdateWorkItemTool(
                 },
                 parentId: {
                     oneOf: [{ type: 'string' }, { type: 'null' }],
-                    description:
-                        'Parent work item UUID for hierarchy linking. On create, places the item under this parent; ' +
-                        'on update, reparents it. Pass null to unlink; omit to leave the parent unchanged.',
+                    description: 'Parent work item UUID for hierarchy linking. Pass null to unlink; omit to leave the parent unchanged.',
                 },
                 parentTarget: {
                     type: 'string',
@@ -552,9 +526,7 @@ export function createCreateUpdateWorkItemTool(
                     type: 'string',
                     description:
                         'Explicit target workspace or canonical origin id (a "ws-*" workspace id or ' +
-                        '"gh_<owner>_<repo>" mirror). Scopes the create/update to that workspace instead of the ' +
-                        'active one — use it to file an item under a mirrored parent in a different workspace of the ' +
-                        'same upstream repo. Omit to use the active workspace.',
+                        '"gh_<owner>_<repo>" mirror). Omit to use the active workspace.',
                 },
             },
             required: [],
@@ -635,6 +607,11 @@ async function createNewWorkItem(
                 parentTitle: parent.title,
                 parentWorkItemNumber: parent.workItemNumber,
             } : {}),
+            ...(hasPlan ? {} : {
+                hint: 'Created without a plan. To add one, call this tool again with this id and a complete '
+                    + 'Markdown `plan` following the template below.',
+                planTemplate: WORK_ITEM_PLAN_TEMPLATE,
+            }),
         };
     } catch (error) {
         if (error instanceof APIError) {
@@ -682,6 +659,7 @@ async function updateExistingWorkItem(
             updated: false,
             id: existing.id,
             error: 'Invalid plan for update mode: plan must contain the complete revised Markdown plan',
+            planTemplate: WORK_ITEM_PLAN_TEMPLATE,
         };
     }
 

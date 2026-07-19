@@ -74,7 +74,14 @@ automatically on success or auto-abort.
 ## Output
 
 Stderr is human-readable progress; stdout has `JSON: {...}` status
-lines. Statuses you'll see:
+lines. On success each subcommand's own stdout/stderr is **not** echoed
+to the progress stream (only the `$ <cmd>` breadcrumb is), keeping the
+combined output small so the trailing `JSON: {...}` success line survives
+the agent harness's output cap — that line is what the chat's PR banner
+detects. Set `SUBMIT_PR_VERBOSE=1` to echo child output on success too;
+failing subcommands always echo their output regardless.
+
+Statuses you'll see:
 
 - `done` — success. Report `pr_url` to the user.
 - `aborted` with `reason: cherry-pick-conflict` or `rebase-conflict` —

@@ -64,16 +64,13 @@ export {
 export { summarizeToolParameters, compactParamType } from './llm-tool-parameters';
 export { LLM_TOOL_PARAMETER_SCHEMAS, withToolParameterMetadata } from './llm-tool-parameter-schemas';
 export {
-    createCreateLoopTool,
-    createCancelLoopTool,
-    createListLoopsTool,
+    createLoopTool,
     createScheduleWakeupTool,
     parseDuration,
     type LoopToolDeps,
     type WakeupToolDeps,
-    type CreateLoopArgs,
-    type CancelLoopArgs,
-    type ListLoopsArgs,
+    type LoopAction,
+    type LoopToolArgs,
     type ScheduleWakeupArgs,
 } from './loop-tools';
 export {

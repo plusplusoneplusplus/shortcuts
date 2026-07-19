@@ -25,6 +25,12 @@ export interface PreviewPaneProps {
     onClose?: () => void;
     /** When true the editor is non-editable and save/dirty UI is suppressed. */
     readOnly?: boolean;
+    /**
+     * Notified whenever the unsaved-edits state changes (and with `false` on
+     * unmount). Lets the owner surface dirtiness to the workspace-switch guard so
+     * a switch can prompt before discarding edits (AC-03 of preserve-explorer-state).
+     */
+    onDirtyChange?: (isDirty: boolean) => void;
 }
 
 interface BlobResponse {
@@ -41,7 +47,7 @@ function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: PreviewPaneProps) {
+export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly, onDirtyChange }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -92,6 +98,14 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly }: P
 
         return () => controller.abort();
     }, [fetchBlob]);
+
+    // Surface unsaved-edits state to the owner so a workspace switch can prompt
+    // before discarding the buffer (AC-03). Report the current value whenever it
+    // flips, and report clean on unmount (file closed / panel torn down).
+    useEffect(() => {
+        onDirtyChange?.(isDirty);
+    }, [isDirty, onDirtyChange]);
+    useEffect(() => () => { onDirtyChange?.(false); }, [onDirtyChange]);
 
     const doRetry = () => {
         abortRef.current?.abort();

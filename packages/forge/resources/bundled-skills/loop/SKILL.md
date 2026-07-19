@@ -3,7 +3,7 @@ name: loop
 description: Schedule recurring follow-up messages into the current conversation. Supports fixed-interval monitoring and one-shot wakeups for dynamic self-pacing.
 metadata:
   author: CoC
-  version: "0.0.1"
+  version: "0.0.2"
 ---
 
 # Loop — Recurring Follow-Ups
@@ -18,26 +18,26 @@ Schedule recurring follow-up messages into the current conversation so the AI ca
 
 ## Available Tools
 
-When this skill is active you have three additional tools:
+When this skill is active you have one additional tool: `loop`, with an `action` parameter:
 
-| Tool | Purpose |
-|------|---------|
-| `createLoop` | Create a fixed-interval recurring loop. First tick fires after one full interval — the current turn is the implicit first run. |
-| `cancelLoop` | Cancel an active or paused loop by ID. |
-| `listLoops` | List all loops for this conversation, optionally filtered by status. |
+| Action | Purpose |
+|--------|---------|
+| `loop` action `create` | Create a fixed-interval recurring loop (requires `description`, `interval`, `prompt`). First tick fires after one full interval — the current turn is the implicit first run. |
+| `loop` action `cancel` | Cancel an active or paused loop by `loopId`. |
+| `loop` action `list` | List all loops for this conversation, optionally filtered by `status`. |
 
 The `scheduleWakeup` tool (one-shot delayed follow-up) is always available regardless of this skill.
 
 ## Interval Parsing
 
 Intervals accept human-friendly strings: `30s`, `5m`, `1h`, `2h`, `1d`, or raw milliseconds.
-Minimum interval for `createLoop` is **10 seconds**. Minimum delay for `scheduleWakeup` is **1 second**.
+Minimum interval for `loop` action `create` is **10 seconds**. Minimum delay for `scheduleWakeup` is **1 second**.
 
 ## Choosing Between Loop and Wakeup
 
 | Scenario | Tool |
 |----------|------|
-| Periodic monitoring (every 5 min check build status) | `createLoop` |
+| Periodic monitoring (every 5 min check build status) | `loop` action `create` |
 | One-time delayed check ("check in 30 minutes") | `scheduleWakeup` |
 | Dynamic pacing ("come back when the deploy finishes") | `scheduleWakeup` — check once, then schedule another if not done |
 
@@ -52,7 +52,7 @@ Examples:
 
 In this mode:
 1. Run or answer the prompt immediately in the current turn.
-2. Call `createLoop` with the parsed interval and remaining prompt.
+2. Call the `loop` tool with action `create`, the parsed interval, and the remaining prompt.
 3. Do not call `scheduleWakeup`; that tool is for one-shot delayed follow-ups.
 4. Use the default TTL unless the user specifies a duration or stop condition.
 5. If the remaining prompt is empty or nonsensical, ask for clarification instead of creating a loop.
@@ -80,7 +80,7 @@ Watch for signals that a loop should end:
 - The user says "stop", "cancel", "enough", or "no more".
 - Repeated identical results suggest nothing is changing.
 
-When a stop condition is detected, cancel the loop with `cancelLoop` and summarize the outcome.
+When a stop condition is detected, cancel the loop with the `loop` tool (action `cancel`) and summarize the outcome.
 
 ## Circuit Breakers
 
@@ -97,5 +97,5 @@ You do not need to enforce these — they are handled by the runtime.
 - Keep loop prompts focused and specific. A good loop prompt is a clear instruction, not a vague "check things".
 - Set an appropriate TTL. Don't leave loops running indefinitely.
 - Prefer shorter intervals for active debugging (30s–2m) and longer intervals for background monitoring (5m–1h).
-- Use `listLoops` to show the user their active loops when asked.
+- Use the `loop` tool with action `list` to show the user their active loops when asked.
 - When a loop detects the goal is met, cancel it immediately rather than waiting for the next tick.

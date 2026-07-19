@@ -39,9 +39,16 @@ const GITHUB_PR_URL_RE = /https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_
 const ADO_DEV_AZURE_PR_URL_RE = /https:\/\/dev\.azure\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_. %-]+)\/_git\/([A-Za-z0-9_.-]+)\/pullrequest\/(\d+)/g;
 const ADO_VSTS_PR_URL_RE = /https:\/\/([A-Za-z0-9_.-]+)\.visualstudio\.com\/([A-Za-z0-9_. %-]+)\/_git\/([A-Za-z0-9_.-]+)\/pullrequest\/(\d+)/g;
 
+// Matches positions where a command may legitimately start:
+//   - start of string (^)
+//   - after a shell separator/operator: ; & | newline ( ) { }
+//   - after a shell control-flow keyword (then/else/elif/do) preceded by whitespace/operator
+//   - after a command-substitution opener ($)
+const PR_CREATE_BOUNDARY = String.raw`(?:^|[;&|\n(){}]\s*|[\s;&|(){}\n](?:then|else|elif|do)\s+|\$\s*)`;
+
 const PR_CREATING_PATTERNS = [
-    /(?:^|[;&|]\s*|\$\s*)gh\s+pr\s+create\b/,
-    /(?:^|[;&|]\s*|\$\s*)az\s+repos\s+pr\s+create\b/,
+    new RegExp(PR_CREATE_BOUNDARY + String.raw`gh\s+pr\s+create\b`),
+    new RegExp(PR_CREATE_BOUNDARY + String.raw`az\s+repos\s+pr\s+create\b`),
 ];
 
 const PR_CREATING_WRAPPER_PATTERNS = [

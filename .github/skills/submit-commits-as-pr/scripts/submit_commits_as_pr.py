@@ -72,7 +72,13 @@ def run(
         capture_output=capture,
         cwd=cwd,
     )
-    if capture:
+    # Echo child output only on failure (or when SUBMIT_PR_VERBOSE=1). On
+    # success this is pure noise that can bloat combined stdout+stderr past the
+    # agent harness's output cap, which head-truncates and drops the trailing
+    # `JSON: {…pr_url…}` success line the chat's PR-banner detection keys on. We
+    # still capture stdout above so the script can parse it (git_out, gh URL).
+    verbose = os.environ.get("SUBMIT_PR_VERBOSE") == "1"
+    if capture and (result.returncode != 0 or verbose):
         if result.stdout:
             log(result.stdout.rstrip())
         if result.stderr:

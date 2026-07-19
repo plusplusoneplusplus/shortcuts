@@ -19,12 +19,15 @@ describe('bundled loop skill', () => {
         expect(content).toContain('name: loop');
     });
 
-    it('SKILL.md documents createLoop, cancelLoop, listLoops tools', () => {
+    it('SKILL.md documents the merged loop tool with create/cancel/list actions', () => {
         const skillPath = path.join(getBundledSkillsPath(), 'loop', 'SKILL.md');
         const content = fs.readFileSync(skillPath, 'utf-8');
-        expect(content).toContain('createLoop');
-        expect(content).toContain('cancelLoop');
-        expect(content).toContain('listLoops');
+        expect(content).toContain('`loop` action `create`');
+        expect(content).toContain('`loop` action `cancel`');
+        expect(content).toContain('`loop` action `list`');
+        expect(content).not.toContain('createLoop');
+        expect(content).not.toContain('cancelLoop');
+        expect(content).not.toContain('listLoops');
     });
 
     it('SKILL.md documents scheduleWakeup as always available', () => {
@@ -44,7 +47,7 @@ describe('bundled loop skill', () => {
         const content = fs.readFileSync(skillPath, 'utf-8');
         expect(content).toContain('Slash-Compatible Fixed Interval Mode');
         expect(content).toContain("`1m what's the time now?`");
-        expect(content).toContain('Call `createLoop` with the parsed interval and remaining prompt');
+        expect(content).toContain('Call the `loop` tool with action `create`, the parsed interval, and the remaining prompt');
         expect(content).toContain('Do not call `scheduleWakeup`');
         expect(content).toContain("the user's command is the confirmation");
     });

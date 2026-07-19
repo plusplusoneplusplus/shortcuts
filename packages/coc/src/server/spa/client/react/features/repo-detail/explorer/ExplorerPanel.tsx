@@ -4,7 +4,7 @@
  * On mobile, shows either the file tree OR the preview pane (not both).
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo, type Dispatch, type SetStateAction } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useId, type Dispatch, type SetStateAction } from 'react';
 import { Spinner } from '../../../ui';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
@@ -17,6 +17,9 @@ import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './Exa
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
+import { useExplorerExpandedPaths, useExplorerSelectedPath, useExplorerPreviewFile } from './explorerStateStore';
+import { useExplorerRootEntries, useExplorerChildrenMap, useExplorerRootLoaded } from './explorerTreeCache';
+import { setExplorerInstanceDirty } from './explorerDirtyStore';
 
 export interface ExplorerPanelProps {
     workspaceId: string;
@@ -91,13 +94,39 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         storageKey: 'explorer-sidebar-width',
     });
 
-    const [rootEntries, setRootEntries] = useState<TreeEntry[]>([]);
-    const [selectedPath, setSelectedPath] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
+    // Fetched tree data — cached in-memory per workspace so a switch-back reuses
+    // already-loaded directory listings instead of re-fetching (AC-02). These
+    // survive the `key={ws.id}` remount because they live in explorerTreeCache,
+    // not in this component's React state. Cache is in-memory only; a page reload
+    // starts empty and re-fetches.
+    const [rootEntries, setRootEntries] = useExplorerRootEntries(workspaceId);
+    const [childrenMap, setChildrenMap] = useExplorerChildrenMap(workspaceId);
+    const [rootLoaded, setRootLoaded] = useExplorerRootLoaded(workspaceId);
+    // Skip the mount spinner when the root listing is already cached from an
+    // earlier visit to this workspace, so a switch-back renders instantly.
+    const [loading, setLoading] = useState(!rootLoaded);
     const [error, setError] = useState<string | null>(null);
-    const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
-    const [childrenMap, setChildrenMap] = useState<Map<string, TreeEntry[]>>(new Map());
-    const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null);
+
+    // Per-workspace persisted UI state (localStorage). Because ExplorerPanel is
+    // remounted with `key={ws.id}` on every workspace switch, these must survive
+    // outside React state so expanded folders + the open file are restored when
+    // the user switches back (and across a page reload). See explorerStateStore.
+    const [selectedPath, setSelectedPath] = useExplorerSelectedPath(workspaceId);
+    const [expandedPaths, setExpandedPaths] = useExplorerExpandedPaths(workspaceId);
+    const [previewFile, setPreviewFile] = useExplorerPreviewFile(workspaceId);
+
+    // Report the preview editor's unsaved-edits state into the per-workspace dirty
+    // store so the workspace-switch guard (nav hooks) can prompt before discarding
+    // it (AC-03). A stable per-mount id keeps sibling mounts (RepoDetail tab +
+    // dock) independent; the flag is cleared when this panel unmounts.
+    const dirtyInstanceId = useId();
+    const reportPreviewDirty = useCallback((isDirty: boolean) => {
+        setExplorerInstanceDirty(workspaceId, dirtyInstanceId, isDirty);
+    }, [workspaceId, dirtyInstanceId]);
+    useEffect(
+        () => () => setExplorerInstanceDirty(workspaceId, dirtyInstanceId, false),
+        [workspaceId, dirtyInstanceId],
+    );
 
     // Search state
     const [searchInput, setSearchInput] = useState('');
@@ -122,8 +151,14 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     // Exact Open state (Ctrl+O)
     const [exactOpenVisible, setExactOpenVisible] = useState(false);
 
-    // Fetch root entries on mount
+    // Fetch root entries on mount — but skip it when the root listing is already
+    // cached in-memory for this workspace (AC-02): a switch-back reuses the cache
+    // instead of issuing a new tree-listing request.
     useEffect(() => {
+        if (rootLoaded) {
+            setLoading(false);
+            return;
+        }
         let cancelled = false;
         setLoading(true);
         setError(null);
@@ -136,6 +171,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                     if (seedMap.size > 0) {
                         setChildrenMap(prev => new Map([...prev, ...seedMap]));
                     }
+                    setRootLoaded(true);
                 }
             })
             .catch((err: Error) => {
@@ -143,14 +179,21 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
             })
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
-    }, [workspaceId]);
+    }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Deep-link: read hash on mount to restore selected path and open file preview
+    // Deep-link: read hash on mount to restore selected path and open file preview.
+    // An explicit hash deep-link for THIS workspace wins over the persisted state
+    // (per the feature decision). The `parts[1] === workspaceId` guard ensures a
+    // stale hash left over from another workspace does not clobber this
+    // workspace's restored state — each workspace's explorer stays independent.
     useEffect(() => {
         const hash = location.hash.replace(/^#/, '');
         const parts = hash.split('/');
         // #repos/:id/explorer/:path
-        if (parts[0] === 'repos' && parts[2] === 'explorer' && parts[3]) {
+        if (parts[0] === 'repos'
+            && decodeURIComponent(parts[1] ?? '') === workspaceId
+            && parts[2] === 'explorer'
+            && parts[3]) {
             const decoded = decodeURIComponent(parts.slice(3).join('/'));
             setSelectedPath(decoded);
             const segments = decoded.split('/').filter(Boolean);
@@ -159,7 +202,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                 setPreviewFile({ path: decoded, name: lastName });
             }
         }
-    }, []);
+    }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleSelect = useCallback((path: string, isDirectory: boolean) => {
         setSelectedPath(path);
@@ -534,6 +577,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                                     filePath={previewFile.path}
                                     fileName={previewFile.name}
                                     onClose={isMobile ? undefined : () => setPreviewFile(null)}
+                                    onDirtyChange={reportPreviewDirty}
                                 />
                             </div>
                         </div>

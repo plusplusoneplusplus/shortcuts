@@ -1,13 +1,13 @@
 /**
  * Loop & Wakeup LLM Tools
  *
- * Four tool factories:
- * - `createCreateLoopTool`    — create a recurring loop (skill-gated, not in LLM_TOOL_REGISTRY)
- * - `createCancelLoopTool`    — cancel an active loop  (skill-gated)
- * - `createListLoopsTool`     — list loops for a process (skill-gated)
+ * Two tool factories:
+ * - `createLoopTool`           — single `loop` tool with an `action` switch
+ *                                (create | cancel | list); skill-gated, not in
+ *                                LLM_TOOL_REGISTRY
  * - `createScheduleWakeupTool` — one-shot delayed follow-up (always available via registry)
  *
- * Loop tools are injected only when the `/loop` skill is activated.
+ * The `loop` tool is injected only when the `/loop` skill is activated.
  * `scheduleWakeup` is registered in LLM_TOOL_REGISTRY and always available.
  */
 
@@ -58,26 +58,24 @@ export interface WakeupToolDeps {
 // Args types
 // ============================================================================
 
-export interface CreateLoopArgs {
-    /** Human-readable description of the loop purpose. */
-    description: string;
-    /** Interval string (e.g. "30s", "5m", "1h") or milliseconds. */
-    interval: string | number;
-    /** The follow-up prompt to send on each tick. */
-    prompt: string;
-    /** Optional model override for loop ticks. */
+export type LoopAction = 'create' | 'cancel' | 'list';
+
+export interface LoopToolArgs {
+    /** Which loop operation to perform. */
+    action: LoopAction;
+    /** create: human-readable description of the loop purpose. */
+    description?: string;
+    /** create: interval string (e.g. "30s", "5m", "1h") or milliseconds. */
+    interval?: string | number;
+    /** create: the follow-up prompt to send on each tick. */
+    prompt?: string;
+    /** create: optional model override for loop ticks. */
     model?: string;
-    /** Optional TTL string (e.g. "3d", "12h"). Defaults to 3 days. */
+    /** create: optional TTL string (e.g. "3d", "12h"). Defaults to 3 days. */
     ttl?: string;
-}
-
-export interface CancelLoopArgs {
-    /** The loop ID to cancel. */
-    loopId: string;
-}
-
-export interface ListLoopsArgs {
-    /** Optional: filter by status. */
+    /** cancel: the loop ID to cancel. */
+    loopId?: string;
+    /** list: optional status filter. */
     status?: 'active' | 'paused' | 'cancelled' | 'expired';
 }
 
@@ -131,187 +129,182 @@ export function parseDuration(input: string | number): number {
 }
 
 // ============================================================================
-// createLoop tool
+// loop tool (create | cancel | list)
 // ============================================================================
 
-export function createCreateLoopTool(deps: LoopToolDeps) {
-    const tool = defineTool<CreateLoopArgs>('createLoop', {
+async function handleCreateLoop(deps: LoopToolDeps, args: LoopToolArgs) {
+    if (typeof args.description !== 'string' || !args.description.trim()
+        || args.interval === undefined
+        || typeof args.prompt !== 'string' || !args.prompt.trim()) {
+        return { error: 'action "create" requires `description`, `interval`, and `prompt`.' };
+    }
+
+    let intervalMs: number;
+    try {
+        intervalMs = parseDuration(args.interval);
+    } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+    }
+
+    if (intervalMs < MIN_LOOP_INTERVAL_MS) {
+        return { error: `Minimum loop interval is ${MIN_LOOP_INTERVAL_MS / 1000} seconds. Got ${intervalMs / 1000}s.` };
+    }
+
+    let ttlMs = DEFAULT_LOOP_TTL_MS;
+    if (args.ttl) {
+        try {
+            ttlMs = parseDuration(args.ttl);
+        } catch (err) {
+            return { error: `Invalid TTL: ${err instanceof Error ? err.message : String(err)}` };
+        }
+    }
+
+    const now = new Date();
+    const workspaceId = await deps.resolveWorkspaceId(deps.processId);
+    const loop: LoopEntry = {
+        id: `loop_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`,
+        processId: deps.processId,
+        description: args.description,
+        intervalMs,
+        status: 'active',
+        createdAt: now.toISOString(),
+        lastTickAt: null,
+        nextTickAt: new Date(now.getTime() + intervalMs).toISOString(),
+        tickCount: 0,
+        consecutiveFailures: 0,
+        expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
+        pausedReason: null,
+        prompt: args.prompt,
+        model: args.model ?? null,
+        workspaceId,
+    };
+
+    try {
+        deps.store.insert(loop);
+    } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+    }
+
+    deps.executor.armTimer(loop);
+    safeEmit(deps.emit, { type: 'loop-created', loop });
+
+    return {
+        created: true,
+        loopId: loop.id,
+        description: loop.description,
+        intervalMs: loop.intervalMs,
+        nextTickAt: loop.nextTickAt,
+        expiresAt: loop.expiresAt,
+    };
+}
+
+async function handleCancelLoop(deps: LoopToolDeps, args: LoopToolArgs) {
+    if (typeof args.loopId !== 'string' || !args.loopId.trim()) {
+        return { error: 'action "cancel" requires `loopId`.' };
+    }
+
+    const loop = deps.store.getById(args.loopId);
+    if (!loop) {
+        return { error: `Loop not found: ${args.loopId}` };
+    }
+
+    if (loop.processId !== deps.processId) {
+        return { error: `Loop ${args.loopId} belongs to a different conversation.` };
+    }
+
+    if (loop.status === 'cancelled') {
+        return { alreadyCancelled: true, loopId: loop.id };
+    }
+
+    deps.executor.disarmTimer(loop.id);
+    loop.status = 'cancelled';
+    loop.nextTickAt = null;
+    deps.store.update(loop);
+    safeEmit(deps.emit, { type: 'loop-cancelled', loop });
+
+    return { cancelled: true, loopId: loop.id };
+}
+
+async function handleListLoops(deps: LoopToolDeps, args: LoopToolArgs) {
+    let loops = deps.store.getByProcess(deps.processId);
+    if (args.status) {
+        loops = loops.filter(l => l.status === args.status);
+    }
+
+    return {
+        loops: loops.map(l => ({
+            id: l.id,
+            description: l.description,
+            status: l.status,
+            intervalMs: l.intervalMs,
+            tickCount: l.tickCount,
+            lastTickAt: l.lastTickAt,
+            nextTickAt: l.nextTickAt,
+            expiresAt: l.expiresAt,
+            pausedReason: l.pausedReason,
+        })),
+        total: loops.length,
+    };
+}
+
+export function createLoopTool(deps: LoopToolDeps) {
+    const tool = defineTool<LoopToolArgs>('loop', {
         description:
-            'Create a recurring loop that sends a follow-up prompt into this conversation at a fixed interval. ' +
-            'The first tick fires after one full interval (the current turn is the implicit first run).',
+            'Manage recurring loops that send a follow-up prompt into this conversation at a fixed interval. ' +
+            'action "create" makes a new loop (requires `description`, `interval`, `prompt`; the first tick fires ' +
+            'after one full interval — the current turn is the implicit first run), "cancel" permanently stops a ' +
+            'loop by `loopId`, and "list" shows this conversation\'s loops (optional `status` filter).',
         parameters: {
             type: 'object',
             properties: {
+                action: {
+                    type: 'string',
+                    enum: ['create', 'cancel', 'list'],
+                    description: 'The loop operation to perform.',
+                },
                 description: {
                     type: 'string',
-                    description: 'Human-readable description of what the loop monitors or does.',
+                    description: 'create: what the loop monitors or does.',
                 },
                 interval: {
                     type: ['string', 'number'],
-                    description: 'Interval between ticks. String like "30s", "5m", "1h" or number of milliseconds.',
+                    description: 'create: interval between ticks. String like "30s", "5m", "1h" or milliseconds.',
                 },
                 prompt: {
                     type: 'string',
-                    description: 'The follow-up prompt to send on each tick.',
+                    description: 'create: the follow-up prompt to send on each tick.',
                 },
                 model: {
                     type: 'string',
-                    description: 'Optional model override for loop ticks.',
+                    description: 'create: optional model override for loop ticks.',
                 },
                 ttl: {
                     type: 'string',
-                    description: 'Optional TTL for the loop (e.g. "3d", "12h"). Defaults to 3 days.',
+                    description: 'create: optional TTL (e.g. "3d", "12h"). Defaults to 3 days.',
                 },
-            },
-            required: ['description', 'interval', 'prompt'],
-        },
-        handler: async (args: CreateLoopArgs) => {
-            let intervalMs: number;
-            try {
-                intervalMs = parseDuration(args.interval);
-            } catch (err) {
-                return { error: err instanceof Error ? err.message : String(err) };
-            }
-
-            if (intervalMs < MIN_LOOP_INTERVAL_MS) {
-                return { error: `Minimum loop interval is ${MIN_LOOP_INTERVAL_MS / 1000} seconds. Got ${intervalMs / 1000}s.` };
-            }
-
-            let ttlMs = DEFAULT_LOOP_TTL_MS;
-            if (args.ttl) {
-                try {
-                    ttlMs = parseDuration(args.ttl);
-                } catch (err) {
-                    return { error: `Invalid TTL: ${err instanceof Error ? err.message : String(err)}` };
-                }
-            }
-
-            const now = new Date();
-            const workspaceId = await deps.resolveWorkspaceId(deps.processId);
-            const loop: LoopEntry = {
-                id: `loop_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`,
-                processId: deps.processId,
-                description: args.description,
-                intervalMs,
-                status: 'active',
-                createdAt: now.toISOString(),
-                lastTickAt: null,
-                nextTickAt: new Date(now.getTime() + intervalMs).toISOString(),
-                tickCount: 0,
-                consecutiveFailures: 0,
-                expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
-                pausedReason: null,
-                prompt: args.prompt,
-                model: args.model ?? null,
-                workspaceId,
-            };
-
-            try {
-                deps.store.insert(loop);
-            } catch (err) {
-                return { error: err instanceof Error ? err.message : String(err) };
-            }
-
-            deps.executor.armTimer(loop);
-            safeEmit(deps.emit, { type: 'loop-created', loop });
-
-            return {
-                created: true,
-                loopId: loop.id,
-                description: loop.description,
-                intervalMs: loop.intervalMs,
-                nextTickAt: loop.nextTickAt,
-                expiresAt: loop.expiresAt,
-            };
-        },
-    });
-
-    return { tool };
-}
-
-// ============================================================================
-// cancelLoop tool
-// ============================================================================
-
-export function createCancelLoopTool(deps: LoopToolDeps) {
-    const tool = defineTool<CancelLoopArgs>('cancelLoop', {
-        description:
-            'Cancel an active or paused loop by its ID. The loop will stop ticking permanently.',
-        parameters: {
-            type: 'object',
-            properties: {
                 loopId: {
                     type: 'string',
-                    description: 'The loop ID to cancel.',
+                    description: 'cancel: the loop ID to cancel.',
                 },
-            },
-            required: ['loopId'],
-        },
-        handler: async (args: CancelLoopArgs) => {
-            const loop = deps.store.getById(args.loopId);
-            if (!loop) {
-                return { error: `Loop not found: ${args.loopId}` };
-            }
-
-            if (loop.processId !== deps.processId) {
-                return { error: `Loop ${args.loopId} belongs to a different conversation.` };
-            }
-
-            if (loop.status === 'cancelled') {
-                return { alreadyCancelled: true, loopId: loop.id };
-            }
-
-            deps.executor.disarmTimer(loop.id);
-            loop.status = 'cancelled';
-            loop.nextTickAt = null;
-            deps.store.update(loop);
-            safeEmit(deps.emit, { type: 'loop-cancelled', loop });
-
-            return { cancelled: true, loopId: loop.id };
-        },
-    });
-
-    return { tool };
-}
-
-// ============================================================================
-// listLoops tool
-// ============================================================================
-
-export function createListLoopsTool(deps: LoopToolDeps) {
-    const tool = defineTool<ListLoopsArgs>('listLoops', {
-        description:
-            'List all loops for this conversation, optionally filtered by status.',
-        parameters: {
-            type: 'object',
-            properties: {
                 status: {
                     type: 'string',
                     enum: ['active', 'paused', 'cancelled', 'expired'],
-                    description: 'Optional: filter loops by status.',
+                    description: 'list: optional status filter.',
                 },
             },
+            required: ['action'],
         },
-        handler: async (args: ListLoopsArgs) => {
-            let loops = deps.store.getByProcess(deps.processId);
-            if (args.status) {
-                loops = loops.filter(l => l.status === args.status);
+        handler: async (args: LoopToolArgs) => {
+            switch (args.action) {
+                case 'create':
+                    return handleCreateLoop(deps, args);
+                case 'cancel':
+                    return handleCancelLoop(deps, args);
+                case 'list':
+                    return handleListLoops(deps, args);
+                default:
+                    return { error: `Unknown loop action: '${String(args.action)}'. Valid actions: create, cancel, list.` };
             }
-
-            return {
-                loops: loops.map(l => ({
-                    id: l.id,
-                    description: l.description,
-                    status: l.status,
-                    intervalMs: l.intervalMs,
-                    tickCount: l.tickCount,
-                    lastTickAt: l.lastTickAt,
-                    nextTickAt: l.nextTickAt,
-                    expiresAt: l.expiresAt,
-                    pausedReason: l.pausedReason,
-                })),
-                total: loops.length,
-            };
         },
     });
 

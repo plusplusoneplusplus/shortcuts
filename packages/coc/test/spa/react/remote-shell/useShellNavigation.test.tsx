@@ -25,11 +25,17 @@ vi.mock('../../../../src/server/spa/client/react/layout/Router', () => ({
 }));
 
 import { useShellNavigation } from '../../../../src/server/spa/client/react/features/remote-shell/useShellNavigation';
+import {
+    setExplorerInstanceDirty,
+    clearExplorerDirty,
+} from '../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerDirtyStore';
 
 beforeEach(() => {
     mockDispatch.mockReset();
     location.hash = '';
     mockState = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab: 'chats', notePathState: {} };
+    clearExplorerDirty();
+    vi.restoreAllMocks();
 });
 
 describe('useShellNavigation.switchSubTab', () => {
@@ -69,5 +75,42 @@ describe('useShellNavigation.selectClone', () => {
 
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: 'b' });
         expect(location.hash).toBe('#repos/b/notes');
+    });
+});
+
+describe('useShellNavigation.selectClone — unsaved explorer edits guard (AC-03)', () => {
+    it('switches without prompting when the current workspace explorer is clean', () => {
+        const confirmSpy = vi.spyOn(window, 'confirm');
+        const { result } = renderHook(() => useShellNavigation());
+
+        act(() => result.current.selectClone('b'));
+
+        expect(confirmSpy).not.toHaveBeenCalled();
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: 'b' });
+        expect(location.hash).toBe('#repos/b/chats');
+    });
+
+    it('discards and switches when the explorer is dirty and the user confirms', () => {
+        setExplorerInstanceDirty('a', 'inst', true);
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const { result } = renderHook(() => useShellNavigation());
+
+        act(() => result.current.selectClone('b'));
+
+        expect(confirmSpy).toHaveBeenCalledTimes(1);
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: 'b' });
+        expect(location.hash).toBe('#repos/b/chats');
+    });
+
+    it('stays on the current workspace (no dispatch, no route) when the user cancels', () => {
+        setExplorerInstanceDirty('a', 'inst', true);
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        const { result } = renderHook(() => useShellNavigation());
+
+        act(() => result.current.selectClone('b'));
+
+        expect(confirmSpy).toHaveBeenCalledTimes(1);
+        expect(mockDispatch).not.toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: 'b' });
+        expect(location.hash).toBe('');
     });
 });

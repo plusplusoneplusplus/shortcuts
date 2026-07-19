@@ -38,7 +38,7 @@ import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { createGetWorkItemTool } from '../llm-tools/get-work-item-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
 import type { LoopToolDeps } from '../llm-tools/loop-tools';
-import { createCancelLoopTool, createCreateLoopTool, createListLoopsTool, createScheduleWakeupTool } from '../llm-tools/loop-tools';
+import { createLoopTool, createScheduleWakeupTool } from '../llm-tools/loop-tools';
 import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
@@ -699,7 +699,7 @@ export function buildScheduleWakeupAddon(
 }
 
 // ============================================================================
-// Loop Tools (skill-gated — injected only when /loop skill is active)
+// Loop Tool (skill-gated — injected only when /loop skill is active)
 // ============================================================================
 
 export function buildLoopToolsAddon(
@@ -709,11 +709,8 @@ export function buildLoopToolsAddon(
         return { tools: [], suffix: '' };
     }
 
-    const { tool: createTool } = createCreateLoopTool(deps);
-    const { tool: cancelTool } = createCancelLoopTool(deps);
-    const { tool: listTool } = createListLoopsTool(deps);
-
-    return { tools: [createTool, cancelTool, listTool], suffix: '' };
+    const { tool } = createLoopTool(deps);
+    return { tools: [tool], suffix: '' };
 }
 
 // ============================================================================

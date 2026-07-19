@@ -188,20 +188,11 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
 
     const tool = defineTool<SendToConversationArgs>('send_to_conversation', {
         description:
-            'Send a message to a conversation. ' +
-            'If `processId` is provided, posts `content` as a message into that EXISTING ' +
-            'conversation and returns `{ processId, openLink, turnIndex }`; the create-only ' +
-            'fields (`workspaceId`, `title`, `priority`) are ignored in this mode, and `provider` ' +
-            'is accepted but ignored so the existing conversation provider remains unchanged. ' +
-            'If `processId` is omitted, starts a brand-new, separate chat conversation ' +
-            '(fire-and-forget) with `content` as its first prompt — it appears in the dashboard ' +
-            'chat list and is executed by the queue, and `deliveryMode` is ignored; it does NOT ' +
-            'continue or follow up the current chat. Returns `{ processId, openLink }`. ' +
-            '`content` is required; in create mode `workspaceId` defaults to the current ' +
-            'workspace and `mode` defaults to `ask`. Optional `provider` selects one of ' +
-            '`copilot`, `codex`, `claude`, or `opencode` for new conversations; optional ' +
-            '`effortTier` selects `very-low`, `low`, `medium`, or `high`. If both `model` and ' +
-            '`effortTier` are supplied, `model` wins and the tier is ignored.',
+            'Send a message to a conversation. With `processId`, posts `content` into that EXISTING conversation and ' +
+            'returns `{ processId, openLink, turnIndex }`. Without `processId`, starts a brand-new, separate ' +
+            'fire-and-forget chat with `content` as its first prompt (it does NOT continue the current chat) and ' +
+            'returns `{ processId, openLink }`. `content` is required; `mode` defaults to `ask` and create mode ' +
+            'defaults to the current workspace.',
         parameters: {
             type: 'object',
             properties: {
@@ -217,9 +208,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 },
                 workspaceId: {
                     type: 'string',
-                    description:
-                        'Create mode: target workspace/repo ID. Any registered workspace may be ' +
-                        'targeted. Defaults to the current workspace when omitted. Ignored in post mode.',
+                    description: 'Create mode: target workspace/repo ID. Defaults to the current workspace.',
                 },
                 mode: {
                     type: 'string',
@@ -229,15 +218,11 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 deliveryMode: {
                     type: 'string',
                     enum: ['immediate', 'enqueue', 'steer'],
-                    description:
-                        'Post mode: how the follow-up is delivered (`immediate`, `enqueue`, or `steer`). ' +
-                        'Ignored in create mode.',
+                    description: 'Post mode: how the follow-up is delivered.',
                 },
                 title: {
                     type: 'string',
-                    description:
-                        'Create mode: display name for the new chat. Auto-generated from `content` ' +
-                        'when omitted. Ignored in post mode.',
+                    description: 'Create mode: display name for the new chat. Auto-generated when omitted.',
                 },
                 model: {
                     type: 'string',
@@ -246,21 +231,17 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 provider: {
                     type: 'string',
                     enum: ['copilot', 'codex', 'claude', 'opencode'],
-                    description:
-                        'Create mode: concrete AI provider (`copilot`, `codex`, `claude`, or `opencode`). ' +
-                        'Post mode: accepted but ignored; the existing conversation provider is unchanged.',
+                    description: 'Create mode: concrete AI provider for the new conversation.',
                 },
                 effortTier: {
                     type: 'string',
                     enum: ['very-low', 'low', 'medium', 'high'],
-                    description:
-                        'Provider-specific effort tier (`very-low`, `low`, `medium`, or `high`). ' +
-                        'Ignored when `model` is also provided.',
+                    description: 'Provider-specific effort tier. Ignored when `model` is also provided.',
                 },
                 priority: {
                     type: 'string',
                     enum: ['high', 'normal', 'low'],
-                    description: 'Create mode: queue priority. Default `normal`. Ignored in post mode.',
+                    description: 'Create mode: queue priority. Default `normal`.',
                 },
             },
             required: ['content'],
@@ -294,7 +275,9 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 return {
                     error:
                         `Invalid provider: '${String(args.provider)}'. ` +
-                        `Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}.`,
+                        `Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}. ` +
+                        'Note: provider only applies when creating a new conversation; in post mode the existing ' +
+                        'conversation provider is unchanged.',
                 };
             }
 
@@ -304,7 +287,8 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 return {
                     error:
                         `Invalid effortTier: '${String(args.effortTier)}'. ` +
-                        `Valid tiers: ${[...ALLOWED_EFFORT_TIERS].join(', ')}.`,
+                        `Valid tiers: ${[...ALLOWED_EFFORT_TIERS].join(', ')}. ` +
+                        'Note: when `model` is also supplied, `model` wins and the tier is ignored.',
                 };
             }
 
@@ -367,7 +351,8 @@ async function postToExistingConversation(params: {
         return {
             error:
                 `Invalid deliveryMode: '${String(deliveryMode)}'. ` +
-                `Valid delivery modes: ${[...ALLOWED_DELIVERY_MODES].join(', ')}.`,
+                `Valid delivery modes: ${[...ALLOWED_DELIVERY_MODES].join(', ')}. ` +
+                'Note: deliveryMode only applies when posting into an existing conversation.',
         };
     }
 

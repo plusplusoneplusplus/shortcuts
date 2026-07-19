@@ -46,8 +46,7 @@ export function createSaveClassificationTool(deps: SaveClassificationDeps) {
         description:
             'Persist the final hunk classifications for this diff. ' +
             'Call this exactly once, AFTER you have classified every `@@` hunk in the diff. ' +
-            'Test hunks must include testFidelityComment; logic hunks must include summaryComment. ' +
-            'If validation fails the tool returns an error — read the message, fix the offending entries, and call again.',
+            'If validation fails the tool returns an error naming the offending entries — fix them and call again.',
         parameters: {
             type: 'object',
             properties: {
@@ -72,11 +71,11 @@ export function createSaveClassificationTool(deps: SaveClassificationDeps) {
                             reason: { type: 'string', description: 'One-sentence justification.' },
                             testFidelityComment: {
                                 type: 'string',
-                                description: 'Required for test hunks: high/medium/low fidelity and why.',
+                                description: 'Required for test hunks: fidelity level and why.',
                             },
                             summaryComment: {
                                 type: 'string',
-                                description: 'Required for logic hunks: concise behavior/API/data-flow/error-handling summary.',
+                                description: 'Required for logic hunks: concise behavior summary.',
                             },
                             critical: {
                                 type: 'object',
@@ -84,7 +83,7 @@ export function createSaveClassificationTool(deps: SaveClassificationDeps) {
                                 properties: {
                                     label: {
                                         type: 'string',
-                                        description: 'Short criticality label, such as exported API, route handler, persistence path, or security-sensitive function.',
+                                        description: 'Short criticality label (e.g. exported API, route handler).',
                                     },
                                     impactSummary: {
                                         type: 'string',
@@ -98,9 +97,9 @@ export function createSaveClassificationTool(deps: SaveClassificationDeps) {
                                             type: 'object',
                                             properties: {
                                                 file: { type: 'string', description: 'Repo-relative usage/caller file path.' },
-                                                symbol: { type: 'string', description: 'Optional symbol, function, route, or command name.' },
+                                                symbol: { type: 'string', description: 'Optional symbol name.' },
                                                 line: { type: 'number', description: 'Optional 1-based line number.' },
-                                                description: { type: 'string', description: 'Short explanation of why this usage matters.' },
+                                                description: { type: 'string', description: 'Why this usage matters.' },
                                             },
                                             required: ['file', 'description'],
                                         },
@@ -113,7 +112,7 @@ export function createSaveClassificationTool(deps: SaveClassificationDeps) {
                                             type: 'object',
                                             properties: {
                                                 file: { type: 'string', description: 'Repo-relative frame file path.' },
-                                                symbol: { type: 'string', description: 'Function, route, command, or task handler name.' },
+                                                symbol: { type: 'string', description: 'Function/route/handler name.' },
                                                 line: { type: 'number', description: 'Optional 1-based line number.' },
                                                 description: { type: 'string', description: 'Optional short frame note.' },
                                             },

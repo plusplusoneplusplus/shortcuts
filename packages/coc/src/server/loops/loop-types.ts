@@ -92,7 +92,7 @@ export interface LoopChangeEvent {
 // Constants
 // ============================================================================
 
-/** Minimum allowed interval for `createLoop` (10 seconds). */
+/** Minimum allowed interval for the `loop` tool's create action (10 seconds). */
 export const MIN_LOOP_INTERVAL_MS = 10_000;
 
 /** Minimum allowed delay for `scheduleWakeup` (1 second). */

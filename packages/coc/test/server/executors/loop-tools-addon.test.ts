@@ -30,15 +30,12 @@ describe('buildLoopToolsAddon', () => {
         expect(result.suffix).toBe('');
     });
 
-    it('returns createLoop, cancelLoop, listLoops tools when deps provided', () => {
+    it('returns the merged loop tool when deps provided', () => {
         const deps = makeMockLoopToolDeps();
         const result = buildLoopToolsAddon(deps);
 
-        expect(result.tools).toHaveLength(3);
-        const names = result.tools.map(t => t.name);
-        expect(names).toContain('createLoop');
-        expect(names).toContain('cancelLoop');
-        expect(names).toContain('listLoops');
+        expect(result.tools).toHaveLength(1);
+        expect(result.tools[0].name).toBe('loop');
     });
 
     it('does not emit a descriptive suffix (prompt guidance trimmed)', () => {
