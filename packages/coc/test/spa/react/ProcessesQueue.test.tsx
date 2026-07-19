@@ -500,7 +500,8 @@ describe('ConversationTurnBubble', () => {
                     <ConversationTurnBubble turn={turnWithReportIntent} />
                 </Wrap>
             );
-            expect(screen.getByText('bash')).toBeDefined();
+            // `ls` is relabeled to the semantic "Files" family by the shell classifier
+            expect(screen.getByText('Files')).toBeDefined();
             expect(screen.queryByText('Exploring codebase')).toBeNull();
             expect(screen.queryByText('report_intent')).toBeNull();
         });
@@ -512,7 +513,7 @@ describe('ConversationTurnBubble', () => {
                     <ConversationTurnBubble turn={turnWithReportIntent} />
                 </Wrap>
             );
-            expect(screen.getByText('bash')).toBeDefined();
+            expect(screen.getByText('Files')).toBeDefined();
             expect(screen.getByText('Exploring codebase')).toBeDefined();
             // Should render as chip with 🏷 emoji
             expect(screen.getByText('🏷')).toBeDefined();
@@ -525,7 +526,7 @@ describe('ConversationTurnBubble', () => {
                     <ConversationTurnBubble turn={turnWithReportIntent} />
                 </Wrap>
             );
-            expect(screen.getByText('bash')).toBeDefined();
+            expect(screen.getByText('Files')).toBeDefined();
         });
 
         // Reset to default after tests
