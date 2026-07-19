@@ -548,6 +548,107 @@ describe('detectPullRequestsInToolGroup', () => {
         expect(pullRequests[1].provider).toBe('azure-devops');
     });
 
+    // --- Compound-shell / control-flow detection (PR #525) ---
+
+    it('detects gh pr create as the first command in a then branch', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'bash',
+                args: {
+                    command: 'if git diff --quiet; then gh pr create --fill; fi',
+                },
+                result: 'https://github.com/owner/repo/pull/525',
+            },
+        ]);
+
+        expect(pullRequests).toHaveLength(1);
+        expect(pullRequests[0]).toMatchObject({
+            number: 525,
+            url: 'https://github.com/owner/repo/pull/525',
+            provider: 'github',
+        });
+    });
+
+    it('detects gh pr create as the first command in an else branch', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'bash',
+                args: {
+                    command:
+                        'if git diff --quiet HEAD; then echo "no changes"; else gh pr create --fill; fi',
+                },
+                result: 'https://github.com/owner/repo/pull/525',
+            },
+        ]);
+
+        expect(pullRequests).toHaveLength(1);
+        expect(pullRequests[0]).toMatchObject({
+            number: 525,
+            url: 'https://github.com/owner/repo/pull/525',
+            provider: 'github',
+        });
+    });
+
+    it('detects gh pr create on a new line after fi', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'bash',
+                args: {
+                    command: 'git push -u origin HEAD; fi\ngh pr create --fill',
+                },
+                result: 'https://github.com/owner/repo/pull/525',
+            },
+        ]);
+
+        expect(pullRequests).toHaveLength(1);
+        expect(pullRequests[0]).toMatchObject({ number: 525 });
+    });
+
+    it('detects gh pr create inside a command substitution', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'bash',
+                args: {
+                    command: 'URL=$(gh pr create --fill) && echo "$URL"',
+                },
+                result: 'https://github.com/owner/repo/pull/525',
+            },
+        ]);
+
+        expect(pullRequests).toHaveLength(1);
+        expect(pullRequests[0]).toMatchObject({ number: 525 });
+    });
+
+    it('does not detect gh pr create inside a ripgrep quoted search pattern', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'bash',
+                args: { command: 'rg -n "gh pr create" .' },
+                result: 'https://github.com/owner/repo/pull/525',
+            },
+        ]);
+
+        expect(pullRequests).toEqual([]);
+    });
+
+    it('does not detect a flag-value mention of gh-pr-create', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'bash',
+                args: { command: 'echo --note=please-run-gh-pr-create-later' },
+                result: 'https://github.com/owner/repo/pull/525',
+            },
+        ]);
+
+        expect(pullRequests).toEqual([]);
+    });
+
     it('handles ADO project names with percent-encoded spaces', () => {
         const pullRequests = detectPullRequestsInToolGroup([
             {
