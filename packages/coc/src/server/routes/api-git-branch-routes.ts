@@ -165,13 +165,17 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             let body: any = {};
             try { body = await parseBody(req); } catch { body = {}; }
             const rebase = body.rebase === true;
+            const currentBranchOnly = body.currentBranchOnly === true;
             const jobId = `pull-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             const job: GitOpJob = {
                 id: jobId, workspaceId: id, op: 'pull',
                 status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
             };
             await gitOpsStore.create(job);
-            void branchService.pull(ws.rootPath, rebase).then(async (result) => {
+            const pull = currentBranchOnly
+                ? branchService.pullCurrentBranch(ws.rootPath, rebase)
+                : branchService.pull(ws.rootPath, rebase);
+            void pull.then(async (result) => {
                 await gitOpsStore.update(id, jobId, {
                     status: result.success ? 'success' : 'failed',
                     finishedAt: new Date().toISOString(), error: result.error,
@@ -256,7 +260,9 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             let body: any = {};
             try { body = await parseBody(req); } catch { body = {}; }
             const remote: string | undefined = typeof body.remote === 'string' ? body.remote : undefined;
-            const result = await branchService.fetch(ws.rootPath, remote);
+            const result = body.currentBranchOnly === true
+                ? await branchService.fetchCurrentBranch(ws.rootPath)
+                : await branchService.fetch(ws.rootPath, remote);
             getWsServer?.()?.broadcastGitChanged(ws.id, 'fetch');
             return result;
         },

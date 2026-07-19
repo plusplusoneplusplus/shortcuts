@@ -141,7 +141,7 @@ describe('NoteEditorToolbar — modeToggle prop', () => {
         expect(screen.queryByTestId('custom-mode-toggle')).not.toBeInTheDocument();
     });
 
-    it('renders modeToggle after comments toggle when both present', () => {
+    it('renders modeToggle before comments toggle when both present', () => {
         editor = createTestEditor();
         render(
             <NoteEditorToolbar
@@ -152,22 +152,23 @@ describe('NoteEditorToolbar — modeToggle prop', () => {
         );
         const comments = screen.getByTestId('comments-panel-toggle');
         const mode = screen.getByTestId('custom-mode-toggle');
-        // mode toggle should come after comments toggle in DOM order
-        expect(comments.compareDocumentPosition(mode) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        // mode toggle is leftmost, so it comes before comments toggle in DOM order
+        expect(mode.compareDocumentPosition(comments) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
-    it('renders modeToggle with ml-auto spacer when no comments toggle', () => {
+    it('renders modeToggle as the leftmost toolbar control', () => {
         editor = createTestEditor();
-        render(
+        const { container } = render(
             <NoteEditorToolbar
                 editor={editor}
                 modeToggle={<span data-testid="custom-mode-toggle">Mode</span>}
             />,
         );
+        const toolbar = container.querySelector('[data-testid="note-editor-toolbar"]');
         const mode = screen.getByTestId('custom-mode-toggle');
-        const spacer = mode.previousElementSibling;
-        expect(spacer).not.toBeNull();
-        expect(spacer!.className).toContain('ml-auto');
+        // no ml-auto spacer before it — it's the first child of the toolbar
+        expect(mode.previousElementSibling).toBeNull();
+        expect(toolbar!.firstElementChild).toBe(mode);
     });
 });
 

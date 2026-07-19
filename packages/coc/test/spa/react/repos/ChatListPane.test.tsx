@@ -493,6 +493,45 @@ describe('ChatListPane', () => {
             expect(screen.getByTestId('autopilot-pause-resume-btn').textContent).toContain('1h 30m');
         });
 
+        // The running/idle pill state is signalled by colour alone (no "ON"
+        // copy), so the ALL / AP label font must track the status dot: emerald
+        // when running, amber when paused. The emerald label is chosen so the
+        // pill stays legible in dark mode — regression guard against reverting
+        // to the previous muted-gray label that was hard to read on dark bg.
+        const findScopeLabel = (btnTestId: string, text: string) =>
+            Array.from(screen.getByTestId(btnTestId).querySelectorAll('span'))
+                .find(el => el.textContent === text);
+
+        it('ALL/AP labels use the emerald status color when running', () => {
+            renderPane({ history: [makeHistoryTask()], onPauseResumeAutopilot: vi.fn() });
+            for (const [btn, text] of [
+                ['repo-pause-resume-btn', 'ALL'],
+                ['autopilot-pause-resume-btn', 'AP'],
+            ] as const) {
+                const label = findScopeLabel(btn, text);
+                expect(label?.className).toContain('text-emerald-700');
+                expect(label?.className).toContain('dark:text-emerald-400');
+                expect(label?.className).not.toContain('#9d9d9d');
+            }
+        });
+
+        it('ALL/AP labels switch to the amber status color when paused', () => {
+            renderPane({
+                isPaused: true,
+                isAutopilotPaused: true,
+                onPauseResumeAutopilot: vi.fn(),
+                history: [makeHistoryTask()],
+            });
+            for (const [btn, text] of [
+                ['repo-pause-resume-btn', 'ALL'],
+                ['autopilot-pause-resume-btn', 'AP'],
+            ] as const) {
+                const label = findScopeLabel(btn, text);
+                expect(label?.className).toContain('text-amber-700');
+                expect(label?.className).toContain('dark:text-amber-400');
+            }
+        });
+
         // ── Activity-compact action bar layout ─────────────────────────
         // The ChatListPane action bar matches the activity-compact reference:
         //   [+ New chat ⌘N] [↺] [● ALL ON | ● AP ON]

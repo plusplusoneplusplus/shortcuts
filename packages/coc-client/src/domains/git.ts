@@ -315,12 +315,16 @@ export class GitClient {
     );
   }
 
-  fetch(workspaceId: string, options?: { remote?: string }): Promise<GitOperationResult> {
-    return this.transport.request<GitOperationResult>(workspaceGitPath(workspaceId, '/fetch'), jsonRequest('POST', options?.remote ? { remote: options.remote } : undefined));
+  fetch(workspaceId: string, options?: { remote?: string; currentBranchOnly?: boolean }): Promise<GitOperationResult> {
+    const body = (options?.remote || options?.currentBranchOnly) ? options : undefined;
+    return this.transport.request<GitOperationResult>(workspaceGitPath(workspaceId, '/fetch'), jsonRequest('POST', body));
   }
 
-  pull(workspaceId: string, options?: { rebase?: boolean }): Promise<GitAsyncJobResponse> {
-    return this.transport.request<GitAsyncJobResponse>(workspaceGitPath(workspaceId, '/pull'), jsonRequest('POST', { rebase: options?.rebase }));
+  pull(workspaceId: string, options?: { rebase?: boolean; currentBranchOnly?: boolean }): Promise<GitAsyncJobResponse> {
+    return this.transport.request<GitAsyncJobResponse>(workspaceGitPath(workspaceId, '/pull'), jsonRequest('POST', {
+      rebase: options?.rebase,
+      currentBranchOnly: options?.currentBranchOnly,
+    }));
   }
 
   push(workspaceId: string, options?: { setUpstream?: boolean }): Promise<GitOperationResult> {

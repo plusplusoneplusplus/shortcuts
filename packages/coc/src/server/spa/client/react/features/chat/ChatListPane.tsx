@@ -6,7 +6,7 @@
  * Shared queue task list used by the Activity tab.
  */
 
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef, useContext } from 'react';
 import { Card, Button, cn } from '../../ui';
 import { copyToClipboard, formatDuration, formatRelativeTime, statusLabel } from '../../utils/format';
 import { ensureQueueProcessId, isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
@@ -21,6 +21,10 @@ import { ScheduledSlideSchedules } from '../schedules/ScheduledSlideSchedules';
 import { getDraft } from './hooks/useDraftStore';
 import { useLongPress } from '../../hooks/ui/useLongPress';
 import { useChatPrefs } from '../../contexts/ChatPreferencesContext';
+import { usePopOut } from '../../contexts/PopOutContext';
+import { ToastContext } from '../../contexts/ToastContext';
+import { isDesktopShell } from '../../hooks/ui/useDesktopShell';
+import { openChatPopOut } from './hooks/useChatWindowActions';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { useDisplaySettings } from '../../hooks/preferences/useDisplaySettings';
@@ -913,6 +917,13 @@ export function ChatListPane({
 }: ChatListPaneProps) {
     const { state: queueState } = useQueue();
     const isTaskSubmitting = queueState.isTaskSubmitting;
+
+    // Desktop-only left-panel double-click → pop-out (see onDoubleClick below).
+    // The per-row useChatWindowActions hook can't be called inside the render
+    // loop, so grab markPoppedOut + addToast once here and call the shared
+    // openChatPopOut helper directly.
+    const { markPoppedOut } = usePopOut();
+    const toastCtx = useContext(ToastContext);
 
     // Per-clone client (AC-07): list-row queue/history/summarize/rename actions
     // target this clone's server. workspaceId may be undefined (e.g. floating
@@ -2513,9 +2524,13 @@ export function ChatListPane({
                         )}
                         <span
                             className={cn('chat-title truncate text-[#1e1e1e] dark:text-[#cccccc] cursor-text select-none', isUnseen && 'font-semibold', isFailed && 'text-red-700 dark:text-red-400', isFrozen && 'text-[#848484]')}
-                            title="Double-click to rename"
+                            title={isDesktopShell() ? 'Double-click to open in a new window' : 'Double-click to rename'}
                             onDoubleClick={(e) => {
                                 e.stopPropagation();
+                                if (isDesktopShell()) {
+                                    openChatPopOut({ taskId: task.id, workspaceId, markPoppedOut, addToast: toastCtx?.addToast });
+                                    return;
+                                }
                                 setRenameTarget({ taskId: task.id, title: (task as any).customTitle || '' });
                             }}
                         >
@@ -3429,7 +3444,7 @@ export function ChatListPane({
                                         'font-mono text-[10px] font-semibold tracking-[0.08em] whitespace-nowrap',
                                         isPaused
                                             ? 'text-amber-700 dark:text-amber-400'
-                                            : 'text-[#606060] dark:text-[#9d9d9d]',
+                                            : 'text-emerald-700 dark:text-emerald-400',
                                     )}
                                 >
                                     ALL
@@ -3475,7 +3490,7 @@ export function ChatListPane({
                                                 'font-mono text-[10px] font-semibold tracking-[0.08em] whitespace-nowrap',
                                                 isAutopilotPaused
                                                     ? 'text-amber-700 dark:text-amber-400'
-                                                    : 'text-[#606060] dark:text-[#9d9d9d]',
+                                                    : 'text-emerald-700 dark:text-emerald-400',
                                             )}
                                         >
                                             AP

@@ -255,6 +255,61 @@ export class BranchService {
     }
 
     /**
+     * Resolve the checked-out branch's configured upstream without relying on
+     * remote-name parsing. Local and upstream branch names may differ.
+     */
+    private async getCurrentBranchUpstream(repoRoot: string): Promise<{
+        remote: string;
+        remoteRef: string;
+    }> {
+        let branchName = '';
+        try {
+            branchName = (await this.execGitFileAsync(
+                ['symbolic-ref', '--quiet', '--short', 'HEAD'],
+                { cwd: repoRoot },
+            )).trim();
+        } catch {
+            throw new Error('Cannot fetch or pull while HEAD is detached');
+        }
+
+        if (!branchName) {
+            throw new Error('Cannot fetch or pull while HEAD is detached');
+        }
+
+        const configValues = async (key: string): Promise<string[]> => {
+            try {
+                const output = await this.execGitFileAsync(
+                    ['config', '--get-all', key],
+                    { cwd: repoRoot },
+                );
+                return output.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+            } catch {
+                return [];
+            }
+        };
+        const remotes = await configValues(`branch.${branchName}.remote`);
+        const remoteRefs = await configValues(`branch.${branchName}.merge`);
+        if (remotes.length === 0 || remoteRefs.length === 0) {
+            throw new Error(`Current branch "${branchName}" has no upstream configured`);
+        }
+        if (remotes.length !== 1 || remoteRefs.length !== 1) {
+            throw new Error(`Current branch "${branchName}" has multiple upstream branches; fetch and pull require exactly one`);
+        }
+
+        const remoteRef = remoteRefs[0];
+        if (!remoteRef.startsWith('refs/heads/')) {
+            throw new Error(`Current branch "${branchName}" upstream must be one exact branch ref`);
+        }
+        try {
+            await this.execGitFileAsync(['check-ref-format', remoteRef], { cwd: repoRoot });
+        } catch {
+            throw new Error(`Current branch "${branchName}" upstream must be one exact branch ref`);
+        }
+
+        return { remote: remotes[0], remoteRef };
+    }
+
+    /**
      * Get tracking branch information (ahead/behind counts).
      */
     private async getTrackingBranchInfo(repoRoot: string, branchName: string): Promise<{
@@ -748,6 +803,26 @@ export class BranchService {
     }
 
     /**
+     * Pull only the checked-out branch's configured upstream.
+     */
+    async pullCurrentBranch(repoRoot: string, rebase: boolean = false): Promise<GitOperationResult> {
+        try {
+            const { remote, remoteRef } = await this.getCurrentBranchUpstream(repoRoot);
+            const args = ['pull'];
+            if (rebase) {
+                args.push('--rebase');
+            }
+            args.push('--no-tags', '--', remote, remoteRef);
+            await this.execGitFileAsync(args, { cwd: repoRoot, timeout: 600000 });
+            return { success: true };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to pull current branch', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
      * Run a non-interactive git rebase --autosquash against the upstream branch.
      * GIT_SEQUENCE_EDITOR is set to a no-op so git accepts the pre-generated
      * todo list immediately without opening an editor.
@@ -779,6 +854,24 @@ export class BranchService {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             getLogger().error('Git', 'Failed to fetch', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
+     * Fetch only the checked-out branch's configured upstream.
+     */
+    async fetchCurrentBranch(repoRoot: string): Promise<GitOperationResult> {
+        try {
+            const { remote, remoteRef } = await this.getCurrentBranchUpstream(repoRoot);
+            await this.execGitFileAsync(
+                ['fetch', '--no-tags', '--', remote, remoteRef],
+                { cwd: repoRoot, timeout: 600000 },
+            );
+            return { success: true };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to fetch current branch', error instanceof Error ? error : undefined);
             return { success: false, error: errorMessage };
         }
     }

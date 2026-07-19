@@ -236,7 +236,7 @@ describe('RepoGitTab', () => {
         it('handleFetch calls typed fetch operation', () => {
             const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
             expect(fetchBlock).toBeTruthy();
-            expect(fetchBlock![0]).toContain('.git.fetch(workspaceId)');
+            expect(fetchBlock![0]).toContain('.git.fetch(workspaceId, { currentBranchOnly: true })');
         });
 
         it('handlePull calls typed pull operation', () => {
@@ -251,8 +251,9 @@ describe('RepoGitTab', () => {
             expect(pushBlock![0]).toContain('.git.push(workspaceId)');
         });
 
-        it('handlePull sends rebase: true through typed client', () => {
-            expect(source).toContain('{ rebase: true }');
+        it('Git tab fetch and pull request current-branch-only operations', () => {
+            expect(source).toContain('.git.fetch(workspaceId, { currentBranchOnly: true })');
+            expect(source).toContain('{ rebase: true, currentBranchOnly: true }');
         });
 
         it('delegates Content-Type handling to typed client', () => {

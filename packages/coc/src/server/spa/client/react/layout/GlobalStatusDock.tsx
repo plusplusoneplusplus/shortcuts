@@ -14,7 +14,8 @@
  *   - the Admin shell (its `.ar-sidebar` hosts `DockedStatusFooter`),
  *   - the My Work view (its body hosts `DockedStatusFooter`),
  *   - the workspace notes sub-tab (`NotesView`'s own `NotesSidebar` footer),
- *   - the workspace settings sub-tab (`RepoSettingsTab`'s own nav footer).
+ *   - the workspace settings sub-tab (`RepoSettingsTab`'s own nav footer),
+ *   - the workspace pull-requests sub-tab (`PullRequestsTab`'s PR queue footer).
  * This global dock covers every OTHER tab/sub-tab, so it renders null on those
  * views to avoid double-docking. Together they hide the topbar cluster on every
  * desktop remote-shell tab (`TopBar`'s `statusInDock`).
@@ -97,6 +98,17 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
         !!state.selectedRepoId &&
         state.activeRepoSubTab === 'settings';
     if (inSettingsSidebarFooter) return null;
+
+    // The pull-requests sub-tab hosts the cluster at the bottom of its own PR
+    // queue sidebar (`PullRequestsTab` docks a `DockedStatusFooter` there). Its
+    // queue column is independently resizable (`pr-left-panel-width`), so the
+    // global band would neither match its width nor belong under the detail
+    // pane — stand down like Notes/Settings.
+    const inPrQueueFooter =
+        state.activeTab === 'repos' &&
+        !!state.selectedRepoId &&
+        state.activeRepoSubTab === 'pull-requests';
+    if (inPrQueueFooter) return null;
 
     // Tracks the resizable workspace left column (or the panel default when no
     // split sidebar is mounted) so the band stays flush under that column.

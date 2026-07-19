@@ -605,6 +605,200 @@ describe('BranchService', () => {
         });
     });
 
+    function mockCurrentBranchUpstream(
+        branchName = 'feature/local',
+        remote = 'upstream',
+        remoteRefs = ['refs/heads/release/2.0'],
+    ): void {
+        mockedExecFileAsync
+            .mockResolvedValueOnce({ stdout: `${branchName}\n`, stderr: '' })
+            .mockResolvedValueOnce({ stdout: `${remote}\n`, stderr: '' })
+            .mockResolvedValueOnce({ stdout: `${remoteRefs.join('\n')}\n`, stderr: '' });
+    }
+
+    function mockValidUpstreamRef(): void {
+        mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+    }
+
+    // ── current-branch-only remote operations ───────────────────
+
+    describe('fetchCurrentBranch', () => {
+        it('fetches only the configured upstream ref without tags using argv', async () => {
+            mockCurrentBranchUpstream('feature/local', 'team/origin;still-one-arg');
+            mockValidUpstreamRef();
+            mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+            const result = await service.fetchCurrentBranch('/repo');
+
+            expect(result).toEqual({ success: true });
+            expect(mockedExecFileAsync).toHaveBeenNthCalledWith(
+                2,
+                'git',
+                ['config', '--get-all', 'branch.feature/local.remote'],
+                expect.objectContaining({ cwd: '/repo' }),
+            );
+            expect(mockedExecFileAsync).toHaveBeenNthCalledWith(
+                3,
+                'git',
+                ['config', '--get-all', 'branch.feature/local.merge'],
+                expect.objectContaining({ cwd: '/repo' }),
+            );
+            expect(mockedExecFileAsync).toHaveBeenNthCalledWith(
+                4,
+                'git',
+                ['check-ref-format', 'refs/heads/release/2.0'],
+                expect.objectContaining({ cwd: '/repo' }),
+            );
+            expect(mockedExecFileAsync).toHaveBeenNthCalledWith(
+                5,
+                'git',
+                ['fetch', '--no-tags', '--', 'team/origin;still-one-arg', 'refs/heads/release/2.0'],
+                expect.objectContaining({
+                    cwd: '/repo',
+                    timeout: 600000,
+                    env: expect.objectContaining({ GIT_TERMINAL_PROMPT: '0' }),
+                }),
+            );
+            expect(mockedExecAsync).not.toHaveBeenCalled();
+        });
+
+        it('returns a clear error without fetching when HEAD is detached', async () => {
+            mockedExecFileAsync.mockRejectedValueOnce(new Error('not a symbolic ref'));
+
+            const result = await service.fetchCurrentBranch('/repo');
+
+            expect(result).toEqual({
+                success: false,
+                error: 'Cannot fetch or pull while HEAD is detached',
+            });
+            expect(mockedExecFileAsync).toHaveBeenCalledTimes(1);
+        });
+
+        it('rejects multiple configured upstream refs without fetching', async () => {
+            mockCurrentBranchUpstream('feature/local', 'upstream', [
+                'refs/heads/release/2.0',
+                'refs/heads/release/2.1',
+            ]);
+
+            const result = await service.fetchCurrentBranch('/repo');
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('multiple upstream branches');
+            expect(mockedExecFileAsync).toHaveBeenCalledTimes(3);
+        });
+
+        it('rejects wildcard or destination upstream refspecs without fetching', async () => {
+            mockCurrentBranchUpstream(
+                'feature/local',
+                'upstream',
+                ['refs/heads/*:refs/remotes/upstream/*'],
+            );
+            mockedExecFileAsync.mockRejectedValueOnce(new Error('invalid ref format'));
+
+            const result = await service.fetchCurrentBranch('/repo');
+
+            expect(result).toEqual({
+                success: false,
+                error: 'Current branch "feature/local" upstream must be one exact branch ref',
+            });
+            expect(mockedExecFileAsync).toHaveBeenCalledTimes(4);
+        });
+
+        it.each([
+            '^refs/heads/main',
+            'refs/tags/v1.0.0',
+        ])('rejects non-branch upstream ref %s without fetching', async (remoteRef) => {
+            mockCurrentBranchUpstream('feature/local', 'upstream', [remoteRef]);
+
+            const result = await service.fetchCurrentBranch('/repo');
+
+            expect(result).toEqual({
+                success: false,
+                error: 'Current branch "feature/local" upstream must be one exact branch ref',
+            });
+            expect(mockedExecFileAsync).toHaveBeenCalledTimes(3);
+        });
+
+        it('returns the git error when the scoped fetch fails', async () => {
+            mockCurrentBranchUpstream();
+            mockValidUpstreamRef();
+            mockedExecFileAsync.mockRejectedValueOnce(new Error('network unavailable'));
+
+            const result = await service.fetchCurrentBranch('/repo');
+
+            expect(result).toEqual({ success: false, error: 'network unavailable' });
+        });
+
+        it.runIf(process.platform === 'win32')('routes a scoped WSL fetch through wsl.exe', async () => {
+            mockCurrentBranchUpstream();
+            mockValidUpstreamRef();
+            mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+            const result = await service.fetchCurrentBranch(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
+
+            expect(result).toEqual({ success: true });
+            expect(mockedExecFileAsync).toHaveBeenNthCalledWith(
+                5,
+                expect.stringContaining('wsl.exe'),
+                [
+                    '-d', 'Ubuntu', '--cd', '/home/tester/repo', '--',
+                    'git', 'fetch', '--no-tags', '--', 'upstream', 'refs/heads/release/2.0',
+                ],
+                expect.objectContaining({ windowsHide: true }),
+            );
+        });
+    });
+
+    describe('pullCurrentBranch', () => {
+        it('pulls only the configured upstream ref with rebase and without tags', async () => {
+            mockCurrentBranchUpstream();
+            mockValidUpstreamRef();
+            mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+            const result = await service.pullCurrentBranch('/repo', true);
+
+            expect(result).toEqual({ success: true });
+            expect(mockedExecFileAsync).toHaveBeenNthCalledWith(
+                5,
+                'git',
+                ['pull', '--rebase', '--no-tags', '--', 'upstream', 'refs/heads/release/2.0'],
+                expect.objectContaining({ cwd: '/repo', timeout: 600000 }),
+            );
+            expect(mockedExecAsync).not.toHaveBeenCalled();
+        });
+
+        it('supports a local-dot upstream without rebase', async () => {
+            mockCurrentBranchUpstream('integration', '.', ['refs/heads/main']);
+            mockValidUpstreamRef();
+            mockedExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+            const result = await service.pullCurrentBranch('/repo');
+
+            expect(result).toEqual({ success: true });
+            expect(mockedExecFileAsync).toHaveBeenNthCalledWith(
+                5,
+                'git',
+                ['pull', '--no-tags', '--', '.', 'refs/heads/main'],
+                expect.objectContaining({ cwd: '/repo' }),
+            );
+        });
+
+        it('returns a clear error without pulling when the current branch has no upstream', async () => {
+            mockedExecFileAsync
+                .mockResolvedValueOnce({ stdout: 'local-only\n', stderr: '' })
+                .mockRejectedValueOnce(new Error('missing remote'))
+                .mockRejectedValueOnce(new Error('missing merge ref'));
+
+            const result = await service.pullCurrentBranch('/repo', true);
+
+            expect(result).toEqual({
+                success: false,
+                error: 'Current branch "local-only" has no upstream configured',
+            });
+            expect(mockedExecFileAsync).toHaveBeenCalledTimes(3);
+        });
+    });
+
     // ── stashChanges ─────────────────────────────────────────────
 
     describe('stashChanges', () => {

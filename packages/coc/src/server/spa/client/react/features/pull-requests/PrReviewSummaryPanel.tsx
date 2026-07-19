@@ -7,6 +7,8 @@ import { useMemo } from 'react';
 import { Marked } from 'marked';
 import { cn } from '../../ui';
 import { findingTagClass } from './pr-derived-data';
+import { ReviewerBadge } from './ReviewerBadge';
+import type { Reviewer } from './pr-utils';
 import type { PrReviewSummary } from './pr-detail-summary';
 
 const summaryMarked = new Marked({
@@ -24,13 +26,18 @@ const summaryMarked = new Marked({
 
 interface PrReviewSummaryPanelProps {
     summary: PrReviewSummary;
+    reviewers?: Reviewer[];
+    labels?: string[];
+    url?: string;
 }
 
-export function PrReviewSummaryPanel({ summary }: PrReviewSummaryPanelProps) {
+export function PrReviewSummaryPanel({ summary, reviewers, labels, url }: PrReviewSummaryPanelProps) {
     const summaryHtml = useMemo(
         () => summary.summary ? String(summaryMarked.parse(summary.summary)) : '',
         [summary.summary],
     );
+    const reviewerList = reviewers ?? [];
+    const labelList = labels ?? [];
 
     return (
         <article
@@ -45,9 +52,18 @@ export function PrReviewSummaryPanel({ summary }: PrReviewSummaryPanelProps) {
                 <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
                     Review summary
                 </h2>
-                <span className="inline-flex min-h-[20px] items-center gap-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
-                    Provider facts
-                </span>
+                <div className="flex items-center gap-1.5">
+                    {url && (
+                        <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] text-blue-600 hover:underline dark:text-blue-400"
+                        >
+                            Open in browser
+                        </a>
+                    )}
+                </div>
             </header>
             <div className="p-2">
                 <div
@@ -55,21 +71,6 @@ export function PrReviewSummaryPanel({ summary }: PrReviewSummaryPanelProps) {
                     data-testid="pr-review-summary-copy"
                     dangerouslySetInnerHTML={{ __html: summaryHtml }}
                 />
-                <div className="mb-1.5 grid grid-cols-2 gap-[5px] sm:grid-cols-5" data-testid="pr-review-metrics">
-                    {summary.metrics.map(metric => (
-                        <div
-                            key={metric.key}
-                            className="rounded-md border border-gray-200 bg-gray-50 px-[7px] py-[5px] dark:border-gray-700 dark:bg-gray-800/60"
-                        >
-                            <div className="text-[10px] font-semibold uppercase tracking-normal text-gray-500 dark:text-gray-400">
-                                {metric.key}
-                            </div>
-                            <div className="mt-px text-[16px] font-semibold leading-[1.08] tabular-nums text-gray-900 dark:text-gray-100">
-                                {metric.value}
-                            </div>
-                        </div>
-                    ))}
-                </div>
                 <ul className="m-0 grid list-none gap-1 p-0" data-testid="pr-review-findings">
                     {summary.findings.map((finding, idx) => (
                         <li
@@ -89,6 +90,38 @@ export function PrReviewSummaryPanel({ summary }: PrReviewSummaryPanelProps) {
                         </li>
                     ))}
                 </ul>
+
+                {reviewerList.length > 0 && (
+                    <div className="mt-2" data-testid="reviewers-section">
+                        <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:text-gray-400">
+                            Reviewers
+                        </h3>
+                        <div className="space-y-1">
+                            {reviewerList.map((reviewer, idx) => (
+                                <ReviewerBadge key={idx} reviewer={reviewer} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {labelList.length > 0 && (
+                    <div className="mt-2" data-testid="labels-section">
+                        <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:text-gray-400">
+                            Labels
+                        </h3>
+                        <div className="flex flex-wrap gap-1">
+                            {labelList.map((label, idx) => (
+                                <span
+                                    key={idx}
+                                    className="rounded bg-gray-100 px-1 py-px text-[11px] text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                                    data-testid="label-chip"
+                                >
+                                    {label}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </article>
     );

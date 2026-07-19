@@ -28,6 +28,11 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () 
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
 }));
 
+// Shell chrome with its own suite; stub to keep the StatusActions graph out.
+vi.mock('../../../../../src/server/spa/client/react/layout/DockedStatusFooter', () => ({
+    DockedStatusFooter: () => null,
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: () => ({
         width: 288,

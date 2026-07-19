@@ -56,6 +56,12 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () 
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
 }));
 
+// Stub the docked status footer (shell chrome with its own suite) so the tab
+// tests can assert its placement without pulling the StatusActions graph.
+vi.mock('../../../../../src/server/spa/client/react/layout/DockedStatusFooter', () => ({
+    DockedStatusFooter: () => <div data-testid="docked-status-footer" />,
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: () => ({
         width: 288,
@@ -1110,6 +1116,28 @@ describe('queue collapse toggle', () => {
         expect(screen.getByTestId('pr-state-dot')).toBeInTheDocument();
         expect(screen.queryByText('Compact PR')).not.toBeInTheDocument();
         expect(screen.queryByTestId('pr-risk-pill')).not.toBeInTheDocument();
+    });
+
+    it('docks the status footer at the bottom of the PR queue sidebar', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        const panel = screen.getByTestId('pr-list-panel');
+        const footer = screen.getByTestId('docked-status-footer');
+        expect(panel.contains(footer)).toBe(true);
+        // Pinned after the queue content so it sits at the bottom of the column.
+        expect(panel.lastElementChild).toBe(footer);
+    });
+
+    it('hides the docked status footer while the queue is collapsed (44px rail)', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        expect(screen.getByTestId('docked-status-footer')).toBeInTheDocument();
+
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-toggle')); });
+        expect(screen.queryByTestId('docked-status-footer')).not.toBeInTheDocument();
+
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-toggle')); });
+        expect(screen.getByTestId('docked-status-footer')).toBeInTheDocument();
     });
 
     it('hides the resize handle when collapsed', async () => {

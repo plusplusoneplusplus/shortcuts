@@ -120,18 +120,20 @@ describe('NoteEditor — Source Mode', () => {
     // ── Mode toggle UI ─────────────────────────────────────────────────────
 
     describe('mode toggle bar', () => {
-        it('renders Rich and Source buttons', async () => {
+        it('renders Rich and Source buttons with accessible names', async () => {
             await renderAndWaitForLoad();
 
-            expect(screen.getByTestId('note-mode-rich')).toBeTruthy();
-            expect(screen.getByTestId('note-mode-source')).toBeTruthy();
+            expect(screen.getByTestId('note-mode-rich').getAttribute('aria-label')).toBe('Visual Markdown editor');
+            expect(screen.getByTestId('note-mode-source').getAttribute('aria-label')).toBe('Markdown source');
         });
 
-        it('Rich mode is active by default', async () => {
+        it('Rich mode is active by default and exposes pressed state', async () => {
             await renderAndWaitForLoad();
 
             expect(screen.getByTestId('note-mode-rich').className).toContain('active');
+            expect(screen.getByTestId('note-mode-rich').getAttribute('aria-pressed')).toBe('true');
             expect(screen.getByTestId('note-mode-source').className).not.toContain('active');
+            expect(screen.getByTestId('note-mode-source').getAttribute('aria-pressed')).toBe('false');
         });
 
         it('does not render when no note is selected', () => {
@@ -281,14 +283,18 @@ describe('NoteEditor — Source Mode', () => {
             await renderAndWaitForLoad();
             await switchToSource();
 
-            expect(screen.getByTestId('note-mode-source').textContent).toBe('MD');
+            const sourceBtn = screen.getByTestId('note-mode-source');
+            expect(sourceBtn.getAttribute('aria-pressed')).toBe('true');
+            expect(sourceBtn.getAttribute('aria-label')).toBe('Markdown source');
+            expect(screen.queryByTestId('note-mode-source-dirty')).toBeNull();
 
             const textarea = getSourceTextarea();
             await act(async () => {
                 fireEvent.change(textarea, { target: { value: '# Modified\n' } });
             });
 
-            expect(screen.getByTestId('note-mode-source').textContent).toBe('MD ●');
+            expect(screen.getByTestId('note-mode-source-dirty')).toBeTruthy();
+            expect(screen.getByTestId('note-mode-source').getAttribute('aria-label')).toBe('Markdown source (modified)');
         });
 
         it('shows Save button when source is dirty', async () => {
@@ -321,7 +327,8 @@ describe('NoteEditor — Source Mode', () => {
             await waitFor(() => {
                 expect(screen.queryByTestId('note-source-save-btn')).toBeNull();
             });
-            expect(screen.getByTestId('note-mode-source').textContent).toBe('MD');
+            expect(screen.queryByTestId('note-mode-source-dirty')).toBeNull();
+            expect(screen.getByTestId('note-mode-source').getAttribute('aria-label')).toBe('Markdown source');
         });
     });
 

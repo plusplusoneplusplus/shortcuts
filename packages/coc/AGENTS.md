@@ -134,6 +134,14 @@ all have their own `references/*.md`.
   from the current iteration's `progress.md` section (via `recentProgressSections`,
   which must include `iteration`). The inline token stays authoritative when
   present; `NO_SIGNAL` is terminal only when neither source carries a signal.
+- **Git-tab Fetch/Pull** must stay current-branch scoped. `RepoGitTab` sends
+  `currentBranchOnly: true`; the server delegates to the scoped `BranchService`
+  methods, which resolve the checked-out branch's exact configured upstream
+  remote + merge ref, require one valid `refs/heads/...` source ref, and use
+  argv-based Git commands with no automatic tags. Never assume `origin` or a
+  same-named remote branch, and never fetch sibling refs from these UI actions.
+  The generic Forge `fetch`/`pull` methods retain their broad public behavior
+  for non-Git-tab callers.
 - **Git worktree execution** (opt-in, `features.gitWorktreeExecution`, default
   off) lives in `src/server/worktree/` (`GitWorktreeService` +
   `WorktreeMetadataStore`) with Ralph wiring in

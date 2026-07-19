@@ -1425,8 +1425,11 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   their own sidebar/footer chrome instead of relying on the app-wide
   `GlobalStatusDock`: `NotesView` passes `DockedStatusFooter` into
   `NotesSidebar`, regular repo and My Life Settings pass `dockStatusFooter` to
-  `RepoSettingsTab` so the cluster sits inside the 210px settings nav, and My
-  Work keeps its body-level `DockedStatusFooter` shared across all sub-tabs.
+  `RepoSettingsTab` so the cluster sits inside the 210px settings nav, My
+  Work keeps its body-level `DockedStatusFooter` shared across all sub-tabs,
+  and `PullRequestsTab` docks a `DockedStatusFooter` at the bottom of its PR
+  queue sidebar (hidden while the queue is collapsed to the 44px rail;
+  `GlobalStatusDock` stands down on the `pull-requests` sub-tab).
 - The git half uses a dense skin to save vertical space. `SplitWorkspacePanel`
   exposes a `gitHeaderExtra` slot on the git section header (rendered right of
   the chevron+label toggle; its clicks don't toggle; stays visible while

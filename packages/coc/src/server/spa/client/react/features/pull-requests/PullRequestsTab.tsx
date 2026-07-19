@@ -34,6 +34,7 @@ import {
     isSessionContextAttachmentsEnabled,
 } from '../../utils/config';
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
+import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 import { PullRequestDetail } from './PullRequestDetail';
 import { PullRequestRow, type PrClassificationBadgeStatus } from './PullRequestRow';
 import { PrQueueFilters } from './PrQueueFilters';
@@ -1713,6 +1714,12 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
                 data-collapsed={queueCollapsed}
             >
                 {queuePanel}
+                {/* Docked status/action cluster at the bottom of the PR queue
+                    sidebar (remote-first shell) — `GlobalStatusDock` stands down
+                    on this sub-tab. Hidden while collapsed: the 44px rail can't
+                    fit the cluster. No-ops in classic / mobile via
+                    `DockedStatusFooter`'s own gate. */}
+                {!queueCollapsed && <DockedStatusFooter />}
             </div>
 
             {!queueCollapsed && (

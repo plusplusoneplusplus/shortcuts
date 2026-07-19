@@ -47,7 +47,9 @@ const mockDeleteBranch = vi.fn();
 const mockRenameBranch = vi.fn();
 const mockPush = vi.fn();
 const mockPull = vi.fn();
+const mockPullCurrentBranch = vi.fn();
 const mockFetch = vi.fn();
+const mockFetchCurrentBranch = vi.fn();
 const mockMergeBranch = vi.fn();
 const mockStashChanges = vi.fn();
 const mockPopStash = vi.fn();
@@ -91,7 +93,9 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             renameBranch: mockRenameBranch,
             push: mockPush,
             pull: mockPull,
+            pullCurrentBranch: mockPullCurrentBranch,
             fetch: mockFetch,
+            fetchCurrentBranch: mockFetchCurrentBranch,
             mergeBranch: mockMergeBranch,
             stashChanges: mockStashChanges,
             popStash: mockPopStash,
@@ -225,7 +229,9 @@ describe('Git Branches API endpoints', () => {
         mockRenameBranch.mockReset();
         mockPush.mockReset();
         mockPull.mockReset();
+        mockPullCurrentBranch.mockReset();
         mockFetch.mockReset();
+        mockFetchCurrentBranch.mockReset();
         mockMergeBranch.mockReset();
         mockStashChanges.mockReset();
         mockPopStash.mockReset();
@@ -756,6 +762,19 @@ describe('Git Branches API endpoints', () => {
             expect(mockPull).toHaveBeenCalledWith(WORKSPACE_ROOT, true);
         });
 
+        it('should delegate current-branch-only pulls to the scoped service method', async () => {
+            mockPullCurrentBranch.mockResolvedValue({ success: true });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
+                method: 'POST',
+                body: JSON.stringify({ rebase: true, currentBranchOnly: true }),
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 200));
+            expect(mockPullCurrentBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, true);
+            expect(mockPull).not.toHaveBeenCalled();
+        });
+
         it('should succeed with empty body (no Content-Type, no body)', async () => {
             mockPull.mockResolvedValue({ success: true });
 
@@ -901,6 +920,20 @@ describe('Git Branches API endpoints', () => {
             });
 
             expect(mockFetch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'upstream');
+        });
+
+        it('should delegate current-branch-only fetches to the scoped service method', async () => {
+            mockFetchCurrentBranch.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/fetch`, {
+                method: 'POST',
+                body: JSON.stringify({ currentBranchOnly: true }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockFetchCurrentBranch).toHaveBeenCalledWith(WORKSPACE_ROOT);
+            expect(mockFetch).not.toHaveBeenCalled();
         });
 
         it('should succeed with empty body (no Content-Type, no body)', async () => {

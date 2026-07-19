@@ -51,7 +51,7 @@ function combinedTotalsLabel(view: CombinedWhisperDiffView): string {
 }
 
 const headerBtnClass =
-    'shrink-0 flex items-center justify-center w-8 h-8 rounded text-[#848484] ' +
+    'shrink-0 flex items-center justify-center w-7 h-7 rounded text-[#848484] ' +
     'hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 
 export interface WhisperDiffPanelProps {
@@ -152,15 +152,21 @@ export function WhisperDiffPanel({
             className="flex flex-col h-full min-h-0 overflow-hidden bg-white dark:bg-[#1e1e1e]"
             data-testid="whisper-diff-panel"
         >
-            <div className="px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] flex items-start justify-between gap-2">
-                <div className="min-w-0">
+            <div
+                className="px-3 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] flex items-center justify-between gap-2"
+                data-testid="whisper-diff-header"
+            >
+                <div
+                    className="min-w-0 flex items-center gap-2"
+                    data-testid="whisper-diff-header-main"
+                >
                     <WhisperFileSelect
                         options={options}
                         selected={selected}
                         onSelect={setSelected}
                     />
                     <div
-                        className="text-xs text-[#848484] truncate mt-0.5"
+                        className="text-xs text-[#848484] truncate"
                         title={subtitleTitle}
                         data-testid={subtitleTestId}
                     >

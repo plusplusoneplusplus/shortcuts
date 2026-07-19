@@ -298,8 +298,8 @@ export function InteractiveTable({
 
     const tableContent = (
         <div className={`interactive-table${isFullscreen ? ' interactive-table-fullscreen-inner' : ''}`} data-testid={`interactive-table-${tableKey}`}>
-            {/* Toolbar */}
-            <div className="interactive-table-toolbar">
+            {/* Toolbar — chrome, excluded from native text selection/copy */}
+            <div className="interactive-table-toolbar select-none">
                 <span className="interactive-table-row-count">
                     {filteredRowCount !== rows.length
                         ? `${filteredRowCount} of ${rows.length} rows`
@@ -323,7 +323,7 @@ export function InteractiveTable({
                             ⊞ Columns
                         </button>
                         {showColPicker && (
-                            <div ref={colPickerRef} className="interactive-table-col-picker" data-testid="col-picker">
+                            <div ref={colPickerRef} className="interactive-table-col-picker select-none" data-testid="col-picker">
                                 {table.getAllLeafColumns().map(col => {
                                     const idx = colIds.indexOf(col.id);
                                     const label = idx >= 0 ? stripHtml(headers[idx]) : col.id;
@@ -392,14 +392,14 @@ export function InteractiveTable({
                                             <span className="interactive-table-header-content">
                                                 {flexRender(header.column.columnDef.header, header.getContext())}
                                                 {sortDir && (
-                                                    <span className="interactive-table-sort-indicator">
+                                                    <span className="interactive-table-sort-indicator select-none">
                                                         {sortDir === 'asc' ? ' ▲' : ' ▼'}
                                                     </span>
                                                 )}
                                             </span>
                                             {showFilters && (
                                                 <input
-                                                    className="interactive-table-filter-input"
+                                                    className="interactive-table-filter-input select-none"
                                                     type="text"
                                                     placeholder="Filter…"
                                                     value={(header.column.getFilterValue() as string) ?? ''}
@@ -435,7 +435,7 @@ export function InteractiveTable({
                     </tbody>
                     {aggregations.size > 0 && (
                         <tfoot>
-                            <tr className="interactive-table-agg-row">
+                            <tr className="interactive-table-agg-row select-none">
                                 {colIds.map((id, i) => {
                                     const col = table.getColumn(id);
                                     if (col && !col.getIsVisible()) return null;
@@ -461,7 +461,7 @@ export function InteractiveTable({
 
             {/* Pagination */}
             {needsPagination && (
-                <div className="interactive-table-pagination">
+                <div className="interactive-table-pagination select-none">
                     <button
                         className="interactive-table-page-btn"
                         onClick={() => table.setPageIndex(0)}
