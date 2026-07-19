@@ -97,6 +97,37 @@ describe('exportCanvasAsHtml — markdown', () => {
         expect(fetchSpy).toHaveBeenCalledWith(PROXY_IMG);
     });
 
+    it('embeds the injected math CSS so rendered math styles offline', async () => {
+        const mathCss =
+            '.katex{font:normal 1.21em KaTeX_Main}@font-face{font-family:KaTeX_Main;src:url(data:font/woff2;base64,ZZ)}';
+        const getMathCss = vi.fn(() => mathCss);
+        const deps = makeDeps({
+            renderMarkdown: () => '<p><span class="katex">E=mc^2</span></p>',
+            getMathCss,
+        });
+        const { html = '' } = await exportCanvasAsHtml(mdCanvas(), deps);
+        expect(getMathCss).toHaveBeenCalledTimes(1);
+        expect(html).toContain('font-family:KaTeX_Main');
+        expect(html).toContain('data:font/woff2;base64,ZZ');
+        // Narrow-page overflow override rides along with the math CSS.
+        expect(html).toContain('.canvas-export__body .katex-display');
+        // Still self-contained.
+        expect(html).not.toMatch(/url\(https?:\/\//i);
+    });
+
+    it('never fails the export when the math CSS provider throws', async () => {
+        const deps = makeDeps({
+            renderMarkdown: () => '<p><span class="katex">x</span></p>',
+            getMathCss: () => {
+                throw new Error('stylesheet unavailable');
+            },
+        });
+        const result = await exportCanvasAsHtml(mdCanvas(), deps);
+        expect(result.ok).toBe(true);
+        // Math markup still present, just unstyled — no crash.
+        expect(result.html).toContain('class="katex"');
+    });
+
     it('aggregates warnings from a failed image fetch and a failed mermaid render', async () => {
         const deps = makeDeps({
             renderMarkdown: () => RENDERED_MARKDOWN,

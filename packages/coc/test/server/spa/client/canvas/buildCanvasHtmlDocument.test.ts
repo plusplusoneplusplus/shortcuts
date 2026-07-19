@@ -49,6 +49,48 @@ describe('buildCanvasHtmlDocument — standalone document scaffold', () => {
     });
 });
 
+describe('buildCanvasHtmlDocument — embedded math (KaTeX) CSS', () => {
+    const MATH_CSS =
+        '.katex{font:normal 1.21em KaTeX_Main}\n' +
+        '@font-face{font-family:KaTeX_Main;src:url(data:font/woff2;base64,AAAA)}';
+
+    it('embeds the supplied math CSS inline in the <style> block', () => {
+        const html = build({
+            bodyHtml: '<p><span class="katex">E=mc^2</span></p>',
+            mathCss: MATH_CSS,
+        });
+        expect(html).toContain('.katex{font:normal 1.21em KaTeX_Main}');
+        expect(html).toContain('@font-face{font-family:KaTeX_Main;src:url(data:font/woff2;base64,AAAA)}');
+        // Base CSS is still present alongside it.
+        expect(html).toContain('.canvas-export');
+    });
+
+    it('adds the narrow-page overflow override only when math CSS is present', () => {
+        const withMath = build({ mathCss: MATH_CSS });
+        expect(withMath).toContain('.canvas-export__body .katex-display { overflow-x: auto');
+
+        const withoutMath = build({});
+        expect(withoutMath).not.toContain('.canvas-export__body .katex-display');
+    });
+
+    it('keeps the portability contract — inlined fonts, no external references', () => {
+        const html = build({
+            bodyHtml: '<span class="katex">x</span>',
+            mathCss: MATH_CSS,
+        });
+        expect(html).toContain('data:font/woff2;base64,');
+        expect(html).not.toMatch(/url\(https?:\/\//i);
+        expect(html).not.toMatch(/<link\b/i);
+        expect(html).not.toMatch(/<script\s+src/i);
+    });
+
+    it('ignores blank/whitespace math CSS (no change vs. omitting it)', () => {
+        const blank = build({ mathCss: '   ' });
+        const omitted = build({});
+        expect(blank).toBe(omitted);
+    });
+});
+
 describe('buildCanvasHtmlDocument — image inlining', () => {
     it('rewrites a proxy-url <img> src to the resolved data URI from the assets map', () => {
         const ref = '/api/workspaces/ws1/files/image?path=x';

@@ -83,6 +83,14 @@ export interface ExportCanvasAsHtmlDeps {
     exportToSvg: ExcalidrawExportToSvgFn;
     /** Triggers a browser download of the built document. Production: `browserDownload`. */
     triggerDownload: (filename: string, html: string) => void;
+    /**
+     * Returns the self-contained KaTeX CSS (layout + inlined fonts) embedded into
+     * a markdown export so rendered math styles offline. Production:
+     * `getExportKatexCss` (extracted from the loaded app stylesheets). Optional —
+     * when absent or returning `''`, math markup ships unstyled but the export
+     * still succeeds.
+     */
+    getMathCss?: () => string;
 }
 
 /** Outcome of an export attempt. */
@@ -179,12 +187,22 @@ async function buildMarkdownDocument(
     // Pre-bake highlight.js spans so the embedded theme CSS colours code offline.
     const bodyHtml = highlightMarkdownCodeBlocks(mermaid.html);
 
+    // Self-contained KaTeX CSS so any rendered math in the body styles offline.
+    // Defensive: a throwing/absent provider must not abort the export.
+    let mathCss = '';
+    try {
+        mathCss = deps.getMathCss?.() ?? '';
+    } catch {
+        /* leave math unstyled rather than fail the export */
+    }
+
     const built = buildCanvasHtmlDocument({
         type: 'markdown',
         title: canvas.title,
         bodyHtml,
         sourceText: canvas.content,
         assets,
+        mathCss,
     });
     warnings.push(...built.warnings);
     return built.html;

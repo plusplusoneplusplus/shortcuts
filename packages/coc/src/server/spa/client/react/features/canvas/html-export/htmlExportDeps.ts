@@ -25,6 +25,7 @@
 
 import { chatMarkdownToHtml } from '../../chat/conversation/ConversationTurnBubble';
 import { ensureMermaid } from '../../../hooks/ui/useMermaid';
+import { getExportKatexCss } from '../../../../shared/math/katexCssExtract';
 import { browserDownload } from './exportCanvasAsHtml';
 import type { ExportCanvasAsHtmlDeps } from './exportCanvasAsHtml';
 import type { MermaidRenderResult } from './mermaid';
@@ -64,5 +65,9 @@ export function createHtmlExportDeps(): ExportCanvasAsHtmlDeps {
         },
         exportToSvg: lazyExportToSvg,
         triggerDownload: browserDownload,
+        // Extract KaTeX styling (with its already-inlined fonts) from the loaded
+        // app stylesheets so exported math renders offline; memoized after the
+        // first non-empty read.
+        getMathCss: () => getExportKatexCss(),
     };
 }

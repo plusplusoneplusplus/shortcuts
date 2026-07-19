@@ -11,7 +11,7 @@ plus thin, injected I/O adapters so every layer unit-tests in isolation.
 
 | Layer | File | Role |
 |-------|------|------|
-| **A** | `buildCanvasHtmlDocument.ts` | Pure, Node-safe, deterministic serializer. Assembles the standalone doc: doctype, inlined `<style>` (`styles.ts`), body with every `<img>` src rewritten to its data URI, and the source in a non-rendering `<script id="source">`. Highlights `code` canvases itself; ships the `extension` body **verbatim** (no image rewrite — its `<img>`s live inside the escaped iframe `srcdoc`). Never touches the DOM/network. |
+| **A** | `buildCanvasHtmlDocument.ts` | Pure, Node-safe, deterministic serializer. Assembles the standalone doc: doctype, inlined `<style>` (`styles.ts`), body with every `<img>` src rewritten to its data URI, and the source in a non-rendering `<script id="source">`. When the input carries `mathCss` (self-contained KaTeX CSS, only for markdown), it is embedded in `<style>` with `KATEX_EXPORT_OVERRIDES_CSS` so rendered `.katex` math styles offline and long display math scrolls on narrow pages. Highlights `code` canvases itself; ships the `extension` body **verbatim** (no image rewrite — its `<img>`s live inside the escaped iframe `srcdoc`). Never touches the DOM/network. |
 | **B** | `assets.ts` | `collectImageRefs(html)` (pure) finds local image refs (proxy URLs, `data-local-path`, `.attachments/…`); `resolveAssets(refs, fetchFn)` fetches each via the **injected** `fetchFn` → base64 `data:` URI. A failed fetch is omitted + warned, never thrown — Layer A supplies the placeholder. |
 | **C** | `mermaid.ts` | `inlineMermaid(html, api)` replaces mermaid blocks (both forge's `.mermaid-container` markup and plain `language-mermaid`) with the diagram rendered to inline `<svg>` via the **injected** `api.render`. Runtime is **not** shipped. Render failure → source code block + warning. |
 | **D** | `excalidraw.ts` | `excalidrawToInlineSvg(sceneJson, exportToSvg)` rasterizes a scene to inline `<svg>` (scene `files` inlined too). **Excalidraw-free by construction** (see constraint below); the real `exportToSvg` is injected. Empty/invalid scene → placeholder, no crash. |
@@ -34,11 +34,25 @@ ExportCanvasAsHtmlDeps = {
   mermaidApi: { render(id, code) -> {svg} }// prod: lazy mermaid.render
   exportToSvg(opts) -> SVG                  // prod: lazy @excalidraw/excalidraw
   triggerDownload(filename, html) -> void  // prod: browserDownload
+  getMathCss?() -> string                   // prod: getExportKatexCss (optional)
 }
 ```
 
 `htmlExportDeps.ts` supplies the real ones; `exportToSvg` and `mermaidApi` are
 **lazy dynamic imports** so the Node-unloadable runtimes stay out of test graphs.
+
+**Math CSS (`getMathCss`).** Markdown bodies rendered by `chatMarkdownToHtml`
+already contain rendered KaTeX HTML+MathML (the math renderer is wired at that
+seam), but the exported doc has no app stylesheet — so the KaTeX layout rules +
+`KaTeX_*` `@font-face` must be embedded inline. `getExportKatexCss`
+(`shared/math/katexCssExtract.ts`) extracts exactly those rules from the loaded
+`document.styleSheets` — where esbuild has **already** inlined the fonts as
+`data:` URIs (`entry.tsx` imports `katex/dist/katex.min.css`) — so the export
+stays self-contained with **no** new committed font blob, no CDN, and math that
+matches the on-screen render. The orchestrator calls it only for markdown, guards
+the call (a throwing/absent provider ships unstyled math rather than failing), and
+passes the string to Layer A as `mathCss`. Node tests inject a fixture string; the
+`extractKatexCss` pure core is fake-tested; the real extraction is covered by e2e.
 
 ## Hard constraints
 
