@@ -17,6 +17,7 @@ import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './Exa
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
+import { useExplorerExpandedPaths, useExplorerSelectedPath, useExplorerPreviewFile } from './explorerStateStore';
 
 export interface ExplorerPanelProps {
     workspaceId: string;
@@ -92,12 +93,17 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     });
 
     const [rootEntries, setRootEntries] = useState<TreeEntry[]>([]);
-    const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     const [childrenMap, setChildrenMap] = useState<Map<string, TreeEntry[]>>(new Map());
-    const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null);
+
+    // Per-workspace persisted UI state (localStorage). Because ExplorerPanel is
+    // remounted with `key={ws.id}` on every workspace switch, these must survive
+    // outside React state so expanded folders + the open file are restored when
+    // the user switches back (and across a page reload). See explorerStateStore.
+    const [selectedPath, setSelectedPath] = useExplorerSelectedPath(workspaceId);
+    const [expandedPaths, setExpandedPaths] = useExplorerExpandedPaths(workspaceId);
+    const [previewFile, setPreviewFile] = useExplorerPreviewFile(workspaceId);
 
     // Search state
     const [searchInput, setSearchInput] = useState('');
@@ -145,12 +151,19 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         return () => { cancelled = true; };
     }, [workspaceId]);
 
-    // Deep-link: read hash on mount to restore selected path and open file preview
+    // Deep-link: read hash on mount to restore selected path and open file preview.
+    // An explicit hash deep-link for THIS workspace wins over the persisted state
+    // (per the feature decision). The `parts[1] === workspaceId` guard ensures a
+    // stale hash left over from another workspace does not clobber this
+    // workspace's restored state — each workspace's explorer stays independent.
     useEffect(() => {
         const hash = location.hash.replace(/^#/, '');
         const parts = hash.split('/');
         // #repos/:id/explorer/:path
-        if (parts[0] === 'repos' && parts[2] === 'explorer' && parts[3]) {
+        if (parts[0] === 'repos'
+            && decodeURIComponent(parts[1] ?? '') === workspaceId
+            && parts[2] === 'explorer'
+            && parts[3]) {
             const decoded = decodeURIComponent(parts.slice(3).join('/'));
             setSelectedPath(decoded);
             const segments = decoded.split('/').filter(Boolean);
@@ -159,7 +172,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                 setPreviewFile({ path: decoded, name: lastName });
             }
         }
-    }, []);
+    }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleSelect = useCallback((path: string, isDirectory: boolean) => {
         setSelectedPath(path);
