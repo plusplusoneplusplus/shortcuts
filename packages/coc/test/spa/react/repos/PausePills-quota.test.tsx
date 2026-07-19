@@ -2,9 +2,9 @@
 /**
  * Component tests for the pause pills (ALL / AP) quota-aware visual changes.
  *
- * Exercises the three new behaviors added in Part B:
+ * Exercises the pill quota visuals:
  * 1. Running-state dot color changes based on quota risk (safe/watch/risk).
- * 2. % tail appended to the pill label when running and remainingPercent < 50.
+ * 2. The remaining-% tail is never rendered in the running state (removed).
  * 3. QUOTA inline badge shown when paused with pauseSource / autopilotPauseSource === 'quota'.
  */
 // @vitest-environment jsdom
@@ -263,36 +263,30 @@ describe('Pause pills — quota-aware visuals', () => {
         });
     });
 
-    // ── 2. % tail ────────────────────────────────────────────────────────────
+    // ── 2. % tail — now always hidden in the running state ─────────────────────
+    // The remaining-quota number was removed from both pills; the risk-colored
+    // dot (tested above) is the only running-state quota signal that remains.
 
     describe('% tail in running state', () => {
-        it('shows no % tail when safe (>= 50%)', () => {
+        it('shows no % tail on either pill when safe (>= 50%)', () => {
             mockQuotaData = makeQuotaData(0.60);
             renderPane();
             expect(screen.queryByTestId('pause-pill-quota-pct-all')).toBeNull();
+            expect(screen.queryByTestId('pause-pill-quota-pct-ap')).toBeNull();
         });
 
-        it('shows % tail on ALL pill when watch (35%)', () => {
+        it('shows no % tail on either pill when watch (35%)', () => {
             mockQuotaData = makeQuotaData(0.35);
             renderPane();
-            const tail = screen.getByTestId('pause-pill-quota-pct-all');
-            expect(tail.textContent).toContain('35%');
-            expect(tail.className).toContain('amber');
+            expect(screen.queryByTestId('pause-pill-quota-pct-all')).toBeNull();
+            expect(screen.queryByTestId('pause-pill-quota-pct-ap')).toBeNull();
         });
 
-        it('shows % tail on ALL pill when risk (10%) with red color', () => {
+        it('shows no % tail on either pill when risk (10%)', () => {
             mockQuotaData = makeQuotaData(0.10);
             renderPane();
-            const tail = screen.getByTestId('pause-pill-quota-pct-all');
-            expect(tail.textContent).toContain('10%');
-            expect(tail.className).toContain('red');
-        });
-
-        it('shows % tail on AP pill when risk (10%)', () => {
-            mockQuotaData = makeQuotaData(0.10);
-            renderPane();
-            const tail = screen.getByTestId('pause-pill-quota-pct-ap');
-            expect(tail.textContent).toContain('10%');
+            expect(screen.queryByTestId('pause-pill-quota-pct-all')).toBeNull();
+            expect(screen.queryByTestId('pause-pill-quota-pct-ap')).toBeNull();
         });
 
         it('hides % tail on ALL pill when paused (even at risk quota)', () => {

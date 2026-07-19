@@ -3552,7 +3552,7 @@ export function ChatListPane({
                                 >
                                     ALL
                                 </span>
-                                {isPaused ? (
+                                {isPaused && (
                                     <>
                                         {pauseSource === 'quota' && (
                                             <span
@@ -3569,18 +3569,6 @@ export function ChatListPane({
                                             {queuePauseRemaining || 'PAUSED'}
                                         </span>
                                     </>
-                                ) : pillRiskClass !== 'safe' && (
-                                    <span
-                                        className={cn(
-                                            'text-[10px] font-semibold leading-none whitespace-nowrap',
-                                            pillRiskClass === 'risk'
-                                                ? 'text-red-600 dark:text-red-400'
-                                                : 'text-amber-700 dark:text-amber-400',
-                                        )}
-                                        data-testid="pause-pill-quota-pct-all"
-                                    >
-                                        · {pillRemainingPercent}%
-                                    </span>
                                 )}
                             </button>
                             {onPauseResumeAutopilot && (
@@ -3624,7 +3612,7 @@ export function ChatListPane({
                                         >
                                             AP
                                         </span>
-                                        {isAutopilotPaused ? (
+                                        {isAutopilotPaused && (
                                             <>
                                                 {autopilotPauseSource === 'quota' && (
                                                     <span
@@ -3641,18 +3629,6 @@ export function ChatListPane({
                                                     {autopilotPauseRemaining || 'PAUSED'}
                                                 </span>
                                             </>
-                                        ) : pillRiskClass !== 'safe' && (
-                                            <span
-                                                className={cn(
-                                                    'text-[10px] font-semibold leading-none whitespace-nowrap',
-                                                    pillRiskClass === 'risk'
-                                                        ? 'text-red-600 dark:text-red-400'
-                                                        : 'text-amber-700 dark:text-amber-400',
-                                                )}
-                                                data-testid="pause-pill-quota-pct-ap"
-                                            >
-                                                · {pillRemainingPercent}%
-                                            </span>
                                         )}
                                     </button>
                                 </>
