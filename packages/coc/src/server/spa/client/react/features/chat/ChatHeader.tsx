@@ -6,7 +6,7 @@ import { ContextWindowIndicator } from '../../ui/ContextWindowIndicator';
 import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration } from '../../utils/format';
 import { ChatStatusPill } from './ChatStatusPill';
 import { chatMarkdownToHtml } from './conversation/ConversationTurnBubble';
-import { snapshotConversation, openPrintPreview } from '../../utils/snapshot-copy-utils';
+import { snapshotConversation, openPrintPreview, embedMathCssForCopy } from '../../utils/snapshot-copy-utils';
 import { cn } from '../../ui/cn';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useContainerWidth, type ContainerWidthTier } from './hooks/useContainerWidth';
@@ -398,7 +398,12 @@ export function ChatHeader({
             } else {
                 html = formatConversationAsHtml(turns, (c) => chatMarkdownToHtml(c, wsId));
             }
-            await copyHtmlToClipboard(html);
+            // Rich-HTML flavor: embed self-contained KaTeX styling so rendered
+            // equations survive a paste into a rich-text target (no-op when the
+            // conversation has no math). Plain-text flavor: keep the original
+            // source so math delimiters (TeX) stay intact instead of HTML markup.
+            html = embedMathCssForCopy(html);
+            await copyHtmlToClipboard(html, formatConversationAsText(turns));
             setCopiedHtml(true);
             setTimeout(() => setCopiedHtml(false), 2000);
         } catch (e) {

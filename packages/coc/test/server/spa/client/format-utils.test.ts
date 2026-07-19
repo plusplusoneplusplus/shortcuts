@@ -46,6 +46,59 @@ describe('copyHtmlToClipboard', () => {
             // Cleanup
             delete (globalThis as any).ClipboardItem;
         });
+
+        // jsdom's Blob has no readable `.text()` here, so capture the content
+        // strings passed to the Blob constructor via a lightweight stub.
+        function captureFlavors(): { blobs: Record<string, { content: string; type: string }> } {
+            const writeSpy = vi.fn().mockResolvedValue(undefined);
+            Object.assign(navigator, { clipboard: { write: writeSpy, writeText: vi.fn() } });
+            const captured: Record<string, { content: string; type: string }> = {};
+            (globalThis as any).Blob = class {
+                content: string;
+                type: string;
+                constructor(parts: string[], opts?: { type?: string }) {
+                    this.content = parts.join('');
+                    this.type = opts?.type ?? '';
+                }
+            };
+            (globalThis as any).ClipboardItem = class {
+                constructor(items: Record<string, { content: string; type: string }>) {
+                    for (const [k, v] of Object.entries(items)) captured[k] = v;
+                }
+            };
+            return { blobs: captured };
+        }
+
+        function restoreFlavors(): void {
+            delete (globalThis as any).ClipboardItem;
+            delete (globalThis as any).Blob;
+        }
+
+        it('defaults the text/plain flavor to the HTML when no plainText is given', async () => {
+            const { blobs } = captureFlavors();
+            const html = '<p>Only HTML</p>';
+            await copyHtmlToClipboard(html);
+            expect(blobs['text/plain'].content).toBe(html);
+            restoreFlavors();
+        });
+
+        it('uses the distinct plainText flavor for text/plain while keeping rendered HTML (AC-03)', async () => {
+            const { blobs } = captureFlavors();
+            // Rich flavor carries rendered KaTeX; plain flavor keeps the original TeX.
+            const html = '<span class="katex"><math><mi>x</mi></math></span>';
+            const plain = '[assistant]\nInline $x^2$ and display \\[y=1\\]';
+            await copyHtmlToClipboard(html, plain);
+
+            expect(blobs['text/html'].content).toBe(html);
+            const plainText = blobs['text/plain'].content;
+            expect(plainText).toBe(plain);
+            // Original TeX delimiters survive in the plain-text flavor.
+            expect(plainText).toContain('$x^2$');
+            expect(plainText).toContain('\\[y=1\\]');
+            expect(plainText).not.toContain('class="katex"');
+
+            restoreFlavors();
+        });
     });
 
     describe('fallback execCommand path', () => {

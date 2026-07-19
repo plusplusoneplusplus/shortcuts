@@ -30,8 +30,8 @@ import { FollowUpInputArea } from '../chat/FollowUpInputArea';
 import { useConversationSelection } from '../chat/hooks/useConversationSelection';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import type { ChatMode } from '../../repos/modeConfig';
-import { copyHtmlToClipboard } from '../../utils/format';
-import { snapshotConversation } from '../../utils/snapshot-copy-utils';
+import { copyHtmlToClipboard, formatConversationAsText } from '../../utils/format';
+import { snapshotConversation, embedMathCssForCopy } from '../../utils/snapshot-copy-utils';
 import { toClientConversationTurns } from './nativeConversationTurns';
 import {
     buildNativeSessionMetadataExtraRows,
@@ -573,12 +573,17 @@ function SessionDetailView({ detail, workspaceId, onBack }: { detail: NativeCliS
             const html = snapshotConversation(turnsContainerRef.current, {
                 selectedIndices: selection.selectedTurns,
             });
-            await copyHtmlToClipboard(html);
+            // Rich-HTML flavor: embed self-contained KaTeX styling (no-op without
+            // math). Plain-text flavor: original TeX source of the selected turns.
+            const selectedSource = conversation.filter(
+                t => t.turnIndex !== undefined && selection.selectedTurns.has(t.turnIndex),
+            );
+            await copyHtmlToClipboard(embedMathCssForCopy(html), formatConversationAsText(selectedSource));
             selection.stopSelecting();
         } catch (e) {
             console.error('Copy selected HTML failed:', e);
         }
-    }, [selection]);
+    }, [selection, conversation]);
 
     const scrollToBottom = useCallback(() => {
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;

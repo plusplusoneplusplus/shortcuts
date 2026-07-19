@@ -388,16 +388,44 @@ function escapeHtmlText(s: string): string {
 }
 
 /**
- * Extract the self-contained KaTeX stylesheet for the print document. Never
- * throws (a missing document or cross-origin sheet degrades to unstyled math
- * markup rather than failing the export).
+ * Extract the self-contained KaTeX stylesheet for a derived output (print doc
+ * or rich-HTML clipboard flavor). Never throws (a missing document or
+ * cross-origin sheet degrades to unstyled math markup rather than failing the
+ * export).
  */
-function safeGetPrintMathCss(): string {
+function safeGetExportKatexCss(): string {
     try {
         return getExportKatexCss();
     } catch {
         return '';
     }
+}
+
+/**
+ * Copy-scoped layout override for embedded KaTeX math. Mirrors the print/export
+ * overrides: long display equations scroll horizontally instead of overflowing
+ * the paste target. Emitted only alongside real math CSS.
+ */
+const KATEX_COPY_OVERRIDES_CSS = `.katex-display { overflow-x: auto; overflow-y: hidden; max-width: 100%; }
+.katex { max-width: 100%; }`;
+
+/**
+ * Prepend a self-contained KaTeX `<style>` block to snapshot HTML for the
+ * rich-HTML clipboard flavor, so pasted equations keep their glyph positioning
+ * and fonts in rich-text targets that honor an embedded `<style>`. The KaTeX
+ * `@font-face` fonts are already inlined as `data:` URIs (no network, no CDN).
+ *
+ * Returns the HTML unchanged when it carries no rendered math or when no math
+ * CSS is available, so the math-free copy stays byte-for-byte identical.
+ *
+ * `mathCss` defaults to the live app's extracted KaTeX stylesheet; callers (and
+ * tests) may pass it explicitly.
+ */
+export function embedMathCssForCopy(snapshotHtml: string, mathCss?: string): string {
+    if (!snapshotHtml.includes('katex')) return snapshotHtml;
+    const css = (mathCss ?? safeGetExportKatexCss()).trim();
+    if (!css) return snapshotHtml;
+    return `<style>\n${css}\n${KATEX_COPY_OVERRIDES_CSS}\n</style>${snapshotHtml}`;
 }
 
 /**
@@ -410,7 +438,7 @@ function safeGetPrintMathCss(): string {
  * Returns `true` on success, or throws with a user-facing message on failure.
  */
 export function openPrintPreview(snapshotHtml: string, title?: string, mathCss?: string): boolean {
-    const css = mathCss ?? safeGetPrintMathCss();
+    const css = mathCss ?? safeGetExportKatexCss();
     const doc = buildPrintDocument(snapshotHtml, title, css);
     const win = window.open('', '_blank');
     if (!win) {

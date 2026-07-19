@@ -13,6 +13,7 @@ import {
     buildPrintDocument,
     openPrintPreview,
     stripAbsoluteWidths,
+    embedMathCssForCopy,
 } from '../../../../src/server/spa/client/react/utils/snapshot-copy-utils';
 
 function createConversationDOM(): HTMLDivElement {
@@ -498,6 +499,50 @@ describe('buildPrintDocument — math (AC-03)', () => {
         const html = buildPrintDocument('<div>x</div>', 'T', '   \n  ');
         expect(html).not.toContain(':not(.katex)');
         expect(html).not.toContain('.katex-display');
+    });
+});
+
+describe('embedMathCssForCopy — rich-HTML clipboard flavor (AC-03)', () => {
+    // Minimal self-contained KaTeX stylesheet fixture: a class rule plus a
+    // data:-URI @font-face (no network, no CDN).
+    const MATH_CSS =
+        '.katex{font:normal 1.21em KaTeX_Main,Times New Roman,serif}\n' +
+        "@font-face{font-family:KaTeX_Main;src:url(data:font/woff2;base64,d09GMgABAAA) format('woff2');font-weight:400}";
+
+    it('prepends a self-contained KaTeX <style> block when the HTML has rendered math', () => {
+        const snapshot = '<div><span class="katex">x</span></div>';
+        const out = embedMathCssForCopy(snapshot, MATH_CSS);
+        expect(out).toContain('<style>');
+        expect(out).toContain('.katex{font:normal 1.21em KaTeX_Main');
+        expect(out).toContain('@font-face');
+        // Style block comes before the content so the target applies it.
+        expect(out.indexOf('<style>')).toBeLessThan(out.indexOf('<div>'));
+        expect(out.endsWith(snapshot)).toBe(true);
+    });
+
+    it('adds the copy-scoped display-scroll override alongside the math CSS', () => {
+        const out = embedMathCssForCopy('<span class="katex-display">x</span>', '.katex{color:#000}');
+        expect(out).toContain('.katex-display { overflow-x: auto');
+        expect(out).toContain('.katex { max-width: 100%; }');
+    });
+
+    it('is self-contained: embeds data:-URI fonts and introduces no CDN dependency', () => {
+        const out = embedMathCssForCopy('<span class="katex">x</span>', MATH_CSS);
+        expect(out).toContain('data:font/woff2');
+        expect(out).not.toContain('https://');
+        expect(out).not.toContain('http://');
+        expect(out).not.toContain('cdn');
+    });
+
+    it('returns the HTML unchanged when it contains no rendered math', () => {
+        const snapshot = '<div>No math here, just $ signs of currency</div>';
+        expect(embedMathCssForCopy(snapshot, MATH_CSS)).toBe(snapshot);
+    });
+
+    it('returns the HTML unchanged when no math CSS is available', () => {
+        const snapshot = '<span class="katex">x</span>';
+        expect(embedMathCssForCopy(snapshot, '')).toBe(snapshot);
+        expect(embedMathCssForCopy(snapshot, '   \n  ')).toBe(snapshot);
     });
 });
 
