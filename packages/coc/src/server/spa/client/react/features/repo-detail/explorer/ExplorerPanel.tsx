@@ -18,6 +18,7 @@ import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/Conte
 import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
 import { useExplorerExpandedPaths, useExplorerSelectedPath, useExplorerPreviewFile } from './explorerStateStore';
+import { useExplorerRootEntries, useExplorerChildrenMap, useExplorerRootLoaded } from './explorerTreeCache';
 
 export interface ExplorerPanelProps {
     workspaceId: string;
@@ -92,10 +93,18 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         storageKey: 'explorer-sidebar-width',
     });
 
-    const [rootEntries, setRootEntries] = useState<TreeEntry[]>([]);
-    const [loading, setLoading] = useState(true);
+    // Fetched tree data — cached in-memory per workspace so a switch-back reuses
+    // already-loaded directory listings instead of re-fetching (AC-02). These
+    // survive the `key={ws.id}` remount because they live in explorerTreeCache,
+    // not in this component's React state. Cache is in-memory only; a page reload
+    // starts empty and re-fetches.
+    const [rootEntries, setRootEntries] = useExplorerRootEntries(workspaceId);
+    const [childrenMap, setChildrenMap] = useExplorerChildrenMap(workspaceId);
+    const [rootLoaded, setRootLoaded] = useExplorerRootLoaded(workspaceId);
+    // Skip the mount spinner when the root listing is already cached from an
+    // earlier visit to this workspace, so a switch-back renders instantly.
+    const [loading, setLoading] = useState(!rootLoaded);
     const [error, setError] = useState<string | null>(null);
-    const [childrenMap, setChildrenMap] = useState<Map<string, TreeEntry[]>>(new Map());
 
     // Per-workspace persisted UI state (localStorage). Because ExplorerPanel is
     // remounted with `key={ws.id}` on every workspace switch, these must survive
@@ -128,8 +137,14 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     // Exact Open state (Ctrl+O)
     const [exactOpenVisible, setExactOpenVisible] = useState(false);
 
-    // Fetch root entries on mount
+    // Fetch root entries on mount — but skip it when the root listing is already
+    // cached in-memory for this workspace (AC-02): a switch-back reuses the cache
+    // instead of issuing a new tree-listing request.
     useEffect(() => {
+        if (rootLoaded) {
+            setLoading(false);
+            return;
+        }
         let cancelled = false;
         setLoading(true);
         setError(null);
@@ -142,6 +157,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                     if (seedMap.size > 0) {
                         setChildrenMap(prev => new Map([...prev, ...seedMap]));
                     }
+                    setRootLoaded(true);
                 }
             })
             .catch((err: Error) => {
@@ -149,7 +165,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
             })
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
-    }, [workspaceId]);
+    }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Deep-link: read hash on mount to restore selected path and open file preview.
     // An explicit hash deep-link for THIS workspace wins over the persisted state
