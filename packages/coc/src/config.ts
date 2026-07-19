@@ -131,6 +131,7 @@ export interface CLIConfig {
     /** My Work configuration */
     myWork?: {
         enabled?: boolean;
+        todayView?: boolean;
     };
     /** My Life configuration */
     myLife?: {
@@ -459,6 +460,7 @@ export interface ResolvedCLIConfig {
     /** My Work configuration */
     myWork: {
         enabled: boolean;
+        todayView: boolean;
     };
     /** My Life configuration */
     myLife: {
@@ -735,6 +737,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     myWork: {
         enabled: false,
+        todayView: false,
     },
     myLife: {
         enabled: false,

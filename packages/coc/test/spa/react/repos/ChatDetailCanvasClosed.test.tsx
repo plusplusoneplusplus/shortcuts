@@ -301,6 +301,9 @@ vi.mock('../../../../src/server/spa/client/react/features/canvas/CanvasPanel', (
                 onClick: () => props.onSelectCanvas?.(props.availableCanvases[1].id),
             }, 'Switch second')
             : null,
+        props.onPopOut
+            ? React.createElement('button', { 'data-testid': 'canvas-popout', onClick: props.onPopOut }, 'Pop out')
+            : null,
         React.createElement('button', { 'data-testid': 'canvas-close', onClick: props.onClose }, 'Close'),
     ),
 }));
@@ -816,5 +819,95 @@ describe('ChatDetail — restore open canvas on chat switch', () => {
         await waitFor(() => expect(screen.getByTestId('source-canvas-dock').getAttribute('data-path')).toBe('/workspace-a/src/one.ts'));
         expect(screen.getByTestId('source-canvas-candidate-0').getAttribute('data-path')).toBe('/workspace-a/src/one.ts');
         expect(screen.queryByText('/workspace-b/src/two.ts')).toBeNull();
+    });
+});
+
+// ── canvas-popout-replaces-panel ────────────────────────────────────────────
+
+describe('ChatDetail — pop out replaces the right panel', () => {
+    /** Fake popout window handle whose `closed` flag a test can flip. */
+    function stubWindowOpen() {
+        const handle = { closed: false, focus: vi.fn() };
+        const openSpy = vi.spyOn(window, 'open').mockReturnValue(handle as unknown as Window);
+        return { handle, openSpy };
+    }
+
+    it('(AC-01) popping out collapses the panel to a distinct "popped out" rail', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
+        stubWindowOpen();
+        renderChat('task-A');
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-popout'));
+
+        // Panel collapses to the popped-out rail — NOT the manual-close rail.
+        await waitFor(() => expect(screen.getByTestId('canvas-poppedout-rail')).toBeTruthy());
+        expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
+        expect(screen.queryByTestId('canvas-collapsed-rail')).toBeNull();
+        // Popping out must not persist the deliberate-close flag.
+        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(false);
+    });
+
+    it('(AC-01/AC-03) opens the popout window with the canvas id and reuses its window name', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
+        const { openSpy } = stubWindowOpen();
+        renderChat('task-A');
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-popout'));
+
+        expect(openSpy).toHaveBeenCalledOnce();
+        const [url, name] = openSpy.mock.calls[0];
+        expect(url).toContain('canvasId=canvas-A');
+        expect(url).toContain('#popout/canvas');
+        // Reused window name gives focus-existing-instead-of-duplicate for free.
+        expect(name).toBe('coc-canvas-canvas-A');
+    });
+
+    it('(AC-03) focus rail button focuses the existing popout window', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
+        const { handle } = stubWindowOpen();
+        renderChat('task-A');
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-popout'));
+        await waitFor(() => expect(screen.getByTestId('canvas-poppedout-rail')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-poppedout-focus'));
+        expect(handle.focus).toHaveBeenCalledOnce();
+    });
+
+    it('(AC-02) closing the popout window restores the panel', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
+        const { handle } = stubWindowOpen();
+        renderChat('task-A');
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('canvas-popout'));
+        await waitFor(() => expect(screen.getByTestId('canvas-poppedout-rail')).toBeTruthy());
+
+        // The user closes the popout window; the close-poll (500ms) picks it up.
+        handle.closed = true;
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy(), { timeout: 2000 });
+        expect(screen.queryByTestId('canvas-poppedout-rail')).toBeNull();
+    });
+
+    it('(AC-03) a different active canvas shows normally while the popout stays pinned', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A1' }, { id: 'canvas-A2' }];
+        stubWindowOpen();
+        renderChat('task-A');
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A1'));
+
+        // Pop out canvas-A1 → the column collapses to the popped-out rail.
+        fireEvent.click(screen.getByTestId('canvas-popout'));
+        await waitFor(() => expect(screen.getByTestId('canvas-poppedout-rail')).toBeTruthy());
+
+        // A fresh AI edit makes canvas-A2 the active canvas. It is NOT the pinned
+        // popped-out one, so the right panel reopens showing canvas-A2.
+        act(() => {
+            mockState.sseOpts.onCanvasUpdated({ canvasId: 'canvas-A2', title: 'A2', revision: 1, editor: 'ai' });
+        });
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A2'));
+        expect(screen.queryByTestId('canvas-poppedout-rail')).toBeNull();
     });
 });

@@ -9,11 +9,21 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import type * as http from 'http';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import type { Route } from '../types';
 import { getRepoDataPath } from '../paths';
 import { MY_WORK_WORKSPACE_ID } from './my-work-workspace';
+import {
+    parse,
+    patchActionItem,
+    patchFollowUp,
+    addActionItem,
+    addFollowUp,
+    archiveCheckedActionItems,
+    type TaskPatch,
+} from './my-work-tasks';
 
 // ============================================================================
 // Helpers
@@ -21,6 +31,32 @@ import { MY_WORK_WORKSPACE_ID } from './my-work-workspace';
 
 function getNotesRoot(dataDir: string): string {
     return getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+}
+
+function actionItemsPath(dataDir: string): string {
+    return path.join(getNotesRoot(dataDir), 'Action Items.md');
+}
+
+function followUpsPath(dataDir: string): string {
+    return path.join(getNotesRoot(dataDir), 'Follow Ups.md');
+}
+
+/** Read a notes file, treating a missing file as empty content. */
+async function readFileOrEmpty(filePath: string): Promise<string> {
+    try {
+        return await fs.promises.readFile(filePath, 'utf-8');
+    } catch {
+        return '';
+    }
+}
+
+/** Read and JSON-parse a request body; returns {} on empty/invalid body. */
+async function readJSONBody(req: http.IncomingMessage): Promise<any> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    const raw = Buffer.concat(chunks).toString('utf-8');
+    if (!raw.trim()) return {};
+    return JSON.parse(raw);
 }
 
 function formatSyncDate(): string {
@@ -213,6 +249,143 @@ export function registerMyWorkRoutes(
                 sendJSON(res, 200, { initialized: exists, workspaceId: MY_WORK_WORKSPACE_ID });
             } catch (err: any) {
                 sendError(res, 500, err.message);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/my-work/tasks — Parse action items + follow-ups
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/my-work\/tasks$/,
+        handler: async (_req, res) => {
+            try {
+                const [actionContent, followContent] = await Promise.all([
+                    readFileOrEmpty(actionItemsPath(dataDir)),
+                    readFileOrEmpty(followUpsPath(dataDir)),
+                ]);
+                sendJSON(res, 200, parse(actionContent, followContent));
+            } catch (err: any) {
+                sendError(res, 500, `Failed to read tasks: ${err.message}`);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // PATCH /api/my-work/tasks/:id — Toggle/edit a single checkbox line
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'PATCH',
+        pattern: /^\/api\/my-work\/tasks\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            try {
+                const id = decodeURIComponent(match?.[1] ?? '');
+                let body: any;
+                try {
+                    body = await readJSONBody(req);
+                } catch {
+                    sendError(res, 400, 'Invalid JSON body');
+                    return;
+                }
+                const patch: TaskPatch = {};
+                if (typeof body.checked === 'boolean') patch.checked = body.checked;
+                if (typeof body.text === 'string') patch.text = body.text;
+
+                // Read-modify-write: re-read fresh, patch the one target line, write.
+                const aiPath = actionItemsPath(dataDir);
+                const actionContent = await readFileOrEmpty(aiPath);
+                const nextAction = patchActionItem(actionContent, id, patch);
+                if (nextAction !== null) {
+                    await fs.promises.writeFile(aiPath, nextAction, 'utf-8');
+                    sendJSON(res, 200, { ok: true });
+                    return;
+                }
+
+                const fuPath = followUpsPath(dataDir);
+                const followContent = await readFileOrEmpty(fuPath);
+                const nextFollow = patchFollowUp(followContent, id, patch);
+                if (nextFollow !== null) {
+                    await fs.promises.writeFile(fuPath, nextFollow, 'utf-8');
+                    sendJSON(res, 200, { ok: true });
+                    return;
+                }
+
+                sendError(res, 404, `Task not found: ${id}`);
+            } catch (err: any) {
+                sendError(res, 500, `Failed to patch task: ${err.message}`);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/my-work/tasks — Quick-add an item to a list
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/my-work\/tasks$/,
+        handler: async (req, res) => {
+            try {
+                let body: any;
+                try {
+                    body = await readJSONBody(req);
+                } catch {
+                    sendError(res, 400, 'Invalid JSON body');
+                    return;
+                }
+                const text = typeof body.text === 'string' ? body.text.trim() : '';
+                if (!text) {
+                    sendError(res, 400, 'text is required');
+                    return;
+                }
+
+                if (body.list === 'followup') {
+                    const person = typeof body.person === 'string' ? body.person.trim() : '';
+                    if (!person) {
+                        sendError(res, 400, 'person is required for follow-up items');
+                        return;
+                    }
+                    const fuPath = followUpsPath(dataDir);
+                    const content = await readFileOrEmpty(fuPath);
+                    const { content: next, id } = addFollowUp(content, person, text);
+                    await fs.promises.writeFile(fuPath, next, 'utf-8');
+                    sendJSON(res, 201, { id });
+                    return;
+                }
+
+                if (body.list === 'action') {
+                    const aiPath = actionItemsPath(dataDir);
+                    const content = await readFileOrEmpty(aiPath);
+                    const { content: next, id } = addActionItem(content, text);
+                    await fs.promises.writeFile(aiPath, next, 'utf-8');
+                    sendJSON(res, 201, { id });
+                    return;
+                }
+
+                sendError(res, 400, "list must be 'action' or 'followup'");
+            } catch (err: any) {
+                sendError(res, 500, `Failed to add task: ${err.message}`);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/my-work/tasks/archive — Move checked action items to Archive
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/my-work\/tasks\/archive$/,
+        handler: async (_req, res) => {
+            try {
+                const aiPath = actionItemsPath(dataDir);
+                const content = await readFileOrEmpty(aiPath);
+                const { content: next, archived } = archiveCheckedActionItems(content);
+                if (archived > 0) {
+                    await fs.promises.writeFile(aiPath, next, 'utf-8');
+                }
+                sendJSON(res, 200, { archived });
+            } catch (err: any) {
+                sendError(res, 500, `Failed to archive tasks: ${err.message}`);
             }
         },
     });

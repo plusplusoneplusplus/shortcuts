@@ -150,8 +150,12 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('copilot-sessions')).toBe(true);
     });
 
-    it('has exactly 18 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(18);
+    it('includes "today" (My Work Today view)', () => {
+        expect(VALID_REPO_SUB_TABS.has('today')).toBe(true);
+    });
+
+    it('has exactly 19 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(19);
     });
 });
 

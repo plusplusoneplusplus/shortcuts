@@ -985,6 +985,7 @@ timeout: 300
                 '  enabled: true',
                 'myWork:',
                 '  enabled: true',
+                '  todayView: true',
                 'myLife:',
                 '  enabled: true',
                 'scratchpad:',
@@ -1152,6 +1153,7 @@ timeout: 300
                 '  enabled: false',
                 'myWork:',
                 '  enabled: true',
+                '  todayView: true',
                 'myLife:',
                 '  enabled: true',
                 'scratchpad:',
@@ -1359,6 +1361,7 @@ timeout: 300
                   },
                   "myWork": {
                     "enabled": true,
+                    "todayView": true,
                   },
                   "notes": {
                     "enabled": false,
@@ -1496,6 +1499,7 @@ timeout: 300
                   "model": "file",
                   "myLife.enabled": "file",
                   "myWork.enabled": "file",
+                  "myWork.todayView": "file",
                   "notes.enabled": "file",
                   "opencode.enabled": "default",
                   "output": "file",

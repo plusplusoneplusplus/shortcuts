@@ -26,9 +26,10 @@ import { RemoteShellHeader } from '../features/remote-shell/RemoteShellHeader';
 import { VirtualWorkspaceShellHeader } from '../features/remote-shell/VirtualWorkspaceShellHeader';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
-import { MY_WORK_WORKSPACE_ID, MY_WORK_HEADER_CONFIG } from '../repos/MyWorkView';
+import { MY_WORK_WORKSPACE_ID, getMyWorkHeaderConfig } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID, MY_LIFE_HEADER_CONFIG } from '../repos/MyLifeView';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
+import { useMyWorkTodayViewEnabled } from '../hooks/feature-flags/useMyWorkTodayViewEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
 import { findRepoBySelectionId } from '../repos/cloneIdentity';
@@ -69,6 +70,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
     const brandTooltip = hostname ? `Copilot of Copilot @ ${hostname}` : 'Copilot of Copilot';
     const myWorkEnabled = useMyWorkEnabled();
+    const todayViewEnabled = useMyWorkTodayViewEnabled();
     const myLifeEnabled = useMyLifeEnabled();
     // On macOS desktop the native title bar is replaced by hiddenInset traffic lights
     // that overlay the left edge of this header. Reserve space so they don't cover
@@ -139,7 +141,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     // repo-picker / clone-switcher clusters.
     const virtualHeaderConfig =
         myWorkEnabled && isOnReposTab && state.selectedRepoId === MY_WORK_WORKSPACE_ID
-            ? MY_WORK_HEADER_CONFIG
+            ? getMyWorkHeaderConfig(todayViewEnabled)
             : myLifeEnabled && isOnReposTab && state.selectedRepoId === MY_LIFE_WORKSPACE_ID
                 ? MY_LIFE_HEADER_CONFIG
                 : null;

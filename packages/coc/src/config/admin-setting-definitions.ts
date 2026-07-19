@@ -474,6 +474,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'myWork.todayView', default: false, runtime: 'live', runtimeFlag: 'myWorkTodayViewEnabled',
+        ui: {
+            group: 'dashboard', order: 21, label: 'My Work — Today view',
+            hint: 'Actionable Today tab in My Work with checkbox toggling and quick-add.',
+            testId: 'toggle-mywork-today-view-enabled',
+        },
+    }),
+    bool({
         key: 'myLife.enabled', default: false, runtime: 'live', runtimeFlag: 'myLifeEnabled',
         ui: {
             group: 'dashboard', order: 30, label: 'My Life',

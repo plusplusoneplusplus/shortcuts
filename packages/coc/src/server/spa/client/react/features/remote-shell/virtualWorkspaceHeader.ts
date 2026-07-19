@@ -42,4 +42,10 @@ export interface VirtualWorkspaceHeaderConfig {
     testIdPrefix: string;
     tabs: VirtualWorkspaceHeaderTab[];
     actions: VirtualWorkspaceHeaderAction[];
+    /**
+     * Landing tab when the active sub-tab is not one of the visible tabs.
+     * Defaults to `notes`. Used to make the Today tab the default landing tab
+     * for My Work when its flag is on, without changing the flag-off default.
+     */
+    defaultTab?: RepoSubTab;
 }

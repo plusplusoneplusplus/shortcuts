@@ -222,6 +222,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [conversationCanvases, setConversationCanvases] = useState<CanvasSummary[]>([]);
     const [canvasLiveEvent, setCanvasLiveEvent] = useState<CanvasUpdatedEvent | null>(null);
     const [canvasPanelClosed, setCanvasPanelClosed] = useState(false);
+    // Canvas id currently popped out into its own window (canvas-popout-replaces-
+    // panel). While set AND active, the in-flow canvas column collapses to a
+    // distinct "popped out" rail so the width goes back to the conversation
+    // (AC-01); closing the window restores the panel (AC-02). Pinned to the id it
+    // was opened for, so a different active canvas still shows normally (AC-03).
+    const [poppedOutCanvasId, setPoppedOutCanvasId] = useState<string | null>(null);
+    const popOutWindowRef = useRef<Window | null>(null);
+    const popOutPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     // Session-scoped, per-conversation memory of which canvas surface is open in
     // each chat (restore-open-canvas-on-chat-switch). Held in memory only — keyed
     // by `pid = processId ?? bareTaskId`, NEVER persisted to localStorage/disk, so
@@ -1366,11 +1374,71 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (!activeCanvasId || !workspaceId) return;
         const base = window.location.origin + window.location.pathname;
         const url = `${base}?workspace=${encodeURIComponent(workspaceId)}&canvasId=${encodeURIComponent(activeCanvasId)}#popout/canvas`;
-        window.open(url, `coc-canvas-${activeCanvasId}`, 'width=900,height=900');
+        // Reusing the `coc-canvas-<id>` window name focuses an existing popout of
+        // the same canvas instead of spawning a duplicate (AC-03). On Electron the
+        // same-origin open is intercepted into a native child BrowserWindow.
+        const handle = window.open(url, `coc-canvas-${activeCanvasId}`, 'width=900,height=900');
+        if (!handle) return; // popup blocked — leave the panel expanded as-is
+        popOutWindowRef.current = handle;
+        setPoppedOutCanvasId(activeCanvasId);
+        // Poll the handle for close so the panel comes back when the window is
+        // shut (AC-02). Best-effort: same-origin `handle.closed` is reliable in
+        // both the web page and Electron's intercepted child window. A main-window
+        // reload drops this handle, so restoration may not fire then (accepted).
+        if (popOutPollRef.current !== null) clearInterval(popOutPollRef.current);
+        popOutPollRef.current = setInterval(() => {
+            if (handle.closed) {
+                if (popOutPollRef.current !== null) {
+                    clearInterval(popOutPollRef.current);
+                    popOutPollRef.current = null;
+                }
+                popOutWindowRef.current = null;
+                setPoppedOutCanvasId(null);
+            }
+        }, 500);
     }, [activeCanvasId, workspaceId]);
 
+    // Focus the existing popout window from the "popped out" rail (AC-03).
+    const handleFocusPoppedOut = useCallback(() => {
+        popOutWindowRef.current?.focus();
+    }, []);
+
+    // Stop the close-poll when this chat unmounts so it does not leak.
+    useEffect(() => () => {
+        if (popOutPollRef.current !== null) {
+            clearInterval(popOutPollRef.current);
+            popOutPollRef.current = null;
+        }
+    }, []);
+
+    // Whether the active canvas is the one currently living in the popout window.
+    const activeCanvasPoppedOut = poppedOutCanvasId !== null && activeCanvasId === poppedOutCanvasId;
+
     const canvasColumn = (canvasAvailable && activeCanvasId && workspaceId) ? (
-        canvasPanelClosed ? (
+        activeCanvasPoppedOut ? (
+            /* Popped-out rail — this canvas lives in its own window; the width goes
+               back to the conversation. Distinct from the manual "close" rail so the
+               user reads it as "elsewhere" (AC-01). Closing the window restores the
+               panel (AC-02); clicking here focuses the window (AC-03). */
+            <div
+                className="hidden lg:flex w-9 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#474749] flex-col items-center pt-2"
+                data-testid="canvas-poppedout-rail"
+            >
+                <button
+                    type="button"
+                    className="inline-flex items-center justify-center w-7 h-7 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
+                    onClick={handleFocusPoppedOut}
+                    aria-label="Focus popped-out canvas window"
+                    title="Canvas is open in a separate window — click to focus it"
+                    data-testid="canvas-poppedout-focus"
+                >
+                    ⇱
+                </button>
+                <span className="mt-2 text-[10px] tracking-wide text-[#848484] select-none" style={{ writingMode: 'vertical-rl' }}>
+                    Popped out
+                </span>
+            </div>
+        ) : canvasPanelClosed ? (
             /* Collapsed rail — reopen affordance so a closed canvas stays reachable */
             <div
                 className="hidden lg:flex w-9 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#474749] flex-col items-center pt-2"
