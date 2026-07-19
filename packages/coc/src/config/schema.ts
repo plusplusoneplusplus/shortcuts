@@ -167,6 +167,12 @@ const BASE_SCHEMA_TREE: SchemaTree = {
         historyLimit: z.number().int().positive(),
         restartPolicy: z.enum(['fail', 'requeue', 'requeue-if-retriable']),
         restartPickupDelayMs: z.number().int().min(0),
+        quotaAutoPause: {
+            enabled: z.boolean(),
+            threshold: z.number().min(0).max(1),
+            action: z.enum(['autopilot', 'all']),
+            respectOverage: z.boolean(),
+        },
     },
     models: {
         enabled: z.array(z.string()),

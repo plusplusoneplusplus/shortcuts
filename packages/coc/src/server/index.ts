@@ -106,6 +106,7 @@ interface CloseHandlerDeps {
     activeWorkspaceBackgroundRefresher?: { dispose(): void };
     dreamIdleScheduler?: { dispose(): void };
     agentProvidersQuotaCache?: { dispose(): void };
+    quotaPauseWatcher?: { dispose(): void };
     containerLink?: { stop(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
@@ -137,6 +138,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.activeWorkspaceBackgroundRefresher?.dispose();
         deps.dreamIdleScheduler?.dispose();
         deps.agentProvidersQuotaCache?.dispose();
+        deps.quotaPauseWatcher?.dispose();
         deps.containerLink?.stop();
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
@@ -658,7 +660,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspaceBackgroundRefresher, dreamIdleScheduler } = registerAllRoutes(routes, {
+    const { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -873,6 +875,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             activeWorkspaceBackgroundRefresher,
             dreamIdleScheduler,
             agentProvidersQuotaCache,
+            quotaPauseWatcher,
             containerLink,
             activeSockets, server,
         }),
