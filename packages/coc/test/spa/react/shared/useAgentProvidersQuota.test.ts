@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /// <reference types="vitest/globals" />
 import { renderHook, waitFor, act } from '@testing-library/react';
 import type { AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-client';
