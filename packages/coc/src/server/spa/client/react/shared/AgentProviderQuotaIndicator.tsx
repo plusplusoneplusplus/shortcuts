@@ -2,10 +2,9 @@
  * AgentProviderQuotaIndicator — desktop top-bar quota gauge and dropdown.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import type { AgentProviderId, AgentProvidersQuotaResponse, ProviderQuotaResult, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import type { AgentProviderId, ProviderQuotaResult, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
 import { useAnchoredPanelPosition } from './useAnchoredPanelPosition';
 import {
     formatQuotaTypeLabel,
@@ -17,10 +16,11 @@ import {
     getTightestFiniteQuotaType,
     getUnlimitedQuotaTypes,
 } from './quotaUtils';
+import { useAgentProvidersQuota, AGENT_PROVIDER_QUOTA_POLL_MS } from './useAgentProvidersQuota';
 import { Spinner } from '../ui';
 import { cn } from '../ui/cn';
 
-export const AGENT_PROVIDER_QUOTA_POLL_MS = 5 * 60 * 1000;
+export { AGENT_PROVIDER_QUOTA_POLL_MS };
 
 const PROVIDER_LABELS: Record<AgentProviderId, string> = {
     copilot: 'Copilot',
@@ -205,57 +205,10 @@ export interface AgentProviderQuotaIndicatorProps {
 
 export function agentProviderQuotaIndicator({ placement = 'down' }: AgentProviderQuotaIndicatorProps = {}) {
     const [open, setOpen] = useState(false);
-    const [quotaData, setQuotaData] = useState<AgentProvidersQuotaResponse | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const { quotaData, loading, refreshing, error, refresh: refreshQuota } = useAgentProvidersQuota();
     const buttonRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
-    const mountedRef = useRef(false);
-    const quotaDataRef = useRef<AgentProvidersQuotaResponse | null>(null);
     const panelPos = useAnchoredPanelPosition({ open, placement, triggerRef: buttonRef, panelRef });
-
-    useEffect(() => {
-        quotaDataRef.current = quotaData;
-    }, [quotaData]);
-
-    const refreshQuota = useCallback(async (options: { force?: boolean } = {}) => {
-        const hasExistingData = quotaDataRef.current !== null;
-        if (hasExistingData) {
-            setRefreshing(true);
-        } else {
-            setLoading(true);
-        }
-        setError(null);
-        try {
-            const data = await getSpaCocClient().admin.getAgentProvidersQuota(options.force ? { force: true } : undefined);
-            if (!mountedRef.current) {
-                return;
-            }
-            setQuotaData(data);
-        } catch (err) {
-            if (!mountedRef.current) {
-                return;
-            }
-            setError(getSpaCocClientErrorMessage(err, 'Failed to load provider quota'));
-        } finally {
-            if (!mountedRef.current) {
-                return;
-            }
-            setLoading(false);
-            setRefreshing(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        mountedRef.current = true;
-        void refreshQuota();
-        const timer = window.setInterval(() => void refreshQuota(), AGENT_PROVIDER_QUOTA_POLL_MS);
-        return () => {
-            mountedRef.current = false;
-            window.clearInterval(timer);
-        };
-    }, [refreshQuota]);
 
     useEffect(() => {
         if (!open) {
