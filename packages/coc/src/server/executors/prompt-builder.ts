@@ -31,7 +31,7 @@ import { CONFIG_FILE_NAME, resolveConfig } from '../../config';
 import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
-import { createExplorationTools } from '../llm-tools/exploration-tools';
+import { createKustoTools } from '../llm-tools/kusto-tools';
 import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn, type CreateUpdateWorkItemToolDeps } from '../llm-tools/create-update-work-item-tool';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
@@ -751,10 +751,10 @@ export function buildCanvasToolsAddon(
 }
 
 // ============================================================================
-// Exploration Tools (gated by the `exploration.enabled` config flag)
+// Kusto Tools (gated by the `kusto.enabled` config flag)
 // ============================================================================
 
-export function buildExplorationToolsAddon(
+export function buildKustoToolsAddon(
     dataDir: string | undefined,
     store: ProcessStore | undefined,
     workspaceId: string | undefined,
@@ -766,12 +766,12 @@ export function buildExplorationToolsAddon(
     }
 
     const enabled = opts?.enabled
-        ?? resolveConfig(path.join(dataDir, CONFIG_FILE_NAME)).exploration.enabled;
+        ?? resolveConfig(path.join(dataDir, CONFIG_FILE_NAME)).kusto.enabled;
     if (!enabled) {
         return { tools: [], suffix: '' };
     }
 
-    const { kustoQuery } = createExplorationTools({
+    const { kustoQuery } = createKustoTools({
         dataDir,
         workspaceId,
         processId,

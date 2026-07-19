@@ -139,7 +139,7 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
     {
         name: 'kusto_query',
         label: 'Kusto Query',
-        description: 'Runs a Kusto (KQL) query server-side and shows the result as an interactive exploration canvas.',
+        description: 'Runs a Kusto (KQL) query server-side and shows the result as an interactive Kusto query canvas.',
         enabledByDefault: true,
     },
     {
@@ -153,8 +153,8 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
 /** Tool names belonging to the canvas feature (gated by `canvas.enabled`). */
 export const CANVAS_LLM_TOOL_NAMES = ['write_canvas', 'read_canvas', 'extension_canvas'] as const;
 
-/** Tool names belonging to the exploration feature (gated by `exploration.enabled`). */
-export const EXPLORATION_LLM_TOOL_NAMES = ['kusto_query'] as const;
+/** Tool names belonging to the Kusto feature (gated by `kusto.enabled`). */
+export const KUSTO_LLM_TOOL_NAMES = ['kusto_query'] as const;
 
 /**
  * Returns the effective LLM tool registry given runtime feature flags.
@@ -163,7 +163,7 @@ export const EXPLORATION_LLM_TOOL_NAMES = ['kusto_query'] as const;
  * the dashboard tool list and per-workspace settings do not advertise a tool
  * the executor will not register.
  */
-export function getEffectiveLlmToolRegistry(opts: { loopsEnabled?: boolean; canvasEnabled?: boolean; explorationEnabled?: boolean } = {}): readonly LlmToolMeta[] {
+export function getEffectiveLlmToolRegistry(opts: { loopsEnabled?: boolean; canvasEnabled?: boolean; kustoEnabled?: boolean } = {}): readonly LlmToolMeta[] {
     let registry = [...LLM_TOOL_REGISTRY];
     if (!opts.loopsEnabled) {
         registry = registry.filter(t => t.name !== 'scheduleWakeup');
@@ -171,8 +171,8 @@ export function getEffectiveLlmToolRegistry(opts: { loopsEnabled?: boolean; canv
     if (!opts.canvasEnabled) {
         registry = registry.filter(t => !(CANVAS_LLM_TOOL_NAMES as readonly string[]).includes(t.name));
     }
-    if (!opts.explorationEnabled) {
-        registry = registry.filter(t => !(EXPLORATION_LLM_TOOL_NAMES as readonly string[]).includes(t.name));
+    if (!opts.kustoEnabled) {
+        registry = registry.filter(t => !(KUSTO_LLM_TOOL_NAMES as readonly string[]).includes(t.name));
     }
     return registry;
 }

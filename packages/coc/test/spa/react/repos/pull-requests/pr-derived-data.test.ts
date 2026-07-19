@@ -16,9 +16,11 @@ import {
     getQueueFilterDefinitions,
     matchesFilter,
     queueDotClass,
+    queueDotLabel,
     queueRiskClass,
     scopeForFilter,
 } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-derived-data';
+import type { QueueDotState } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-derived-data';
 import type {
     CommentThread,
     PullRequest,
@@ -51,6 +53,18 @@ describe('PR deterministic data helpers', () => {
         expect(queueRiskClass('med')).toContain('yellow');
         expect(queueRiskClass('high')).toContain('red');
         expect(queueRiskClass('unknown')).toContain('gray');
+    });
+
+    it('exposes a plain-language hover label for every queue dot state', () => {
+        expect(queueDotLabel('open')).toBe('Open — awaiting review');
+        expect(queueDotLabel('draft')).toBe('Draft — not ready for review');
+        expect(queueDotLabel('blocked')).toBe('High-risk change — large diff');
+        expect(queueDotLabel('ready')).toBe('Merged or closed');
+
+        const states: QueueDotState[] = ['open', 'draft', 'blocked', 'ready'];
+        for (const state of states) {
+            expect(queueDotLabel(state)).toBeTruthy();
+        }
     });
 });
 

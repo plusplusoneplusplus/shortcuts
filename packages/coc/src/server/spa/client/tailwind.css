@@ -2894,3 +2894,121 @@
 .dark .source-canvas-line-highlight {
     background: rgba(120, 110, 40, 0.42);
 }
+
+/* ── Math (KaTeX) rendering (AC-01) ─────────────────────────────────────
+   Long display equations must scroll horizontally on narrow screens instead
+   of wrapping character-by-character or forcing the page wider. The base
+   katex.min.css is imported in entry.tsx (fonts inlined, no CDN). These rules
+   layer CoC-specific overflow + spacing on top and apply in every Markdown
+   surface regardless of light/dark theme (KaTeX output is theme-independent). */
+
+.katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    padding: 2px 0;
+}
+
+/* Inline math sits on the text baseline; never let it force a wider line box. */
+.katex {
+    max-width: 100%;
+}
+
+/* Invalid / unsupported TeX degrades to readable source with a subtle marker
+   rather than throwing or blanking the surface (renderMath error fallback). */
+.math-error {
+    color: #cc0000;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.math-error--display {
+    display: block;
+    overflow-x: auto;
+}
+
+.dark .math-error {
+    color: #f48771;
+}
+
+/* ── Rich-editor formula nodes (AC-02) ──────────────────────────────────
+   Tiptap `mathInline` / `mathDisplay` node views: a clickable rendered
+   formula plus an inline TeX editor. Presentation only; the rendered KaTeX is
+   never persisted (turndown re-emits the original delimiters + TeX). */
+
+.math-node--inline {
+    display: inline;
+    cursor: pointer;
+}
+
+.math-node--display {
+    display: block;
+    cursor: pointer;
+}
+
+.math-node .math-node-render {
+    border-radius: 3px;
+}
+
+.math-node--selected .math-node-render,
+.math-node--editing .math-node-render {
+    outline: 2px solid rgba(59, 130, 246, 0.6);
+    outline-offset: 1px;
+}
+
+.math-node-editor {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-left: 6px;
+    padding: 4px 6px;
+    border: 1px solid rgba(120, 120, 120, 0.4);
+    border-radius: 4px;
+    background: rgba(127, 127, 127, 0.08);
+    vertical-align: middle;
+}
+
+.math-node--display .math-node-editor {
+    display: flex;
+    margin-left: 0;
+    margin-top: 6px;
+}
+
+.math-node-editor-input {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85em;
+    min-width: 12ch;
+    padding: 2px 4px;
+    border: 1px solid rgba(120, 120, 120, 0.5);
+    border-radius: 3px;
+    background: var(--md-editor-bg, #fff);
+    color: inherit;
+    resize: vertical;
+}
+
+.dark .math-node-editor-input {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.math-node-editor-error {
+    color: #cc0000;
+    font-size: 0.8em;
+}
+
+.dark .math-node-editor-error {
+    color: #f48771;
+}
+
+.math-node-editor-actions {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.math-node-editor-actions button {
+    font-size: 0.8em;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+}

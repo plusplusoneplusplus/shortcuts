@@ -290,6 +290,35 @@ describe('buildWhisperFileDiff', () => {
         expect(lines.some(l => l.startsWith('index '))).toBe(false);
     });
 
+    it('reconstructs a Codex `/dev/null` create header as a new-file diff', () => {
+        const unifiedDiff = [
+            'diff --git /dev/null b/src/new.ts',
+            'index e69de29bb..50661e98b 100644',
+            '--- /dev/null',
+            '+++ b/src/new.ts',
+            '@@ -0,0 +1,3 @@',
+            '+import { thing } from "./thing";',
+            '+export const x = 1;',
+            '+export const y = 2;',
+        ].join('\n');
+        const calls: WhisperDiffToolCall[] = [
+            {
+                toolName: 'apply_patch',
+                args: { changes: [{ path: 'src/new.ts', kind: 'add' }], diff: unifiedDiff },
+            },
+        ];
+        const lines = buildWhisperFileDiff(calls, 'src/new.ts')!.split('\n');
+        expect(lines[0]).toBe('diff --git a/src/new.ts b/src/new.ts');
+        expect(lines).toContain('new file mode 100644');
+        expect(lines).toContain('--- /dev/null');
+        expect(lines).toContain('+++ b/src/new.ts');
+        expect(lines).toContain('+import { thing } from "./thing";');
+        expect(lines).toContain('+export const x = 1;');
+        expect(lines).toContain('+export const y = 2;');
+        // Metadata stripped
+        expect(lines.some(l => l.startsWith('index '))).toBe(false);
+    });
+
     it('only captures the targeted file section of a multi-file unified diff', () => {
         const unifiedDiff = [
             'diff --git a/src/a.ts b/src/a.ts',

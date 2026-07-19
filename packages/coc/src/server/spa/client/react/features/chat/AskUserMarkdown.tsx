@@ -13,6 +13,7 @@
  */
 import { useMemo } from 'react';
 import { Marked } from 'marked';
+import { mathMarkedExtension } from '../../../shared/math/mathMarkedExtension';
 
 function escapeAttr(value: string): string {
     return value
@@ -60,7 +61,7 @@ function createAskUserMarked(): Marked {
                 return `<img src="${escapeAttr(safeHref)}" alt="${alt}"${titleAttr} loading="lazy">`;
             },
         },
-    });
+    }).use(mathMarkedExtension);
 }
 
 let cachedMarked: Marked | null = null;

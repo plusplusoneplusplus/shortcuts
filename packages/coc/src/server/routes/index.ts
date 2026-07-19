@@ -462,14 +462,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         ? () => ({
             excalidrawEnabled: opts.runtimeConfigService!.config.excalidraw?.enabled ?? false,
             canvasEnabled: opts.runtimeConfigService!.config.canvas?.enabled ?? false,
-            explorationEnabled: opts.runtimeConfigService!.config.exploration?.enabled ?? false,
+            kustoEnabled: opts.runtimeConfigService!.config.kusto?.enabled ?? false,
         })
         : () => ({
             excalidrawEnabled: opts.resolvedConfig?.excalidraw?.enabled ?? false,
             canvasEnabled: opts.resolvedConfig?.canvas?.enabled ?? false,
-            explorationEnabled: opts.resolvedConfig?.exploration?.enabled ?? false,
+            kustoEnabled: opts.resolvedConfig?.kusto?.enabled ?? false,
         });
-    const isExplorationEnabled = (): boolean => getLiveFeatureFlags().explorationEnabled;
+    const isKustoEnabled = (): boolean => getLiveFeatureFlags().kustoEnabled;
     const activeWorkspaceTracker = new ActiveWorkspaceTracker();
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
@@ -588,7 +588,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
-    registerCanvasRoutes(routes, dataDir, getWsServer, store, isExplorationEnabled);
+    registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled);
     registerAdminRoutes(routes, {
         store,
         dataDir,

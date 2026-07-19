@@ -90,6 +90,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `git/` | git-cache, git-info-cache, repo-utils |
 | `storage/` | storage-migration, startup migrations, directory-history-importer, export/import/wiper, and `snapshot/` (per-domain snapshot modules + declarative registry, with `storage-snapshot-domains.ts` as a compatibility barrel) that keep admin backup, restore, and wipe behavior aligned across processes, workspaces, wikis, queues, image blobs, preferences, schedules, and git-op cleanup. Schedule snapshot logic (YAML + `schedule_runs` rows) lives in `schedule/schedule-snapshot-repository.ts` |
 | `llm-tools/` | AI tool factories (see [llm-tools.md](llm-tools.md)) |
+| `kusto/` | Kusto query canvas server domain: `kusto-exec.ts` (server-side KQL execution via `azure-kusto-data` SDK + `AzureCliCredential`) and `kusto-service.ts` (`runKustoCanvas` execute/truncate/persist orchestration). Shared by the `POST /canvases/:id/run` route and the `kusto_query` tool; gated by `kusto.enabled` |
 | `executors/` | AI chat execution layer (see Executors section below) |
 | `infrastructure/` | Server bootstrap (composition root) |
 | `routes/` | Centralized route registration |

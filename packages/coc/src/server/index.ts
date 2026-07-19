@@ -29,8 +29,8 @@ import { createQueueInfrastructure } from './infrastructure/queue-infrastructure
 import { sweepOrphanedRunningProcesses, collectResumableFollowUpProcessIds } from './processes/finalize-orphaned-turn';
 import { reenqueuePendingAskUserResumes } from './processes/resume-pending-ask-user-answers';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './workspaces/global-workspace';
-import { ensureMyWorkWorkspace } from './workspaces/my-work-workspace';
-import { ensureMyLifeWorkspace } from './workspaces/my-life-workspace';
+import { ensureMyWorkWorkspace, seedMyWorkDefaultNotes } from './workspaces/my-work-workspace';
+import { ensureMyLifeWorkspace, seedMyLifeDefaultNotes } from './workspaces/my-life-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { createLoopInfrastructure } from './infrastructure/loop-infrastructure';
 import { createEnqueueWakeup } from './loops/enqueue-wakeup';
@@ -578,7 +578,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const globalWorkspace = await ensureGlobalWorkspace(dataDir, store);
     bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);
 
-    const myWorkWorkspace = await ensureMyWorkWorkspace(dataDir, store);
+    const myWorkWorkspace = await ensureMyWorkWorkspace(
+        dataDir,
+        store,
+        runtimeConfigService.config.myWork?.enabled ?? false,
+    );
     const myWorkSkillsDir = path.join(myWorkWorkspace.rootPath, DEFAULT_SKILLS_SETTINGS.installPath);
     autoInstallMyWorkSkills(myWorkSkillsDir).then(result => {
         for (const name of result.installed) {
@@ -590,8 +594,42 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }).catch(() => { /* best-effort — never block startup */ });
     bridge.registerRepoId(myWorkWorkspace.id, myWorkWorkspace.rootPath);
 
-    const myLifeWorkspace = await ensureMyLifeWorkspace(dataDir, store);
+    const myLifeWorkspace = await ensureMyLifeWorkspace(
+        dataDir,
+        store,
+        runtimeConfigService.config.myLife?.enabled ?? false,
+    );
     bridge.registerRepoId(myLifeWorkspace.id, myLifeWorkspace.rootPath);
+
+    // Seed default notes when the feature is toggled on at runtime (off→on)
+    // without requiring a restart. The config snapshot carries no diff, so we
+    // track the last-seen enabled state ourselves. seedMy*DefaultNotes is itself
+    // guarded on notes-dir absence, so re-toggling never re-seeds deleted notes.
+    let prevMyWorkEnabled = runtimeConfigService.config.myWork?.enabled ?? false;
+    let prevMyLifeEnabled = runtimeConfigService.config.myLife?.enabled ?? false;
+    runtimeConfigService.onChange((snapshot) => {
+        const nextMyWorkEnabled = snapshot.config.myWork?.enabled ?? false;
+        if (nextMyWorkEnabled && !prevMyWorkEnabled) {
+            try {
+                seedMyWorkDefaultNotes(myWorkWorkspace.rootPath);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                process.stderr.write(`[my-work] Failed to seed default notes on enable: ${message}\n`);
+            }
+        }
+        prevMyWorkEnabled = nextMyWorkEnabled;
+
+        const nextMyLifeEnabled = snapshot.config.myLife?.enabled ?? false;
+        if (nextMyLifeEnabled && !prevMyLifeEnabled) {
+            try {
+                seedMyLifeDefaultNotes(myLifeWorkspace.rootPath);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                process.stderr.write(`[my-life] Failed to seed default notes on enable: ${message}\n`);
+            }
+        }
+        prevMyLifeEnabled = nextMyLifeEnabled;
+    });
 
     // Eagerly register all known workspaces with the schedule manager so repo
     // schedules start timers immediately — not lazily on first HTTP request.

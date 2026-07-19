@@ -12,8 +12,9 @@
 import { shortenFilePath } from '../../../../shared';
 import { getApplyPatchText, parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
 import type { ToolCallVariant } from './ToolCallVariant';
-import { getToolKindInfo, KIND_PILL_CLASSES, getToolMetric } from './toolKindUtils';
+import { getToolKindInfo, KIND_PILL_CLASSES, getToolMetric, getSemanticShellMetric } from './toolKindUtils';
 import type { ToolKindInfo } from './toolKindUtils';
+import { classifyShellCommand } from './shellCommandClassifier';
 import {
     getCodexFileChanges,
     normalizeToolForDisplay,
@@ -248,6 +249,13 @@ export interface ToolCallRenderModel {
     id: string;
     /** Normalized, canonical tool name ('unknown' when absent). */
     name: string;
+    /**
+     * Title-cased label shown as the card/header title. Matches the kind-pill
+     * label for shell-like tools (so a semantically-classified `shell` call reads
+     * as "Search"/"Read"/"Git" rather than the internal lowercase `shell`); for
+     * every other tool it stays the canonical lowercase name, unchanged.
+     */
+    displayName: string;
     status?: string;
     error?: string;
     isRunning: boolean;
@@ -288,6 +296,12 @@ export interface ToolCallRenderModel {
     hasHoverResult: boolean;
     kindInfo: ToolKindInfo;
     kindPillClass: string;
+    /**
+     * True when a generic shell call was relabeled to a semantic family
+     * (Search/Read/Files/Git). Drives the honest "executed through shell"
+     * pill tooltip; false for every non-shell tool and for Shell fallback.
+     */
+    isSemanticShell: boolean;
     /** Whisper-row metric (lines/hits/files/diff); null for the card variant. */
     metric: ToolMetric;
     /** Row path text with an 'error' fallback, used by the whisper-row variant. */
@@ -326,8 +340,24 @@ export function buildToolCallRenderModel(
     const applyPatchText = name === 'apply_patch' ? getApplyPatchText(normalized.args) : '';
     const codexFileChanges = name === 'apply_patch' ? getCodexFileChanges(normalized.args) : [];
 
-    const summary = getToolSummary(name, argsObj, normalized.args);
-    const summaryIsPath = !!summary
+    // Display-only semantic classification for generic shell commands. `shell`
+    // (Codex `command_execution`) and `bash` route real commands like rg/sed/git
+    // through one tool; when the command text is confidently a single clear
+    // family we relabel the pill/summary/metric. PowerShell keeps its existing
+    // display. The canonical name, args, and raw command are never touched.
+    const bashCommandForClass = isShellLike ? (argsObj?.command ?? argsObj?.cmd) : undefined;
+    const semantic = (name === 'shell' || name === 'bash')
+        ? classifyShellCommand(bashCommandForClass)
+        : null;
+
+    const baseSummary = getToolSummary(name, argsObj, normalized.args);
+    const summary = semantic
+        ? (typeof argsObj?.description === 'string' && argsObj.description.trim()
+            ? argsObj.description.trim()
+            : semantic.summary)
+        : baseSummary;
+    const summaryIsPath = !semantic
+        && !!summary
         && ['view', 'edit', 'create', 'glob', 'grep'].includes(name)
         && !!(argsObj && (argsObj.path || argsObj.filePath));
     const summaryFullPath = summaryIsPath && argsObj ? String(argsObj.path || argsObj.filePath) : '';
@@ -358,16 +388,25 @@ export function buildToolCallRenderModel(
         || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit' || name === 'apply_patch'
     ) && !!popoverResultText;
 
-    const kindInfo = getToolKindInfo(name);
+    const kindInfo = semantic
+        ? { label: semantic.label, cls: semantic.cls }
+        : getToolKindInfo(name);
     const kindPillClass = KIND_PILL_CLASSES[kindInfo.cls];
+    // Card title: a semantically-classified shell reads as its family label, and
+    // the internal lowercase `shell` (Codex) reads as "Shell"; every other tool
+    // keeps its canonical lowercase name unchanged.
+    const displayName = (semantic || name === 'shell') ? kindInfo.label : name;
     const metric = variant === 'whisper-row'
-        ? getToolMetric(name, argsObj, resultText, error)
+        ? (semantic
+            ? getSemanticShellMetric(semantic.metricKind, resultText, error)
+            : getToolMetric(name, argsObj, resultText, error))
         : null;
     const rowSummary = summary || (error ? 'error' : '');
 
     return {
         id: normalized.id || normalized.toolName || 'unknown',
         name,
+        displayName,
         status: normalized.status,
         error,
         isRunning: normalized.status === 'running',
@@ -398,6 +437,7 @@ export function buildToolCallRenderModel(
         hasHoverResult,
         kindInfo,
         kindPillClass,
+        isSemanticShell: !!semantic,
         metric,
         rowSummary,
     };

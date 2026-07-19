@@ -84,8 +84,8 @@ export {
     type ExtensionCanvasArgs,
 } from './canvas-tools';
 export {
-    createExplorationTools,
+    createKustoTools,
     KUSTO_QUERY_ROW_SAMPLE,
-    type ExplorationToolsDeps,
+    type KustoToolsDeps,
     type KustoQueryArgs,
-} from './exploration-tools';
+} from './kusto-tools';

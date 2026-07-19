@@ -228,8 +228,8 @@ export interface CLIConfig {
     canvas?: {
         enabled?: boolean;
     };
-    /** Kusto data-exploration canvas (interactive KQL query + charts). Disabled by default. */
-    exploration?: {
+    /** Kusto query canvas (interactive KQL query + charts). Disabled by default. */
+    kusto?: {
         enabled?: boolean;
     };
     /** Container default agent — smart routing session. Disabled by default. */
@@ -540,8 +540,8 @@ export interface ResolvedCLIConfig {
     canvas: {
         enabled: boolean;
     };
-    /** Kusto data-exploration canvas (interactive KQL query + charts). */
-    exploration: {
+    /** Kusto query canvas (interactive KQL query + charts). */
+    kusto: {
         enabled: boolean;
     };
     /** Container default agent — smart routing session. */
@@ -801,7 +801,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     canvas: {
         enabled: false,
     },
-    exploration: {
+    kusto: {
         enabled: false,
     },
     containerDefaultAgent: {

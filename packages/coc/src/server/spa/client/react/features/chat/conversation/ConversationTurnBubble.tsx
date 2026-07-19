@@ -14,6 +14,7 @@ import { isJsonResponse } from '../../../ui/json-utils';
 import { mergeConsecutiveContentItems } from './timeline-utils';
 import { LoopIcon } from '../icons/LoopIcon';
 import { Marked } from 'marked';
+import { mathMarkedExtension } from '../../../../shared/math/mathMarkedExtension';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
 import { isExcalidrawEnabled, isCanvasEnabled } from '../../../utils/config';
@@ -138,10 +139,13 @@ function rewriteBareExcalidrawLinks(html: string): string {
     );
 }
 
+let svgFenceIndex = 0;
+
 function createChatMarked(
     htmlEmbedEnabled: boolean,
     excalidrawEmbedEnabled: boolean = false,
     canvasEmbedEnabled: boolean = false,
+    svgFenceEnabled: boolean = false,
 ): Marked {
     let mermaidBlockIndex = 0;
 
@@ -151,6 +155,15 @@ function createChatMarked(
         renderer: {
             code(code: string, infostring: string | undefined, escaped: boolean): string {
                 const language = (infostring ?? '').trim().split(/\s+/)[0] || '';
+                if (svgFenceEnabled && language.toLowerCase() === 'svg') {
+                    svgFenceIndex++;
+                    const escapedSource = escaped ? code : escapeHtml(code);
+                    return (
+                        `<div class="md-svg-fence" data-fence-id="md-svg-${svgFenceIndex}">` +
+                        `<pre class="md-svg-source" style="display:none"><code>${escapedSource}</code></pre>` +
+                        '</div>\n'
+                    );
+                }
                 if (language.toLowerCase() === 'mermaid') {
                     mermaidBlockIndex++;
                     const block: CodeBlock = {
@@ -210,7 +223,7 @@ function createChatMarked(
                 return `<img data-local-path="${escapeAttr(href)}" alt="${escapedAlt}"${titleAttr} class="chat-inline-image">`;
             },
         },
-    });
+    }).use(mathMarkedExtension);
 }
 
 /**
@@ -263,7 +276,7 @@ function rewriteLocalImagePaths(html: string, wsId: string): string {
 export function chatMarkdownToHtml(
     content: string,
     wsId?: string,
-    options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean; canvasEmbedEnabled?: boolean },
+    options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean; canvasEmbedEnabled?: boolean; svgFenceEnabled?: boolean },
 ): string {
     if (!content || !content.trim()) return '';
     // Order matters: normalizeMarkdownLinkUrls fixes link/image URLs first (handles
@@ -274,8 +287,9 @@ export function chatMarkdownToHtml(
     // Keep existing callers that only enable Excalidraw embeds working while
     // allowing canvas references to render when only the Canvas feature is on.
     const canvasEnabled = options?.canvasEmbedEnabled === true || excalidrawEnabled;
+    const svgEnabled = options?.svgFenceEnabled === true;
     let html = linkifyFilePaths(
-        createChatMarked(options?.htmlEmbedEnabled === true, excalidrawEnabled, canvasEnabled).parse(normalized) as string,
+        createChatMarked(options?.htmlEmbedEnabled === true, excalidrawEnabled, canvasEnabled, svgEnabled).parse(normalized) as string,
     );
     if (wsId) {
         html = rewriteLocalImagePaths(html, wsId);
@@ -1651,7 +1665,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             >
                 <div
                     className={cn(
-                        'flex items-center flex-nowrap gap-1.5 text-[11px] text-[#848484] mb-1',
+                        'flex items-center flex-nowrap gap-1.5 text-[11px] text-[#848484] mb-1 select-none',
                         isUser
                             ? 'absolute -top-4 right-2 z-10 px-1 bg-transparent opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none [&>*]:pointer-events-auto'
                             : 'min-h-[16px]'

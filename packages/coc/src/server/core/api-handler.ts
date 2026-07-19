@@ -238,7 +238,7 @@ export function registerApiRoutes(
     routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge,
     dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined,
     db?: Database.Database, loopsEnabled?: boolean,
-    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; explorationEnabled: boolean },
+    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean },
     activeWorkspaceTracker?: ActiveWorkspaceTracker,
 ): void {
     // Wrap routes.push to automatically log API mutations (POST/PATCH/DELETE).

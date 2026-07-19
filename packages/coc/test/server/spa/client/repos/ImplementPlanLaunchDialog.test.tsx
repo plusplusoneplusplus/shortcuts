@@ -90,6 +90,12 @@ describe('ImplementPlanLaunchDialog', () => {
         // Default: return empty providers (success, no AI data) so existing tests unaffected.
         mockRemoteAgentProvidersList.mockResolvedValue({ providers: [] });
         mockRemoteAgentProvidersGetEffortTiers.mockResolvedValue({ effortTiers: {}, defaults: {} });
+        // AC-01: the panel loads the plan preview on open. Give every reader a
+        // default resolution so the preview resolves and Implement enables; tests
+        // that assert on content override these per-case.
+        mockReadTrustedBlob.mockResolvedValue({ content: '# Plan\nPreview body.', encoding: 'utf-8' });
+        mockRemoteReadTrustedBlob.mockResolvedValue({ content: '# Plan\nRemote body.', encoding: 'utf-8' });
+        mockCanvasGet.mockResolvedValue({ id: 'plan-1', title: 'My plan', content: '# Plan\nCanvas body.' });
         onClose.mockReset();
         onImplemented.mockReset();
         onRecordPersisted.mockReset();
@@ -126,6 +132,13 @@ describe('ImplementPlanLaunchDialog', () => {
                 onImplemented={onImplemented}
                 {...props}
             />,
+        );
+    }
+
+    /** Wait until the plan preview has loaded and Implement is enabled (AC-02). */
+    async function waitReady() {
+        await waitFor(() =>
+            expect(screen.getByTestId('implement-launch-confirm-btn')).not.toBeDisabled(),
         );
     }
 
@@ -194,6 +207,7 @@ describe('ImplementPlanLaunchDialog', () => {
     it('enqueues a path-based local autopilot task on confirm', async () => {
         mockEnqueue.mockResolvedValue({ task: { id: 'task-abc' } });
         renderDialog();
+        await waitReady();
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
@@ -215,6 +229,7 @@ describe('ImplementPlanLaunchDialog', () => {
         mockModalSelection.mockReturnValue({ resolved: { provider: 'codex', effortTier: 'high' } });
         mockEnqueue.mockResolvedValue({ task: { id: 'task-ai' } });
         renderDialog();
+        await waitReady();
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
@@ -232,6 +247,7 @@ describe('ImplementPlanLaunchDialog', () => {
         });
         mockEnqueue.mockResolvedValue({ task: { id: 'task-legacy' } });
         renderDialog();
+        await waitReady();
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
@@ -249,6 +265,7 @@ describe('ImplementPlanLaunchDialog', () => {
         mockModalSelection.mockReturnValue({ resolved: { effortTier: 'medium', autoProviderRouting: true } });
         mockEnqueue.mockResolvedValue({ task: { id: 'task-auto' } });
         renderDialog();
+        await waitReady();
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
@@ -276,12 +293,14 @@ describe('ImplementPlanLaunchDialog', () => {
         mockReadTrustedBlob.mockResolvedValue({ content: '# Plan\nDo the thing.', encoding: 'utf-8' });
         mockRemoteEnqueue.mockResolvedValue({ task: { id: 'task-remote' } });
         renderDialog({ availableTargets: [localTarget, remoteTarget] });
+        await waitReady();
 
         await act(async () => {
             fireEvent.change(screen.getByTestId('implement-launch-target-select'), {
                 target: { value: 'ws-remote' },
             });
         });
+        await waitReady();
         await act(async () => {
             fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
         });
@@ -310,6 +329,7 @@ describe('ImplementPlanLaunchDialog', () => {
             sourceIsRemote: true,
             sourceBaseUrl: 'http://127.0.0.1:4000',
         });
+        await waitReady();
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
@@ -330,6 +350,7 @@ describe('ImplementPlanLaunchDialog', () => {
         mockCanvasGet.mockResolvedValue({ id: 'plan-1', title: 'My plan', content: '# Plan\nCanvas work.' });
         mockEnqueue.mockResolvedValue({ task: { id: 'task-canvas' } });
         renderDialog({ planFilePath: 'My plan', selectedPlanFile: 'My plan', planCanvasId: 'plan-1' });
+        await waitReady();
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
@@ -355,6 +376,7 @@ describe('ImplementPlanLaunchDialog', () => {
             sourceMetadata: { type: 'chat' },
             onRecordPersisted,
         });
+        await waitReady();
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
@@ -381,12 +403,14 @@ describe('ImplementPlanLaunchDialog', () => {
             onRecordPersisted,
             availableTargets: [localTarget, remoteTarget],
         });
+        await waitReady();
 
         await act(async () => {
             fireEvent.change(screen.getByTestId('implement-launch-target-select'), {
                 target: { value: 'ws-remote' },
             });
         });
+        await waitReady();
         await act(async () => {
             fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
         });
@@ -404,6 +428,7 @@ describe('ImplementPlanLaunchDialog', () => {
         mockProcessUpdate.mockRejectedValue(new Error('Server error'));
         const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
         renderDialog({ sourceProcessId: 'queue_source-1', sourceMetadata: {}, onRecordPersisted });
+        await waitReady();
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
@@ -420,6 +445,7 @@ describe('ImplementPlanLaunchDialog', () => {
     it('shows an error and stays open when enqueue fails', async () => {
         mockEnqueue.mockRejectedValue(new Error('Network down'));
         renderDialog();
+        await waitReady();
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
@@ -512,5 +538,216 @@ describe('ImplementPlanLaunchDialog', () => {
         // AI controls hidden; Implement button must remain enabled.
         expect(screen.queryByTestId('implement-launch-ai-controls')).toBeNull();
         expect(screen.getByTestId('implement-launch-confirm-btn')).not.toBeDisabled();
+    });
+
+    // ── AC-01: plan content preview ──────────────────────────────────────
+
+    it('shows the exact local plan-file content in a read-only preview (AC-01-1)', async () => {
+        mockReadTrustedBlob.mockResolvedValue({ content: '# Plan A\nStep one.\nStep two.', encoding: 'utf-8' });
+        renderDialog();
+
+        await waitFor(() =>
+            expect((screen.getByTestId('implement-launch-preview') as HTMLTextAreaElement).value)
+                .toBe('# Plan A\nStep one.\nStep two.'),
+        );
+        expect(mockReadTrustedBlob).toHaveBeenCalledWith('/repo/plan.md');
+        // Compact provenance remains visible alongside the content.
+        expect(screen.getByTestId('implement-launch-summary').textContent).toBe('/repo/plan.md');
+    });
+
+    it('decodes base64 blob content for the preview', async () => {
+        mockReadTrustedBlob.mockResolvedValue({ content: btoa('# Encoded plan'), encoding: 'base64' });
+        renderDialog();
+
+        await waitFor(() =>
+            expect((screen.getByTestId('implement-launch-preview') as HTMLTextAreaElement).value)
+                .toBe('# Encoded plan'),
+        );
+    });
+
+    it('reloads the preview when the selected plan file changes (AC-01-1)', async () => {
+        mockReadTrustedBlob.mockImplementation((path: string) =>
+            Promise.resolve({
+                content: path === '/repo/a.plan.md' ? 'Content of A' : 'Content of B',
+                encoding: 'utf-8',
+            }),
+        );
+        const { rerender } = renderDialog({
+            planFilePath: '/repo/a.plan.md',
+            planFiles: ['/repo/a.plan.md', '/repo/b.plan.md'],
+            selectedPlanFile: '/repo/a.plan.md',
+        });
+
+        await waitFor(() =>
+            expect((screen.getByTestId('implement-launch-preview') as HTMLTextAreaElement).value)
+                .toBe('Content of A'),
+        );
+
+        rerender(
+            <ImplementPlanLaunchDialog
+                open
+                onClose={onClose}
+                planFilePath="/repo/a.plan.md"
+                planFiles={['/repo/a.plan.md', '/repo/b.plan.md']}
+                selectedPlanFile="/repo/b.plan.md"
+                onSelectPlanFile={onSelectPlanFile}
+                workspaceId="ws-local"
+                onImplemented={onImplemented}
+            />,
+        );
+
+        await waitFor(() =>
+            expect((screen.getByTestId('implement-launch-preview') as HTMLTextAreaElement).value)
+                .toBe('Content of B'),
+        );
+    });
+
+    it('shows the exact canvas content and its label in the preview (AC-01-2)', async () => {
+        mockCanvasGet.mockResolvedValue({ id: 'plan-1', title: 'My plan', content: '# Canvas plan\nbody' });
+        renderDialog({ planFilePath: 'My plan', selectedPlanFile: 'My plan', planCanvasId: 'plan-1' });
+
+        await waitFor(() =>
+            expect((screen.getByTestId('implement-launch-preview') as HTMLTextAreaElement).value)
+                .toBe('# Canvas plan\nbody'),
+        );
+        expect(mockCanvasGet).toHaveBeenCalledWith('ws-local', 'plan-1');
+        expect(mockReadTrustedBlob).not.toHaveBeenCalled();
+        // The label (planFilePath) is the provenance for a canvas-backed plan.
+        expect(screen.getByTestId('implement-launch-summary').textContent).toBe('My plan');
+    });
+
+    it('renders the preview as a read-only, multiline, vertically-resizable textarea (AC-01-3)', async () => {
+        renderDialog();
+        await waitFor(() => expect(screen.getByTestId('implement-launch-preview')).toBeTruthy());
+        const preview = screen.getByTestId('implement-launch-preview') as HTMLTextAreaElement;
+        expect(preview.tagName).toBe('TEXTAREA');
+        expect(preview.readOnly).toBe(true);
+        expect(preview.rows).toBeGreaterThan(1);
+        expect(preview.className).toContain('resize-y');
+        // The old single-line, path-only summary block is gone.
+        expect(screen.queryByTestId('implement-launch-preview-loading')).toBeNull();
+    });
+
+    // ── AC-02: source-safe, race-safe loading ────────────────────────────
+
+    it('reads a remote-source preview via the remote reader, never the local reader (AC-02-1)', async () => {
+        mockRemoteReadTrustedBlob.mockResolvedValue({ content: 'remote plan text', encoding: 'utf-8' });
+        renderDialog({
+            planFilePath: '/home/u/.coc/x.plan.md',
+            selectedPlanFile: '/home/u/.coc/x.plan.md',
+            workspaceId: 'ws-remote',
+            sourceIsRemote: true,
+            sourceBaseUrl: 'http://127.0.0.1:4000',
+        });
+
+        await waitFor(() =>
+            expect((screen.getByTestId('implement-launch-preview') as HTMLTextAreaElement).value)
+                .toBe('remote plan text'),
+        );
+        expect(mockRemoteReadTrustedBlob).toHaveBeenCalledWith('/home/u/.coc/x.plan.md');
+        expect(mockReadTrustedBlob).not.toHaveBeenCalled();
+    });
+
+    it('shows a loading state and disables Implement until the preview resolves (AC-02-2)', async () => {
+        let resolveRead: (v: any) => void = () => {};
+        mockReadTrustedBlob.mockReturnValue(new Promise((r) => { resolveRead = r; }));
+        renderDialog();
+
+        expect(screen.getByTestId('implement-launch-preview-loading')).toBeTruthy();
+        expect(screen.getByTestId('implement-launch-confirm-btn')).toBeDisabled();
+
+        await act(async () => {
+            resolveRead({ content: 'loaded', encoding: 'utf-8' });
+        });
+
+        await waitFor(() => expect(screen.getByTestId('implement-launch-confirm-btn')).not.toBeDisabled());
+        expect(screen.queryByTestId('implement-launch-preview-loading')).toBeNull();
+    });
+
+    it('shows a read error, enqueues nothing, and retries on reopen (AC-02-2)', async () => {
+        mockReadTrustedBlob.mockRejectedValueOnce(new Error('boom'));
+        const { rerender } = renderDialog();
+
+        await waitFor(() =>
+            expect(screen.getByTestId('implement-launch-preview-error').textContent).toContain('boom'),
+        );
+        expect(screen.getByTestId('implement-launch-confirm-btn')).toBeDisabled();
+
+        // Clicking the disabled button enqueues nothing and leaves the panel open.
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
+        });
+        expect(mockEnqueue).not.toHaveBeenCalled();
+        expect(onClose).not.toHaveBeenCalled();
+
+        // Reopen: the effect reruns on `open` and the now-successful read resolves.
+        mockReadTrustedBlob.mockResolvedValue({ content: 'recovered', encoding: 'utf-8' });
+        rerender(
+            <ImplementPlanLaunchDialog
+                open={false}
+                onClose={onClose}
+                planFilePath="/repo/plan.md"
+                selectedPlanFile="/repo/plan.md"
+                onSelectPlanFile={onSelectPlanFile}
+                workspaceId="ws-local"
+                workingDirectory="/repo"
+                onImplemented={onImplemented}
+            />,
+        );
+        rerender(
+            <ImplementPlanLaunchDialog
+                open
+                onClose={onClose}
+                planFilePath="/repo/plan.md"
+                selectedPlanFile="/repo/plan.md"
+                onSelectPlanFile={onSelectPlanFile}
+                workspaceId="ws-local"
+                workingDirectory="/repo"
+                onImplemented={onImplemented}
+            />,
+        );
+
+        await waitFor(() =>
+            expect((screen.getByTestId('implement-launch-preview') as HTMLTextAreaElement).value)
+                .toBe('recovered'),
+        );
+    });
+
+    it('does not let a stale first-file response overwrite the newer selection (AC-02-3)', async () => {
+        let resolveA: (v: any) => void = () => {};
+        mockReadTrustedBlob.mockImplementation((path: string) => {
+            if (path === '/repo/a.plan.md') return new Promise((r) => { resolveA = r; });
+            return Promise.resolve({ content: 'Content of B', encoding: 'utf-8' });
+        });
+        const { rerender } = renderDialog({
+            planFilePath: '/repo/a.plan.md',
+            planFiles: ['/repo/a.plan.md', '/repo/b.plan.md'],
+            selectedPlanFile: '/repo/a.plan.md',
+        });
+
+        // Switch to B before A's (deferred) read resolves.
+        rerender(
+            <ImplementPlanLaunchDialog
+                open
+                onClose={onClose}
+                planFilePath="/repo/a.plan.md"
+                planFiles={['/repo/a.plan.md', '/repo/b.plan.md']}
+                selectedPlanFile="/repo/b.plan.md"
+                onSelectPlanFile={onSelectPlanFile}
+                workspaceId="ws-local"
+                onImplemented={onImplemented}
+            />,
+        );
+
+        await waitFor(() =>
+            expect((screen.getByTestId('implement-launch-preview') as HTMLTextAreaElement).value)
+                .toBe('Content of B'),
+        );
+
+        // A's late response must be ignored — B's preview stays.
+        await act(async () => {
+            resolveA({ content: 'STALE Content of A', encoding: 'utf-8' });
+        });
+        expect((screen.getByTestId('implement-launch-preview') as HTMLTextAreaElement).value).toBe('Content of B');
     });
 });

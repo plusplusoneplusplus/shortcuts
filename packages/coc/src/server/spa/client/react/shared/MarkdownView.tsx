@@ -19,6 +19,7 @@ import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CopySectionBtn } from '../ui/CopySectionBtn';
 import { useMermaid } from '../hooks/ui/useMermaid';
+import { useSvgFences } from './svg/useSvgFences';
 import { extractTablesFromHtml, type ExtractedTable } from './extractTablesFromHtml';
 import { InteractiveTable } from './InteractiveTable';
 import { CanvasEmbed } from './CanvasEmbed';
@@ -84,6 +85,7 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
     const { lightboxSrc, openFromTarget, closeLightbox } = useInlineImageLightbox();
 
     useMermaid(containerRef, html);
+    useSvgFences(containerRef, html);
 
     useEffect(() => {
         const container = containerRef.current;

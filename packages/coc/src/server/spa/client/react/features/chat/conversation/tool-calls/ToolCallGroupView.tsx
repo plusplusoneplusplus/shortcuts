@@ -6,7 +6,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '../../../../ui';
 import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './toolGroupUtils';
-import { getCategoryLabel, getToolGroupStatus } from './toolGroupUtils';
+import { getCategoryLabel, getToolGroupStatus, getShellGroupSemanticLabel } from './toolGroupUtils';
 import type { DetectedCommit } from '../commitDetection';
 import { CommitStrip } from '../CommitStrip';
 import { useToolCallVariant } from './ToolCallVariant';
@@ -122,7 +122,11 @@ export function ToolCallGroupView({
     const { icon: statusIcon, summary: statusSummary } = getToolGroupStatus(
         toolCalls.map(tc => tc.status)
     );
-    const summaryLabel = getCategoryLabel(category, buildCounts(toolCalls.map(tc => tc.toolName)), agentId);
+    // Homogeneous shell groups (all Search / Read / Files / Git) get a semantic
+    // summary; mixed or unknown groups keep the generic `N shell operations`.
+    const semanticShellLabel = category === 'shell' ? getShellGroupSemanticLabel(toolCalls) : null;
+    const summaryLabel = semanticShellLabel
+        ?? getCategoryLabel(category, buildCounts(toolCalls.map(tc => tc.toolName)), agentId);
     const messageCount = contentItems?.length ?? 0;
     const startLabel   = groupStartLabel(toolCalls);
     const duration     = groupDuration(toolCalls);

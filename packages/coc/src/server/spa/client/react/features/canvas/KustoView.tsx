@@ -1,30 +1,30 @@
 /**
- * ExplorationView — interactive Kusto data-exploration surface (AC-04/AC-05).
+ * KustoView — interactive Kusto query surface (AC-04/AC-05).
  *
- * Renders an exploration canvas: an editable KQL query, editable cluster/
- * database fields, a Run button that executes the query server-side (no AI
- * turn) via `POST /canvases/:id/run`, run status, and the result rows in the
- * shared InteractiveTable. Results are CSV-exportable from the stored rows.
+ * Renders a Kusto canvas: an editable KQL query, editable cluster/database
+ * fields, a Run button that executes the query server-side (no AI turn) via
+ * `POST /canvases/:id/run`, run status, and the result rows in the shared
+ * InteractiveTable. Results are CSV-exportable from the stored rows.
  *
- * The full exploration state rides in the canvas `content` string as JSON, so
- * this component parses it on load and re-parses each returned canvas after a
- * run. The chart view (AC-05) is added alongside the table view.
+ * The full Kusto state rides in the canvas `content` string as JSON, so this
+ * component parses it on load and re-parses each returned canvas after a run.
+ * The chart view (AC-05) is added alongside the table view.
  */
 
 import { useCallback, useMemo, useState } from 'react';
 import type {
     Canvas,
-    ExplorationCellValue,
-    ExplorationChartConfig,
-    ExplorationChartType,
-    ExplorationColumn,
-    ExplorationState,
+    KustoCellValue,
+    KustoChartConfig,
+    KustoChartType,
+    KustoColumn,
+    KustoCanvasState,
 } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { InteractiveTable, tableToCsv } from '../../shared/InteractiveTable';
-import { ExplorationChart, numericColumnNames } from './ExplorationChart';
+import { KustoChart, numericColumnNames } from './KustoChart';
 
-export interface ExplorationViewProps {
+export interface KustoViewProps {
     workspaceId: string;
     canvas: Canvas;
     /** Called with the updated canvas after a successful run so the host can refresh. */
@@ -33,9 +33,9 @@ export interface ExplorationViewProps {
     compact?: boolean;
 }
 
-/** Tolerant client-side parse of the exploration JSON stored in canvas content. */
-export function parseExplorationContent(content: string | undefined | null): ExplorationState {
-    const empty: ExplorationState = {
+/** Tolerant client-side parse of the Kusto JSON stored in canvas content. */
+export function parseKustoContent(content: string | undefined | null): KustoCanvasState {
+    const empty: KustoCanvasState = {
         query: '', clusterUrl: '', database: '', columns: [], rows: [], truncated: false,
     };
     if (!content) return empty;
@@ -51,11 +51,11 @@ export function parseExplorationContent(content: string | undefined | null): Exp
         query: typeof obj.query === 'string' ? obj.query : '',
         clusterUrl: typeof obj.clusterUrl === 'string' ? obj.clusterUrl : '',
         database: typeof obj.database === 'string' ? obj.database : '',
-        columns: Array.isArray(obj.columns) ? (obj.columns as ExplorationColumn[]) : [],
-        rows: Array.isArray(obj.rows) ? (obj.rows as ExplorationCellValue[][]) : [],
+        columns: Array.isArray(obj.columns) ? (obj.columns as KustoColumn[]) : [],
+        rows: Array.isArray(obj.rows) ? (obj.rows as KustoCellValue[][]) : [],
         truncated: obj.truncated === true,
-        ...(obj.chartConfig && typeof obj.chartConfig === 'object' ? { chartConfig: obj.chartConfig as ExplorationState['chartConfig'] } : {}),
-        ...(obj.lastRun && typeof obj.lastRun === 'object' ? { lastRun: obj.lastRun as ExplorationState['lastRun'] } : {}),
+        ...(obj.chartConfig && typeof obj.chartConfig === 'object' ? { chartConfig: obj.chartConfig as KustoCanvasState['chartConfig'] } : {}),
+        ...(obj.lastRun && typeof obj.lastRun === 'object' ? { lastRun: obj.lastRun as KustoCanvasState['lastRun'] } : {}),
     };
 }
 
@@ -66,7 +66,7 @@ function escapeHtml(text: string): string {
 }
 
 /** Render a cell value as display text (null → empty). */
-function cellText(value: ExplorationCellValue): string {
+function cellText(value: KustoCellValue): string {
     if (value === null || value === undefined) return '';
     return String(value);
 }
@@ -85,27 +85,27 @@ function formatTimestamp(iso: string): string {
 
 /**
  * Build the follow-up message sent into the owning conversation for AC-06's
- * "Ask AI" loop. It embeds the exploration's current query text and the target
+ * "Ask AI" loop. It embeds the Kusto canvas's current query text and the target
  * canvas id so the AI can improve the query and persist the result back to the
- * same exploration via the `kusto_query` tool. The current query is always
+ * same Kusto canvas via the `kusto_query` tool. The current query is always
  * included so the AI reasons from the real starting point.
  */
-export function buildAskAiMessage(query: string, instruction: string, canvasId: string): string {
+export function buildKustoAskAiMessage(query: string, instruction: string, canvasId: string): string {
     const trimmedQuery = query.trim();
     const queryBlock = trimmedQuery
         ? `Current KQL query:\n\`\`\`kql\n${trimmedQuery}\n\`\`\``
-        : 'The exploration has no query yet.';
+        : 'The Kusto canvas has no query yet.';
     return [
-        `Please update the Kusto exploration (canvasId: "${canvasId}") using the `
-        + '`kusto_query` tool so the change persists to this existing exploration canvas.',
+        `Please update the Kusto query canvas (canvasId: "${canvasId}") using the `
+        + '`kusto_query` tool so the change persists to this existing Kusto query canvas.',
         queryBlock,
         `Requested change: ${instruction.trim()}`,
     ].join('\n\n');
 }
 
-export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = false }: ExplorationViewProps) {
+export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false }: KustoViewProps) {
     const client = useCocClient(workspaceId);
-    const parsed = useMemo(() => parseExplorationContent(canvas.content), [canvas.content]);
+    const parsed = useMemo(() => parseKustoContent(canvas.content), [canvas.content]);
 
     const [query, setQuery] = useState(parsed.query);
     const [clusterUrl, setClusterUrl] = useState(parsed.clusterUrl);
@@ -113,7 +113,7 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
     // View toggle + local chart config. The AI-supplied initial config is
     // applied on first open by defaulting the view to 'chart' when one exists.
     const [view, setView] = useState<'table' | 'chart'>(parsed.chartConfig ? 'chart' : 'table');
-    const [chartConfig, setChartConfig] = useState<ExplorationChartConfig | undefined>(parsed.chartConfig);
+    const [chartConfig, setChartConfig] = useState<KustoChartConfig | undefined>(parsed.chartConfig);
     // Track which canvas revision the local drafts were seeded from so a live
     // AI update (new content) re-seeds the editors instead of clobbering them.
     const [seededFrom, setSeededFrom] = useState(canvas.content);
@@ -145,7 +145,7 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
         try {
             await client.processes.sendMessage(
                 canvas.processId,
-                { content: buildAskAiMessage(query, instruction, canvas.id), mode: 'autopilot' },
+                { content: buildKustoAskAiMessage(query, instruction, canvas.id), mode: 'autopilot' },
                 { workspace: workspaceId },
             );
             setAskInstruction('');
@@ -180,9 +180,9 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
     // the current columns/rows/query. Updates local state immediately for
     // responsiveness; the returned canvas re-seeds via onCanvasSaved.
     const persistChartConfig = useCallback(
-        async (next: ExplorationChartConfig | undefined) => {
+        async (next: KustoChartConfig | undefined) => {
             setChartConfig(next);
-            const state: ExplorationState = { ...parsed };
+            const state: KustoCanvasState = { ...parsed };
             if (next) state.chartConfig = next;
             else delete state.chartConfig;
             try {
@@ -199,8 +199,8 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
     );
 
     const updateConfig = useCallback(
-        (patch: Partial<ExplorationChartConfig>) => {
-            const base: ExplorationChartConfig = chartConfig ?? { type: 'bar', y: [] };
+        (patch: Partial<KustoChartConfig>) => {
+            const base: KustoChartConfig = chartConfig ?? { type: 'bar', y: [] };
             void persistChartConfig({ ...base, ...patch });
         },
         [chartConfig, persistChartConfig],
@@ -227,7 +227,7 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
         anchor.href = url;
-        const slug = canvas.id.replace(/-[0-9a-f]{6}$/, '') || 'exploration';
+        const slug = canvas.id.replace(/-[0-9a-f]{6}$/, '') || 'kusto-query';
         anchor.download = `${slug}.csv`;
         document.body.appendChild(anchor);
         anchor.click();
@@ -239,7 +239,7 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
     const rowCount = lastRun?.rowCount ?? rows.length;
 
     return (
-        <div className="flex flex-col h-full min-h-0 text-[#1e1e1e] dark:text-[#cccccc]" data-testid="exploration-view">
+        <div className="flex flex-col h-full min-h-0 text-[#1e1e1e] dark:text-[#cccccc]" data-testid="kusto-view">
             {/* Query + connection editors */}
             <div className={`shrink-0 flex flex-col gap-2 p-3 border-b border-[#e0e0e0] dark:border-[#474749] ${compact ? 'gap-1.5 p-2' : ''}`}>
                 <div className="flex gap-2">
@@ -251,7 +251,7 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                             value={clusterUrl}
                             onChange={e => setClusterUrl(e.target.value)}
                             placeholder="https://help.kusto.windows.net"
-                            data-testid="exploration-cluster"
+                            data-testid="kusto-cluster"
                         />
                     </label>
                     <label className="flex-1 min-w-0">
@@ -262,7 +262,7 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                             value={database}
                             onChange={e => setDatabase(e.target.value)}
                             placeholder="Samples"
-                            data-testid="exploration-database"
+                            data-testid="kusto-database"
                         />
                     </label>
                 </div>
@@ -274,7 +274,7 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                         onChange={e => setQuery(e.target.value)}
                         placeholder="StormEvents | take 100"
                         spellCheck={false}
-                        data-testid="exploration-query"
+                        data-testid="kusto-query"
                     />
                 </label>
                 <div className="flex items-center gap-2">
@@ -283,11 +283,11 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                         className="px-3 py-1 text-[11px] rounded bg-[#0078d4] text-white font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
                         onClick={() => void handleRun()}
                         disabled={running || !query.trim()}
-                        data-testid="exploration-run"
+                        data-testid="kusto-run"
                     >
                         {running ? 'Running…' : 'Run'}
                     </button>
-                    <span className="flex-1 text-[10px]" data-testid="exploration-status">
+                    <span className="flex-1 text-[10px]" data-testid="kusto-status">
                         {status === 'loading' && <span className="text-[#848484]">Running query…</span>}
                         {status === 'success' && !running && (
                             <span className="text-emerald-600 dark:text-emerald-400">
@@ -297,7 +297,7 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                             </span>
                         )}
                         {status === 'error' && !running && (
-                            <span className="text-red-500" data-testid="exploration-error">{lastRun?.error ?? 'Query failed'}</span>
+                            <span className="text-red-500" data-testid="kusto-error">{lastRun?.error ?? 'Query failed'}</span>
                         )}
                         {status === 'idle' && !running && <span className="text-[#848484]">Not run yet</span>}
                     </span>
@@ -307,7 +307,7 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                                 type="button"
                                 className={`px-2 py-1 text-[11px] ${view === 'table' ? 'bg-[#0078d4] text-white' : 'text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]'}`}
                                 onClick={() => setView('table')}
-                                data-testid="exploration-view-table"
+                                data-testid="kusto-view-table"
                             >
                                 Table
                             </button>
@@ -315,7 +315,7 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                                 type="button"
                                 className={`px-2 py-1 text-[11px] ${view === 'chart' ? 'bg-[#0078d4] text-white' : 'text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]'}`}
                                 onClick={() => setView('chart')}
-                                data-testid="exploration-view-chart"
+                                data-testid="kusto-view-chart"
                             >
                                 Chart
                             </button>
@@ -326,19 +326,19 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                             type="button"
                             className="px-2 py-1 text-[11px] rounded border border-[#e0e0e0] dark:border-[#474749] text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
                             onClick={handleCsvDownload}
-                            data-testid="exploration-csv"
+                            data-testid="kusto-csv"
                         >
                             CSV
                         </button>
                     )}
                 </div>
                 {runError && (
-                    <div className="text-[10px] text-red-500" data-testid="exploration-run-error">{runError}</div>
+                    <div className="text-[10px] text-red-500" data-testid="kusto-run-error">{runError}</div>
                 )}
 
-                {/* AC-06 Ask-AI loop — only when the exploration is linked to a chat. */}
+                {/* AC-06 Ask-AI loop — only when the Kusto canvas is linked to a chat. */}
                 {!compact && canvas.processId && (
-                    <div className="flex flex-col gap-1 pt-1 border-t border-dashed border-[#e0e0e0] dark:border-[#474749]" data-testid="exploration-ask-ai">
+                    <div className="flex flex-col gap-1 pt-1 border-t border-dashed border-[#e0e0e0] dark:border-[#474749]" data-testid="kusto-ask-ai">
                         <span className="block text-[9px] uppercase text-[#848484]">Ask AI to improve this query</span>
                         <div className="flex items-start gap-2">
                             <textarea
@@ -346,25 +346,25 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                                 value={askInstruction}
                                 onChange={e => { setAskInstruction(e.target.value); setAskSent(false); }}
                                 placeholder="e.g. add a 7-day rolling average"
-                                data-testid="exploration-ask-input"
+                                data-testid="kusto-ask-input"
                             />
                             <button
                                 type="button"
                                 className="shrink-0 px-3 py-1 text-[11px] rounded bg-[#8b5cf6] text-white font-medium hover:bg-[#7c3aed] disabled:opacity-50 disabled:cursor-not-allowed"
                                 onClick={() => void handleAskAi()}
                                 disabled={asking || !askInstruction.trim()}
-                                data-testid="exploration-ask-send"
+                                data-testid="kusto-ask-send"
                             >
                                 {asking ? 'Asking…' : 'Ask AI'}
                             </button>
                         </div>
                         {askSent && (
-                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400" data-testid="exploration-ask-sent">
-                                Sent to the conversation — the AI will update this exploration.
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400" data-testid="kusto-ask-sent">
+                                Sent to the conversation — the AI will update this Kusto query.
                             </span>
                         )}
                         {askError && (
-                            <span className="text-[10px] text-red-500" data-testid="exploration-ask-error">{askError}</span>
+                            <span className="text-[10px] text-red-500" data-testid="kusto-ask-error">{askError}</span>
                         )}
                     </div>
                 )}
@@ -373,11 +373,11 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
             {/* Results — table or chart */}
             <div className="flex-1 min-h-0 overflow-auto p-3">
                 {columns.length === 0 ? (
-                    <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="exploration-empty">
+                    <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="kusto-empty">
                         {status === 'error' ? 'Run failed — see the error above.' : 'Run a query to see results.'}
                     </div>
                 ) : view === 'chart' ? (
-                    <div className="flex flex-col gap-3" data-testid="exploration-chart-view">
+                    <div className="flex flex-col gap-3" data-testid="kusto-chart-view">
                         <ChartControls
                             columns={columns}
                             numericColumns={numericColumns}
@@ -388,16 +388,16 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
                             onSeries={s => updateConfig({ series: s || undefined })}
                         />
                         {chartConfig ? (
-                            <ExplorationChart columns={columns} rows={rows} config={chartConfig} />
+                            <KustoChart columns={columns} rows={rows} config={chartConfig} />
                         ) : (
-                            <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="exploration-chart-unconfigured">
+                            <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="kusto-chart-unconfigured">
                                 Pick a chart type and a Y column to draw a chart.
                             </div>
                         )}
                     </div>
                 ) : (
                     <InteractiveTable
-                        tableKey={`exploration-${canvas.id}-${canvas.revision}`}
+                        tableKey={`kusto-${canvas.id}-${canvas.revision}`}
                         headers={headers}
                         alignments={columns.map(() => 'left')}
                         rows={stringRows}
@@ -409,7 +409,7 @@ export function ExplorationView({ workspaceId, canvas, onCanvasSaved, compact = 
     );
 }
 
-const CHART_TYPES: { value: ExplorationChartType; label: string }[] = [
+const CHART_TYPES: { value: KustoChartType; label: string }[] = [
     { value: 'line', label: 'Line' },
     { value: 'bar', label: 'Bar' },
     { value: 'scatter', label: 'Scatter' },
@@ -418,10 +418,10 @@ const CHART_TYPES: { value: ExplorationChartType; label: string }[] = [
 ];
 
 interface ChartControlsProps {
-    columns: ExplorationColumn[];
+    columns: KustoColumn[];
     numericColumns: string[];
-    config: ExplorationChartConfig | undefined;
-    onType: (t: ExplorationChartType) => void;
+    config: KustoChartConfig | undefined;
+    onType: (t: KustoChartType) => void;
     onX: (x: string) => void;
     onToggleY: (name: string) => void;
     onSeries: (s: string) => void;
@@ -434,14 +434,14 @@ const SELECT_CLASS =
 function ChartControls({ columns, numericColumns, config, onType, onX, onToggleY, onSeries }: ChartControlsProps) {
     const selectedY = config?.y ?? [];
     return (
-        <div className="flex flex-wrap items-start gap-3" data-testid="exploration-chart-controls">
+        <div className="flex flex-wrap items-start gap-3" data-testid="kusto-chart-controls">
             <label className="flex flex-col gap-0.5">
                 <span className="text-[9px] uppercase text-[#848484]">Type</span>
                 <select
                     className={SELECT_CLASS}
                     value={config?.type ?? 'bar'}
-                    onChange={e => onType(e.target.value as ExplorationChartType)}
-                    data-testid="exploration-chart-type"
+                    onChange={e => onType(e.target.value as KustoChartType)}
+                    data-testid="kusto-chart-type"
                 >
                     {CHART_TYPES.map(t => (
                         <option key={t.value} value={t.value}>{t.label}</option>
@@ -454,7 +454,7 @@ function ChartControls({ columns, numericColumns, config, onType, onX, onToggleY
                     className={SELECT_CLASS}
                     value={config?.x ?? ''}
                     onChange={e => onX(e.target.value)}
-                    data-testid="exploration-chart-x"
+                    data-testid="kusto-chart-x"
                 >
                     <option value="">(row number)</option>
                     {columns.map(c => (
@@ -464,7 +464,7 @@ function ChartControls({ columns, numericColumns, config, onType, onX, onToggleY
             </label>
             <div className="flex flex-col gap-0.5">
                 <span className="text-[9px] uppercase text-[#848484]">Y (numeric)</span>
-                <div className="flex flex-wrap gap-x-2 gap-y-0.5 max-w-[220px]" data-testid="exploration-chart-y">
+                <div className="flex flex-wrap gap-x-2 gap-y-0.5 max-w-[220px]" data-testid="kusto-chart-y">
                     {numericColumns.length === 0 ? (
                         <span className="text-[10px] italic text-[#848484]">No numeric columns</span>
                     ) : (
@@ -474,7 +474,7 @@ function ChartControls({ columns, numericColumns, config, onType, onX, onToggleY
                                     type="checkbox"
                                     checked={selectedY.includes(name)}
                                     onChange={() => onToggleY(name)}
-                                    data-testid={`exploration-chart-y-${name}`}
+                                    data-testid={`kusto-chart-y-${name}`}
                                 />
                                 {name}
                             </label>
@@ -488,7 +488,7 @@ function ChartControls({ columns, numericColumns, config, onType, onX, onToggleY
                     className={SELECT_CLASS}
                     value={config?.series ?? ''}
                     onChange={e => onSeries(e.target.value)}
-                    data-testid="exploration-chart-series"
+                    data-testid="kusto-chart-series"
                 >
                     <option value="">(none)</option>
                     {columns.map(c => (

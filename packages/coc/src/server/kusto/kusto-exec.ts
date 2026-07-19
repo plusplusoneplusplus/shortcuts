@@ -1,5 +1,5 @@
 /**
- * Server-side Kusto query execution for exploration canvases (AC-02).
+ * Server-side Kusto query execution for Kusto canvases (AC-02).
  *
  * Executes a KQL query against a cluster/database with the official
  * `azure-kusto-data` SDK, authenticated with the machine's existing `az login`
@@ -10,29 +10,29 @@
  * so tests exercise success / query-error / auth-error / truncation paths with a
  * mocked client and never touch the network or a real credential.
  *
- * Results are coerced to JSON-safe {@link ExplorationCellValue}s and truncated to
- * {@link MAX_EXPLORATION_ROWS}; `rowCount` reports the pre-truncation total.
+ * Results are coerced to JSON-safe {@link KustoCellValue}s and truncated to
+ * {@link MAX_KUSTO_ROWS}; `rowCount` reports the pre-truncation total.
  */
 
 import {
-    MAX_EXPLORATION_ROWS,
+    MAX_KUSTO_ROWS,
     truncateRows,
-    type ExplorationCellValue,
-    type ExplorationColumn,
-} from '../canvas/exploration-state';
+    type KustoCellValue,
+    type KustoColumn,
+} from '../canvas/kusto-state';
 
-/** The inputs an exploration run needs; all editable per-exploration (AC-02). */
+/** The inputs a Kusto run needs; all editable per-canvas (AC-02). */
 export interface KustoQueryParams {
     clusterUrl: string;
     database: string;
     query: string;
 }
 
-/** Typed, truncated result of a query, ready to store on an exploration. */
+/** Typed, truncated result of a query, ready to store on a Kusto canvas. */
 export interface KustoQueryResult {
-    columns: ExplorationColumn[];
-    /** Rows capped at {@link MAX_EXPLORATION_ROWS}, row-major aligned to `columns`. */
-    rows: ExplorationCellValue[][];
+    columns: KustoColumn[];
+    /** Rows capped at {@link MAX_KUSTO_ROWS}, row-major aligned to `columns`. */
+    rows: KustoCellValue[][];
     /** Total rows returned by the query before truncation. */
     rowCount: number;
     /** True when the result set exceeded the cap and was sliced. */
@@ -73,7 +73,7 @@ export type KustoClientFactory = (params: KustoQueryParams) => KustoClientLike |
 
 export interface KustoExecOptions {
     clientFactory?: KustoClientFactory;
-    /** Row cap; defaults to {@link MAX_EXPLORATION_ROWS}. */
+    /** Row cap; defaults to {@link MAX_KUSTO_ROWS}. */
     cap?: number;
 }
 
@@ -89,8 +89,8 @@ const defaultClientFactory: KustoClientFactory = async ({ clusterUrl }) => {
     return new Client(kcsb) as unknown as KustoClientLike;
 };
 
-/** Coerce a raw Kusto cell value into a JSON-safe {@link ExplorationCellValue}. */
-export function coerceCellValue(value: unknown): ExplorationCellValue {
+/** Coerce a raw Kusto cell value into a JSON-safe {@link KustoCellValue}. */
+export function coerceCellValue(value: unknown): KustoCellValue {
     if (value === null || value === undefined) return null;
     if (typeof value === 'boolean') return value;
     if (typeof value === 'number') return Number.isFinite(value) ? value : String(value);
@@ -112,14 +112,14 @@ export function coerceCellValue(value: unknown): ExplorationCellValue {
  * Run a KQL query and return typed, truncated columns + rows.
  *
  * Throws an `Error` (message preserved) on auth/connection/query failure so the
- * caller can record it as the exploration's error state.
+ * caller can record it as the Kusto canvas's error state.
  */
 export async function executeKustoQuery(
     params: KustoQueryParams,
     opts: KustoExecOptions = {},
 ): Promise<KustoQueryResult> {
     const factory = opts.clientFactory ?? defaultClientFactory;
-    const cap = opts.cap ?? MAX_EXPLORATION_ROWS;
+    const cap = opts.cap ?? MAX_KUSTO_ROWS;
 
     const client = await factory(params);
     const response = await client.execute(params.database, params.query);
@@ -129,14 +129,14 @@ export async function executeKustoQuery(
         return { columns: [], rows: [], rowCount: 0, truncated: false };
     }
 
-    const columns: ExplorationColumn[] = table.columns.map((col, i) => ({
+    const columns: KustoColumn[] = table.columns.map((col, i) => ({
         name: col.name ?? `Column${i + 1}`,
         type: col.type ?? 'string',
     }));
 
-    const allRows: ExplorationCellValue[][] = [];
+    const allRows: KustoCellValue[][] = [];
     for (const row of table.rows()) {
-        const cells: ExplorationCellValue[] = [];
+        const cells: KustoCellValue[] = [];
         for (let i = 0; i < columns.length; i++) {
             cells.push(coerceCellValue(row.getValueAt(i)));
         }

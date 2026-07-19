@@ -1,17 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { MAX_EXPLORATION_ROWS } from '@plusplusoneplusplus/coc-client';
+import { MAX_KUSTO_ROWS } from '@plusplusoneplusplus/coc-client';
 import {
-    createEmptyExplorationState,
-    parseExplorationState,
-    serializeExplorationState,
+    createEmptyKustoState,
+    parseKustoState,
+    serializeKustoState,
     truncateRows,
-    type ExplorationState,
-} from '../../../src/server/canvas/exploration-state';
+    type KustoCanvasState,
+} from '../../../src/server/canvas/kusto-state';
 
-describe('exploration-state (AC-01 data model)', () => {
-    describe('createEmptyExplorationState', () => {
+describe('kusto-state (AC-01 data model)', () => {
+    describe('createEmptyKustoState', () => {
         it('returns a blank state with empty query/cluster/database and no rows', () => {
-            expect(createEmptyExplorationState()).toEqual({
+            expect(createEmptyKustoState()).toEqual({
                 query: '',
                 clusterUrl: '',
                 database: '',
@@ -22,7 +22,7 @@ describe('exploration-state (AC-01 data model)', () => {
         });
 
         it('pre-fills cluster/database seeds (AC-07 manual create path)', () => {
-            const seeded = createEmptyExplorationState({
+            const seeded = createEmptyKustoState({
                 clusterUrl: 'https://help.kusto.windows.net',
                 database: 'Samples',
             });
@@ -33,8 +33,8 @@ describe('exploration-state (AC-01 data model)', () => {
     });
 
     describe('serialize/parse round-trip', () => {
-        it('round-trips a fully populated exploration state', () => {
-            const state: ExplorationState = {
+        it('round-trips a fully populated Kusto state', () => {
+            const state: KustoCanvasState = {
                 query: 'StormEvents | take 3',
                 clusterUrl: 'https://help.kusto.windows.net',
                 database: 'Samples',
@@ -52,7 +52,7 @@ describe('exploration-state (AC-01 data model)', () => {
                 lastRun: { timestamp: '2026-07-18T00:00:00.000Z', status: 'success', rowCount: 3 },
             };
 
-            const restored = parseExplorationState(serializeExplorationState(state));
+            const restored = parseKustoState(serializeKustoState(state));
             expect(restored.query).toBe(state.query);
             expect(restored.clusterUrl).toBe(state.clusterUrl);
             expect(restored.database).toBe(state.database);
@@ -63,14 +63,14 @@ describe('exploration-state (AC-01 data model)', () => {
         });
 
         it('falls back to an empty state on non-JSON / corrupt content', () => {
-            expect(parseExplorationState('not json {')).toEqual(createEmptyExplorationState());
-            expect(parseExplorationState('')).toEqual(createEmptyExplorationState());
-            expect(parseExplorationState(null)).toEqual(createEmptyExplorationState());
-            expect(parseExplorationState('42')).toEqual(createEmptyExplorationState());
+            expect(parseKustoState('not json {')).toEqual(createEmptyKustoState());
+            expect(parseKustoState('')).toEqual(createEmptyKustoState());
+            expect(parseKustoState(null)).toEqual(createEmptyKustoState());
+            expect(parseKustoState('42')).toEqual(createEmptyKustoState());
         });
 
         it('drops an invalid chart type and preserves the rest', () => {
-            const restored = parseExplorationState(
+            const restored = parseKustoState(
                 JSON.stringify({ query: 'q', clusterUrl: 'c', database: 'd', chartConfig: { type: 'pie3d' } }),
             );
             expect(restored.query).toBe('q');
@@ -78,7 +78,7 @@ describe('exploration-state (AC-01 data model)', () => {
         });
 
         it('coerces malformed columns/rows to safe shapes', () => {
-            const restored = parseExplorationState(
+            const restored = parseKustoState(
                 JSON.stringify({
                     columns: [{ name: 'A' }, { nope: true }, 'garbage'],
                     rows: [[1, 2], 'not-a-row', [3]],
@@ -96,15 +96,15 @@ describe('exploration-state (AC-01 data model)', () => {
         });
 
         it('caps a result over 10k rows and flags truncation', () => {
-            const rows = Array.from({ length: MAX_EXPLORATION_ROWS + 250 }, (_, i) => [i]);
+            const rows = Array.from({ length: MAX_KUSTO_ROWS + 250 }, (_, i) => [i]);
             const result = truncateRows(rows);
             expect(result.truncated).toBe(true);
-            expect(result.rows).toHaveLength(MAX_EXPLORATION_ROWS);
-            expect(result.rows[MAX_EXPLORATION_ROWS - 1]).toEqual([MAX_EXPLORATION_ROWS - 1]);
+            expect(result.rows).toHaveLength(MAX_KUSTO_ROWS);
+            expect(result.rows[MAX_KUSTO_ROWS - 1]).toEqual([MAX_KUSTO_ROWS - 1]);
         });
 
         it('treats exactly 10k rows as not truncated', () => {
-            const rows = Array.from({ length: MAX_EXPLORATION_ROWS }, (_, i) => [i]);
+            const rows = Array.from({ length: MAX_KUSTO_ROWS }, (_, i) => [i]);
             expect(truncateRows(rows).truncated).toBe(false);
         });
     });
@@ -116,11 +116,11 @@ describe('exploration-state (AC-01 data model)', () => {
                 clusterUrl: 'c',
                 database: 'd',
                 columns: [{ name: 'n', type: 'long' }],
-                rows: Array.from({ length: MAX_EXPLORATION_ROWS + 5 }, (_, i) => [i]),
+                rows: Array.from({ length: MAX_KUSTO_ROWS + 5 }, (_, i) => [i]),
                 truncated: false,
             };
-            const restored = parseExplorationState(JSON.stringify(oversized));
-            expect(restored.rows).toHaveLength(MAX_EXPLORATION_ROWS);
+            const restored = parseKustoState(JSON.stringify(oversized));
+            expect(restored.rows).toHaveLength(MAX_KUSTO_ROWS);
             expect(restored.truncated).toBe(true);
         });
     });

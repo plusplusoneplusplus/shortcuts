@@ -10,6 +10,7 @@ import { cn } from '../../ui';
 import { formatRelativeTime } from '../../utils/format';
 import {
     queueDotClass,
+    queueDotLabel,
     queueRiskClass,
 } from './pr-derived-data';
 import type { QueueDotState } from './pr-derived-data';
@@ -125,7 +126,9 @@ export function PullRequestRow({
                 )}
             >
                 <span
-                    aria-hidden="true"
+                    role="img"
+                    title={queueDotLabel(effectiveDot)}
+                    aria-label={queueDotLabel(effectiveDot)}
                     className={cn(
                         'pr-state-dot h-[13px] w-[13px] shrink-0 rounded-full border-[2.5px]',
                         queueDotClass(effectiveDot),
@@ -172,7 +175,9 @@ export function PullRequestRow({
             )}
             {!batchMode && (
                 <span
-                    aria-hidden="true"
+                    role="img"
+                    title={queueDotLabel(effectiveDot)}
+                    aria-label={queueDotLabel(effectiveDot)}
                     className={cn(
                         'pr-state-dot mt-[2px] h-[13px] w-[13px] shrink-0 rounded-full border-[2.5px]',
                         queueDotClass(effectiveDot),

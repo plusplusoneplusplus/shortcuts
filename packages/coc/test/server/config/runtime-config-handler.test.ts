@@ -77,6 +77,8 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.loopsEnabled).toBe(false);
         expect(result.features.dreamsEnabled).toBe(false);
         expect(result.features.excalidrawEnabled).toBe(false);
+        expect(result.features.kustoEnabled).toBe(false);
+        expect((result.features as Record<string, unknown>).explorationEnabled).toBeUndefined();
         expect(result.features.mcpOauthEnabled).toBe(false);
         expect(result.features.focusedDiffEnabled).toBe(false);
         expect(result.features.gitCrossCloneCherryPickEnabled).toBe(true);

@@ -94,6 +94,36 @@ describe('buildWhisperCombinedDiff', () => {
         expect(result.diffText).toContain('new file mode 100644');
     });
 
+    it('includes a Codex `/dev/null`-header create as a reconstructed section, not a non-reconstructable file', () => {
+        const unifiedDiff = [
+            'diff --git /dev/null b/src/new.ts',
+            'index e69de29bb..50661e98b 100644',
+            '--- /dev/null',
+            '+++ b/src/new.ts',
+            '@@ -0,0 +1,2 @@',
+            '+l1',
+            '+l2',
+        ].join('\n');
+        const toolCalls: WhisperDiffToolCall[] = [
+            { toolName: 'edit', args: { path: 'src/a.ts', old_str: 'a', new_str: 'A' } },
+            {
+                toolName: 'apply_patch',
+                args: { changes: [{ path: 'src/new.ts', kind: 'add' }], diff: unifiedDiff },
+            },
+        ];
+        const fileEdits = [fileEdit('src/a.ts'), fileEdit('src/new.ts', { isCreate: true })];
+        const result = buildWhisperCombinedDiff(toolCalls, fileEdits);
+
+        expect(result.sections.map(s => s.file.path)).toEqual(['src/a.ts', 'src/new.ts']);
+        const created = result.sections.find(s => s.file.path === 'src/new.ts')!;
+        expect(created.diff).toContain('new file mode 100644');
+        expect(created.diff).toContain('--- /dev/null');
+        expect(created.diff).toContain('+l1');
+        expect(created.diff).toContain('+l2');
+        expect(result.nonReconstructableFiles).toEqual([]);
+        expect(result.deletedFiles).toEqual([]);
+    });
+
     it('reports a file with only Codex-structured (no line content) changes as non-reconstructable', () => {
         const toolCalls: WhisperDiffToolCall[] = [
             { toolName: 'edit', args: { path: 'src/a.ts', old_str: 'a', new_str: 'A' } },

@@ -11,6 +11,7 @@ describe('loadRuntimeConfig', () => {
     let isRalphEnabled: () => boolean;
     let isForEachEnabled: () => boolean;
     let isDreamsEnabled: () => boolean;
+    let isKustoEnabled: () => boolean;
     let isGitCrossCloneCherryPickEnabled: () => boolean;
     let isSessionContextAttachmentsEnabled: () => boolean;
     let isCommitChatLensEnabled: () => boolean;
@@ -28,6 +29,7 @@ describe('loadRuntimeConfig', () => {
         isRalphEnabled = mod.isRalphEnabled;
         isForEachEnabled = mod.isForEachEnabled;
         isDreamsEnabled = mod.isDreamsEnabled;
+        isKustoEnabled = mod.isKustoEnabled;
         isGitCrossCloneCherryPickEnabled = mod.isGitCrossCloneCherryPickEnabled;
         isSessionContextAttachmentsEnabled = mod.isSessionContextAttachmentsEnabled;
         isCommitChatLensEnabled = mod.isCommitChatLensEnabled;
@@ -52,6 +54,7 @@ describe('loadRuntimeConfig', () => {
         expect(isRalphEnabled()).toBe(false);
         expect(isForEachEnabled()).toBe(false);
         expect(isDreamsEnabled()).toBe(false);
+        expect(isKustoEnabled()).toBe(false);
         expect(isGitCrossCloneCherryPickEnabled()).toBe(false);
         expect(isSessionContextAttachmentsEnabled()).toBe(false);
         expect(isCommitChatLensEnabled()).toBe(false);
@@ -77,6 +80,7 @@ describe('loadRuntimeConfig', () => {
                     vimNavigationEnabled: false,
                     loopsEnabled: false,
                     dreamsEnabled: true,
+                    kustoEnabled: true,
                     excalidrawEnabled: false,
                     mcpOauthEnabled: false,
                     focusedDiffEnabled: false,
@@ -93,6 +97,7 @@ describe('loadRuntimeConfig', () => {
         expect(isRalphEnabled()).toBe(true);
         expect(isForEachEnabled()).toBe(true);
         expect(isDreamsEnabled()).toBe(true);
+        expect(isKustoEnabled()).toBe(true);
         expect(isGitCrossCloneCherryPickEnabled()).toBe(true);
         expect(isSessionContextAttachmentsEnabled()).toBe(true);
         expect(isCommitChatLensEnabled()).toBe(true);

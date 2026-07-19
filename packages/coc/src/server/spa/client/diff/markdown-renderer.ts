@@ -31,6 +31,9 @@ import {
 
 import type { CommentSelection } from '@plusplusoneplusplus/forge/editor/types';
 
+import { matchMathAtStart } from '../shared/math/mathTokenizer';
+import { renderMath } from '../shared/math/renderMath';
+
 // highlight.js is loaded via CDN; declared globally in the HTML template.
 declare const hljs: {
     highlight: (code: string, options: { language: string }) => { value: string };
@@ -166,8 +169,14 @@ export function renderMarkdownToHtml(content: string, options?: RenderOptions): 
             continue;
         }
 
+        // Protect math regions before forge sees the line so Markdown-significant
+        // TeX characters reach KaTeX unchanged. Never protect inside a code block.
+        const protectedLine = inCodeBlock
+            ? { text: lines[i], restores: [] as { token: string; html: string }[] }
+            : protectLineMath(lines[i]);
+
         // Regular line-level rendering
-        const result = applyMarkdownHighlighting(lines[i], lineNum, inCodeBlock, codeBlockLang, {
+        const result = applyMarkdownHighlighting(protectedLine.text, lineNum, inCodeBlock, codeBlockLang, {
             htmlEmbedEnabled: options?.htmlEmbedEnabled === true,
         });
         inCodeBlock = result.inCodeBlock;
@@ -192,6 +201,10 @@ export function renderMarkdownToHtml(content: string, options?: RenderOptions): 
                 );
             }
         }
+
+        // Restore rendered math after comment highlighting so anchor columns
+        // stay computed against a single contiguous placeholder token.
+        lineContent = restoreLineMath(lineContent, protectedLine.restores);
 
         // Wrap the line in a div for consistent structure
         let lineHtml = '<div class="md-line" data-line="' + lineNum + '"';
@@ -239,6 +252,99 @@ export function renderSourceModeToHtml(content: string): string {
     }
 
     return '<div class="source-mode-body">' + htmlParts.join('') + '</div>';
+}
+
+// ---------------------------------------------------------------------------
+// Math protection (forge line-renderer adapter)
+// ---------------------------------------------------------------------------
+
+/**
+ * Result of protecting the math regions in a single prose line: the line text
+ * with each math region swapped for an inert alphanumeric placeholder, plus the
+ * pre-rendered KaTeX HTML for each placeholder so it can be restored after the
+ * forge line renderer has run.
+ */
+interface ProtectedMathLine {
+    /** Line text with math regions replaced by placeholders (never has math chars). */
+    text: string;
+    /** Placeholder token → rendered KaTeX HTML, applied after line rendering. */
+    restores: { token: string; html: string }[];
+}
+
+/**
+ * A placeholder token that survives the forge line renderer unchanged: it is
+ * plain alphanumerics (no HTML-significant or Markdown-significant characters),
+ * so it is neither escaped nor reformatted, and it is unique per math region so
+ * restoration is unambiguous.
+ */
+function mathPlaceholderToken(index: number): string {
+    return `xKATEXMATHPLACEHOLDER${index}KATEXx`;
+}
+
+/**
+ * Protect the math regions of one prose line before it is handed to the forge
+ * line renderer. Inline code spans (`` `...` ``) are skipped so `$` inside code
+ * never becomes math — the forge seam has no equivalent of Marked's built-in
+ * "code is tokenized first" behavior, so the adapter handles it explicitly.
+ *
+ * Only single-line delimiter forms are recognized here: a multi-line display
+ * region has an unclosed opener on each line and therefore stays literal source,
+ * which keeps the 1-based line count and comment anchors intact.
+ */
+function protectLineMath(line: string): ProtectedMathLine {
+    // Fast path: no delimiter characters at all.
+    if (line.indexOf('$') === -1 && line.indexOf('\\') === -1) {
+        return { text: line, restores: [] };
+    }
+
+    const restores: { token: string; html: string }[] = [];
+    let out = '';
+    let i = 0;
+
+    while (i < line.length) {
+        const ch = line[i];
+
+        // Leave inline code spans untouched (skip the whole `` `...` `` run).
+        if (ch === '`') {
+            const run = /^`+/.exec(line.slice(i))![0];
+            const close = line.indexOf(run, i + run.length);
+            if (close !== -1) {
+                out += line.slice(i, close + run.length);
+                i = close + run.length;
+                continue;
+            }
+            // No closing run: a literal backtick, fall through as text.
+            out += ch;
+            i += 1;
+            continue;
+        }
+
+        if (ch === '$' || ch === '\\') {
+            const m = matchMathAtStart(line.slice(i));
+            if (m) {
+                const token = mathPlaceholderToken(restores.length);
+                restores.push({ token, html: renderMath(m.tex, { display: m.display }) });
+                out += token;
+                i += m.length;
+                continue;
+            }
+        }
+
+        out += ch;
+        i += 1;
+    }
+
+    return { text: out, restores };
+}
+
+/** Restore protected math placeholders in rendered line HTML. */
+function restoreLineMath(html: string, restores: { token: string; html: string }[]): string {
+    if (restores.length === 0) return html;
+    let out = html;
+    for (const { token, html: mathHtml } of restores) {
+        out = out.split(token).join(mathHtml);
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,8 +402,9 @@ function buildHighlightFn(): ((code: string, language: string) => string) | unde
  * formatter: processes a single line of text and returns the inner HTML.
  */
 function applyInlineMarkdownFromLine(text: string): string {
-    const result = applyMarkdownHighlighting(text, 0, false, null);
-    return result.html;
+    const protectedLine = protectLineMath(text);
+    const result = applyMarkdownHighlighting(protectedLine.text, 0, false, null);
+    return restoreLineMath(result.html, protectedLine.restores);
 }
 
 /**

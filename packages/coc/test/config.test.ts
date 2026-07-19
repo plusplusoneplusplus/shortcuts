@@ -680,14 +680,14 @@ timeout: 300
             expect(result.canvas.enabled).toBe(true);
         });
 
-        it('should default exploration.enabled to false', () => {
+        it('should default kusto.enabled to false', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
-            expect(result.exploration.enabled).toBe(false);
+            expect(result.kusto.enabled).toBe(false);
         });
 
-        it('should override exploration.enabled from file', () => {
-            const result = mergeConfig(DEFAULT_CONFIG, { exploration: { enabled: true } });
-            expect(result.exploration.enabled).toBe(true);
+        it('should override kusto.enabled from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { kusto: { enabled: true } });
+            expect(result.kusto.enabled).toBe(true);
         });
 
         it('should preserve auto provider routing defaults when not overridden', () => {
@@ -1029,7 +1029,7 @@ timeout: 300
                 '  enabled: true',
                 'canvas:',
                 '  enabled: true',
-                'exploration:',
+                'kusto:',
                 '  enabled: true',
                 'containerDefaultAgent:',
                 '  enabled: true',
@@ -1284,9 +1284,6 @@ timeout: 300
                   "excalidraw": {
                     "enabled": false,
                   },
-                  "exploration": {
-                    "enabled": false,
-                  },
                   "features": {
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
@@ -1307,6 +1304,9 @@ timeout: 300
                     "enabled": false,
                   },
                   "groupSingleLineMessages": false,
+                  "kusto": {
+                    "enabled": false,
+                  },
                   "logging": {
                     "dir": "\${HOME}/logs",
                     "level": "debug",
@@ -1469,7 +1469,6 @@ timeout: 300
                   "dreams.timeoutMs": "default",
                   "effortLevels.enabled": "default",
                   "excalidraw.enabled": "default",
-                  "exploration.enabled": "default",
                   "features.autoAgentProviderRouting": "default",
                   "features.autoMemoryPromotion": "file",
                   "features.commitChatLens": "default",
@@ -1485,6 +1484,7 @@ timeout: 300
                   "features.splitWorkspacePanel": "default",
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
+                  "kusto.enabled": "default",
                   "loops.enabled": "file",
                   "mapReduce.enabled": "file",
                   "mcpConfig": "file",

@@ -7,9 +7,9 @@ import { Spinner, BottomSheet } from '../ui';
 import { cn } from '../ui/cn';
 import { getSpaCocClient } from '../api/cocClient';
 import { useMermaid } from '../hooks/ui/useMermaid';
+import { tryParseWikiMarkdown } from './wikiMarked';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 
-declare const marked: { parse(md: string): string } | undefined;
 declare const hljs: { highlightElement(el: Element): void } | undefined;
 
 function preserveMermaidBlocks(md: string): string {
@@ -81,8 +81,10 @@ export function WikiComponent({ wikiId, componentId, graph, onSelectComponent }:
         setLoading(true);
         getSpaCocClient().wiki.component(wikiId, componentId)
             .then(data => {
-                if (data?.markdown && typeof marked !== 'undefined') {
-                    const rendered = marked.parse(preserveMermaidBlocks(data.markdown));
+                const rendered = data?.markdown
+                    ? tryParseWikiMarkdown(preserveMermaidBlocks(data.markdown))
+                    : null;
+                if (data?.markdown && rendered != null) {
                     cacheRef.current[componentId] = rendered;
                     setHtml(rendered);
                 } else if (data?.markdown) {

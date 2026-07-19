@@ -30,7 +30,7 @@ spa/client/react/
 ├── hooks/              # 30+ custom hooks
 ├── layout/             # Layout (Router, TopBar, BottomNav, ThemeProvider)
 ├── features/
-│   ├── canvas/         # Canvas side panel: CanvasPanel + ExtensionCanvasView (sandboxed iframe) for AI co-edited documents, code, and custom extension canvases
+│   ├── canvas/         # Canvas side panel: CanvasPanel + ExtensionCanvasView (sandboxed iframe) + KustoView/KustoChart (Kusto query canvas) for AI co-edited documents, code, custom extension, and Kusto canvases
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
 │   ├── dreams/         # Workspace Dreams review panel with feature/opt-in states, queue-backed run-now task summary, provider-attributed Activity/Admin AI Provider visibility, filters, plain-language card guidance, source evidence links, and card lifecycle actions
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
@@ -340,14 +340,19 @@ an inline image inlines each image as a base64 `data:` URI in the `text/html`
 clipboard flavor (`copySelectionWithInlineImages` in `utils/format.ts`, sync
 `clipboardData` fallback + async `navigator.clipboard.write` upgrade) so images
 survive a paste into Word/Google Docs/email — text-only selections fall through
-to the browser's native copy untouched. Code canvases (`type: 'code'`) show a language
-chip, render the preview as a fenced highlighted block, and use
-`MonacoFileEditor` (shared with the repo explorer) in Edit mode with the same
-debounced autosave; selection actions stay available in preview mode. The
-header Export menu offers Copy content, Download file (extension derived from
-the language), and — for markdown canvases — Save to Notes, which writes the
-content to `canvases/<slug>.md` in the workspace Notes tree via
-`notes.saveContent`. Extension canvases (`type: 'extension'`) render
+to the browser's native copy untouched. Code canvases (`type: 'code'`) show a
+language chip and use `MonacoFileEditor` (shared with the repo explorer) in Edit
+mode with the same debounced autosave. Their preview is normally a fenced,
+highlighted block. `language: 'svg'`, or `xml`/unset content whose trimmed source
+starts with `<svg`, instead mounts `SvgCanvasView`: rendered mode is the default,
+Source shows the highlighted XML, and wheel/drag provide zoom/pan. The view
+inserts only `sanitizeSvg` output into a ShadowRoot so SVG styles stay isolated;
+invalid SVG shows the sanitizer error and escaped source. SVG downloads use the
+raw persisted source in an `image/svg+xml` blob with a `.svg` filename. Selection
+actions stay available in preview mode. The header Export menu also offers Copy
+content and — for markdown canvases — Save to Notes, which writes the content to
+`canvases/<slug>.md` in the workspace Notes tree via `notes.saveContent`.
+Extension canvases (`type: 'extension'`) render
 `ExtensionCanvasView` in preview mode: the extension's `ui.html` runs inside an
 `<iframe sandbox="allow-scripts">` whose injected `window.CanvasHost` bridge
 (`onState`/`invoke`/`setState`) talks to the host over `postMessage`. The host
@@ -362,8 +367,32 @@ JSON shared state. Inline `canvas://<canvasId>` references are rendered by
 `shared/CanvasEmbed.tsx`, which fetches the descriptor through the same
 workspace-routed client and chooses the renderer from its persisted `type`:
 Excalidraw keeps the view-only preview, extension canvases mount
-`ExtensionCanvasView`, and markdown/code canvases use a document preview. Legacy
+`ExtensionCanvasView`, `type: 'kusto'` canvases mount a compact `KustoView`, and
+markdown/code canvases use a document preview. Legacy
 `.md-excalidraw-embed` placeholders remain supported for historical message HTML.
+
+Kusto query canvases (`type: 'kusto'`) render `features/canvas/KustoView.tsx` (and
+`KustoChart.tsx` for the native SVG charts), gated by the `kusto.enabled` runtime
+flag (`isKustoEnabled()` in `utils/config.ts`, default off). The view exposes an
+editable KQL query, cluster URL, and database, a Run button that executes
+server-side via `client.canvases.run(...)` (no AI turn) through the
+workspace-routed client, table/chart views, CSV download, and — when the canvas is
+linked to a chat — an Ask AI box that sends a follow-up naming `kusto_query`. When
+the flag is on, `CanvasPanel`'s header shows a **New Kusto query** action
+(`data-testid="canvas-panel-new-kusto"`) that creates a blank `type: 'kusto'`
+canvas titled `Kusto Query`, best-effort seeding cluster/database from the
+workspace's most recent Kusto canvas (`kustoCreate.ts`). Kusto canvases carry a
+`kusto` badge, own their editing surface (no markdown Preview/Edit toggle or HTML
+export), and are rendered inline from `canvas://` links by `CanvasEmbed`.
+
+`shared/svg/sanitizeSvg.ts` is the client SVG trust boundary. It rejects
+malformed/non-SVG XML, runs DOMPurify's SVG profile, removes scripts, event
+handlers, `foreignObject`, script-bearing CSS/SMIL values, and external resource
+references, and preserves safe SVG styles, gradients, filters, and animation.
+Direct `href`/`xlink:href`/`src` values are limited to base64 raster `data:`
+URIs; internal paint references such as `fill="url(#gradient)"` remain valid.
+Any surface that mounts the sanitized result must use a shadow root so allowed
+SVG `<style>` rules cannot affect the surrounding dashboard document.
 
 `features/chat/source-canvas/` renders the docked, read-only source-file canvas
 for local file references clicked inside assistant chat responses. The global
@@ -849,7 +878,25 @@ Inside `WhisperCollapsedGroup`, tool calls render as compact "whisper-row" varia
 `ToolCallView` display policy is a pure kernel: `buildToolCallRenderModel`
 (`toolCallRenderModel.ts`) derives normalized identity, summary, truncation,
 preview eligibility, and the whisper-row metric; the whisper-row and card
-variants share one `ToolCallDetailSections` body. Whisper header parts and the
+variants share one `ToolCallDetailSections` body. For generic `shell`/`bash`
+calls (Codex routes every command through the canonical `shell` tool), the
+display-only `shellCommandClassifier.ts` reads the command *string* — never
+executing it — and, when it is confidently one clear family, relabels the call
+to Search / Read / Files / Git: it unwraps one `sh|bash|zsh -c/-lc` interpreter
+wrapper, refuses redirection / substitution / subshells / `&` / assignments /
+mutating variants (`sed -i`, `find -delete/-exec`, `tee`, `fd --exec`), allows
+same-family chains and read-only presentation pipelines (`| head`, `| sed -n`),
+and returns null (keep Shell) otherwise. The render model then overrides the
+kind pill/label (reusing green Search, blue Read, green Files, purple Git
+colors), the concise summary (a human `description` wins when present, else a
+derived pattern/path/subcommand, else the unwrapped command text), the
+whisper-row metric noun (hits/files/lines), the card `displayName` (title-cased,
+so `shell` reads as "Shell"), and an `isSemanticShell` flag driving the honest
+"executed through shell" pill tooltip. The canonical stored name, raw args, and
+`bashCommand` (Copy Command source, expanded Command section) are untouched.
+Homogeneous shell groups get a semantic summary (`4 searches`, `2 Git commands`)
+via `getShellGroupSemanticLabel` (`toolGroupUtils.ts`); mixed/unknown groups keep
+`N shell operations`. PowerShell is not classified in this version. Whisper header parts and the
 group's reconstructable tool calls come from `buildWhisperGroupModel` /
 `collectGroupToolCalls` (`whisperGroupModel.ts`). The whisper summary spans
 (skills/memories/files/commits/PRs/pushes) share the `useHoverPopover` /

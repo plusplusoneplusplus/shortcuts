@@ -38,9 +38,9 @@ export class CanvasesClient {
   }
 
   /**
-   * Create a new canvas (AC-07 manual exploration create). The server gates
-   * this on the exploration feature flag and currently accepts only
-   * `type: 'exploration'`.
+   * Create a new canvas (AC-07 manual Kusto create). The server gates
+   * this on the Kusto feature flag and currently accepts only
+   * `type: 'kusto'`.
    */
   async create(workspaceId: string, request: CreateCanvasRequest): Promise<Canvas> {
     const response = await this.transport.request<CanvasResponse>(
@@ -66,7 +66,7 @@ export class CanvasesClient {
   }
 
   /**
-   * Run an exploration canvas's query server-side (AC-02/AC-04). Optional
+   * Run a Kusto canvas's query server-side (AC-02/AC-04). Optional
    * overrides update the stored query/cluster/database before executing. The
    * updated canvas (with fresh columns/rows/lastRun) is returned.
    */

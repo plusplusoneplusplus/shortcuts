@@ -473,6 +473,51 @@ describe('filterWhisperChunks — net diff fields', () => {
         expect(fe.insertions).toBe(3);
     });
 
+    it('merges a Codex `/dev/null` create and a later edit to the same file into one row (no absolute-path duplicate)', () => {
+        const createPatch = [
+            'diff --git /dev/null b/packages/coc/src/sanitizeSvg.ts',
+            'index e69de29bb..50661e98b 100644',
+            '--- /dev/null',
+            '+++ b/packages/coc/src/sanitizeSvg.ts',
+            '@@ -0,0 +1,3 @@',
+            '+import createDOMPurify from "dompurify";',
+            '+export const sanitize = (s: string) => s;',
+            '+export default sanitize;',
+        ].join('\n');
+        const editPatch = [
+            'diff --git a/packages/coc/src/sanitizeSvg.ts b/packages/coc/src/sanitizeSvg.ts',
+            'index 50661e98b..60771f00c 100644',
+            '--- a/packages/coc/src/sanitizeSvg.ts',
+            '+++ b/packages/coc/src/sanitizeSvg.ts',
+            '@@ -1,3 +1,4 @@',
+            ' import createDOMPurify from "dompurify";',
+            '-export const sanitize = (s: string) => s;',
+            '+export const sanitize = (s: string) => s.trim();',
+            '+const DOMPurify = createDOMPurify();',
+            ' export default sanitize;',
+        ].join('\n');
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'apply_patch', status: 'completed', args: { diff: createPatch } }],
+            ['t2', { toolName: 'apply_patch', status: 'completed', args: { diff: editPatch } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as any;
+        // Exactly one FileEdit — no absolute-path fallback duplicate.
+        expect(wg.summary.fileEdits).toHaveLength(1);
+        const fe = wg.summary.fileEdits[0];
+        expect(fe.path).toBe('packages/coc/src/sanitizeSvg.ts');
+        // Insertions include the 3 created lines plus the 2 added by the edit.
+        expect(fe.insertions).toBe(5);
+        // Merged row is created + edited, so it is not a pure create.
+        expect(fe.isCreate).toBe(false);
+    });
+
     it('accumulates net diffs across multiple edits to same file', () => {
         const chunks = [
             { kind: 'tool', key: 'k-t1', toolId: 't1' },

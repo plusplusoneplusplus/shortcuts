@@ -47,6 +47,10 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => 
 vi.mock('marked', () => ({
     Marked: class {
         parse(md: string) { return `<p>${md}</p>`; }
+        // Production code chains `.use(extension)` (e.g. the shared math
+        // extension on the PR review summary renderer); the stub must return a
+        // chainable instance so module-load-time construction doesn't throw.
+        use() { return this; }
     },
     marked: Object.assign(
         (md: string) => `<p>${md}</p>`,

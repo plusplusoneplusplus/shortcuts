@@ -25,6 +25,11 @@ import './react/features/repo-detail/explorer/monaco-setup';
 // the styles ride along in the bundled CSS for any route that may surface a
 // diagram (full-page viewer, inline previews in chat, etc.).
 import '@excalidraw/excalidraw/index.css';
+// KaTeX math styles + fonts. esbuild's css loader inlines the referenced
+// .woff2/.woff/.ttf fonts as data URLs (see build-client.mjs loaders), so
+// rendered equations paint correctly with NO CDN or network dependency — they
+// work offline and inside self-contained exports.
+import 'katex/dist/katex.min.css';
 
 const container = document.getElementById('app-root');
 if (!container) throw new Error('No #app-root element found');

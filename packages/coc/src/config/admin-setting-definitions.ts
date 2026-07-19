@@ -666,11 +666,11 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'exploration.enabled', default: false, runtime: 'live', runtimeFlag: 'explorationEnabled',
+        key: 'kusto.enabled', default: false, runtime: 'live', runtimeFlag: 'kustoEnabled',
         ui: {
-            group: 'review', order: 62, label: 'Kusto exploration canvas', badge: 'experimental',
-            hint: 'AI and users can run Kusto (KQL) queries in an interactive data-exploration canvas with tables and charts. Disabled by default.',
-            testId: 'toggle-exploration-enabled',
+            group: 'review', order: 62, label: 'Kusto query canvas', badge: 'experimental',
+            hint: 'AI and users can run Kusto (KQL) queries against Azure Data Explorer in an interactive canvas with tables and charts. Disabled by default.',
+            testId: 'toggle-kusto-enabled',
         },
     }),
     bool({

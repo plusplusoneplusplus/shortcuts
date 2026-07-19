@@ -288,6 +288,22 @@ describe('CanvasPanel', () => {
         expect(preview.innerHTML).not.toContain('**bold**');
     });
 
+    it('renders an svg fence inside a markdown canvas as an inline sanitized image (AC-04)', async () => {
+        const svgSource = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><rect width="100" height="50" fill="red"/></svg>';
+        const content = '```svg\n' + svgSource + '\n```';
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'markdown', content }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
+
+        const preview = screen.getByTestId('canvas-panel-preview');
+        const fence = preview.querySelector('.md-svg-fence');
+        expect(fence).toBeTruthy();
+        expect(fence?.getAttribute('data-svg-ready')).toBe('1');
+        const host = fence?.querySelector('.md-svg-fence-host') as HTMLElement | null;
+        expect(host?.shadowRoot?.querySelector('svg')).toBeTruthy();
+    });
+
     it('marks the preview for canvas-specific Mermaid sizing', async () => {
         mocks.get.mockResolvedValue(makeCanvas({
             content: '```mermaid\nflowchart TD\n  A --> B\n```',
@@ -576,6 +592,118 @@ describe('CanvasPanel', () => {
         const monaco = screen.getByTestId('mock-monaco') as HTMLTextAreaElement;
         expect(monaco.value).toBe('const x = 1;');
         expect(screen.queryByTestId('canvas-panel-editor')).toBeNull();
+    });
+
+    it('renders SVG code canvases by default and toggles to highlighted source', async () => {
+        const source = '<svg viewBox="0 0 100 50"><rect width="100" height="50" fill="red"/></svg>';
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'code', language: 'svg', content: source }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+
+        const host = await screen.findByTestId('svg-canvas-shadow-host');
+        expect(host.shadowRoot?.querySelector('svg')).toBeTruthy();
+        expect(host.shadowRoot?.querySelector('rect')?.getAttribute('fill')).toBe('red');
+        expect(screen.getByTestId('svg-canvas-viewport').className).toContain('block');
+
+        fireEvent.click(screen.getByTestId('svg-canvas-source'));
+
+        expect(screen.getByTestId('svg-canvas-source-view').className).toContain('block');
+        const highlighted = screen.getByTestId('svg-canvas-source-view').querySelector('code');
+        expect(highlighted?.className).toContain('language-svg');
+        expect(highlighted?.textContent).toContain('<svg');
+
+        fireEvent.click(screen.getByTestId('canvas-panel-mode-edit'));
+        expect((screen.getByTestId('mock-monaco') as HTMLTextAreaElement).value).toBe(source);
+    });
+
+    it.each([
+        ['xml', ' \n<svg viewBox="0 0 10 10"><circle r="4"/></svg>'],
+        [undefined, '<svg viewBox="0 0 10 10"><path d="M0 0L10 10"/></svg>'],
+    ])('renders %s code canvases as SVG when the content starts with an SVG root', async (language, content) => {
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'code', language, content }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+
+        const host = await screen.findByTestId('svg-canvas-shadow-host');
+        expect(host.shadowRoot?.querySelector('svg')).toBeTruthy();
+    });
+
+    it('shows an inline error and escaped source when SVG is malformed', async () => {
+        const source = '<svg><rect></svg>';
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'code', language: 'svg', content: source }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+
+        const error = await screen.findByTestId('svg-canvas-error');
+        expect(error.textContent).toContain('Invalid SVG');
+        expect(error.querySelector('pre')?.textContent).toBe(source);
+        expect(error.querySelector('svg')).toBeNull();
+    });
+
+    it('mounts only sanitized SVG inside the isolated render surface', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({
+            type: 'code',
+            language: 'svg',
+            content: '<svg onload="steal()"><script>steal()</script><rect onclick="steal()" width="10" height="10"/></svg>',
+        }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+
+        const shadowRoot = (await screen.findByTestId('svg-canvas-shadow-host')).shadowRoot;
+        expect(shadowRoot?.querySelector('script')).toBeNull();
+        expect(shadowRoot?.querySelector('svg')?.hasAttribute('onload')).toBe(false);
+        expect(shadowRoot?.querySelector('rect')?.hasAttribute('onclick')).toBe(false);
+    });
+
+    it('zooms and pans the rendered SVG viewport', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({
+            type: 'code',
+            language: 'svg',
+            content: '<svg viewBox="0 0 100 100"><rect width="100" height="100"/></svg>',
+        }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+        const viewport = await screen.findByTestId('svg-canvas-viewport');
+        vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({
+            x: 0, y: 0, left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300,
+            toJSON: () => ({}),
+        });
+
+        fireEvent.wheel(viewport, { deltaY: -100, clientX: 50, clientY: 50 });
+        await waitFor(() => expect(viewport.getAttribute('data-scale')).toBe('1.15'));
+
+        fireEvent.mouseDown(viewport, { button: 0, clientX: 10, clientY: 10 });
+        fireEvent.mouseMove(document, { clientX: 30, clientY: 40 });
+        fireEvent.mouseUp(document);
+        await waitFor(() => {
+            expect(Number(viewport.getAttribute('data-translate-x'))).not.toBe(0);
+            expect(Number(viewport.getAttribute('data-translate-y'))).not.toBe(0);
+        });
+    });
+
+    it('downloads raw SVG source with the SVG MIME type and extension', async () => {
+        const source = '<svg viewBox="0 0 10 10"><circle r="4"/></svg>';
+        mocks.get.mockResolvedValue(makeCanvas({ type: 'code', language: 'svg', content: source }));
+        const createObjectURL = vi.fn().mockReturnValue('blob:svg');
+        const revokeObjectURL = vi.fn();
+        Object.assign(URL, { createObjectURL, revokeObjectURL });
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+        try {
+            render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+            await screen.findByTestId('svg-canvas-shadow-host');
+
+            fireEvent.click(screen.getByTestId('canvas-panel-export'));
+            fireEvent.click(screen.getByTestId('canvas-panel-export-download'));
+
+            const blob = createObjectURL.mock.calls[0][0] as Blob;
+            expect(blob.type).toBe('image/svg+xml');
+            expect(await readBlobText(blob)).toBe(source);
+            expect(click.mock.instances[0].download).toBe('doc.svg');
+            expect(revokeObjectURL).toHaveBeenCalledWith('blob:svg');
+        } finally {
+            click.mockRestore();
+        }
     });
 
     it('autosaves Monaco edits on code canvases', async () => {
@@ -1133,11 +1261,11 @@ describe('CanvasPanel', () => {
         }
     });
 
-    it('renders an exploration canvas with the exploration view and no markdown edit toggle', async () => {
+    it('renders a Kusto canvas with the Kusto view and no markdown edit toggle', async () => {
         mocks.get.mockResolvedValue(makeCanvas({
             id: 'expl-abc123',
-            title: 'Storm exploration',
-            type: 'exploration',
+            title: 'Storm Kusto',
+            type: 'kusto',
             content: JSON.stringify({
                 query: 'StormEvents | take 3',
                 clusterUrl: 'https://help.kusto.windows.net',
@@ -1151,35 +1279,35 @@ describe('CanvasPanel', () => {
 
         render(<CanvasPanel workspaceId="ws-1" canvasId="expl-abc123" liveEvent={null} />);
 
-        await waitFor(() => expect(screen.getByTestId('exploration-view')).toBeTruthy());
-        expect(screen.getByTestId('canvas-panel-exploration-badge')).toBeInTheDocument();
-        // Explorations own their editing surface — no markdown Preview/Edit toggle.
+        await waitFor(() => expect(screen.getByTestId('kusto-view')).toBeTruthy());
+        expect(screen.getByTestId('canvas-panel-kusto-badge')).toBeInTheDocument();
+        // Kusto canvases own their editing surface — no markdown Preview/Edit toggle.
         expect(screen.queryByTestId('canvas-panel-mode-edit')).toBeNull();
-        expect(screen.getByTestId('exploration-query')).toHaveValue('StormEvents | take 3');
+        expect(screen.getByTestId('kusto-query')).toHaveValue('StormEvents | take 3');
         expect(screen.getByText('Texas')).toBeInTheDocument();
     });
 
-    // AC-07 — the "New exploration" affordance is gated on the exploration flag.
-    describe('New exploration button (AC-07)', () => {
+    // AC-07 — the "New Kusto query" affordance is gated on the Kusto flag.
+    describe('New Kusto query button (AC-07)', () => {
         afterEach(() => {
             delete (window as any).__DASHBOARD_CONFIG__;
         });
 
-        it('is hidden when the exploration feature is disabled', async () => {
+        it('is hidden when the Kusto feature is disabled', async () => {
             delete (window as any).__DASHBOARD_CONFIG__;
             mocks.get.mockResolvedValue(makeCanvas());
             render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
             await waitFor(() => expect(screen.getByTestId('canvas-panel-title')).toBeTruthy());
-            expect(screen.queryByTestId('canvas-panel-new-exploration')).toBeNull();
+            expect(screen.queryByTestId('canvas-panel-new-kusto')).toBeNull();
         });
 
-        it('creates a blank exploration prefilled from the most recent one and selects it', async () => {
-            (window as any).__DASHBOARD_CONFIG__ = { explorationEnabled: true };
+        it('creates a blank Kusto canvas prefilled from the most recent one and selects it', async () => {
+            (window as any).__DASHBOARD_CONFIG__ = { kustoEnabled: true };
             mocks.get.mockImplementation(async (_ws: string, id: string) => {
                 if (id === 'expl-prev01') {
                     return makeCanvas({
                         id: 'expl-prev01',
-                        type: 'exploration',
+                        type: 'kusto',
                         content: JSON.stringify({
                             query: 'T | take 1',
                             clusterUrl: 'https://help.kusto.windows.net',
@@ -1191,10 +1319,10 @@ describe('CanvasPanel', () => {
                 return makeCanvas();
             });
             mocks.list.mockResolvedValue([
-                makeCanvasSummary({ id: 'expl-prev01', type: 'exploration', updatedAt: '2026-07-18T05:00:00.000Z' }),
+                makeCanvasSummary({ id: 'expl-prev01', type: 'kusto', updatedAt: '2026-07-18T05:00:00.000Z' }),
                 makeCanvasSummary({ id: 'doc-abc123', type: 'markdown', updatedAt: '2026-07-18T06:00:00.000Z' }),
             ]);
-            mocks.create.mockResolvedValue(makeCanvas({ id: 'expl-new001', type: 'exploration' }));
+            mocks.create.mockResolvedValue(makeCanvas({ id: 'expl-new001', type: 'kusto' }));
             const onSelectCanvas = vi.fn();
             const onCanvasCreated = vi.fn();
 
@@ -1208,13 +1336,13 @@ describe('CanvasPanel', () => {
                 />,
             );
 
-            await waitFor(() => expect(screen.getByTestId('canvas-panel-new-exploration')).toBeTruthy());
-            fireEvent.click(screen.getByTestId('canvas-panel-new-exploration'));
+            await waitFor(() => expect(screen.getByTestId('canvas-panel-new-kusto')).toBeTruthy());
+            fireEvent.click(screen.getByTestId('canvas-panel-new-kusto'));
 
             await waitFor(() => expect(mocks.create).toHaveBeenCalled());
             const [ws, request] = mocks.create.mock.calls[0];
             expect(ws).toBe('ws-1');
-            expect(request.type).toBe('exploration');
+            expect(request.type).toBe('kusto');
             expect(request.processId).toBe('proc-1');
             const seeded = JSON.parse(request.content);
             expect(seeded.clusterUrl).toBe('https://help.kusto.windows.net');
@@ -1224,16 +1352,16 @@ describe('CanvasPanel', () => {
             expect(onCanvasCreated).toHaveBeenCalledWith('expl-new001');
         });
 
-        it('creates with an empty seed when the workspace has no prior exploration', async () => {
-            (window as any).__DASHBOARD_CONFIG__ = { explorationEnabled: true };
+        it('creates with an empty seed when the workspace has no prior Kusto canvas', async () => {
+            (window as any).__DASHBOARD_CONFIG__ = { kustoEnabled: true };
             mocks.get.mockResolvedValue(makeCanvas());
             mocks.list.mockResolvedValue([makeCanvasSummary({ id: 'doc-abc123', type: 'markdown' })]);
-            mocks.create.mockResolvedValue(makeCanvas({ id: 'expl-new001', type: 'exploration' }));
+            mocks.create.mockResolvedValue(makeCanvas({ id: 'expl-new001', type: 'kusto' }));
 
             render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onSelectCanvas={vi.fn()} />);
 
-            await waitFor(() => expect(screen.getByTestId('canvas-panel-new-exploration')).toBeTruthy());
-            fireEvent.click(screen.getByTestId('canvas-panel-new-exploration'));
+            await waitFor(() => expect(screen.getByTestId('canvas-panel-new-kusto')).toBeTruthy());
+            fireEvent.click(screen.getByTestId('canvas-panel-new-kusto'));
 
             await waitFor(() => expect(mocks.create).toHaveBeenCalled());
             const seeded = JSON.parse(mocks.create.mock.calls[0][1].content);

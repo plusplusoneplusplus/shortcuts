@@ -99,6 +99,67 @@ describe('buildChatToolBundle', () => {
         expect(result.toolGuidance).not.toContain('2 suggestions');
     });
 
+    it('includes kusto_query when kustoToolsEnabled is true', () => {
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
+
+        const result = buildChatToolBundle({
+            dataDir: tmpDir,
+            store: makeStore(false),
+            workspaceId: WS_ID,
+            processId: 'proc-1',
+            followUpSuggestions: { enabled: false, count: 0 },
+            kustoToolsEnabled: true,
+        });
+
+        expect(result.tools.map(t => t.name)).toContain('kusto_query');
+    });
+
+    it('suppresses kusto_query when kustoToolsEnabled is false', () => {
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
+
+        const result = buildChatToolBundle({
+            dataDir: tmpDir,
+            store: makeStore(false),
+            workspaceId: WS_ID,
+            processId: 'proc-1',
+            followUpSuggestions: { enabled: false, count: 0 },
+            kustoToolsEnabled: false,
+        });
+
+        expect(result.tools.map(t => t.name)).not.toContain('kusto_query');
+    });
+
+    it('suppresses kusto_query when includeKustoTools is false even if enabled', () => {
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
+
+        const result = buildChatToolBundle({
+            dataDir: tmpDir,
+            store: makeStore(false),
+            workspaceId: WS_ID,
+            processId: 'proc-1',
+            followUpSuggestions: { enabled: false, count: 0 },
+            includeKustoTools: false,
+            kustoToolsEnabled: true,
+        });
+
+        expect(result.tools.map(t => t.name)).not.toContain('kusto_query');
+    });
+
+    it('drops kusto_query when disabled by repo preferences even if enabled', () => {
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: ['kusto_query'] });
+
+        const result = buildChatToolBundle({
+            dataDir: tmpDir,
+            store: makeStore(false),
+            workspaceId: WS_ID,
+            processId: 'proc-1',
+            followUpSuggestions: { enabled: false, count: 0 },
+            kustoToolsEnabled: true,
+        });
+
+        expect(result.tools.map(t => t.name)).not.toContain('kusto_query');
+    });
+
     it('includes loop tools when loopTools deps are provided', () => {
         writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
 

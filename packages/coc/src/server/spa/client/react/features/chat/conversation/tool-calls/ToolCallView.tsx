@@ -161,6 +161,7 @@ export function ToolCallView({
                                 : model.kindPillClass,
                         )}
                         data-testid="tool-call-kind"
+                        title={model.isSemanticShell ? 'Executed through shell; expand for the exact command' : undefined}
                     >
                         {model.kindInfo.label}
                     </span>
@@ -282,7 +283,7 @@ export function ToolCallView({
                         {subtoolsCollapsed ? '▶' : '▼'}
                     </button>
                 )}
-                <span className="tool-call-name font-medium text-[#0078d4] dark:text-[#3794ff]">{name}</span>
+                <span className="tool-call-name font-medium text-[#0078d4] dark:text-[#3794ff]">{model.displayName}</span>
                 {model.summary && (
                     <span
                         className={cn('text-[#848484] min-w-0', isMobile ? 'truncate max-w-[40vw]' : 'break-all', summaryIsPath && 'file-path-link')}

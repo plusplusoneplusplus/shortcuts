@@ -25,7 +25,7 @@
  * `targetPath` exists in the group.
  */
 import { computeLineDiff } from '../../../../../diff/diff-utils';
-import { getApplyPatchText } from '../../../../utils/applyPatchParser';
+import { getApplyPatchText, parseUnifiedDiffHeader } from '../../../../utils/applyPatchParser';
 import { normalizeToolName } from './toolNormalization';
 
 /** Minimal shape this reconstruction needs from a captured tool call. */
@@ -95,14 +95,14 @@ function patchHunkForFile(patchText: string, targetPath: string): FileHunk | nul
     const body: string[] = [];
 
     for (const line of lines) {
-        // Unified diff section header: diff --git a/<old> b/<new>
-        const gitDiffMatch = line.match(/^diff --git a\/(.+) b\/(.+)$/);
-        if (gitDiffMatch) {
+        // Unified diff section header: diff --git [a/]<old> b/<new> (old may be /dev/null for creates)
+        const gitDiffHeader = parseUnifiedDiffHeader(line);
+        if (gitDiffHeader) {
             if (capturing) break; // next file section ends ours
-            const newPath = normalizePath(gitDiffMatch[2]);
+            const newPath = normalizePath(gitDiffHeader.newPath);
             if (newPath === target) {
                 capturing = true;
-                isCreate = false; // refined below by metadata lines
+                isCreate = gitDiffHeader.isCreate; // refined below by metadata lines
                 inUnifiedSection = true;
             }
             continue;

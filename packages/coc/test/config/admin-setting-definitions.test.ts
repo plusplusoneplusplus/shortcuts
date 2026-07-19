@@ -243,15 +243,15 @@ describe('runtime feature flags', () => {
         expect(ADMIN_SETTING_DEFINITIONS.some(def => def.key === 'features.nativeCopilotSessions')).toBe(false);
     });
 
-    it('registers exploration.enabled as a live, default-off feature flag (AC-08)', () => {
-        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'exploration.enabled');
-        expect(def, 'exploration.enabled must be an admin setting').toBeDefined();
+    it('registers kusto.enabled as a live, default-off feature flag (AC-08)', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'kusto.enabled');
+        expect(def, 'kusto.enabled must be an admin setting').toBeDefined();
         expect(def!.value).toEqual({ kind: 'boolean' });
-        expect(def!.default, 'exploration.enabled must default off').toBe(false);
+        expect(def!.default, 'kusto.enabled must default off').toBe(false);
         expect(def!.runtime).toBe('live');
-        expect(def!.runtimeFlag).toBe('explorationEnabled');
-        expect((buildRuntimeFeatures(DEFAULT_CONFIG) as Record<string, unknown>).explorationEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).explorationEnabled).toBe(false);
+        expect(def!.runtimeFlag).toBe('kustoEnabled');
+        expect((buildRuntimeFeatures(DEFAULT_CONFIG) as Record<string, unknown>).kustoEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).kustoEnabled).toBe(false);
     });
 
     it('falls back to absentFallback ?? default for partial configs', () => {

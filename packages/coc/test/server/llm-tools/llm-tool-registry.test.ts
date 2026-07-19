@@ -221,10 +221,10 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('includes scheduleWakeup when loopsEnabled is true', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        const names = getEffectiveLlmToolRegistry({ loopsEnabled: true, canvasEnabled: true, explorationEnabled: true }).map(t => t.name);
+        const names = getEffectiveLlmToolRegistry({ loopsEnabled: true, canvasEnabled: true, kustoEnabled: true }).map(t => t.name);
         expect(names).toContain('scheduleWakeup');
         // Should equal the full registry length when all flags on
-        expect(getEffectiveLlmToolRegistry({ loopsEnabled: true, canvasEnabled: true, explorationEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
+        expect(getEffectiveLlmToolRegistry({ loopsEnabled: true, canvasEnabled: true, kustoEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
     });
 
     it('no longer advertises the removed excalidraw tools regardless of flags', async () => {
@@ -236,8 +236,8 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('returns registry minus feature-gated entries when all off', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        // scheduleWakeup + 3 canvas tools + 1 exploration tool = 5 filtered
-        expect(getEffectiveLlmToolRegistry({ loopsEnabled: false, canvasEnabled: false, explorationEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 5);
+        // scheduleWakeup + 3 canvas tools + 1 kusto tool = 5 filtered
+        expect(getEffectiveLlmToolRegistry({ loopsEnabled: false, canvasEnabled: false, kustoEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 5);
     });
 
     it('filters out canvas tools when canvasEnabled is false', async () => {
@@ -256,21 +256,21 @@ describe('getEffectiveLlmToolRegistry', () => {
         expect(names).toContain('extension_canvas');
     });
 
-    it('filters out kusto_query when explorationEnabled is false', async () => {
+    it('filters out kusto_query when kustoEnabled is false', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        const names = getEffectiveLlmToolRegistry({ explorationEnabled: false }).map(t => t.name);
+        const names = getEffectiveLlmToolRegistry({ kustoEnabled: false }).map(t => t.name);
         expect(names).not.toContain('kusto_query');
     });
 
-    it('filters out kusto_query when explorationEnabled is omitted (default off)', async () => {
+    it('filters out kusto_query when kustoEnabled is omitted (default off)', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
         const names = getEffectiveLlmToolRegistry({ loopsEnabled: true, canvasEnabled: true }).map(t => t.name);
         expect(names).not.toContain('kusto_query');
     });
 
-    it('includes kusto_query when explorationEnabled is true', async () => {
+    it('includes kusto_query when kustoEnabled is true', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        const names = getEffectiveLlmToolRegistry({ explorationEnabled: true }).map(t => t.name);
+        const names = getEffectiveLlmToolRegistry({ kustoEnabled: true }).map(t => t.name);
         expect(names).toContain('kusto_query');
     });
 });

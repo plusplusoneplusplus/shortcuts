@@ -8,8 +8,8 @@ import { registerCanvasRoutes } from '../../../src/server/canvas/canvas-routes';
 import { CanvasStore } from '../../../src/server/canvas/canvas-store';
 import type { Route } from '../../../src/server/types';
 import type { ProcessWebSocketServer } from '../../../src/server/streaming/websocket';
-import type { KustoClientFactory, KustoClientLike } from '../../../src/server/exploration/kusto-exec';
-import { createEmptyExplorationState, parseExplorationState, serializeExplorationState } from '../../../src/server/canvas/exploration-state';
+import type { KustoClientFactory, KustoClientLike } from '../../../src/server/kusto/kusto-exec';
+import { createEmptyKustoState, parseKustoState, serializeKustoState } from '../../../src/server/canvas/kusto-state';
 
 const WS = 'run-route-ws';
 
@@ -53,7 +53,7 @@ const okFactory: KustoClientFactory = () =>
         }),
     }) as unknown as KustoClientLike;
 
-function build(explorationEnabled: boolean, factory: KustoClientFactory = okFactory) {
+function build(kustoEnabled: boolean, factory: KustoClientFactory = okFactory) {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-run-route-'));
     const store = new CanvasStore(dataDir);
     const broadcastProcessEvent = vi.fn();
@@ -63,15 +63,15 @@ function build(explorationEnabled: boolean, factory: KustoClientFactory = okFact
         dataDir,
         () => ({ broadcastProcessEvent } as unknown as ProcessWebSocketServer),
         undefined,
-        () => explorationEnabled,
+        () => kustoEnabled,
         factory,
     );
     return { dataDir, store, handler: createRouter({ routes, spaHtml: '' }), broadcastProcessEvent };
 }
 
 function seed(store: CanvasStore): string {
-    const state = { ...createEmptyExplorationState(), query: 'T | take 1', clusterUrl: 'https://c.kusto.windows.net', database: 'DB' };
-    return store.createCanvas({ workspaceId: WS, title: 'Exploration', type: 'exploration', content: serializeExplorationState(state) }).id;
+    const state = { ...createEmptyKustoState(), query: 'T | take 1', clusterUrl: 'https://c.kusto.windows.net', database: 'DB' };
+    return store.createCanvas({ workspaceId: WS, title: 'Kusto Query', type: 'kusto', content: serializeKustoState(state) }).id;
 }
 
 describe('POST /canvases/:id/run', () => {
@@ -80,7 +80,7 @@ describe('POST /canvases/:id/run', () => {
         if (ctx) fs.rmSync(ctx.dataDir, { recursive: true, force: true });
     });
 
-    it('404s when the exploration feature is disabled (AC-08)', async () => {
+    it('404s when the Kusto feature is disabled (AC-08)', async () => {
         ctx = build(false);
         const id = seed(ctx.store);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {});
@@ -92,7 +92,7 @@ describe('POST /canvases/:id/run', () => {
         const id = seed(ctx.store);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {});
         expect(res.status).toBe(200);
-        const state = parseExplorationState(res.body.canvas.content);
+        const state = parseKustoState(res.body.canvas.content);
         expect(state.rows).toEqual([[1]]);
         expect(state.lastRun?.status).toBe('success');
         expect(ctx.broadcastProcessEvent).toHaveBeenCalled();
@@ -107,7 +107,7 @@ describe('POST /canvases/:id/run', () => {
             database: 'OTHER',
         });
         expect(res.status).toBe(200);
-        const state = parseExplorationState(res.body.canvas.content);
+        const state = parseKustoState(res.body.canvas.content);
         expect(state.query).toBe('Other | take 1');
         expect(state.database).toBe('OTHER');
     });
@@ -122,19 +122,19 @@ describe('POST /canvases/:id/run', () => {
         const id = seed(ctx.store);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {});
         expect(res.status).toBe(200);
-        const state = parseExplorationState(res.body.canvas.content);
+        const state = parseKustoState(res.body.canvas.content);
         expect(state.lastRun?.status).toBe('error');
         expect(state.lastRun?.error).toContain('boom');
     });
 
-    it('400s for a non-exploration canvas', async () => {
+    it('400s for a non-Kusto canvas', async () => {
         ctx = build(true);
         const rec = ctx.store.createCanvas({ workspaceId: WS, title: 'md', content: '# hi', type: 'markdown' });
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${rec.id}/run`, {});
         expect(res.status).toBe(400);
     });
 
-    it('404s for a missing exploration canvas', async () => {
+    it('404s for a missing Kusto canvas', async () => {
         ctx = build(true);
         const res = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/canvas-missing/run`, {});
         expect(res.status).toBe(404);

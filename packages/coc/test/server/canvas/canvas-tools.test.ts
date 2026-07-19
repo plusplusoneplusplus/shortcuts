@@ -83,6 +83,26 @@ describe('canvas LLM tools', () => {
             expect(store.getCanvas(WS, result.canvasId)?.language).toBe('python');
         });
 
+        it('creates an SVG code canvas and persists it with language "svg" (AC-05)', async () => {
+            const { write } = buildTools();
+            const svgContent = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="green"/></svg>';
+            const result = await write.handler({
+                title: 'Circle',
+                content: svgContent,
+                type: 'code',
+                language: 'svg',
+            }) as any;
+
+            expect(result.success).toBe(true);
+            expect(result.type).toBe('code');
+            expect(result.language).toBe('svg');
+
+            const persisted = store.getCanvas(WS, result.canvasId);
+            expect(persisted?.type).toBe('code');
+            expect(persisted?.language).toBe('svg');
+            expect(persisted?.content).toBe(svgContent);
+        });
+
         it('rejects an unknown canvas type', async () => {
             const { write } = buildTools();
             const result = await write.handler({ title: 'X', content: 'x', type: 'webview' } as any) as any;
