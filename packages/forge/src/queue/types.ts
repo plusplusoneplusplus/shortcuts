@@ -420,6 +420,10 @@ export interface QueueStats {
     autopilotPausedUntil?: number;
     /** Why the queue was paused (present only when auto-paused due to task failure). */
     pauseReason?: PauseReason;
+    /** Who initiated the current All-queues pause: 'manual' (HTTP caller) or 'quota' (watcher). */
+    pauseSource?: 'manual' | 'quota';
+    /** Who initiated the current Autopilot pause: 'manual' (HTTP caller) or 'quota' (watcher). */
+    autopilotPauseSource?: 'manual' | 'quota';
 }
 
 // ============================================================================

@@ -13,6 +13,7 @@ import {
     buildPrintDocument,
     openPrintPreview,
     stripAbsoluteWidths,
+    embedMathCssForCopy,
 } from '../../../../src/server/spa/client/react/utils/snapshot-copy-utils';
 
 function createConversationDOM(): HTMLDivElement {
@@ -450,6 +451,101 @@ describe('buildPrintDocument', () => {
     });
 });
 
+describe('buildPrintDocument — math (AC-03)', () => {
+    // A minimal self-contained KaTeX stylesheet fixture: a class rule plus an
+    // @font-face whose font is inlined as a data: URI (mirrors the real bundle).
+    const MATH_CSS =
+        '.katex{font:normal 1.21em KaTeX_Main,Times New Roman,serif}\n' +
+        "@font-face{font-family:KaTeX_Main;src:url(data:font/woff2;base64,d09GMgABAAA) format('woff2');font-weight:400}";
+
+    it('embeds the provided KaTeX CSS when mathCss is present', () => {
+        const html = buildPrintDocument('<span class="katex">x</span>', 'Math Chat', MATH_CSS);
+        expect(html).toContain('.katex{font:normal 1.21em KaTeX_Main');
+        expect(html).toContain('@font-face');
+        expect(html).toContain('KaTeX_Main');
+    });
+
+    it('adds a display-math scroll override when math is present', () => {
+        const html = buildPrintDocument('<span class="katex-display">x</span>', 'Math', '.katex{color:#000}');
+        expect(html).toContain('.katex-display { overflow-x: auto');
+        expect(html).toContain('.katex { max-width: 100%; }');
+    });
+
+    it('excludes KaTeX subtrees from the height reset so inline heights survive', () => {
+        const html = buildPrintDocument('<span class="katex">x</span>', 'Math', '.katex{color:#000}');
+        // Height reset must not clobber KaTeX's exact inline strut/vlist heights.
+        expect(html).toContain('*:not(.katex):not(.katex *)');
+        expect(html).toContain('height: auto !important');
+    });
+
+    it('stays self-contained: no CDN / remote URL in the embedded math styling', () => {
+        const html = buildPrintDocument('<span class="katex">x</span>', 'Math', MATH_CSS);
+        expect(html).toContain('data:font/woff2');
+        expect(html).not.toContain('url(http');
+        expect(html).not.toContain('//cdn');
+        expect(html).not.toMatch(/https?:\/\//);
+    });
+
+    it('omits all math styling when no mathCss is provided (default document unchanged)', () => {
+        const html = buildPrintDocument('<div>content</div>');
+        expect(html).not.toContain('.katex-display');
+        expect(html).not.toContain(':not(.katex)');
+        // Default universal height reset is still present.
+        expect(html).toContain('height: auto !important');
+        expect(html).toContain('max-width: 100% !important');
+    });
+
+    it('omits math styling when mathCss is blank / whitespace only', () => {
+        const html = buildPrintDocument('<div>x</div>', 'T', '   \n  ');
+        expect(html).not.toContain(':not(.katex)');
+        expect(html).not.toContain('.katex-display');
+    });
+});
+
+describe('embedMathCssForCopy — rich-HTML clipboard flavor (AC-03)', () => {
+    // Minimal self-contained KaTeX stylesheet fixture: a class rule plus a
+    // data:-URI @font-face (no network, no CDN).
+    const MATH_CSS =
+        '.katex{font:normal 1.21em KaTeX_Main,Times New Roman,serif}\n' +
+        "@font-face{font-family:KaTeX_Main;src:url(data:font/woff2;base64,d09GMgABAAA) format('woff2');font-weight:400}";
+
+    it('prepends a self-contained KaTeX <style> block when the HTML has rendered math', () => {
+        const snapshot = '<div><span class="katex">x</span></div>';
+        const out = embedMathCssForCopy(snapshot, MATH_CSS);
+        expect(out).toContain('<style>');
+        expect(out).toContain('.katex{font:normal 1.21em KaTeX_Main');
+        expect(out).toContain('@font-face');
+        // Style block comes before the content so the target applies it.
+        expect(out.indexOf('<style>')).toBeLessThan(out.indexOf('<div>'));
+        expect(out.endsWith(snapshot)).toBe(true);
+    });
+
+    it('adds the copy-scoped display-scroll override alongside the math CSS', () => {
+        const out = embedMathCssForCopy('<span class="katex-display">x</span>', '.katex{color:#000}');
+        expect(out).toContain('.katex-display { overflow-x: auto');
+        expect(out).toContain('.katex { max-width: 100%; }');
+    });
+
+    it('is self-contained: embeds data:-URI fonts and introduces no CDN dependency', () => {
+        const out = embedMathCssForCopy('<span class="katex">x</span>', MATH_CSS);
+        expect(out).toContain('data:font/woff2');
+        expect(out).not.toContain('https://');
+        expect(out).not.toContain('http://');
+        expect(out).not.toContain('cdn');
+    });
+
+    it('returns the HTML unchanged when it contains no rendered math', () => {
+        const snapshot = '<div>No math here, just $ signs of currency</div>';
+        expect(embedMathCssForCopy(snapshot, MATH_CSS)).toBe(snapshot);
+    });
+
+    it('returns the HTML unchanged when no math CSS is available', () => {
+        const snapshot = '<span class="katex">x</span>';
+        expect(embedMathCssForCopy(snapshot, '')).toBe(snapshot);
+        expect(embedMathCssForCopy(snapshot, '   \n  ')).toBe(snapshot);
+    });
+});
+
 describe('openPrintPreview', () => {
     it('opens a new window with the print document and calls print', () => {
         const mockPrint = vi.fn();
@@ -487,6 +583,21 @@ describe('openPrintPreview', () => {
         expect(() => openPrintPreview('<div>Hello</div>')).toThrow(
             'Pop-up blocked. Please allow pop-ups for this site and try again.'
         );
+
+        vi.restoreAllMocks();
+    });
+
+    it('embeds explicitly-provided KaTeX CSS into the printed document', () => {
+        const mockDoc = { write: vi.fn(), close: vi.fn() };
+        const mockWin = { document: mockDoc, print: vi.fn(), onload: null as (() => void) | null };
+        vi.spyOn(window, 'open').mockReturnValue(mockWin as any);
+
+        openPrintPreview('<span class="katex">x</span>', 'Math', '.katex{color:green}');
+
+        const written = mockDoc.write.mock.calls[0][0] as string;
+        expect(written).toContain('.katex{color:green}');
+        expect(written).toContain('.katex-display { overflow-x: auto');
+        expect(written).toContain('*:not(.katex):not(.katex *)');
 
         vi.restoreAllMocks();
     });

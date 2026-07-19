@@ -18,6 +18,10 @@ export interface QueueStats {
   isAutopilotPaused: boolean;
   autopilotPausedUntil?: number;
   pauseReason?: JsonObject;
+  /** Who initiated the current All-queues pause: 'manual' (HTTP caller) or 'quota' (watcher). */
+  pauseSource?: 'manual' | 'quota';
+  /** Who initiated the current Autopilot pause: 'manual' (HTTP caller) or 'quota' (watcher). */
+  autopilotPauseSource?: 'manual' | 'quota';
 }
 
 export interface QueuedTask {

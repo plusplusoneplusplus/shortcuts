@@ -64,10 +64,20 @@ export function copyToClipboard(text: string): Promise<void> {
     return Promise.resolve();
 }
 
-export async function copyHtmlToClipboard(html: string): Promise<void> {
+/**
+ * Copy rich HTML to the clipboard with an optional distinct plain-text flavor.
+ *
+ * The `text/html` flavor keeps the rendered markup (including rendered KaTeX
+ * math); the `text/plain` flavor should carry the readable source. When
+ * `plainText` is omitted the HTML is used for both flavors (legacy behavior).
+ * Passing the original conversation/markdown text keeps math delimiters (`$…$`,
+ * `\[…\]`, etc.) intact in the plain-text flavor instead of leaking HTML markup.
+ */
+export async function copyHtmlToClipboard(html: string, plainText?: string): Promise<void> {
+    const text = plainText ?? html;
     if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
         const htmlBlob = new Blob([html], { type: 'text/html' });
-        const textBlob = new Blob([html], { type: 'text/plain' });
+        const textBlob = new Blob([text], { type: 'text/plain' });
         await navigator.clipboard.write([
             new ClipboardItem({ 'text/html': htmlBlob, 'text/plain': textBlob }),
         ]);

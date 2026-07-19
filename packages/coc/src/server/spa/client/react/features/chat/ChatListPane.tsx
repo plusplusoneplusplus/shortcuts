@@ -55,7 +55,9 @@ import { normalizeChatMode } from '../../repos/modeConfig';
 import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragBundle, writeSessionContextDragData, type SessionContextDragPayload } from './sessionContextDrag';
 import { dataTransferHasSessionContext, readSessionContextDropPayloads } from './sessionContextDrop';
 import { pushNewChatSeedContext } from './newChatSeedContext';
-import type { ForEachRunSummary, MapReduceRunSummary, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
+import type { AgentProvidersQuotaResponse, ForEachRunSummary, MapReduceRunSummary, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
+import { useAgentProvidersQuota } from '../../shared/useAgentProvidersQuota';
+import { formatQuotaTypeLabel, getMostConstrainedProviderQuota, getQuotaPercent, getQuotaRiskClass, getTightestFiniteQuotaType } from '../../shared/quotaUtils';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -732,6 +734,10 @@ export interface ChatListPaneProps {
     isAutopilotPauseLoading?: boolean;
     /** Toggle autopilot pause/resume. */
     onPauseResumeAutopilot?: (options?: QueuePauseOptions) => void;
+    /** Why the ALL queue is currently paused — 'manual' (user) or 'quota' (watcher). */
+    pauseSource?: 'manual' | 'quota';
+    /** Why the autopilot queue is currently paused — 'manual' (user) or 'quota' (watcher). */
+    autopilotPauseSource?: 'manual' | 'quota';
     onRefresh: () => void;
     onOpenDialog: () => void;
     fetchQueue: () => Promise<void>;
@@ -830,16 +836,68 @@ function formatPauseResumeTime(value: number | string | undefined): string | und
 function PauseDurationMenu({
     testIdScope,
     onSelect,
+    quotaData,
 }: {
     testIdScope: string;
     onSelect: (options?: QueuePauseOptions) => void;
+    quotaData?: AgentProvidersQuotaResponse | null;
 }) {
+    const now = Date.now();
+
+    const mostConstrained = getMostConstrainedProviderQuota(quotaData);
+    const mostConstrainedResetDate = mostConstrained?.quotaType.resetDate;
+    const mostConstrainedResetMs = mostConstrainedResetDate ? Date.parse(mostConstrainedResetDate) : undefined;
+    const mostConstrainedResetFuture =
+        mostConstrainedResetMs !== undefined && Number.isFinite(mostConstrainedResetMs) && mostConstrainedResetMs > now
+            ? mostConstrainedResetMs
+            : undefined;
+
+    // max(resetDate) across constrained (<50%) providers for "until all recover"
+    let allConstrainedResetMs: number | undefined;
+    for (const provider of quotaData?.providers ?? []) {
+        if (provider.error) continue;
+        const tightest = getTightestFiniteQuotaType(provider.quotaTypes);
+        if (!tightest) continue;
+        if (getQuotaPercent(tightest.remainingPercentage) >= 50) continue;
+        if (!tightest.resetDate) continue;
+        const ms = Date.parse(tightest.resetDate);
+        if (!Number.isFinite(ms) || ms <= now) continue;
+        if (allConstrainedResetMs === undefined || ms > allConstrainedResetMs) allConstrainedResetMs = ms;
+    }
+
     return (
         <div
-            className="absolute right-0 top-full mt-1 z-30 min-w-44 rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#252526] shadow-lg p-1 text-xs"
+            className="absolute right-0 top-full mt-1 z-30 min-w-52 rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#252526] shadow-lg p-1 text-xs"
             data-testid={`pause-duration-menu-${testIdScope}`}
             onClick={(e) => e.stopPropagation()}
         >
+            {quotaData && quotaData.providers.some(p => !p.error && getTightestFiniteQuotaType(p.quotaTypes)) && (
+                <div
+                    className="px-2 pt-1 pb-1.5 mb-1 border-b border-[#e8e8e8] dark:border-[#3f3f46]"
+                    data-testid={`pause-duration-quota-strip-${testIdScope}`}
+                >
+                    {quotaData.providers.map(provider => {
+                        if (provider.error) return null;
+                        const tightest = getTightestFiniteQuotaType(provider.quotaTypes);
+                        if (!tightest) return null;
+                        const pct = getQuotaPercent(tightest.remainingPercentage);
+                        const barColor = pct < 25 ? '#d1242f' : pct < 50 ? '#bf8700' : '#1a7f37';
+                        const countdown = formatPauseRemaining(tightest.resetDate, now);
+                        return (
+                            <div key={provider.id} className="flex items-center gap-1.5 py-0.5" data-testid={`pause-duration-quota-row-${provider.id}`}>
+                                <span className="w-12 shrink-0 text-[10px] text-[#6e6e6e] dark:text-[#999] capitalize">{provider.id}</span>
+                                <div className="flex-1 h-1 rounded-full bg-[#e8e8e8] dark:bg-[#3f3f46] overflow-hidden">
+                                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                                </div>
+                                <span className="w-8 text-right text-[10px] font-medium" style={{ color: barColor }}>{pct}%</span>
+                                {countdown && (
+                                    <span className="text-[10px] text-[#6e6e6e] dark:text-[#999] whitespace-nowrap">{countdown}</span>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
             <button
                 type="button"
                 className="block w-full text-left px-2 py-1.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
@@ -859,6 +917,38 @@ function PauseDurationMenu({
                     {hours} {hours === 1 ? 'hour' : 'hours'}
                 </button>
             ))}
+            {mostConstrained && mostConstrainedResetFuture !== undefined && (
+                <>
+                    <div className="my-1 border-t border-[#e8e8e8] dark:border-[#3f3f46]" />
+                    <button
+                        type="button"
+                        className="block w-full text-left px-2 py-1.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                        onClick={() => onSelect({ until: mostConstrainedResetFuture })}
+                        data-testid={`pause-duration-${testIdScope}-until-provider-resets`}
+                    >
+                        <span className="block">
+                            Until {mostConstrained.provider.id} {formatQuotaTypeLabel(mostConstrained.quotaType.type)} resets
+                        </span>
+                        <span className="block text-[10px] text-[#6e6e6e] dark:text-[#999]">
+                            {formatPauseRemaining(mostConstrainedResetFuture, now)} left
+                        </span>
+                    </button>
+                </>
+            )}
+            {allConstrainedResetMs !== undefined &&
+                (mostConstrainedResetFuture === undefined || allConstrainedResetMs !== mostConstrainedResetFuture) && (
+                <button
+                    type="button"
+                    className="block w-full text-left px-2 py-1.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                    onClick={() => onSelect({ until: allConstrainedResetMs })}
+                    data-testid={`pause-duration-${testIdScope}-until-all-recover`}
+                >
+                    <span className="block">Until all quotas recover</span>
+                    <span className="block text-[10px] text-[#6e6e6e] dark:text-[#999]">
+                        {formatPauseRemaining(allConstrainedResetMs, now)} left
+                    </span>
+                </button>
+            )}
         </div>
     );
 }
@@ -886,6 +976,8 @@ export function ChatListPane({
     autopilotPausedUntil,
     isAutopilotPauseLoading,
     onPauseResumeAutopilot,
+    pauseSource,
+    autopilotPauseSource,
     onRefresh,
     onOpenDialog,
     fetchQueue,
@@ -917,6 +1009,13 @@ export function ChatListPane({
 }: ChatListPaneProps) {
     const { state: queueState } = useQueue();
     const isTaskSubmitting = queueState.isTaskSubmitting;
+
+    const { quotaData } = useAgentProvidersQuota();
+
+    // Quota risk for the pause pills — computed once so both pills share the same value.
+    const pillMostConstrained = getMostConstrainedProviderQuota(quotaData);
+    const pillRemainingPercent = pillMostConstrained?.remainingPercent ?? 100;
+    const pillRiskClass = getQuotaRiskClass(pillRemainingPercent);
 
     // Desktop-only left-panel double-click → pop-out (see onDoubleClick below).
     // The per-row useChatWindowActions hook can't be called inside the render
@@ -3437,7 +3536,11 @@ export function ChatListPane({
                                     'w-[7px] h-[7px] rounded-full flex-shrink-0',
                                     isPaused
                                         ? 'bg-amber-500 ring-2 ring-amber-500/25 animate-pulse'
-                                        : 'bg-emerald-500 ring-2 ring-emerald-500/25',
+                                        : pillRiskClass === 'risk'
+                                            ? 'bg-red-500 ring-2 ring-red-500/25'
+                                            : pillRiskClass === 'watch'
+                                                ? 'bg-amber-500 ring-2 ring-amber-500/25'
+                                                : 'bg-emerald-500 ring-2 ring-emerald-500/25',
                                 )} aria-hidden="true" />
                                 <span
                                     className={cn(
@@ -3449,12 +3552,34 @@ export function ChatListPane({
                                 >
                                     ALL
                                 </span>
-                                {isPaused && (
+                                {isPaused ? (
+                                    <>
+                                        {pauseSource === 'quota' && (
+                                            <span
+                                                className="font-mono text-[9px] font-bold tracking-widest px-1 py-px rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 whitespace-nowrap"
+                                                data-testid="pause-pill-quota-badge-all"
+                                            >
+                                                QUOTA
+                                            </span>
+                                        )}
+                                        <span
+                                            className="text-[11.5px] font-semibold leading-none whitespace-nowrap text-amber-700 dark:text-amber-400"
+                                            aria-label="▶ Resume all tasks"
+                                        >
+                                            {queuePauseRemaining || 'PAUSED'}
+                                        </span>
+                                    </>
+                                ) : pillRiskClass !== 'safe' && (
                                     <span
-                                        className="text-[11.5px] font-semibold leading-none whitespace-nowrap text-amber-700 dark:text-amber-400"
-                                        aria-label="▶ Resume all tasks"
+                                        className={cn(
+                                            'text-[10px] font-semibold leading-none whitespace-nowrap',
+                                            pillRiskClass === 'risk'
+                                                ? 'text-red-600 dark:text-red-400'
+                                                : 'text-amber-700 dark:text-amber-400',
+                                        )}
+                                        data-testid="pause-pill-quota-pct-all"
                                     >
-                                        {queuePauseRemaining || 'PAUSED'}
+                                        · {pillRemainingPercent}%
                                     </span>
                                 )}
                             </button>
@@ -3483,7 +3608,11 @@ export function ChatListPane({
                                             'w-[7px] h-[7px] rounded-full flex-shrink-0',
                                             isAutopilotPaused
                                                 ? 'bg-amber-500 ring-2 ring-amber-500/25 animate-pulse'
-                                                : 'bg-emerald-500 ring-2 ring-emerald-500/25',
+                                                : pillRiskClass === 'risk'
+                                                    ? 'bg-red-500 ring-2 ring-red-500/25'
+                                                    : pillRiskClass === 'watch'
+                                                        ? 'bg-amber-500 ring-2 ring-amber-500/25'
+                                                        : 'bg-emerald-500 ring-2 ring-emerald-500/25',
                                         )} aria-hidden="true" />
                                         <span
                                             className={cn(
@@ -3495,12 +3624,34 @@ export function ChatListPane({
                                         >
                                             AP
                                         </span>
-                                        {isAutopilotPaused && (
+                                        {isAutopilotPaused ? (
+                                            <>
+                                                {autopilotPauseSource === 'quota' && (
+                                                    <span
+                                                        className="font-mono text-[9px] font-bold tracking-widest px-1 py-px rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 whitespace-nowrap"
+                                                        data-testid="pause-pill-quota-badge-ap"
+                                                    >
+                                                        QUOTA
+                                                    </span>
+                                                )}
+                                                <span
+                                                    className="text-[11.5px] font-semibold leading-none whitespace-nowrap text-amber-700 dark:text-amber-400"
+                                                    aria-label="▶ Resume autopilot"
+                                                >
+                                                    {autopilotPauseRemaining || 'PAUSED'}
+                                                </span>
+                                            </>
+                                        ) : pillRiskClass !== 'safe' && (
                                             <span
-                                                className="text-[11.5px] font-semibold leading-none whitespace-nowrap text-amber-700 dark:text-amber-400"
-                                                aria-label="▶ Resume autopilot"
+                                                className={cn(
+                                                    'text-[10px] font-semibold leading-none whitespace-nowrap',
+                                                    pillRiskClass === 'risk'
+                                                        ? 'text-red-600 dark:text-red-400'
+                                                        : 'text-amber-700 dark:text-amber-400',
+                                                )}
+                                                data-testid="pause-pill-quota-pct-ap"
                                             >
-                                                {autopilotPauseRemaining || 'PAUSED'}
+                                                · {pillRemainingPercent}%
                                             </span>
                                         )}
                                     </button>
@@ -3511,6 +3662,7 @@ export function ChatListPane({
                             <PauseDurationMenu
                                 testIdScope={pauseMenuScope}
                                 onSelect={(options) => selectPauseDuration(pauseMenuScope, options)}
+                                quotaData={quotaData}
                             />
                         )}
                     </div>

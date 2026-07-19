@@ -4,6 +4,8 @@
  * suitable for pasting into Teams, Outlook, or other rich-text contexts.
  */
 
+import { getExportKatexCss } from '../../shared/math/katexCssExtract';
+
 export interface SnapshotOptions {
     /** Expand collapsed tool call groups so all content is visible. Default: true */
     expandToolGroups?: boolean;
@@ -259,6 +261,15 @@ function wrapInContainer(innerHtml: string): string {
 }
 
 /**
+ * Print-scoped layout override for embedded KaTeX math. The extracted KaTeX
+ * stylesheet handles glyphs and positioning; this only forces long display
+ * equations to scroll horizontally instead of overflowing a narrow printed
+ * page, so the PDF stays contained. Emitted only when math CSS is present.
+ */
+const KATEX_PRINT_OVERRIDES_CSS = `.katex-display { overflow-x: auto; overflow-y: hidden; max-width: 100%; }
+.katex { max-width: 100%; }`;
+
+/**
  * Build a full standalone HTML document from snapshot HTML, optimized for
  * printing / "Save as PDF". Removes max-height constraints so scrollable
  * containers expand to show their full content.
@@ -267,9 +278,49 @@ function wrapInContainer(innerHtml: string): string {
  * flex layouts (text renders one-char-per-line). Since `overflow` is not in
  * the snapshot STYLE_ALLOWLIST, it naturally defaults to `visible` in the
  * print document — no override needed.
+ *
+ * `mathCss` (from `getExportKatexCss()`) is the self-contained KaTeX stylesheet
+ * — its `KaTeX_*` fonts are already inlined as `data:` URIs, so the printed math
+ * needs no network. It is only embedded when the conversation actually contains
+ * rendered math; the default (math-free) document is byte-for-byte unchanged.
  */
-export function buildPrintDocument(snapshotHtml: string, title?: string): string {
+export function buildPrintDocument(snapshotHtml: string, title?: string, mathCss?: string): string {
     const safeTitle = escapeHtmlText(title || 'Chat Conversation');
+    const trimmedMath = (mathCss || '').trim();
+    const hasMath = trimmedMath.length > 0;
+
+    // Height/size reset. The default is a single universal rule. When the
+    // conversation carries rendered KaTeX, exclude the math subtrees from the
+    // height reset only — KaTeX relies on exact inline strut/vlist heights, and a
+    // blanket `height:auto` collapses fractions, scripts, and delimiters. The
+    // `:not()` variant is emitted ONLY in the math path so the default document
+    // is unchanged (and any older engine that drops the complex `:not()` still
+    // has no math to protect in that path).
+    const sizeReset = hasMath
+        ? `*:not(.katex):not(.katex *) {
+    max-height: none !important;
+    height: auto !important;
+}
+* {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}`
+        : `* {
+    max-height: none !important;
+    height: auto !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}`;
+
+    // Self-contained KaTeX styling (glyphs + data:-URI @font-face) plus the
+    // print-scoped scroll override. Only present when there is math to style.
+    const mathStyles = hasMath
+        ? `
+/* --- Embedded KaTeX styling for rendered math (self-contained, no network) --- */
+${trimmedMath}
+${KATEX_PRINT_OVERRIDES_CSS}`
+        : '';
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -286,12 +337,7 @@ body {
     background: #fff;
 }
 /* Remove height caps so scrollable areas expand to full content */
-* {
-    max-height: none !important;
-    height: auto !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-}
+${sizeReset}
 /* Bubble wrappers — override inlined pixel max-width */
 [data-turn-index] > div {
     max-width: 100% !important;
@@ -329,7 +375,7 @@ img {
 /* Avoid breaking individual turn bubbles across pages */
 [data-turn-index] {
     break-inside: avoid;
-}
+}${mathStyles}
 </style>
 </head>
 <body>${snapshotHtml}</body>
@@ -342,13 +388,58 @@ function escapeHtmlText(s: string): string {
 }
 
 /**
+ * Extract the self-contained KaTeX stylesheet for a derived output (print doc
+ * or rich-HTML clipboard flavor). Never throws (a missing document or
+ * cross-origin sheet degrades to unstyled math markup rather than failing the
+ * export).
+ */
+function safeGetExportKatexCss(): string {
+    try {
+        return getExportKatexCss();
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Copy-scoped layout override for embedded KaTeX math. Mirrors the print/export
+ * overrides: long display equations scroll horizontally instead of overflowing
+ * the paste target. Emitted only alongside real math CSS.
+ */
+const KATEX_COPY_OVERRIDES_CSS = `.katex-display { overflow-x: auto; overflow-y: hidden; max-width: 100%; }
+.katex { max-width: 100%; }`;
+
+/**
+ * Prepend a self-contained KaTeX `<style>` block to snapshot HTML for the
+ * rich-HTML clipboard flavor, so pasted equations keep their glyph positioning
+ * and fonts in rich-text targets that honor an embedded `<style>`. The KaTeX
+ * `@font-face` fonts are already inlined as `data:` URIs (no network, no CDN).
+ *
+ * Returns the HTML unchanged when it carries no rendered math or when no math
+ * CSS is available, so the math-free copy stays byte-for-byte identical.
+ *
+ * `mathCss` defaults to the live app's extracted KaTeX stylesheet; callers (and
+ * tests) may pass it explicitly.
+ */
+export function embedMathCssForCopy(snapshotHtml: string, mathCss?: string): string {
+    if (!snapshotHtml.includes('katex')) return snapshotHtml;
+    const css = (mathCss ?? safeGetExportKatexCss()).trim();
+    if (!css) return snapshotHtml;
+    return `<style>\n${css}\n${KATEX_COPY_OVERRIDES_CSS}\n</style>${snapshotHtml}`;
+}
+
+/**
  * Open a print-preview window with the full conversation snapshot and trigger
  * the browser's Print dialog (which offers "Save as PDF").
  *
+ * `mathCss` defaults to the live app's extracted KaTeX stylesheet; callers
+ * (and tests) may pass it explicitly.
+ *
  * Returns `true` on success, or throws with a user-facing message on failure.
  */
-export function openPrintPreview(snapshotHtml: string, title?: string): boolean {
-    const doc = buildPrintDocument(snapshotHtml, title);
+export function openPrintPreview(snapshotHtml: string, title?: string, mathCss?: string): boolean {
+    const css = mathCss ?? safeGetExportKatexCss();
+    const doc = buildPrintDocument(snapshotHtml, title, css);
     const win = window.open('', '_blank');
     if (!win) {
         throw new Error('Pop-up blocked. Please allow pop-ups for this site and try again.');

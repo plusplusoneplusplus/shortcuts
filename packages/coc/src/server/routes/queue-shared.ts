@@ -55,8 +55,12 @@ export const MAX_RESUME_CONTEXT_TURNS = 20;
 export interface QueueGlobalState {
     globalPaused: boolean;
     globalPausedUntil?: number;
+    /** Who set the global All-queues pause. */
+    globalPauseSource?: 'manual' | 'quota';
     globalAutopilotPaused: boolean;
     globalAutopilotPausedUntil?: number;
+    /** Who set the global Autopilot pause. */
+    globalAutopilotPauseSource?: 'manual' | 'quota';
     resumeInProgress: Set<string>;
 }
 
@@ -64,6 +68,7 @@ export function normalizeGlobalQueueState(state: QueueGlobalState, now = Date.no
     if (state.globalPaused && state.globalPausedUntil !== undefined && state.globalPausedUntil <= now) {
         state.globalPaused = false;
         state.globalPausedUntil = undefined;
+        state.globalPauseSource = undefined;
     }
     if (
         state.globalAutopilotPaused &&
@@ -72,6 +77,7 @@ export function normalizeGlobalQueueState(state: QueueGlobalState, now = Date.no
     ) {
         state.globalAutopilotPaused = false;
         state.globalAutopilotPausedUntil = undefined;
+        state.globalAutopilotPauseSource = undefined;
     }
 }
 
@@ -562,6 +568,12 @@ export function getAggregateStats(bridge: MultiRepoQueueRouter, state: QueueGlob
     if (state.globalAutopilotPaused && bridge.registry.getAllQueues().size === 0) {
         stats.isAutopilotPaused = true;
         stats.autopilotPausedUntil = state.globalAutopilotPausedUntil;
+    }
+    if (stats.isPaused && state.globalPauseSource !== undefined) {
+        stats.pauseSource = state.globalPauseSource;
+    }
+    if (stats.isAutopilotPaused && state.globalAutopilotPauseSource !== undefined) {
+        stats.autopilotPauseSource = state.globalAutopilotPauseSource;
     }
     return stats;
 }

@@ -96,6 +96,11 @@ vi.mock('../../../../src/server/spa/client/react/features/workflow/hooks/useWork
     useWorkflowProgress: () => null,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/shared/useAgentProvidersQuota', () => ({
+    useAgentProvidersQuota: () => ({ quotaData: null, loading: false, refreshing: false, error: null, refresh: vi.fn() }),
+    AGENT_PROVIDER_QUOTA_POLL_MS: 300000,
+}));
+
 // ❗ Critical: enable ralph so applyRalphGrouping actually groups.
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,

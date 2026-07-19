@@ -18,7 +18,12 @@
  */
 
 import hljs from 'highlight.js';
-import { BASE_CSS, HLJS_THEME_CSS, BROKEN_IMAGE_PLACEHOLDER } from './styles';
+import {
+    BASE_CSS,
+    HLJS_THEME_CSS,
+    KATEX_EXPORT_OVERRIDES_CSS,
+    BROKEN_IMAGE_PLACEHOLDER,
+} from './styles';
 import type {
     BuildCanvasHtmlDocumentInput,
     BuildCanvasHtmlDocumentResult,
@@ -171,6 +176,14 @@ export function buildCanvasHtmlDocument(
             ? 'canvas-export__body canvas-export__excalidraw'
             : 'canvas-export__body';
 
+    // Self-contained KaTeX stylesheet (glyph fonts already inlined as data URIs)
+    // plus the narrow-page overflow override, embedded only when the caller
+    // supplied math CSS — i.e. a markdown body that may contain rendered math.
+    const mathCss = input.mathCss && input.mathCss.trim() ? input.mathCss.trim() : '';
+    const styleBlock = mathCss
+        ? `${BASE_CSS}\n${HLJS_THEME_CSS}\n${mathCss}\n${KATEX_EXPORT_OVERRIDES_CSS}`
+        : `${BASE_CSS}\n${HLJS_THEME_CSS}`;
+
     const html =
         '<!doctype html>\n' +
         '<html lang="en">\n' +
@@ -179,7 +192,7 @@ export function buildCanvasHtmlDocument(
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n' +
         '<meta name="generator" content="coc canvas export">\n' +
         `<title>${escapeHtml(displayTitle)}</title>\n` +
-        `<style>\n${BASE_CSS}\n${HLJS_THEME_CSS}\n</style>\n` +
+        `<style>\n${styleBlock}\n</style>\n` +
         '</head>\n' +
         '<body>\n' +
         '<main class="canvas-export">\n' +

@@ -107,6 +107,50 @@ function externalUrls(html: string): string[] {
 }
 
 describe('canvas HTML export — full pipeline (Layer G)', () => {
+    it('renders inline + display math with the real renderer and embeds self-contained KaTeX CSS', async () => {
+        // A realistic slice of the KaTeX stylesheet: a layout rule plus a
+        // `@font-face` whose font is already inlined as a data URI (exactly the
+        // shape `getExportKatexCss` extracts from the loaded `bundle.css`).
+        const mathCss =
+            '.katex{font:normal 1.21em KaTeX_Main,Times New Roman,serif;line-height:1.2}' +
+            '@font-face{font-family:KaTeX_Main;font-style:normal;font-weight:400;' +
+            'src:url(data:font/woff2;base64,d09GMgABAAAAAA) format("woff2")}';
+        const mathCanvas: ExportableCanvas = {
+            title: 'Equations',
+            type: 'markdown',
+            content: 'Mass–energy is $E = mc^2$.\n\n$$\\int_0^1 x\\,dx = \\tfrac{1}{2}$$\n',
+            workspaceId: WORKSPACE_ID,
+        };
+        const deps = makeDeps({ getMathCss: () => mathCss });
+
+        const result = await exportCanvasAsHtml(mathCanvas, deps);
+
+        expect(result.ok).toBe(true);
+        const html = result.html ?? '';
+
+        // The real renderer produced rendered KaTeX markup (inline + display).
+        expect(html).toContain('class="katex"');
+        expect(html).toContain('katex-display');
+        // Accessible math semantics: KaTeX emits MathML alongside the HTML.
+        expect(html).toContain('<math');
+
+        // The self-contained KaTeX CSS (with its inlined font) is embedded in <style>,
+        // along with the narrow-page overflow override.
+        expect(html).toContain('@font-face{font-family:KaTeX_Main');
+        expect(html).toContain('data:font/woff2;base64,');
+        expect(html).toContain('.canvas-export__body .katex-display');
+
+        // The original TeX source is still recoverable verbatim.
+        expect(html).toContain('$E = mc^2$');
+        expect(html).toContain('\\int_0^1 x\\,dx');
+
+        // Portability: no network font/stylesheet — the only http(s) URLs are XML namespaces.
+        expect(html).not.toMatch(/url\(https?:\/\//i);
+        for (const url of externalUrls(html)) {
+            expect(url.startsWith('http://www.w3.org/')).toBe(true);
+        }
+    });
+
     it('renders image + mermaid + code + table into one portable document', async () => {
         const fetchSpy = vi.fn(async () => pngResp());
         const triggerDownload = vi.fn();

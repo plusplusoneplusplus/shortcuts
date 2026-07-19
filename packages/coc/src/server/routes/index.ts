@@ -136,6 +136,7 @@ import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
 import { registerAgentProvidersRoutes } from '../agent-providers/agent-providers-routes';
 import { AgentProvidersQuotaCache } from '../agent-providers/quota-cache';
+import { QuotaPauseWatcher } from '../agent-providers/quota-pause-watcher';
 import { resolveAutoAgentProvider, type AutoProviderAvailabilityMap, type AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import { registerProviderInstallRoutes } from '../providers/provider-install-routes';
 import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
@@ -247,7 +248,7 @@ export interface RegisterRoutesOptions {
     setSendToConversationRuntime?: (runtime: SendToConversationRuntimeOptions) => void;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -258,6 +259,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     let workItemGitHubPullPoller: WorkItemGitHubPullPoller | undefined;
     let workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller | undefined;
     let agentProvidersQuotaCache: AgentProvidersQuotaCache | undefined;
+    let quotaPauseWatcher: QuotaPauseWatcher | undefined;
     const concreteDefaultProvider = (): ChatProvider => {
         const defaultProvider = opts.runtimeConfigService?.config.defaultProvider
             ?? opts.resolvedConfig?.defaultProvider;
@@ -688,6 +690,22 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         };
         agentProvidersQuotaCache = new AgentProvidersQuotaCache(agentProvidersCtx);
         agentProvidersQuotaCache.start();
+        quotaPauseWatcher = new QuotaPauseWatcher({
+            quotaCache: agentProvidersQuotaCache,
+            bridge,
+            state: queueGlobalState,
+            getRule: () => {
+                const cfg = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+                const raw = cfg?.queue?.quotaAutoPause;
+                return {
+                    enabled: raw?.enabled ?? false,
+                    threshold: raw?.threshold ?? 0.15,
+                    action: raw?.action ?? 'autopilot',
+                    respectOverage: raw?.respectOverage ?? true,
+                };
+            },
+        });
+        quotaPauseWatcher.start();
         registerAgentProvidersRoutes(routes, {
             ...agentProvidersCtx,
             quotaCache: agentProvidersQuotaCache,
@@ -1317,5 +1335,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, activeWorkspaceBackgroundRefresher, dreamIdleScheduler };
+    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler };
 }

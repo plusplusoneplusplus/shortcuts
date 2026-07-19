@@ -77,6 +77,11 @@ vi.mock('../../../../src/server/spa/client/react/features/workflow/hooks/useWork
     }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/shared/useAgentProvidersQuota', () => ({
+    useAgentProvidersQuota: () => ({ quotaData: null, loading: false, refreshing: false, error: null, refresh: vi.fn() }),
+    AGENT_PROVIDER_QUOTA_POLL_MS: 300000,
+}));
+
 vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     useChatPrefs: () => ({
         pinnedChatIds: new Set(),

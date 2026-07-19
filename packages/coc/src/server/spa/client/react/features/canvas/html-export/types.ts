@@ -45,6 +45,15 @@ export interface BuildCanvasHtmlDocumentInput {
     assets?: Map<string, string>;
     /** Language hint for `code` canvases (e.g. "typescript"). */
     language?: string;
+    /**
+     * Self-contained KaTeX CSS (layout rules + `KaTeX_*` `@font-face` with the
+     * fonts already inlined as `data:` URIs) to embed inline so rendered `.katex`
+     * math styles correctly offline. Supplied for `markdown` exports (whose body
+     * may contain rendered math); omitted/empty ships the math markup unstyled.
+     * Must stay self-contained — no external `url(https://…)` — to keep the
+     * portability contract. Production value comes from `getExportKatexCss`.
+     */
+    mathCss?: string;
 }
 
 /** Result of building an export document. */

@@ -126,6 +126,18 @@ export const HLJS_THEME_CSS = `
 `.trim();
 
 /**
+ * Layout overrides for embedded KaTeX math in an exported document. The extracted
+ * KaTeX stylesheet handles glyphs/positioning; this only forces long display
+ * equations to scroll horizontally instead of overflowing a narrow page, so the
+ * export stays contained on mobile widths and printed pages. Scoped to the export
+ * body so it cannot leak onto anything else. Emitted only when math CSS is present.
+ */
+export const KATEX_EXPORT_OVERRIDES_CSS = `
+.canvas-export__body .katex-display { overflow-x: auto; overflow-y: hidden; max-width: 100%; }
+.canvas-export__body .katex { max-width: 100%; }
+`.trim();
+
+/**
  * Deterministic, self-contained broken-image placeholder used when an image
  * reference cannot be resolved to a `data:` URI. URL-encoded SVG (no base64,
  * no Buffer/btoa) so it is byte-identical across Node and the browser.

@@ -1069,10 +1069,12 @@ The Admin AI Provider page's Provider routing subtab exposes the single `feature
 
 The Admin AI Provider page's `ProviderEffortTiersSection` uses the same tier order (`Very Low`, `Low`, `Medium`, `High`) when editing provider defaults. Rows sourced from hardcoded provider defaults are prefilled and marked with a `Default` badge; saving persists only rows explicitly changed from those defaults, and clearing an override reverts that row to its provider default.
 
-Quota UI math lives in `shared/quotaUtils.ts`. It formats quota-window labels,
-clamps remaining and used percentages, maps remaining percentages to risk
-classes, and selects the tightest finite quota across one provider or across
-enabled providers. Known provider windows label `five_hour` as `5h` and
+Framework-free quota math lives in `@plusplusoneplusplus/coc-client`'s
+`quota.ts`: it clamps remaining and used display percentages, splits finite and
+unlimited pools, and selects the tightest finite quota across one provider or
+across enabled providers. `shared/quotaUtils.ts`
+re-exports that public math while keeping dashboard-only quota-window labels and
+risk classes. Known provider windows label `five_hour` as `5h` and
 `seven_day` as `Weekly`; unknown ids are converted to readable text. The Admin
 provider routing table uses those helpers for quota cells: Codex and Claude
 finite `quotaTypes[]` snapshots render as compact per-window rows with a

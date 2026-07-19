@@ -19,6 +19,10 @@ export interface QueueStats {
         displayName: string;
         failedAt: string;
     };
+    /** Why the ALL queue is currently paused — present only when isPaused is true. */
+    pauseSource?: 'manual' | 'quota';
+    /** Why the autopilot queue is currently paused — present only when autopilot is paused. */
+    autopilotPauseSource?: 'manual' | 'quota';
 }
 
 export interface QueueContextState {

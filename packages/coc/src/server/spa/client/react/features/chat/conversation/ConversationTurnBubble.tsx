@@ -21,6 +21,7 @@ import { isExcalidrawEnabled, isCanvasEnabled } from '../../../utils/config';
 import { SHOW_EXCALIDRAW_DIAGRAMS } from '../../../featureFlags';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, copyImageToClipboard, splitMarkdownSections } from '../../../utils/format';
+import { embedMathCssForCopy } from '../../../utils/snapshot-copy-utils';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { renderMermaidContainer, type CodeBlock } from '@plusplusoneplusplus/forge/editor/parsing';
@@ -1424,7 +1425,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             onClick: async () => {
                 try {
                     const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled });
-                    await copyHtmlToClipboard(html);
+                    await copyHtmlToClipboard(embedMathCssForCopy(html), turn.content || '');
                 } catch {}
             },
         });
@@ -1756,7 +1757,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             onClick={async () => {
                                 try {
                                     const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled });
-                                    await copyHtmlToClipboard(html);
+                                    await copyHtmlToClipboard(embedMathCssForCopy(html), turn.content || '');
                                     setCopiedHtml(true);
                                     setTimeout(() => setCopiedHtml(false), 1500);
                                 } catch (e) {

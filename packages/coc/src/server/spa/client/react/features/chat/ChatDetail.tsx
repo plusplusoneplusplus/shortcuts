@@ -60,8 +60,8 @@ import { ConversationMiniMap } from './conversation/ConversationMiniMap';
 import { AgentCanvas, AgentTreeMenu, SubAgentDetailView, buildAgentRunTreeFromTurns, buildSubAgentTurns, findAgentNode, pathToAgent, readAgentNavFromHash, applyAgentNavToHash } from './agent-canvas';
 import type { AgentNav, AgentRunNode } from './agent-canvas';
 import { useConversationSelection } from './hooks/useConversationSelection';
-import { snapshotConversation } from '../../utils/snapshot-copy-utils';
-import { copyHtmlToClipboard, copyToClipboard } from '../../utils/format';
+import { snapshotConversation, embedMathCssForCopy } from '../../utils/snapshot-copy-utils';
+import { copyHtmlToClipboard, copyToClipboard, formatConversationAsText } from '../../utils/format';
 import { useScratchpadEnabled } from '../../hooks/feature-flags/useScratchpadEnabled';
 import { useDisplaySettings } from '../../hooks/preferences/useDisplaySettings';
 import { useScratchpadState } from './scratchpad/useScratchpadState';
@@ -675,7 +675,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             const html = snapshotConversation(turnsContainerRef.current, {
                 selectedIndices: selection.selectedTurns,
             });
-            await copyHtmlToClipboard(html);
+            // Rich-HTML flavor: embed self-contained KaTeX styling (no-op without
+            // math). Plain-text flavor: original TeX source of the selected turns.
+            const selectedSource = turnsRef.current.filter(
+                t => t.turnIndex !== undefined && selection.selectedTurns.has(t.turnIndex),
+            );
+            await copyHtmlToClipboard(embedMathCssForCopy(html), formatConversationAsText(selectedSource));
             selection.stopSelecting();
         } catch (e) {
             console.error('Copy selected HTML failed:', e);

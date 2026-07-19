@@ -99,6 +99,12 @@ export interface CLIConfig {
         historyLimit?: number;
         restartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
         restartPickupDelayMs?: number;
+        quotaAutoPause?: {
+            enabled?: boolean;
+            threshold?: number;
+            action?: 'autopilot' | 'all';
+            respectOverage?: boolean;
+        };
     };
     /** Models whitelist configuration */
     models?: {
@@ -428,6 +434,12 @@ export interface ResolvedCLIConfig {
         historyLimit?: number;
         restartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
         restartPickupDelayMs?: number;
+        quotaAutoPause?: {
+            enabled: boolean;
+            threshold: number;
+            action: 'autopilot' | 'all';
+            respectOverage: boolean;
+        };
     };
     /** Models whitelist — list of enabled model IDs */
     models?: {

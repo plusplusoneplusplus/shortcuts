@@ -61,6 +61,8 @@ export type {
 } from './RalphExecutionRepoSelector';
 export { isGoalFile } from './goal-file-utils';
 export { resolveInlineImageSrc, useInlineImageLightbox } from './useInlineImageLightbox';
+export { useAgentProvidersQuota, AGENT_PROVIDER_QUOTA_POLL_MS } from './useAgentProvidersQuota';
+export type { UseAgentProvidersQuotaResult } from './useAgentProvidersQuota';
 export { useUndoRedo } from './useUndoRedo';
 export type { HistorySnapshot } from './useUndoRedo';
 export {
