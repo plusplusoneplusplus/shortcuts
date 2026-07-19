@@ -8,6 +8,8 @@ import { CocApiError } from '@plusplusoneplusplus/coc-client';
 const mocks = vi.hoisted(() => ({
     get: vi.fn(),
     save: vi.fn(),
+    list: vi.fn(),
+    create: vi.fn(),
     getExtension: vi.fn(),
     getExtensionRemote: vi.fn(),
     listVersions: vi.fn(),
@@ -33,6 +35,8 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => {
     const localCanvases = {
         get: mocks.get,
         save: mocks.save,
+        list: mocks.list,
+        create: mocks.create,
         getExtension: mocks.getExtension,
         listVersions: mocks.listVersions,
         getVersion: mocks.getVersion,
@@ -140,6 +144,8 @@ describe('CanvasPanel', () => {
         mocks.setCommentStatus.mockReset();
         mocks.deleteComment.mockReset();
         mocks.notesSaveContent.mockReset();
+        mocks.list.mockReset().mockResolvedValue([]);
+        mocks.create.mockReset();
         mocks.copyImageToClipboard.mockReset().mockResolvedValue(undefined);
         mocks.exportCanvasAsHtml.mockReset().mockResolvedValue({ ok: true, warnings: [] });
     });
@@ -1125,5 +1131,114 @@ describe('CanvasPanel', () => {
         } finally {
             selSpy.mockRestore();
         }
+    });
+
+    it('renders an exploration canvas with the exploration view and no markdown edit toggle', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({
+            id: 'expl-abc123',
+            title: 'Storm exploration',
+            type: 'exploration',
+            content: JSON.stringify({
+                query: 'StormEvents | take 3',
+                clusterUrl: 'https://help.kusto.windows.net',
+                database: 'Samples',
+                columns: [{ name: 'State', type: 'string' }],
+                rows: [['Texas']],
+                truncated: false,
+                lastRun: { timestamp: '2026-07-18T01:00:00.000Z', status: 'success', rowCount: 1 },
+            }),
+        }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="expl-abc123" liveEvent={null} />);
+
+        await waitFor(() => expect(screen.getByTestId('exploration-view')).toBeTruthy());
+        expect(screen.getByTestId('canvas-panel-exploration-badge')).toBeInTheDocument();
+        // Explorations own their editing surface — no markdown Preview/Edit toggle.
+        expect(screen.queryByTestId('canvas-panel-mode-edit')).toBeNull();
+        expect(screen.getByTestId('exploration-query')).toHaveValue('StormEvents | take 3');
+        expect(screen.getByText('Texas')).toBeInTheDocument();
+    });
+
+    // AC-07 — the "New exploration" affordance is gated on the exploration flag.
+    describe('New exploration button (AC-07)', () => {
+        afterEach(() => {
+            delete (window as any).__DASHBOARD_CONFIG__;
+        });
+
+        it('is hidden when the exploration feature is disabled', async () => {
+            delete (window as any).__DASHBOARD_CONFIG__;
+            mocks.get.mockResolvedValue(makeCanvas());
+            render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
+            await waitFor(() => expect(screen.getByTestId('canvas-panel-title')).toBeTruthy());
+            expect(screen.queryByTestId('canvas-panel-new-exploration')).toBeNull();
+        });
+
+        it('creates a blank exploration prefilled from the most recent one and selects it', async () => {
+            (window as any).__DASHBOARD_CONFIG__ = { explorationEnabled: true };
+            mocks.get.mockImplementation(async (_ws: string, id: string) => {
+                if (id === 'expl-prev01') {
+                    return makeCanvas({
+                        id: 'expl-prev01',
+                        type: 'exploration',
+                        content: JSON.stringify({
+                            query: 'T | take 1',
+                            clusterUrl: 'https://help.kusto.windows.net',
+                            database: 'Samples',
+                            columns: [], rows: [], truncated: false,
+                        }),
+                    });
+                }
+                return makeCanvas();
+            });
+            mocks.list.mockResolvedValue([
+                makeCanvasSummary({ id: 'expl-prev01', type: 'exploration', updatedAt: '2026-07-18T05:00:00.000Z' }),
+                makeCanvasSummary({ id: 'doc-abc123', type: 'markdown', updatedAt: '2026-07-18T06:00:00.000Z' }),
+            ]);
+            mocks.create.mockResolvedValue(makeCanvas({ id: 'expl-new001', type: 'exploration' }));
+            const onSelectCanvas = vi.fn();
+            const onCanvasCreated = vi.fn();
+
+            render(
+                <CanvasPanel
+                    workspaceId="ws-1"
+                    canvasId="doc-abc123"
+                    liveEvent={null}
+                    onSelectCanvas={onSelectCanvas}
+                    onCanvasCreated={onCanvasCreated}
+                />,
+            );
+
+            await waitFor(() => expect(screen.getByTestId('canvas-panel-new-exploration')).toBeTruthy());
+            fireEvent.click(screen.getByTestId('canvas-panel-new-exploration'));
+
+            await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+            const [ws, request] = mocks.create.mock.calls[0];
+            expect(ws).toBe('ws-1');
+            expect(request.type).toBe('exploration');
+            expect(request.processId).toBe('proc-1');
+            const seeded = JSON.parse(request.content);
+            expect(seeded.clusterUrl).toBe('https://help.kusto.windows.net');
+            expect(seeded.database).toBe('Samples');
+            expect(seeded.query).toBe('');
+            await waitFor(() => expect(onSelectCanvas).toHaveBeenCalledWith('expl-new001'));
+            expect(onCanvasCreated).toHaveBeenCalledWith('expl-new001');
+        });
+
+        it('creates with an empty seed when the workspace has no prior exploration', async () => {
+            (window as any).__DASHBOARD_CONFIG__ = { explorationEnabled: true };
+            mocks.get.mockResolvedValue(makeCanvas());
+            mocks.list.mockResolvedValue([makeCanvasSummary({ id: 'doc-abc123', type: 'markdown' })]);
+            mocks.create.mockResolvedValue(makeCanvas({ id: 'expl-new001', type: 'exploration' }));
+
+            render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onSelectCanvas={vi.fn()} />);
+
+            await waitFor(() => expect(screen.getByTestId('canvas-panel-new-exploration')).toBeTruthy());
+            fireEvent.click(screen.getByTestId('canvas-panel-new-exploration'));
+
+            await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+            const seeded = JSON.parse(mocks.create.mock.calls[0][1].content);
+            expect(seeded.clusterUrl).toBe('');
+            expect(seeded.database).toBe('');
+        });
     });
 });

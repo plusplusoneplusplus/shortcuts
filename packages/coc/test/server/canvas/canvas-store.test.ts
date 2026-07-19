@@ -472,6 +472,52 @@ describe('excalidraw canvases inherit canvas features (AC-06)', () => {
     });
 });
 
+describe('exploration canvases persist state as content JSON (AC-01)', () => {
+    let dataDir: string;
+    let store: CanvasStore;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-canvas-exploration-'));
+        store = new CanvasStore(dataDir);
+    });
+
+    afterEach(() => {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    const state = (query: string): string => JSON.stringify({
+        query,
+        clusterUrl: 'https://help.kusto.windows.net',
+        database: 'Samples',
+        columns: [{ name: 'State', type: 'string' }],
+        rows: [['TEXAS'], ['KANSAS']],
+        truncated: false,
+        lastRun: { timestamp: '2026-07-18T00:00:00.000Z', status: 'success', rowCount: 2 },
+    });
+
+    it('creates an exploration canvas of type "exploration"', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Storms', content: state('StormEvents | take 2'), type: 'exploration' });
+        expect(c.type).toBe('exploration');
+        expect(JSON.parse(c.content).query).toBe('StormEvents | take 2');
+    });
+
+    it('survives a reload (fresh store instance) with state intact', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Storms', content: state('StormEvents | take 2'), type: 'exploration' });
+        const reloaded = new CanvasStore(dataDir).getCanvas(WS, c.id);
+        expect(reloaded?.type).toBe('exploration');
+        expect(JSON.parse(reloaded!.content).database).toBe('Samples');
+    });
+
+    it('re-runs (query edits) bump revision and snapshot versions', () => {
+        const c = store.createCanvas({ workspaceId: WS, title: 'Storms', content: state('StormEvents | take 2'), type: 'exploration' });
+        const r = store.updateCanvas(WS, c.id, { content: state('StormEvents | take 5'), editor: 'user', expectedRevision: 1 });
+        expect(r.ok).toBe(true);
+        expect(store.getCanvas(WS, c.id)?.revision).toBe(2);
+        expect(JSON.parse(store.getVersion(WS, c.id, 1)!.content).query).toBe('StormEvents | take 2');
+        expect(JSON.parse(store.getVersion(WS, c.id, 2)!.content).query).toBe('StormEvents | take 5');
+    });
+});
+
 describe('canvas id helpers', () => {
     it('generateCanvasId produces valid filesystem-safe ids', () => {
         expect(isValidCanvasId(generateCanvasId('Hello World'))).toBe(true);

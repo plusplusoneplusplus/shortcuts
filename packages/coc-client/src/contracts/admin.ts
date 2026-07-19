@@ -237,6 +237,7 @@ export interface RuntimeDashboardConfig {
     loopsEnabled: boolean;
     dreamsEnabled: boolean;
     excalidrawEnabled: boolean;
+    explorationEnabled: boolean;
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;
     containerDefaultAgentEnabled: boolean;

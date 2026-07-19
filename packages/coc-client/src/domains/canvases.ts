@@ -11,6 +11,7 @@ import type {
   CanvasVersion,
   CanvasVersionMeta,
   CanvasVersionResponse,
+  CreateCanvasRequest,
   ListCanvasCommentsResponse,
   ListCanvasesResponse,
   ListCanvasVersionsResponse,
@@ -36,6 +37,19 @@ export class CanvasesClient {
     return response.canvases ?? [];
   }
 
+  /**
+   * Create a new canvas (AC-07 manual exploration create). The server gates
+   * this on the exploration feature flag and currently accepts only
+   * `type: 'exploration'`.
+   */
+  async create(workspaceId: string, request: CreateCanvasRequest): Promise<Canvas> {
+    const response = await this.transport.request<CanvasResponse>(
+      canvasesPath(workspaceId),
+      { method: 'POST', body: request },
+    );
+    return response.canvas;
+  }
+
   async get(workspaceId: string, canvasId: string): Promise<Canvas> {
     const response = await this.transport.request<CanvasResponse>(
       canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}`),
@@ -47,6 +61,23 @@ export class CanvasesClient {
     const response = await this.transport.request<CanvasResponse>(
       canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}`),
       { method: 'PUT', body: request },
+    );
+    return response.canvas;
+  }
+
+  /**
+   * Run an exploration canvas's query server-side (AC-02/AC-04). Optional
+   * overrides update the stored query/cluster/database before executing. The
+   * updated canvas (with fresh columns/rows/lastRun) is returned.
+   */
+  async run(
+    workspaceId: string,
+    canvasId: string,
+    overrides?: { query?: string; clusterUrl?: string; database?: string },
+  ): Promise<Canvas> {
+    const response = await this.transport.request<CanvasResponse>(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/run`),
+      { method: 'POST', body: overrides ?? {} },
     );
     return response.canvas;
   }

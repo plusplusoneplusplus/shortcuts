@@ -658,6 +658,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'exploration.enabled', default: false, runtime: 'live', runtimeFlag: 'explorationEnabled',
+        ui: {
+            group: 'review', order: 62, label: 'Kusto exploration canvas', badge: 'experimental',
+            hint: 'AI and users can run Kusto (KQL) queries in an interactive data-exploration canvas with tables and charts. Disabled by default.',
+            testId: 'toggle-exploration-enabled',
+        },
+    }),
+    bool({
         key: 'mcpOauth.enabled', default: false, runtime: 'restartRequired', runtimeFlag: 'mcpOauthEnabled',
         ui: {
             group: 'infrastructure', order: 20, label: 'MCP OAuth', badge: 'restart',
