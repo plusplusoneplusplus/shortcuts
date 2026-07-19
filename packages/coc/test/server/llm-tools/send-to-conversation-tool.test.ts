@@ -124,14 +124,12 @@ describe('createSendToConversationTool — shape & description', () => {
         expect(props.effortTier).toMatchObject({ type: 'string', enum: ['very-low', 'low', 'medium', 'high'] });
     });
 
-    // AC-05: description leads with the processId branch and notes create-only-ignored.
-    it('description disambiguates modes (processId branch first, create-only ignored)', () => {
+    // AC-05: description leads with the processId (post) branch before the create branch.
+    it('description disambiguates modes (processId branch first)', () => {
         const { tool } = makeTool();
         const desc = tool.description ?? '';
         expect(desc).toMatch(/processId/);
-        // The processId branch is described before the "omitted → create" branch.
-        expect(desc.indexOf('processId')).toBeLessThan(desc.indexOf('omitted'));
-        expect(desc).toMatch(/ignored/i);
+        expect(desc.indexOf('With `processId`')).toBeLessThan(desc.indexOf('Without `processId`'));
     });
 });
 

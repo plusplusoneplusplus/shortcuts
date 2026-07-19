@@ -2,7 +2,7 @@
 
 Recurring follow-up messages within a conversation. Inspired by Claude Code's loop mode — where the AI can schedule itself to revisit a task on a cadence without human intervention.
 
-**Feature flag:** `loops.enabled` in `~/.coc/config.yaml` (default `false`). When disabled, infrastructure is not constructed, REST routes are not registered, LLM tools (`scheduleWakeup`, `createLoop`, `cancelLoop`, `listLoops`) are filtered out, the bundled `/loop` skill is not auto-installed, and dashboard UI elements (badge, panel, slash-command) are hidden.
+**Feature flag:** `loops.enabled` in `~/.coc/config.yaml` (default `false`). When disabled, infrastructure is not constructed, REST routes are not registered, LLM tools (`scheduleWakeup`, `loop`) are filtered out, the bundled `/loop` skill is not auto-installed, and dashboard UI elements (badge, panel, slash-command) are hidden.
 
 ## Concepts
 
@@ -18,7 +18,7 @@ Recurring follow-up messages within a conversation. Inspired by Claude Code's lo
 ┌──────────────────────────────────────────────────────────────────────┐
 │  LLM Tool Layer                                                      │
 │  (llm-tools/loop-tools.ts)                                           │
-│  createLoop · cancelLoop · listLoops · scheduleWakeup                │
+│  loop (create · cancel · list) · scheduleWakeup                           │
 └──────────────┬───────────────────────────────────────────────────────┘
                │ creates/cancels LoopEntry
 ┌──────────────▼───────────────────────────────────────────────────────┐
@@ -48,7 +48,7 @@ Recurring follow-up messages within a conversation. Inspired by Claude Code's lo
 | `packages/coc/src/server/loops/loop-store.ts` | SQLite persistence (CRUD, `ensureTable`, prepared statements) |
 | `packages/coc/src/server/loops/loop-executor.ts` | Timer lifecycle, tick handler, circuit breakers, shutdown |
 | `packages/coc/src/server/loops/loop-handler.ts` | REST API routes (workspace-scoped and server-wide) |
-| `packages/coc/src/server/llm-tools/loop-tools.ts` | LLM tool factories (`createLoop`, `cancelLoop`, `listLoops`, `scheduleWakeup`) |
+| `packages/coc/src/server/llm-tools/loop-tools.ts` | LLM tool factories (`loop` with create/cancel/list actions, `scheduleWakeup`) |
 | `packages/forge/resources/bundled-skills/loop/SKILL.md` | Bundled `/loop` skill — teaches the AI interval parsing, mode selection, user confirmation |
 | `packages/coc/src/server/spa/client/react/features/chat/LoopBadge.tsx` | Dashboard header badge showing non-cancelled loop count |
 | `packages/coc/src/server/spa/client/react/features/chat/LoopManagementPanel.tsx` | Dashboard panel for listing/pausing/resuming/cancelling loops |
@@ -111,29 +111,22 @@ One-shot delayed follow-up. Registered in `LLM_TOOL_REGISTRY`.
 | `delay` | `string \| number` | ✅ | Delay (e.g. `"5s"`, `"30s"`, `"5m"`, `"1h"`, or ms). Min 1s |
 | `model` | `string` | ❌ | Model override for the follow-up |
 
-### `createLoop` (skill-gated — requires `/loop` skill)
+### `loop` (skill-gated — requires `/loop` skill)
 
-Creates a recurring loop. First tick fires after one full interval.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `description` | `string` | ✅ | Human-readable purpose |
-| `interval` | `string \| number` | ✅ | Interval between ticks. Min 10s |
-| `prompt` | `string` | ✅ | Follow-up prompt sent each tick |
-| `model` | `string` | ❌ | Model override for ticks |
-| `ttl` | `string` | ❌ | Time-to-live (e.g. `"3d"`, `"12h"`). Default 3 days |
-
-### `cancelLoop` (skill-gated)
+Single merged tool dispatched by a required `action` parameter (`create` | `cancel` | `list`), created by `createLoopTool()`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `loopId` | `string` | ✅ | Loop ID to cancel |
+| `action` | `string` | ✅ | `"create"`, `"cancel"`, or `"list"` |
+| `description` | `string` | create | Human-readable purpose |
+| `interval` | `string \| number` | create | Interval between ticks. Min 10s. First tick fires after one full interval |
+| `prompt` | `string` | create | Follow-up prompt sent each tick |
+| `model` | `string` | ❌ | create: model override for ticks |
+| `ttl` | `string` | ❌ | create: time-to-live (e.g. `"3d"`, `"12h"`). Default 3 days |
+| `loopId` | `string` | cancel | Loop ID to cancel |
+| `status` | `string` | ❌ | list: filter `"active"`, `"paused"`, `"cancelled"`, `"expired"` |
 
-### `listLoops` (skill-gated)
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `status` | `string` | ❌ | Filter: `"active"`, `"paused"`, `"cancelled"`, `"expired"` |
+Missing per-action fields return an error naming the required parameters.
 
 ## Duration Parsing
 

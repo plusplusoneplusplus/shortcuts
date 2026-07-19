@@ -38,6 +38,7 @@ vi.mock('../../src/server/work-items/work-item-store', function () { return ({
 }); });
 
 import { createCreateUpdateWorkItemTool } from '../../src/server/llm-tools/create-update-work-item-tool';
+import { WORK_ITEM_PLAN_TEMPLATE } from '../../src/server/work-items/plan-template';
 
 const EXISTING_ITEM = {
     id: 'item-uuid-1',
@@ -195,6 +196,41 @@ describe('createCreateUpdateWorkItemTool', () => {
         expect(callArg.status).toBe('created');
         expect(callArg.plan).toBeUndefined();
         expect(mockSavePlanVersion).not.toHaveBeenCalled();
+    });
+
+    it('does not embed the plan template in the tool description', () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+        expect(tool.description).not.toContain(WORK_ITEM_PLAN_TEMPLATE);
+        expect(tool.description).not.toContain('## Objective');
+        // The description still tells the model how to get the template.
+        expect(tool.description).toContain('template');
+    });
+
+    it('create mode without a plan returns the plan template and a follow-up hint', async () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+        const result: any = await tool.handler({ title: 'No plan yet' });
+
+        expect(result.created).toBe(true);
+        expect(result.planTemplate).toBe(WORK_ITEM_PLAN_TEMPLATE);
+        expect(result.hint).toContain('plan');
+    });
+
+    it('create mode with a plan does not return the plan template', async () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+        const result: any = await tool.handler({ title: 'Planned', plan: '## Objective\n\nDo it.' });
+
+        expect(result.created).toBe(true);
+        expect(result.planTemplate).toBeUndefined();
+        expect(result.hint).toBeUndefined();
+    });
+
+    it('update mode with an empty plan returns the plan template alongside the error', async () => {
+        const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
+        const result: any = await tool.handler({ workItemId: EXISTING_ITEM.id, plan: '   ' });
+
+        expect(result.updated).toBe(false);
+        expect(result.error).toContain('complete revised Markdown plan');
+        expect(result.planTemplate).toBe(WORK_ITEM_PLAN_TEMPLATE);
     });
 
     it('create mode accepts every supported work item type', async () => {
@@ -601,12 +637,13 @@ describe('createCreateUpdateWorkItemTool', () => {
         ]);
     });
 
-    it('tool description mentions hierarchy linking, moving, and unlinking', () => {
+    it('hierarchy linking is documented on the parent parameters', () => {
         const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
-        expect(tool.description).toContain('parentId');
-        expect(tool.description).toContain('parentTarget');
-        expect(tool.description).toContain('unlink');
-        expect(tool.description).toContain('parentId: null');
+        expect(tool.description).toContain('reparent/unlink');
+        const params = tool.parameters as Record<string, any>;
+        expect(params.properties.parentId.description).toContain('unlink');
+        expect(params.properties.parentTarget).toBeDefined();
+        expect(params.properties.parentWorkItemNumber).toBeDefined();
     });
 
     it('create mode stores parentId when a valid parent is supplied', async () => {
@@ -664,11 +701,10 @@ describe('createCreateUpdateWorkItemTool', () => {
         expect(mockUpdateWorkItem).not.toHaveBeenCalled();
     });
 
-    it('tool description mentions full revised plan content and planning reset', () => {
+    it('tool description mentions the full revised plan requirement', () => {
         const { tool } = createCreateUpdateWorkItemTool(dataDir, repoId);
-        expect(tool.description).toContain('complete revised Markdown plan');
-        expect(tool.description).toContain('planning');
-        expect(tool.description).toContain('## Objective');
+        expect(tool.description).toContain('full revised plan');
+        expect(tool.description).toContain('plan');
     });
 
     it('separate invocations produce independent tool objects', () => {

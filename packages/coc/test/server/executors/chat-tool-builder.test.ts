@@ -189,13 +189,11 @@ describe('buildChatToolBundle', () => {
         });
 
         const toolNames = result.tools.map(t => t.name);
-        expect(toolNames).toContain('createLoop');
-        expect(toolNames).toContain('cancelLoop');
-        expect(toolNames).toContain('listLoops');
-        // Loop tools are wired; their descriptive suffix was intentionally removed.
+        expect(toolNames).toContain('loop');
+        // The loop tool is wired; its descriptive suffix was intentionally removed.
     });
 
-    it('does not include loop tools when loopTools deps are not provided', () => {
+    it('does not include the loop tool when loopTools deps are not provided', () => {
         writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
 
         const result = buildChatToolBundle({
@@ -206,8 +204,6 @@ describe('buildChatToolBundle', () => {
         });
 
         const toolNames = result.tools.map(t => t.name);
-        expect(toolNames).not.toContain('createLoop');
-        expect(toolNames).not.toContain('cancelLoop');
-        expect(toolNames).not.toContain('listLoops');
+        expect(toolNames).not.toContain('loop');
     });
 });

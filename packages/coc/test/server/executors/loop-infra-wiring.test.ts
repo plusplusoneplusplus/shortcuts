@@ -80,9 +80,7 @@ describe('Loop infrastructure wiring', () => {
         });
 
         const toolNames = bundle.tools.map(t => t.name);
-        expect(toolNames).toContain('createLoop');
-        expect(toolNames).toContain('cancelLoop');
-        expect(toolNames).toContain('listLoops');
+        expect(toolNames).toContain('loop');
     });
 
     it('buildChatToolBundle includes both scheduleWakeup and loop tools simultaneously', () => {
@@ -105,9 +103,7 @@ describe('Loop infrastructure wiring', () => {
 
         const toolNames = bundle.tools.map(t => t.name);
         expect(toolNames).toContain('scheduleWakeup');
-        expect(toolNames).toContain('createLoop');
-        expect(toolNames).toContain('cancelLoop');
-        expect(toolNames).toContain('listLoops');
+        expect(toolNames).toContain('loop');
     });
 
     it('buildChatToolBundle omits loop tools when no loopTools deps', () => {
@@ -117,9 +113,7 @@ describe('Loop infrastructure wiring', () => {
         });
 
         const toolNames = bundle.tools.map(t => t.name);
-        expect(toolNames).not.toContain('createLoop');
-        expect(toolNames).not.toContain('cancelLoop');
-        expect(toolNames).not.toContain('listLoops');
+        expect(toolNames).not.toContain('loop');
     });
 
     it('LoopInfraDeps interface is satisfied by mock', () => {

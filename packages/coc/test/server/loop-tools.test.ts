@@ -5,9 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import {
-    createCreateLoopTool,
-    createCancelLoopTool,
-    createListLoopsTool,
+    createLoopTool,
     createScheduleWakeupTool,
     parseDuration,
 } from '../../src/server/llm-tools/loop-tools';
@@ -96,6 +94,11 @@ function makeLoopToolDeps(overrides: Partial<LoopToolDeps> = {}): LoopToolDeps {
     };
 }
 
+function makeLoopHandler(deps: LoopToolDeps): (args: any) => Promise<any> {
+    const { tool } = createLoopTool(deps);
+    return tool.handler as any;
+}
+
 function makeWakeupToolDeps(overrides: Partial<WakeupToolDeps> = {}): WakeupToolDeps {
     return {
         executor: { armTimer: vi.fn(), disarmTimer: vi.fn() } as any,
@@ -107,21 +110,49 @@ function makeWakeupToolDeps(overrides: Partial<WakeupToolDeps> = {}): WakeupTool
 }
 
 // ============================================================================
-// createLoop tool
+// loop tool — action dispatch
 // ============================================================================
 
-describe('createCreateLoopTool', () => {
+describe('createLoopTool action dispatch', () => {
+    it('returns an error for an unknown action', async () => {
+        const handler = makeLoopHandler(makeLoopToolDeps());
+        const result = await handler({ action: 'pause' });
+        expect(result.error).toContain('Unknown loop action');
+        expect(result.error).toContain('create, cancel, list');
+    });
+
+    it('create action rejects missing required fields', async () => {
+        const handler = makeLoopHandler(makeLoopToolDeps());
+        expect((await handler({ action: 'create' })).error).toContain('requires `description`, `interval`, and `prompt`');
+        expect((await handler({ action: 'create', description: 'd', interval: '1m' })).error)
+            .toContain('requires `description`, `interval`, and `prompt`');
+        expect((await handler({ action: 'create', description: '', interval: '1m', prompt: 'p' })).error)
+            .toContain('requires `description`, `interval`, and `prompt`');
+    });
+
+    it('cancel action rejects missing loopId', async () => {
+        const handler = makeLoopHandler(makeLoopToolDeps());
+        const result = await handler({ action: 'cancel' });
+        expect(result.error).toContain('requires `loopId`');
+    });
+});
+
+// ============================================================================
+// loop tool — create
+// ============================================================================
+
+describe('loop tool create action', () => {
     let deps: LoopToolDeps;
     let handler: (args: any) => Promise<any>;
 
     beforeEach(() => {
         deps = makeLoopToolDeps();
-        const { tool } = createCreateLoopTool(deps);
-        handler = tool.handler as any;
+        handler = makeLoopHandler(deps);
     });
 
     it('creates a loop with valid interval string', async () => {
         const result = await handler({
+            action: 'create',
             description: 'Monitor build',
             interval: '30s',
             prompt: 'Check build status',
@@ -137,6 +168,7 @@ describe('createCreateLoopTool', () => {
 
     it('creates a loop with numeric interval (ms)', async () => {
         const result = await handler({
+            action: 'create',
             description: 'Test',
             interval: 60000,
             prompt: 'Check',
@@ -148,6 +180,7 @@ describe('createCreateLoopTool', () => {
 
     it('rejects interval below minimum', async () => {
         const result = await handler({
+            action: 'create',
             description: 'Too fast',
             interval: '5s',
             prompt: 'Check',
@@ -158,6 +191,7 @@ describe('createCreateLoopTool', () => {
 
     it('rejects invalid interval string', async () => {
         const result = await handler({
+            action: 'create',
             description: 'Bad',
             interval: 'invalid',
             prompt: 'Check',
@@ -168,6 +202,7 @@ describe('createCreateLoopTool', () => {
 
     it('persists the loop in the store', async () => {
         await handler({
+            action: 'create',
             description: 'Persist test',
             interval: '1m',
             prompt: 'Check',
@@ -181,6 +216,7 @@ describe('createCreateLoopTool', () => {
 
     it('passes custom TTL', async () => {
         const result = await handler({
+            action: 'create',
             description: 'TTL test',
             interval: '1m',
             prompt: 'Check',
@@ -195,6 +231,7 @@ describe('createCreateLoopTool', () => {
 
     it('passes model override', async () => {
         await handler({
+            action: 'create',
             description: 'Model test',
             interval: '1m',
             prompt: 'Check',
@@ -207,6 +244,7 @@ describe('createCreateLoopTool', () => {
 
     it('resolves and persists workspaceId at creation', async () => {
         const result = await handler({
+            action: 'create',
             description: 'Workspace test',
             interval: '1m',
             prompt: 'Check workspace',
@@ -222,10 +260,10 @@ describe('createCreateLoopTool', () => {
         deps = makeLoopToolDeps({
             resolveWorkspaceId: vi.fn().mockResolvedValue(undefined),
         });
-        const { tool } = createCreateLoopTool(deps);
-        handler = tool.handler as any;
+        handler = makeLoopHandler(deps);
 
         const result = await handler({
+            action: 'create',
             description: 'No workspace',
             interval: '1m',
             prompt: 'Check',
@@ -238,6 +276,7 @@ describe('createCreateLoopTool', () => {
 
     it('rejects invalid TTL', async () => {
         const result = await handler({
+            action: 'create',
             description: 'Bad TTL',
             interval: '1m',
             prompt: 'Check',
@@ -249,29 +288,27 @@ describe('createCreateLoopTool', () => {
 });
 
 // ============================================================================
-// cancelLoop tool
+// loop tool — cancel
 // ============================================================================
 
-describe('createCancelLoopTool', () => {
+describe('loop tool cancel action', () => {
     let deps: LoopToolDeps;
     let handler: (args: any) => Promise<any>;
 
     beforeEach(() => {
         deps = makeLoopToolDeps();
-        const { tool } = createCancelLoopTool(deps);
-        handler = tool.handler as any;
+        handler = makeLoopHandler(deps);
     });
 
     it('cancels an active loop', async () => {
-        // Create a loop first
-        const { tool: createTool } = createCreateLoopTool(deps);
-        const createResult = await (createTool.handler as any)({
+        const createResult = await handler({
+            action: 'create',
             description: 'To cancel',
             interval: '1m',
             prompt: 'Check',
         });
 
-        const result = await handler({ loopId: createResult.loopId });
+        const result = await handler({ action: 'cancel', loopId: createResult.loopId });
         expect(result.cancelled).toBe(true);
 
         const loop = deps.store.getById(createResult.loopId);
@@ -280,15 +317,16 @@ describe('createCancelLoopTool', () => {
     });
 
     it('returns error for unknown loop', async () => {
-        const result = await handler({ loopId: 'nonexistent' });
+        const result = await handler({ action: 'cancel', loopId: 'nonexistent' });
         expect(result.error).toContain('Loop not found');
     });
 
     it('returns error for loop belonging to different process', async () => {
         // Create a loop with different processId
         const otherDeps = makeLoopToolDeps({ processId: 'other-proc' });
-        const { tool: createTool } = createCreateLoopTool(otherDeps);
-        const createResult = await (createTool.handler as any)({
+        const otherHandler = makeLoopHandler(otherDeps);
+        const createResult = await otherHandler({
+            action: 'create',
             description: 'Other proc',
             interval: '1m',
             prompt: 'Check',
@@ -296,46 +334,43 @@ describe('createCancelLoopTool', () => {
 
         // Now try to cancel from our process — but we need to share the store
         const sharedDeps = makeLoopToolDeps({ store: otherDeps.store });
-        const { tool: cancelTool } = createCancelLoopTool(sharedDeps);
-        const result = await (cancelTool.handler as any)({ loopId: createResult.loopId });
+        const sharedHandler = makeLoopHandler(sharedDeps);
+        const result = await sharedHandler({ action: 'cancel', loopId: createResult.loopId });
         expect(result.error).toContain('different conversation');
     });
 
     it('returns alreadyCancelled for already cancelled loop', async () => {
-        const { tool: createTool } = createCreateLoopTool(deps);
-        const createResult = await (createTool.handler as any)({
+        const createResult = await handler({
+            action: 'create',
             description: 'Cancel twice',
             interval: '1m',
             prompt: 'Check',
         });
 
-        await handler({ loopId: createResult.loopId });
-        const result = await handler({ loopId: createResult.loopId });
+        await handler({ action: 'cancel', loopId: createResult.loopId });
+        const result = await handler({ action: 'cancel', loopId: createResult.loopId });
         expect(result.alreadyCancelled).toBe(true);
     });
 });
 
 // ============================================================================
-// listLoops tool
+// loop tool — list
 // ============================================================================
 
-describe('createListLoopsTool', () => {
+describe('loop tool list action', () => {
     let deps: LoopToolDeps;
     let handler: (args: any) => Promise<any>;
 
     beforeEach(() => {
         deps = makeLoopToolDeps();
-        const { tool } = createListLoopsTool(deps);
-        handler = tool.handler as any;
+        handler = makeLoopHandler(deps);
     });
 
     it('lists all loops for the process', async () => {
-        const { tool: createTool } = createCreateLoopTool(deps);
-        const createHandler = createTool.handler as any;
-        await createHandler({ description: 'Loop 1', interval: '1m', prompt: 'P1' });
-        await createHandler({ description: 'Loop 2', interval: '5m', prompt: 'P2' });
+        await handler({ action: 'create', description: 'Loop 1', interval: '1m', prompt: 'P1' });
+        await handler({ action: 'create', description: 'Loop 2', interval: '5m', prompt: 'P2' });
 
-        const result = await handler({});
+        const result = await handler({ action: 'list' });
         expect(result.total).toBe(2);
         expect(result.loops).toHaveLength(2);
         expect(result.loops[0]).toHaveProperty('id');
@@ -344,28 +379,25 @@ describe('createListLoopsTool', () => {
     });
 
     it('filters by status', async () => {
-        const { tool: createTool } = createCreateLoopTool(deps);
-        const createHandler = createTool.handler as any;
-        const cr = await createHandler({ description: 'Active', interval: '1m', prompt: 'P1' });
-        await createHandler({ description: 'To cancel', interval: '5m', prompt: 'P2' });
+        await handler({ action: 'create', description: 'Active', interval: '1m', prompt: 'P1' });
+        await handler({ action: 'create', description: 'To cancel', interval: '5m', prompt: 'P2' });
 
         // Cancel the second one
-        const { tool: cancelTool } = createCancelLoopTool(deps);
         const loops = deps.store.getByProcess('proc-123');
         const secondLoop = loops.find(l => l.description === 'To cancel')!;
-        await (cancelTool.handler as any)({ loopId: secondLoop.id });
+        await handler({ action: 'cancel', loopId: secondLoop.id });
 
-        const activeResult = await handler({ status: 'active' });
+        const activeResult = await handler({ action: 'list', status: 'active' });
         expect(activeResult.total).toBe(1);
         expect(activeResult.loops[0].description).toBe('Active');
 
-        const cancelledResult = await handler({ status: 'cancelled' });
+        const cancelledResult = await handler({ action: 'list', status: 'cancelled' });
         expect(cancelledResult.total).toBe(1);
         expect(cancelledResult.loops[0].description).toBe('To cancel');
     });
 
     it('returns empty list for process with no loops', async () => {
-        const result = await handler({});
+        const result = await handler({ action: 'list' });
         expect(result.total).toBe(0);
         expect(result.loops).toHaveLength(0);
     });
@@ -373,13 +405,13 @@ describe('createListLoopsTool', () => {
     it('does not list loops from other processes', async () => {
         // Create a loop on a different process
         const otherDeps = makeLoopToolDeps({ processId: 'other-proc' });
-        const { tool: createTool } = createCreateLoopTool(otherDeps);
-        await (createTool.handler as any)({ description: 'Other', interval: '1m', prompt: 'P' });
+        const otherHandler = makeLoopHandler(otherDeps);
+        await otherHandler({ action: 'create', description: 'Other', interval: '1m', prompt: 'P' });
 
         // Share the store but query from our process
         const sharedDeps: LoopToolDeps = { ...deps, store: otherDeps.store };
-        const { tool: listTool } = createListLoopsTool(sharedDeps);
-        const result = await (listTool.handler as any)({});
+        const sharedHandler = makeLoopHandler(sharedDeps);
+        const result = await sharedHandler({ action: 'list' });
         expect(result.total).toBe(0);
     });
 });
@@ -468,22 +500,13 @@ describe('createScheduleWakeupTool', () => {
 // ============================================================================
 
 describe('tool metadata', () => {
-    it('createLoop tool has correct name', () => {
+    it('loop tool has correct name and requires action', () => {
         const deps = makeLoopToolDeps();
-        const { tool } = createCreateLoopTool(deps);
-        expect(tool.name).toBe('createLoop');
-    });
-
-    it('cancelLoop tool has correct name', () => {
-        const deps = makeLoopToolDeps();
-        const { tool } = createCancelLoopTool(deps);
-        expect(tool.name).toBe('cancelLoop');
-    });
-
-    it('listLoops tool has correct name', () => {
-        const deps = makeLoopToolDeps();
-        const { tool } = createListLoopsTool(deps);
-        expect(tool.name).toBe('listLoops');
+        const { tool } = createLoopTool(deps);
+        expect(tool.name).toBe('loop');
+        const params = tool.parameters as any;
+        expect(params.required).toEqual(['action']);
+        expect(params.properties.action.enum).toEqual(['create', 'cancel', 'list']);
     });
 
     it('scheduleWakeup tool has correct name', () => {
@@ -494,11 +517,11 @@ describe('tool metadata', () => {
 });
 
 describe('loop tool event emission', () => {
-    it('createLoop emits loop-created with the new loop', async () => {
+    it('create emits loop-created with the new loop', async () => {
         const emit = vi.fn();
         const deps = makeLoopToolDeps({ emit });
-        const { tool } = createCreateLoopTool(deps);
-        const result: any = await (tool.handler as any)({ description: 'd', interval: '30s', prompt: 'p' });
+        const handler = makeLoopHandler(deps);
+        const result: any = await handler({ action: 'create', description: 'd', interval: '30s', prompt: 'p' });
         expect(result.created).toBe(true);
         expect(emit).toHaveBeenCalledTimes(1);
         const evt = emit.mock.calls[0][0];
@@ -507,14 +530,13 @@ describe('loop tool event emission', () => {
         expect(evt.loop.processId).toBe('proc-123');
     });
 
-    it('cancelLoop emits loop-cancelled', async () => {
+    it('cancel emits loop-cancelled', async () => {
         const emit = vi.fn();
         const deps = makeLoopToolDeps({ emit });
-        const { tool: createTool } = createCreateLoopTool(deps);
-        const { tool: cancelTool } = createCancelLoopTool(deps);
-        const createRes: any = await (createTool.handler as any)({ description: 'd', interval: '30s', prompt: 'p' });
+        const handler = makeLoopHandler(deps);
+        const createRes: any = await handler({ action: 'create', description: 'd', interval: '30s', prompt: 'p' });
         emit.mockClear();
-        const cancelRes: any = await (cancelTool.handler as any)({ loopId: createRes.loopId });
+        const cancelRes: any = await handler({ action: 'cancel', loopId: createRes.loopId });
         expect(cancelRes.cancelled).toBe(true);
         expect(emit).toHaveBeenCalledTimes(1);
         expect(emit.mock.calls[0][0].type).toBe('loop-cancelled');
@@ -524,15 +546,15 @@ describe('loop tool event emission', () => {
     it('does not throw when emit throws', async () => {
         const emit = vi.fn().mockImplementation(() => { throw new Error('boom'); });
         const deps = makeLoopToolDeps({ emit });
-        const { tool } = createCreateLoopTool(deps);
-        const result: any = await (tool.handler as any)({ description: 'd', interval: '30s', prompt: 'p' });
+        const handler = makeLoopHandler(deps);
+        const result: any = await handler({ action: 'create', description: 'd', interval: '30s', prompt: 'p' });
         expect(result.created).toBe(true);
     });
 
     it('works without emit (backwards compatible)', async () => {
         const deps = makeLoopToolDeps();
-        const { tool } = createCreateLoopTool(deps);
-        const result: any = await (tool.handler as any)({ description: 'd', interval: '30s', prompt: 'p' });
+        const handler = makeLoopHandler(deps);
+        const result: any = await handler({ action: 'create', description: 'd', interval: '30s', prompt: 'p' });
         expect(result.created).toBe(true);
     });
 });
