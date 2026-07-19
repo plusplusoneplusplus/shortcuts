@@ -60,6 +60,7 @@ export type {
     UseRalphExecutionRepoTargetsResult,
 } from './RalphExecutionRepoSelector';
 export { isGoalFile } from './goal-file-utils';
+export { resolveInlineImageSrc, useInlineImageLightbox } from './useInlineImageLightbox';
 export { useUndoRedo } from './useUndoRedo';
 export type { HistorySnapshot } from './useUndoRedo';
 export {

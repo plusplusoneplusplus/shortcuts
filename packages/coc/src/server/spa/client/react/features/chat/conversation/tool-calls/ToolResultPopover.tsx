@@ -122,9 +122,11 @@ interface ToolResultPopoverProps {
     anchorRect: DOMRect;
     onMouseEnter: () => void;
     onMouseLeave: () => void;
+    /** When provided, the image preview becomes click-to-lightbox. */
+    onImageClick?: (src: string, alt?: string) => void;
 }
 
-export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseEnter, onMouseLeave }: ToolResultPopoverProps) {
+export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseEnter, onMouseLeave, onImageClick }: ToolResultPopoverProps) {
     const popoverRef = useRef<HTMLDivElement | null>(null);
     const contentRef = useRef<HTMLDivElement | null>(null);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -237,12 +239,17 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
 
     const renderBody = () => {
         if (isImage) {
+            const imageAlt = filePath ? shortenPath(filePath) : 'Image preview';
             return (
                 <img
                     src={result}
-                    alt={filePath ? shortenPath(filePath) : 'Image preview'}
-                    className="max-w-full max-h-64 rounded border border-[#e0e0e0] dark:border-[#3c3c3c]"
+                    alt={imageAlt}
+                    className={
+                        'max-w-full max-h-64 rounded border border-[#e0e0e0] dark:border-[#3c3c3c]' +
+                        (onImageClick ? ' cursor-zoom-in' : '')
+                    }
                     data-testid="popover-image"
+                    onClick={onImageClick ? () => onImageClick(result, imageAlt) : undefined}
                 />
             );
         }
