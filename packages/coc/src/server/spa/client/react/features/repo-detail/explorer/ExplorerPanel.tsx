@@ -4,7 +4,7 @@
  * On mobile, shows either the file tree OR the preview pane (not both).
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo, type Dispatch, type SetStateAction } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useId, type Dispatch, type SetStateAction } from 'react';
 import { Spinner } from '../../../ui';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
@@ -19,6 +19,7 @@ import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
 import { useExplorerExpandedPaths, useExplorerSelectedPath, useExplorerPreviewFile } from './explorerStateStore';
 import { useExplorerRootEntries, useExplorerChildrenMap, useExplorerRootLoaded } from './explorerTreeCache';
+import { setExplorerInstanceDirty } from './explorerDirtyStore';
 
 export interface ExplorerPanelProps {
     workspaceId: string;
@@ -113,6 +114,19 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const [selectedPath, setSelectedPath] = useExplorerSelectedPath(workspaceId);
     const [expandedPaths, setExpandedPaths] = useExplorerExpandedPaths(workspaceId);
     const [previewFile, setPreviewFile] = useExplorerPreviewFile(workspaceId);
+
+    // Report the preview editor's unsaved-edits state into the per-workspace dirty
+    // store so the workspace-switch guard (nav hooks) can prompt before discarding
+    // it (AC-03). A stable per-mount id keeps sibling mounts (RepoDetail tab +
+    // dock) independent; the flag is cleared when this panel unmounts.
+    const dirtyInstanceId = useId();
+    const reportPreviewDirty = useCallback((isDirty: boolean) => {
+        setExplorerInstanceDirty(workspaceId, dirtyInstanceId, isDirty);
+    }, [workspaceId, dirtyInstanceId]);
+    useEffect(
+        () => () => setExplorerInstanceDirty(workspaceId, dirtyInstanceId, false),
+        [workspaceId, dirtyInstanceId],
+    );
 
     // Search state
     const [searchInput, setSearchInput] = useState('');
@@ -563,6 +577,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                                     filePath={previewFile.path}
                                     fileName={previewFile.name}
                                     onClose={isMobile ? undefined : () => setPreviewFile(null)}
+                                    onDirtyChange={reportPreviewDirty}
                                 />
                             </div>
                         </div>

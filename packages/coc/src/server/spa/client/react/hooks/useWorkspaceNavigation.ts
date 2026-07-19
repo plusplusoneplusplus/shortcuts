@@ -3,6 +3,7 @@ import type { AppContextState } from '../contexts/AppContext';
 import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
 import { buildRepoSubTabSuffix } from '../layout/Router';
+import { confirmDiscardExplorerEditsOnSwitch } from '../features/repo-detail/explorer/explorerDirtyStore';
 import type { RepoSubTab } from '../types/dashboard';
 
 export function resolveWorkspaceRouteSuffix(
@@ -27,6 +28,8 @@ export function useWorkspaceNavigation() {
     const { state: queueState } = useQueue();
 
     const navigateToWorkspace = useCallback((id: string, subTabOverride?: RepoSubTab) => {
+        // Prompt before leaving a workspace whose explorer has unsaved edits (AC-03).
+        if (!confirmDiscardExplorerEditsOnSwitch(state.selectedRepoId, id)) return;
         dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
         dispatch({ type: 'SET_SELECTED_REPO', id });
         const suffix = resolveWorkspaceRouteSuffix(state, queueState.selectedTaskIdByRepo, id, subTabOverride);

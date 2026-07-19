@@ -9,6 +9,7 @@ import { useCallback } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
+import { confirmDiscardExplorerEditsOnSwitch } from '../repo-detail/explorer/explorerDirtyStore';
 import type { RepoSubTab } from '../../types/dashboard';
 
 export interface ShellNavigation {
@@ -33,9 +34,11 @@ export function useShellNavigation(): ShellNavigation {
     }, [queueState.selectedTaskIdByRepo, state]);
 
     const selectClone = useCallback((id: string, subTabOverride?: RepoSubTab) => {
+        // Prompt before leaving a workspace whose explorer has unsaved edits (AC-03).
+        if (!confirmDiscardExplorerEditsOnSwitch(state.selectedRepoId, id)) return;
         dispatch({ type: 'SET_SELECTED_REPO', id });
         navigate(id, subTabOverride ?? state.activeRepoSubTab ?? 'chats');
-    }, [dispatch, navigate, state.activeRepoSubTab]);
+    }, [dispatch, navigate, state.activeRepoSubTab, state.selectedRepoId]);
 
     const switchSubTab = useCallback((tab: RepoSubTab) => {
         // Switching a workspace sub-tab always means "show that workspace", so
