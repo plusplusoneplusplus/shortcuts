@@ -268,6 +268,42 @@ describe('detectPullRequestsInToolGroup', () => {
         });
     });
 
+    it('detects a wrapper PR from a quieted successful submit (breadcrumbs kept, child output dropped)', () => {
+        // Post-fix shape: submit_commits_as_pr.py quiets child stdout/stderr on
+        // success, so a normal submit stays small and the trailing `JSON: {…}`
+        // line survives the harness output cap. The result keeps the `$ <cmd>`
+        // breadcrumbs (including `$ gh pr create …`) but NOT the bare PR-URL echo
+        // that git/gh printed, so the only URL evidence is inside the JSON line.
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'bash',
+                args: {
+                    command: 'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc123',
+                },
+                result: [
+                    '$ git checkout -b pr/abc123-fix origin/main',
+                    '$ git cherry-pick abc123',
+                    '$ git rebase origin/main',
+                    '$ git push -u origin pr/abc123-fix',
+                    '$ gh pr create --base main --head pr/abc123-fix --fill',
+                    '$ git checkout main',
+                    'JSON: {"commits_count": 1, "commits_submitted": ["abc123"], "new_branch": "pr/abc123-fix", "original_branch": "main", "pr_url": "https://github.com/org/repo/pull/601", "status": "done"}',
+                ].join('\n'),
+            },
+        ]);
+
+        expect(pullRequests).toHaveLength(1);
+        expect(pullRequests[0]).toMatchObject({
+            number: 601,
+            url: 'https://github.com/org/repo/pull/601',
+            provider: 'github',
+            owner: 'org',
+            repo: 'repo',
+            toolCallId: 'tool-1',
+        });
+    });
+
     it('detects a wrapper PR from structured success output with no gh pr create echo (idempotent resume)', () => {
         // Real-world repro: an idempotent / resumed wrapper run (commits_count: 0)
         // does not re-run `gh pr create`, so the only PR-creation evidence is the

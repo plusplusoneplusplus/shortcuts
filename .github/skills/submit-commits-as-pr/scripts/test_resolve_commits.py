@@ -11,6 +11,8 @@ Or with pytest: pytest test_resolve_commits.py
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import subprocess
 import sys
@@ -83,6 +85,76 @@ class ResolveCommitsOrderTest(unittest.TestCase):
     def test_single_sha(self) -> None:
         c1, c2, c3 = self.shas
         self.assertEqual(mod.resolve_commits(c2), [c2])
+
+
+class RunOutputEchoTest(unittest.TestCase):
+    """run() must echo a child's stdout/stderr only on failure or when
+    SUBMIT_PR_VERBOSE=1 — never on a successful (returncode 0) command.
+
+    Quieting successful output keeps the wrapper's combined output small enough
+    to survive the agent harness's output cap, so the trailing `JSON: {…}`
+    success line the chat's PR-banner detection keys on is not truncated away.
+    """
+
+    # Tokens are passed to the child via the environment so they appear only in
+    # the child's OUTPUT, never in the `$ <cmd>` breadcrumb (which echoes the
+    # command source — that references the env var names, not their values).
+    OUT_TOKEN = "STDOUT_ECHO_TOKEN_9f3a1c"
+    ERR_TOKEN = "STDERR_ECHO_TOKEN_9f3a1c"
+
+    def setUp(self) -> None:
+        self._saved_env = {
+            k: os.environ.get(k)
+            for k in ("SUBMIT_PR_ECHO_OUT", "SUBMIT_PR_ECHO_ERR", "SUBMIT_PR_VERBOSE")
+        }
+        os.environ["SUBMIT_PR_ECHO_OUT"] = self.OUT_TOKEN
+        os.environ["SUBMIT_PR_ECHO_ERR"] = self.ERR_TOKEN
+        os.environ.pop("SUBMIT_PR_VERBOSE", None)
+
+    def tearDown(self) -> None:
+        for k, v in self._saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _cmd(self, exit_code: int) -> list[str]:
+        code = (
+            "import os, sys; "
+            "sys.stdout.write(os.environ['SUBMIT_PR_ECHO_OUT']); "
+            "sys.stderr.write(os.environ['SUBMIT_PR_ECHO_ERR']); "
+            "sys.exit({})".format(exit_code)
+        )
+        return [sys.executable, "-c", code]
+
+    def _run_capturing_log(self, *, exit_code: int, check: bool):
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            result = mod.run(self._cmd(exit_code), check=check)
+        return buf.getvalue(), result
+
+    def test_success_does_not_echo_child_output(self) -> None:
+        logged, result = self._run_capturing_log(exit_code=0, check=True)
+        # Still captured for the script's own parsing (git_out, gh URL read)…
+        self.assertIn(self.OUT_TOKEN, result.stdout)
+        self.assertIn(self.ERR_TOKEN, result.stderr)
+        # …but NOT echoed to the log on success.
+        self.assertNotIn(self.OUT_TOKEN, logged)
+        self.assertNotIn(self.ERR_TOKEN, logged)
+        # The `$ <cmd>` breadcrumb is always kept.
+        self.assertIn("$ ", logged)
+
+    def test_failure_echoes_child_output(self) -> None:
+        # check=False so the non-zero exit does not raise before we inspect.
+        logged, _ = self._run_capturing_log(exit_code=3, check=False)
+        self.assertIn(self.OUT_TOKEN, logged)
+        self.assertIn(self.ERR_TOKEN, logged)
+
+    def test_verbose_env_echoes_child_output_on_success(self) -> None:
+        os.environ["SUBMIT_PR_VERBOSE"] = "1"
+        logged, _ = self._run_capturing_log(exit_code=0, check=True)
+        self.assertIn(self.OUT_TOKEN, logged)
+        self.assertIn(self.ERR_TOKEN, logged)
 
 
 if __name__ == "__main__":
