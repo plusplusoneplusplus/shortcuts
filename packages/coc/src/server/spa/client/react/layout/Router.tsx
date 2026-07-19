@@ -10,7 +10,8 @@ import { useQueue } from '../contexts/QueueContext';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { SHOW_WIKI_TAB } from './TopBar';
-import { isTerminalEnabled, isNotesEnabled, isDreamsEnabled, isSchedulesInScheduledSlideEnabled } from '../utils/config';
+import { isTerminalEnabled, isNotesEnabled, isDreamsEnabled, isSchedulesInScheduledSlideEnabled, isSplitWorkspacePanelEnabled } from '../utils/config';
+import { splitWorkspaceLeftCollapsedStorageKey, toggleLeftCollapsed } from '../features/repo-detail/WorkspaceLeftCollapse';
 import { getUiLayoutMode } from '../hooks/preferences/useUiLayoutMode';
 import type { UiLayoutMode } from '../types/dashboard';
 import { lazy, Suspense } from 'react';
@@ -909,6 +910,17 @@ export function Router() {
             const target = e.target as HTMLElement;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
             if (state.activeTab !== 'repos' || !state.selectedRepoId) return;
+
+            // Cmd/Ctrl+B → collapse/expand the whole left workspace sidebar in the
+            // split layout. Input-guarded + repo-scoped (both above); only wired
+            // when the split panel is on screen (AC-04).
+            if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'b' || e.key === 'B')) {
+                if (!isSplitWorkspacePanelEnabled()) return;
+                e.preventDefault();
+                const wsId = getWorkspaceIdFromSelectionId(state.selectedRepoId);
+                toggleLeftCollapsed(splitWorkspaceLeftCollapsedStorageKey(wsId));
+                return;
+            }
 
             if (e.altKey && !e.ctrlKey && !e.metaKey) {
                 const letter = e.code.replace('Key', '').toLowerCase();

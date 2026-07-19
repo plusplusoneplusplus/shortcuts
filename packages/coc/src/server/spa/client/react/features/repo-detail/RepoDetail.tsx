@@ -146,6 +146,16 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // AC-04 (single shared detail pane, last-selection-wins).
     const [splitLastClicked, setSplitLastClicked] = useState<'chat' | 'git'>('chat');
     const [splitDetailNode, setSplitDetailNode] = useState<HTMLDivElement | null>(null);
+    // Start a new chat from the collapsed sidebar rail. Mirrors RepoChatTab's
+    // `handleNewChat` core (clear the selected task + navigate to the chat
+    // surface); the split chat list reconciles its empty compose state from the
+    // cleared queue selection. Points the shared detail pane at chat.
+    const handleSplitNewChat = useCallback(() => {
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: ws.id });
+        const segment = uiLayoutMode === 'dev-workflow' ? 'chats' : 'activity';
+        location.hash = '#repos/' + encodeURIComponent(ws.id) + '/' + segment;
+        setSplitLastClicked('chat');
+    }, [queueDispatch, ws.id, uiLayoutMode]);
     // Portal host inside the split panel's "Git" section header — RepoGitTab
     // portals its compact toolbar here so it shares the 22px header row.
     const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
@@ -784,6 +794,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                 <SplitWorkspacePanel
                                     workspaceId={ws.id}
                                     footer={chromeless ? <StatusActions variant="sidebar" /> : undefined}
+                                    onNewChat={handleSplitNewChat}
                                     chatList={
                                         <RepoChatTab
                                             key={`${ws.id}-split-chat`}
