@@ -160,9 +160,11 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
     const [now, setNow] = useState(Date.now());
     const [isPaused, setIsPaused] = useState(false);
     const [pausedUntil, setPausedUntil] = useState<number | string | undefined>();
+    const [pauseSource, setPauseSource] = useState<'manual' | 'quota' | undefined>();
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [isAutopilotPaused, setIsAutopilotPaused] = useState(false);
     const [autopilotPausedUntil, setAutopilotPausedUntil] = useState<number | string | undefined>();
+    const [autopilotPauseSource, setAutopilotPauseSource] = useState<'manual' | 'quota' | undefined>();
     const [isAutopilotPauseLoading, setIsAutopilotPauseLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pauseReason, setPauseReason] = useState<{ taskId: string; displayName: string; failedAt: string } | undefined>();
@@ -292,9 +294,11 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
                 setQueued(nextQueued);
                 setIsPaused(!!nextStats?.isPaused);
                 setPausedUntil(nextStats?.pausedUntil);
+                setPauseSource(nextStats?.pauseSource);
                 setPauseReason(nextStats?.pauseReason);
                 setIsAutopilotPaused(!!nextStats?.isAutopilotPaused);
                 setAutopilotPausedUntil(nextStats?.autopilotPausedUntil);
+                setAutopilotPauseSource(nextStats?.autopilotPauseSource);
                 queueDispatch({
                     type: 'REPO_QUEUE_UPDATED',
                     repoId: workspaceId,
@@ -408,11 +412,13 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
         if (repoQueue?.stats?.isPaused !== undefined) {
             setIsPaused(repoQueue.stats.isPaused);
             setPausedUntil(repoQueue.stats.pausedUntil);
+            setPauseSource(repoQueue.stats.pauseSource);
             setPauseReason(repoQueue.stats.pauseReason);
         }
         if (repoQueue?.stats?.isAutopilotPaused !== undefined) {
             setIsAutopilotPaused(repoQueue.stats.isAutopilotPaused);
             setAutopilotPausedUntil(repoQueue.stats.autopilotPausedUntil);
+            setAutopilotPauseSource(repoQueue.stats.autopilotPauseSource);
         }
         setLoading(false);
     }, [repoQueue, history, fetchHistory]);
@@ -1033,6 +1039,8 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
             autopilotPausedUntil={autopilotPausedUntil}
             isAutopilotPauseLoading={isAutopilotPauseLoading}
             onPauseResumeAutopilot={handlePauseResumeAutopilot}
+            pauseSource={pauseSource}
+            autopilotPauseSource={autopilotPauseSource}
             onRefresh={handleRefresh}
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId })}
             fetchQueue={fetchQueue}

@@ -57,7 +57,7 @@ import { dataTransferHasSessionContext, readSessionContextDropPayloads } from '.
 import { pushNewChatSeedContext } from './newChatSeedContext';
 import type { AgentProvidersQuotaResponse, ForEachRunSummary, MapReduceRunSummary, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
 import { useAgentProvidersQuota } from '../../shared/useAgentProvidersQuota';
-import { formatQuotaTypeLabel, getMostConstrainedProviderQuota, getQuotaPercent, getTightestFiniteQuotaType } from '../../shared/quotaUtils';
+import { formatQuotaTypeLabel, getMostConstrainedProviderQuota, getQuotaPercent, getQuotaRiskClass, getTightestFiniteQuotaType } from '../../shared/quotaUtils';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -734,6 +734,10 @@ export interface ChatListPaneProps {
     isAutopilotPauseLoading?: boolean;
     /** Toggle autopilot pause/resume. */
     onPauseResumeAutopilot?: (options?: QueuePauseOptions) => void;
+    /** Why the ALL queue is currently paused — 'manual' (user) or 'quota' (watcher). */
+    pauseSource?: 'manual' | 'quota';
+    /** Why the autopilot queue is currently paused — 'manual' (user) or 'quota' (watcher). */
+    autopilotPauseSource?: 'manual' | 'quota';
     onRefresh: () => void;
     onOpenDialog: () => void;
     fetchQueue: () => Promise<void>;
@@ -972,6 +976,8 @@ export function ChatListPane({
     autopilotPausedUntil,
     isAutopilotPauseLoading,
     onPauseResumeAutopilot,
+    pauseSource,
+    autopilotPauseSource,
     onRefresh,
     onOpenDialog,
     fetchQueue,
@@ -1005,6 +1011,11 @@ export function ChatListPane({
     const isTaskSubmitting = queueState.isTaskSubmitting;
 
     const { quotaData } = useAgentProvidersQuota();
+
+    // Quota risk for the pause pills — computed once so both pills share the same value.
+    const pillMostConstrained = getMostConstrainedProviderQuota(quotaData);
+    const pillRemainingPercent = pillMostConstrained?.remainingPercent ?? 100;
+    const pillRiskClass = getQuotaRiskClass(pillRemainingPercent);
 
     // Desktop-only left-panel double-click → pop-out (see onDoubleClick below).
     // The per-row useChatWindowActions hook can't be called inside the render
@@ -3525,7 +3536,11 @@ export function ChatListPane({
                                     'w-[7px] h-[7px] rounded-full flex-shrink-0',
                                     isPaused
                                         ? 'bg-amber-500 ring-2 ring-amber-500/25 animate-pulse'
-                                        : 'bg-emerald-500 ring-2 ring-emerald-500/25',
+                                        : pillRiskClass === 'risk'
+                                            ? 'bg-red-500 ring-2 ring-red-500/25'
+                                            : pillRiskClass === 'watch'
+                                                ? 'bg-amber-500 ring-2 ring-amber-500/25'
+                                                : 'bg-emerald-500 ring-2 ring-emerald-500/25',
                                 )} aria-hidden="true" />
                                 <span
                                     className={cn(
@@ -3537,12 +3552,34 @@ export function ChatListPane({
                                 >
                                     ALL
                                 </span>
-                                {isPaused && (
+                                {isPaused ? (
+                                    <>
+                                        {pauseSource === 'quota' && (
+                                            <span
+                                                className="font-mono text-[9px] font-bold tracking-widest px-1 py-px rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 whitespace-nowrap"
+                                                data-testid="pause-pill-quota-badge-all"
+                                            >
+                                                QUOTA
+                                            </span>
+                                        )}
+                                        <span
+                                            className="text-[11.5px] font-semibold leading-none whitespace-nowrap text-amber-700 dark:text-amber-400"
+                                            aria-label="▶ Resume all tasks"
+                                        >
+                                            {queuePauseRemaining || 'PAUSED'}
+                                        </span>
+                                    </>
+                                ) : pillRiskClass !== 'safe' && (
                                     <span
-                                        className="text-[11.5px] font-semibold leading-none whitespace-nowrap text-amber-700 dark:text-amber-400"
-                                        aria-label="▶ Resume all tasks"
+                                        className={cn(
+                                            'text-[10px] font-semibold leading-none whitespace-nowrap',
+                                            pillRiskClass === 'risk'
+                                                ? 'text-red-600 dark:text-red-400'
+                                                : 'text-amber-700 dark:text-amber-400',
+                                        )}
+                                        data-testid="pause-pill-quota-pct-all"
                                     >
-                                        {queuePauseRemaining || 'PAUSED'}
+                                        · {pillRemainingPercent}%
                                     </span>
                                 )}
                             </button>
@@ -3571,7 +3608,11 @@ export function ChatListPane({
                                             'w-[7px] h-[7px] rounded-full flex-shrink-0',
                                             isAutopilotPaused
                                                 ? 'bg-amber-500 ring-2 ring-amber-500/25 animate-pulse'
-                                                : 'bg-emerald-500 ring-2 ring-emerald-500/25',
+                                                : pillRiskClass === 'risk'
+                                                    ? 'bg-red-500 ring-2 ring-red-500/25'
+                                                    : pillRiskClass === 'watch'
+                                                        ? 'bg-amber-500 ring-2 ring-amber-500/25'
+                                                        : 'bg-emerald-500 ring-2 ring-emerald-500/25',
                                         )} aria-hidden="true" />
                                         <span
                                             className={cn(
@@ -3583,12 +3624,34 @@ export function ChatListPane({
                                         >
                                             AP
                                         </span>
-                                        {isAutopilotPaused && (
+                                        {isAutopilotPaused ? (
+                                            <>
+                                                {autopilotPauseSource === 'quota' && (
+                                                    <span
+                                                        className="font-mono text-[9px] font-bold tracking-widest px-1 py-px rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 whitespace-nowrap"
+                                                        data-testid="pause-pill-quota-badge-ap"
+                                                    >
+                                                        QUOTA
+                                                    </span>
+                                                )}
+                                                <span
+                                                    className="text-[11.5px] font-semibold leading-none whitespace-nowrap text-amber-700 dark:text-amber-400"
+                                                    aria-label="▶ Resume autopilot"
+                                                >
+                                                    {autopilotPauseRemaining || 'PAUSED'}
+                                                </span>
+                                            </>
+                                        ) : pillRiskClass !== 'safe' && (
                                             <span
-                                                className="text-[11.5px] font-semibold leading-none whitespace-nowrap text-amber-700 dark:text-amber-400"
-                                                aria-label="▶ Resume autopilot"
+                                                className={cn(
+                                                    'text-[10px] font-semibold leading-none whitespace-nowrap',
+                                                    pillRiskClass === 'risk'
+                                                        ? 'text-red-600 dark:text-red-400'
+                                                        : 'text-amber-700 dark:text-amber-400',
+                                                )}
+                                                data-testid="pause-pill-quota-pct-ap"
                                             >
-                                                {autopilotPauseRemaining || 'PAUSED'}
+                                                · {pillRemainingPercent}%
                                             </span>
                                         )}
                                     </button>

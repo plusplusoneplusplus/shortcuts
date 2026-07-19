@@ -35,3 +35,15 @@ export function getQuotaRiskClasses(pct: number): QuotaRiskClasses {
         badgeLabel: pct < 25 ? 'Risk' : pct < 50 ? 'Watch' : 'OK',
     };
 }
+
+/**
+ * Returns a simple risk tier string for a remaining-percent value (0–100).
+ *   ≥ 50 → 'safe'
+ *   ≥ 25 → 'watch'
+ *   < 25 → 'risk'
+ */
+export function getQuotaRiskClass(remainingPercent: number): 'safe' | 'watch' | 'risk' {
+    if (remainingPercent >= 50) return 'safe';
+    if (remainingPercent >= 25) return 'watch';
+    return 'risk';
+}
