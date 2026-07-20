@@ -1568,6 +1568,56 @@ describe('open PR by number or URL', () => {
         expect(fetchMock.mock.calls[4][1]?.method).toBe('DELETE');
     });
 
+    it('removes a recent entry when its remove button is clicked', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({
+                entries: [makeRecentEntry({ number: 63, title: 'Manually removed PR' })],
+            }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }));
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByText('Manually removed PR')).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('recent-opened-pr-remove'));
+        });
+
+        await waitFor(() => expect(screen.queryByTestId('recent-opened-prs')).not.toBeInTheDocument());
+        expect(String(fetchMock.mock.calls[3][0])).toContain('/origins/local_ws-1/pull-requests/recent-opened/63');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('workspaceId=ws-1');
+        expect(String(fetchMock.mock.calls[3][0])).toContain('repoId=repo-1');
+        expect(fetchMock.mock.calls[3][1]?.method).toBe('DELETE');
+        // Removing must not attempt to open/validate the PR.
+        expect(fetchMock.mock.calls.some(call =>
+            /\/pull-requests\/63(\?|$)/.test(String(call[0])),
+        )).toBe(false);
+    });
+
+    it('surfaces an error and keeps the entry when manual removal fails', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({
+                entries: [makeRecentEntry({ number: 64, title: 'Undeletable PR' })],
+            }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }))
+            .mockResolvedValueOnce(jsonResponse({ error: 'server error' }, { ok: false, status: 500 }));
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByText('Undeletable PR')).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('recent-opened-pr-remove'));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('open-pr-error')).toBeInTheDocument());
+        expect(screen.getByText('Undeletable PR')).toBeInTheDocument();
+        expect(fetchMock.mock.calls[3][1]?.method).toBe('DELETE');
+    });
+
     it('keeps a recent entry when click validation fails without a confirmed 404', async () => {
         const fetchMock = vi.fn()
             .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
