@@ -137,6 +137,18 @@ export function scanTurnsForPlanFile(turns: ConversationTurn[]): string | undefi
     return undefined;
 }
 
+/**
+ * `context.files[0]` may carry raw instruction text rather than a file path
+ * (scheduled chats enqueue `files: [schedule.target]` to drive prompt
+ * construction). Only a path-shaped value (absolute POSIX or Windows drive
+ * path, mirroring the SPA's isAbsolutePath) is recorded as the chat's plan
+ * file, so prompt text never surfaces as a readable plan path in the UI.
+ */
+export function asPlanFilePath(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    return value.startsWith('/') || /^[A-Za-z]:[/\\]/.test(value) ? value : undefined;
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -583,7 +595,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     ? path.basename(task.payload.workflowPath)
                     : undefined,
                 planFilePath: isChatPayload(task.payload)
-                    ? task.payload.context?.files?.[0]
+                    ? asPlanFilePath(task.payload.context?.files?.[0])
                     : undefined,
                 workItemId: (task.payload as any)?.workItemId,
                 notePath: isChatPayload(task.payload) && hasNoteChatContext(task.payload)

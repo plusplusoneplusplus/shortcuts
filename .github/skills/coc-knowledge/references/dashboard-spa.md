@@ -709,7 +709,17 @@ does not render Copilot premium request units.
 `ImplementPlanCard` (`features/chat/ImplementPlanCard.tsx`) is the thread-only
 flow card shown after a completed **Ask-mode plan-file chat** (gated in
 `ChatDetail` on terminal status, not busy, Ask mode, and a known
-`effectivePlanPath`). The card is a trigger: clicking **Implement** expands
+`effectivePlanPath`). `ChatDetail` derives the plan path from
+`context.files[0]` → `payload.planFilePath` → `metadata.planFilePath` →
+detected `.plan.md` created files → detected plan canvas, and each persisted
+slot is filtered through `asPlanPath` (path-shaped: absolute POSIX or Windows
+drive path). This matters because scheduled chats enqueue their raw instruction
+text as `context.files[0]`, and the server only records `metadata.planFilePath`
+from `context.files[0]` when it is path-shaped (`asPlanFilePath` in
+`executors/process-lifecycle-runner.ts`) — prompt text must never surface as a
+readable plan path (the launch dialog would 404 reading it via `/fs/blob`). The
+canvas-title label persisted for canvas-backed plans (non-path) is still
+admitted when `metadata.planCanvasId` is set. The card is a trigger: clicking **Implement** expands
 `ImplementPlanLaunchDialog` (`features/chat/ImplementPlanLaunchDialog.tsx`), an
 inline launch panel below the banner styled like `RalphStartPanel`'s open
 state (not a modal). The panel hosts the plan-file selector, target selector,

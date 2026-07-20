@@ -1138,6 +1138,35 @@ describe('ChatDetail', () => {
             expect(metadataIdx).toBeLessThan(emptyIdx);
         });
 
+        it('guards payload and metadata planFilePath fallbacks with asPlanPath (prompt text is not a plan file)', () => {
+            // Scheduled chats store their raw instruction text in
+            // context.files[0], which the server historically copied into
+            // metadata.planFilePath. The fallback chain must reject non-path
+            // values so the Implement banner never offers prompt text as a
+            // readable plan file (it 404s on /fs/blob).
+            const planPathBlock = source.substring(
+                source.indexOf('const planPath'),
+                source.indexOf('const planPath') + 300,
+            );
+            expect(planPathBlock).toContain('asPlanPath(rawContextFile)');
+            expect(planPathBlock).toContain('asPlanPath(task?.payload?.planFilePath)');
+            expect(planPathBlock).toContain('asPlanPath(task?.metadata?.planFilePath, isCanvasBackedPlan)');
+        });
+
+        it('asPlanPath admits non-path canvas-title labels only for canvas-backed plans', () => {
+            const fnBlock = source.substring(
+                source.indexOf('function asPlanPath'),
+                source.indexOf('function asPlanPath') + 300,
+            );
+            expect(fnBlock).toContain('isAbsolutePath(v)');
+            expect(fnBlock).toContain('allowLabel');
+            const canvasFlagBlock = source.substring(
+                source.indexOf('const isCanvasBackedPlan'),
+                source.indexOf('const isCanvasBackedPlan') + 150,
+            );
+            expect(canvasFlagBlock).toContain('task?.metadata?.planCanvasId');
+        });
+
         it('computes detectedPlanFile from createdFiles scanning for .plan.md', () => {
             expect(source).toContain('detectedPlanFile');
             const detectBlock = source.substring(

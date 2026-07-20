@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { getLogger } from '@plusplusoneplusplus/forge';
-import { ProcessLifecycleRunner } from '../../../src/server/executors/process-lifecycle-runner';
+import { ProcessLifecycleRunner, asPlanFilePath } from '../../../src/server/executors/process-lifecycle-runner';
 import type { LifecycleRunnerOptions } from '../../../src/server/executors/process-lifecycle-runner';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 
@@ -667,6 +667,56 @@ describe('ProcessLifecycleRunner — metadata.planFilePath from context.files', 
         expect(proc?.metadata?.planFilePath).toBe('C:\\Users\\dev\\project\\fix.plan.md');
     });
 
+    it('does not record raw instruction text from context.files[0] as planFilePath (schedule targets)', async () => {
+        // Scheduled chats enqueue `context.files: [schedule.target]` where the
+        // target is prompt text, not a path — it must never become the plan file.
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Output folder: ~/.coc/repos/ws-1/tasks\n\nFollow the instruction git pull --rebase.',
+                workspaceId: 'ws-abc',
+                context: { files: ['git pull --rebase'], scheduleId: 'sch_1' },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.planFilePath).toBeUndefined();
+    });
+
+    it('does not record multiline prompt text from context.files[0] as planFilePath', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Run the refactoring skill',
+                workspaceId: 'ws-abc',
+                context: { files: ['Use the code-refactoring skill to find opportunities\nBefore creating any new plan, review existing plans.'] },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.planFilePath).toBeUndefined();
+    });
+
+    it('does not record relative file names from context.files[0] as planFilePath', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Hello',
+                workspaceId: 'ws-abc',
+                context: { files: ['my-prompt.md'] },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const processId = `queue_${task.id}`;
+        const proc = await store.getProcess(processId);
+        expect(proc?.metadata?.planFilePath).toBeUndefined();
+    });
+
     it('sets planFilePath to undefined when context.files is empty', async () => {
         const task = makeTask({
             payload: {
@@ -728,6 +778,31 @@ describe('ProcessLifecycleRunner — metadata.planFilePath from context.files', 
         const processId = `queue_${task.id}`;
         const proc = await store.getProcess(processId);
         expect(proc?.metadata?.planFilePath).toBe('/first/plan.md');
+    });
+});
+
+// ============================================================================
+// asPlanFilePath — path-shape guard for context.files[0]
+// ============================================================================
+
+describe('asPlanFilePath', () => {
+    it('accepts absolute POSIX paths', () => {
+        expect(asPlanFilePath('/home/user/feature.plan.md')).toBe('/home/user/feature.plan.md');
+    });
+
+    it('accepts Windows drive paths (both separators)', () => {
+        expect(asPlanFilePath('C:\\Users\\dev\\fix.plan.md')).toBe('C:\\Users\\dev\\fix.plan.md');
+        expect(asPlanFilePath('D:/projects/plan.md')).toBe('D:/projects/plan.md');
+    });
+
+    it('rejects instruction text, relative names, and non-strings', () => {
+        expect(asPlanFilePath('git pull --rebase')).toBeUndefined();
+        expect(asPlanFilePath('Use the code-refactoring skill to find opportunities\nreview existing plans')).toBeUndefined();
+        expect(asPlanFilePath('my-prompt.md')).toBeUndefined();
+        expect(asPlanFilePath('./relative/plan.md')).toBeUndefined();
+        expect(asPlanFilePath('')).toBeUndefined();
+        expect(asPlanFilePath(undefined)).toBeUndefined();
+        expect(asPlanFilePath(42)).toBeUndefined();
     });
 });
 

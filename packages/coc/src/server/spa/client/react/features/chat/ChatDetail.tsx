@@ -174,11 +174,21 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (typeof v !== 'string') return false;
         return v.startsWith('/') || /^[A-Za-z]:[/\\]/.test(v);
     }
+    // A persisted planFilePath is only trusted when path-shaped: scheduled chats
+    // enqueue their raw instruction text in context.files[0] and the server
+    // copies that into metadata.planFilePath, so prompt text must never be
+    // treated as a readable plan file. `allowLabel` admits the canvas-title
+    // label persisted alongside planCanvasId for canvas-backed plans.
+    function asPlanPath(v: unknown, allowLabel = false): string | undefined {
+        if (isAbsolutePath(v)) return v;
+        return allowLabel && typeof v === 'string' && v ? v : undefined;
+    }
+    const isCanvasBackedPlan = typeof task?.metadata?.planCanvasId === 'string' && task.metadata.planCanvasId !== '';
     const rawContextFile = task?.payload?.context?.files?.[0];
     const planPath: string =
-        (isAbsolutePath(rawContextFile) ? rawContextFile : undefined) ??
-        task?.payload?.planFilePath ??
-        task?.metadata?.planFilePath ??
+        asPlanPath(rawContextFile) ??
+        asPlanPath(task?.payload?.planFilePath) ??
+        asPlanPath(task?.metadata?.planFilePath, isCanvasBackedPlan) ??
         '';
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
     const turnsRef = useRef<ClientConversationTurn[]>([]);
