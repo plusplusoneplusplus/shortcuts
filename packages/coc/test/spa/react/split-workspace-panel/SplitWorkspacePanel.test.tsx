@@ -8,6 +8,7 @@ import {
     splitWorkspaceChatCollapsedStorageKey,
     splitWorkspaceGitCollapsedStorageKey,
 } from '../../../../src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel';
+import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftCollapse';
 
 // Toggle the responsive fallback per test without a real matchMedia.
 let mockIsMobile = false;
@@ -559,5 +560,188 @@ describe('SplitWorkspacePanel — proportional chat/git default', () => {
         // Allow effects to settle.
         await act(async () => {});
         expect(localStorage.getItem(key)).toBeNull();
+    });
+});
+
+// Whole-left-column collapse (CHAT + GIT together) → a thin rail with an expand
+// button + "+ new chat", hover-to-peek, `«`/`»` chevrons, and per-workspace
+// persistence under `split-workspace:<ws>:left-collapsed` (AC-01..AC-05).
+describe('SplitWorkspacePanel whole-column collapse', () => {
+    const LEFT_VAR = '--workspace-left-col-width';
+    const readLeftVar = () => document.documentElement.style.getPropertyValue(LEFT_VAR);
+
+    beforeEach(() => {
+        localStorage.clear();
+        mockIsMobile = false;
+        document.documentElement.style.removeProperty(LEFT_VAR);
+    });
+
+    function renderCollapsible(workspaceId = 'ws1', onNewChat?: () => void) {
+        return render(
+            <SplitWorkspacePanel
+                workspaceId={workspaceId}
+                chatList={<div data-testid="chat-content">chat</div>}
+                gitList={<div data-testid="git-content">git</div>}
+                detail={<div data-testid="detail-content">detail</div>}
+                onNewChat={onNewChat}
+            />,
+        );
+    }
+
+    it('starts expanded: a collapse chevron + width divider, no rail', () => {
+        renderCollapsible();
+        expect(screen.getByTestId('split-workspace-left-collapse')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-width-divider')).toBeTruthy();
+        expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
+        // The column body is in-flow (not hidden) while expanded.
+        expect(screen.getByTestId('split-workspace-left').classList.contains('hidden')).toBe(false);
+    });
+
+    it('clicking the « chevron collapses the whole column to a rail', () => {
+        renderCollapsible();
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-collapse')); });
+        // Rail appears; the column body stays mounted but hidden (keep-alive).
+        expect(screen.getByTestId('split-workspace-left-rail')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-left').classList.contains('hidden')).toBe(true);
+        // The width divider + collapse chevron are gone (rail owns expand now).
+        expect(screen.queryByTestId('split-workspace-width-divider')).toBeNull();
+        expect(screen.queryByTestId('split-workspace-left-collapse')).toBeNull();
+        // Chat/git content is still mounted inside the hidden body.
+        expect(screen.getByTestId('chat-content')).toBeTruthy();
+        expect(screen.getByTestId('git-content')).toBeTruthy();
+    });
+
+    it('the rail shows a » expand button and a "+ new chat" button', () => {
+        renderCollapsible('ws1', () => {});
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-collapse')); });
+        expect(screen.getByTestId('split-workspace-left-expand')).toHaveTextContent('»');
+        expect(screen.getByTestId('split-workspace-left-new-chat')).toBeTruthy();
+    });
+
+    it('omits the "+ new chat" rail button when no onNewChat is provided', () => {
+        renderCollapsible();
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-collapse')); });
+        expect(screen.queryByTestId('split-workspace-left-new-chat')).toBeNull();
+        // The expand affordance is still there.
+        expect(screen.getByTestId('split-workspace-left-expand')).toBeTruthy();
+    });
+
+    it('clicking » expands the column back', () => {
+        renderCollapsible();
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-collapse')); });
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-expand')); });
+        expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
+        expect(screen.getByTestId('split-workspace-width-divider')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-left').classList.contains('hidden')).toBe(false);
+    });
+
+    it('the rail "+ new chat" button calls onNewChat', () => {
+        const onNewChat = vi.fn();
+        renderCollapsible('ws1', onNewChat);
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-collapse')); });
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-new-chat')); });
+        expect(onNewChat).toHaveBeenCalledTimes(1);
+    });
+
+    it('persists collapsed state per-workspace under :left-collapsed', () => {
+        renderCollapsible('ws-collapse');
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-collapse')); });
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-collapse'))).toBe('1');
+        // Independent per workspace.
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-other'))).toBeNull();
+        // Re-expanding writes 0 back.
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-expand')); });
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-collapse'))).toBe('0');
+    });
+
+    it('does not write the :left-collapsed key until the user toggles', () => {
+        renderCollapsible('ws-clean');
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-clean'))).toBeNull();
+    });
+
+    it('restores a persisted collapsed state on a fresh mount', () => {
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-restore'), '1');
+        renderCollapsible('ws-restore');
+        expect(screen.getByTestId('split-workspace-left-rail')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-left').classList.contains('hidden')).toBe(true);
+    });
+
+    it('only adds the new :left-collapsed key (no other new localStorage keys)', () => {
+        renderCollapsible('ws-keys');
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-collapse')); });
+        const keys = Object.keys(localStorage).filter((k) => k.includes('ws-keys'));
+        expect(keys).toEqual([splitWorkspaceLeftCollapsedStorageKey('ws-keys')]);
+    });
+
+    it('publishes the rail width to the status-dock CSS var while collapsed', () => {
+        renderCollapsible('ws-var');
+        // Expanded → the full column width.
+        expect(readLeftVar()).toBe('360px');
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-collapse')); });
+        // Collapsed → the thin rail width, so the bottom status bar stays flush.
+        expect(readLeftVar()).toBe('36px');
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-expand')); });
+        expect(readLeftVar()).toBe('360px');
+    });
+
+    it('the per-section chat/git collapse still works in the expanded column', () => {
+        renderCollapsible();
+        // The section headers + their toggles are untouched by the whole-column feature.
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-chat-header')); });
+        expect(screen.getByTestId('split-workspace-chat-body').classList.contains('hidden')).toBe(true);
+        expect(screen.getByTestId('split-workspace-chat-header').getAttribute('aria-expanded')).toBe('false');
+    });
+});
+
+describe('SplitWorkspacePanel collapsed rail — hover-to-peek', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        mockIsMobile = false;
+        // Fine-pointer device so the peek is enabled (read once at mount).
+        (window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+            matches: true,
+            media: query,
+            onchange: null,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+            dispatchEvent: () => false,
+        });
+    });
+
+    it('hovering the collapsed rail floats the full panel back, and leaving hides it', () => {
+        vi.useFakeTimers();
+        try {
+            // Start collapsed.
+            localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-peek'), '1');
+            render(
+                <SplitWorkspacePanel
+                    workspaceId="ws-peek"
+                    chatList={<div data-testid="chat-content">chat</div>}
+                    gitList={<div data-testid="git-content">git</div>}
+                    detail={<div data-testid="detail-content">detail</div>}
+                />,
+            );
+            const body = screen.getByTestId('split-workspace-left');
+            // Hidden while collapsed and not peeking.
+            expect(body.classList.contains('hidden')).toBe(true);
+
+            // Hover the rail → after the open delay the body floats out as an overlay.
+            act(() => { fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail')); });
+            act(() => { vi.advanceTimersByTime(450); });
+            expect(body.classList.contains('hidden')).toBe(false);
+            expect(body.className).toContain('absolute');
+            expect(body.className).toContain('z-30');
+            // The persisted collapsed state is untouched by the peek.
+            expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-peek'))).toBe('1');
+
+            // Leaving the floated panel re-hides it after the grace delay.
+            act(() => { fireEvent.mouseLeave(body); });
+            act(() => { vi.advanceTimersByTime(300); });
+            expect(body.classList.contains('hidden')).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

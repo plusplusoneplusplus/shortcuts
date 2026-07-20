@@ -3,6 +3,12 @@ import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { usePublishWorkspaceLeftColWidth } from '../../hooks/ui/useWorkspaceLeftColWidth';
+import { useHoverPeek } from '../chat/hooks/useHoverPeek';
+import {
+    LEFT_RAIL_WIDTH,
+    splitWorkspaceLeftCollapsedStorageKey,
+    useLeftCollapsed,
+} from './WorkspaceLeftCollapse';
 
 /**
  * Layout shell for the split "Workspace" view (behind the `splitWorkspacePanel`
@@ -52,6 +58,13 @@ export interface SplitWorkspacePanelProps {
      * the narrow single-column fallback ignores it. When absent, nothing renders.
      */
     footer?: ReactNode;
+    /**
+     * Start a new chat. Wired to the "+ new chat" button on the collapsed rail so
+     * a new conversation can be started without first expanding the column
+     * (AC-02). When absent (e.g. isolated unit renders) the rail's new-chat button
+     * is omitted. Desktop layout only.
+     */
+    onNewChat?: () => void;
 }
 
 /** localStorage key for the left column's overall width, per workspace. */
@@ -92,6 +105,21 @@ function readCollapsed(storageKey: string): boolean {
         return localStorage.getItem(storageKey) === '1';
     } catch {
         return false;
+    }
+}
+
+/**
+ * True on pointer/desktop devices (mouse/trackpad with hover). Gates the
+ * hover-to-float peek of the collapsed rail so touch devices don't float the
+ * panel out on an accidental tap. Defaults to true when matchMedia is
+ * unavailable (SSR / jsdom). Mirrors the same helper in `RepoChatTab`.
+ */
+function hasFinePointerDevice(): boolean {
+    try {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+        return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    } catch {
+        return true;
     }
 }
 
@@ -206,10 +234,19 @@ export function SplitWorkspacePanel({
     gitLabel = 'Git',
     gitHeaderExtra,
     footer,
+    onNewChat,
 }: SplitWorkspacePanelProps) {
     const { isMobile } = useBreakpoint();
 
-    const leftColRef = useRef<HTMLDivElement>(null);
+    const leftColRef = useRef<HTMLDivElement | null>(null);
+    // The collapsed-peek overlay and the left column are the SAME (keep-alive)
+    // element, so it carries both the measurement ref (clientHeight) and the
+    // hover-peek panel ref (outside-click). One callback ref fans out to both.
+    const peekPanelRef = useRef<HTMLDivElement | null>(null);
+    const setLeftColNode = useCallback((node: HTMLDivElement | null) => {
+        leftColRef.current = node;
+        peekPanelRef.current = node;
+    }, []);
 
     // Vertical divider between the chat (top) and git (bottom) halves. The chat
     // half is a top-anchored panel whose height is the persisted "ratio".
@@ -233,6 +270,33 @@ export function SplitWorkspacePanel({
     const [chatCollapsed, toggleChat] = useCollapsedState(splitWorkspaceChatCollapsedStorageKey(workspaceId));
     const [gitCollapsed, toggleGit] = useCollapsedState(splitWorkspaceGitCollapsedStorageKey(workspaceId));
 
+    // Whole-left-column collapse (CHAT + GIT together). Cross-tree store so the
+    // sidebar chevron AND the global Cmd/Ctrl+B handler (Router) toggle the same
+    // state (AC-01, AC-04). Persisted per-workspace under `:left-collapsed` (AC-05).
+    const [leftCollapsed, toggleLeftCollapsed] = useLeftCollapsed(
+        splitWorkspaceLeftCollapsedStorageKey(workspaceId),
+    );
+
+    // Hover-to-float peek: only on a pointer/desktop device while the column is
+    // collapsed. A temporary overlay layer — it never touches the persisted
+    // collapsed state (AC-03). The peek panel IS the keep-alive column body.
+    const [hasFinePointer] = useState(hasFinePointerDevice);
+    const hoverPeek = useHoverPeek({
+        enabled: !isMobile && leftCollapsed && hasFinePointer,
+        panelRef: peekPanelRef,
+    });
+    // Drive a one-shot slide-in once the peek opens (matches the ~200ms timing of
+    // the classic chat rail's peek).
+    const [peekVisible, setPeekVisible] = useState(false);
+    useEffect(() => {
+        if (!hoverPeek.isOpen) {
+            setPeekVisible(false);
+            return;
+        }
+        const raf = requestAnimationFrame(() => setPeekVisible(true));
+        return () => cancelAnimationFrame(raf);
+    }, [hoverPeek.isOpen]);
+
     // Apply a proportional default chat height (chat = ~2/3, git = ~1/3) only
     // when the user has no persisted divider value for this workspace. The
     // computed height is never written to localStorage — only a real user drag
@@ -251,10 +315,12 @@ export function SplitWorkspacePanel({
     }, [workspaceId]);
 
     // Publish the live left-column width so the App shell's global status dock
-    // (`GlobalStatusDock`) can match this sidebar's width. Cleared on mobile /
+    // (`GlobalStatusDock`) can match this sidebar's width. While collapsed the
+    // column is only the thin rail, so publish the rail width (not the persisted
+    // full width) to keep the bottom status bar flush (AC-05). Cleared on mobile /
     // unmount so the dock falls back to its default width where no split sidebar
     // is on screen.
-    usePublishWorkspaceLeftColWidth(leftColumn.width, isMobile);
+    usePublishWorkspaceLeftColWidth(leftCollapsed ? LEFT_RAIL_WIDTH : leftColumn.width, isMobile);
 
     // Narrow / mobile fallback: single scrolling column, no split, no dividers.
     // Each reused tab keeps its own single-column behavior; we just stack the
@@ -285,17 +351,77 @@ export function SplitWorkspacePanel({
     // instead of staying pinned to the bottom-left. A spacer absorbs the slack.
     const bothCollapsed = chatCollapsed && gitCollapsed;
 
+    // While collapsed the column body floats out as an absolute overlay only
+    // during a hover-peek; otherwise it is hidden (display:none) but stays mounted
+    // so chat/git scroll + per-section collapse survive a collapse round-trip
+    // (keep-alive, mirroring the right dock).
+    const peeking = leftCollapsed && hoverPeek.isOpen;
+
     return (
         <div
-            className="split-workspace-panel flex h-full w-full overflow-hidden"
+            className="split-workspace-panel relative flex h-full w-full overflow-hidden"
             data-testid="split-workspace-panel"
         >
-            {/* LEFT COLUMN — chat list (top) + git list (bottom), fixed width. */}
+            {/* COLLAPSED RAIL — a thin strip that replaces the column when
+                collapsed. Hovering it floats the full CHAT+GIT panel back as a
+                temporary peek (AC-02 / AC-03). */}
+            {leftCollapsed && (
+                <div
+                    className="w-9 flex-shrink-0 border-r border-[#e5e5e5] dark:border-[#333] flex flex-col items-center pt-2 gap-1"
+                    data-testid="split-workspace-left-rail"
+                    onMouseEnter={hoverPeek.onRailPointerEnter}
+                    onMouseLeave={hoverPeek.onRailPointerLeave}
+                >
+                    <button
+                        type="button"
+                        className="w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
+                        onClick={toggleLeftCollapsed}
+                        aria-label="Expand sidebar"
+                        title="Expand sidebar"
+                        data-testid="split-workspace-left-expand"
+                    >
+                        »
+                    </button>
+                    {onNewChat && (
+                        <button
+                            type="button"
+                            className="w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
+                            onClick={onNewChat}
+                            aria-label="Start a new conversation"
+                            title="Start a new conversation"
+                            data-testid="split-workspace-left-new-chat"
+                        >
+                            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+                                <path d="M7 2v10M2 7h10" />
+                            </svg>
+                        </button>
+                    )}
+                    <span
+                        className="mt-1 text-[10px] tracking-wide text-[#848484] select-none"
+                        style={{ writingMode: 'vertical-rl' }}
+                    >
+                        Workspace
+                    </span>
+                </div>
+            )}
+
+            {/* LEFT COLUMN — chat list (top) + git list (bottom). In-flow at its
+                persisted width when expanded; when collapsed it stays mounted but
+                hidden, floating back as an absolute overlay only while peeking. */}
             <div
-                ref={leftColRef}
-                className="flex flex-col min-h-0 overflow-hidden flex-shrink-0 border-r border-[#e5e5e5] dark:border-[#333]"
+                ref={setLeftColNode}
+                className={cn(
+                    'flex flex-col min-h-0 overflow-hidden border-r border-[#e5e5e5] dark:border-[#333]',
+                    !leftCollapsed && 'flex-shrink-0',
+                    leftCollapsed && !peeking && 'hidden',
+                    peeking &&
+                        'absolute inset-y-0 left-0 z-30 bg-[#fafafa] dark:bg-[#1e1e1e] shadow-xl transition-transform duration-200 ease-out ' +
+                            (peekVisible ? 'translate-x-0' : '-translate-x-full'),
+                )}
                 style={{ width: leftColumn.width }}
                 data-testid="split-workspace-left"
+                onMouseEnter={leftCollapsed ? hoverPeek.onPanelPointerEnter : undefined}
+                onMouseLeave={leftCollapsed ? hoverPeek.onPanelPointerLeave : undefined}
             >
                 {/* TOP — chat half: compact header + (resizable) body. */}
                 <div
@@ -390,26 +516,44 @@ export function SplitWorkspacePanel({
                 )}
             </div>
 
-            {/* Divider between the left column and the detail pane. */}
-            <div
-                className={cn(
-                    DIVIDER_CLASS,
-                    'w-2 cursor-col-resize border-x border-[#e0e0e0] dark:border-[#333]',
-                    leftColumn.isDragging && 'bg-[#007acc]/20',
-                )}
-                onMouseDown={leftColumn.handleMouseDown}
-                onTouchStart={leftColumn.handleTouchStart}
-                data-testid="split-workspace-width-divider"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize left panel width"
-                aria-valuemin={LEFT_COLUMN_MIN_WIDTH}
-                aria-valuemax={LEFT_COLUMN_MAX_WIDTH}
-                aria-valuenow={leftColumn.width}
-                tabIndex={0}
-            >
-                <span className="h-full w-px bg-[#c8c8c8] dark:bg-[#5a5a5a] group-hover:w-[2px] group-hover:bg-[#007acc] transition-all" />
-            </div>
+            {/* Divider between the left column and the detail pane, plus the
+                whole-column collapse chevron on the column's inner edge. Dropped
+                while collapsed — the rail owns the expand affordance then. */}
+            {!leftCollapsed && (
+                <div className="relative flex items-stretch flex-shrink-0 group">
+                    <div
+                        className={cn(
+                            DIVIDER_CLASS,
+                            'w-2 cursor-col-resize border-x border-[#e0e0e0] dark:border-[#333]',
+                            leftColumn.isDragging && 'bg-[#007acc]/20',
+                        )}
+                        onMouseDown={leftColumn.handleMouseDown}
+                        onTouchStart={leftColumn.handleTouchStart}
+                        data-testid="split-workspace-width-divider"
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="Resize left panel width"
+                        aria-valuemin={LEFT_COLUMN_MIN_WIDTH}
+                        aria-valuemax={LEFT_COLUMN_MAX_WIDTH}
+                        aria-valuenow={leftColumn.width}
+                        tabIndex={0}
+                    >
+                        <span className="h-full w-px bg-[#c8c8c8] dark:bg-[#5a5a5a] group-hover:w-[2px] group-hover:bg-[#007acc] transition-all" />
+                    </div>
+                    {/* `«` collapse chevron — hover-revealed on the inner edge,
+                        mirroring the classic chat rail's collapse affordance. */}
+                    <button
+                        type="button"
+                        className="absolute top-1 -left-6 w-6 h-6 flex items-center justify-center rounded text-[#848484] bg-[#fafafa] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] opacity-0 group-hover:opacity-100 hover:text-[#333] dark:hover:text-[#ddd] transition-opacity z-10"
+                        onClick={toggleLeftCollapsed}
+                        aria-label="Collapse sidebar"
+                        title="Collapse sidebar"
+                        data-testid="split-workspace-left-collapse"
+                    >
+                        «
+                    </button>
+                </div>
+            )}
 
             {/* RIGHT — the single shared detail pane (last-clicked item). */}
             <div className="flex-1 min-w-0 min-h-0 overflow-hidden" data-testid="split-workspace-detail">
