@@ -31,7 +31,7 @@ export interface NoteChatPanelProps {
     onClose: () => void;
     /** Called before creating a new chat to flush pending editor saves. */
     onBeforeSend?: () => Promise<void>;
-    /** Default chat scope. Defaults to 'per-workspace'. */
+    /** Default chat scope. Defaults to 'per-note'. */
     defaultScope?: ChatScope;
     /** Note text references to prepend to the next message. */
     references?: NoteTextReference[];

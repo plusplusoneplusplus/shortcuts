@@ -16,7 +16,7 @@ export interface UseNotesChatOptions {
     /** Currently selected note path — injected as context when creating a chat. */
     notePath: string | null;
     noteTitle?: string;
-    /** Default scope when no persisted value exists. Defaults to 'per-workspace'. */
+    /** Default scope when no persisted value exists. Defaults to 'per-note'. */
     defaultScope?: ChatScope;
 }
 
@@ -104,7 +104,7 @@ export function formatNoteAttachmentPrompt(prompt: string, workspaceId: string, 
  * The active scope is persisted to `coc-notes-chat-scope-<wsId>` localStorage.
  */
 export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
-    const { workspaceId, notePath, noteTitle, defaultScope = 'per-workspace' } = opts;
+    const { workspaceId, notePath, noteTitle, defaultScope = 'per-note' } = opts;
     const cloneClient = useCocClient(workspaceId); // AC-07: notes chat bindings on the selected clone's server.
     const key = storageKey(workspaceId);
 

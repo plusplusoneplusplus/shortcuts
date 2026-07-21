@@ -62,7 +62,13 @@ describe('useNotesChat', () => {
         });
 
         it('falls back to defaultScope when no stored value', () => {
-            expect(source).toContain("defaultScope = 'per-workspace'");
+            expect(source).toContain("defaultScope = 'per-note'");
+        });
+
+        it('defaults scope to per-note (Chat with Note) rather than per-workspace', () => {
+            // The chat launched from Notes must land on "This note" by default.
+            expect(source).toContain("defaultScope = 'per-note'");
+            expect(source).not.toContain("defaultScope = 'per-workspace'");
         });
     });
 

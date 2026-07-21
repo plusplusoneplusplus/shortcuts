@@ -152,7 +152,7 @@ export function MyWorkView() {
                     <NotesView
                         workspaceId={MY_WORK_WORKSPACE_ID}
                         initialNotePath={state.selectedNotePath}
-                        defaultScope="per-workspace"
+                        defaultScope="per-note"
                         active={activeTab === 'notes'}
                     />
                 </div>
