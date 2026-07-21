@@ -117,6 +117,24 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
     const followUpGroups = useMemo(() => groupByPerson(followUps), [followUps]);
     const doneCount = actionItems.filter(t => t.checked).length;
     const totalCount = actionItems.length;
+
+    // Archive every checked action item under `## Archive`, then refetch. Shares
+    // the `busy` guard with quick-add so only one mutation runs at a time, and it
+    // never optimistically mutates the list (ids reflow after the write). Mirrors
+    // `submitQuickAdd()`: set busy → clear error → mutate → refetch → finally.
+    const clearCompleted = useCallback(async () => {
+        if (busy || doneCount === 0) return; // nothing checked, or a mutation already in flight
+        setBusy(true);
+        setError(null);
+        try {
+            await getSpaCocClient().myWork.archiveTasks();
+            await load();
+        } catch (err) {
+            if (mounted.current) setError(getSpaCocClientErrorMessage(err, 'Failed to archive completed items'));
+        } finally {
+            if (mounted.current) setBusy(false);
+        }
+    }, [busy, doneCount, load]);
     // Once tasks have loaded we keep the lists mounted — a mutation error shows
     // as an inline banner above them, not by blanking the view (so an optimistic
     // rollback stays visible). The full loading state is only the first fetch.
@@ -177,14 +195,28 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
                             <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                                 Action Items
                             </h3>
-                            <button
-                                type="button"
-                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                                onClick={() => openNote('Action Items.md')}
-                                data-testid="my-work-today-open-actions"
-                            >
-                                Open note
-                            </button>
+                            <div className="flex items-center gap-3">
+                                {doneCount >= 1 && (
+                                    <button
+                                        type="button"
+                                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+                                        onClick={() => void clearCompleted()}
+                                        disabled={busy}
+                                        aria-busy={busy}
+                                        data-testid="my-work-today-clear-completed"
+                                    >
+                                        {busy ? 'Clearing…' : 'Clear completed'}
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                    onClick={() => openNote('Action Items.md')}
+                                    data-testid="my-work-today-open-actions"
+                                >
+                                    Open note
+                                </button>
+                            </div>
                         </div>
                         <ul className="flex flex-col gap-1">
                             {actionItems.map(task => (

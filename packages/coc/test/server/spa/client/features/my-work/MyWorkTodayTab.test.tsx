@@ -164,4 +164,97 @@ describe('MyWorkTodayTab', () => {
         fireEvent.click(screen.getByTestId('my-work-today-open-actions'));
         expect(location.hash).toBe('#repos/my_work/notes/Action%20Items.md');
     });
+
+    // ── Clear completed ──────────────────────────────────────────────────────
+
+    it('hides "Clear completed" when nothing is checked', async () => {
+        getTasks.mockResolvedValue({
+            actionItems: [
+                { id: 'a1', text: 'Ship the parser', checked: false },
+                { id: 'a2', text: 'Write the docs', checked: false },
+            ],
+            followUps: [],
+        });
+        renderTab();
+        await screen.findByText('Ship the parser');
+        expect(screen.queryByTestId('my-work-today-clear-completed')).toBeNull();
+    });
+
+    it('shows "Clear completed" when at least one action item is checked', async () => {
+        renderTab();
+        await screen.findByText('Ship the parser');
+        // SAMPLE has a2 checked → the button renders.
+        expect(screen.getByTestId('my-work-today-clear-completed')).toBeTruthy();
+    });
+
+    it('archives completed items, refetches, and updates the stat', async () => {
+        const AFTER = {
+            actionItems: [{ id: 'a1', text: 'Ship the parser', checked: false }],
+            followUps: SAMPLE.followUps,
+        };
+        getTasks.mockResolvedValueOnce(SAMPLE).mockResolvedValueOnce(AFTER);
+        archiveTasks.mockResolvedValueOnce({ archived: 1 });
+        renderTab();
+        await screen.findByText('Ship the parser');
+        expect(screen.getByTestId('my-work-today-stat').textContent).toBe('1/2 done');
+
+        fireEvent.click(screen.getByTestId('my-work-today-clear-completed'));
+
+        expect(archiveTasks).toHaveBeenCalledTimes(1);
+        // Refetch drops the archived item and refreshes the stat.
+        await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(screen.queryByText('Write the docs')).toBeNull());
+        expect(screen.getByTestId('my-work-today-stat').textContent).toBe('0/1 done');
+        // Last checked item gone → the button disappears after the refresh.
+        expect(screen.queryByTestId('my-work-today-clear-completed')).toBeNull();
+    });
+
+    it('surfaces an inline error and keeps items when archiving fails', async () => {
+        archiveTasks.mockRejectedValueOnce(new Error('archive boom'));
+        renderTab();
+        await screen.findByText('Ship the parser');
+
+        fireEvent.click(screen.getByTestId('my-work-today-clear-completed'));
+
+        await screen.findByTestId('my-work-today-error');
+        // Items stay rendered (no list blanking) and only the initial fetch ran.
+        expect(screen.getByText('Write the docs')).toBeTruthy();
+        expect(getTasks).toHaveBeenCalledTimes(1);
+        // Busy cleared → the button is interactive again.
+        await waitFor(() => {
+            const btn = screen.getByTestId('my-work-today-clear-completed') as HTMLButtonElement;
+            expect(btn.disabled).toBe(false);
+        });
+    });
+
+    it('guards against a double archive while a request is in flight', async () => {
+        let resolveArchive!: (v: unknown) => void;
+        archiveTasks.mockReturnValueOnce(new Promise(r => { resolveArchive = r; }));
+        renderTab();
+        await screen.findByText('Ship the parser');
+
+        const btn = screen.getByTestId('my-work-today-clear-completed') as HTMLButtonElement;
+        fireEvent.click(btn);
+        // In flight: disabled with a busy affordance.
+        await waitFor(() => expect(btn.disabled).toBe(true));
+        expect(btn.textContent).toBe('Clearing…');
+        // A second click while disabled does not fire another archive.
+        fireEvent.click(btn);
+        expect(archiveTasks).toHaveBeenCalledTimes(1);
+
+        resolveArchive({ archived: 1 });
+        await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+    });
+
+    it('styles "Clear completed" to match the sibling "Open note" link', async () => {
+        renderTab();
+        await screen.findByText('Ship the parser');
+
+        const openNote = screen.getByTestId('my-work-today-open-actions');
+        const clear = screen.getByTestId('my-work-today-clear-completed');
+        // Every visual class the sibling link carries is present on the button.
+        for (const cls of openNote.className.split(/\s+/)) {
+            expect(clear.classList.contains(cls)).toBe(true);
+        }
+    });
 });
