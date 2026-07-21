@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     coerceCellValue,
+    createCachedClientFactory,
     executeKustoQuery,
     type KustoClientFactory,
     type KustoClientLike,
@@ -111,5 +112,60 @@ describe('executeKustoQuery', () => {
     it('returns an empty result when there are no primary results', async () => {
         const result = await executeKustoQuery(params, { clientFactory: factoryReturning({ primaryResults: [] }) });
         expect(result).toEqual({ columns: [], rows: [], rowCount: 0, truncated: false });
+    });
+});
+
+describe('createCachedClientFactory', () => {
+    it('builds the client once per clusterUrl and reuses it on subsequent runs', async () => {
+        let builds = 0;
+        const factory = createCachedClientFactory(async () => {
+            builds++;
+            return { execute: async () => ({ primaryResults: [] }) } as unknown as KustoClientLike;
+        });
+        const a1 = await factory({ clusterUrl: 'https://a.kusto.windows.net', database: 'D', query: 'q' });
+        const a2 = await factory({ clusterUrl: 'https://a.kusto.windows.net', database: 'D', query: 'q2' });
+        expect(builds).toBe(1);
+        expect(a1).toBe(a2);
+    });
+
+    it('builds a separate client per distinct clusterUrl', async () => {
+        let builds = 0;
+        const factory = createCachedClientFactory(async () => {
+            builds++;
+            return { execute: async () => ({ primaryResults: [] }) } as unknown as KustoClientLike;
+        });
+        await factory({ clusterUrl: 'https://a.kusto.windows.net', database: 'D', query: 'q' });
+        await factory({ clusterUrl: 'https://b.kusto.windows.net', database: 'D', query: 'q' });
+        expect(builds).toBe(2);
+    });
+
+    it('shares one in-flight build across concurrent first runs', async () => {
+        let builds = 0;
+        const factory = createCachedClientFactory(async () => {
+            builds++;
+            await new Promise(resolve => setTimeout(resolve, 5));
+            return { execute: async () => ({ primaryResults: [] }) } as unknown as KustoClientLike;
+        });
+        const [c1, c2] = await Promise.all([
+            factory({ clusterUrl: 'https://a.kusto.windows.net', database: 'D', query: 'q' }),
+            factory({ clusterUrl: 'https://a.kusto.windows.net', database: 'D', query: 'q' }),
+        ]);
+        expect(builds).toBe(1);
+        expect(c1).toBe(c2);
+    });
+
+    it('evicts a rejected build so the next run retries', async () => {
+        let builds = 0;
+        const factory = createCachedClientFactory(async () => {
+            builds++;
+            if (builds === 1) throw new Error('AzureCliCredential: az login required');
+            return { execute: async () => ({ primaryResults: [] }) } as unknown as KustoClientLike;
+        });
+        await expect(
+            factory({ clusterUrl: 'https://a.kusto.windows.net', database: 'D', query: 'q' }),
+        ).rejects.toThrow('az login required');
+        // The failure was evicted, so a retry rebuilds and succeeds.
+        await factory({ clusterUrl: 'https://a.kusto.windows.net', database: 'D', query: 'q' });
+        expect(builds).toBe(2);
     });
 });
