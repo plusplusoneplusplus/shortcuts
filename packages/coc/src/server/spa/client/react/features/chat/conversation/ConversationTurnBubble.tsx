@@ -1,7 +1,7 @@
 /**
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { cn, ImageGallery, ImageLightbox, Spinner } from '../../../ui';
 import type { ClientConversationTurn, ClientTokenUsage } from '../../../types/dashboard';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
@@ -16,7 +16,9 @@ import { LoopIcon } from '../icons/LoopIcon';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
 import { isExcalidrawEnabled, isCanvasEnabled } from '../../../utils/config';
-import { SHOW_EXCALIDRAW_DIAGRAMS } from '../../../featureFlags';
+import { SHOW_EXCALIDRAW_DIAGRAMS, QUICK_ASK_SIDENOTES } from '../../../featureFlags';
+import { QuickAskTurnLayer } from '../quick-ask/QuickAskTurnLayer';
+import type { ClientSideNote, QuickAskSelection } from '../quick-ask/types';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, copyImageToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { embedMathCssForCopy } from '../../../utils/snapshot-copy-utils';
@@ -112,6 +114,20 @@ interface ConversationTurnBubbleProps {
     }>;
     /** Process ID — needed for NoteEditCard undo API call. */
     processId?: string;
+    /**
+     * Quick Ask side-notes for this process (persisted + optimistic), filtered
+     * per turn inside the bubble. Only used on assistant turns when the
+     * `QUICK_ASK_SIDENOTES` flag is on.
+     */
+    sidenotes?: ClientSideNote[];
+    /** Run a Quick Ask lookup for a captured selection in this turn. */
+    onCreateSidenote?: (selection: QuickAskSelection) => void;
+    /** Retry a failed Quick Ask lookup. */
+    onRetrySidenote?: (id: string) => void;
+    /** Delete a Quick Ask side-note. */
+    onDeleteSidenote?: (id: string) => void;
+    /** Copy a side-note's answer to the clipboard. */
+    onCopySidenote?: (note: ClientSideNote) => void;
     /**
      * AI provider that produced the assistant turns (`copilot`, `codex`, or
      * `claude`). Controls the round avatar's color so it matches the
@@ -1068,8 +1084,9 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, provider }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, provider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
+    const sidenoteContentRef = useRef<HTMLDivElement>(null);
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
     const htmlEmbedEnabled = useHtmlEmbedPreference(wsId) && !turn.streaming;
@@ -1535,7 +1552,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     </span>
                 )}
 
-                <div className="space-y-2 chat-message-content">
+                <div className="space-y-2 chat-message-content" ref={!isUser ? sidenoteContentRef : undefined}>
                     {!isUser && turn.isError && (
                         <aside
                             className={cn(
@@ -1788,6 +1805,18 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             />
                         ));
                     })()}
+                    {QUICK_ASK_SIDENOTES && !isUser && turnIndex != null && (
+                        <QuickAskTurnLayer
+                            containerRef={sidenoteContentRef}
+                            turnIndex={turnIndex}
+                            streaming={turn.streaming}
+                            notes={(sidenotes ?? []).filter(n => n.turnIndex === turnIndex)}
+                            onAsk={sel => onCreateSidenote?.(sel)}
+                            onRetry={id => onRetrySidenote?.(id)}
+                            onDelete={id => onDeleteSidenote?.(id)}
+                            onCopy={note => onCopySidenote?.(note)}
+                        />
+                    )}
                 </div>
             </div>
             {isUser && (

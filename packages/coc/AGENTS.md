@@ -217,6 +217,17 @@ all have their own `references/*.md`.
   (`node:vm`, no require/process, 1s timeout, 1 MB cap) — never execute
   extension scripts outside that runner. Do not write canvas files directly
   from other features.
+- **Quick Ask side-notes** (opt-in; server flag `features.quickAskSidenotes`
+  default off, plus the compile-time SPA flag `QUICK_ASK_SIDENOTES` that strips
+  the UI from the bundle when off) let a user select text in an assistant chat
+  turn to run a cheap one-shot AI lookup, attached as a clickable 💡 bubble that
+  never enters the conversation thread. Backend lives in
+  `src/server/processes/chat-sidenotes/` (manager + prompt + one-shot invoker +
+  `POST`/`GET`/`DELETE /api/processes/:processId/sidenotes` routes); persistence
+  is repo-scoped at `~/.coc/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`
+  via `getRepoDataPath` (never a new top-level `~/.coc` dir). Model resolves
+  `defaultModels.quickAsk` > `defaultModel` > CLI default. SPA components live in
+  `.../react/features/chat/quick-ask/`.
 - **Kusto query canvas** (`kusto.enabled`, default off) is a
   `type: 'kusto'` canvas branch on the generic canvas infrastructure. Its full
   state (KQL query, cluster/database, typed columns+rows capped at

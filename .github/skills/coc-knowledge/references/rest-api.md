@@ -116,6 +116,16 @@ Opt-in isolated-worktree execution mode for Work Item and Ralph runs, gated by t
 | GET | `/api/workspaces/:id/group-pins` | List workspace-scoped parent-row group pins for Ralph session groups, For Each run groups, and Map Reduce run groups, sorted newest pin first |
 | PATCH | `/api/workspaces/:id/group-pins/:type/:groupId` | Pin/unpin a parent group row. `type` is an open string: legacy names `ralph-session`, `for-each-run`, `map-reduce-run` plus any registered task-group type; body `{ pinned: boolean }`. This updates only the group pin record and does not mutate child process pin/archive metadata |
 
+## Quick Ask Side-notes
+
+Per-process AI lookups on assistant chat turns. A text selection triggers a cheap one-shot ask (never a follow-up turn); the answer is stored as a repo-scoped annotation and never enters the conversation. All endpoints are gated by the live admin flag `features.quickAskSidenotes` (default `false`) and return `404` when disabled. Storage: `{dataDir}/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`. Workspace is supplied via `?workspace=<id>`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/processes/:processId/sidenotes?workspace=<id>` | List side-notes for the process (hydrate on chat open) → `{ sidenotes }` |
+| POST | `/api/processes/:processId/sidenotes?workspace=<id>` | Body `{ turnIndex, selectedText, contextBefore?, contextAfter?, question? }`. Builds a compact grounded prompt, runs the one-shot invoker (model resolved via `defaultModels.quickAsk` > `defaultModel`), persists, returns `{ sidenote }` (201). `502`/`503` on AI failure/unavailability |
+| DELETE | `/api/processes/:processId/sidenotes/:id?workspace=<id>` | Delete one side-note (204; 404 when missing) |
+
 ## Task Groups
 
 Generic parent/child task relationship registry shared by For Each, Map Reduce, Ralph, Dreams, and future hierarchical features. Always registered (no feature flag).

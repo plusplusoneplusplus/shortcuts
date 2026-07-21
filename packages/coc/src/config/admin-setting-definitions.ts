@@ -769,6 +769,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.quickAskSidenotes', default: false, runtime: 'live', runtimeFlag: 'quickAskSidenotesEnabled',
+        ui: {
+            group: 'dashboard', order: 62, label: 'Quick Ask side-notes', badge: 'experimental',
+            hint: 'Select text in an assistant chat message to run a cheap one-shot AI lookup, attached as a clickable side-note bubble (never posted into the main thread). Disabled by default.',
+            testId: 'toggle-quick-ask-sidenotes-enabled',
+        },
+    }),
+    bool({
         key: 'features.remoteShell', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'remoteShellEnabled',
         ui: {
             group: 'dashboard', order: 65, label: 'Remote-first shell',

@@ -27,3 +27,17 @@ export const SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS = true;
  * Disabled by default — in active development.
  */
 export const RALPH_MULTI_LOOP = false;
+
+/**
+ * Enable Quick Ask side-notes on assistant chat turns: select text in an
+ * assistant message → a floating ✨ Ask AI pill → a cheap one-shot AI lookup →
+ * a clickable 💡 side-note bubble collected at the bottom of the message.
+ * Side-questions never enter the main conversation thread.
+ *
+ * Disabled by default — in active development. Set to true to include the
+ * selection pill, side-note bubbles, and popover in the bundle. The server
+ * endpoints are additionally guarded by the admin `features.quickAskSidenotes`
+ * flag.
+ */
+export const QUICK_ASK_SIDENOTES = false;
+

@@ -281,6 +281,8 @@ export interface CLIConfig {
         ralphMultiAgentGrill?: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions?: boolean;
+        /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Disabled by default. */
+        quickAskSidenotes?: boolean;
         /** Remote-first dashboard shell (one tab per remote). Enabled by default. */
         remoteShell?: boolean;
         /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
@@ -612,6 +614,8 @@ export interface ResolvedCLIConfig {
         ralphMultiAgentGrill: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions: boolean;
+        /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Disabled by default. */
+        quickAskSidenotes: boolean;
         /** Remote-first dashboard shell (one tab per remote). Enabled by default. */
         remoteShell: boolean;
         /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
@@ -874,6 +878,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         autoAgentProviderRouting: false,
         ralphMultiAgentGrill: false,
         nativeCliSessions: false,
+        quickAskSidenotes: false,
         remoteShell: true,
         splitWorkspacePanel: true,
         schedulesInScheduledSlide: true,
