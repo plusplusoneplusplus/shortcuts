@@ -444,6 +444,42 @@ describe('PauseDurationMenu — quota strip and smart rows', () => {
         expect(screen.getByTestId('pause-duration-all-until-provider-resets').textContent).toContain('codex');
     });
 
+    it('gives primary label buttons a theme-aware text color (legible in dark mode, not pure white)', () => {
+        mockQuotaData = {
+            lastUpdated: null,
+            providers: [{
+                id: 'claude',
+                quotaTypes: [{
+                    type: 'five_hour',
+                    isUnlimitedEntitlement: false,
+                    usedRequests: 80,
+                    entitlementRequests: 100,
+                    remainingPercentage: 0.20,
+                    usageAllowedWithExhaustedQuota: false,
+                    overage: 0,
+                    resetDate: RESET_DATE_FUTURE,
+                }],
+            }],
+        };
+        renderPane();
+        openAllMenu();
+
+        // Primary label buttons must set an explicit theme-aware text color, matching the
+        // app's primary-text token (text-[#1e1e1e] dark:text-[#cccccc]) — not pure white.
+        const primaryButtons = [
+            'pause-duration-all-indefinite',
+            'pause-duration-all-1h',
+            'pause-duration-all-until-provider-resets',
+        ];
+        for (const testId of primaryButtons) {
+            const btn = screen.getByTestId(testId);
+            expect(btn.className).toContain('text-[#1e1e1e]');
+            expect(btn.className).toContain('dark:text-[#cccccc]');
+            expect(btn.className).not.toContain('dark:text-[#fff]');
+            expect(btn.className).not.toContain('dark:text-white');
+        }
+    });
+
     it('preserves existing duration presets alongside quota rows', () => {
         mockQuotaData = {
             lastUpdated: null,
