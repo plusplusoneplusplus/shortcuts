@@ -1,11 +1,12 @@
 /**
- * NoteContextBanner — read-only banner showing which note is attached
- * to the current Notes Chat session.
+ * NoteContextBanner — a slim amber warning strip shown only when the active
+ * Notes Chat is attached to a different note than the one currently selected.
  *
- * Displays:
- * - Note title and workspace-relative path
- * - Static "📎 Path reference" chip (the note path was prepended to the first message)
- * - Anchoring hint when the user selects a different note
+ * The note title, full path, and path-reference affordance now live in the
+ * single header row (NotesChatHeader's 📎 button). This strip renders nothing
+ * in the common, non-switched case, keeping the Notes Chat surface to one row.
+ * It reappears only as a safety signal when the chat is anchored to a note the
+ * user has since navigated away from.
  */
 
 import { cn } from '../../../ui/cn';
@@ -15,12 +16,12 @@ import { cn } from '../../../ui/cn';
 // ============================================================================
 
 export interface NoteContextBannerProps {
-    /** Note path used when the chat was created (from process metadata) */
-    chatNotePath: string | null | undefined;
     /** Note title used when the chat was created (from process metadata) */
     chatNoteTitle: string | null | undefined;
-    /** Currently selected note path in the Notes sidebar */
-    currentNotePath: string | null | undefined;
+    /** Note path used when the chat was created — used to derive a title fallback */
+    chatNotePath?: string | null | undefined;
+    /** True when the currently selected note differs from the chat-bound note. */
+    isSwitched: boolean;
     className?: string;
     'data-testid'?: string;
 }
@@ -30,65 +31,35 @@ export interface NoteContextBannerProps {
 // ============================================================================
 
 export function NoteContextBanner({
-    chatNotePath,
     chatNoteTitle,
-    currentNotePath,
+    chatNotePath,
+    isSwitched,
     className,
     ...props
 }: NoteContextBannerProps) {
-    if (!chatNotePath) return null;
+    if (!isSwitched) return null;
 
-    const displayTitle = chatNoteTitle || chatNotePath.split('/').pop()?.replace(/\.md$/, '') || chatNotePath;
-
-    const isSwitched = currentNotePath !== null &&
-        currentNotePath !== undefined &&
-        currentNotePath !== chatNotePath;
+    const displayTitle = chatNoteTitle
+        || chatNotePath?.split('/').pop()?.replace(/\.md$/, '')
+        || chatNotePath
+        || 'another note';
 
     return (
         <div
             className={cn(
-                'flex flex-col gap-1 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526]',
+                'px-3 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fff8c5] dark:bg-[#3d2e00]',
                 className,
             )}
             data-testid={props['data-testid'] ?? 'note-context-banner'}
         >
-            {/* Main row: icon + title + path + path-reference chip */}
-            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                <span className="shrink-0 text-xs">📝</span>
-                <span
-                    className="shrink-0 font-medium text-[11px] text-[#1e1e1e] dark:text-[#cccccc] truncate max-w-[40%]"
-                    title={displayTitle}
-                >
-                    {displayTitle}
-                </span>
-                <span
-                    className="text-[10px] text-[#848484] truncate min-w-0"
-                    title={chatNotePath}
-                >
-                    {chatNotePath}
-                </span>
-                <span className="ml-auto flex items-center gap-1 shrink-0">
-                    <span
-                        className={cn(
-                            'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border',
-                            'bg-[#e8f3ff] dark:bg-[#0f2a42] text-[#0078d4] dark:text-[#3794ff] border-[#b3d7ff] dark:border-[#2a4a66]',
-                        )}
-                        data-testid="note-status-chip"
-                    >
-                        📎 Path reference
-                    </span>
-                </span>
+            <div
+                className="text-[10px] text-[#9a6700] dark:text-[#d29922] italic truncate"
+                data-testid="note-anchor-hint"
+                title={`This chat is still attached to ${displayTitle}. Start New Chat to switch.`}
+            >
+                This chat is still attached to{' '}
+                <span className="font-medium not-italic">{displayTitle}</span>. Start New Chat to switch.
             </div>
-
-            {/* Anchoring hint when selected note differs from chat note */}
-            {isSwitched && (
-                <div
-                    className="text-[10px] text-[#848484] italic"
-                    data-testid="note-anchor-hint"
-                >
-                    This chat is still attached to <span className="font-medium">{displayTitle}</span>. Start New Chat to switch.
-                </div>
-            )}
         </div>
     );
 }

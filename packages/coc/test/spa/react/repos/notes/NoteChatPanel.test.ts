@@ -167,13 +167,24 @@ describe('NoteChatPanel', () => {
             expect(source).toContain('<NoteContextBanner');
         });
 
-        it('passes chatNoteContext to banner', () => {
+        it('derives the chat-bound note reference from chatNoteContext', () => {
             expect(source).toContain('chatNoteContext?.notePath');
             expect(source).toContain('chatNoteContext?.noteTitle');
         });
 
-        it('passes currentNotePath to banner for anchoring detection', () => {
-            expect(source).toContain('currentNotePath={notePath}');
+        it('computes isSwitched once and shares it with the header and banner', () => {
+            expect(source).toContain('const isNoteSwitched =');
+            expect(source).toContain('notePath !== chatNotePath');
+            expect(source).toContain('isSwitched={isNoteSwitched}');
+        });
+
+        it('passes the shared chat-note reference props to the banner', () => {
+            expect(source).toContain('chatNotePath={chatNotePath}');
+            expect(source).toContain('chatNoteTitle={chatNoteTitle}');
+        });
+
+        it('no longer passes currentNotePath to the banner (isSwitched computed upstream)', () => {
+            expect(source).not.toContain('currentNotePath={notePath}');
         });
     });
 

@@ -30,6 +30,20 @@ export interface NotesChatHeaderProps {
     onUnpin?: () => void;
     /** Starts a new chat, keeping the current conversation recoverable in history. Surfaced via the overflow menu. */
     onNewChat?: () => void;
+    /**
+     * Workspace-relative path of the note the active chat is bound to. When set,
+     * a compact 📎 path-reference button appears in the right control cluster; its
+     * tooltip reveals the full path that was prepended to the first message.
+     */
+    chatNotePath?: string | null;
+    /** Title of the note the active chat is bound to — used in the switched-state tooltip. */
+    chatNoteTitle?: string | null;
+    /**
+     * True when the currently selected note differs from the note the chat is
+     * bound to. Tints the 📎 button amber and swaps its tooltip to the
+     * "attached to a different note" warning.
+     */
+    isSwitched?: boolean;
 }
 
 function MinimizeIcon() {
@@ -54,6 +68,25 @@ function PinIcon() {
     );
 }
 
+function PaperclipIcon() {
+    return (
+        <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
+            <path
+                d="M11.5 5.25 6.6 10.15a1.6 1.6 0 0 0 2.26 2.26l4.9-4.9a3 3 0 0 0-4.24-4.24l-4.9 4.9a4.4 4.4 0 0 0 6.22 6.22l3.5-3.5"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
+/** Derives a human-friendly note title from the bound title or, failing that, the file name in the path. */
+function deriveNoteTitle(chatNotePath: string, chatNoteTitle?: string | null): string {
+    return chatNoteTitle || chatNotePath.split('/').pop()?.replace(/\.md$/, '') || chatNotePath;
+}
+
 export function NotesChatHeader({
     contextLabel,
     scope,
@@ -64,6 +97,9 @@ export function NotesChatHeader({
     onPin,
     onUnpin,
     onNewChat,
+    chatNotePath,
+    chatNoteTitle,
+    isSwitched = false,
 }: NotesChatHeaderProps) {
     const overflowItems: OverflowMenuItem[] = useMemo(() => {
         if (!onNewChat) return [];
@@ -74,6 +110,14 @@ export function NotesChatHeader({
             onClick: onNewChat,
         }];
     }, [onNewChat]);
+
+    const pathRefTooltip = useMemo(() => {
+        if (!chatNotePath) return '';
+        if (isSwitched) {
+            return `Attached to ${deriveNoteTitle(chatNotePath, chatNoteTitle)} — Start New Chat to switch.`;
+        }
+        return `Path reference: ${chatNotePath}`;
+    }, [chatNotePath, chatNoteTitle, isSwitched]);
 
     return (
         <div
@@ -134,6 +178,23 @@ export function NotesChatHeader({
                             title="Unpin from side panel"
                         >
                             Unpin
+                        </button>
+                    )}
+                    {chatNotePath && (
+                        <button
+                            type="button"
+                            aria-label={pathRefTooltip}
+                            title={pathRefTooltip}
+                            className={
+                                'inline-flex h-7 w-7 items-center justify-center rounded ' +
+                                (isSwitched
+                                    ? 'text-[#9a6700] hover:bg-black/[0.06] dark:text-[#d29922] dark:hover:bg-white/[0.08]'
+                                    : 'text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]')
+                            }
+                            data-testid="notes-chat-path-ref"
+                            data-switched={isSwitched ? 'true' : 'false'}
+                        >
+                            <PaperclipIcon />
                         </button>
                     )}
                     {overflowItems.length > 0 && (

@@ -139,6 +139,48 @@ describe('NotesChatHeader', () => {
         });
     });
 
+    describe('path-reference affordance (📎)', () => {
+        it('is hidden when no chatNotePath is provided (no bound chat note)', () => {
+            renderHeader();
+            expect(screen.queryByTestId('notes-chat-path-ref')).toBeNull();
+        });
+
+        it('is hidden in the per-workspace scope shape (chatNotePath null)', () => {
+            renderHeader({ scope: 'per-workspace', chatNotePath: null });
+            expect(screen.queryByTestId('notes-chat-path-ref')).toBeNull();
+        });
+
+        it('renders the 📎 button with the full path in its tooltip when chatNotePath is set', () => {
+            renderHeader({ chatNotePath: 'Plans/roadmap.md', chatNoteTitle: 'roadmap' });
+            const btn = screen.getByTestId('notes-chat-path-ref');
+            expect(btn).toBeTruthy();
+            expect(btn.getAttribute('title')).toBe('Path reference: Plans/roadmap.md');
+            expect(btn.getAttribute('aria-label')).toBe('Path reference: Plans/roadmap.md');
+        });
+
+        it('tints blue and is not marked switched in the normal (non-switched) case', () => {
+            renderHeader({ chatNotePath: 'Plans/roadmap.md', chatNoteTitle: 'roadmap', isSwitched: false });
+            const btn = screen.getByTestId('notes-chat-path-ref');
+            expect(btn.className).toContain('text-[#0078d4]');
+            expect(btn.getAttribute('data-switched')).toBe('false');
+        });
+
+        it('tints amber and swaps to the "Attached to…" warning tooltip when switched', () => {
+            renderHeader({ chatNotePath: 'Plans/roadmap.md', chatNoteTitle: 'roadmap', isSwitched: true });
+            const btn = screen.getByTestId('notes-chat-path-ref');
+            expect(btn.className).toContain('text-[#9a6700]');
+            expect(btn.getAttribute('data-switched')).toBe('true');
+            expect(btn.getAttribute('title')).toBe('Attached to roadmap — Start New Chat to switch.');
+            expect(btn.getAttribute('aria-label')).toBe('Attached to roadmap — Start New Chat to switch.');
+        });
+
+        it('falls back to the file name when chatNoteTitle is missing in the switched tooltip', () => {
+            renderHeader({ chatNotePath: 'Plans/roadmap.md', chatNoteTitle: null, isSwitched: true });
+            const btn = screen.getByTestId('notes-chat-path-ref');
+            expect(btn.getAttribute('title')).toBe('Attached to roadmap — Start New Chat to switch.');
+        });
+    });
+
     describe('window action routing', () => {
         it('lens mode shows minimize and pin, hides unpin', () => {
             renderHeader({ windowMode: 'lens', onMinimize: vi.fn(), onPin: vi.fn(), onUnpin: vi.fn() });
