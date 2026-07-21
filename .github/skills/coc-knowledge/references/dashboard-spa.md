@@ -150,7 +150,13 @@ Workspace inner-tab navigation is also client-local and workspace-scoped.
 inner route suffix under `coc-repo-route-state`, dropping unknown sub-tab ids on
 hydrate. `Router` records the suffix for every `#repos/<workspaceId>/<subroute>`
 hash and expands bare `#repos/<workspaceId>` hashes to the remembered route,
-then the remembered tab, then `/chats`. Workspace switchers use
+then the remembered tab, then `/chats`. Route parsing, legacy redirects, and
+stale-selection clearing live in `layout/dashboardRoutes.ts`: `resolveDashboardRoute(hash, ctx)`
+turns one hash into an ordered list of typed `RouteEffect`s (app/queue dispatches
+plus `replace`/`replaceState` navigations), which `Router` runs via
+`applyRouteEffects`; the parsers and hash builders are built on the per-segment
+encode/decode helpers in `layout/routePath.ts` and are re-exported from
+`layout/Router` for backward compatibility. Workspace switchers use
 `useWorkspaceNavigation()` so TopBar, repo grid, process-sidebar links, and
 clone completion all write full hashes. `RepoDetail` treats `chats`/`activity`
 and `cli-sessions`/`copilot-sessions` as logical aliases, waits for git
@@ -709,12 +715,26 @@ does not render Copilot premium request units.
 `ImplementPlanCard` (`features/chat/ImplementPlanCard.tsx`) is the thread-only
 flow card shown after a completed **Ask-mode plan-file chat** (gated in
 `ChatDetail` on terminal status, not busy, Ask mode, and a known
-`effectivePlanPath`). The card is a trigger: clicking **Implement** expands
+`effectivePlanPath`). `ChatDetail` derives the plan path from
+`context.files[0]` → `payload.planFilePath` → `metadata.planFilePath` →
+detected `.plan.md` created files → detected plan canvas, and each persisted
+slot is filtered through `asPlanPath` (path-shaped: absolute POSIX or Windows
+drive path). This matters because scheduled chats enqueue their raw instruction
+text as `context.files[0]`, and the server only records `metadata.planFilePath`
+from `context.files[0]` when it is path-shaped (`asPlanFilePath` in
+`executors/process-lifecycle-runner.ts`) — prompt text must never surface as a
+readable plan path (the launch dialog would 404 reading it via `/fs/blob`). The
+canvas-title label persisted for canvas-backed plans (non-path) is still
+admitted when `metadata.planCanvasId` is set. The card is a trigger: clicking **Implement** expands
 `ImplementPlanLaunchDialog` (`features/chat/ImplementPlanLaunchDialog.tsx`), an
 inline launch panel below the banner styled like `RalphStartPanel`'s open
-state (not a modal). The panel hosts the plan-file selector, target selector,
-shared AI controls (`ModalJobAiControls` via `useModalJobAiSelection`, keyed to
-the selected target), a read-only plan summary, and the confirm/enqueue action;
+state (not a modal). When a conversation creates multiple `.plan.md` files, the
+banner lists them in a compact selector and the panel repeats the same shared
+selection; persisting the first detected path to process metadata does not
+collapse the detected list. Explicit task-provided paths and canvas-backed plans
+remain single-plan. The panel also hosts the target selector, shared AI controls
+(`ModalJobAiControls` via `useModalJobAiSelection`, keyed to the selected target),
+a read-only plan summary, and the confirm/enqueue action;
 the resolved provider/effort selection is carried into the queue payload
 (`payload.provider/model/reasoningEffort` + `config.effortTier` +
 `context.autoProviderRouting`) and recorded on the `ImplementationRecord`.
@@ -1589,7 +1609,7 @@ Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client f
 
 ## Pull Requests Tab
 
-The Pull Requests tab is enabled by default through `pullRequests.enabled`. Admin -> Configure -> Features exposes both `pullRequests.suggestions` and `pullRequests.autoClassifyTeam`; both are disabled by default and flow through runtime config helpers. PR list load/refresh and open-by-number validation use `client.pullRequests.listForOrigin` / `getForOrigin` against `/api/origins/:originId/pull-requests...`, passing the selected workspace/repo metadata so provider calls run against a concrete clone while cache identity remains the canonical origin. When Pull Requests, focused diff, and Team auto-classification are enabled, PR list load/refresh and active-workspace background warming ask the server to enqueue at most 10 missing low-priority classifications for loaded open Team PRs with `headSha`, skipping cached or running classifications through the origin-scoped classify-diff store/pending markers and reading the origin-scoped Team roster. PR file-list and pop-out classify controls build classification keys with the selected workspace, repo, and canonical origin, then trigger/poll `/api/origins/:originId/classify-diff` so on-demand PR classifications share state across same-origin clones. The Team toolbar reads `/api/origins/:originId/classify-diff/batch-status` for loaded Team PR identifiers, shows disabled/idle/queueing/running/ready status text plus cached/running/missing counts, and adds row-level AI classification badges without changing filters, grouping, ordering, or deterministic risk tiers. Its "Classify now" control posts to `/api/origins/:originId/pull-requests/team-auto-classification` with the selected workspace/repo metadata, so manual requests use the same server cap/skip logic instead of client-side POST loops while still selecting a concrete clone for queue routing. The left queue rail starts with the "Open PR by # or URL" input; successful opens from that input are validated through the origin PR detail API, recorded through the `/api/origins/:originId/pull-requests/recent-opened` API, and shown in a compact "Recently opened" list directly below the input. Recent entries stay hidden when empty or when the rail is collapsed, open through the same overview navigation path, and confirmed 404s remove the stale entry from the origin list. PR review pop-outs carry the selected workspace's resolved origin ID in the pop-out URL, load PR title/head metadata through the origin detail API, and hydrate/persist reviewed/visited file progress through `client.pullRequests.getReviewProgressForOrigin` / `saveReviewProgressForOrigin` against `/api/origins/:originId/pull-requests/:prId/review-progress`, while still passing workspaceId/repoId metadata for legacy migration only.
+The Pull Requests tab is enabled by default through `pullRequests.enabled`. Admin -> Configure -> Features exposes both `pullRequests.suggestions` and `pullRequests.autoClassifyTeam`; both are disabled by default and flow through runtime config helpers. PR list load/refresh and open-by-number validation use `client.pullRequests.listForOrigin` / `getForOrigin` against `/api/origins/:originId/pull-requests...`, passing the selected workspace/repo metadata so provider calls run against a concrete clone while cache identity remains the canonical origin. When Pull Requests, focused diff, and Team auto-classification are enabled, PR list load/refresh and active-workspace background warming ask the server to enqueue at most 10 missing low-priority classifications for loaded open Team PRs with `headSha`, skipping cached or running classifications through the origin-scoped classify-diff store/pending markers and reading the origin-scoped Team roster. PR file-list and pop-out classify controls build classification keys with the selected workspace, repo, and canonical origin, then trigger/poll `/api/origins/:originId/classify-diff` so on-demand PR classifications share state across same-origin clones. The Team toolbar reads `/api/origins/:originId/classify-diff/batch-status` for loaded Team PR identifiers, shows disabled/idle/queueing/running/ready status text plus cached/running/missing counts, and adds row-level AI classification badges without changing filters, grouping, ordering, or deterministic risk tiers. Its "Classify now" control posts to `/api/origins/:originId/pull-requests/team-auto-classification` with the selected workspace/repo metadata, so manual requests use the same server cap/skip logic instead of client-side POST loops while still selecting a concrete clone for queue routing. The left queue rail starts with the "Open PR by # or URL" input; successful opens from that input are validated through the origin PR detail API, recorded through the `/api/origins/:originId/pull-requests/recent-opened` API, and shown in a compact "Recently opened" list directly below the input. Recent entries stay hidden when empty or when the rail is collapsed, open through the same overview navigation path, expose a hover/focus-revealed remove control that deletes the entry from the origin list through the recent-opened DELETE API, and also drop automatically when opening one returns a confirmed 404. PR review pop-outs carry the selected workspace's resolved origin ID in the pop-out URL, load PR title/head metadata through the origin detail API, and hydrate/persist reviewed/visited file progress through `client.pullRequests.getReviewProgressForOrigin` / `saveReviewProgressForOrigin` against `/api/origins/:originId/pull-requests/:prId/review-progress`, while still passing workspaceId/repoId metadata for legacy migration only.
 
 Queue filters include All, Mine, Team, Blocked, Ready, and the optional For You pill. Team reads the origin-scoped coworker roster through `coc-client`, requests the PR list with `scope=team`, and relies on the server to fetch provider `scope=all`, supplement with best-effort per-roster-member provider queries (`login` when present, otherwise provider id), filter by the origin-scoped roster before pagination, and return the filtered total. When Team is active, the rail shows roster chips that can be toggled for transient in-session narrowing, removed through the roster API, and extended with a debounced text combobox that searches repo PR authors through `/api/origins/:originId/pull-requests/coworker-candidates` using the selected workspace/repo metadata instead of only currently loaded rows. Its count badge reflects the server-filtered loaded PR set, so additional roster matches beyond the current page appear after Load more fetches them.
 

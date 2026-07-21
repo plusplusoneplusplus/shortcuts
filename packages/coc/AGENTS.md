@@ -316,10 +316,14 @@ all have their own `references/*.md`.
   task, which the executor rewrites to `Follow the instruction <path>.` on the
   wrong server. `buildImplementTargets` carries the caller's
   `isRemote`/`baseUrl`/`serverLabel` when synthesizing the missing current repo
-  instead of hardcoding a local target. File-backed plan paths in the card are
-  native controls that open the docked source canvas as `kind: 'note'` with the
-  source workspace id, including remote workspaces; canvas-backed plan labels
-  remain non-interactive because they have no file path.
+  instead of hardcoding a local target. Auto-detected conversations with multiple
+  `.plan.md` files keep the full detected set in a shared banner/launch-panel
+  selector even after the first path is persisted to metadata; explicit
+  task-provided paths and canvas-backed plans remain single-plan. File-backed
+  plan paths in the card are native controls that open the docked source canvas
+  as `kind: 'note'` with the source workspace id, including remote workspaces;
+  canvas-backed plan labels remain non-interactive because they have no file
+  path.
 - **Copilot long-context tier** is automatic at the provider boundary: chat
   and follow-up executors derive `contextTier` only via
   `getCopilotContextTierForModel` (tiered billing metadata —

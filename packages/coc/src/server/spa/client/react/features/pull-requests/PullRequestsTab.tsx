@@ -211,6 +211,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
     const [openPrError, setOpenPrError] = useState<string | null>(null);
     const [openPrLoading, setOpenPrLoading] = useState(false);
     const [recentOpenedPrs, setRecentOpenedPrs] = useState<RecentOpenedPullRequestEntry[]>([]);
+    const [removingRecentKey, setRemovingRecentKey] = useState<string | null>(null);
     const [coworkerRoster, setCoworkerRoster] = useState<PullRequestCoworkerRosterEntry[]>([]);
     const [inactiveCoworkerKeys, setInactiveCoworkerKeys] = useState<Set<string>>(new Set());
     const [coworkerSearchText, setCoworkerSearchText] = useState('');
@@ -982,6 +983,20 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         setRecentOpenedPrs(data.entries ?? []);
     }, [originId, cloneClient]);
 
+    const handleRemoveRecentOpenedPr = useCallback(async (entry: RecentOpenedPullRequestEntry) => {
+        const key = `${entry.workspaceId}:${entry.repoId}:${entry.number}`;
+        if (removingRecentKey) return;
+        setOpenPrError(null);
+        setRemovingRecentKey(key);
+        try {
+            await removeRecentOpenedPr(entry);
+        } catch (err) {
+            setOpenPrError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setRemovingRecentKey(null);
+        }
+    }, [removeRecentOpenedPr, removingRecentKey]);
+
     const handleRecentOpenedClick = useCallback(async (entry: RecentOpenedPullRequestEntry) => {
         if (openPrLoading) return;
         setOpenPrError(null);
@@ -1168,25 +1183,57 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
                         Recently opened
                     </div>
                     <div className="flex flex-col gap-0.5">
-                        {recentOpenedPrs.map(entry => (
-                            <button
-                                key={`${entry.workspaceId}:${entry.repoId}:${entry.number}`}
-                                type="button"
-                                onClick={() => { void handleRecentOpenedClick(entry); }}
-                                disabled={openPrLoading}
-                                title={`Open pull request #${entry.number}: ${entry.title}`}
-                                aria-label={`Open pull request #${entry.number}: ${entry.title}`}
-                                data-testid="recent-opened-pr-entry"
-                                className="group flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-[11px] text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-300 dark:hover:bg-gray-800"
-                            >
-                                <span className="shrink-0 font-semibold text-blue-600 dark:text-blue-300">
-                                    #{entry.number}
-                                </span>
-                                <span className="min-w-0 flex-1 truncate">
-                                    {entry.title}
-                                </span>
-                            </button>
-                        ))}
+                        {recentOpenedPrs.map(entry => {
+                            const entryKey = `${entry.workspaceId}:${entry.repoId}:${entry.number}`;
+                            const isRemoving = removingRecentKey === entryKey;
+                            return (
+                                <div
+                                    key={entryKey}
+                                    className="group flex min-w-0 items-center rounded-md text-[11px] text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                    data-testid="recent-opened-pr-row"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => { void handleRecentOpenedClick(entry); }}
+                                        disabled={openPrLoading || isRemoving}
+                                        title={`Open pull request #${entry.number}: ${entry.title}`}
+                                        aria-label={`Open pull request #${entry.number}: ${entry.title}`}
+                                        data-testid="recent-opened-pr-entry"
+                                        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        <span className="shrink-0 font-semibold text-blue-600 dark:text-blue-300">
+                                            #{entry.number}
+                                        </span>
+                                        <span className="min-w-0 flex-1 truncate">
+                                            {entry.title}
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { void handleRemoveRecentOpenedPr(entry); }}
+                                        disabled={openPrLoading || isRemoving}
+                                        title={`Remove pull request #${entry.number} from recently opened`}
+                                        aria-label={`Remove pull request #${entry.number} from recently opened`}
+                                        data-testid="recent-opened-pr-remove"
+                                        className="mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-gray-400 opacity-0 transition-opacity hover:bg-gray-200 hover:text-gray-700 focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                                    >
+                                        {isRemoving ? (
+                                            <span className="text-[9px] leading-none">…</span>
+                                        ) : (
+                                            <svg
+                                                width="10" height="10" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" strokeWidth="2.5"
+                                                strokeLinecap="round" strokeLinejoin="round"
+                                                aria-hidden="true"
+                                            >
+                                                <path d="M18 6 6 18" />
+                                                <path d="m6 6 12 12" />
+                                            </svg>
+                                        )}
+                                    </button>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}

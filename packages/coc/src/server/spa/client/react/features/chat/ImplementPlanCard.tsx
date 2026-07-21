@@ -200,10 +200,9 @@ export function ImplementPlanCard({
     const [dialogOpen, setDialogOpen] = useState(false);
 
     // ── Plan-file selection (AC-02/AC-03) ──────────────────────────────
-    // The selector UI now lives in the dialog, but the banner still owns the
-    // selection so its status pill, path label, and prior-runs list stay scoped
-    // to the file the dialog will implement. With 0–1 files this is fixed to
-    // planFilePath so single-file behavior is unchanged.
+    // The banner and launch dialog share this selection so the displayed path,
+    // status pill, prior-runs list, and implementation action stay scoped to the
+    // same file. With 0–1 files this is fixed to planFilePath.
     const showFileSelector = planFiles.length > 1;
     const [selectedPlanFile, setSelectedPlanFile] = useState<string>(planFiles[0] ?? planFilePath);
     const activePlanFilePath = showFileSelector ? selectedPlanFile : planFilePath;
@@ -246,6 +245,25 @@ export function ImplementPlanCard({
                         >
                             {activePlanFilePath}
                         </span>
+                    )}
+
+                    {showFileSelector && (
+                        <div className="flex shrink-0 items-center gap-1" data-testid="implement-plan-card-file">
+                            <label htmlFor="implement-plan-card-file-select" className="text-[11px] text-[#57606a] dark:text-[#8b949e]">
+                                Plan
+                            </label>
+                            <select
+                                id="implement-plan-card-file-select"
+                                data-testid="implement-plan-card-file-select"
+                                value={selectedPlanFile}
+                                onChange={(event) => setSelectedPlanFile(event.target.value)}
+                                className="max-w-[12rem] truncate rounded border border-[#d0d7de] bg-white px-1 py-0.5 text-[11px] text-[#1f2328] dark:border-[#3c3c3c] dark:bg-[#0d1117] dark:text-[#c9d1d9]"
+                            >
+                                {planFiles.map(filePath => (
+                                    <option key={filePath} value={filePath}>{planFileBasename(filePath)}</option>
+                                ))}
+                            </select>
+                        </div>
                     )}
 
                     {hasRuns && latestRun && (

@@ -14,12 +14,19 @@ export interface SkillItem {
     name: string;
     description?: string;
     args?: string;
+    /**
+     * Discriminates a built-in meta command (`/model`, `/loop`, `/compact`) from a
+     * server-fetched SKILL.md skill. Derived client-side; when absent it is treated
+     * as `'skill'` (see {@link effectiveKind}) so surfaces that don't merge meta
+     * still render sanely.
+     */
+    kind?: 'builtin' | 'skill';
 }
 
 export const META_SKILL_ITEMS: SkillItem[] = [
-    { name: 'model', description: 'Switch AI model' },
-    { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
-    { name: 'compact', description: 'Compact the conversation to free context', args: '[instructions]' },
+    { name: 'model', description: 'Switch AI model', kind: 'builtin' },
+    { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>', kind: 'builtin' },
+    { name: 'compact', description: 'Compact the conversation to free context', args: '[instructions]', kind: 'builtin' },
 ];
 
 /**
@@ -38,15 +45,90 @@ export function getMetaSkillItems(loopsEnabled: boolean): SkillItem[] {
  */
 export function mergeSkillsWithMeta(skills: SkillItem[], metaItems: SkillItem[]): SkillItem[] {
     const metaByName = new Map(metaItems.map(m => [m.name, m]));
-    const merged = skills.map(s => {
+    const merged: SkillItem[] = skills.map(s => {
         const meta = metaByName.get(s.name);
         if (meta) {
             metaByName.delete(s.name);
-            return { ...s, args: s.args || meta.args };
+            // Server description wins; overlay the meta `args` hint when the skill
+            // lacks one. The name matches a built-in command, so it is built-in.
+            return { ...s, args: s.args || meta.args, kind: 'builtin' };
         }
-        return s;
+        // Every server-fetched entry is a skill.
+        return { ...s, kind: 'skill' };
     });
+    // Remaining meta items were not present server-side; keep their built-in kind.
     return [...merged, ...metaByName.values()];
+}
+
+/**
+ * The effective kind of a menu item. Defaults to `'skill'` when `kind` is absent,
+ * so surfaces that pass raw server skills (without merging meta) render sanely and
+ * the row renderer never crashes on a missing discriminator.
+ */
+export function effectiveKind(item: SkillItem): 'builtin' | 'skill' {
+    return item.kind === 'builtin' ? 'builtin' : 'skill';
+}
+
+/**
+ * Order menu items built-in-first, stable within each bucket. Pure and idempotent
+ * (a stable re-sort of an already-ordered list is a no-op), so the menu renderer
+ * and `useSlashCommands` both apply it and stay in lockstep — that alignment keeps
+ * the keyboard-highlighted row matching the item that Enter/Tab inserts.
+ */
+export function orderSkillItems(items: SkillItem[]): SkillItem[] {
+    return [...items].sort(
+        (a, b) => (effectiveKind(a) === 'builtin' ? 0 : 1) - (effectiveKind(b) === 'builtin' ? 0 : 1),
+    );
+}
+
+/** Accessible label + hover tooltip per kind (no visible group headers exist). */
+const KIND_LABEL: Record<'builtin' | 'skill', string> = {
+    builtin: 'Command',
+    skill: 'Skill',
+};
+
+/** Terminal/command glyph for built-in commands. */
+function CommandGlyph() {
+    return (
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
+            <polyline points="4.5 6 6.5 8 4.5 10" />
+            <line x1="8" y1="10.25" x2="11" y2="10.25" />
+        </svg>
+    );
+}
+
+/** Blocks glyph for SKILL.md skills. */
+function SkillGlyph() {
+    return (
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
+            <rect x="2" y="2" width="5" height="5" rx="1" />
+            <rect x="9" y="2" width="5" height="5" rx="1" />
+            <rect x="2" y="9" width="5" height="5" rx="1" />
+            <rect x="9" y="9" width="5" height="5" rx="1" />
+        </svg>
+    );
+}
+
+/**
+ * Leading per-row icon distinguishing a built-in command from a skill. The
+ * accessible label and hover tooltip carry the "Command"/"Skill" wording because
+ * the flat single-list layout has no visible group-header rows.
+ */
+function KindIcon({ kind }: { kind: 'builtin' | 'skill' }) {
+    const label = KIND_LABEL[kind];
+    return (
+        <span
+            role="img"
+            aria-label={label}
+            title={label}
+            data-testid="slash-command-kind-icon"
+            data-kind={kind}
+            className="shrink-0 flex items-center text-[#848484] dark:text-[#858585]"
+        >
+            {kind === 'builtin' ? <CommandGlyph /> : <SkillGlyph />}
+        </span>
+    );
 }
 
 interface SlashCommandMenuProps {
@@ -70,9 +152,11 @@ export function SlashCommandMenu({
 }: SlashCommandMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
 
-    // Filter skills by prefix
-    const filtered = skills.filter(s =>
-        s.name.toLowerCase().startsWith(filter.toLowerCase())
+    // Filter skills by prefix, then order built-in commands before skills.
+    // orderSkillItems must match useSlashCommands' ordering so the highlighted
+    // row lines up with the item Enter/Tab inserts.
+    const filtered = orderSkillItems(
+        skills.filter(s => s.name.toLowerCase().startsWith(filter.toLowerCase())),
     );
 
     // Dismiss on outside click
@@ -131,6 +215,7 @@ export function SlashCommandMenu({
                             }`}
                             onMouseDown={e => { e.preventDefault(); onSelect(skill.name); }}
                         >
+                            <KindIcon kind={effectiveKind(skill)} />
                             <span className="font-mono text-[13px] font-semibold text-[#1e1e1e] dark:text-[#d4d4d4] shrink-0">
                                 /{skill.name}
                             </span>

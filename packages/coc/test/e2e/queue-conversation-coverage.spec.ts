@@ -449,7 +449,7 @@ test.describe('Retry Button', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Slash Command Menu', () => {
-    test('typing / opens slash command menu and Enter inserts skill name', async ({ page, serverUrl, mockAI }) => {
+    test('typing a skill prefix opens slash command menu and Enter inserts skill name', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'slash-1');
         try {
             mockAI.mockSendMessage.mockResolvedValueOnce({
@@ -484,10 +484,11 @@ test.describe('Slash Command Menu', () => {
             // Wait for skills to load (the API intercept fires after navigation)
             await page.waitForTimeout(500);
 
-            // Type '/' to trigger slash command menu
+            // Built-in commands are ordered before skills for a bare '/'. Filter
+            // to the mocked skill so Enter exercises skill insertion specifically.
             const textarea = page.locator('[data-testid="activity-chat-input"]');
             await textarea.click();
-            await textarea.fill('/');
+            await textarea.fill('/im');
 
             // Slash command menu should appear
             await expect(page.locator('[data-testid="slash-command-menu"]')).toBeVisible({ timeout: 3_000 });

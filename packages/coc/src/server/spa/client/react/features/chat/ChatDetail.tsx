@@ -81,6 +81,7 @@ import { deriveEffort } from '../../utils/effortUtils';
 import { RalphStartPanel, type RalphLaunchedSession } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
 import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './ImplementPlanCard';
+import { resolveSwitchablePlanFiles } from './implementPlanFiles';
 import { buildImplementTargets } from './implementTargets';
 import { ForEachPlanReviewCard, type ForEachGenerationMetadata } from './ForEachPlanReviewCard';
 import { MapReducePlanReviewCard, type MapReduceGenerationMetadata } from './MapReducePlanReviewCard';
@@ -174,11 +175,23 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         if (typeof v !== 'string') return false;
         return v.startsWith('/') || /^[A-Za-z]:[/\\]/.test(v);
     }
+    // A persisted planFilePath is only trusted when path-shaped: scheduled chats
+    // enqueue their raw instruction text in context.files[0] and the server
+    // copies that into metadata.planFilePath, so prompt text must never be
+    // treated as a readable plan file. `allowLabel` admits the canvas-title
+    // label persisted alongside planCanvasId for canvas-backed plans.
+    function asPlanPath(v: unknown, allowLabel = false): string | undefined {
+        if (isAbsolutePath(v)) return v;
+        return allowLabel && typeof v === 'string' && v ? v : undefined;
+    }
+    const isCanvasBackedPlan = typeof task?.metadata?.planCanvasId === 'string' && task.metadata.planCanvasId !== '';
     const rawContextFile = task?.payload?.context?.files?.[0];
+    const explicitPlanPath =
+        asPlanPath(rawContextFile) ??
+        asPlanPath(task?.payload?.planFilePath);
     const planPath: string =
-        (isAbsolutePath(rawContextFile) ? rawContextFile : undefined) ??
-        task?.payload?.planFilePath ??
-        task?.metadata?.planFilePath ??
+        explicitPlanPath ??
+        asPlanPath(task?.metadata?.planFilePath, isCanvasBackedPlan) ??
         '';
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
     const turnsRef = useRef<ClientConversationTurn[]>([]);
@@ -648,13 +661,16 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const effectivePlanCanvasId = detectedPlanFile || (planPath && !persistedPlanCanvasId)
         ? undefined
         : (detectedPlanCanvas?.canvasId ?? persistedPlanCanvasId);
-    // Switchable plan set for the Implement banner selector: only the
-    // auto-detected multi-file case. An explicit task-provided plan path or a
-    // canvas-backed plan keeps the banner single-file (no selector) — see the
-    // multi-plan-file-switcher constraints.
+    // Keep every auto-detected plan switchable even after the first path is
+    // persisted to metadata. Only a path supplied by the task itself, or a
+    // canvas-backed plan, intentionally keeps the banner single-file.
     const switchablePlanFiles = useMemo(
-        () => (planPath || effectivePlanCanvasId ? [] : detectedPlanFiles),
-        [planPath, effectivePlanCanvasId, detectedPlanFiles],
+        () => resolveSwitchablePlanFiles({
+            detectedPlanFiles,
+            explicitPlanPath,
+            effectivePlanCanvasId,
+        }),
+        [detectedPlanFiles, explicitPlanPath, effectivePlanCanvasId],
     );
 
     // Detect goal.md or *.goal.md created mid-conversation for direct Ralph launch
