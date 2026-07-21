@@ -395,7 +395,9 @@ an older revision routes the stored snapshot through the same `KustoView` in a
 and never persisted) so historical rows render via `InteractiveTable` — kusto
 canvases never feed their serialized row JSON to the markdown pipeline
 (`chatMarkdownToHtml`), avoiding a costly parse of up to `MAX_KUSTO_ROWS` (10,000)
-rows on each revision switch.
+rows on each revision switch. The SPA client no-emit gate
+(`npx tsc -p tsconfig.client.json --noEmit`) is intentionally scoped to this
+Canvas/Kusto surface and its imported helpers.
 
 `shared/svg/sanitizeSvg.ts` is the client SVG trust boundary. It rejects
 malformed/non-SVG XML, runs DOMPurify's SVG profile, removes scripts, event

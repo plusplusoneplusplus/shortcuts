@@ -23,7 +23,7 @@
  * there.
  */
 
-import { chatMarkdownToHtml } from '../../chat/conversation/ConversationTurnBubble';
+import { chatMarkdownToHtml } from '../../chat/conversation/markdownHtml';
 import { ensureMermaid } from '../../../hooks/ui/useMermaid';
 import { getExportKatexCss } from '../../../../shared/math/katexCssExtract';
 import { browserDownload } from './exportCanvasAsHtml';

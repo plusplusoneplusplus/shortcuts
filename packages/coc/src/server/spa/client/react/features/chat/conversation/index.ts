@@ -1,5 +1,6 @@
 // Conversation rendering components and utilities
-export { ConversationTurnBubble, chatMarkdownToHtml, toContentHtml, mergeConsecutiveContentChunks, inferParentToolCalls, _buildRawContent, formatCostTime, formatShortTimestamp } from './ConversationTurnBubble';
+export { ConversationTurnBubble, mergeConsecutiveContentChunks, inferParentToolCalls, _buildRawContent, formatCostTime, formatShortTimestamp } from './ConversationTurnBubble';
+export { chatMarkdownToHtml, toContentHtml } from './markdownHtml';
 export { ConversationMiniMap, buildStrips, getTurnColor, computeStripHeights, getLandmark, MIN_TURNS_TO_SHOW } from './ConversationMiniMap';
 export type { ConversationMiniMapProps, StripInfo } from './ConversationMiniMap';
 export { ConversationMetadataPopover, getSessionIdFromProcess, buildRows } from './ConversationMetadataPopover';

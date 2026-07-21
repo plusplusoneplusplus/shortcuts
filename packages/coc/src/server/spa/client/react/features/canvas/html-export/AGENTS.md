@@ -98,5 +98,5 @@ npx vitest run --project node test/server/spa/client/canvas/
 ```
 
 Client typecheck (the base tsconfig excludes `src/**/client`):
-`npx tsc -p tsconfig.client.json --noEmit` — carries pre-existing reds elsewhere,
-so grep your filename to prove no new errors.
+`npx tsc -p tsconfig.client.json --noEmit` — intentionally scoped to the
+Canvas/Kusto SPA surface and its imported helpers.

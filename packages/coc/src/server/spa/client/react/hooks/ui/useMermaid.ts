@@ -10,10 +10,14 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
 
-declare const mermaid: {
+interface MermaidRuntime {
     initialize(config: Record<string, unknown>): void;
     run(opts: { nodes: NodeListOf<Element> | Element[] }): Promise<void>;
-};
+}
+
+function getMermaidRuntime(): MermaidRuntime | undefined {
+    return (globalThis as typeof globalThis & { mermaid?: MermaidRuntime }).mermaid;
+}
 
 function isDarkTheme(): boolean {
     const theme = document.documentElement.getAttribute('data-theme');
@@ -25,7 +29,8 @@ function isDarkTheme(): boolean {
 let mermaidLoadPromise: Promise<void> | null = null;
 
 export function ensureMermaid(): Promise<void> {
-    if (typeof mermaid !== 'undefined' && mermaid?.initialize) {
+    const existing = getMermaidRuntime();
+    if (existing?.initialize) {
         return Promise.resolve();
     }
     if (mermaidLoadPromise) return mermaidLoadPromise;
@@ -35,7 +40,13 @@ export function ensureMermaid(): Promise<void> {
         script.src = MERMAID_CDN;
         script.async = true;
         script.onload = () => {
-            mermaid.initialize({
+            const loaded = getMermaidRuntime();
+            if (!loaded) {
+                mermaidLoadPromise = null;
+                reject(new Error('Mermaid runtime did not initialize'));
+                return;
+            }
+            loaded.initialize({
                 startOnLoad: false,
                 theme: isDarkTheme() ? 'dark' : 'default',
                 securityLevel: 'loose',
@@ -300,7 +311,9 @@ async function initMermaid(root: HTMLElement): Promise<void> {
 
     const mermaidPres = root.querySelectorAll('.mermaid-container:not([data-mermaid-ready]) .mermaid');
     if (mermaidPres.length > 0) {
-        await mermaid.run({ nodes: mermaidPres });
+        const runtime = getMermaidRuntime();
+        if (!runtime) throw new Error('Mermaid runtime unavailable after load');
+        await runtime.run({ nodes: mermaidPres });
     }
 
     containers.forEach((c) => {
@@ -313,8 +326,9 @@ async function initMermaid(root: HTMLElement): Promise<void> {
 }
 
 function reinitMermaidTheme(): void {
-    if (typeof mermaid === 'undefined') return;
-    mermaid.initialize({
+    const runtime = getMermaidRuntime();
+    if (!runtime) return;
+    runtime.initialize({
         startOnLoad: false,
         theme: isDarkTheme() ? 'dark' : 'default',
         securityLevel: 'loose',

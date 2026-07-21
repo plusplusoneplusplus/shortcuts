@@ -33,7 +33,7 @@ import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import type { Canvas, CanvasComment, CanvasSummary, CanvasVersion, CanvasVersionMeta } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { MarkdownView } from '../../shared/MarkdownView';
-import { chatMarkdownToHtml } from '../chat/conversation/ConversationTurnBubble';
+import { chatMarkdownToHtml } from '../chat/conversation/markdownHtml';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { copyImageToClipboard, copySelectionWithInlineImages } from '../../utils/format';
 import { ToastContext } from '../../contexts/ToastContext';

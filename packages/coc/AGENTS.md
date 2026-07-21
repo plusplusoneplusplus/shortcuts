@@ -228,7 +228,9 @@ all have their own `references/*.md`.
   LLM tool (`src/server/llm-tools/kusto-tools.ts`, gated by `buildKustoToolsAddon`
   reading `kusto.enabled`). Manual create is a `kusto`-only branch of the canvas
   create route, also gated on the flag. The SPA renders it with `KustoView`.
-  Keep the tool name exactly `kusto_query` and the serialized state keys stable.
+  `tsconfig.client.json` is a no-emit gate scoped to the Canvas/Kusto SPA surface
+  and imported helpers. Keep the tool name exactly `kusto_query` and the
+  serialized state keys stable.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
