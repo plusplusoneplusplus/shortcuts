@@ -900,7 +900,7 @@ function PauseDurationMenu({
             )}
             <button
                 type="button"
-                className="block w-full text-left px-2 py-1.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                className="block w-full text-left px-2 py-1.5 rounded text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                 onClick={() => onSelect()}
                 data-testid={`pause-duration-${testIdScope}-indefinite`}
             >
@@ -910,7 +910,7 @@ function PauseDurationMenu({
                 <button
                     key={hours}
                     type="button"
-                    className="block w-full text-left px-2 py-1.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                    className="block w-full text-left px-2 py-1.5 rounded text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                     onClick={() => onSelect({ durationHours: hours })}
                     data-testid={`pause-duration-${testIdScope}-${hours}h`}
                 >
@@ -922,7 +922,7 @@ function PauseDurationMenu({
                     <div className="my-1 border-t border-[#e8e8e8] dark:border-[#3f3f46]" />
                     <button
                         type="button"
-                        className="block w-full text-left px-2 py-1.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                        className="block w-full text-left px-2 py-1.5 rounded text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                         onClick={() => onSelect({ until: mostConstrainedResetFuture })}
                         data-testid={`pause-duration-${testIdScope}-until-provider-resets`}
                     >
@@ -939,7 +939,7 @@ function PauseDurationMenu({
                 (mostConstrainedResetFuture === undefined || allConstrainedResetMs !== mostConstrainedResetFuture) && (
                 <button
                     type="button"
-                    className="block w-full text-left px-2 py-1.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                    className="block w-full text-left px-2 py-1.5 rounded text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                     onClick={() => onSelect({ until: allConstrainedResetMs })}
                     data-testid={`pause-duration-${testIdScope}-until-all-recover`}
                 >
