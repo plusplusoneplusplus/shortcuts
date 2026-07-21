@@ -636,6 +636,11 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
     // only used for history views of their JSON state.
     const previewMarkdown = isExcalidrawCanvas
         ? ''
+        : isKustoCanvas
+        // Kusto canvases always render through KustoView/InteractiveTable — never
+        // the markdown pipeline — including historical revisions, so we never
+        // marked-parse the (up to 10k-row) serialized result JSON.
+        ? ''
         : isExtensionCanvas
         ? (viewingVersion ? fenceCode(displayedContent, 'json') : '')
         : isCodeCanvas ? fenceCode(displayedContent, canvas?.language) : displayedContent;
@@ -1037,11 +1042,14 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                             className="h-full min-h-[200px]"
                             data-testid="canvas-panel-excalidraw"
                         />
-                    ) : !viewingVersion && isKustoCanvas && canvas ? (
+                    ) : isKustoCanvas && canvas ? (
                         <KustoView
                             workspaceId={workspaceId}
-                            canvas={canvas}
-                            onCanvasSaved={handleInteractiveCanvasSaved}
+                            canvas={viewingVersion
+                                ? { ...canvas, content: displayedContent, revision: viewingVersion.revision }
+                                : canvas}
+                            onCanvasSaved={viewingVersion ? undefined : handleInteractiveCanvasSaved}
+                            readOnly={!!viewingVersion}
                         />
                     ) : !viewingVersion && mode === 'preview' && isExtensionCanvas && canvas ? (
                         <ExtensionCanvasView

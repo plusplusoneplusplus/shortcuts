@@ -142,6 +142,32 @@ describe('KustoView run', () => {
     });
 });
 
+describe('KustoView read-only (historical revision)', () => {
+    it('renders the stored table but hides Run/Ask-AI and marks editors read-only', () => {
+        const canvas = makeCanvas(SUCCESS_STATE, { processId: 'proc-1', revision: 2 });
+        render(<KustoView workspaceId="ws-1" canvas={canvas} readOnly />);
+        // Saved rows still render through the table.
+        expect(screen.getByText('Texas')).toBeInTheDocument();
+        expect(screen.getByTestId('interactive-table-kusto-expl-abc123-2')).toBeInTheDocument();
+        // No mutating affordances — even though the canvas is chat-linked.
+        expect(screen.queryByTestId('kusto-run')).toBeNull();
+        expect(screen.queryByTestId('kusto-ask-ai')).toBeNull();
+        // Editors are read-only.
+        expect(screen.getByTestId('kusto-query')).toHaveAttribute('readonly');
+        expect(screen.getByTestId('kusto-cluster')).toHaveAttribute('readonly');
+        expect(screen.getByTestId('kusto-database')).toHaveAttribute('readonly');
+    });
+
+    it('does not persist chart-config changes to the server in read-only mode', async () => {
+        render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE, { revision: 2 })} readOnly />);
+        fireEvent.click(screen.getByTestId('kusto-view-chart'));
+        fireEvent.change(screen.getByTestId('kusto-chart-type'), { target: { value: 'line' } });
+        // The chart still toggles locally, but nothing is saved back to the snapshot.
+        await waitFor(() => expect(screen.getByTestId('kusto-chart-view')).toBeInTheDocument());
+        expect(mocks.save).not.toHaveBeenCalled();
+    });
+});
+
 describe('KustoView charts (AC-05)', () => {
     it('defaults to the table view and toggles to the chart view', () => {
         render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} />);

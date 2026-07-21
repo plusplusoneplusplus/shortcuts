@@ -465,6 +465,48 @@ describe('CanvasPanel', () => {
         expect(mocks.save).not.toHaveBeenCalled();
     });
 
+    it('renders an older kusto revision through the table (read-only), not the markdown pipeline', async () => {
+        const kustoState = (rows: (string | number)[][]) => JSON.stringify({
+            query: 'StormEvents | take 2',
+            clusterUrl: 'https://help.kusto.windows.net',
+            database: 'Samples',
+            columns: [{ name: 'State', type: 'string' }, { name: 'Count', type: 'long' }],
+            rows,
+            truncated: false,
+            lastRun: { timestamp: '2026-07-18T01:00:00.000Z', status: 'success', rowCount: rows.length },
+        });
+        mocks.get.mockResolvedValue(makeCanvas({
+            id: 'kql-abc123', type: 'kusto', revision: 2, content: kustoState([['Texas', 200]]),
+        }));
+        mocks.listVersions.mockResolvedValue([
+            { revision: 2, title: 'My Plan', editor: 'ai', updatedAt: '2026-06-12T00:01:00.000Z' },
+            { revision: 1, title: 'My Plan', editor: 'ai', updatedAt: '2026-06-12T00:00:00.000Z' },
+        ]);
+        mocks.getVersion.mockResolvedValue({
+            revision: 1, title: 'My Plan', editor: 'ai', updatedAt: '2026-06-12T00:00:00.000Z',
+            content: kustoState([['Kansas', 55]]),
+        });
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="kql-abc123" liveEvent={null} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-revision').textContent).toBe('rev 2'));
+        // Latest kusto view already renders rows via InteractiveTable, keyed by revision.
+        expect(screen.getByTestId('interactive-table-kusto-kql-abc123-2')).toBeTruthy();
+        expect(screen.getByText('Texas')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('canvas-panel-version-older'));
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-history-banner')).toBeTruthy());
+        expect(mocks.getVersion).toHaveBeenCalledWith('ws-1', 'kql-abc123', 1);
+
+        // Historical rows render through the table keyed by the HISTORICAL revision…
+        await waitFor(() => expect(screen.getByTestId('interactive-table-kusto-kql-abc123-1')).toBeTruthy());
+        expect(screen.getByText('Kansas')).toBeTruthy();
+        // …never through the markdown preview pipeline (the costly path we removed).
+        expect(screen.queryByTestId('canvas-panel-preview')).toBeNull();
+        // Read-only: no Run button and no Ask-AI affordance while viewing history.
+        expect(screen.queryByTestId('kusto-run')).toBeNull();
+        expect(screen.queryByTestId('kusto-ask-ai')).toBeNull();
+    });
+
     it('offers Ask AI for a textarea selection and prefills the composer prompt', async () => {
         mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
         const onAskAi = vi.fn();

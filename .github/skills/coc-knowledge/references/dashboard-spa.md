@@ -389,7 +389,13 @@ the flag is on, `CanvasPanel`'s header shows a **New Kusto query** action
 canvas titled `Kusto Query`, best-effort seeding cluster/database from the
 workspace's most recent Kusto canvas (`kustoCreate.ts`). Kusto canvases carry a
 `kusto` badge, own their editing surface (no markdown Preview/Edit toggle or HTML
-export), and are rendered inline from `canvas://` links by `CanvasEmbed`.
+export), and are rendered inline from `canvas://` links by `CanvasEmbed`. Viewing
+an older revision routes the stored snapshot through the same `KustoView` in a
+`readOnly` mode (no Run, no Ask AI, read-only editors, chart toggle is local-only
+and never persisted) so historical rows render via `InteractiveTable` — kusto
+canvases never feed their serialized row JSON to the markdown pipeline
+(`chatMarkdownToHtml`), avoiding a costly parse of up to `MAX_KUSTO_ROWS` (10,000)
+rows on each revision switch.
 
 `shared/svg/sanitizeSvg.ts` is the client SVG trust boundary. It rejects
 malformed/non-SVG XML, runs DOMPurify's SVG profile, removes scripts, event
