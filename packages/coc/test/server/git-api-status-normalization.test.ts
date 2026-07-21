@@ -348,4 +348,66 @@ describe('API status normalization — unified file data shape', () => {
             expect(change.repositoryName).toBe('repo');
         });
     });
+
+    // ========================================================================
+    // Working-tree /changes untracked cap
+    // ========================================================================
+
+    describe('working-tree /changes caps a large untracked list', () => {
+        const MAX_UNTRACKED_FILES = 500;
+
+        function makeUntracked(count: number) {
+            // Zero-padded index so lexical (localeCompare) order matches numeric order.
+            return Array.from({ length: count }, (_, i) => ({
+                filePath: `/test/repo/untracked/file-${String(i).padStart(4, '0')}.txt`,
+                status: 'untracked',
+                stage: 'untracked',
+                repositoryRoot: WORKSPACE_ROOT,
+                repositoryName: 'repo',
+            }));
+        }
+
+        it('does not truncate when untracked count is within the cap', async () => {
+            mockGetAllChanges.mockResolvedValue([
+                { filePath: '/test/repo/src/a.ts', status: 'modified', stage: 'unstaged', repositoryRoot: WORKSPACE_ROOT, repositoryName: 'repo' },
+                ...makeUntracked(MAX_UNTRACKED_FILES),
+            ]);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes`);
+            const data = res.json();
+            expect(data.untrackedTruncated).toBeUndefined();
+            expect(data.untrackedTotal).toBeUndefined();
+            expect(data.changes.filter((c: any) => c.stage === 'untracked')).toHaveLength(MAX_UNTRACKED_FILES);
+        });
+
+        it('caps untracked entries and reports the total when over the cap', async () => {
+            const total = MAX_UNTRACKED_FILES + 1;
+            // Provide untracked entries in reverse order to prove deterministic sorting.
+            mockGetAllChanges.mockResolvedValue([
+                { filePath: '/test/repo/src/a.ts', status: 'modified', stage: 'staged', repositoryRoot: WORKSPACE_ROOT, repositoryName: 'repo' },
+                { filePath: '/test/repo/src/b.ts', status: 'modified', stage: 'unstaged', repositoryRoot: WORKSPACE_ROOT, repositoryName: 'repo' },
+                ...makeUntracked(total).reverse(),
+            ]);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes`);
+            const data = res.json();
+            expect(data.untrackedTruncated).toBe(true);
+            expect(data.untrackedTotal).toBe(total);
+
+            const untracked = data.changes.filter((c: any) => c.status === '?');
+            expect(untracked).toHaveLength(MAX_UNTRACKED_FILES);
+
+            // Staged/unstaged are never capped and are still present.
+            expect(data.changes.some((c: any) => c.stage === 'staged')).toBe(true);
+            expect(data.changes.some((c: any) => c.stage === 'unstaged')).toBe(true);
+
+            // Kept untracked entries are the lexicographically smallest N (deterministic).
+            expect(untracked[0].filePath).toBe('/test/repo/untracked/file-0000.txt');
+            expect(untracked[MAX_UNTRACKED_FILES - 1].filePath).toBe(
+                `/test/repo/untracked/file-${String(MAX_UNTRACKED_FILES - 1).padStart(4, '0')}.txt`,
+            );
+            // The dropped entry (index 500) is not included.
+            expect(untracked.some((c: any) => c.filePath.endsWith('file-0500.txt'))).toBe(false);
+        });
+    });
 });

@@ -239,6 +239,16 @@ export interface GitWorkingTreeChange {
 export interface GitWorkingTreeChangesResponse {
   changes: GitWorkingTreeChange[];
   repoState: GitRepoState;
+  /**
+   * Total number of untracked files before capping. Present only when the
+   * untracked list was truncated (see `untrackedTruncated`).
+   */
+  untrackedTotal?: number;
+  /**
+   * True when the number of untracked files exceeded the server cap and only
+   * the first N (sorted by path) are included in `changes`.
+   */
+  untrackedTruncated?: boolean;
 }
 
 export interface GitDiscardAllResponse {

@@ -270,6 +270,9 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
     const [discardingAll, setDiscardingAll] = useState(false);
     const [workingChangesExpanded, setWorkingChangesExpanded] = useState(false);
     const [allWorkingComments, setAllWorkingComments] = useState<DiffComment[]>([]);
+    /** Total untracked count and whether the server capped the untracked list. */
+    const [untrackedTotal, setUntrackedTotal] = useState(0);
+    const [untrackedTruncated, setUntrackedTruncated] = useState(false);
 
     // Route every working-tree call to the selected clone's server (AC-07): a
     // remote clone hits its own origin; a local/unknown id resolves to the default.
@@ -277,7 +280,11 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
 
     const fetchChanges = useCallback(() => {
         return cloneClient.git.getWorkingTreeChanges(workspaceId)
-            .then(data => setChanges(data.changes ?? []))
+            .then(data => {
+                setChanges(data.changes ?? []);
+                setUntrackedTruncated(data.untrackedTruncated ?? false);
+                setUntrackedTotal(data.untrackedTotal ?? 0);
+            })
             .catch(err => setError(err.message || 'Failed to load changes'));
     }, [workspaceId, cloneClient]);
 
@@ -575,13 +582,21 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
 
                         <Section
                             title="Untracked"
-                            count={untracked.length}
+                            count={untrackedTruncated ? untrackedTotal : untracked.length}
                             onStageAll={() => handleStageAll(untracked)}
                             stagingAll={stagingAll}
                             defaultExpanded={false}
                             testId="working-tree-untracked"
                         >
                             {renderSectionFiles(untracked)}
+                            {untrackedTruncated && (
+                                <div
+                                    className="pl-5 pr-2 py-1.5 text-[11px] text-[#848484] dark:text-[#9d9d9d] italic"
+                                    data-testid="working-tree-untracked-truncated"
+                                >
+                                    +{untrackedTotal - untracked.length} more untracked files (not shown)
+                                </div>
+                            )}
                         </Section>
                     </div>
                 )}

@@ -167,7 +167,12 @@ export class WorkingTreeService {
         try {
             const executionContext = resolveWorkspaceExecutionContext(repoRoot);
             const execRepoRoot = translatePathForExecution(repoRoot, executionContext);
-            const stdout = await execGitAsync(['-C', execRepoRoot, 'status', '--porcelain'], { cwd: repoRoot, timeout: 15_000 });
+            // `--untracked-files=all` lists every untracked file individually instead of
+            // collapsing a fully-untracked directory into a single trailing-slash entry
+            // (e.g. `Plans/`). Collapsed entries produce empty leaf names in the client's
+            // file-tree builder; per-file entries render real filenames and let the
+            // delete-untracked action operate per file.
+            const stdout = await execGitAsync(['-C', execRepoRoot, 'status', '--porcelain', '--untracked-files=all'], { cwd: repoRoot, timeout: 15_000 });
             return parsePorcelain(stdout, repoRoot);
         } catch (error) {
             getLogger().error('Git', 'getAllChanges failed', error instanceof Error ? error : undefined);
