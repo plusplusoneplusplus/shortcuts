@@ -287,7 +287,7 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 - **Task-root discovery:** missing task directories are omitted, canonical duplicates collapse with primary then legacy then configured label priority, and a task-derived protected entry hides an overlapping normal Notes root. Discovery does not write `additionalNotesRoots` or task settings and does not count toward the 10-root limit.
 - **Git ops** apply only to the default root; repo-folder roots inherit the workspace repo's git.
 - **Comment sidecar** for repo-folder roots is stored at `~/.coc/repos/<workspaceId>/notes-comments/<encoded-root-path>/`.
-- **Images** for repo-folder roots are co-located in `<root>/.images/`; default root uses `.attachments/`.
+- **Images and PDFs** upload/serve through `POST`/`GET /api/workspaces/:id/notes/image` (`notes-image-handler.ts`). Accepts images (≤10 MB) plus `application/pdf` (≤50 MB). Repo-folder roots co-locate attachments in `<root>/.images/`; the default root uses `.attachments/`. PDFs render inline in the notes editor via the `pdfBlock` Tiptap node.
 - **System folders** (e.g., Plans) are auto-created only in the default root.
 - User-configured Notes roots are persisted in `PerRepoPreferences.additionalNotesRoots`; task-derived roots remain owned by task settings.
 

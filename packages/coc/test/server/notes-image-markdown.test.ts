@@ -224,4 +224,28 @@ describe('Image URL rewriting', () => {
             expect(savedMd).toContain('![b](C:\\repo\\b.png)');
         });
     });
+
+    // ========================================================================
+    // Markdown round-trip with PDF embeds
+    // ========================================================================
+
+    describe('Markdown round-trip with PDF embeds', () => {
+        it('should round-trip a .pdf attachment through HTML conversion', () => {
+            const originalMd = 'Doc\n\n![Sample PDF](.attachments/sample.pdf)\n\nMore\n';
+
+            const html = markdownToHtml(originalMd);
+            expect(html).toContain('class="md-pdf-embed"');
+            expect(html).toContain('data-pdf-url=".attachments/sample.pdf"');
+
+            const rewrittenHtml = rewriteImageSrcToApi(html, 'test-ws');
+            expect(rewrittenHtml).toContain('data-pdf-url="/api/workspaces/test-ws/notes/image?path=');
+
+            let savedMd = htmlToMarkdown(rewrittenHtml);
+            savedMd = rewriteImageSrcToRelative(savedMd);
+
+            expect(savedMd).toContain('![Sample PDF](.attachments/sample.pdf)');
+            expect(savedMd).toContain('Doc');
+            expect(savedMd).toContain('More');
+        });
+    });
 });

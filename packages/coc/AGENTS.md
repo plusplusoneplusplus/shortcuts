@@ -66,6 +66,14 @@ all have their own `references/*.md`.
   task-derived rows out of Notes root removal selection, refresh discovery with
   the tree, clear the selected file when a root disappears or the workspace
   changes, and discard late root/tree responses from stale workspace scopes.
+- **Notes attachments** upload and serve through the shared endpoint in
+  `notes/notes-image-handler.ts` (`POST`/`GET /api/workspaces/:id/notes/image`).
+  It accepts images plus `application/pdf` (images capped at 10 MB, PDFs at
+  50 MB) and stores files under `.attachments/` (default root) or `.images/`
+  (repo-folder roots). PDFs render inline in the Tiptap editor via the
+  `pdfBlock` node (`react/features/notes/editor/extensions/pdfBlock.tsx`), which
+  round-trips as `![label](.attachments/x.pdf)` markdown; `router.ts` maps
+  `.pdf` to `application/pdf` so the browser renders it inline in an `<iframe>`.
 - **In-memory caching** uses the one shared primitive at
   `src/server/cache/` (`createCache<T>({ namespace, ttlMs?, maxSize=500,
   immutable? })` → a handle with `get`/`set`/`getOrCompute`/`delete`/

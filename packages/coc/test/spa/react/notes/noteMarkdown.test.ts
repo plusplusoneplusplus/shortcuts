@@ -973,4 +973,54 @@ describe('noteMarkdown', () => {
             expect(reloaded).toContain('combo');
         });
     });
+
+    // ── Inline PDF embeds ────────────────────────────────────────────────────
+    //
+    // `.pdf` image-embed markdown (`![label](x.pdf)`) renders as a placeholder
+    // div the PdfBlock node view picks up; on save it serializes back to the
+    // same image syntax. Non-pdf images stay ordinary `<img>` tags.
+    describe('PDF embeds', () => {
+        it('markdownToHtml — renders a .pdf image embed as a pdf placeholder div', () => {
+            const html = markdownToHtml('![Doc](.attachments/sample.pdf)');
+            expect(html).toContain('class="md-pdf-embed"');
+            expect(html).toContain('data-pdf-url=".attachments/sample.pdf"');
+            expect(html).toContain('data-pdf-label="Doc"');
+            expect(html).not.toContain('<img');
+        });
+
+        it('markdownToHtml — non-pdf image still becomes an <img> tag', () => {
+            const html = markdownToHtml('![shot](.attachments/pic.png)');
+            expect(html).toContain('<img');
+            expect(html).toContain('src=".attachments/pic.png"');
+            expect(html).not.toContain('md-pdf-embed');
+        });
+
+        it('htmlToMarkdown — serializes a pdf placeholder div back to image syntax', () => {
+            const html = '<div class="md-pdf-embed" data-pdf-url=".attachments/sample.pdf" data-pdf-label="Doc"></div>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('![Doc](.attachments/sample.pdf)');
+            expect(md).not.toContain('md-pdf-embed');
+        });
+
+        it('round-trips a pdf embed through html and back', () => {
+            const original = '![Sample PDF](.attachments/sample.pdf)\n';
+            const html = markdownToHtml(original);
+            expect(html).toContain('data-pdf-url=".attachments/sample.pdf"');
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('![Sample PDF](.attachments/sample.pdf)');
+        });
+
+        it('rewriteImageSrcToApi — rewrites data-pdf-url to the notes image API URL', () => {
+            const html = '<div class="md-pdf-embed" data-pdf-url=".attachments/sample.pdf" data-pdf-label="Doc"></div>';
+            const result = rewriteImageSrcToApi(html, 'ws1');
+            expect(result).toContain('data-pdf-url="/api/workspaces/ws1/notes/image?path=');
+            expect(result).toContain(encodeURIComponent('.attachments/sample.pdf'));
+        });
+
+        it('rewriteImageSrcToRelative — rewrites a pdf image API URL back to a relative path', () => {
+            const md = '![Doc](/api/workspaces/ws1/notes/image?path=.attachments%2Fsample.pdf)';
+            const result = rewriteImageSrcToRelative(md);
+            expect(result).toBe('![Doc](.attachments/sample.pdf)');
+        });
+    });
 });

@@ -62,6 +62,13 @@ export {
     isEmbeddableMapUrl,
 } from './map-embed';
 
+export {
+    DEFAULT_PDF_EMBED_HEIGHT,
+    MAX_PDF_EMBED_HEIGHT,
+    MIN_PDF_EMBED_HEIGHT,
+    isPdfUrl,
+} from './pdf-embed';
+
 // Cursor management
 export {
     CursorPosition,

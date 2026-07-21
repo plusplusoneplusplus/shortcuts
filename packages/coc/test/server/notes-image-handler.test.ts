@@ -77,6 +77,13 @@ const TINY_JPEG_BASE64 = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQ
     '9+ooooA//9k=';
 const TINY_JPEG_DATA_URL = `data:image/jpeg;base64,${TINY_JPEG_BASE64}`;
 
+// Minimal valid PDF document.
+const TINY_PDF_BYTES = Buffer.from(
+    '%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n',
+    'utf-8',
+);
+const TINY_PDF_DATA_URL = `data:application/pdf;base64,${TINY_PDF_BYTES.toString('base64')}`;
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -346,6 +353,78 @@ describe('Notes Image Handler', () => {
 
             expect(serveRes.status).toBe(200);
             expect(serveRes.headers['content-type']).toBe('image/jpeg');
+        });
+    });
+
+    // ========================================================================
+    // PDF attachments (upload, serve, size cap)
+    // ========================================================================
+
+    describe('PDF attachments', () => {
+        it('should upload a PDF and return a .pdf relative path', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/image`, {
+                fileName: 'report.pdf',
+                data: TINY_PDF_DATA_URL,
+            });
+
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.path).toMatch(/^\.attachments\/[0-9a-f-]+\.pdf$/);
+
+            const notesDir = getRepoDataPath(dataDir, wsId, 'notes');
+            expect(fs.existsSync(path.join(notesDir, body.path))).toBe(true);
+        });
+
+        it('should reject an invalid PDF data URL', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/image`, {
+                fileName: 'report.pdf',
+                data: 'data:application/pdf;notbase64',
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body).toContain('Invalid data URL');
+        });
+
+        it('should serve an uploaded PDF with application/pdf content type', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            const uploadRes = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/image`, {
+                fileName: 'report.pdf',
+                data: TINY_PDF_DATA_URL,
+            });
+            const { path: pdfPath } = JSON.parse(uploadRes.body);
+
+            const serveRes = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/image?path=${encodeURIComponent(pdfPath)}`
+            );
+
+            expect(serveRes.status).toBe(200);
+            expect(serveRes.headers['content-type']).toBe('application/pdf');
+            expect(serveRes.rawBody).toEqual(TINY_PDF_BYTES);
+        });
+
+        it('should accept a PDF larger than the image size cap (dedicated PDF cap)', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+
+            // 11 MB > MAX_IMAGE_SIZE_BYTES (10 MB) but < MAX_PDF_SIZE_BYTES (50 MB).
+            // A PDF-typed upload of this size must be accepted, proving the handler
+            // applies the higher PDF cap rather than the image cap.
+            const bigPdf = Buffer.concat([TINY_PDF_BYTES, Buffer.alloc(11 * 1024 * 1024)]);
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/image`, {
+                fileName: 'large.pdf',
+                data: `data:application/pdf;base64,${bigPdf.toString('base64')}`,
+            });
+
+            expect(res.status).toBe(201);
+            expect(JSON.parse(res.body).path).toMatch(/\.pdf$/);
         });
     });
 

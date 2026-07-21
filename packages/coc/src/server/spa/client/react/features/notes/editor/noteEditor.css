@@ -844,3 +844,38 @@
     color: #f87171;
     background: rgba(248, 113, 113, 0.07);
 }
+
+/* ── Inline PDF block node view ──────────────────────────────────────────── */
+
+.pdf-node-view {
+    margin: 0.75rem 0;
+}
+
+.pdf-node-view.ProseMirror-selectednode {
+    outline: 2px solid #0078d4;
+    outline-offset: 2px;
+}
+
+.pdf-node-view-frame-wrap {
+    height: auto;
+}
+
+.pdf-node-view-error {
+    min-height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    color: #b91c1c;
+    font-size: 12px;
+    background: #fff5f5;
+}
+
+.dark .pdf-node-view.ProseMirror-selectednode {
+    outline-color: #4fc3f7;
+}
+
+.dark .pdf-node-view-error {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.07);
+}

@@ -28,8 +28,10 @@ import { readRepoPreferences } from '../preferences-handler';
 // Constants
 // ============================================================================
 
-const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']);
+const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.pdf']);
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+/** Higher size cap applied to PDF attachments (they are larger than images). */
+const MAX_PDF_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
 /** Image directory for the default managed root. */
 const ATTACHMENTS_DIR = '.attachments';
 /** Image directory for repo-folder roots (co-located in the repo). */
@@ -49,16 +51,26 @@ function getImageDirName(resolved: ResolvedNotesRoot): string {
 
 /**
  * Parse a base64 data URL and return the buffer and detected extension.
- * Accepts: `data:image/png;base64,iVBOR...` or raw base64 string.
+ * Accepts image data URLs (`data:image/png;base64,…`) and PDF data URLs
+ * (`data:application/pdf;base64,…`).
  */
 function parseDataUrl(data: string): { buffer: Buffer; ext: string } | null {
-    const dataUrlMatch = /^data:image\/(\w+);base64,(.+)$/.exec(data);
-    if (dataUrlMatch) {
-        const mimeSubtype = dataUrlMatch[1].toLowerCase();
+    const imageMatch = /^data:image\/(\w+);base64,(.+)$/.exec(data);
+    if (imageMatch) {
+        const mimeSubtype = imageMatch[1].toLowerCase();
         const ext = mimeSubtype === 'jpeg' ? '.jpg' : `.${mimeSubtype}`;
         try {
-            const buffer = Buffer.from(dataUrlMatch[2], 'base64');
+            const buffer = Buffer.from(imageMatch[2], 'base64');
             return { buffer, ext };
+        } catch {
+            return null;
+        }
+    }
+    const pdfMatch = /^data:application\/pdf;base64,(.+)$/.exec(data);
+    if (pdfMatch) {
+        try {
+            const buffer = Buffer.from(pdfMatch[1], 'base64');
+            return { buffer, ext: '.pdf' };
         } catch {
             return null;
         }
@@ -106,7 +118,7 @@ export function registerNotesImageRoutes(
             // Parse and validate the data URL
             const parsed = parseDataUrl(data);
             if (!parsed) {
-                return sendError(res, 400, 'Invalid data URL format — expected data:image/<type>;base64,...');
+                return sendError(res, 400, 'Invalid data URL format — expected data:image/<type>;base64,... or data:application/pdf;base64,...');
             }
 
             // Validate extension
@@ -114,9 +126,12 @@ export function registerNotesImageRoutes(
                 return sendError(res, 400, `File type "${parsed.ext}" is not allowed. Allowed: ${[...ALLOWED_EXTENSIONS].join(', ')}`);
             }
 
-            // Validate size
-            if (parsed.buffer.length > MAX_IMAGE_SIZE_BYTES) {
-                return sendError(res, 400, `Image too large (${Math.round(parsed.buffer.length / 1024 / 1024)}MB). Maximum: ${MAX_IMAGE_SIZE_BYTES / 1024 / 1024}MB`);
+            // Validate size (PDFs get a larger cap than images)
+            const isPdf = parsed.ext === '.pdf';
+            const maxSize = isPdf ? MAX_PDF_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
+            if (parsed.buffer.length > maxSize) {
+                const label = isPdf ? 'PDF' : 'Image';
+                return sendError(res, 400, `${label} too large (${Math.round(parsed.buffer.length / 1024 / 1024)}MB). Maximum: ${maxSize / 1024 / 1024}MB`);
             }
 
             // Resolve notes root (default or repo-folder)

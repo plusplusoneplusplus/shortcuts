@@ -25,6 +25,7 @@ import { ResizableImage } from './extensions/resizableImage';
 import { MermaidBlock } from './extensions/mermaidBlock';
 import { MathInline, MathDisplay } from './extensions/mathNode';
 import { MapBlock } from './extensions/mapBlock';
+import { PdfBlock } from './extensions/pdfBlock';
 import { CommentExtension } from './extensions/commentExtension';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
 import { NoteLinkExtension } from './noteLinkExtension';
@@ -90,6 +91,7 @@ export function RichEditorCore({
         shouldRerenderOnTransaction: true,
         extensions: [
             MapBlock,
+            PdfBlock,               // must precede StarterKit so its parseHTML rule wins
             MermaidBlock,           // must precede StarterKit so its parseHTML rule wins
             MathInline,
             MathDisplay,

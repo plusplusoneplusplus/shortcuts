@@ -42,7 +42,7 @@ export const defaultNoteEditorIO: NoteEditorIO = {
 export function rewriteHtmlImageSrc(html: string, io: NoteEditorIO, workspaceId: string, root?: string): string {
     if (!html) return html;
 
-    return html.replace(
+    const withImages = html.replace(
         /(<img\s[^>]*?)src="([^"]+)"/gi,
         (_match, prefix: string, src: string) => {
             if (/^\.attachments\//i.test(src) || /^\.images\//i.test(src)) {
@@ -53,6 +53,18 @@ export function rewriteHtmlImageSrc(html: string, io: NoteEditorIO, workspaceId:
                 return `${prefix}src="${io.localImageApiUrl(workspaceId, decoded)}"`;
             }
             return `${prefix}src="${src}"`;
+        },
+    );
+
+    // Rewrite `.attachments/` (and `.images/`) relative paths inside PDF embed
+    // placeholders so the inline <iframe> resolves through the notes image API.
+    return withImages.replace(
+        /data-pdf-url="([^"]+)"/gi,
+        (match, url: string) => {
+            if (/^\.attachments\//i.test(url) || /^\.images\//i.test(url)) {
+                return `data-pdf-url="${io.imageApiUrl(workspaceId, url, root)}"`;
+            }
+            return match;
         },
     );
 }

@@ -417,6 +417,7 @@ export function NoteEditor({
 
     const [editor, setEditor] = useState<Editor | null>(null);
     const editorRef = useRef<Editor | null>(null);
+    const pdfInputRef = useRef<HTMLInputElement | null>(null);
 
     const handleEditorReady = useCallback((ed: Editor) => {
         editorRef.current = ed;
@@ -472,6 +473,50 @@ export function NoteEditor({
             }
         }
         return false;
+    }, []);
+
+    // ── Insert PDF (toolbar picker → upload → inline PdfBlock node) ──────────
+
+    const openPdfPicker = useCallback(() => {
+        pdfInputRef.current?.click();
+    }, []);
+
+    const handlePdfFileSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const input = e.currentTarget;
+        const file = input.files?.[0];
+        // Reset the input so selecting the same file again re-fires change.
+        input.value = '';
+        if (!file || !notePathRef.current) return;
+
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            const dataUrl = ev.target?.result as string;
+            if (!dataUrl) return;
+
+            setUploadingImage(true);
+            try {
+                const result = await ioRef.current.uploadImage(
+                    workspaceIdRef.current,
+                    file.name || 'document.pdf',
+                    dataUrl,
+                    rootRef.current,
+                );
+                const apiUrl = ioRef.current.imageApiUrl(workspaceIdRef.current, result.path, rootRef.current);
+                editorRef.current
+                    ?.chain()
+                    .focus()
+                    .insertContent({
+                        type: 'pdfBlock',
+                        attrs: { url: apiUrl, label: file.name || 'PDF' },
+                    })
+                    .run();
+            } catch (err) {
+                console.error('Failed to upload PDF:', err);
+            } finally {
+                setUploadingImage(false);
+            }
+        };
+        reader.readAsDataURL(file);
     }, []);
 
     function scheduleSave(ed: { getHTML: () => string }) {
@@ -1019,6 +1064,7 @@ export function NoteEditor({
                     aiEditsVisible={aiEditsVisible}
                     onDismissAiEdits={handleAiEditDismiss}
                     onToggleAiEdits={handleAiEditToggle}
+                    onInsertPdf={openPdfPicker}
                     toolbarRight={
                         <>
                             {canRunSkill && (
@@ -1220,6 +1266,14 @@ export function NoteEditor({
                                 onChange={handleEditorChange}
                                 onEditorReady={handleEditorReady}
                                 handlePaste={handlePaste}
+                            />
+                            <input
+                                ref={pdfInputRef}
+                                type="file"
+                                accept="application/pdf"
+                                data-testid="insert-pdf-input"
+                                className="hidden"
+                                onChange={handlePdfFileSelected}
                             />
                         </div>
 

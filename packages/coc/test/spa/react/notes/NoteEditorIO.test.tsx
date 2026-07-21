@@ -112,5 +112,21 @@ describe('NoteEditorIO', () => {
             const result = rewriteHtmlImageSrc(html, customIo, 'ws1');
             expect(result).toBe('<img src="/custom/images/.attachments/uuid.png">');
         });
+
+        it('rewrites data-pdf-url .attachments/ paths to API URLs', () => {
+            const html = '<div class="md-pdf-embed" data-pdf-url=".attachments/doc.pdf" data-pdf-label="Doc"></div>';
+            const result = rewriteHtmlImageSrc(html, notesIo, 'ws1');
+            expect(result).toContain('data-pdf-url="/api/workspaces/ws1/notes/image?path=.attachments%2Fdoc.pdf"');
+        });
+
+        it('rewrites data-pdf-url .images/ paths and leaves already-API pdf urls untouched', () => {
+            const relative = '<div class="md-pdf-embed" data-pdf-url=".images/doc.pdf"></div>';
+            expect(rewriteHtmlImageSrc(relative, notesIo, 'ws1')).toContain(
+                'data-pdf-url="/api/workspaces/ws1/notes/image?path=.images%2Fdoc.pdf"',
+            );
+
+            const alreadyApi = '<div class="md-pdf-embed" data-pdf-url="/api/workspaces/ws1/notes/image?path=.attachments%2Fdoc.pdf"></div>';
+            expect(rewriteHtmlImageSrc(alreadyApi, notesIo, 'ws1')).toBe(alreadyApi);
+        });
     });
 });
