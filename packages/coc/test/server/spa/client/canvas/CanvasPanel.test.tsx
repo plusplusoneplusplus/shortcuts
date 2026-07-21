@@ -593,6 +593,37 @@ describe('CanvasPanel', () => {
         }
     });
 
+    it('gives the selection-bar and comment actions an explicit theme-aware text color so they stay readable in dark mode (regression)', async () => {
+        mocks.get.mockResolvedValue(makeCanvas({ content: 'alpha beta gamma' }));
+
+        render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onAskAi={vi.fn()} />);
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-preview')).toBeTruthy());
+
+        const getSelectionSpy = vi.spyOn(window, 'getSelection').mockReturnValue({
+            toString: () => 'beta',
+        } as unknown as Selection);
+        try {
+            fireEvent.mouseUp(screen.getByTestId('canvas-panel-preview'));
+            await screen.findByTestId('canvas-panel-selection-bar');
+
+            // Without an explicit color these buttons inherit a dark tone that is
+            // unreadable on the dark selection bar. They must set both variants.
+            for (const testId of ['canvas-panel-ask-ai', 'canvas-panel-add-comment']) {
+                const button = screen.getByTestId(testId);
+                expect(button.className).toContain('text-[#1e1e1e]');
+                expect(button.className).toContain('dark:text-[#cccccc]');
+            }
+
+            // The comment compose "Add" button shares the same overlay and defect.
+            fireEvent.click(screen.getByTestId('canvas-panel-add-comment'));
+            const submit = await screen.findByTestId('canvas-panel-comment-submit');
+            expect(submit.className).toContain('text-[#1e1e1e]');
+            expect(submit.className).toContain('dark:text-[#cccccc]');
+        } finally {
+            getSelectionSpy.mockRestore();
+        }
+    });
+
     it('sends open comments to the AI and marks them sent', async () => {
         mocks.get.mockResolvedValue(makeCanvas());
         const openComment = {

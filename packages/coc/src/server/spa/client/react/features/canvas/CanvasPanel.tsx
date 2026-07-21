@@ -986,11 +986,11 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                     <div className="absolute top-0 inset-x-0 z-10 flex items-center gap-2 px-3 py-1.5 text-[11px] border-b border-[#e0e0e0] dark:border-[#474749] bg-[#f0f0f0] dark:bg-[#28282a]" data-testid="canvas-panel-selection-bar">
                         <span className="flex-1 truncate italic text-[#848484]">“{selection}”</span>
                         {onAskAi && (
-                            <button type="button" className="underline font-semibold shrink-0" onClick={handleAskAi} data-testid="canvas-panel-ask-ai">
+                            <button type="button" className="underline font-semibold shrink-0 text-[#1e1e1e] dark:text-[#cccccc]" onClick={handleAskAi} data-testid="canvas-panel-ask-ai">
                                 Ask AI
                             </button>
                         )}
-                        <button type="button" className="underline font-semibold shrink-0" onClick={handleStartComment} data-testid="canvas-panel-add-comment">
+                        <button type="button" className="underline font-semibold shrink-0 text-[#1e1e1e] dark:text-[#cccccc]" onClick={handleStartComment} data-testid="canvas-panel-add-comment">
                             Comment
                         </button>
                     </div>
@@ -1012,7 +1012,7 @@ export function CanvasPanel({ workspaceId, canvasId, liveEvent, onClose, onAskAi
                             />
                             <button
                                 type="button"
-                                className="text-[11px] underline font-semibold disabled:opacity-40"
+                                className="text-[11px] underline font-semibold text-[#1e1e1e] dark:text-[#cccccc] disabled:opacity-40"
                                 disabled={!commentDraft.trim()}
                                 onClick={() => void handleSubmitComment()}
                                 data-testid="canvas-panel-comment-submit"
