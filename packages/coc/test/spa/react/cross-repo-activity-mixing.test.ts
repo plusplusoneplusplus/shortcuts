@@ -11,6 +11,11 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { queueReducer, type QueueContextState } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import {
+    resolveDashboardRoute,
+    type RouteContext,
+    type RouteEffect,
+} from '../../../src/server/spa/client/react/layout/dashboardRoutes';
 
 // ── Source file readers ────────────────────────────────────────────────
 
@@ -31,11 +36,6 @@ const QUEUE_CONTEXT_SOURCE = fs.readFileSync(
 
 const REPO_ACTIVITY_TAB_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'chat', 'RepoChatTab.tsx'),
-    'utf-8',
-);
-
-const ROUTER_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'layout', 'Router.tsx'),
     'utf-8',
 );
 
@@ -65,6 +65,20 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         queueInitialized: false,
         ...overrides,
     };
+}
+
+function resolveQueueActions(hash: string) {
+    const context: RouteContext = {
+        queueState: { repoQueueMap: {}, repoHistoryMap: {} } as RouteContext['queueState'],
+        selectedRepoId: null,
+        repoRouteState: {},
+        repoTabState: {},
+        getUiLayoutMode: () => 'dev-workflow',
+        isSchedulesInSlide: () => false,
+    };
+    return resolveDashboardRoute(hash, context).effects
+        .filter((effect): effect is Extract<RouteEffect, { kind: 'queue' }> => effect.kind === 'queue')
+        .map(effect => effect.action);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -203,12 +217,15 @@ describe('Fix 3: per-repo selectedTaskIdByRepo', () => {
 
     describe('Router passes repoId in activity deep-links', () => {
         it('passes repoId when selecting a task via deep link', () => {
-            // Router decodes parts[3] and dispatches with repoId
-            expect(ROUTER_SOURCE).toContain("queueDispatch({ type: 'SELECT_QUEUE_TASK', id: rawId, repoId });");
+            expect(resolveQueueActions('#repos/repo-A/chats/task-1')).toEqual([
+                { type: 'SELECT_QUEUE_TASK', id: 'task-1', repoId: 'repo-A' },
+            ]);
         });
 
         it('passes repoId when clearing selection via activity URL', () => {
-            expect(ROUTER_SOURCE).toContain("type: 'SELECT_QUEUE_TASK', id: null, repoId");
+            expect(resolveQueueActions('#repos/repo-A/chats')).toEqual([
+                { type: 'SELECT_QUEUE_TASK', id: null, repoId: 'repo-A' },
+            ]);
         });
     });
 });

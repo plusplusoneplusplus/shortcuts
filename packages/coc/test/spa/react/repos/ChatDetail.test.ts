@@ -1026,7 +1026,7 @@ describe('ChatDetail', () => {
         it('derives planPath from context.files[0] with fallback to planFilePath', () => {
             const planPathBlock = source.substring(
                 source.indexOf('const rawContextFile'),
-                source.indexOf('const rawContextFile') + 300,
+                source.indexOf('const [turns'),
             );
             expect(planPathBlock).toContain('task?.payload?.context?.files?.[0]');
             expect(planPathBlock).toContain('task?.payload?.planFilePath');
@@ -1126,8 +1126,8 @@ describe('ChatDetail', () => {
 
         it('planPath fallback order is: context.files[0] → payload.planFilePath → metadata.planFilePath → empty', () => {
             const planPathBlock = source.substring(
-                source.indexOf('const planPath'),
-                source.indexOf('const planPath') + 300,
+                source.indexOf('const rawContextFile'),
+                source.indexOf('const [turns'),
             );
             const contextIdx = planPathBlock.indexOf('rawContextFile');
             const payloadIdx = planPathBlock.indexOf('task?.payload?.planFilePath');
@@ -1145,8 +1145,8 @@ describe('ChatDetail', () => {
             // values so the Implement banner never offers prompt text as a
             // readable plan file (it 404s on /fs/blob).
             const planPathBlock = source.substring(
-                source.indexOf('const planPath'),
-                source.indexOf('const planPath') + 300,
+                source.indexOf('const rawContextFile'),
+                source.indexOf('const [turns'),
             );
             expect(planPathBlock).toContain('asPlanPath(rawContextFile)');
             expect(planPathBlock).toContain('asPlanPath(task?.payload?.planFilePath)');
@@ -1278,7 +1278,7 @@ describe('ChatDetail', () => {
                 source.indexOf('const switchablePlanFiles') + 200,
             );
             // Single-file when an explicit plan path or a canvas-backed plan exists.
-            expect(block).toContain('planPath');
+            expect(block).toContain('explicitPlanPath');
             expect(block).toContain('effectivePlanCanvasId');
             expect(block).toContain('detectedPlanFiles');
         });
