@@ -206,6 +206,19 @@ describe('useSlashCommands', () => {
         });
     });
 
+    // filteredSkills must be built-in-first so the hook's highlightIndex→item
+    // mapping stays aligned with SlashCommandMenu's rendered row order.
+    it('orders filteredSkills built-in-first (matches menu render order)', () => {
+        const mixed: SkillItem[] = [
+            { name: 'compact-notes', description: 'a skill', kind: 'skill' },
+            { name: 'compact', description: 'Compact the conversation', kind: 'builtin' },
+        ];
+        const { result } = renderHook(() => useSlashCommands(mixed));
+        // "/comp" matches both; builtin must come first
+        act(() => { result.current.handleInputChange('/comp', 5); });
+        expect(result.current.filteredSkills.map(s => s.name)).toEqual(['compact', 'compact-notes']);
+    });
+
     // T8: cursor accounts for text before the slash
     it('selectSkill cursor is offset when slash is mid-string', () => {
         const { result } = renderHook(() => useSlashCommands(skills));
