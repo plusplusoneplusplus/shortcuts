@@ -728,9 +728,13 @@ canvas-title label persisted for canvas-backed plans (non-path) is still
 admitted when `metadata.planCanvasId` is set. The card is a trigger: clicking **Implement** expands
 `ImplementPlanLaunchDialog` (`features/chat/ImplementPlanLaunchDialog.tsx`), an
 inline launch panel below the banner styled like `RalphStartPanel`'s open
-state (not a modal). The panel hosts the plan-file selector, target selector,
-shared AI controls (`ModalJobAiControls` via `useModalJobAiSelection`, keyed to
-the selected target), a read-only plan summary, and the confirm/enqueue action;
+state (not a modal). When a conversation creates multiple `.plan.md` files, the
+banner lists them in a compact selector and the panel repeats the same shared
+selection; persisting the first detected path to process metadata does not
+collapse the detected list. Explicit task-provided paths and canvas-backed plans
+remain single-plan. The panel also hosts the target selector, shared AI controls
+(`ModalJobAiControls` via `useModalJobAiSelection`, keyed to the selected target),
+a read-only plan summary, and the confirm/enqueue action;
 the resolved provider/effort selection is carried into the queue payload
 (`payload.provider/model/reasoningEffort` + `config.effortTier` +
 `context.autoProviderRouting`) and recorded on the `ImplementationRecord`.

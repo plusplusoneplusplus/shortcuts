@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { resolveSwitchablePlanFiles } from '../../../../../src/server/spa/client/react/features/chat/implementPlanFiles';
 
 const CHAT_DETAIL_SOURCE = resolve(
     __dirname,
@@ -42,6 +43,32 @@ describe('ChatDetail implement-plan handoff', () => {
         expect(block).toContain('workspaceId={workspaceId}');
         expect(block).toContain('workingDirectory={workingDirectory}');
         expect(block).toContain('onImplemented=');
+    });
+
+    // Regression: persisting the first detected plan to metadata used to make
+    // `planPath` truthy and collapse this list to [], hiding every other plan.
+    it('keeps every detected plan switchable when no task path was explicit', () => {
+        const detectedPlanFiles = ['/repo/a.plan.md', '/repo/b.plan.md'];
+        expect(resolveSwitchablePlanFiles({ detectedPlanFiles })).toEqual(detectedPlanFiles);
+    });
+
+    it('keeps explicit task paths and canvas-backed plans single-plan', () => {
+        const detectedPlanFiles = ['/repo/a.plan.md', '/repo/b.plan.md'];
+        expect(resolveSwitchablePlanFiles({
+            detectedPlanFiles,
+            explicitPlanPath: '/repo/input.plan.md',
+        })).toEqual([]);
+        expect(resolveSwitchablePlanFiles({
+            detectedPlanFiles,
+            effectivePlanCanvasId: 'canvas-plan',
+        })).toEqual([]);
+    });
+
+    it('derives switchable plans from the explicit task path, not persisted plan metadata', () => {
+        expect(source).toContain('const explicitPlanPath =');
+        expect(source).toContain('resolveSwitchablePlanFiles({');
+        expect(source).toContain('explicitPlanPath,');
+        expect(source).not.toContain('() => (planPath || effectivePlanCanvasId ? [] : detectedPlanFiles)');
     });
 
     it('navigates by dispatching SELECT_QUEUE_TASK in the onImplemented handler', () => {

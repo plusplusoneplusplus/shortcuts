@@ -215,11 +215,31 @@ describe('ImplementPlanCard', () => {
     const PLAN_017 = '/repo/plans/017-beta.plan.md';
     const PLAN_018 = '/repo/plans/018-gamma.plan.md';
 
-    it('does not render a plan-file selector in the banner (moved to the dialog)', () => {
+    it('lists every plan file in a banner selector using scan order', () => {
         render(<ImplementPlanCard planFilePath={PLAN_016} planFiles={[PLAN_016, PLAN_017, PLAN_018]} onImplemented={onImplemented} />);
-        expect(screen.queryByTestId('implement-plan-card-file-select')).toBeNull();
-        // The default (first) file's path is shown.
+        const select = screen.getByTestId('implement-plan-card-file-select') as HTMLSelectElement;
+        expect(select.value).toBe(PLAN_016);
+        expect(Array.from(select.options).map(option => option.textContent)).toEqual([
+            '016-alpha.plan.md',
+            '017-beta.plan.md',
+            '018-gamma.plan.md',
+        ]);
         expect(screen.getByText(PLAN_016)).toBeTruthy();
+    });
+
+    it('keeps the single-plan banner free of a redundant selector', () => {
+        render(<ImplementPlanCard planFilePath={PLAN_016} planFiles={[PLAN_016]} onImplemented={onImplemented} />);
+        expect(screen.queryByTestId('implement-plan-card-file-select')).toBeNull();
+        expect(screen.getByText(PLAN_016)).toBeTruthy();
+    });
+
+    it('updates the banner path when its plan selector changes', () => {
+        render(<ImplementPlanCard planFilePath={PLAN_016} planFiles={[PLAN_016, PLAN_017]} onImplemented={onImplemented} />);
+        fireEvent.change(screen.getByTestId('implement-plan-card-file-select'), {
+            target: { value: PLAN_017 },
+        });
+        expect(screen.getByText(PLAN_017)).toBeTruthy();
+        expect(screen.queryByText(PLAN_016)).toBeNull();
     });
 
     it('passes the current plan-file selection to the dialog and re-scopes on change', () => {
