@@ -31,6 +31,13 @@ export interface KustoViewProps {
     onCanvasSaved?: (canvas: Canvas) => void;
     /** Compact layout for inline chat embeds (hides the editors by default). */
     compact?: boolean;
+    /**
+     * Read-only historical view: renders the stored query + result table from a
+     * past revision with no Run, no Ask-AI, and no autosave. Used when viewing an
+     * older canvas revision so saved rows render through InteractiveTable instead
+     * of the markdown pipeline, and the historical snapshot is never mutated.
+     */
+    readOnly?: boolean;
 }
 
 /** Tolerant client-side parse of the Kusto JSON stored in canvas content. */
@@ -103,7 +110,7 @@ export function buildKustoAskAiMessage(query: string, instruction: string, canva
     ].join('\n\n');
 }
 
-export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false }: KustoViewProps) {
+export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false, readOnly = false }: KustoViewProps) {
     const client = useCocClient(workspaceId);
     const parsed = useMemo(() => parseKustoContent(canvas.content), [canvas.content]);
 
@@ -138,7 +145,7 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false 
 
     const handleAskAi = useCallback(async () => {
         const instruction = askInstruction.trim();
-        if (!instruction || !canvas.processId || asking) return;
+        if (readOnly || !instruction || !canvas.processId || asking) return;
         setAsking(true);
         setAskError(null);
         setAskSent(false);
@@ -155,10 +162,10 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false 
         } finally {
             setAsking(false);
         }
-    }, [askInstruction, canvas.processId, canvas.id, asking, client, query, workspaceId]);
+    }, [askInstruction, canvas.processId, canvas.id, asking, client, query, workspaceId, readOnly]);
 
     const handleRun = useCallback(async () => {
-        if (running) return;
+        if (running || readOnly) return;
         setRunning(true);
         setRunError(null);
         try {
@@ -171,7 +178,7 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false 
         } finally {
             setRunning(false);
         }
-    }, [client, workspaceId, canvas.id, query, clusterUrl, database, running, onCanvasSaved]);
+    }, [client, workspaceId, canvas.id, query, clusterUrl, database, running, onCanvasSaved, readOnly]);
 
     const { columns, rows, truncated, lastRun } = parsed;
     const numericColumns = useMemo(() => numericColumnNames(columns, rows), [columns, rows]);
@@ -182,6 +189,9 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false 
     const persistChartConfig = useCallback(
         async (next: KustoChartConfig | undefined) => {
             setChartConfig(next);
+            // Historical views must not mutate the stored snapshot — keep the
+            // chart toggle local only.
+            if (readOnly) return;
             const state: KustoCanvasState = { ...parsed };
             if (next) state.chartConfig = next;
             else delete state.chartConfig;
@@ -195,7 +205,7 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false 
                 // Keep the local config even if the save races a revision bump.
             }
         },
-        [parsed, client, workspaceId, canvas.id, canvas.revision, onCanvasSaved],
+        [parsed, client, workspaceId, canvas.id, canvas.revision, onCanvasSaved, readOnly],
     );
 
     const updateConfig = useCallback(
@@ -251,6 +261,7 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false 
                             value={clusterUrl}
                             onChange={e => setClusterUrl(e.target.value)}
                             placeholder="https://help.kusto.windows.net"
+                            readOnly={readOnly}
                             data-testid="kusto-cluster"
                         />
                     </label>
@@ -262,6 +273,7 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false 
                             value={database}
                             onChange={e => setDatabase(e.target.value)}
                             placeholder="Samples"
+                            readOnly={readOnly}
                             data-testid="kusto-database"
                         />
                     </label>
@@ -274,19 +286,22 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false 
                         onChange={e => setQuery(e.target.value)}
                         placeholder="StormEvents | take 100"
                         spellCheck={false}
+                        readOnly={readOnly}
                         data-testid="kusto-query"
                     />
                 </label>
                 <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        className="px-3 py-1 text-[11px] rounded bg-[#0078d4] text-white font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
-                        onClick={() => void handleRun()}
-                        disabled={running || !query.trim()}
-                        data-testid="kusto-run"
-                    >
-                        {running ? 'Running…' : 'Run'}
-                    </button>
+                    {!readOnly && (
+                        <button
+                            type="button"
+                            className="px-3 py-1 text-[11px] rounded bg-[#0078d4] text-white font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => void handleRun()}
+                            disabled={running || !query.trim()}
+                            data-testid="kusto-run"
+                        >
+                            {running ? 'Running…' : 'Run'}
+                        </button>
+                    )}
                     <span className="flex-1 text-[10px]" data-testid="kusto-status">
                         {status === 'loading' && <span className="text-[#848484]">Running query…</span>}
                         {status === 'success' && !running && (
@@ -337,7 +352,7 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false 
                 )}
 
                 {/* AC-06 Ask-AI loop — only when the Kusto canvas is linked to a chat. */}
-                {!compact && canvas.processId && (
+                {!compact && !readOnly && canvas.processId && (
                     <div className="flex flex-col gap-1 pt-1 border-t border-dashed border-[#e0e0e0] dark:border-[#474749]" data-testid="kusto-ask-ai">
                         <span className="block text-[9px] uppercase text-[#848484]">Ask AI to improve this query</span>
                         <div className="flex items-start gap-2">

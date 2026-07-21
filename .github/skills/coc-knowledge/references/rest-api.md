@@ -116,6 +116,16 @@ Opt-in isolated-worktree execution mode for Work Item and Ralph runs, gated by t
 | GET | `/api/workspaces/:id/group-pins` | List workspace-scoped parent-row group pins for Ralph session groups, For Each run groups, and Map Reduce run groups, sorted newest pin first |
 | PATCH | `/api/workspaces/:id/group-pins/:type/:groupId` | Pin/unpin a parent group row. `type` is an open string: legacy names `ralph-session`, `for-each-run`, `map-reduce-run` plus any registered task-group type; body `{ pinned: boolean }`. This updates only the group pin record and does not mutate child process pin/archive metadata |
 
+## Quick Ask Side-notes
+
+Per-process AI lookups on assistant chat turns. A text selection triggers a cheap one-shot ask (never a follow-up turn); the answer is stored as a repo-scoped annotation and never enters the conversation. All endpoints are gated by the live admin flag `features.quickAskSidenotes` (default `false`) and return `404` when disabled. Storage: `{dataDir}/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`. Workspace is supplied via `?workspace=<id>`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/processes/:processId/sidenotes?workspace=<id>` | List side-notes for the process (hydrate on chat open) → `{ sidenotes }` |
+| POST | `/api/processes/:processId/sidenotes?workspace=<id>` | Body `{ turnIndex, selectedText, contextBefore?, contextAfter?, question? }`. Builds a compact grounded prompt, runs the one-shot invoker (model resolved via `defaultModels.quickAsk` > `defaultModel`), persists, returns `{ sidenote }` (201). `502`/`503` on AI failure/unavailability |
+| DELETE | `/api/processes/:processId/sidenotes/:id?workspace=<id>` | Delete one side-note (204; 404 when missing) |
+
 ## Task Groups
 
 Generic parent/child task relationship registry shared by For Each, Map Reduce, Ralph, Dreams, and future hierarchical features. Always registered (no feature flag).
@@ -277,7 +287,7 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 - **Task-root discovery:** missing task directories are omitted, canonical duplicates collapse with primary then legacy then configured label priority, and a task-derived protected entry hides an overlapping normal Notes root. Discovery does not write `additionalNotesRoots` or task settings and does not count toward the 10-root limit.
 - **Git ops** apply only to the default root; repo-folder roots inherit the workspace repo's git.
 - **Comment sidecar** for repo-folder roots is stored at `~/.coc/repos/<workspaceId>/notes-comments/<encoded-root-path>/`.
-- **Images** for repo-folder roots are co-located in `<root>/.images/`; default root uses `.attachments/`.
+- **Images and PDFs** upload/serve through `POST`/`GET /api/workspaces/:id/notes/image` (`notes-image-handler.ts`). Accepts images (≤10 MB) plus `application/pdf` (≤50 MB). Repo-folder roots co-locate attachments in `<root>/.images/`; the default root uses `.attachments/`. PDFs render inline in the notes editor via the `pdfBlock` Tiptap node.
 - **System folders** (e.g., Plans) are auto-created only in the default root.
 - User-configured Notes roots are persisted in `PerRepoPreferences.additionalNotesRoots`; task-derived roots remain owned by task settings.
 

@@ -15,7 +15,7 @@ import {
     isSourceCanvasNotePath,
     parseFilePathRef,
 } from '../../../shared/file-path-utils';
-import { chatMarkdownToHtml } from '../conversation/ConversationTurnBubble';
+import { chatMarkdownToHtml } from '../conversation/markdownHtml';
 import type { SourceCanvasFileRef } from './types';
 
 export interface ConversationSourceFile extends SourceCanvasFileRef {

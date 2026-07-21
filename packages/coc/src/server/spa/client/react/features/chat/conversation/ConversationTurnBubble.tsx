@@ -1,7 +1,7 @@
 /**
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { cn, ImageGallery, ImageLightbox, Spinner } from '../../../ui';
 import type { ClientConversationTurn, ClientTokenUsage } from '../../../types/dashboard';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
@@ -13,19 +13,16 @@ import { JsonResponseView } from '../../../ui/JsonResponseView';
 import { isJsonResponse } from '../../../ui/json-utils';
 import { mergeConsecutiveContentItems } from './timeline-utils';
 import { LoopIcon } from '../icons/LoopIcon';
-import { Marked } from 'marked';
-import { mathMarkedExtension } from '../../../../shared/math/mathMarkedExtension';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
 import { isExcalidrawEnabled, isCanvasEnabled } from '../../../utils/config';
-import { SHOW_EXCALIDRAW_DIAGRAMS } from '../../../featureFlags';
+import { SHOW_EXCALIDRAW_DIAGRAMS, QUICK_ASK_SIDENOTES } from '../../../featureFlags';
+import { QuickAskTurnLayer } from '../quick-ask/QuickAskTurnLayer';
+import type { ClientSideNote, QuickAskSelection } from '../quick-ask/types';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, copyImageToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { embedMathCssForCopy } from '../../../utils/snapshot-copy-utils';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
-import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
-import { renderMermaidContainer, type CodeBlock } from '@plusplusoneplusplus/forge/editor/parsing';
-import { DEFAULT_HTML_EMBED_HEIGHT, isEmbeddableHtmlPath } from '@plusplusoneplusplus/forge/editor/rendering';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './tool-calls/toolGroupUtils';
 import { groupConsecutiveToolChunks, filterWhisperChunks } from './tool-calls/toolGroupUtils';
 import type { WhisperGroupChunk } from './tool-calls/toolGroupUtils';
@@ -50,6 +47,15 @@ import {
     type ParsedRalphSessionContextBlock,
     type ParsedSessionContextBlock,
 } from '../hooks/useAttachedContext';
+import { chatMarkdownToHtml, toContentHtml } from './markdownHtml';
+
+export {
+    chatMarkdownToHtml,
+    normalizeMarkdownLinkUrls,
+    parseCanvasEmbedLink,
+    parseExcalidrawLink,
+    toContentHtml,
+} from './markdownHtml';
 
 const MAX_LARGE_PASTE_PROMPT_PREFIX_LENGTH = 500;
 
@@ -66,247 +72,6 @@ function escapeHtml(value: string): string {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
-}
-
-/**
- * Parse an `excalidraw://workspaceId/filename` URL.
- * Returns null if the URL doesn't match the expected format.
- */
-export function parseExcalidrawLink(url: string): { workspaceId: string; diagramPath: string } | null {
-    const match = url.match(/^excalidraw:\/\/([^/]+)\/(.+)$/i);
-    if (!match) return null;
-    const workspaceId = decodeURIComponent(match[1]);
-    const diagramPath = decodeURIComponent(match[2]);
-    if (!workspaceId || !diagramPath) return null;
-    return { workspaceId, diagramPath };
-}
-
-/**
- * Parse a `canvas://<canvasId>` reference marker.
- *
- * The canvas type is resolved from its persisted descriptor before rendering,
- * so the same marker supports diagram, extension, markdown, and code canvases.
- * Returns null if the marker doesn't match a valid canvas id.
- */
-export function parseCanvasEmbedLink(url: string): { canvasId: string } | null {
-    const match = url.match(/^canvas:\/\/([a-z0-9][a-z0-9-]{0,127})$/i);
-    if (!match) return null;
-    return { canvasId: match[1] };
-}
-
-/**
- * Post-processing: convert bare `canvas://<id>` text in HTML (not already
- * inside a tag attribute) into canvas embed divs. The workspace id is
- * injected separately by `injectCanvasEmbedWorkspace` once it is known.
- */
-function rewriteBareCanvasEmbedLinks(html: string): string {
-    return html.replace(
-        /(?<!="|=')canvas:\/\/([a-z0-9][a-z0-9-]{0,127})/gi,
-        (match) => {
-            const parsed = parseCanvasEmbedLink(match);
-            if (!parsed) return match;
-            return `<div class="md-canvas-embed" data-canvas-id="${escapeAttr(parsed.canvasId)}"></div>`;
-        },
-    );
-}
-
-/**
- * Stamp the workspace id onto canvas embed placeholders. The `link`/bare-link
- * rewriters emit `data-canvas-id` only (they don't know the workspace), so this
- * pass adds `data-ws-id` from the render context once it is available.
- */
-function injectCanvasEmbedWorkspace(html: string, wsId: string): string {
-    return html.replace(
-        /<div class="md-canvas-embed" data-canvas-id="([^"]*)"><\/div>/g,
-        (_match, canvasId) => `<div class="md-canvas-embed" data-canvas-id="${canvasId}" data-ws-id="${escapeAttr(wsId)}"></div>`,
-    );
-}
-
-/**
- * Post-processing: convert bare `excalidraw://...` text in HTML (not already
- * inside a tag attribute or an existing placeholder) into embed divs.
- */
-function rewriteBareExcalidrawLinks(html: string): string {
-    // Match bare excalidraw:// URLs that are NOT inside an HTML tag attribute
-    // (i.e., not preceded by `="` or `='`). Also skip if already inside an
-    // md-excalidraw-embed div.
-    return html.replace(
-        /(?<!="|=')excalidraw:\/\/([^\s<>"']+)/gi,
-        (match) => {
-            const parsed = parseExcalidrawLink(match);
-            if (!parsed) return match;
-            return `<div class="md-excalidraw-embed" data-ws-id="${escapeAttr(parsed.workspaceId)}" data-diagram-path="${escapeAttr(parsed.diagramPath)}"></div>`;
-        },
-    );
-}
-
-let svgFenceIndex = 0;
-
-function createChatMarked(
-    htmlEmbedEnabled: boolean,
-    excalidrawEmbedEnabled: boolean = false,
-    canvasEmbedEnabled: boolean = false,
-    svgFenceEnabled: boolean = false,
-): Marked {
-    let mermaidBlockIndex = 0;
-
-    return new Marked({
-        gfm: true,
-        breaks: true,
-        renderer: {
-            code(code: string, infostring: string | undefined, escaped: boolean): string {
-                const language = (infostring ?? '').trim().split(/\s+/)[0] || '';
-                if (svgFenceEnabled && language.toLowerCase() === 'svg') {
-                    svgFenceIndex++;
-                    const escapedSource = escaped ? code : escapeHtml(code);
-                    return (
-                        `<div class="md-svg-fence" data-fence-id="md-svg-${svgFenceIndex}">` +
-                        `<pre class="md-svg-source" style="display:none"><code>${escapedSource}</code></pre>` +
-                        '</div>\n'
-                    );
-                }
-                if (language.toLowerCase() === 'mermaid') {
-                    mermaidBlockIndex++;
-                    const block: CodeBlock = {
-                        language: 'mermaid',
-                        startLine: 1,
-                        endLine: code.split('\n').length + 2,
-                        code,
-                        id: `chat-mermaid-${mermaidBlockIndex}`,
-                        isMermaid: true,
-                    };
-                    return renderMermaidContainer(block);
-                }
-
-                const classAttr = language ? ` class="language-${escapeAttr(language)}"` : '';
-                const html = escaped ? code : escapeHtml(code);
-                return `<pre><code${classAttr}>${html}</code></pre>\n`;
-            },
-            html(raw: string) {
-                return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-            },
-            link(href: string, title: string | null | undefined, text: string): string {
-                const safeHref = escapeAttr(href ?? '');
-                // Excalidraw links → inline placeholder div
-                if (excalidrawEmbedEnabled && href && /^excalidraw:\/\//i.test(href)) {
-                    const parsed = parseExcalidrawLink(href);
-                    if (parsed) {
-                        return `<div class="md-excalidraw-embed" data-ws-id="${escapeAttr(parsed.workspaceId)}" data-diagram-path="${escapeAttr(parsed.diagramPath)}"></div>`;
-                    }
-                }
-                // Canvas reference markers → type-aware inline embed (ws id stamped later)
-                if (canvasEmbedEnabled && href && /^canvas:\/\//i.test(href)) {
-                    const parsed = parseCanvasEmbedLink(href);
-                    if (parsed) {
-                        return `<div class="md-canvas-embed" data-canvas-id="${escapeAttr(parsed.canvasId)}"></div>`;
-                    }
-                }
-                const isExternal = /^https?:\/\/|^mailto:/i.test(href ?? '');
-                const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-                return isExternal
-                    ? `<a href="${safeHref}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`
-                    : `<a href="${safeHref}"${titleAttr}>${text}</a>`;
-            },
-            image(href: string, title: string | null | undefined, text: string): string {
-                // .html/.htm references via image syntax embed inline, skipping the <img> entirely.
-                if (htmlEmbedEnabled && isEmbeddableHtmlPath(href)) {
-                    return `<div class="md-html-embed" data-html-path="${escapeAttr(href ?? '')}" data-embed-height="${DEFAULT_HTML_EMBED_HEIGHT}"></div>`;
-                }
-                const alt = text || title || 'Image';
-                const escapedAlt = escapeAttr(alt);
-                const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-                const isExternal = /^https?:\/\//i.test(href ?? '');
-                if (isExternal) {
-                    return `<img src="${escapeAttr(href)}" alt="${escapedAlt}"${titleAttr} class="chat-inline-image" loading="lazy" onerror="this.onerror=null;this.classList.add('chat-inline-image--error');this.alt='⚠\uFE0F Image failed to load';">`;
-                }
-                // Local path: store in data-local-path; rewriteLocalImagePaths() will
-                // convert this to the proxy URL once wsId is known (post-parse step).
-                return `<img data-local-path="${escapeAttr(href)}" alt="${escapedAlt}"${titleAttr} class="chat-inline-image">`;
-            },
-        },
-    }).use(mathMarkedExtension);
-}
-
-/**
- * Pre-pass: for every ![alt](url) and [text](url) whose url is a Windows
- * absolute path, normalize backslashes to forward slashes and, if the url
- * contains whitespace, wrap it in <…> so CommonMark parses it correctly.
- * Must run before normalizeWindowsPathsInText and before `marked`.
- */
-export function normalizeMarkdownLinkUrls(text: string): string {
-    return text.replace(
-        /(!?)\[([^\]]*)\]\(([^)\n]+)\)/g,
-        (match, bang: string, label: string, url: string) => {
-            if (!/^[A-Za-z]:[\\\/]/.test(url)) return match;
-            const fwd = toForwardSlashes(url);
-            const wrapped = /\s/.test(fwd) ? `<${fwd}>` : fwd;
-            return `${bang}[${label}](${wrapped})`;
-        },
-    );
-}
-
-/**
- * Pre-normalize Windows-style paths (backslash) to forward slashes before markdown
- * parsing, so that `marked` does not treat `\.` as an escape sequence (GFM treats
- * backslash-followed-by-ASCII-punctuation as an escape, silently dropping the `\`).
- */
-function normalizeWindowsPathsInText(text: string): string {
-    return text.replace(/[A-Za-z]:[\\\/][\w.\\/@-]+/g, (match) => toForwardSlashes(match));
-}
-
-/**
- * Rewrites `data-local-path` attributes emitted by the image() renderer into
- * proxy URLs served by /api/workspaces/:wsId/files/image?path=…
- * Only runs when wsId is available; local-path images remain invisible otherwise.
- */
-function rewriteLocalImagePaths(html: string, wsId: string): string {
-    return html.replace(
-        /(<img\b[^>]*?) data-local-path="([^"]*)"([^>]*>)/g,
-        (_match, before, localPath, after) => {
-            const proxyUrl = `/api/workspaces/${encodeURIComponent(wsId)}/files/image?path=${encodeURIComponent(localPath)}`;
-            return `${before} src="${proxyUrl}" onerror="this.onerror=null;this.classList.add('chat-inline-image--error');this.removeAttribute('src');"${after}`;
-        }
-    );
-}
-
-/**
- * Convert markdown to semantic HTML using `marked` for chat messages.
- * Produces proper `<h3>`, `<strong>`, `<ul>`, `<pre><code>`, etc.
- * File paths are linkified for hover previews.
- */
-export function chatMarkdownToHtml(
-    content: string,
-    wsId?: string,
-    options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean; canvasEmbedEnabled?: boolean; svgFenceEnabled?: boolean },
-): string {
-    if (!content || !content.trim()) return '';
-    // Order matters: normalizeMarkdownLinkUrls fixes link/image URLs first (handles
-    // spaces + backslashes), then normalizeWindowsPathsInText handles bare prose paths.
-    const linkNormalized = normalizeMarkdownLinkUrls(content);
-    const normalized = normalizeWindowsPathsInText(linkNormalized);
-    const excalidrawEnabled = options?.excalidrawEmbedEnabled === true;
-    // Keep existing callers that only enable Excalidraw embeds working while
-    // allowing canvas references to render when only the Canvas feature is on.
-    const canvasEnabled = options?.canvasEmbedEnabled === true || excalidrawEnabled;
-    const svgEnabled = options?.svgFenceEnabled === true;
-    let html = linkifyFilePaths(
-        createChatMarked(options?.htmlEmbedEnabled === true, excalidrawEnabled, canvasEnabled, svgEnabled).parse(normalized) as string,
-    );
-    if (wsId) {
-        html = rewriteLocalImagePaths(html, wsId);
-    }
-    // Post-process bare references, then stamp the workspace id onto generic
-    // canvas embeds so the renderer can resolve the persisted canvas type.
-    if (excalidrawEnabled) {
-        html = rewriteBareExcalidrawLinks(html);
-    }
-    if (canvasEnabled) {
-        html = rewriteBareCanvasEmbedLinks(html);
-        if (wsId) {
-            html = injectCanvasEmbedWorkspace(html, wsId);
-        }
-    }
-    return html;
 }
 
 interface ConversationTurnBubbleProps {
@@ -350,6 +115,20 @@ interface ConversationTurnBubbleProps {
     /** Process ID — needed for NoteEditCard undo API call. */
     processId?: string;
     /**
+     * Quick Ask side-notes for this process (persisted + optimistic), filtered
+     * per turn inside the bubble. Only used on assistant turns when the
+     * `QUICK_ASK_SIDENOTES` flag is on.
+     */
+    sidenotes?: ClientSideNote[];
+    /** Run a Quick Ask lookup for a captured selection in this turn. */
+    onCreateSidenote?: (selection: QuickAskSelection) => void;
+    /** Retry a failed Quick Ask lookup. */
+    onRetrySidenote?: (id: string) => void;
+    /** Delete a Quick Ask side-note. */
+    onDeleteSidenote?: (id: string) => void;
+    /** Copy a side-note's answer to the clipboard. */
+    onCopySidenote?: (note: ClientSideNote) => void;
+    /**
      * AI provider that produced the assistant turns (`copilot`, `codex`, or
      * `claude`). Controls the round avatar's color so it matches the
      * provider's brand palette (Copilot=green, Claude=orange, Codex=indigo).
@@ -392,14 +171,6 @@ type RenderChunk =
         allSucceeded: boolean;
         parentToolId?: string;
       };
-
-export function toContentHtml(
-    content: string,
-    wsId?: string,
-    options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean; canvasEmbedEnabled?: boolean },
-): string {
-    return chatMarkdownToHtml(content, wsId, options);
-}
 
 function AttachedSessionContextBlockCard({ context }: { context: ParsedSessionContextBlock }) {
     const [copiedRawBlock, setCopiedRawBlock] = useState(false);
@@ -1313,8 +1084,9 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, provider }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, provider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
+    const sidenoteContentRef = useRef<HTMLDivElement>(null);
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
     const htmlEmbedEnabled = useHtmlEmbedPreference(wsId) && !turn.streaming;
@@ -1780,7 +1552,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     </span>
                 )}
 
-                <div className="space-y-2 chat-message-content">
+                <div className="space-y-2 chat-message-content" ref={!isUser ? sidenoteContentRef : undefined}>
                     {!isUser && turn.isError && (
                         <aside
                             className={cn(
@@ -2033,6 +1805,18 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             />
                         ));
                     })()}
+                    {QUICK_ASK_SIDENOTES && !isUser && turnIndex != null && (
+                        <QuickAskTurnLayer
+                            containerRef={sidenoteContentRef}
+                            turnIndex={turnIndex}
+                            streaming={turn.streaming}
+                            notes={(sidenotes ?? []).filter(n => n.turnIndex === turnIndex)}
+                            onAsk={sel => onCreateSidenote?.(sel)}
+                            onRetry={id => onRetrySidenote?.(id)}
+                            onDelete={id => onDeleteSidenote?.(id)}
+                            onCopy={note => onCopySidenote?.(note)}
+                        />
+                    )}
                 </div>
             </div>
             {isUser && (

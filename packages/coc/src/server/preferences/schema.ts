@@ -24,7 +24,7 @@ export interface LastModelsByMode {
 }
 
 /** Mode keys for the per-repo default model overrides. */
-export type DefaultModelMode = 'task' | 'ask' | 'note' | 'schedule' | 'followUp' | 'memory';
+export type DefaultModelMode = 'task' | 'ask' | 'note' | 'schedule' | 'followUp' | 'memory' | 'quickAsk';
 
 /** Per-mode default model overrides. Take precedence over the repo-wide defaultModel. */
 export interface DefaultModelsByMode {
@@ -34,6 +34,8 @@ export interface DefaultModelsByMode {
     schedule?: string;
     followUp?: string;
     memory?: string;
+    /** Quick Ask side-note lookups. Prefer a small/fast model for cost. */
+    quickAsk?: string;
 }
 
 export type AutoPromoteMode = 'off' | 'threshold' | 'cron' | 'cron+threshold';
@@ -130,6 +132,7 @@ const DefaultModelsByModeSchema = z.object({
     schedule: optionalModelStringMax100,
     followUp: optionalModelStringMax100,
     memory: optionalModelStringMax100,
+    quickAsk: optionalModelStringMax100,
 }).strip().transform(dropIfEmpty);
 
 /** String-keyed record where only string values survive. */

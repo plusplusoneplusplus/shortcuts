@@ -323,4 +323,27 @@ describe('WorkingTree', () => {
             expect(source).toContain("compact ? 'gap-1.5 px-1.5 py-0.5' : 'gap-2 px-2.5 py-1'");
         });
     });
+
+    describe('untracked truncation', () => {
+        it('tracks untrackedTruncated and untrackedTotal state', () => {
+            expect(source).toContain('untrackedTruncated');
+            expect(source).toContain('setUntrackedTruncated');
+            expect(source).toContain('untrackedTotal');
+            expect(source).toContain('setUntrackedTotal');
+        });
+
+        it('reads truncation fields from the changes response', () => {
+            expect(source).toContain('data.untrackedTruncated ?? false');
+            expect(source).toContain('data.untrackedTotal ?? 0');
+        });
+
+        it('shows the untracked total in the section header when truncated', () => {
+            expect(source).toContain('count={untrackedTruncated ? untrackedTotal : untracked.length}');
+        });
+
+        it('renders a "+N more" footer stating the omitted count', () => {
+            expect(source).toContain('data-testid="working-tree-untracked-truncated"');
+            expect(source).toContain('{untrackedTotal - untracked.length} more untracked files (not shown)');
+        });
+    });
 });

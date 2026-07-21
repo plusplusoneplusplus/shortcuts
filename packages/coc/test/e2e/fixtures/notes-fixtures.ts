@@ -11,11 +11,11 @@
  * Create a FRESH store per test (see `createNotesStore`) so specs stay
  * parallel-safe — never share a module-global mutable store.
  *
- * Routing strategy: the mock intercepts the eight documented notes routes
- * (tree, content GET/PUT, page POST, path PATCH/DELETE, order PUT, search GET)
- * from mocked data, and serves hermetic defaults for the auxiliary GETs the
- * Notes page fires on load (roots, git status, comments). Every other
- * `/notes/**` request is passed through to the real server via
+ * Routing strategy: the mock intercepts the documented notes routes
+ * (tree, content GET/PUT, page POST, path PATCH/DELETE, order PUT, search GET,
+ * image POST/GET) from mocked data, and serves hermetic defaults for the
+ * auxiliary GETs the Notes page fires on load (roots, git status, comments).
+ * Every other `/notes/**` request is passed through to the real server via
  * `route.continue()`.
  */
 
@@ -52,7 +52,9 @@ export type NotesRouteKey =
     | 'path-patch'
     | 'path-delete'
     | 'order-put'
-    | 'search';
+    | 'search'
+    | 'image-post'
+    | 'image-get';
 
 /** A single intercepted documented request, captured for assertions. */
 export interface RecordedNotesRequest {
@@ -90,6 +92,15 @@ export interface NotesStoreSeed {
 
 const DEFAULT_MTIME = 1_700_000_000_000;
 const DEFAULT_NOTES_ROOT = '/mock/notes';
+
+/** Deterministic attachment path returned by the mocked image upload (POST). */
+export const MOCK_UPLOADED_PDF_PATH = '.attachments/uploaded.pdf';
+
+/** A tiny but valid PDF served by the mocked image GET route. */
+const MOCK_PDF_BYTES = Buffer.from(
+    '%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n',
+    'utf-8',
+);
 
 // ── Tree helpers ─────────────────────────────────────────────────────────────
 
@@ -247,8 +258,8 @@ export function createNotesStore(seed: NotesStoreSeed): NotesStore {
 // ── The Playwright route layer ───────────────────────────────────────────────
 
 /**
- * Install the mocked notes API on `page`. Intercepts the eight documented
- * notes routes from `store`, serves hermetic defaults for the auxiliary GETs the
+ * Install the mocked notes API on `page`. Intercepts the documented notes
+ * routes from `store`, serves hermetic defaults for the auxiliary GETs the
  * Notes page fires (roots, git status, comments), and passes everything else on
  * `/notes/**` through to the real server.
  */
@@ -370,6 +381,19 @@ export async function mockNotesApi(page: Page, store: NotesStore): Promise<void>
                 if (!q) return respondJson(400, { error: 'Missing required query parameter: q' });
                 return respondJson(200, { results: store.searchResults, truncated: false });
             }
+
+            case 'image-post':
+                // Deterministic path so specs can assert the inserted node's URL.
+                return respondJson(201, { path: MOCK_UPLOADED_PDF_PATH, rootId: 'default' });
+
+            case 'image-get':
+                // Serve a tiny valid PDF for any requested attachment path so the
+                // inline <iframe> resolves without a real file on disk.
+                return route.fulfill({
+                    status: 200,
+                    contentType: 'application/pdf',
+                    body: MOCK_PDF_BYTES,
+                });
         }
     });
 }
@@ -384,6 +408,8 @@ function resolveRouteKey(method: string, suffix: string): NotesRouteKey | null {
     if (suffix === '/path' && method === 'DELETE') return 'path-delete';
     if (suffix === '/order' && method === 'PUT') return 'order-put';
     if (suffix === '/search' && method === 'GET') return 'search';
+    if (suffix === '/image' && method === 'POST') return 'image-post';
+    if (suffix === '/image' && method === 'GET') return 'image-get';
     return null;
 }
 

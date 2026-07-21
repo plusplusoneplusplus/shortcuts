@@ -30,6 +30,7 @@ import { readRepoPreferences, registerPreferencesRoutes } from '../preferences-h
 import { registerAdminRoutes } from '../admin/admin-handler';
 import { registerTaskCommentsRoutes } from '../tasks/comments/task-comments-handler';
 import { registerDiffCommentsRoutes } from '../tasks/comments/diff-comments-handler';
+import { registerChatSidenotesRoutes } from '../processes/chat-sidenotes/chat-sidenotes-handler';
 import { registerCanvasRoutes } from '../canvas/canvas-routes';
 import { registerWikiRoutes } from '../wiki';
 import { registerMemoryRoutes } from '../memory/memory-routes';
@@ -905,6 +906,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store,
         getEnabled: getNativeCliSessionsEnabled,
         providers: nativeCliSessionProviders,
+    });
+
+    // Quick Ask side-notes: per-process AI lookups on assistant chat turns.
+    // Guarded by the live `features.quickAskSidenotes` admin flag (default off).
+    const getQuickAskSidenotesEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.features?.quickAskSidenotes ?? false
+        : () => opts.resolvedConfig?.features?.quickAskSidenotes ?? false;
+    registerChatSidenotesRoutes({
+        routes,
+        store,
+        dataDir,
+        getEnabled: getQuickAskSidenotesEnabled,
     });
 
     const workItemStore = createWorkItemStore({ dataDir, processStore: store });

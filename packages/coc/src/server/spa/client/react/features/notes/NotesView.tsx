@@ -28,7 +28,7 @@ import type { ReviewChatTarget } from '../git/commits/commitChatPlacement';
 export interface NotesViewProps {
     workspaceId: string;
     initialNotePath?: string | null;
-    /** Default chat scope for the NoteChatPanel. Defaults to 'per-workspace'. */
+    /** Default chat scope for the NoteChatPanel. Defaults to 'per-note'. */
     defaultScope?: ChatScope;
     /**
      * Whether this Notes tab is the active/visible sub-tab. Views are kept

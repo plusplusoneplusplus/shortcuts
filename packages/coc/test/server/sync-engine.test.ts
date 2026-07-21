@@ -25,6 +25,57 @@ import type { SyncStatus, ReconcileResult } from '../../src/server/sync/sync-eng
 import { readReconcileMarker } from '../../src/server/sync/sync-reconcile';
 import type { AIInvoker } from '@plusplusoneplusplus/forge';
 
+interface GitEnvSnapshot {
+    values: Record<string, string | undefined>;
+}
+
+function isGitConfigEnvKey(key: string): boolean {
+    return key === 'GIT_CONFIG_GLOBAL'
+        || key === 'GIT_CONFIG_NOSYSTEM'
+        || key === 'GIT_CONFIG_COUNT'
+        || key === 'GIT_CONFIG_PARAMETERS'
+        || /^GIT_CONFIG_(KEY|VALUE)_\d+$/.test(key);
+}
+
+function clearGitConfigEnv(): void {
+    for (const key of Object.keys(process.env)) {
+        if (isGitConfigEnvKey(key)) delete process.env[key];
+    }
+}
+
+function installIsolatedGitConfig(gitconfig: string): GitEnvSnapshot {
+    const snapshot: GitEnvSnapshot = { values: {} };
+    for (const key of Object.keys(process.env)) {
+        if (isGitConfigEnvKey(key)) snapshot.values[key] = process.env[key];
+    }
+    clearGitConfigEnv();
+    process.env.GIT_CONFIG_GLOBAL = gitconfig;
+    process.env.GIT_CONFIG_NOSYSTEM = '1';
+    return snapshot;
+}
+
+function restoreGitConfigEnv(snapshot: GitEnvSnapshot | undefined): void {
+    clearGitConfigEnv();
+    if (!snapshot) return;
+    for (const [key, value] of Object.entries(snapshot.values)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+}
+
+function writeTestGitConfig(tmpDir: string): string {
+    const gitconfig = path.join(tmpDir, 'test.gitconfig');
+    fs.writeFileSync(gitconfig, [
+        '[user]', '\tname = Sync Test', '\temail = sync-test@example.test',
+        '[core]', '\tautocrlf = false', '\teol = lf',
+        '[init]', '\tdefaultBranch = main',
+        '[commit]', '\tgpgsign = false',
+        '[safe]', '\tbareRepository = all',
+        '',
+    ].join('\n'));
+    return gitconfig;
+}
+
 // ── resolveConflictSimple ────────────────────────────────────────────────────
 
 describe('resolveConflictSimple', () => {
@@ -541,8 +592,7 @@ describe('SyncEngine performSync (real git)', () => {
     let remoteDir: string;
     let engine: SyncEngine;
     let logs: string[];
-    let prevGlobal: string | undefined;
-    let prevNoSystem: string | undefined;
+    let gitEnvSnapshot: GitEnvSnapshot | undefined;
 
     const logger = {
         info: (m: string) => logs.push(m),
@@ -568,20 +618,7 @@ describe('SyncEngine performSync (real git)', () => {
         logs = [];
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sync-int-'));
 
-        // Self-contained git config so engine-created repos have an identity and
-        // deterministic branch/line-ending behavior regardless of the host machine.
-        const gitconfig = path.join(tmpDir, 'test.gitconfig');
-        fs.writeFileSync(gitconfig, [
-            '[user]', '\tname = Sync Test', '\temail = sync-test@example.test',
-            '[core]', '\tautocrlf = false', '\teol = lf',
-            '[init]', '\tdefaultBranch = main',
-            '[commit]', '\tgpgsign = false',
-            '',
-        ].join('\n'));
-        prevGlobal = process.env.GIT_CONFIG_GLOBAL;
-        prevNoSystem = process.env.GIT_CONFIG_NOSYSTEM;
-        process.env.GIT_CONFIG_GLOBAL = gitconfig;
-        process.env.GIT_CONFIG_NOSYSTEM = '1';
+        gitEnvSnapshot = installIsolatedGitConfig(writeTestGitConfig(tmpDir));
 
         remoteDir = path.join(tmpDir, 'remote.git');
         execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
@@ -591,10 +628,7 @@ describe('SyncEngine performSync (real git)', () => {
 
     afterEach(() => {
         engine?.stop();
-        if (prevGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-        else process.env.GIT_CONFIG_GLOBAL = prevGlobal;
-        if (prevNoSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
-        else process.env.GIT_CONFIG_NOSYSTEM = prevNoSystem;
+        restoreGitConfigEnv(gitEnvSnapshot);
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
@@ -694,8 +728,7 @@ describe('SyncEngine reconcile (real git)', () => {
     let remoteDir: string;
     let engine: SyncEngine;
     let logs: string[];
-    let prevGlobal: string | undefined;
-    let prevNoSystem: string | undefined;
+    let gitEnvSnapshot: GitEnvSnapshot | undefined;
 
     const logger = {
         info: (m: string) => logs.push(m),
@@ -759,18 +792,7 @@ describe('SyncEngine reconcile (real git)', () => {
         logs = [];
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sync-rec-'));
 
-        const gitconfig = path.join(tmpDir, 'test.gitconfig');
-        fs.writeFileSync(gitconfig, [
-            '[user]', '\tname = Sync Test', '\temail = sync-test@example.test',
-            '[core]', '\tautocrlf = false', '\teol = lf',
-            '[init]', '\tdefaultBranch = main',
-            '[commit]', '\tgpgsign = false',
-            '',
-        ].join('\n'));
-        prevGlobal = process.env.GIT_CONFIG_GLOBAL;
-        prevNoSystem = process.env.GIT_CONFIG_NOSYSTEM;
-        process.env.GIT_CONFIG_GLOBAL = gitconfig;
-        process.env.GIT_CONFIG_NOSYSTEM = '1';
+        gitEnvSnapshot = installIsolatedGitConfig(writeTestGitConfig(tmpDir));
 
         remoteDir = path.join(tmpDir, 'remote.git');
         execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
@@ -780,10 +802,7 @@ describe('SyncEngine reconcile (real git)', () => {
 
     afterEach(() => {
         engine?.stop();
-        if (prevGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-        else process.env.GIT_CONFIG_GLOBAL = prevGlobal;
-        if (prevNoSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
-        else process.env.GIT_CONFIG_NOSYSTEM = prevNoSystem;
+        restoreGitConfigEnv(gitEnvSnapshot);
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
@@ -1335,8 +1354,7 @@ describe('SyncEngine — unusable sync repo is rebuilt (real git)', () => {
     let remoteDir: string;
     let engine: SyncEngine;
     let logs: string[];
-    let prevGlobal: string | undefined;
-    let prevNoSystem: string | undefined;
+    let gitEnvSnapshot: GitEnvSnapshot | undefined;
 
     const logger = {
         info: (m: string) => logs.push(m),
@@ -1375,18 +1393,7 @@ describe('SyncEngine — unusable sync repo is rebuilt (real git)', () => {
         logs = [];
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sync-heal-'));
 
-        const gitconfig = path.join(tmpDir, 'test.gitconfig');
-        fs.writeFileSync(gitconfig, [
-            '[user]', '\tname = Sync Test', '\temail = sync-test@example.test',
-            '[core]', '\tautocrlf = false', '\teol = lf',
-            '[init]', '\tdefaultBranch = main',
-            '[commit]', '\tgpgsign = false',
-            '',
-        ].join('\n'));
-        prevGlobal = process.env.GIT_CONFIG_GLOBAL;
-        prevNoSystem = process.env.GIT_CONFIG_NOSYSTEM;
-        process.env.GIT_CONFIG_GLOBAL = gitconfig;
-        process.env.GIT_CONFIG_NOSYSTEM = '1';
+        gitEnvSnapshot = installIsolatedGitConfig(writeTestGitConfig(tmpDir));
 
         remoteDir = path.join(tmpDir, 'remote.git');
         execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
@@ -1396,10 +1403,7 @@ describe('SyncEngine — unusable sync repo is rebuilt (real git)', () => {
 
     afterEach(() => {
         engine?.stop();
-        if (prevGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-        else process.env.GIT_CONFIG_GLOBAL = prevGlobal;
-        if (prevNoSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
-        else process.env.GIT_CONFIG_NOSYSTEM = prevNoSystem;
+        restoreGitConfigEnv(gitEnvSnapshot);
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 

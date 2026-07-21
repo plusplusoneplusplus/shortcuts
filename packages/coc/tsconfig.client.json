@@ -20,6 +20,12 @@
       "@spa/shared": ["src/server/spa/client/react/shared/index.ts"]
     }
   },
-  "include": ["src/server/spa/client/**/*"],
+  "files": [
+    "src/server/spa/client/react/features/canvas/CanvasPanel.tsx",
+    "src/server/spa/client/react/features/canvas/KustoView.tsx",
+    "src/server/spa/client/react/features/canvas/KustoChart.tsx",
+    "src/server/spa/client/react/features/canvas/kustoCreate.ts",
+    "src/server/spa/client/react/shared/InteractiveTable.tsx"
+  ],
   "exclude": ["node_modules", "src/server/spa/client/dist"]
 }

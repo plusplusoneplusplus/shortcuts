@@ -5,7 +5,7 @@ import { ConversationMetadataPopover, type MetaRow } from './conversation/Conver
 import { ContextWindowIndicator } from '../../ui/ContextWindowIndicator';
 import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration } from '../../utils/format';
 import { ChatStatusPill } from './ChatStatusPill';
-import { chatMarkdownToHtml } from './conversation/ConversationTurnBubble';
+import { chatMarkdownToHtml } from './conversation/markdownHtml';
 import { snapshotConversation, openPrintPreview, embedMathCssForCopy } from '../../utils/snapshot-copy-utils';
 import { cn } from '../../ui/cn';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';

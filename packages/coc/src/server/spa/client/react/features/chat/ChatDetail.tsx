@@ -51,6 +51,7 @@ import { useModels } from '../../hooks/useModels';
 import type { ModelInfo } from '../../hooks/useModels';
 import { ChatHeader } from './ChatHeader';
 import { ConversationArea } from './ConversationArea';
+import { useQuickAskSidenotes } from './quick-ask/useQuickAskSidenotes';
 import { ChatComposerPrChips } from './conversation/ChatComposerPrChips';
 import { FollowUpInputArea } from './FollowUpInputArea';
 import { buildEffortOptionsForModel } from './EffortPillSelector';
@@ -372,6 +373,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // localStorage — the same `processId ?? bareTaskId` the canvas discovery
     // effect uses, so the persisted flag is read/written under one identity.
     const canvasPid = processId ?? bareTaskId;
+    const quickAsk = useQuickAskSidenotes(canvasPid ?? undefined, workspaceId);
     const scratchpad = useScratchpadState(scratchpadContainerRef, scratchpadLayout, bareTaskId);
     const workspaceRootPath = useMemo(() => {
         const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
@@ -2484,6 +2486,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         onMcpOAuthFailed={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}
                         processError={processDetails?.error ?? null}
                         provider={sessionProvider}
+                        sidenotes={quickAsk.items}
+                        onCreateSidenote={quickAsk.createSidenote}
+                        onRetrySidenote={quickAsk.retrySidenote}
+                        onDeleteSidenote={quickAsk.deleteSidenote}
+                        onCopySidenote={(note) => { try { void navigator.clipboard?.writeText(note.answer); } catch { /* ignore */ } }}
                         postConversationContent={planReviewCards}
                         isCompacting={isCompacting}
                         compactInstructions={compactInstructions}

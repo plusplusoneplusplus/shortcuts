@@ -10,6 +10,11 @@
  * so tests exercise success / query-error / auth-error / truncation paths with a
  * mocked client and never touch the network or a real credential.
  *
+ * The default (non-injected) factory caches the authenticated client per
+ * `clusterUrl` for the process lifetime ({@link createCachedClientFactory}), so
+ * repeated runs against the same cluster reuse one credential + client. Injected
+ * factories bypass the cache and are used verbatim.
+ *
  * Results are coerced to JSON-safe {@link KustoCellValue}s and truncated to
  * {@link MAX_KUSTO_ROWS}; `rowCount` reports the pre-truncation total.
  */
@@ -78,16 +83,51 @@ export interface KustoExecOptions {
 }
 
 /**
- * Default factory: build an `azure-kusto-data` client authenticated with the
- * machine's `az login` session. Loaded lazily via dynamic import because the
- * SDK is ESM-only and only needed when a real query actually runs.
+ * Wrap a client builder with a module-lifetime cache keyed by `clusterUrl`, so
+ * repeated queries against the same cluster reuse one authenticated client (and
+ * its underlying `AzureCliCredential`, which refreshes/caches tokens internally)
+ * instead of re-authenticating and re-constructing the SDK client on every run.
+ *
+ * The in-flight promise is cached so concurrent first-runs share one build; a
+ * rejected build is evicted so a later call can retry rather than replaying a
+ * cached auth/connection failure forever.
  */
-const defaultClientFactory: KustoClientFactory = async ({ clusterUrl }) => {
+export function createCachedClientFactory(
+    build: (clusterUrl: string) => Promise<KustoClientLike>,
+): KustoClientFactory {
+    const cache = new Map<string, Promise<KustoClientLike>>();
+    return ({ clusterUrl }) => {
+        let cached = cache.get(clusterUrl);
+        if (!cached) {
+            cached = build(clusterUrl).catch((err: unknown) => {
+                cache.delete(clusterUrl);
+                throw err;
+            });
+            cache.set(clusterUrl, cached);
+        }
+        return cached;
+    };
+}
+
+/**
+ * Build a fresh `azure-kusto-data` client authenticated with the machine's
+ * `az login` session. Loaded lazily via dynamic import because the SDK is
+ * ESM-only and only needed when a real query actually runs.
+ */
+async function buildDefaultKustoClient(clusterUrl: string): Promise<KustoClientLike> {
     const { Client, KustoConnectionStringBuilder } = await import('azure-kusto-data');
     const { AzureCliCredential } = await import('@azure/identity');
     const kcsb = KustoConnectionStringBuilder.withTokenCredential(clusterUrl, new AzureCliCredential());
     return new Client(kcsb) as unknown as KustoClientLike;
-};
+}
+
+/**
+ * Default factory: a {@link createCachedClientFactory}-cached view over
+ * {@link buildDefaultKustoClient}, so the credential + client are constructed
+ * once per cluster for the process lifetime. Injected {@link KustoExecOptions.clientFactory}
+ * factories bypass this cache entirely (see {@link executeKustoQuery}).
+ */
+const defaultClientFactory: KustoClientFactory = createCachedClientFactory(buildDefaultKustoClient);
 
 /** Coerce a raw Kusto cell value into a JSON-safe {@link KustoCellValue}. */
 export function coerceCellValue(value: unknown): KustoCellValue {

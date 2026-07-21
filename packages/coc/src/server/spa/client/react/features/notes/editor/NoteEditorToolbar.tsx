@@ -45,6 +45,8 @@ export interface NoteEditorToolbarProps {
     tocActiveIndex?: number | null;
     /** Called when the user clicks a TOC entry to jump to it. */
     onTocJump?: (entry: TocEntry) => void;
+    /** Called when the "Insert PDF" button is clicked (opens the hidden file picker). */
+    onInsertPdf?: () => void;
 }
 
 // ── Highlight color palette ─────────────────────────────────────────────────
@@ -281,7 +283,7 @@ function TableControls({ editor }: TableControlsProps) {
 
 // ── Main toolbar ────────────────────────────────────────────────────────────
 
-export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight, onRefresh, refreshing, chatPanelOpen, onToggleChatPanel, chatDisabledReason, hasExistingChat, tocOpen, onToggleToc, tocEntries = [], tocActiveIndex = null, onTocJump }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleCommentsPanel, commentCount, modeToggle, aiEditCount, aiEditsVisible, onDismissAiEdits, onToggleAiEdits, toolbarRight, onRefresh, refreshing, chatPanelOpen, onToggleChatPanel, chatDisabledReason, hasExistingChat, tocOpen, onToggleToc, tocEntries = [], tocActiveIndex = null, onTocJump, onInsertPdf }: NoteEditorToolbarProps) {
     const tocRef = useRef<HTMLDivElement>(null);
 
     if (!editor) return null;
@@ -356,6 +358,21 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                         icon="⊞"
                         command={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
                     />
+                    {onInsertPdf && (
+                        <button
+                            type="button"
+                            title="Insert PDF"
+                            aria-label="Insert PDF"
+                            data-testid="insert-pdf-btn"
+                            className="h-7 w-7 rounded flex items-center justify-center text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                            onMouseDown={(e) => {
+                                e.preventDefault(); // keep editor focus
+                                onInsertPdf();
+                            }}
+                        >
+                            📄
+                        </button>
+                    )}
 
                     {/* Alignment */}
                     <Sep />

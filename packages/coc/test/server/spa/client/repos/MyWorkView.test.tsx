@@ -277,11 +277,11 @@ describe('MyWorkView', () => {
     });
 
     describe('defaultScope prop', () => {
-        it('passes defaultScope="per-workspace" to NotesView', () => {
+        it('passes defaultScope="per-note" to NotesView', () => {
             mockActiveRepoSubTab = 'notes';
             renderView();
             const notesView = screen.getByTestId('notes-view');
-            expect(notesView.getAttribute('data-default-scope')).toBe('per-workspace');
+            expect(notesView.getAttribute('data-default-scope')).toBe('per-note');
         });
 
         it('does not pass chatPanelOpen from header to NotesView (no external state)', () => {

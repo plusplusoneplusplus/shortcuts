@@ -66,6 +66,14 @@ all have their own `references/*.md`.
   task-derived rows out of Notes root removal selection, refresh discovery with
   the tree, clear the selected file when a root disappears or the workspace
   changes, and discard late root/tree responses from stale workspace scopes.
+- **Notes attachments** upload and serve through the shared endpoint in
+  `notes/notes-image-handler.ts` (`POST`/`GET /api/workspaces/:id/notes/image`).
+  It accepts images plus `application/pdf` (images capped at 10 MB, PDFs at
+  50 MB) and stores files under `.attachments/` (default root) or `.images/`
+  (repo-folder roots). PDFs render inline in the Tiptap editor via the
+  `pdfBlock` node (`react/features/notes/editor/extensions/pdfBlock.tsx`), which
+  round-trips as `![label](.attachments/x.pdf)` markdown; `router.ts` maps
+  `.pdf` to `application/pdf` so the browser renders it inline in an `<iframe>`.
 - **In-memory caching** uses the one shared primitive at
   `src/server/cache/` (`createCache<T>({ namespace, ttlMs?, maxSize=500,
   immutable? })` → a handle with `get`/`set`/`getOrCompute`/`delete`/
@@ -217,6 +225,17 @@ all have their own `references/*.md`.
   (`node:vm`, no require/process, 1s timeout, 1 MB cap) — never execute
   extension scripts outside that runner. Do not write canvas files directly
   from other features.
+- **Quick Ask side-notes** (opt-in; server flag `features.quickAskSidenotes`
+  default off, plus the compile-time SPA flag `QUICK_ASK_SIDENOTES` that strips
+  the UI from the bundle when off) let a user select text in an assistant chat
+  turn to run a cheap one-shot AI lookup, attached as a clickable 💡 bubble that
+  never enters the conversation thread. Backend lives in
+  `src/server/processes/chat-sidenotes/` (manager + prompt + one-shot invoker +
+  `POST`/`GET`/`DELETE /api/processes/:processId/sidenotes` routes); persistence
+  is repo-scoped at `~/.coc/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`
+  via `getRepoDataPath` (never a new top-level `~/.coc` dir). Model resolves
+  `defaultModels.quickAsk` > `defaultModel` > CLI default. SPA components live in
+  `.../react/features/chat/quick-ask/`.
 - **Kusto query canvas** (`kusto.enabled`, default off) is a
   `type: 'kusto'` canvas branch on the generic canvas infrastructure. Its full
   state (KQL query, cluster/database, typed columns+rows capped at
@@ -228,7 +247,9 @@ all have their own `references/*.md`.
   LLM tool (`src/server/llm-tools/kusto-tools.ts`, gated by `buildKustoToolsAddon`
   reading `kusto.enabled`). Manual create is a `kusto`-only branch of the canvas
   create route, also gated on the flag. The SPA renders it with `KustoView`.
-  Keep the tool name exactly `kusto_query` and the serialized state keys stable.
+  `tsconfig.client.json` is a no-emit gate scoped to the Canvas/Kusto SPA surface
+  and imported helpers. Keep the tool name exactly `kusto_query` and the
+  serialized state keys stable.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.

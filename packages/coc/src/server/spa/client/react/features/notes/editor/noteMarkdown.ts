@@ -7,7 +7,7 @@
 
 import { marked } from 'marked';
 import TurndownService from 'turndown';
-import { isEmbeddableMapUrl } from '@plusplusoneplusplus/forge/editor/rendering';
+import { isEmbeddableMapUrl, isPdfUrl } from '@plusplusoneplusplus/forge/editor/rendering';
 import { mathNodeMarkedExtension } from './mathNodeMarked';
 import { wrapMathDelimiters, type MathDelimiter } from '../../../../shared/math/mathTokenizer';
 
@@ -66,6 +66,22 @@ const mapLinkRenderer: marked.MarkedExtension = {
     },
 };
 marked.use(mapLinkRenderer);
+
+// `.pdf` image embeds (`![label](x.pdf)`) render as an inline PDF placeholder
+// div that the PdfBlock node view picks up. Non-pdf images fall back to marked's
+// default `<img>` renderer (returning `false` triggers the default).
+const pdfImageRenderer: marked.MarkedExtension = {
+    renderer: {
+        image(href: string, _title: string | null | undefined, text: string): string | false {
+            if (isPdfUrl(href)) {
+                const label = plainLinkLabel(text, 'PDF');
+                return `<div class="md-pdf-embed" data-pdf-url="${escapeAttr(href)}" data-pdf-label="${escapeAttr(label)}"></div>`;
+            }
+            return false;
+        },
+    },
+};
+marked.use(pdfImageRenderer);
 
 // Add [[note:...]] wiki-link syntax support to marked
 const noteLinkExtension: marked.MarkedExtension = {
@@ -228,6 +244,26 @@ turndown.addRule('mapEmbed', {
         if (!url) return '';
         const label = el.getAttribute('data-map-label')?.trim() || url;
         return `[${escapeMarkdownLinkLabel(label)}](${url})`;
+    },
+});
+
+// PDF embeds serialize back to markdown image syntax (`![label](url)`).
+// Empty placeholder divs are pre-converted to <img> by serializePdfEmbedPlaceholders
+// (turndown skips blank block nodes), so this rule only fires for non-empty divs.
+turndown.addRule('pdfEmbed', {
+    filter(node) {
+        return (
+            node.nodeName === 'DIV' &&
+            (node as Element).classList.contains('md-pdf-embed') &&
+            node.hasAttribute('data-pdf-url')
+        );
+    },
+    replacement(_content, node) {
+        const el = node as HTMLElement;
+        const url = el.getAttribute('data-pdf-url') ?? '';
+        if (!url) return '';
+        const label = el.getAttribute('data-pdf-label')?.trim() || 'PDF';
+        return `![${escapeMarkdownLinkLabel(label)}](${url})`;
     },
 });
 
@@ -530,6 +566,22 @@ function serializeMapEmbedPlaceholders(html: string): string {
     );
 }
 
+// Convert empty PDF placeholder divs to <img> tags before turndown runs.
+// Turndown treats an empty block <div> as blank and skips custom rules, so the
+// atom node's `<div class="md-pdf-embed"></div>` must become a non-blank element;
+// the default <img> rule then serializes it to `![label](url)`.
+function serializePdfEmbedPlaceholders(html: string): string {
+    return html.replace(
+        /<div\b(?=[^>]*\bclass\s*=\s*(["'])[^"']*\bmd-pdf-embed\b[^"']*\1)([^>]*)>\s*<\/div>/gi,
+        (_match, _quote: string, attrs: string) => {
+            const url = getHtmlAttr(attrs, 'data-pdf-url');
+            if (!url) return '';
+            const label = getHtmlAttr(attrs, 'data-pdf-label').trim() || 'PDF';
+            return `<img src="${escapeAttr(url)}" alt="${escapeAttr(label)}" />`;
+        },
+    );
+}
+
 // Normalize visually-empty paragraphs to `<p><br></p>` so turndown's blank-node
 // check doesn't drop them before the emptyParagraph rule runs. JS `\s` includes
 // the NBSP character, so a `<p>&nbsp;</p>` (round-tripped placeholder) is also
@@ -571,7 +623,9 @@ export function htmlToMarkdown(html: string): string {
     if (/^<p>\s*<\/p>$/i.test(html.trim())) return '';
     let md = turndown.turndown(
         preprocessEmptyParagraphs(
-            unwrapSingleParagraphListItems(serializeMapEmbedPlaceholders(html)),
+            unwrapSingleParagraphListItems(
+                serializePdfEmbedPlaceholders(serializeMapEmbedPlaceholders(html)),
+            ),
         ),
     );
     // Ensure single trailing newline
@@ -678,6 +732,15 @@ export function rewriteImageSrcToApi(html: string, workspaceId: string): string 
         (_match, prefix: string, absPath: string) => {
             const decoded = decodeURIComponent(absPath);
             return `${prefix}src="${localApiPrefix}${encodeURIComponent(decoded)}"`;
+        },
+    );
+
+    // 4) Rewrite .attachments/ (and .images/) relative paths inside PDF embed
+    //    placeholders so the inline <iframe> resolves through the notes image API.
+    result = result.replace(
+        /data-pdf-url="((?:\.attachments|\.images)\/[^"]+)"/gi,
+        (_match, relPath: string) => {
+            return `data-pdf-url="${apiPrefix}${encodeURIComponent(relPath)}"`;
         },
     );
 

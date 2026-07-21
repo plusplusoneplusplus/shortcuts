@@ -17,6 +17,7 @@ import type { BackgroundTasksState, AskUserBatch, McpOAuthPromptData, RalphGrill
 import { MODE_ICONS, MODE_TEXT_COLORS, normalizeChatMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 import type { ChatProvider } from './ProviderBadge';
+import type { ClientSideNote, QuickAskSelection } from './quick-ask/types';
 
 export const INTERRUPTED_TURN_CONTINUE_MESSAGE = 'Please continue from where the last response was interrupted.';
 export const INTERRUPTED_TURN_RETRY_MESSAGE = 'The previous response was interrupted by a temporary authorization/session error. Please retry the prior request and continue.';
@@ -127,6 +128,20 @@ export interface ConversationAreaProps {
      * provider's brand color (Copilot=green, Claude=orange, Codex=indigo).
      */
     provider?: ChatProvider;
+    /**
+     * Quick Ask side-notes for this process (persisted + optimistic). Forwarded
+     * to {@link ConversationTurnBubble}; only rendered on assistant turns when
+     * the `QUICK_ASK_SIDENOTES` flag is on.
+     */
+    sidenotes?: ClientSideNote[];
+    /** Run a Quick Ask lookup for a captured selection. */
+    onCreateSidenote?: (selection: QuickAskSelection) => void;
+    /** Retry a failed Quick Ask lookup. */
+    onRetrySidenote?: (id: string) => void;
+    /** Delete a Quick Ask side-note. */
+    onDeleteSidenote?: (id: string) => void;
+    /** Copy a side-note's answer to the clipboard. */
+    onCopySidenote?: (note: ClientSideNote) => void;
     /** Additional cards that should remain reachable via the main conversation scroll area. */
     postConversationContent?: ReactNode;
     /**
@@ -193,6 +208,11 @@ export function ConversationArea({
     onMcpOAuthFailed,
     processError,
     provider,
+    sidenotes,
+    onCreateSidenote,
+    onRetrySidenote,
+    onDeleteSidenote,
+    onCopySidenote,
     postConversationContent,
     isCompacting,
     compactInstructions,
@@ -437,6 +457,11 @@ export function ConversationArea({
                                                     processId={processId}
                                                     processType={processType}
                                                     provider={provider}
+                                                    sidenotes={sidenotes}
+                                                    onCreateSidenote={onCreateSidenote}
+                                                    onRetrySidenote={onRetrySidenote}
+                                                    onDeleteSidenote={onDeleteSidenote}
+                                                    onCopySidenote={onCopySidenote}
                                                 />
                                             </div>
                                         </div>

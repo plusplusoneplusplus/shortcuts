@@ -31,7 +31,7 @@ export interface NoteChatPanelProps {
     onClose: () => void;
     /** Called before creating a new chat to flush pending editor saves. */
     onBeforeSend?: () => Promise<void>;
-    /** Default chat scope. Defaults to 'per-workspace'. */
+    /** Default chat scope. Defaults to 'per-note'. */
     defaultScope?: ChatScope;
     /** Note text references to prepend to the next message. */
     references?: NoteTextReference[];
@@ -81,6 +81,15 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     const workspaceLabel = resolveWorkspaceName(workspaceId, null, appState.workspaces) ?? workspaceId;
     const noteContextLabel = noteTitle || notePath?.split('/').pop()?.replace(/\.md$/, '') || 'No note selected';
     const headerContextLabel = scope === 'per-note' ? noteContextLabel : workspaceLabel;
+
+    // ── Chat-bound note reference (shared by header 📎 + switched-note banner) ─
+    // `chatNoteContext` is the note the chat was bound to when created; `notePath`
+    // is the note currently selected in the sidebar. When they diverge the chat
+    // is attached to a different note — surfaced as an amber 📎 in the header and
+    // a slim warning strip below it. Computed once here so the two can't desync.
+    const chatNotePath = chatNoteContext?.notePath ?? null;
+    const chatNoteTitle = chatNoteContext?.noteTitle ?? null;
+    const isNoteSwitched = chatNotePath !== null && notePath !== null && notePath !== chatNotePath;
 
     useEffect(() => {
         onHasChatChange?.(!!taskId);
@@ -145,6 +154,9 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                 onPin={onPin}
                 onUnpin={onUnpin}
                 onNewChat={taskId ? resetChat : undefined}
+                chatNotePath={chatNotePath}
+                chatNoteTitle={chatNoteTitle}
+                isSwitched={isNoteSwitched}
             />
 
             {/* Empty state / no-note state — no chat yet */}
@@ -293,9 +305,9 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                 <ChatPreferencesProvider workspaceId={workspaceId}>
                     {scope === 'per-note' && (
                         <NoteContextBanner
-                            chatNotePath={chatNoteContext?.notePath}
-                            chatNoteTitle={chatNoteContext?.noteTitle}
-                            currentNotePath={notePath}
+                            chatNotePath={chatNotePath}
+                            chatNoteTitle={chatNoteTitle}
+                            isSwitched={isNoteSwitched}
                         />
                     )}
                     {references && references.length > 0 && (

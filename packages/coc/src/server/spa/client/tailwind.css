@@ -363,6 +363,101 @@
     background: #ffffff;
 }
 
+/* ── Inline PDF embed shell (shared with PdfBlock node view) ──────────────── */
+
+.md-pdf-embed-shell {
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #ffffff;
+}
+
+.dark .md-pdf-embed-shell {
+    border-color: #3c3c3c;
+    background: #1e1e1e;
+}
+
+.md-pdf-embed-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.dark .md-pdf-embed-toolbar {
+    border-bottom-color: #3c3c3c;
+    background: #252526;
+}
+
+.md-pdf-embed-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #616161;
+}
+
+.dark .md-pdf-embed-title {
+    color: #cccccc;
+}
+
+.md-pdf-embed-actions {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 0.4rem;
+}
+
+.md-pdf-embed-actions button {
+    color: #0078d4;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+}
+
+.md-pdf-embed-actions button:disabled {
+    color: #848484;
+    cursor: default;
+    text-decoration: none;
+}
+
+.md-pdf-embed-actions button:not(:disabled):hover {
+    text-decoration: underline;
+}
+
+.md-pdf-embed-frame-wrap {
+    position: relative;
+    min-height: 160px;
+    max-height: 1200px;
+    background: #ffffff;
+}
+
+.md-pdf-embed-frame {
+    width: 100%;
+    height: 480px;
+    border: 0;
+    background: #ffffff;
+}
+
+.pdf-node-view-fallback {
+    padding: 0.35rem 0.5rem;
+    font-size: 11px;
+    color: #616161;
+    border-top: 1px solid #e0e0e0;
+}
+
+.dark .pdf-node-view-fallback {
+    color: #cccccc;
+    border-top-color: #3c3c3c;
+}
+
+.pdf-node-view-fallback a {
+    color: #0078d4;
+}
+
 .md-map-embed-error {
     min-height: 160px;
     display: flex;

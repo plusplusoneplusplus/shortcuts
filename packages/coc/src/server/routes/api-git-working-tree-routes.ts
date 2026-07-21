@@ -17,6 +17,12 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
     const workingTreeService = new WorkingTreeService();
     const branchService = new BranchService();
 
+    // Cap the number of untracked files returned to keep the /git/changes payload
+    // bounded even when `git status --porcelain --untracked-files=all` expands a
+    // large untracked directory into thousands of lines. Staged/unstaged changes
+    // are inherently bounded by real edits and are never capped.
+    const MAX_UNTRACKED_FILES = 500;
+
     const STATUS_WORD_TO_CHAR: Record<string, string> = {
         added: 'A', modified: 'M', deleted: 'D', renamed: 'R', copied: 'C', conflict: 'U', untracked: '?',
     };
@@ -37,9 +43,28 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
             const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
 
-            const changes = await workingTreeService.getAllChanges(ws.rootPath);
+            const allChanges = await workingTreeService.getAllChanges(ws.rootPath);
             const repoState = branchService.getRepoState(ws.rootPath);
-            return { changes: normalizeChanges(changes), repoState };
+
+            // Cap only the untracked entries. If there are more untracked files than
+            // MAX_UNTRACKED_FILES, sort by path for determinism and keep the first N;
+            // surface the full count so the UI can state how many were omitted.
+            const untracked = allChanges.filter(c => c.stage === 'untracked');
+            const nonUntracked = allChanges.filter(c => c.stage !== 'untracked');
+            const untrackedTotal = untracked.length;
+            const untrackedTruncated = untrackedTotal > MAX_UNTRACKED_FILES;
+            const keptUntracked = untrackedTruncated
+                ? [...untracked]
+                    .sort((a, b) => a.filePath.localeCompare(b.filePath))
+                    .slice(0, MAX_UNTRACKED_FILES)
+                : untracked;
+
+            const changes = [...nonUntracked, ...keptUntracked];
+            return {
+                changes: normalizeChanges(changes),
+                repoState,
+                ...(untrackedTruncated ? { untrackedTotal, untrackedTruncated: true } : {}),
+            };
         },
     }));
 

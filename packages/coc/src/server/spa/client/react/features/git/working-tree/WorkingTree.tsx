@@ -57,13 +57,47 @@ function basename(filePath: string): string {
     return filePath.replace(/\\/g, '/').replace(/\/$/, '').split('/').pop() ?? filePath;
 }
 
+/** Convert an absolute path to a repo-relative path with '/' separators. */
+function repoRelative(absPath: string, repositoryRoot: string): string {
+    const root = repositoryRoot.replace(/\\/g, '/').replace(/\/$/, '');
+    const abs = absPath.replace(/\\/g, '/');
+    return abs.startsWith(root + '/') ? abs.slice(root.length + 1) : abs;
+}
+
+/**
+ * Display path for one absolute path belonging to `c`: relative to the repo
+ * root, and (when the change set spans multiple repos) prefixed with the repo
+ * name so same-named files from different repos stay distinct.
+ */
+function displayFor(absPath: string, c: WorkingTreeChange, multiRepo: boolean): string {
+    const rel = repoRelative(absPath, c.repositoryRoot);
+    return multiRepo ? `${c.repositoryName}/${rel}` : rel;
+}
+
+/**
+ * Path shown in the tree/list for a change. Absolute `filePath` is kept for git
+ * actions; this is only the display key used for tree-building and the
+ * changeLookup map, so both stay consistent.
+ */
+export function relDisplayPath(c: WorkingTreeChange, multiRepo = false): string {
+    return displayFor(c.filePath, c, multiRepo);
+}
+
+/** True when the change set spans more than one distinct repository root. */
+export function hasMultipleRepos(changes: WorkingTreeChange[]): boolean {
+    return new Set(changes.map(c => c.repositoryRoot)).size > 1;
+}
+
 /** Convert WorkingTreeChange[] to FileChange[] for shared components. */
-function toFileChanges(changes: WorkingTreeChange[]): FileChange[] {
-    return changes.map(c => ({
-        path: c.filePath,
-        status: c.status,
-        oldPath: c.oldPath ?? c.originalPath,
-    }));
+function toFileChanges(changes: WorkingTreeChange[], multiRepo: boolean): FileChange[] {
+    return changes.map(c => {
+        const oldAbs = c.oldPath ?? c.originalPath;
+        return {
+            path: relDisplayPath(c, multiRepo),
+            status: c.status,
+            oldPath: oldAbs !== undefined ? displayFor(oldAbs, c, multiRepo) : undefined,
+        };
+    });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -270,6 +304,9 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
     const [discardingAll, setDiscardingAll] = useState(false);
     const [workingChangesExpanded, setWorkingChangesExpanded] = useState(false);
     const [allWorkingComments, setAllWorkingComments] = useState<DiffComment[]>([]);
+    /** Total untracked count and whether the server capped the untracked list. */
+    const [untrackedTotal, setUntrackedTotal] = useState(0);
+    const [untrackedTruncated, setUntrackedTruncated] = useState(false);
 
     // Route every working-tree call to the selected clone's server (AC-07): a
     // remote clone hits its own origin; a local/unknown id resolves to the default.
@@ -277,7 +314,11 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
 
     const fetchChanges = useCallback(() => {
         return cloneClient.git.getWorkingTreeChanges(workspaceId)
-            .then(data => setChanges(data.changes ?? []))
+            .then(data => {
+                setChanges(data.changes ?? []);
+                setUntrackedTruncated(data.untrackedTruncated ?? false);
+                setUntrackedTotal(data.untrackedTotal ?? 0);
+            })
             .catch(err => setError(err.message || 'Failed to load changes'));
     }, [workspaceId, cloneClient]);
 
@@ -410,8 +451,23 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
     // Flat/tree toggle for working-tree file lists (shared repo preference)
     const { mode: wtViewMode, setMode: setWtViewMode } = useFilesViewMode(workspaceId);
 
-    /** Build a changeLookup map for quick filePath → WorkingTreeChange access */
-    const changeLookup = new Map(changes.map(c => [c.filePath, c]));
+    /** Whether the change set spans multiple repos (affects display-path prefixing). */
+    const multiRepo = hasMultipleRepos(changes);
+
+    /** changeLookup keyed by the same display path used for the tree/list rows. */
+    const changeLookup = new Map(changes.map(c => [relDisplayPath(c, multiRepo), c]));
+
+    /**
+     * The selected file's display path. `selectedFilePath` from the parent is the
+     * absolute `filePath`, so it must be mapped to the same relative display path
+     * the rows use, otherwise the selected row would never highlight.
+     */
+    const selectedChange = selectedFilePath
+        ? changes.find(c => c.filePath === selectedFilePath)
+        : undefined;
+    const selectedDisplayPath = selectedChange
+        ? relDisplayPath(selectedChange, multiRepo)
+        : selectedFilePath ?? null;
 
     /** Render file actions for a file identified by path */
     const renderFileActionsForPath = useCallback((filePath: string) => {
@@ -428,7 +484,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
 
     /** Render a section's file list using shared components */
     const renderSectionFiles = (sectionChanges: WorkingTreeChange[]) => {
-        const fileChanges = toFileChanges(sectionChanges);
+        const fileChanges = toFileChanges(sectionChanges, multiRepo);
         const handleSelect = (filePath: string) => {
             const change = changeLookup.get(filePath);
             if (change && onFileSelect) onFileSelect(change.filePath, change.stage);
@@ -439,7 +495,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                 <FileTreeView
                     nodes={compactFolders(buildFileTree(fileChanges))}
                     onFileSelectSimple={onFileSelect ? handleSelect : undefined}
-                    selectedFilePath={selectedFilePath}
+                    selectedFilePath={selectedDisplayPath}
                     fileCommentMap={new Map()}
                     fileTestIdPrefix="working-tree-file-row"
                     renderActions={(node) => renderFileActionsForPath(node.path)}
@@ -451,7 +507,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
             <FlatFileList
                 files={fileChanges}
                 onFileSelect={onFileSelect ? handleSelect : () => {}}
-                selectedFilePath={selectedFilePath}
+                selectedFilePath={selectedDisplayPath}
                 fileTestIdPrefix="working-tree-file-row"
                 renderActions={(file) => renderFileActionsForPath(file.path)}
             />
@@ -575,13 +631,21 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
 
                         <Section
                             title="Untracked"
-                            count={untracked.length}
+                            count={untrackedTruncated ? untrackedTotal : untracked.length}
                             onStageAll={() => handleStageAll(untracked)}
                             stagingAll={stagingAll}
                             defaultExpanded={false}
                             testId="working-tree-untracked"
                         >
                             {renderSectionFiles(untracked)}
+                            {untrackedTruncated && (
+                                <div
+                                    className="pl-5 pr-2 py-1.5 text-[11px] text-[#848484] dark:text-[#9d9d9d] italic"
+                                    data-testid="working-tree-untracked-truncated"
+                                >
+                                    +{untrackedTotal - untracked.length} more untracked files (not shown)
+                                </div>
+                            )}
                         </Section>
                     </div>
                 )}

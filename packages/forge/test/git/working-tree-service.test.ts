@@ -107,11 +107,30 @@ describe('parsePorcelain', () => {
         expect(result).toHaveLength(2);
     });
 
-    it('skips lines that are too short', () => {
-        const out = 'M\n M  ts';
-        // "M\n" is too short (< 4 chars), " M  ts" is long enough
+    it('parses individually-listed untracked files to non-empty leaf names', () => {
+        // With `--untracked-files=all`, git lists each file under an untracked
+        // directory individually (no collapsed `Plans/` trailing-slash entry).
+        const out = [
+            '?? Plans/my-feature.plan.md',
+            '?? Plans/other.plan.md',
+            '?? Plans/nested/deep.md',
+        ].join('\n');
         const result = parsePorcelain(out, ROOT);
-        expect(result).toHaveLength(1);
+        expect(result).toHaveLength(3);
+        for (const change of result) {
+            expect(change.status).toBe('untracked');
+            expect(change.stage).toBe('untracked');
+            // No entry ends with a separator, so the tree builder never yields an empty leaf.
+            expect(change.filePath.endsWith('/')).toBe(false);
+            expect(change.filePath.endsWith(path.sep)).toBe(false);
+            const leaf = change.filePath.split(/[\\/]/).pop();
+            expect(leaf && leaf.length).toBeTruthy();
+        }
+        expect(result.map(c => c.filePath)).toEqual([
+            path.join(ROOT, 'Plans/my-feature.plan.md'),
+            path.join(ROOT, 'Plans/other.plan.md'),
+            path.join(ROOT, 'Plans/nested/deep.md'),
+        ]);
     });
 });
 
@@ -165,6 +184,47 @@ describe('WorkingTreeService.getFileDiff', () => {
         mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
         const result = await service.getFileDiff(repoRoot, filePath, true);
         expect(result).toBe('');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WorkingTreeService.getAllChanges
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WorkingTreeService.getAllChanges', () => {
+    afterEach(() => {
+        mockExecFileAsync.mockReset();
+    });
+
+    const service = new WorkingTreeService();
+    const repoRoot = ROOT;
+
+    it('requests untracked files individually via --untracked-files=all', async () => {
+        mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        await service.getAllChanges(repoRoot);
+        expect(mockExecFileAsync).toHaveBeenCalledTimes(1);
+        const args = mockExecFileAsync.mock.calls[0][1] as string[];
+        expect(args).toEqual(expect.arrayContaining(['status', '--porcelain', '--untracked-files=all']));
+    });
+
+    it('parses individually-listed untracked files into per-file changes', async () => {
+        mockExecFileAsync.mockResolvedValue({
+            stdout: '?? Plans/a.plan.md\n?? Plans/b.plan.md\n',
+            stderr: '',
+        } as any);
+        const result = await service.getAllChanges(repoRoot);
+        expect(result).toHaveLength(2);
+        expect(result.every(c => c.stage === 'untracked')).toBe(true);
+        expect(result.map(c => c.filePath)).toEqual([
+            path.join(ROOT, 'Plans/a.plan.md'),
+            path.join(ROOT, 'Plans/b.plan.md'),
+        ]);
+    });
+
+    it('returns an empty array on error', async () => {
+        mockExecFileAsync.mockRejectedValue(new Error('git failed'));
+        const result = await service.getAllChanges(repoRoot);
+        expect(result).toEqual([]);
     });
 });
 

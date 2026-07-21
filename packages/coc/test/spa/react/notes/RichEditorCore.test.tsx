@@ -64,6 +64,11 @@ vi.mock(
     '../../../../src/server/spa/client/react/features/notes/editor/extensions/mapBlock',
     () => ({ MapBlock: mockMapBlock }),
 );
+const mockPdfBlock = vi.hoisted(() => ({}));
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfBlock',
+    () => ({ PdfBlock: mockPdfBlock }),
+);
 vi.mock(
     '../../../../src/server/spa/client/react/features/notes/editor/extensions/commentExtension',
     () => ({ CommentExtension: { configure: () => ({}) } }),
@@ -181,6 +186,15 @@ describe('RichEditorCore', () => {
     it('registers the map block before StarterKit so map placeholders parse as atom blocks', () => {
         render(<RichEditorCore />);
 
+        expect(capturedExtensions[0]).toBe(mockMapBlock);
+    });
+
+    it('registers the pdf block before StarterKit so pdf placeholders parse as atom blocks', () => {
+        render(<RichEditorCore />);
+
+        const pdfIndex = capturedExtensions.indexOf(mockPdfBlock);
+        expect(pdfIndex).toBeGreaterThanOrEqual(1);
+        // MapBlock must remain first; PdfBlock sits alongside the other custom blocks.
         expect(capturedExtensions[0]).toBe(mockMapBlock);
     });
 

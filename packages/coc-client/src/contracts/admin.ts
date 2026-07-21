@@ -122,6 +122,7 @@ export interface AdminResolvedConfig {
     autoAgentProviderRouting?: boolean;
     ralphMultiAgentGrill?: boolean;
     nativeCliSessions?: boolean;
+    quickAskSidenotes?: boolean;
     gitWorktreeExecution?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean }; workflow?: { enabled?: boolean } };
@@ -206,6 +207,7 @@ export interface AdminConfigUpdate {
   'features.commitChatLensDormantMode'?: 'ghost' | 'pill';
   'features.autoAgentProviderRouting'?: boolean;
   'features.nativeCliSessions'?: boolean;
+  'features.quickAskSidenotes'?: boolean;
   'features.gitWorktreeExecution'?: boolean;
   'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
@@ -258,6 +260,7 @@ export interface RuntimeDashboardConfig {
     commitChatLensDormantMode: 'ghost' | 'pill';
     effortLevelsEnabled: boolean;
     nativeCliSessionsEnabled: boolean;
+    quickAskSidenotesEnabled: boolean;
     remoteShellEnabled: boolean;
     singleRowShellEnabled: boolean;
     splitWorkspacePanelEnabled: boolean;
