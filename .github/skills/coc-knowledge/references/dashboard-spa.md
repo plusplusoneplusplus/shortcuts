@@ -150,7 +150,13 @@ Workspace inner-tab navigation is also client-local and workspace-scoped.
 inner route suffix under `coc-repo-route-state`, dropping unknown sub-tab ids on
 hydrate. `Router` records the suffix for every `#repos/<workspaceId>/<subroute>`
 hash and expands bare `#repos/<workspaceId>` hashes to the remembered route,
-then the remembered tab, then `/chats`. Workspace switchers use
+then the remembered tab, then `/chats`. Route parsing, legacy redirects, and
+stale-selection clearing live in `layout/dashboardRoutes.ts`: `resolveDashboardRoute(hash, ctx)`
+turns one hash into an ordered list of typed `RouteEffect`s (app/queue dispatches
+plus `replace`/`replaceState` navigations), which `Router` runs via
+`applyRouteEffects`; the parsers and hash builders are built on the per-segment
+encode/decode helpers in `layout/routePath.ts` and are re-exported from
+`layout/Router` for backward compatibility. Workspace switchers use
 `useWorkspaceNavigation()` so TopBar, repo grid, process-sidebar links, and
 clone completion all write full hashes. `RepoDetail` treats `chats`/`activity`
 and `cli-sessions`/`copilot-sessions` as logical aliases, waits for git
