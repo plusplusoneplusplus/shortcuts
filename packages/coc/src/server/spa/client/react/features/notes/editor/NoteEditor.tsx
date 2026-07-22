@@ -475,6 +475,71 @@ export function NoteEditor({
         return false;
     }, []);
 
+    // ── Drop a file from the OS onto the editor → upload + insert at drop point ─
+    // Mirrors handlePaste but reads files from the drag's dataTransfer and inserts
+    // at the coordinates under the pointer (not the current selection). PDFs become
+    // an inline PdfBlock; images become the existing image node.
+    const handleDrop = useCallback((view: any, event: DragEvent) => {
+        // Leave internal note-reorder drags (sidebar tree) to their own handler.
+        if (event.dataTransfer?.types.includes('application/x-note-drag')) return false;
+
+        const files = Array.from(event.dataTransfer?.files ?? []);
+        const accepted = files.filter(
+            (f) => f.type === 'application/pdf' || f.type.startsWith('image/'),
+        );
+        if (accepted.length === 0) return false;
+
+        // Skip when there is no note to save into (e.g. load error / empty state).
+        if (!notePathRef.current || !editorRef.current) return false;
+
+        // preventDefault is what stops the browser from navigating to the dropped file.
+        event.preventDefault();
+
+        const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        let pos = coords?.pos ?? view.state.selection.to;
+
+        const readDataUrl = (file: File) =>
+            new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve((e.target?.result as string) ?? '');
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(file);
+            });
+
+        void (async () => {
+            setUploadingImage(true);
+            try {
+                for (const file of accepted) {
+                    const dataUrl = await readDataUrl(file);
+                    if (!dataUrl) continue;
+                    const isPdf = file.type === 'application/pdf';
+                    const result = await ioRef.current.uploadImage(
+                        workspaceIdRef.current,
+                        file.name || (isPdf ? 'document.pdf' : 'image'),
+                        dataUrl,
+                        rootRef.current,
+                    );
+                    const apiUrl = ioRef.current.imageApiUrl(
+                        workspaceIdRef.current,
+                        result.path,
+                        rootRef.current,
+                    );
+                    const node = isPdf
+                        ? { type: 'pdfBlock', attrs: { url: apiUrl, label: file.name || 'PDF' } }
+                        : { type: 'image', attrs: { src: apiUrl, alt: file.name || '' } };
+                    editorRef.current?.chain().insertContentAt(pos, node).run();
+                    // Advance past the inserted node so multiple files stack in order.
+                    pos = editorRef.current?.state.selection.to ?? pos;
+                }
+            } catch (err) {
+                console.error('Failed to upload dropped file:', err);
+            } finally {
+                setUploadingImage(false);
+            }
+        })();
+        return true;
+    }, []);
+
     // ── Insert PDF (toolbar picker → upload → inline PdfBlock node) ──────────
 
     const openPdfPicker = useCallback(() => {
@@ -1266,6 +1331,7 @@ export function NoteEditor({
                                 onChange={handleEditorChange}
                                 onEditorReady={handleEditorReady}
                                 handlePaste={handlePaste}
+                                handleDrop={handleDrop}
                             />
                             <input
                                 ref={pdfInputRef}

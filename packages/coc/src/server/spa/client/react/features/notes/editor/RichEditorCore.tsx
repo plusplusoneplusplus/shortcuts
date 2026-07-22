@@ -48,6 +48,8 @@ export interface RichEditorCoreProps {
     onEditorReady?: (editor: Editor) => void;
     /** ProseMirror `handlePaste` override — lets the parent intercept paste events. */
     handlePaste?: (view: any, event: ClipboardEvent) => boolean;
+    /** ProseMirror `handleDrop` override — lets the parent intercept file drops. */
+    handleDrop?: (view: any, event: DragEvent) => boolean;
 }
 
 export function getLinkOpenTitle(platform = globalThis.navigator?.platform ?? '') {
@@ -65,6 +67,7 @@ export function RichEditorCore({
     onChange,
     onEditorReady,
     handlePaste,
+    handleDrop,
 }: RichEditorCoreProps) {
     // Stable callback refs — avoids editor recreation when parent re-renders
     const onCommentActivatedRef = useRef(onCommentActivated);
@@ -78,6 +81,9 @@ export function RichEditorCore({
 
     const handlePasteRef = useRef(handlePaste);
     handlePasteRef.current = handlePaste;
+
+    const handleDropRef = useRef(handleDrop);
+    handleDropRef.current = handleDrop;
 
     const [linkHandlerConfig] = useLinkHandlers();
     const linkHandlerConfigRef = useRef(linkHandlerConfig);
@@ -166,10 +172,24 @@ export function RichEditorCore({
                     view.dom.classList.remove('ctrl-held');
                     return false;
                 },
+                // Mark the editor as a valid drop target for external file drags
+                // (a dragover that never calls preventDefault would forbid the drop).
+                dragover: (_view, event) => {
+                    if ((event as DragEvent).dataTransfer?.types.includes('Files')) {
+                        event.preventDefault();
+                    }
+                    return false;
+                },
             },
             handlePaste: (view, event) => {
                 if (handlePasteRef.current) {
                     return handlePasteRef.current(view, event as ClipboardEvent);
+                }
+                return false;
+            },
+            handleDrop: (view, event) => {
+                if (handleDropRef.current) {
+                    return handleDropRef.current(view, event as DragEvent);
                 }
                 return false;
             },
