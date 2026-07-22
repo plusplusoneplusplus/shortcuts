@@ -337,6 +337,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         let chatCtx: ChatTurnContext | undefined;
 
+        const turnAbort = this.registerTurnAbortController(processId);
         try {
             if (strictResumeSessionId) {
                 if (!process.sdkSessionId) {
@@ -509,6 +510,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 ...(reasoningSelection.modelId ? { model: reasoningSelection.modelId } : {}),
                 mode: agentMode,
                 workingDirectory,
+                signal: turnAbort.signal,
                 ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
                 ...(contextTier ? { contextTier } : {}),
                 infiniteSessions: { enabled: true } as const,
@@ -781,6 +783,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 throw error instanceof Error ? error : new Error(errorMsg);
             }
         } finally {
+            this.releaseTurnAbortController(processId, turnAbort);
             chatCtx?.dispose();
             this.cancelAskUserHandles(processId);
             try {

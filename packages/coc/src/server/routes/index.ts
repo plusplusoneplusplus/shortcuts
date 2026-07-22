@@ -620,12 +620,29 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         return workspaces.find(w => w.id === repoId)?.rootPath;
     }, resolvedAiService);
 
+    // Resolve a process (conversation) ID to its owning workspace. Backs the
+    // automation route workspace-boundary checks (legacy loop compatibility and
+    // trigger create verification). Prefers the live queue task's repoId and
+    // falls back to the persisted process metadata.
+    const resolveProcessWorkspaceId = async (processId: string): Promise<string | undefined> => {
+        try {
+            const taskId = processId.startsWith('queue_') ? processId.slice('queue_'.length) : processId;
+            const fromTask = bridge.getTask(taskId)?.repoId;
+            if (fromTask) return fromTask;
+            const proc = await store.getProcess(processId) ?? await store.getProcess(taskId);
+            return proc?.metadata?.workspaceId;
+        } catch {
+            return undefined;
+        }
+    };
+
     // Loop routes
     if (opts.loopStore && opts.loopExecutor) {
         registerLoopRoutes(routes, {
             store: opts.loopStore,
             executor: opts.loopExecutor,
             emit: opts.loopEmit,
+            resolveWorkspaceId: resolveProcessWorkspaceId,
         });
     }
 
@@ -638,6 +655,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             manager: opts.triggerManager,
             emit: opts.triggerEmit,
             enabled: opts.resolvedConfig?.triggers?.enabled ?? false,
+            resolveWorkspaceId: resolveProcessWorkspaceId,
         });
     }
 

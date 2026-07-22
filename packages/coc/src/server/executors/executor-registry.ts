@@ -62,6 +62,13 @@ export interface ExecutorRegistryOptions {
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     getDreamRunExecutor?: () => import('../dreams/dream-runner').DreamRunExecutor | undefined;
     cancelledTasks?: Set<string>;
+    /**
+     * Shared per-process AbortController registry owned by the queue bridge.
+     * Chat-mode executors register a controller per turn so the bridge's
+     * cancel path can abort an in-flight `sendMessage` even before an
+     * `sdkSessionId` is persisted.
+     */
+    processAbortControllers?: Map<string, AbortController>;
 }
 
 /**
@@ -118,6 +125,7 @@ export class ExecutorRegistry {
             ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
             resolveAiServiceForProvider: options.resolveAiServiceForProvider,
             getGlobalSystemPrompt: options.getGlobalSystemPrompt,
+            processAbortControllers: options.processAbortControllers,
         };
 
         this.strategyRegistry = new TaskStrategyRegistry();

@@ -44,6 +44,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/notes/NotesView', (
             data-testid="notes-view"
             data-workspace-id={props.workspaceId}
             data-default-scope={props.defaultScope ?? ''}
+            data-dock-status-footer={String(!!props.dockStatusFooter)}
             data-chat-panel-open={String(!!props.chatPanelOpen)}
             data-has-toggle={String(typeof props.onToggleChatPanel === 'function')}
         />
@@ -74,17 +75,17 @@ vi.mock('../../../../../src/server/spa/client/react/features/schedules/RepoSched
 // Stub RepoSettingsTab— just render a marker div
 vi.mock('../../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab', () => ({
     RepoSettingsTab: (props: any) => (
-        <div data-testid="repo-settings-tab" data-workspace-id={props.workspaceId} data-repo-id={props.repo?.workspace?.id} />
+        <div
+            data-testid="repo-settings-tab"
+            data-workspace-id={props.workspaceId}
+            data-repo-id={props.repo?.workspace?.id}
+            data-dock-status-footer={String(!!props.dockStatusFooter)}
+        />
     ),
 }));
 
 // Stub repoGrouping — provide the RepoData type import
 vi.mock('../../../../../src/server/spa/client/react/repos/repoGrouping', () => ({}));
-
-// Stub the docked status footer — assert placement, not its internals.
-vi.mock('../../../../../src/server/spa/client/react/layout/DockedStatusFooter', () => ({
-    DockedStatusFooter: () => <div data-testid="docked-status-footer" />,
-}));
 
 // Feature flag: schedules-in-scheduled-slide (default off)
 vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({
@@ -259,14 +260,25 @@ describe('MyWorkView', () => {
         expect(MY_WORK_WORKSPACE_ID).toBe('my_work');
     });
 
-    it('docks the status cluster footer as the last child of the view body', () => {
-        renderView();
-        const view = screen.getByTestId('my-work-view');
-        const footer = screen.getByTestId('docked-status-footer');
-        // Lives inside the My Work chrome, pinned to the bottom (last child), so
-        // the app-wide GlobalStatusDock stands down and no empty strip is drawn.
-        expect(view.contains(footer)).toBe(true);
-        expect(view.lastElementChild).toBe(footer);
+    describe('docks the status cluster per sub-tab (like My Life)', () => {
+        it('passes dockStatusFooter to NotesView on the Notes sub-tab', () => {
+            mockActiveRepoSubTab = 'notes';
+            renderView();
+            // My Work no longer paints a body-level footer; it forwards the flag
+            // into NotesView so the cluster lives in the NotesSidebar footer.
+            const notesView = screen.getByTestId('notes-view');
+            expect(notesView.getAttribute('data-dock-status-footer')).toBe('true');
+            // No body-level docked footer hangs off the My Work view anymore.
+            const view = screen.getByTestId('my-work-view');
+            expect(view.querySelector('[data-testid="docked-status-footer"]')).toBeNull();
+        });
+
+        it('passes dockStatusFooter to RepoSettingsTab on the Settings sub-tab', () => {
+            mockActiveRepoSubTab = 'settings';
+            renderView();
+            const settings = screen.getByTestId('repo-settings-tab');
+            expect(settings.getAttribute('data-dock-status-footer')).toBe('true');
+        });
     });
 
     describe('chat toggle button (removed from header)', () => {
@@ -519,9 +531,8 @@ describe('MyWorkView', () => {
             renderView();
 
             expect(screen.queryByTestId('my-work-header')).toBeNull();
-            // Content still mounts, and the docked status footer stays put.
+            // Content still mounts (the footer now docks per sub-tab, not here).
             expect(screen.getByTestId('my-work-view')).toBeTruthy();
-            expect(screen.getByTestId('docked-status-footer')).toBeTruthy();
         });
 
         it('keeps the in-body header on remote-first mobile (no TopBar header there)', () => {

@@ -46,6 +46,17 @@ describe('PopOutChatShell: providers', () => {
     });
 });
 
+describe('PopOutChatShell: queue bootstrap', () => {
+    it('imports the shared useQueueBootstrap hook', () => {
+        expect(SOURCE).toContain("import { useQueueBootstrap } from '../contexts/useQueueBootstrap'");
+    });
+
+    it('fires the bootstrap once on mount inside the popout QueueProvider', () => {
+        expect(SOURCE).toContain('const bootstrapQueue = useQueueBootstrap();');
+        expect(SOURCE).toMatch(/useEffect\(\(\) => \{\s*void bootstrapQueue\(\);\s*\}, \[bootstrapQueue\]\);/);
+    });
+});
+
 describe('PopOutChatShell: ChatDetail usage', () => {
     it('renders ChatDetail', () => {
         expect(SOURCE).toContain('<ChatDetail');

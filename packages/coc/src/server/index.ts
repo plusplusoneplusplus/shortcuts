@@ -348,10 +348,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     } catch { return undefined; }
                 },
                 enqueueWakeup: createEnqueueWakeup({
-                    timerRegistry: loopInfra!.timerRegistry,
-                    store,
-                    executeFollowUp: (processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource) =>
-                        bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource),
+                    store: loopInfra!.wakeupStore,
+                    executor: loopInfra!.wakeupExecutor,
                 }),
             };
         },
@@ -453,6 +451,20 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 } catch {
                     return undefined;
                 }
+            },
+            executeFollowUp: (processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource) =>
+                bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource),
+            emitWakeup: (event) => {
+                try {
+                    wsServer?.broadcastProcessEvent({
+                        type: event.type,
+                        wakeupId: event.wakeup.id,
+                        processId: event.wakeup.processId,
+                        status: event.wakeup.status,
+                        workspaceId: event.wakeup.workspaceId,
+                        timestamp: Date.now(),
+                    });
+                } catch { /* best-effort broadcast */ }
             },
         });
     }

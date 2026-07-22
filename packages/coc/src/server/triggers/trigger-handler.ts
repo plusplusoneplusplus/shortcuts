@@ -16,6 +16,7 @@ import * as crypto from 'crypto';
 import type * as http from 'http';
 import { sendJSON, sendError } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
+import { logAutomationScopeMismatch } from '../shared/automation-scope';
 import type { Route } from '../types';
 import type { TriggerStore } from './trigger-store';
 import type { TriggerManager, TriggerEventEmit } from './trigger-manager';
@@ -47,6 +48,45 @@ export interface TriggerRouteContext {
     enabled: boolean;
     /** Clock injection for deterministic tests. Defaults to `Date.now`. */
     now?: () => number;
+    /**
+     * Resolve a process (conversation) ID to its owning workspace. Used on
+     * create to verify that `processId` and `action.processId` belong to the
+     * route workspace, so a trigger cannot be stored under one workspace while
+     * firing follow-ups into another. When omitted, cross-workspace process
+     * verification is skipped.
+     */
+    resolveWorkspaceId?: (processId: string) => Promise<string | undefined>;
+}
+
+/**
+ * Resolve a trigger by ID, returning it only when it belongs to the requested
+ * workspace. Returns `null` (→ 404) for unknown triggers and for triggers owned
+ * by a different workspace, logging a structured warning on mismatch.
+ */
+export function resolveTriggerForWorkspace(
+    store: TriggerStore,
+    workspaceId: string,
+    triggerId: string,
+): Trigger | null {
+    const trigger = store.getById(triggerId);
+    if (!trigger) return null;
+    if (trigger.workspaceId === workspaceId) return trigger;
+    logAutomationScopeMismatch('trigger', triggerId, workspaceId, trigger.workspaceId);
+    return null;
+}
+
+/**
+ * Verify that a process ID resolves to the given route workspace. Returns `true`
+ * when the process is unowned/unresolvable (cannot prove a violation) or when it
+ * resolves to the same workspace; returns `false` only on a definite mismatch.
+ */
+async function processBelongsToWorkspace(
+    resolveWorkspaceId: (processId: string) => Promise<string | undefined>,
+    routeWorkspaceId: string,
+    processId: string,
+): Promise<boolean> {
+    const resolved = await resolveWorkspaceId(processId);
+    return resolved === undefined || resolved === routeWorkspaceId;
 }
 
 function safeEmit(emit: TriggerEventEmit | undefined, event: TriggerChangeEvent): void {
@@ -225,6 +265,25 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
                 return sendError(res, 400, validation.error!);
             }
 
+            // The trigger is stamped with the route workspace; refuse to arm it
+            // if its target process(es) live in a different workspace, which
+            // would let it fire follow-ups across the multi-repo boundary.
+            if (ctx.resolveWorkspaceId) {
+                const targetProcessId = body.processId as string;
+                if (!(await processBelongsToWorkspace(ctx.resolveWorkspaceId, workspaceId, targetProcessId))) {
+                    return sendError(res, 400, 'processId belongs to a different workspace');
+                }
+                const actionBody = body.action as Record<string, unknown> | undefined;
+                const actionProcessId = actionBody && isNonEmptyString(actionBody.processId) ? actionBody.processId : undefined;
+                if (
+                    actionProcessId !== undefined &&
+                    actionProcessId !== targetProcessId &&
+                    !(await processBelongsToWorkspace(ctx.resolveWorkspaceId, workspaceId, actionProcessId))
+                ) {
+                    return sendError(res, 400, 'action.processId belongs to a different workspace');
+                }
+            }
+
             const trigger = buildTriggerFromCreateRequest(workspaceId, body, now);
             try {
                 store.insert(trigger);
@@ -257,8 +316,9 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/([^/]+)$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            const workspaceId = decodeURIComponent(match![1]);
             const triggerId = decodeURIComponent(match![2]);
-            const trigger = store.getById(triggerId);
+            const trigger = resolveTriggerForWorkspace(store, workspaceId, triggerId);
             if (!trigger) {
                 return sendError(res, 404, 'Trigger not found');
             }
@@ -273,6 +333,7 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'PATCH',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/([^/]+)$/,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            const workspaceId = decodeURIComponent(match![1]);
             const triggerId = decodeURIComponent(match![2]);
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
@@ -284,7 +345,7 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
                 return sendError(res, 400, `Invalid status: ${String(body.status)}. Valid values: active, paused, disarmed`);
             }
 
-            const trigger = store.getById(triggerId);
+            const trigger = resolveTriggerForWorkspace(store, workspaceId, triggerId);
             if (!trigger) {
                 return sendError(res, 404, 'Trigger not found');
             }
@@ -332,8 +393,9 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/([^/]+)$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            const workspaceId = decodeURIComponent(match![1]);
             const triggerId = decodeURIComponent(match![2]);
-            const trigger = store.getById(triggerId);
+            const trigger = resolveTriggerForWorkspace(store, workspaceId, triggerId);
             if (!trigger) {
                 return sendError(res, 404, 'Trigger not found');
             }

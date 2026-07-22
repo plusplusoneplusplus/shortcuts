@@ -39,7 +39,11 @@ vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
 // Stub NotesView — just render a marker div
 vi.mock('../../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
     NotesView: (props: any) => (
-        <div data-testid="notes-view" data-workspace-id={props.workspaceId} />
+        <div
+            data-testid="notes-view"
+            data-workspace-id={props.workspaceId}
+            data-dock-status-footer={String(!!props.dockStatusFooter)}
+        />
     ),
 }));
 
@@ -67,7 +71,12 @@ vi.mock('../../../../../src/server/spa/client/react/features/schedules/RepoSched
 // Stub RepoSettingsTab— just render a marker div
 vi.mock('../../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab', () => ({
     RepoSettingsTab: (props: any) => (
-        <div data-testid="repo-settings-tab" data-workspace-id={props.workspaceId} data-repo-id={props.repo?.workspace?.id} />
+        <div
+            data-testid="repo-settings-tab"
+            data-workspace-id={props.workspaceId}
+            data-repo-id={props.repo?.workspace?.id}
+            data-dock-status-footer={String(!!props.dockStatusFooter)}
+        />
     ),
 }));
 
@@ -183,6 +192,22 @@ describe('MyLifeView', () => {
 
         const notesView = screen.getByTestId('notes-view');
         expect(notesView.getAttribute('data-workspace-id')).toBe(MY_LIFE_WORKSPACE_ID);
+    });
+
+    describe('docks the status cluster per sub-tab', () => {
+        it('passes dockStatusFooter to NotesView on the Notes sub-tab', () => {
+            mockActiveRepoSubTab = 'notes';
+            renderView();
+            const notesView = screen.getByTestId('notes-view');
+            expect(notesView.getAttribute('data-dock-status-footer')).toBe('true');
+        });
+
+        it('passes dockStatusFooter to RepoSettingsTab on the Settings sub-tab', () => {
+            mockActiveRepoSubTab = 'settings';
+            renderView();
+            const settings = screen.getByTestId('repo-settings-tab');
+            expect(settings.getAttribute('data-dock-status-footer')).toBe('true');
+        });
     });
 
     it('clicking Activity tab dispatches SET_REPO_SUB_TAB and updates hash', () => {

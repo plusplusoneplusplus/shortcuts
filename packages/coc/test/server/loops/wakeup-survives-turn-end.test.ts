@@ -12,15 +12,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import Database from 'better-sqlite3';
 import { ScheduleTimerRegistry } from '../../../src/server/schedule/schedule-timer-registry';
 import { createEnqueueWakeup, wakeupTimerKey } from '../../../src/server/loops/enqueue-wakeup';
+import { WakeupStore } from '../../../src/server/loops/wakeup-store';
+import { WakeupExecutor } from '../../../src/server/loops/wakeup-executor';
 import { createScheduleWakeupTool } from '../../../src/server/llm-tools/loop-tools';
 import type { WakeupToolDeps } from '../../../src/server/llm-tools/loop-tools';
 import { BaseExecutor } from '../../../src/server/executors/base-executor';
 import { createMockProcessStore, type MockProcessStore } from '../helpers/mock-process-store';
-// Warm the module cache so the dynamic import() inside the wakeup timer
-// callback resolves on a microtask while fake timers are installed.
-import '../../../src/server/executors/follow-up-mode';
 
 /** Concrete executor exposing the protected turn-lifecycle hooks for the test. */
 class TestExecutor extends BaseExecutor {
@@ -47,26 +47,37 @@ function makeWakeupDeps(
 
 describe('AC-04: scheduled wakeup survives turn-end teardown', () => {
     let store: MockProcessStore;
+    let db: Database.Database;
+    let wakeupStore: WakeupStore;
+    let wakeupExecutor: WakeupExecutor;
     let timerRegistry: ScheduleTimerRegistry;
     let executeFollowUp: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
         vi.useFakeTimers();
         store = createMockProcessStore();
+        db = new Database(':memory:');
+        wakeupStore = new WakeupStore(db);
         timerRegistry = new ScheduleTimerRegistry();
         executeFollowUp = vi.fn().mockResolvedValue(undefined);
+        wakeupExecutor = new WakeupExecutor({
+            store: wakeupStore,
+            processStore: store,
+            timerRegistry,
+            executeFollowUp: executeFollowUp as any,
+        });
     });
 
     afterEach(() => {
         timerRegistry.clear();
+        try { db.close(); } catch { /* ok */ }
         vi.useRealTimers();
     });
 
     async function scheduleWakeup(processId: string, prompt: string, delay: string) {
         const enqueueWakeup = createEnqueueWakeup({
-            timerRegistry,
-            store,
-            executeFollowUp: executeFollowUp as any,
+            store: wakeupStore,
+            executor: wakeupExecutor,
         });
         const { tool } = createScheduleWakeupTool(makeWakeupDeps(processId, enqueueWakeup));
         return (tool.handler as (a: any) => Promise<any>)({ prompt, delay });
@@ -108,6 +119,8 @@ describe('AC-04: scheduled wakeup survives turn-end teardown', () => {
         expect(callArgs[8]).toEqual({ source: 'wakeup', wakeupId: result.wakeupId }); // turnSource
         // The registry drops one-shot timers once they fire.
         expect(timerRegistry.has(key)).toBe(false);
+        // The durable record is marked terminally fired.
+        expect(wakeupStore.getById(result.wakeupId)!.status).toBe('fired');
     });
 
     it('cleanupSession only clears executor session state, never the timer registry', async () => {

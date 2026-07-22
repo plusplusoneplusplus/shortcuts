@@ -171,6 +171,14 @@ all have their own `references/*.md`.
 - **Loop ticks** must route completion through
   `ProcessLifecycleRunner → onLoopTickComplete → LoopExecutor.onTickComplete`;
   bookkeeping errors must never mask the follow-up's actual result.
+- **Wakeups are durable and one-shot.** `scheduleWakeup` persists a `pending`
+  `WakeupEntry` (absolute `firesAt`) in the `wakeups` table via
+  `createEnqueueWakeup` **before** `WakeupExecutor.arm()` fires the one-shot
+  timer, so restarts re-arm them (`wakeupExecutor.armAll()`, overdue ones fire
+  immediately). Firing runs `executeFollowUp` directly (not via the queue) and
+  marks the record terminally `fired`/`failed` — persisting `failure_reason` on
+  error — never recurring. Wakeups keep their own store/executor and only share
+  the `ScheduleTimerRegistry`/`processes.db` with loops.
 - **Schedule persistence and reloads** are async. User schedules live as
   per-entry YAML files under `getRepoDataPath(dataDir, repoId, 'schedules')`;
   `ScheduleManager.restore`, `addSchedule`, `setSchedule`, `removeSchedule`,
@@ -246,7 +254,13 @@ all have their own `references/*.md`.
   persist), shared by the `POST /canvases/:id/run` route and the `kusto_query`
   LLM tool (`src/server/llm-tools/kusto-tools.ts`, gated by `buildKustoToolsAddon`
   reading `kusto.enabled`). Manual create is a `kusto`-only branch of the canvas
-  create route, also gated on the flag. The SPA renders it with `KustoView`.
+  create route, also gated on the flag. `executeKustoQuery` intercepts magic
+  `mock:`-prefixed queries (case-insensitive) and serves inline data without a
+  cluster or `az login`: `mock:<JSON {columns,rows}>` synthesizes that table,
+  `mock:error[: msg]` throws (error state), `mock:big[: N]` emits N rows to
+  exercise truncation — the synthetic response flows through the same coercion +
+  cap as a real run, and any non-`mock:` query is byte-for-byte the SDK path.
+  The SPA renders it with `KustoView`.
   `tsconfig.client.json` is a no-emit gate scoped to the Canvas/Kusto SPA surface
   and imported helpers. Keep the tool name exactly `kusto_query` and the
   serialized state keys stable.

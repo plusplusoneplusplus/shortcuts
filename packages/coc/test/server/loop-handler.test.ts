@@ -135,7 +135,7 @@ describe('Loop REST API Handler', () => {
         });
 
         emit = vi.fn();
-        const ctx: LoopRouteContext = { store, executor: mockExecutor, emit };
+        const ctx: LoopRouteContext = { store, executor: mockExecutor, emit, resolveWorkspaceId };
         registerLoopRoutes(routes, ctx);
     });
 
@@ -411,6 +411,94 @@ describe('Loop REST API Handler', () => {
             expect(resB.body.loops).toHaveLength(1);
             expect(resB.body.loops[0].id).toBe('loop_b');
         });
+    });
+});
+
+// ============================================================================
+// Workspace boundary — item-level routes must not cross workspaces
+// ============================================================================
+
+describe('Loop REST API Handler — workspace boundary', () => {
+    let db: Database.Database;
+    let store: LoopStore;
+    let routes: Route[];
+    let mockExecutor: any;
+    let resolveWorkspaceId: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        db = new Database(':memory:');
+        store = new LoopStore(db);
+        routes = [];
+        mockExecutor = { armTimer: vi.fn(), disarmTimer: vi.fn() };
+        resolveWorkspaceId = vi.fn(async (processId: string) => {
+            if (processId.startsWith('proc_ws1')) return 'ws1';
+            if (processId.startsWith('proc_ws2')) return 'ws2';
+            return undefined;
+        });
+        registerLoopRoutes(routes, { store, executor: mockExecutor, resolveWorkspaceId });
+    });
+
+    it('GET item route returns 404 for a loop owned by another workspace', async () => {
+        store.insert(makeLoop({ id: 'loop_a', processId: 'proc_ws1_a', workspaceId: 'ws1' }));
+        const res = await dispatch(routes, 'GET', '/api/workspaces/ws2/loops/loop_a');
+        expect(res.statusCode).toBe(404);
+    });
+
+    it('PATCH does not mutate a loop owned by another workspace', async () => {
+        store.insert(makeLoop({ id: 'loop_a', processId: 'proc_ws1_a', workspaceId: 'ws1', description: 'orig' }));
+        const res = await dispatch(routes, 'PATCH', '/api/workspaces/ws2/loops/loop_a', { description: 'hacked' });
+        expect(res.statusCode).toBe(404);
+        expect(store.getById('loop_a')!.description).toBe('orig');
+    });
+
+    it('DELETE does not cancel a loop owned by another workspace', async () => {
+        store.insert(makeLoop({ id: 'loop_a', processId: 'proc_ws1_a', workspaceId: 'ws1', status: 'active' }));
+        const res = await dispatch(routes, 'DELETE', '/api/workspaces/ws2/loops/loop_a');
+        expect(res.statusCode).toBe(404);
+        expect(store.getById('loop_a')!.status).toBe('active');
+        expect(mockExecutor.disarmTimer).not.toHaveBeenCalled();
+    });
+
+    it('POST pause does not pause a loop owned by another workspace', async () => {
+        store.insert(makeLoop({ id: 'loop_a', processId: 'proc_ws1_a', workspaceId: 'ws1', status: 'active' }));
+        const res = await dispatch(routes, 'POST', '/api/workspaces/ws2/loops/loop_a/pause', {});
+        expect(res.statusCode).toBe(404);
+        expect(store.getById('loop_a')!.status).toBe('active');
+    });
+
+    it('POST resume does not resume a loop owned by another workspace', async () => {
+        store.insert(makeLoop({ id: 'loop_a', processId: 'proc_ws1_a', workspaceId: 'ws1', status: 'paused', pausedReason: 'test' }));
+        const res = await dispatch(routes, 'POST', '/api/workspaces/ws2/loops/loop_a/resume');
+        expect(res.statusCode).toBe(404);
+        expect(store.getById('loop_a')!.status).toBe('paused');
+        expect(mockExecutor.armTimer).not.toHaveBeenCalled();
+    });
+
+    it('the owning workspace can still operate on its own loop', async () => {
+        store.insert(makeLoop({ id: 'loop_a', processId: 'proc_ws1_a', workspaceId: 'ws1' }));
+        const res = await dispatch(routes, 'GET', '/api/workspaces/ws1/loops/loop_a');
+        expect(res.statusCode).toBe(200);
+        expect(res.body.loop.id).toBe('loop_a');
+    });
+
+    it('backfills workspaceId for a legacy loop resolved via its process, then scopes it', async () => {
+        // Legacy row with no persisted workspaceId; its process resolves to ws1.
+        store.insert(makeLoop({ id: 'loop_legacy', processId: 'proc_ws1_legacy' }));
+
+        // ws2 cannot reach it (process resolves to ws1).
+        const wrong = await dispatch(routes, 'GET', '/api/workspaces/ws2/loops/loop_legacy');
+        expect(wrong.statusCode).toBe(404);
+
+        // ws1 reaches it and the workspaceId is backfilled + persisted.
+        const ok = await dispatch(routes, 'GET', '/api/workspaces/ws1/loops/loop_legacy');
+        expect(ok.statusCode).toBe(200);
+        expect(store.getById('loop_legacy')!.workspaceId).toBe('ws1');
+    });
+
+    it('legacy loop with an unresolvable process is 404 from every workspace route', async () => {
+        store.insert(makeLoop({ id: 'loop_orphan', processId: 'proc_unknown' }));
+        const res = await dispatch(routes, 'GET', '/api/workspaces/ws1/loops/loop_orphan');
+        expect(res.statusCode).toBe(404);
     });
 });
 

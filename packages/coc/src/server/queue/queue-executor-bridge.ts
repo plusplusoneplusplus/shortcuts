@@ -1,5 +1,5 @@
-import type { ChatPayload, ChatMode } from '../tasks/task-types';
-import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode } from '../tasks/task-types';
+import type { ChatPayload, ChatMode, ChatProvider } from '../tasks/task-types';
+import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
@@ -146,7 +146,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     private resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     private getEffortTiersForProvider?: GetEffortTiersForProvider;
+    private readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     private dreamRunExecutor?: DreamRunExecutor;
+    /**
+     * Per-process AbortControllers registered by chat-mode executors when a
+     * turn starts. Aborting one interrupts the in-flight `sendMessage` even
+     * when no `sdkSessionId` has been persisted yet (early-turn cancel).
+     */
+    private readonly processAbortControllers = new Map<string, AbortController>();
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
@@ -157,6 +164,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.onRalphSessionComplete = options.onRalphSessionComplete;
         this.resolveDefaultProvider = options.resolveDefaultProvider;
         this.getEffortTiersForProvider = options.getEffortTiersForProvider;
+        this.resolveAiServiceForProvider = options.resolveAiServiceForProvider;
         this.dreamRunExecutor = options.dreamRunExecutor;
         this.titleGenerationService = new TitleGenerationService({
             store,
@@ -201,6 +209,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             getMcpOauthManager: options.getMcpOauthManager,
             getDreamRunExecutor: () => this.dreamRunExecutor,
             cancelledTasks: this.cancelledTasks,
+            processAbortControllers: this.processAbortControllers,
         });
         this.getLoopInfra = options.getLoopInfra;
         this.getTriggerInfra = options.getTriggerInfra;
@@ -448,7 +457,34 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
     }
 
-    cancel(taskId: string): void { this.cancelledTasks.add(taskId); }
+    cancel(taskId: string): void {
+        this.cancelledTasks.add(taskId);
+        // Abort the in-flight sendMessage turn (if any) so cancellation does
+        // not depend on an sdkSessionId lookup. Follow-up tasks may carry an
+        // auto-generated id that does not map back to a process id; that path
+        // is covered by cancelProcess() aborting by process id directly.
+        this.processAbortControllers.get(toQueueProcessId(taskId))?.abort();
+    }
+
+    /**
+     * Resolve the ISDKService that owns a process's live session, routing by
+     * `metadata.provider` so cancel/steer reach the same service that ran the
+     * turn (codex/claude/opencode), not just the server default. Falls back to
+     * the default aiService when the provider is missing, the resolver is
+     * absent, or the resolver rejects the provider (e.g. disabled mid-turn) —
+     * a best-effort abort against the default beats doing nothing.
+     */
+    private getAiServiceForProcess(proc: AIProcess | null | undefined): ISDKService {
+        const provider = proc?.metadata?.provider;
+        if (provider && VALID_CHAT_PROVIDERS.has(provider as ChatProvider) && this.resolveAiServiceForProvider) {
+            try {
+                return this.resolveAiServiceForProvider(provider as ChatProvider);
+            } catch (err) {
+                getLogger().debug(LogCategory.AI, `[Bridge] Falling back to default aiService for provider '${provider}': ${err instanceof Error ? err.message : String(err)}`);
+            }
+        }
+        return this.aiService;
+    }
 
     async cancelProcess(processId: string): Promise<void> {
         const taskId = toTaskId(processId);
@@ -460,9 +496,13 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         } else {
             this.cancelledTasks.add(taskId);
         }
+        // Abort by process id as well: covers turns whose queue task id is
+        // auto-generated (follow-up requeues) and turns that have not yet
+        // persisted an sdkSessionId.
+        this.processAbortControllers.get(processId)?.abort();
         try {
             const proc = await this.store.getProcess(processId);
-            if (proc?.sdkSessionId) { await this.aiService.softAbortSession(proc.sdkSessionId); }
+            if (proc?.sdkSessionId) { await this.getAiServiceForProcess(proc).softAbortSession(proc.sdkSessionId); }
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to abort SDK session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
         }
@@ -476,7 +516,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             if (!proc?.sdkSessionId) return false;
             // SDK steering targets the already-running session; it cannot change
             // that live session's custom tool registry.
-            return await this.aiService.steerSession(proc.sdkSessionId, message);
+            return await this.getAiServiceForProcess(proc).steerSession(proc.sdkSessionId, message);
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to steer session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
             return false;

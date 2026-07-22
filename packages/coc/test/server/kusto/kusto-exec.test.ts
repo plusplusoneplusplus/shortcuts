@@ -6,6 +6,7 @@ import {
     type KustoClientFactory,
     type KustoClientLike,
 } from '../../../src/server/kusto/kusto-exec';
+import { MAX_KUSTO_ROWS } from '../../../src/server/canvas/kusto-state';
 
 /** Build a mock KustoResultTable-shaped response from columns + raw rows. */
 function mockResponse(
@@ -112,6 +113,106 @@ describe('executeKustoQuery', () => {
     it('returns an empty result when there are no primary results', async () => {
         const result = await executeKustoQuery(params, { clientFactory: factoryReturning({ primaryResults: [] }) });
         expect(result).toEqual({ columns: [], rows: [], rowCount: 0, truncated: false });
+    });
+});
+
+describe('executeKustoQuery — magic mock: queries', () => {
+    const params = { clusterUrl: 'mock', database: 'mock', query: '' };
+
+    /** A factory that fails if invoked — proves a mock: query skips the SDK path. */
+    const neverFactory: KustoClientFactory = () => {
+        throw new Error('client factory must not be called for a mock: query');
+    };
+
+    it('serves a mock: JSON query from inline data, skipping the client factory', async () => {
+        const query = `mock:
+        {
+          "columns": [
+            { "name": "Name",   "type": "string"   },
+            { "name": "Count",  "type": "long"     },
+            { "name": "Ratio",  "type": "real"     },
+            { "name": "Active", "type": "bool"     },
+            { "name": "When",   "type": "datetime" }
+          ],
+          "rows": [
+            ["alpha", 10, 0.5,  true,  "2024-01-01T00:00:00Z"],
+            ["beta",  20, 1.25, false, null]
+          ]
+        }`;
+        const result = await executeKustoQuery({ ...params, query }, { clientFactory: neverFactory });
+        expect(result.columns).toEqual([
+            { name: 'Name', type: 'string' },
+            { name: 'Count', type: 'long' },
+            { name: 'Ratio', type: 'real' },
+            { name: 'Active', type: 'bool' },
+            { name: 'When', type: 'datetime' },
+        ]);
+        expect(result.rows).toEqual([
+            ['alpha', 10, 0.5, true, '2024-01-01T00:00:00Z'],
+            ['beta', 20, 1.25, false, null],
+        ]);
+        expect(result.rowCount).toBe(2);
+        expect(result.truncated).toBe(false);
+    });
+
+    it('matches the mock: prefix case-insensitively', async () => {
+        const result = await executeKustoQuery(
+            { ...params, query: 'MOCK:{ "columns": [{ "name": "x", "type": "long" }], "rows": [[1]] }' },
+            { clientFactory: neverFactory },
+        );
+        expect(result.columns).toEqual([{ name: 'x', type: 'long' }]);
+        expect(result.rows).toEqual([[1]]);
+    });
+
+    it('mock:error throws the default message', async () => {
+        await expect(
+            executeKustoQuery({ ...params, query: 'mock:error' }, { clientFactory: neverFactory }),
+        ).rejects.toThrow('Mock Kusto error');
+    });
+
+    it('mock:error: <message> throws with that message', async () => {
+        await expect(
+            executeKustoQuery({ ...params, query: 'mock:error: boom' }, { clientFactory: neverFactory }),
+        ).rejects.toThrow('boom');
+    });
+
+    it('mock:big returns more rows than the cap and reports truncation', async () => {
+        const result = await executeKustoQuery({ ...params, query: 'mock:big' }, { clientFactory: neverFactory });
+        expect(result.columns.map(c => c.name)).toEqual(['Index', 'Value', 'Label']);
+        expect(result.rowCount).toBe(MAX_KUSTO_ROWS + 50);
+        expect(result.rows).toHaveLength(MAX_KUSTO_ROWS);
+        expect(result.truncated).toBe(true);
+    });
+
+    it('mock:big: <N> generates exactly N rows (still capped)', async () => {
+        const result = await executeKustoQuery(
+            { ...params, query: 'mock:big: 5' },
+            { clientFactory: neverFactory, cap: 3 },
+        );
+        expect(result.rowCount).toBe(5);
+        expect(result.rows).toHaveLength(3);
+        expect(result.truncated).toBe(true);
+    });
+
+    it('throws on malformed mock JSON (surfaced as the canvas error state)', async () => {
+        await expect(
+            executeKustoQuery({ ...params, query: 'mock:{ bad json' }, { clientFactory: neverFactory }),
+        ).rejects.toThrow();
+    });
+
+    it('does not intercept a normal query that merely contains the word "mock"', async () => {
+        const response = mockResponse([{ name: 'n', type: 'long' }], [[1]]);
+        let called = 0;
+        const factory: KustoClientFactory = () => {
+            called++;
+            return { execute: async () => response as never } as unknown as KustoClientLike;
+        };
+        const result = await executeKustoQuery(
+            { ...params, query: 'T | where Name == "mock" | take 1' },
+            { clientFactory: factory },
+        );
+        expect(called).toBe(1);
+        expect(result.rows).toEqual([[1]]);
     });
 });
 

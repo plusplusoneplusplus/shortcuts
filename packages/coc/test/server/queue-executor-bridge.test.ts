@@ -2472,6 +2472,226 @@ describe('CLITaskExecutor', () => {
     // Process Tracking
     // ========================================================================
 
+    describe('provider-routed cancel and steer', () => {
+        function makeProviderServices() {
+            const defaultService = {
+                ...sdkMocks.service,
+                softAbortSession: vi.fn().mockResolvedValue(true),
+                steerSession: vi.fn().mockResolvedValue(true),
+            };
+            const codexService = {
+                ...sdkMocks.service,
+                softAbortSession: vi.fn().mockResolvedValue(true),
+                steerSession: vi.fn().mockResolvedValue(true),
+            };
+            const claudeService = {
+                ...sdkMocks.service,
+                softAbortSession: vi.fn().mockResolvedValue(true),
+                steerSession: vi.fn().mockResolvedValue(true),
+            };
+            const resolveAiServiceForProvider = vi.fn((provider: string) => {
+                if (provider === 'codex') return codexService;
+                if (provider === 'claude') return claudeService;
+                return defaultService;
+            });
+            return { defaultService, codexService, claudeService, resolveAiServiceForProvider };
+        }
+
+        function seedProcess(provider?: string) {
+            store.getProcess.mockResolvedValue({
+                id: 'queue_task-pr-1',
+                type: 'chat',
+                status: 'running',
+                sdkSessionId: 'sdk-session-pr',
+                startTime: new Date(),
+                promptPreview: 'test',
+                ...(provider ? { metadata: { provider } } : {}),
+            } as any);
+        }
+
+        it.each(['codex', 'claude'] as const)('cancelProcess aborts on the %s service when metadata.provider is set', async (provider) => {
+            const { defaultService, codexService, claudeService, resolveAiServiceForProvider } = makeProviderServices();
+            const executor = new CLITaskExecutor(store, {
+                aiService: defaultService as any,
+                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+            });
+            seedProcess(provider);
+
+            await executor.cancelProcess('queue_task-pr-1');
+
+            const expected = provider === 'codex' ? codexService : claudeService;
+            expect(expected.softAbortSession).toHaveBeenCalledWith('sdk-session-pr');
+            expect(defaultService.softAbortSession).not.toHaveBeenCalled();
+        });
+
+        it('cancelProcess falls back to the default service when metadata.provider is missing', async () => {
+            const { defaultService, resolveAiServiceForProvider } = makeProviderServices();
+            const executor = new CLITaskExecutor(store, {
+                aiService: defaultService as any,
+                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+            });
+            seedProcess();
+
+            await executor.cancelProcess('queue_task-pr-1');
+
+            expect(resolveAiServiceForProvider).not.toHaveBeenCalled();
+            expect(defaultService.softAbortSession).toHaveBeenCalledWith('sdk-session-pr');
+        });
+
+        it('cancelProcess falls back to the default service when no resolver is wired', async () => {
+            const { defaultService } = makeProviderServices();
+            const executor = new CLITaskExecutor(store, { aiService: defaultService as any });
+            seedProcess('codex');
+
+            await executor.cancelProcess('queue_task-pr-1');
+
+            expect(defaultService.softAbortSession).toHaveBeenCalledWith('sdk-session-pr');
+        });
+
+        it('cancelProcess falls back to the default service when the resolver throws (provider disabled)', async () => {
+            const { defaultService } = makeProviderServices();
+            const throwingResolver = vi.fn(() => { throw new Error('Codex provider is currently disabled'); });
+            const executor = new CLITaskExecutor(store, {
+                aiService: defaultService as any,
+                resolveAiServiceForProvider: throwingResolver as any,
+            });
+            seedProcess('codex');
+
+            await executor.cancelProcess('queue_task-pr-1');
+
+            expect(throwingResolver).toHaveBeenCalledWith('codex');
+            expect(defaultService.softAbortSession).toHaveBeenCalledWith('sdk-session-pr');
+        });
+
+        it.each(['codex', 'claude'] as const)('steerProcess steers on the %s service when metadata.provider is set', async (provider) => {
+            const { defaultService, codexService, claudeService, resolveAiServiceForProvider } = makeProviderServices();
+            const executor = new CLITaskExecutor(store, {
+                aiService: defaultService as any,
+                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+            });
+            seedProcess(provider);
+
+            const result = await executor.steerProcess('queue_task-pr-1', 'change course');
+
+            expect(result).toBe(true);
+            const expected = provider === 'codex' ? codexService : claudeService;
+            expect(expected.steerSession).toHaveBeenCalledWith('sdk-session-pr', 'change course');
+            expect(defaultService.steerSession).not.toHaveBeenCalled();
+        });
+
+        it('steerProcess falls back to the default service when metadata.provider is missing', async () => {
+            const { defaultService, resolveAiServiceForProvider } = makeProviderServices();
+            const executor = new CLITaskExecutor(store, {
+                aiService: defaultService as any,
+                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+            });
+            seedProcess();
+
+            const result = await executor.steerProcess('queue_task-pr-1', 'change course');
+
+            expect(result).toBe(true);
+            expect(resolveAiServiceForProvider).not.toHaveBeenCalled();
+            expect(defaultService.steerSession).toHaveBeenCalledWith('sdk-session-pr', 'change course');
+        });
+    });
+
+    describe('early-turn abort signal', () => {
+        function makeAbortObservingService() {
+            let capturedSignal: AbortSignal | undefined;
+            const sendStarted = deferred<void>();
+            const service = {
+                ...sdkMocks.service,
+                softAbortSession: vi.fn().mockResolvedValue(true),
+                sendMessage: vi.fn((opts: any) => {
+                    capturedSignal = opts.signal;
+                    sendStarted.resolve();
+                    return new Promise((resolve) => {
+                        opts.signal?.addEventListener('abort', () => resolve({ success: false, error: 'aborted' }));
+                    });
+                }),
+            };
+            return { service, sendStarted, getSignal: () => capturedSignal };
+        }
+
+        function makeChatTask(id: string): QueuedTask {
+            return {
+                id,
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'long-running turn' },
+                config: {},
+            };
+        }
+
+        it('cancelProcess aborts the in-flight sendMessage even when no sdkSessionId is persisted', async () => {
+            const { service, sendStarted, getSignal } = makeAbortObservingService();
+            const executor = new CLITaskExecutor(store, { aiService: service as any });
+            // Process record has no sdkSessionId yet — the session-id lookup path is unavailable.
+            store.getProcess.mockResolvedValue({
+                id: 'queue_task-early-abort',
+                type: 'chat',
+                status: 'running',
+                startTime: new Date(),
+                promptPreview: 'test',
+            } as any);
+
+            const execPromise = executor.execute(makeChatTask('task-early-abort'));
+            await sendStarted.promise;
+            expect(getSignal()).toBeDefined();
+            expect(getSignal()!.aborted).toBe(false);
+
+            await executor.cancelProcess('queue_task-early-abort');
+
+            expect(getSignal()!.aborted).toBe(true);
+            expect(service.softAbortSession).not.toHaveBeenCalled();
+            await execPromise;
+        });
+
+        it('cancel(taskId) aborts the in-flight sendMessage for the mapped process', async () => {
+            const { service, sendStarted, getSignal } = makeAbortObservingService();
+            const executor = new CLITaskExecutor(store, { aiService: service as any });
+
+            const execPromise = executor.execute(makeChatTask('task-early-abort-2'));
+            await sendStarted.promise;
+            expect(getSignal()!.aborted).toBe(false);
+
+            executor.cancel('task-early-abort-2');
+
+            expect(getSignal()!.aborted).toBe(true);
+            await execPromise;
+        });
+
+        it('releases the turn controller on completion so a later cancel does not abort a stale signal', async () => {
+            let capturedSignal: AbortSignal | undefined;
+            const service = {
+                ...sdkMocks.service,
+                softAbortSession: vi.fn().mockResolvedValue(true),
+                sendMessage: vi.fn(async (opts: any) => {
+                    capturedSignal = opts.signal;
+                    return { success: true, response: 'done' };
+                }),
+            };
+            const executor = new CLITaskExecutor(store, { aiService: service as any });
+            store.getProcess.mockResolvedValue({
+                id: 'queue_task-early-abort-3',
+                type: 'chat',
+                status: 'completed',
+                startTime: new Date(),
+                promptPreview: 'test',
+            } as any);
+
+            await executor.execute(makeChatTask('task-early-abort-3'));
+            expect(capturedSignal).toBeDefined();
+            expect(capturedSignal!.aborted).toBe(false);
+
+            await executor.cancelProcess('queue_task-early-abort-3');
+
+            expect(capturedSignal!.aborted).toBe(false);
+        });
+    });
+
     describe('process tracking', () => {
         it('should create process with correct metadata', async () => {
             const executor = new CLITaskExecutor(store);

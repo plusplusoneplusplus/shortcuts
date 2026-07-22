@@ -6,6 +6,7 @@
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { QueueProvider, useQueue } from './contexts/QueueContext';
+import { useQueueBootstrap } from './contexts/useQueueBootstrap';
 import { WorkItemProvider, useWorkItems } from './contexts/WorkItemContext';
 import { ReposProvider } from './contexts/ReposContext';
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext';
@@ -24,7 +25,6 @@ import { Router } from './layout/Router';
 import { FloatingChatManager } from './layout/FloatingChatManager';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
-import { getSpaCocClient } from './api/cocClient';
 import { getCocClientForWorkspace } from './repos/cloneRegistry';
 import { RemoteCloneEventBridge } from './features/remote-shell/RemoteCloneEventBridge';
 import { ToastContainer, useToast } from './ui';
@@ -138,18 +138,14 @@ function AppInner() {
         return false;
     }, [appDispatch, applyGlobalPreferences]);
 
+    const bootstrapQueue = useQueueBootstrap();
+
     const handleConnect = useCallback(async () => {
-        const [data] = await Promise.all([
-            getSpaCocClient().queue.list().catch(() => null),
+        await Promise.all([
+            bootstrapQueue(),
             loadGlobalPreferences(false),
         ]);
-        if (data && Array.isArray(data.queued) && Array.isArray(data.running)) {
-            queueDispatch({ type: 'QUEUE_UPDATED', queue: data });
-            if (data.history) {
-                queueDispatch({ type: 'SET_HISTORY', history: data.history });
-            }
-        }
-    }, [loadGlobalPreferences, queueDispatch]);
+    }, [bootstrapQueue, loadGlobalPreferences]);
 
     const getWorkItemEventScopeIds = useCallback((scopeId: string): string[] => {
         const ids = new Set<string>([scopeId]);

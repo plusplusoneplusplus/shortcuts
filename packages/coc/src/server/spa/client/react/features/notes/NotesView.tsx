@@ -38,12 +38,10 @@ export interface NotesViewProps {
     active?: boolean;
     /**
      * When true, dock the shared status/action cluster in this view's own
-     * NotesSidebar footer (remote-first shell). Hosts that already provide a
-     * body-level `DockedStatusFooter` for all their sub-tabs (My Work) leave
-     * this off to avoid double-docking; those that don't (regular repos, My
-     * Life) set it so the note editor keeps full height instead of the app-wide
-     * `GlobalStatusDock` painting a partial-width band beside it. No-ops in
-     * classic / mobile via `DockedStatusFooter`'s own gate. */
+     * NotesSidebar footer (remote-first shell). All docked hosts set it — regular
+     * repos, My Life, and My Work — so the note editor keeps full height instead
+     * of the app-wide `GlobalStatusDock` painting a partial-width band beside it.
+     * No-ops in classic / mobile via `DockedStatusFooter`'s own gate. */
     dockStatusFooter?: boolean;
 }
 

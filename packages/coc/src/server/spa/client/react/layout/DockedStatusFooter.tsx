@@ -3,11 +3,11 @@
  * (`StatusActions` `variant="sidebar"`) at the bottom of a page's own left
  * column, matching the workspace chat view (`SplitWorkspacePanel` footer).
  *
- * Pages that own their own left sidebar (the Admin shell, Notes, Settings) or
- * a full-width tabbed body (My Work) render this at the bottom of that chrome
- * so the status cluster lives inside the sidebar and the content pane extends
- * full height — instead of the app-wide `GlobalStatusDock` painting a
- * partial-width bottom band with an empty strip beside it.
+ * Pages that own their own left sidebar (the Admin shell, Notes, Settings)
+ * render this at the bottom of that chrome so the status cluster lives inside
+ * the sidebar and the content pane extends full height — instead of the
+ * app-wide `GlobalStatusDock` painting a partial-width bottom band with an
+ * empty strip beside it.
  *
  * Renders nothing unless the remote-first shell is on (desktop), so classic /
  * mobile keep the topbar cluster. It also no-ops when rendered outside a

@@ -293,6 +293,49 @@ describe('RichEditorCore', () => {
         expect(mockDom.classList.contains('ctrl-held')).toBe(false);
     });
 
+    // ── File-drop seam (handleDrop / dragover) ──────────────────────────
+
+    it('delegates editorProps.handleDrop to the handleDrop prop and returns its result', () => {
+        const handleDrop = vi.fn().mockReturnValue(true);
+        render(<RichEditorCore handleDrop={handleDrop} />);
+
+        const mockView = {};
+        const event = { type: 'drop' };
+        const result = capturedEditorProps.handleDrop(mockView, event);
+
+        expect(handleDrop).toHaveBeenCalledWith(mockView, event);
+        expect(result).toBe(true);
+    });
+
+    it('handleDrop returns false when no handleDrop prop is provided', () => {
+        render(<RichEditorCore />);
+        expect(capturedEditorProps.handleDrop({}, { type: 'drop' })).toBe(false);
+    });
+
+    it('dragover preventDefaults a file drag so the editor is a valid drop target', () => {
+        render(<RichEditorCore />);
+        const preventDefault = vi.fn();
+        const fileEvent = { dataTransfer: { types: ['Files'] }, preventDefault };
+
+        const result = capturedEditorProps.handleDOMEvents.dragover({}, fileEvent);
+
+        expect(preventDefault).toHaveBeenCalledTimes(1);
+        // Returns false so ProseMirror still processes its own drag bookkeeping.
+        expect(result).toBe(false);
+    });
+
+    it('dragover does not preventDefault for a non-file (internal) drag', () => {
+        render(<RichEditorCore />);
+        const preventDefault = vi.fn();
+        const internalEvent = {
+            dataTransfer: { types: ['application/x-note-drag'] },
+            preventDefault,
+        };
+
+        capturedEditorProps.handleDOMEvents.dragover({}, internalEvent);
+        expect(preventDefault).not.toHaveBeenCalled();
+    });
+
     // ── onChange callback updates without editor recreation ──────────────
 
     it('latest onChange is called even after parent updates the callback', () => {
