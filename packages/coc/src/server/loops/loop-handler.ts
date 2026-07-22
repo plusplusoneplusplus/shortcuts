@@ -11,6 +11,7 @@
 import type * as http from 'http';
 import { sendJSON, sendError } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
+import { logAutomationScopeMismatch } from '../shared/automation-scope';
 import type { Route } from '../types';
 import type { LoopStore } from './loop-store';
 import type { LoopExecutor, LoopEventEmit } from './loop-executor';
@@ -25,6 +26,54 @@ export interface LoopRouteContext {
     executor: LoopExecutor;
     /** Optional WebSocket emitter for broadcasting loop state changes. */
     emit?: LoopEventEmit;
+    /**
+     * Resolve a process (conversation) ID to its owning workspace. Used as the
+     * compatibility path for legacy loop rows created before `workspaceId` was
+     * persisted: ownership is derived from the loop's process and backfilled.
+     * When omitted, legacy rows without a `workspaceId` are treated as
+     * unowned and are unreachable through workspace-scoped item routes.
+     */
+    resolveWorkspaceId?: (processId: string) => Promise<string | undefined>;
+}
+
+/**
+ * Resolve a loop by ID, returning it only when it belongs to the requested
+ * workspace. Returns `null` (→ 404) for unknown loops and for loops owned by a
+ * different workspace, logging a structured warning in the mismatch case.
+ *
+ * Legacy rows without a persisted `workspaceId` are resolved from their process
+ * via `resolveWorkspaceId`; on a match the ownership is backfilled and persisted
+ * before the caller mutates the record.
+ */
+export async function resolveLoopForWorkspace(
+    ctx: LoopRouteContext,
+    workspaceId: string,
+    loopId: string,
+): Promise<LoopEntry | null> {
+    const loop = ctx.store.getById(loopId);
+    if (!loop) return null;
+
+    if (loop.workspaceId != null) {
+        if (loop.workspaceId === workspaceId) return loop;
+        logAutomationScopeMismatch('loop', loopId, workspaceId, loop.workspaceId);
+        return null;
+    }
+
+    // Legacy row without a persisted workspaceId — derive ownership from the
+    // process record, then backfill so future scope checks are direct.
+    if (ctx.resolveWorkspaceId) {
+        const resolved = await ctx.resolveWorkspaceId(loop.processId);
+        if (resolved === workspaceId) {
+            loop.workspaceId = workspaceId;
+            ctx.store.update(loop);
+            return loop;
+        }
+        logAutomationScopeMismatch('loop', loopId, workspaceId, resolved);
+        return null;
+    }
+
+    logAutomationScopeMismatch('loop', loopId, workspaceId, undefined);
+    return null;
 }
 
 function safeEmit(emit: LoopEventEmit | undefined, event: LoopChangeEvent): void {
@@ -115,8 +164,9 @@ export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/loops\/([^/]+)$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            const workspaceId = decodeURIComponent(match![1]);
             const loopId = decodeURIComponent(match![2]);
-            const loop = store.getById(loopId);
+            const loop = await resolveLoopForWorkspace(ctx, workspaceId, loopId);
             if (!loop) {
                 return sendError(res, 404, 'Loop not found');
             }
@@ -131,6 +181,7 @@ export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void
         method: 'PATCH',
         pattern: /^\/api\/workspaces\/([^/]+)\/loops\/([^/]+)$/,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            const workspaceId = decodeURIComponent(match![1]);
             const loopId = decodeURIComponent(match![2]);
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
@@ -140,7 +191,7 @@ export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void
                 return sendError(res, 400, validation.error!);
             }
 
-            const loop = store.getById(loopId);
+            const loop = await resolveLoopForWorkspace(ctx, workspaceId, loopId);
             if (!loop) {
                 return sendError(res, 404, 'Loop not found');
             }
@@ -164,8 +215,9 @@ export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/loops\/([^/]+)$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            const workspaceId = decodeURIComponent(match![1]);
             const loopId = decodeURIComponent(match![2]);
-            const loop = store.getById(loopId);
+            const loop = await resolveLoopForWorkspace(ctx, workspaceId, loopId);
             if (!loop) {
                 return sendError(res, 404, 'Loop not found');
             }
@@ -187,8 +239,9 @@ export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/loops\/([^/]+)\/pause$/,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            const workspaceId = decodeURIComponent(match![1]);
             const loopId = decodeURIComponent(match![2]);
-            const loop = store.getById(loopId);
+            const loop = await resolveLoopForWorkspace(ctx, workspaceId, loopId);
             if (!loop) {
                 return sendError(res, 404, 'Loop not found');
             }
@@ -219,8 +272,9 @@ export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/loops\/([^/]+)\/resume$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            const workspaceId = decodeURIComponent(match![1]);
             const loopId = decodeURIComponent(match![2]);
-            const loop = store.getById(loopId);
+            const loop = await resolveLoopForWorkspace(ctx, workspaceId, loopId);
             if (!loop) {
                 return sendError(res, 404, 'Loop not found');
             }

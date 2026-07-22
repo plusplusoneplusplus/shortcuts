@@ -199,6 +199,8 @@ does this follow-up run in?".
 | `POST` | `/api/workspaces/:id/loops/:loopId/pause` | Pause loop (body: `{ reason? }`) |
 | `POST` | `/api/workspaces/:id/loops/:loopId/resume` | Resume paused loop |
 
+**Workspace ownership boundary:** every item-level route resolves the loop via `resolveLoopForWorkspace` (in `loop-handler.ts`, shared logging in `shared/automation-scope.ts`), which returns the record only when its `workspaceId` matches the route workspace — a loop from another workspace is a non-enumerating `404` (with a structured server-side warning). Legacy rows without a persisted `workspaceId` derive ownership from their process via the context `resolveWorkspaceId(processId)` resolver and are backfilled on first match. The server-wide `/api/loops` routes are unscoped by design.
+
 ### Server-wide
 
 | Method | Path | Description |

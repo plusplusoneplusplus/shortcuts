@@ -308,6 +308,100 @@ describe('Trigger REST API Handler', () => {
 });
 
 // ============================================================================
+// Workspace boundary — item routes and create verification
+// ============================================================================
+
+describe('Trigger REST API Handler — workspace boundary', () => {
+    let db: Database.Database;
+    let store: TriggerStore;
+    let routes: Route[];
+    let mockManager: any;
+    let resolveWorkspaceId: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        db = new Database(':memory:');
+        store = new TriggerStore(db);
+        routes = [];
+        mockManager = { arm: vi.fn(), disarm: vi.fn() };
+        resolveWorkspaceId = vi.fn(async (processId: string) => {
+            if (processId.startsWith('queue_ws1')) return 'ws1';
+            if (processId.startsWith('queue_ws2')) return 'ws2';
+            return undefined;
+        });
+        const ctx: TriggerRouteContext = { store, manager: mockManager, enabled: true, resolveWorkspaceId };
+        registerTriggerRoutes(routes, ctx);
+    });
+
+    it('GET item route returns 404 for a trigger owned by another workspace', async () => {
+        store.insert(makeTrigger({ id: 't1', workspaceId: 'ws1' }));
+        const res = await dispatch(routes, 'GET', '/api/workspaces/ws2/triggers/t1');
+        expect(res.statusCode).toBe(404);
+    });
+
+    it('PATCH does not mutate a trigger owned by another workspace', async () => {
+        store.insert(makeTrigger({ id: 't1', workspaceId: 'ws1', status: 'active' }));
+        const res = await dispatch(routes, 'PATCH', '/api/workspaces/ws2/triggers/t1', { status: 'paused' });
+        expect(res.statusCode).toBe(404);
+        expect(store.getById('t1')!.status).toBe('active');
+        expect(mockManager.disarm).not.toHaveBeenCalled();
+    });
+
+    it('DELETE does not remove a trigger owned by another workspace', async () => {
+        store.insert(makeTrigger({ id: 't1', workspaceId: 'ws1' }));
+        const res = await dispatch(routes, 'DELETE', '/api/workspaces/ws2/triggers/t1');
+        expect(res.statusCode).toBe(404);
+        expect(store.getById('t1')).not.toBeNull();
+    });
+
+    it('the owning workspace can still operate on its own trigger', async () => {
+        store.insert(makeTrigger({ id: 't1', workspaceId: 'ws1' }));
+        const res = await dispatch(routes, 'GET', '/api/workspaces/ws1/triggers/t1');
+        expect(res.statusCode).toBe(200);
+        expect(res.body.trigger.id).toBe('t1');
+    });
+
+    it('rejects create when processId resolves to a different workspace', async () => {
+        const res = await dispatch(routes, 'POST', '/api/workspaces/ws1/triggers', {
+            processId: 'queue_ws2_a',
+            event: { type: 'condition-monitor', monitor: 'ci-failure', originId: 'o', prId: '1' },
+        });
+        expect(res.statusCode).toBe(400);
+        expect(mockManager.arm).not.toHaveBeenCalled();
+        expect(store.getByWorkspace('ws1')).toHaveLength(0);
+    });
+
+    it('rejects create when action.processId resolves to a different workspace', async () => {
+        const res = await dispatch(routes, 'POST', '/api/workspaces/ws1/triggers', {
+            processId: 'queue_ws1_a',
+            event: { type: 'condition-monitor', monitor: 'ci-failure', originId: 'o', prId: '1' },
+            action: { processId: 'queue_ws2_b' },
+        });
+        expect(res.statusCode).toBe(400);
+        expect(mockManager.arm).not.toHaveBeenCalled();
+        expect(store.getByWorkspace('ws1')).toHaveLength(0);
+    });
+
+    it('allows create when the process resolves to the route workspace', async () => {
+        const res = await dispatch(routes, 'POST', '/api/workspaces/ws1/triggers', {
+            processId: 'queue_ws1_a',
+            event: { type: 'condition-monitor', monitor: 'ci-failure', originId: 'o', prId: '1' },
+        });
+        expect(res.statusCode).toBe(201);
+        expect(mockManager.arm).toHaveBeenCalledOnce();
+        expect(store.getByWorkspace('ws1')).toHaveLength(1);
+    });
+
+    it('allows create when the process workspace is unresolvable (cannot prove a violation)', async () => {
+        const res = await dispatch(routes, 'POST', '/api/workspaces/ws1/triggers', {
+            processId: 'queue_unknown_a',
+            event: { type: 'condition-monitor', monitor: 'ci-failure', originId: 'o', prId: '1' },
+        });
+        expect(res.statusCode).toBe(201);
+        expect(store.getByWorkspace('ws1')).toHaveLength(1);
+    });
+});
+
+// ============================================================================
 // Pure validation unit tests
 // ============================================================================
 
