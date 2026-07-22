@@ -18,13 +18,15 @@ import { useCallback, useMemo, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
 import { useRepos } from '../contexts/ReposContext';
-import { buildNoteHash } from './Router';
 import { StatusActions } from './StatusActions';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
 import { WorkspaceDockToggleButton } from '../features/repo-detail/WorkspaceDockToggle';
 import { RemoteShellHeader } from '../features/remote-shell/RemoteShellHeader';
+import { ScopeSlideSwitcher } from '../features/remote-shell/ScopeSlideSwitcher';
 import { VirtualWorkspaceShellHeader } from '../features/remote-shell/VirtualWorkspaceShellHeader';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
+import { useScopeSwitcherEnabled } from '../hooks/feature-flags/useScopeSwitcherEnabled';
+import { useScopeNavigation } from '../hooks/useScopeNavigation';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { MY_WORK_WORKSPACE_ID, getMyWorkHeaderConfig } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID, MY_LIFE_HEADER_CONFIG } from '../repos/MyLifeView';
@@ -64,6 +66,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
     const remoteShell = useRemoteShellEnabled();
+    const scopeSwitcherEnabled = useScopeSwitcherEnabled();
     const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
     const [popoverOpen, setPopoverOpen] = useState(false);
     const hostname = getHostname();
@@ -93,23 +96,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
         location.hash = '#repos';
     }, [dispatch]);
 
-    const goToMyWork = useCallback(() => {
-        const savedPath = state.notePathState?.[MY_WORK_WORKSPACE_ID];
-        dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
-        dispatch({ type: 'SET_SELECTED_REPO', id: MY_WORK_WORKSPACE_ID });
-        location.hash = savedPath
-            ? buildNoteHash(MY_WORK_WORKSPACE_ID, savedPath)
-            : '#repos/' + MY_WORK_WORKSPACE_ID + '/notes';
-    }, [dispatch, state.notePathState]);
-
-    const goToMyLife = useCallback(() => {
-        const savedPath = state.notePathState?.[MY_LIFE_WORKSPACE_ID];
-        dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
-        dispatch({ type: 'SET_SELECTED_REPO', id: MY_LIFE_WORKSPACE_ID });
-        location.hash = savedPath
-            ? buildNoteHash(MY_LIFE_WORKSPACE_ID, savedPath)
-            : '#repos/' + MY_LIFE_WORKSPACE_ID + '/notes';
-    }, [dispatch, state.notePathState]);
+    const { goToMyWork, goToMyLife } = useScopeNavigation();
 
     const toggleRepoManagement = useCallback(() => {
         if (state.activeTab !== 'repos') {
@@ -134,6 +121,13 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     // selection controls what is rendered *inside* the header (full clusters vs.
     // the unselected picker), not which header system is shown.
     const showRemoteHeader = remoteShell && !isMobile;
+
+    // Scope slide switcher (features.scopeSwitcher): one sliding segmented
+    // control (My Work · My Life · active workspace) that replaces the
+    // standalone 💼/🏠 toggles and the identity chips inside the header
+    // variants. Remote-first desktop shell only; classic shell and mobile keep
+    // the legacy controls regardless of the flag.
+    const showScopeSwitcher = scopeSwitcherEnabled && showRemoteHeader;
 
     // Virtual workspaces (My Work / My Life) have no real repo, so they never hit
     // `showRemoteHeader`. Give them the same single-row shell via a dedicated
@@ -188,7 +182,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     title={brandTooltip}
                     onClick={e => { e.preventDefault(); goToRepos(); }}
                 >{ brandLabel }</a>
-                {myWorkEnabled && (
+                {myWorkEnabled && !showScopeSwitcher && (
                     <button
                         id="my-work-toggle"
                         className={
@@ -204,7 +198,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         💼
                     </button>
                 )}
-                {myLifeEnabled && (
+                {myLifeEnabled && !showScopeSwitcher && (
                     <button
                         id="my-life-toggle"
                         className={
@@ -220,12 +214,15 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         🏠
                     </button>
                 )}
+                {showScopeSwitcher && (
+                    <ScopeSlideSwitcher repo={selectedRepo} repos={repos} />
+                )}
                 {!isMobile && (showVirtualHeader && virtualHeaderConfig ? (
-                    <VirtualWorkspaceShellHeader config={virtualHeaderConfig} repos={repos} onSelectRepo={navigateToWorkspace} />
+                    <VirtualWorkspaceShellHeader config={virtualHeaderConfig} repos={repos} onSelectRepo={navigateToWorkspace} hideIdentity={showScopeSwitcher} />
                 ) : showRemoteHeader ? (
                     // Remote-first shell: always rendered; repo may be undefined
                     // (unselected state shows a "Select repository" picker).
-                    <RemoteShellHeader repo={selectedRepo} repos={repos} />
+                    <RemoteShellHeader repo={selectedRepo} repos={repos} hideIdentity={showScopeSwitcher} />
                 ) : (
                     <RepoTabStrip
                         repos={repos}

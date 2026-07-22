@@ -1246,6 +1246,25 @@ Enabled by default; desktop-only; takes effect on reload.
   navigation is always visible. `RemoteShellHeader` (repos tab + real clone
   selected) and `VirtualWorkspaceShellHeader` (repos tab + virtual workspace)
   replace the strip; everywhere else the strip renders.
+- **Scope slide switcher (`ScopeSlideSwitcher`)** — gated by the experimental
+  `features.scopeSwitcher` admin flag (runtime flag `scopeSwitcherEnabled`,
+  `isScopeSwitcherEnabled()` in `utils/config.ts`, live hook
+  `useScopeSwitcherEnabled`; default **off**; remote-first desktop shell only).
+  When on, `TopBar` replaces the standalone 💼 My Work / 🏠 My Life toggles and
+  the identity chips inside both header variants with one sliding segmented
+  control: `[💼 My Work] [🏠 My Life] [● workspace ⧉N ▾]`
+  (`data-testid="scope-switcher"`, segments `scope-segment` with
+  `data-scope="work|life|workspace"`, animated thumb measured via refs +
+  `ResizeObserver`). The workspace segment embeds `WorkspaceIdentityChip` —
+  the identity pill (status dot, provider badge, remote name, `⧉N` clone badge,
+  chevron → `RepoPickerPopover` + add/clone dialogs) extracted from
+  `RemoteScopeCluster`, which now renders that chip itself unless its
+  `hideIdentity` prop is set (`RemoteShellHeader` and
+  `VirtualWorkspaceShellHeader` forward `hideIdentity` so identity renders
+  exactly once). Virtual-scope navigation (`goToMyWork` / `goToMyLife`,
+  saved-note-path restore) lives in the shared `hooks/useScopeNavigation.ts`,
+  used by both the switcher and the legacy toggles. Pinned off in
+  `E2E_SERVER_CONFIG_YAML`.
 - **Shared shell behavior** comes from `shellModel.ts` and `repoGrouping.ts`.
   Aggregated remote checkouts fold into the matching local origin's tab (by
   normalized git URL); a remote-only repo gets its own group. Group clones are

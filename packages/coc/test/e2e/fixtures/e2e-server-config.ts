@@ -32,4 +32,4 @@
  *   Pin it off so the suite exercises the model-picker UI it targets.
  */
 export const E2E_SERVER_CONFIG_YAML =
-    'showPlanDepTab: true\nfeatures:\n  remoteShell: false\n  splitWorkspacePanel: false\n  commitChatLens: false\neffortLevels:\n  enabled: false\n';
+    'showPlanDepTab: true\nfeatures:\n  remoteShell: false\n  scopeSwitcher: false\n  splitWorkspacePanel: false\n  commitChatLens: false\neffortLevels:\n  enabled: false\n';

@@ -785,6 +785,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.scopeSwitcher', default: false, runtime: 'live', runtimeFlag: 'scopeSwitcherEnabled',
+        ui: {
+            group: 'dashboard', order: 66, label: 'Scope slide switcher', badge: 'experimental',
+            hint: 'Replace the My Work / My Life toggles and the workspace identity chip with one sliding segmented switcher in the remote-first desktop header. Disabled by default.',
+            testId: 'toggle-scope-switcher-enabled',
+        },
+    }),
+    bool({
         key: 'features.splitWorkspacePanel', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'splitWorkspacePanelEnabled',
         ui: {
             group: 'dashboard', order: 67, label: 'Split Workspace panel',

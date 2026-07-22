@@ -285,6 +285,8 @@ export interface CLIConfig {
         quickAskSidenotes?: boolean;
         /** Remote-first dashboard shell (one tab per remote). Enabled by default. */
         remoteShell?: boolean;
+        /** Sliding scope switcher (My Work · My Life · active workspace) in the remote-first header. Disabled by default. */
+        scopeSwitcher?: boolean;
         /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel?: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
@@ -618,6 +620,8 @@ export interface ResolvedCLIConfig {
         quickAskSidenotes: boolean;
         /** Remote-first dashboard shell (one tab per remote). Enabled by default. */
         remoteShell: boolean;
+        /** Sliding scope switcher (My Work · My Life · active workspace) in the remote-first header. Disabled by default. */
+        scopeSwitcher: boolean;
         /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
@@ -880,6 +884,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         nativeCliSessions: false,
         quickAskSidenotes: false,
         remoteShell: true,
+        scopeSwitcher: false,
         splitWorkspacePanel: true,
         schedulesInScheduledSlide: true,
         gitWorktreeExecution: false,

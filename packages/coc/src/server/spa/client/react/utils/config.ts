@@ -82,6 +82,8 @@ interface DashboardConfig {
     showPlanDepTab?: boolean;
     /** Whether the remote-first dashboard shell is enabled (feature flag). */
     remoteShellEnabled?: boolean;
+    /** Whether the sliding scope switcher (My Work · My Life · active workspace) is enabled (feature flag). */
+    scopeSwitcherEnabled?: boolean;
     /** Whether the split "Workspace" left panel (chat top / git bottom + shared detail pane) is enabled. */
     splitWorkspacePanelEnabled?: boolean;
     /** Whether schedule management lives in the chat-list "Scheduled" slide (definitions list + right-pane create/edit) instead of the Schedules tab. */
@@ -404,6 +406,11 @@ export function isShowPlanDepTab(): boolean {
 /** Returns true when the remote-first dashboard shell is enabled. */
 export function isRemoteShellEnabled(): boolean {
     return getConfig().remoteShellEnabled === true;
+}
+
+/** Returns true when the sliding scope switcher (My Work · My Life · active workspace) is enabled. */
+export function isScopeSwitcherEnabled(): boolean {
+    return getConfig().scopeSwitcherEnabled === true;
 }
 
 /** Returns true when the split "Workspace" left panel (chat top / git bottom + shared detail pane) is enabled. */
