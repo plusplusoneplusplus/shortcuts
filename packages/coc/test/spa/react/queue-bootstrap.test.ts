@@ -96,10 +96,14 @@ describe('App.tsx — onConnect reconnect handler', () => {
         expect(source).toMatch(/const\s+handleConnect\s*=\s*useCallback/);
     });
 
-    it('handleConnect uses the typed queue client for reconnect recovery', () => {
+    it('handleConnect delegates queue loading to the shared useQueueBootstrap hook', () => {
+        expect(source).toContain('useQueueBootstrap');
         const handleConnectBlock = source.match(/const\s+handleConnect[\s\S]*?(?=\n\s{4}const\s)/);
         expect(handleConnectBlock).not.toBeNull();
-        expect(handleConnectBlock![0]).toContain('getSpaCocClient().queue.list()');
+        expect(handleConnectBlock![0]).toContain('bootstrapQueue()');
+        // The inline queue fetch/dispatch moved into the hook.
+        expect(handleConnectBlock![0]).not.toContain('queue.list()');
+        expect(handleConnectBlock![0]).not.toContain("type: 'QUEUE_UPDATED'");
     });
 
     it('handleConnect refreshes preferences without marking bootstrap failure', () => {
@@ -108,22 +112,36 @@ describe('App.tsx — onConnect reconnect handler', () => {
         expect(handleConnectBlock![0]).toContain('loadGlobalPreferences(false)');
     });
 
-    it('handleConnect dispatches QUEUE_UPDATED (not SEED_QUEUE) for reconnect', () => {
-        const handleConnectBlock = source.match(/const\s+handleConnect[\s\S]*?(?=\n\s{4}const\s)/);
-        expect(handleConnectBlock).not.toBeNull();
-        expect(handleConnectBlock![0]).toContain("type: 'QUEUE_UPDATED'");
-        expect(handleConnectBlock![0]).not.toContain("type: 'SEED_QUEUE'");
-    });
-
-    it('handleConnect guards dispatch with Array.isArray checks', () => {
-        const handleConnectBlock = source.match(/const\s+handleConnect[\s\S]*?(?=\n\s{4}const\s)/);
-        expect(handleConnectBlock).not.toBeNull();
-        expect(handleConnectBlock![0]).toContain('Array.isArray(data.queued)');
-        expect(handleConnectBlock![0]).toContain('Array.isArray(data.running)');
-    });
-
     it('passes onConnect to useWebSocket', () => {
         expect(source).toContain('onConnect: handleConnect');
+    });
+});
+
+// ============================================================================
+// useQueueBootstrap — shared queue fetch-and-dispatch (App + popout)
+// ============================================================================
+
+describe('useQueueBootstrap — shared hook source', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = fs.readFileSync(path.join(CLIENT_DIR, 'contexts', 'useQueueBootstrap.ts'), 'utf-8');
+    });
+
+    it('fetches the queue via the typed client and swallows failures', () => {
+        expect(source).toContain('getSpaCocClient().queue.list()');
+        expect(source).toContain('.catch(() => null)');
+    });
+
+    it('guards dispatch with Array.isArray checks', () => {
+        expect(source).toContain('Array.isArray(data.queued)');
+        expect(source).toContain('Array.isArray(data.running)');
+    });
+
+    it('dispatches QUEUE_UPDATED and SET_HISTORY (not SEED_QUEUE)', () => {
+        expect(source).toContain("type: 'QUEUE_UPDATED'");
+        expect(source).toContain("type: 'SET_HISTORY'");
+        expect(source).not.toContain("type: 'SEED_QUEUE'");
     });
 });
 

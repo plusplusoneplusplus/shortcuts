@@ -11,6 +11,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { AppProvider } from '../contexts/AppContext';
 import { QueueProvider } from '../contexts/QueueContext';
+import { useQueueBootstrap } from '../contexts/useQueueBootstrap';
 import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ChatPreferencesProvider } from '../contexts/ChatPreferencesContext';
@@ -45,6 +46,15 @@ export function parsePopOutActivityRoute(hash: string, search = ''): PopOutRoute
 function PopOutContent({ taskId, workspaceId }: { taskId: string; workspaceId: string | null }) {
     const { toasts, addToast, removeToast } = useToast();
     const hasNotifiedRef = useRef(false);
+
+    // Populate this window's own (otherwise empty) QueueProvider so ChatDetail can
+    // resolve the implement-plan run's live status instead of showing 'Unknown'.
+    // The popout is a separate OS window with its own React realm, so it never
+    // runs App's connect-time bootstrap; fire the same fetch here once on mount.
+    const bootstrapQueue = useQueueBootstrap();
+    useEffect(() => {
+        void bootstrapQueue();
+    }, [bootstrapQueue]);
 
     const handleMessage = useCallback((msg: PopOutMessage) => {
         if (msg.type === 'popout-restore' && msg.taskId === taskId) {
