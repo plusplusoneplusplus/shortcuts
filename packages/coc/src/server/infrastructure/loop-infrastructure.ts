@@ -17,6 +17,10 @@ import { SqliteProcessStore, initializeDatabase, getLogger, LogCategory } from '
 import { LoopStore } from '../loops/loop-store';
 import { LoopExecutor } from '../loops/loop-executor';
 import type { LoopEventEmit } from '../loops/loop-executor';
+import { WakeupStore } from '../loops/wakeup-store';
+import { WakeupExecutor } from '../loops/wakeup-executor';
+import type { WakeupEventEmit, WakeupExecuteFollowUp } from '../loops/wakeup-executor';
+import { WAKEUP_RETENTION_MS } from '../loops/wakeup-types';
 import { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
 
 // ============================================================================
@@ -26,6 +30,10 @@ import { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
 export interface LoopInfrastructure {
     loopStore: LoopStore;
     loopExecutor: LoopExecutor;
+    /** Durable one-shot wakeup persistence. */
+    wakeupStore: WakeupStore;
+    /** Durable one-shot wakeup lifecycle (arm/fire/terminal). */
+    wakeupExecutor: WakeupExecutor;
     /** Timer registry for scheduling loop ticks and wakeups. */
     timerRegistry: ScheduleTimerRegistry;
     /** Loop event emitter (used by REST handler and LLM tools to broadcast state). */
@@ -45,6 +53,13 @@ export interface LoopInfrastructureOptions {
     emit: LoopEventEmit;
     /** Resolve processId → workspaceId for multi-repo routing. */
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
+    /**
+     * Run a wakeup's follow-up turn when its timer fires. Wired to the queue
+     * bridge's `executeFollowUp` by the server. Required for durable wakeups.
+     */
+    executeFollowUp: WakeupExecuteFollowUp;
+    /** Emit wakeup change events (for WebSocket broadcasting). Optional. */
+    emitWakeup?: WakeupEventEmit;
 }
 
 // ============================================================================
@@ -59,7 +74,7 @@ export interface LoopInfrastructureOptions {
  * @returns LoopInfrastructure with store, executor, and dispose function.
  */
 export async function createLoopInfrastructure(options: LoopInfrastructureOptions): Promise<LoopInfrastructure> {
-    const { dataDir, queueFacade, store, emit, resolveWorkspaceId } = options;
+    const { dataDir, queueFacade, store, emit, resolveWorkspaceId, executeFollowUp, emitWakeup } = options;
 
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or open processes.db in dataDir.
     let db: Database.Database;
@@ -90,6 +105,22 @@ export async function createLoopInfrastructure(options: LoopInfrastructureOption
     // Restore active loop timers from the persisted nextTickAt values.
     loopExecutor.armAll();
 
+    // Durable one-shot wakeups. Prune stale terminal rows, then re-arm all
+    // pending wakeups from persisted `firesAt` (overdue ones fire immediately)
+    // so a restart recovers them instead of dropping in-memory timers.
+    const wakeupStore = new WakeupStore(db);
+    const wakeupExecutor = new WakeupExecutor({
+        store: wakeupStore,
+        processStore: store,
+        timerRegistry,
+        executeFollowUp,
+        ...(emitWakeup ? { emit: emitWakeup } : {}),
+    });
+    const prunedWakeups = wakeupStore.pruneTerminalBefore(
+        new Date(Date.now() - WAKEUP_RETENTION_MS).toISOString(),
+    );
+    wakeupExecutor.armAll();
+
     // Backfill workspaceId for legacy rows that lack it.
     const allLoops = loopStore.getAll();
     let backfilled = 0;
@@ -109,12 +140,14 @@ export async function createLoopInfrastructure(options: LoopInfrastructureOption
     // Log startup state after timers have been restored.
     const activeCount = loopStore.getActive().length;
     const pausedCount = allLoops.filter(l => l.status === 'paused').length;
-    if (activeCount > 0 || pausedCount > 0 || backfilled > 0) {
+    const pendingWakeups = wakeupStore.getPending().length;
+    if (activeCount > 0 || pausedCount > 0 || backfilled > 0 || pendingWakeups > 0 || prunedWakeups > 0) {
         const logger = getLogger();
         logger.info(
             LogCategory.AI,
-            `[LoopInfra] Loaded ${activeCount} active, ${pausedCount} paused loop(s) from DB` +
-            (backfilled > 0 ? `, backfilled workspaceId on ${backfilled} loop(s)` : ''),
+            `[LoopInfra] Loaded ${activeCount} active, ${pausedCount} paused loop(s), ${pendingWakeups} pending wakeup(s) from DB` +
+            (backfilled > 0 ? `, backfilled workspaceId on ${backfilled} loop(s)` : '') +
+            (prunedWakeups > 0 ? `, pruned ${prunedWakeups} stale wakeup(s)` : ''),
         );
     }
 
@@ -125,5 +158,5 @@ export async function createLoopInfrastructure(options: LoopInfrastructureOption
         }
     };
 
-    return { loopStore, loopExecutor, timerRegistry, emit, dispose };
+    return { loopStore, loopExecutor, wakeupStore, wakeupExecutor, timerRegistry, emit, dispose };
 }

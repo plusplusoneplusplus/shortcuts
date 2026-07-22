@@ -212,6 +212,24 @@ export function initializeDatabase(db: Database.Database): void {
             )
         `);
 
+        // ── wakeups ──────────────────────────────────────────────────
+        // Durable one-shot counterpart to loops: a single future follow-up
+        // that fires exactly once and is terminal afterwards.
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS wakeups (
+                id              TEXT PRIMARY KEY,
+                process_id      TEXT NOT NULL,
+                prompt          TEXT NOT NULL DEFAULT '',
+                model           TEXT,
+                status          TEXT NOT NULL DEFAULT 'pending',
+                created_at      TEXT NOT NULL,
+                fires_at        TEXT NOT NULL,
+                fired_at        TEXT,
+                failure_reason  TEXT,
+                workspace_id    TEXT
+            )
+        `);
+
         // ── FTS5 full-text search index on conversation_turns ────────
         db.exec(`
             CREATE VIRTUAL TABLE IF NOT EXISTS conversation_search
@@ -299,6 +317,15 @@ export function initializeDatabase(db: Database.Database): void {
 
             CREATE INDEX IF NOT EXISTS idx_loops_status
                 ON loops(status);
+
+            CREATE INDEX IF NOT EXISTS idx_wakeups_process_id
+                ON wakeups(process_id);
+
+            CREATE INDEX IF NOT EXISTS idx_wakeups_status
+                ON wakeups(status);
+
+            CREATE INDEX IF NOT EXISTS idx_wakeups_workspace_id
+                ON wakeups(workspace_id);
         `);
 
         // ── commit_chat_bindings ─────────────────────────────────────

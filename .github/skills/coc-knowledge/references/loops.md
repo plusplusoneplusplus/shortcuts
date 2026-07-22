@@ -48,6 +48,10 @@ Recurring follow-up messages within a conversation. Inspired by Claude Code's lo
 | `packages/coc/src/server/loops/loop-store.ts` | SQLite persistence (CRUD, `ensureTable`, prepared statements) |
 | `packages/coc/src/server/loops/loop-executor.ts` | Timer lifecycle, tick handler, circuit breakers, shutdown |
 | `packages/coc/src/server/loops/loop-handler.ts` | REST API routes (workspace-scoped and server-wide) |
+| `packages/coc/src/server/loops/wakeup-types.ts` | `WakeupEntry`, `WakeupStatus`, `WakeupChangeEvent`, retention constant |
+| `packages/coc/src/server/loops/wakeup-store.ts` | Durable one-shot wakeup SQLite persistence (CRUD, `markFired`/`markFailed`/`cancel`, prune) |
+| `packages/coc/src/server/loops/wakeup-executor.ts` | Wakeup arm/fire lifecycle, startup re-arm, overdue immediate fire, terminal marking |
+| `packages/coc/src/server/loops/enqueue-wakeup.ts` | `createEnqueueWakeup` command — persists a pending record, then arms it |
 | `packages/coc/src/server/llm-tools/loop-tools.ts` | LLM tool factories (`loop` with create/cancel/list actions, `scheduleWakeup`) |
 | `packages/forge/resources/bundled-skills/loop/SKILL.md` | Bundled `/loop` skill — teaches the AI interval parsing, mode selection, user confirmation |
 | `packages/coc/src/server/spa/client/react/features/chat/LoopBadge.tsx` | Dashboard header badge showing non-cancelled loop count |
@@ -99,11 +103,56 @@ CREATE INDEX idx_loops_process_id ON loops(process_id);
 CREATE INDEX idx_loops_status ON loops(status);
 ```
 
+### WakeupEntry (durable one-shot)
+
+Wakeups are the one-shot, durable counterpart to loops: `scheduleWakeup`
+persists a single future follow-up that fires exactly once and is terminal
+afterwards. They share the `ScheduleTimerRegistry` and `processes.db` handle
+with loops but keep their own table, store, and executor — no recurrence or
+failure-count policy leaks between the two.
+
+```typescript
+interface WakeupEntry {
+    id: string;                  // e.g. "wakeup_a1b2c3d4e5f6"
+    processId: string;           // conversation this wakeup fires into
+    prompt: string;              // follow-up message
+    model: string | null;        // optional model override
+    status: WakeupStatus;        // 'pending' | 'fired' | 'failed' | 'cancelled'
+    createdAt: string;           // ISO timestamp
+    firesAt: string;             // absolute ISO fire time
+    firedAt: string | null;      // terminal transition time (fired/failed)
+    failureReason: string | null;// message when status === 'failed'
+    workspaceId?: string;        // repo, persisted at creation
+}
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS wakeups (
+    id              TEXT PRIMARY KEY,
+    process_id      TEXT NOT NULL,
+    prompt          TEXT NOT NULL DEFAULT '',
+    model           TEXT,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    created_at      TEXT NOT NULL,
+    fires_at        TEXT NOT NULL,
+    fired_at        TEXT,
+    failure_reason  TEXT,
+    workspace_id    TEXT
+);
+CREATE INDEX idx_wakeups_process_id ON wakeups(process_id);
+CREATE INDEX idx_wakeups_status ON wakeups(status);
+CREATE INDEX idx_wakeups_workspace_id ON wakeups(workspace_id);
+```
+
 ## LLM Tools
 
 ### `scheduleWakeup` (always available when `loops.enabled`)
 
-One-shot delayed follow-up. Registered in `LLM_TOOL_REGISTRY`.
+One-shot delayed follow-up. Registered in `LLM_TOOL_REGISTRY`. **Durable:** the
+tool's `enqueueWakeup` command (`createEnqueueWakeup`) inserts a pending
+`WakeupEntry` (absolute `firesAt`) into the `wakeups` table **before** arming
+its one-shot timer, so a server restart re-arms it from the store instead of
+dropping it. The returned `wakeupId`/`firesAt` are the persisted values.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -172,6 +221,29 @@ call to `LoopExecutor.onTickComplete()`, which advances `tickCount` /
 
 Bookkeeping errors are logged but never mask the follow-up's actual
 success/failure result.
+
+## Wakeup Execution Flow
+
+Wakeups do **not** go through the queue/tick-completion path above; the
+`WakeupExecutor` owns them end-to-end:
+
+1. `createEnqueueWakeup` inserts a `pending` `WakeupEntry` (absolute `firesAt`),
+   then calls `WakeupExecutor.arm()`.
+2. `arm()` registers a one-shot timer keyed `wakeup:<id>` in the shared
+   `ScheduleTimerRegistry`. The delay is `firesAt - now`, clamped to `0` for
+   overdue values. The key is not owned by the per-turn executor session, so a
+   wakeup scheduled mid-turn survives turn-end teardown.
+3. On fire, `resolveFollowUpMode` runs and `executeFollowUp` is invoked directly
+   (bridge) with `turnSource: { source: 'wakeup', wakeupId }`.
+4. Terminal marking: success → `markFired` (status `fired`); a thrown error →
+   `markFailed` with the message persisted in `failure_reason` (status
+   `failed`) plus a structured `logger.error`. Wakeups never recur.
+
+**Restart recovery.** `createLoopInfrastructure` constructs the `WakeupStore` +
+`WakeupExecutor`, prunes terminal rows older than `WAKEUP_RETENTION_MS` (7 days),
+then calls `wakeupExecutor.armAll()` — re-arming every pending wakeup from its
+persisted `firesAt`; overdue ones fire immediately. State changes broadcast via
+the optional `wakeup-scheduled|fired|failed|cancelled` WebSocket events.
 
 ## Follow-Up Mode Resolution
 
