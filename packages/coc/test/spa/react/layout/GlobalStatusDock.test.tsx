@@ -6,8 +6,8 @@
  * column. Off (classic mode) or on mobile it renders nothing (topbar keeps the
  * cluster). It also renders nothing on views that dock the cluster in their own
  * left-column footer: the workspace chat/activity sub-tab, the admin shell, the
- * My Work workspace, the workspace notes sub-tab, and the workspace settings
- * sub-tab.
+ * workspace notes sub-tab, and the workspace settings sub-tab. My Work docks
+ * per-sub-tab like a regular repo, so those same sub-tab stand-downs cover it.
  *
  * @vitest-environment jsdom
  */
@@ -37,11 +37,6 @@ vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({
         lastStatusActionsProps = props;
         return <div data-testid="status-actions" data-variant={String(props.variant)} />;
     },
-}));
-// Keep this suite lightweight — pull only the workspace-id constant, not the
-// heavy MyWorkView module (Notes editor, tiptap, monaco, …).
-vi.mock('../../../../src/server/spa/client/react/repos/MyWorkView', () => ({
-    MY_WORK_WORKSPACE_ID: 'my_work',
 }));
 
 import { GlobalStatusDock } from '../../../../src/server/spa/client/react/layout/GlobalStatusDock';
@@ -99,11 +94,23 @@ describe('GlobalStatusDock', () => {
         }
     });
 
-    it('renders nothing on the My Work workspace (its body footer hosts the cluster)', () => {
+    it('renders nothing on the My Work notes sub-tab (NotesView docks the cluster in its own sidebar footer)', () => {
+        // My Work now docks per-sub-tab like a regular repo: on the notes sub-tab
+        // it flows through the same notes stand-down as `ws-a`, not a wholesale
+        // My-Work return.
         mockAppState = { activeTab: 'repos', selectedRepoId: 'my_work', activeRepoSubTab: 'notes' };
         const { container } = render(<GlobalStatusDock />);
         expect(screen.queryByTestId('status-actions')).toBeNull();
         expect(container.firstChild).toBeNull();
+    });
+
+    it('renders the band on a non-docked My Work sub-tab (git), like a regular repo', () => {
+        // The Git sub-tab has no owned left-column footer, so the global dock
+        // paints the left-column-width band. The old wholesale My-Work return
+        // would have wrongly suppressed it here.
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'my_work', activeRepoSubTab: 'git' };
+        render(<GlobalStatusDock />);
+        expect(screen.getByTestId('status-actions')).toBeTruthy();
     });
 
     it('renders nothing on the workspace notes sub-tab (NotesView docks the cluster in its own sidebar footer)', () => {

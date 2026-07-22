@@ -12,7 +12,6 @@
  * band is painted beneath it:
  *   - the workspace chat/activity sub-tab (`SplitWorkspacePanel` `footer`),
  *   - the Admin shell (its `.ar-sidebar` hosts `DockedStatusFooter`),
- *   - the My Work view (its body hosts `DockedStatusFooter`),
  *   - the workspace notes sub-tab (`NotesView`'s own `NotesSidebar` footer),
  *   - the workspace settings sub-tab (`RepoSettingsTab`'s own nav footer),
  *   - the workspace pull-requests sub-tab (`PullRequestsTab`'s PR queue footer).
@@ -36,7 +35,6 @@ import { useApp } from '../contexts/AppContext';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
-import { MY_WORK_WORKSPACE_ID } from '../repos/MyWorkView';
 
 /** Fallback width when no split sidebar is mounted (matches the panel default). */
 const DEFAULT_LEFT_COL_WIDTH = 360;
@@ -66,10 +64,6 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
     // (`DockedStatusFooter`), so stand down on every tab that mounts it.
     if (ADMIN_SHELL_TABS.has(state.activeTab)) return null;
 
-    // My Work hosts the cluster in its own body footer (`DockedStatusFooter`),
-    // so stand down there too — on every My Work sub-tab, not just chat.
-    if (state.selectedRepoId === MY_WORK_WORKSPACE_ID) return null;
-
     // The workspace chat/activity sub-tab hosts the dock in its own left-column
     // footer so the chat detail pane keeps full height. Don't render a second
     // dock over that view.
@@ -83,8 +77,8 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
     // The notes sub-tab hosts the cluster in `NotesView`'s own left-column
     // footer (the `NotesSidebar` `DockedStatusFooter`), so the note editor pane
     // keeps full height. Don't paint a second partial-width band — with an empty
-    // strip beside it — beneath the editor. Applies to regular repos and My Life
-    // here; My Work already stands down above (it docks a body-level footer).
+    // strip beside it — beneath the editor. Applies to regular repos, My Life,
+    // and My Work alike, since My Work now docks per-sub-tab like a regular repo.
     const inNotesSidebarFooter =
         state.activeTab === 'repos' &&
         !!state.selectedRepoId &&

@@ -22,7 +22,6 @@ import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
 import type { RepoData } from './repoGrouping';
 import { generateMyWorkSummary, syncMyWork } from './repositoryService';
-import { DockedStatusFooter } from '../layout/DockedStatusFooter';
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
 
@@ -154,6 +153,7 @@ export function MyWorkView() {
                         initialNotePath={state.selectedNotePath}
                         defaultScope="per-note"
                         active={activeTab === 'notes'}
+                        dockStatusFooter
                     />
                 </div>
                 <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
@@ -164,14 +164,8 @@ export function MyWorkView() {
                         <RepoSchedulesTab workspaceId={MY_WORK_WORKSPACE_ID} />
                     </div>
                 )}
-                {activeTab === 'settings' && <RepoSettingsTab workspaceId={MY_WORK_WORKSPACE_ID} repo={VIRTUAL_REPO} />}
+                {activeTab === 'settings' && <RepoSettingsTab workspaceId={MY_WORK_WORKSPACE_ID} repo={VIRTUAL_REPO} dockStatusFooter />}
             </div>
-
-            {/* Remote-first shell: dock the status/action cluster at the bottom
-                of the My Work body so it lives in this view's own chrome instead
-                of the app-wide bottom band. No-ops in classic / mobile, where the
-                topbar keeps the cluster. */}
-            <DockedStatusFooter />
         </div>
     );
 }
