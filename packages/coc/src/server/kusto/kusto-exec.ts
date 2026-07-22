@@ -148,21 +148,92 @@ export function coerceCellValue(value: unknown): KustoCellValue {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Magic "mock:" queries — exercise the canvas + `kusto_query` tool with inline
+// data, no real cluster or `az login`. A `mock:`-prefixed query builds an
+// SDK-shaped {@link KustoResponseLike} directly and skips the client factory;
+// the synthetic response then flows through the same coercion + truncation as a
+// real run. Real KQL never starts with `mock:`, so there is no collision.
+// Always active behind the existing `kusto.enabled` gate. See {@link maybeMockResponse}.
+// ---------------------------------------------------------------------------
+
+const MOCK_PREFIX = /^mock:/i;
+
+/** Wrap columns + row-major values in the minimal SDK response shape. */
+function toResponse(columns: KustoColumn[], rows: KustoCellValue[][]): KustoResponseLike {
+    return {
+        primaryResults: [
+            {
+                columns: columns.map(c => ({ name: c.name, type: c.type })),
+                rows: () => rows.map(r => ({ getValueAt: (i: number) => r[i] })),
+            },
+        ],
+    };
+}
+
+/** A synthetic table of `n` rows, used by `mock:big` to exercise truncation. */
+function synthBig(n: number): KustoResponseLike {
+    const columns: KustoColumn[] = [
+        { name: 'Index', type: 'long' },
+        { name: 'Value', type: 'real' },
+        { name: 'Label', type: 'string' },
+    ];
+    // Deterministic (no Math.random / Date.now) so tests are reproducible.
+    const rows: KustoCellValue[][] = Array.from({ length: Math.max(0, n) }, (_, i) => [
+        i,
+        i * 1.5,
+        `row-${i}`,
+    ]);
+    return toResponse(columns, rows);
+}
+
+/**
+ * Interpret a `mock:` magic query, or return `null` for a normal query.
+ *
+ * Modes (everything after the case-insensitive `mock:` prefix, trimmed):
+ * - `error` / `error: <message>` → **throws** so the canvas shows its error state.
+ * - `big` / `big: <N>` → `N` synthetic rows (default `MAX_KUSTO_ROWS + 50`) to
+ *   exercise the truncation banner.
+ * - otherwise → JSON `{ columns: [{ name, type }], rows: [[...]] }`; malformed
+ *   JSON throws (surfaced as the canvas error state, which is fine).
+ */
+function maybeMockResponse(query: string): KustoResponseLike | null {
+    const q = query.trim();
+    if (!MOCK_PREFIX.test(q)) return null;
+    const rest = q.replace(MOCK_PREFIX, '').trim();
+
+    const err = rest.match(/^error\b:?\s*(.*)$/is);
+    if (err) throw new Error(err[1].trim() || 'Mock Kusto error');
+
+    const big = rest.match(/^big\b:?\s*(\d+)?$/i);
+    if (big) return synthBig(big[1] ? Number(big[1]) : MAX_KUSTO_ROWS + 50);
+
+    const parsed = JSON.parse(rest) as { columns: KustoColumn[]; rows: KustoCellValue[][] };
+    return toResponse(parsed.columns, parsed.rows);
+}
+
 /**
  * Run a KQL query and return typed, truncated columns + rows.
  *
- * Throws an `Error` (message preserved) on auth/connection/query failure so the
- * caller can record it as the Kusto canvas's error state.
+ * A `mock:`-prefixed query is served from inline data (see {@link maybeMockResponse})
+ * and never touches the SDK; any other query runs through the client factory as usual.
+ *
+ * Throws an `Error` (message preserved) on auth/connection/query failure — or on a
+ * `mock:error` / malformed mock query — so the caller can record it as the Kusto
+ * canvas's error state.
  */
 export async function executeKustoQuery(
     params: KustoQueryParams,
     opts: KustoExecOptions = {},
 ): Promise<KustoQueryResult> {
-    const factory = opts.clientFactory ?? defaultClientFactory;
     const cap = opts.cap ?? MAX_KUSTO_ROWS;
 
-    const client = await factory(params);
-    const response = await client.execute(params.database, params.query);
+    let response = maybeMockResponse(params.query); // throws on mock:error / bad JSON
+    if (!response) {
+        const factory = opts.clientFactory ?? defaultClientFactory;
+        const client = await factory(params);
+        response = await client.execute(params.database, params.query);
+    }
 
     const table = response?.primaryResults?.[0];
     if (!table) {
