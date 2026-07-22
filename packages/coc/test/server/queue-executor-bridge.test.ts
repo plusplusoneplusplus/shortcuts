@@ -2595,6 +2595,103 @@ describe('CLITaskExecutor', () => {
         });
     });
 
+    describe('early-turn abort signal', () => {
+        function makeAbortObservingService() {
+            let capturedSignal: AbortSignal | undefined;
+            const sendStarted = deferred<void>();
+            const service = {
+                ...sdkMocks.service,
+                softAbortSession: vi.fn().mockResolvedValue(true),
+                sendMessage: vi.fn((opts: any) => {
+                    capturedSignal = opts.signal;
+                    sendStarted.resolve();
+                    return new Promise((resolve) => {
+                        opts.signal?.addEventListener('abort', () => resolve({ success: false, error: 'aborted' }));
+                    });
+                }),
+            };
+            return { service, sendStarted, getSignal: () => capturedSignal };
+        }
+
+        function makeChatTask(id: string): QueuedTask {
+            return {
+                id,
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'long-running turn' },
+                config: {},
+            };
+        }
+
+        it('cancelProcess aborts the in-flight sendMessage even when no sdkSessionId is persisted', async () => {
+            const { service, sendStarted, getSignal } = makeAbortObservingService();
+            const executor = new CLITaskExecutor(store, { aiService: service as any });
+            // Process record has no sdkSessionId yet — the session-id lookup path is unavailable.
+            store.getProcess.mockResolvedValue({
+                id: 'queue_task-early-abort',
+                type: 'chat',
+                status: 'running',
+                startTime: new Date(),
+                promptPreview: 'test',
+            } as any);
+
+            const execPromise = executor.execute(makeChatTask('task-early-abort'));
+            await sendStarted.promise;
+            expect(getSignal()).toBeDefined();
+            expect(getSignal()!.aborted).toBe(false);
+
+            await executor.cancelProcess('queue_task-early-abort');
+
+            expect(getSignal()!.aborted).toBe(true);
+            expect(service.softAbortSession).not.toHaveBeenCalled();
+            await execPromise;
+        });
+
+        it('cancel(taskId) aborts the in-flight sendMessage for the mapped process', async () => {
+            const { service, sendStarted, getSignal } = makeAbortObservingService();
+            const executor = new CLITaskExecutor(store, { aiService: service as any });
+
+            const execPromise = executor.execute(makeChatTask('task-early-abort-2'));
+            await sendStarted.promise;
+            expect(getSignal()!.aborted).toBe(false);
+
+            executor.cancel('task-early-abort-2');
+
+            expect(getSignal()!.aborted).toBe(true);
+            await execPromise;
+        });
+
+        it('releases the turn controller on completion so a later cancel does not abort a stale signal', async () => {
+            let capturedSignal: AbortSignal | undefined;
+            const service = {
+                ...sdkMocks.service,
+                softAbortSession: vi.fn().mockResolvedValue(true),
+                sendMessage: vi.fn(async (opts: any) => {
+                    capturedSignal = opts.signal;
+                    return { success: true, response: 'done' };
+                }),
+            };
+            const executor = new CLITaskExecutor(store, { aiService: service as any });
+            store.getProcess.mockResolvedValue({
+                id: 'queue_task-early-abort-3',
+                type: 'chat',
+                status: 'completed',
+                startTime: new Date(),
+                promptPreview: 'test',
+            } as any);
+
+            await executor.execute(makeChatTask('task-early-abort-3'));
+            expect(capturedSignal).toBeDefined();
+            expect(capturedSignal!.aborted).toBe(false);
+
+            await executor.cancelProcess('queue_task-early-abort-3');
+
+            expect(capturedSignal!.aborted).toBe(false);
+        });
+    });
+
     describe('process tracking', () => {
         it('should create process with correct metadata', async () => {
             const executor = new CLITaskExecutor(store);

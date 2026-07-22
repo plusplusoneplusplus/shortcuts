@@ -148,6 +148,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private getEffortTiersForProvider?: GetEffortTiersForProvider;
     private readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     private dreamRunExecutor?: DreamRunExecutor;
+    /**
+     * Per-process AbortControllers registered by chat-mode executors when a
+     * turn starts. Aborting one interrupts the in-flight `sendMessage` even
+     * when no `sdkSessionId` has been persisted yet (early-turn cancel).
+     */
+    private readonly processAbortControllers = new Map<string, AbortController>();
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
@@ -203,6 +209,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             getMcpOauthManager: options.getMcpOauthManager,
             getDreamRunExecutor: () => this.dreamRunExecutor,
             cancelledTasks: this.cancelledTasks,
+            processAbortControllers: this.processAbortControllers,
         });
         this.getLoopInfra = options.getLoopInfra;
         this.getTriggerInfra = options.getTriggerInfra;
@@ -450,7 +457,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
     }
 
-    cancel(taskId: string): void { this.cancelledTasks.add(taskId); }
+    cancel(taskId: string): void {
+        this.cancelledTasks.add(taskId);
+        // Abort the in-flight sendMessage turn (if any) so cancellation does
+        // not depend on an sdkSessionId lookup. Follow-up tasks may carry an
+        // auto-generated id that does not map back to a process id; that path
+        // is covered by cancelProcess() aborting by process id directly.
+        this.processAbortControllers.get(toQueueProcessId(taskId))?.abort();
+    }
 
     /**
      * Resolve the ISDKService that owns a process's live session, routing by
@@ -482,6 +496,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         } else {
             this.cancelledTasks.add(taskId);
         }
+        // Abort by process id as well: covers turns whose queue task id is
+        // auto-generated (follow-up requeues) and turns that have not yet
+        // persisted an sdkSessionId.
+        this.processAbortControllers.get(processId)?.abort();
         try {
             const proc = await this.store.getProcess(processId);
             if (proc?.sdkSessionId) { await this.getAiServiceForProcess(proc).softAbortSession(proc.sdkSessionId); }

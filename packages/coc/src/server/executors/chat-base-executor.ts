@@ -200,6 +200,13 @@ export interface ChatModeExecutorOptions {
      * into user-facing agent sessions only.
      */
     getGlobalSystemPrompt?: () => string | undefined;
+    /**
+     * Shared per-process AbortController registry owned by the queue bridge.
+     * The executor registers a controller when a turn starts and passes its
+     * signal into `sendMessage`, so the bridge's cancel path can abort the
+     * in-flight turn even before an `sdkSessionId` has been persisted.
+     */
+    processAbortControllers?: Map<string, AbortController>;
 }
 
 /** Return type for the AI call result. */
@@ -263,6 +270,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     /** Live read of the admin global system prompt; injected into user-facing sessions. */
     protected readonly getGlobalSystemPromptFn?: () => string | undefined;
+    /** Shared per-process AbortController registry (owned by the queue bridge). */
+    protected readonly processAbortControllers?: Map<string, AbortController>;
     /**
      * Per-provider model-metadata cache for reasoning-effort resolution. The
      * shared `modelMetadataStore` is warmed from the default provider only, so
@@ -290,6 +299,26 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.ralphMultiAgentGrillEnabled = options.ralphMultiAgentGrillEnabled === true;
         this.resolveAiServiceForProvider = options.resolveAiServiceForProvider;
         this.getGlobalSystemPromptFn = options.getGlobalSystemPrompt;
+        this.processAbortControllers = options.processAbortControllers;
+    }
+
+    /**
+     * Register a fresh AbortController for this turn in the shared bridge
+     * registry (when wired) so a cancel can abort the in-flight `sendMessage`
+     * before any `sdkSessionId` exists. Always returns a controller so the
+     * signal can be passed to the SDK unconditionally.
+     */
+    protected registerTurnAbortController(processId: string): AbortController {
+        const controller = new AbortController();
+        this.processAbortControllers?.set(processId, controller);
+        return controller;
+    }
+
+    /** Remove this turn's controller unless a newer turn has already replaced it. */
+    protected releaseTurnAbortController(processId: string, controller: AbortController): void {
+        if (this.processAbortControllers?.get(processId) === controller) {
+            this.processAbortControllers.delete(processId);
+        }
     }
 
     /**
@@ -661,6 +690,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             }
         }
 
+        const turnAbort = this.registerTurnAbortController(processId);
         try {
             // Rewrite large prompts to file-path references
             const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
@@ -825,6 +855,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 infiniteSessions: { enabled: true } as const,
                 ...(this.keepClientWarm() ? { keepWarm: true as const, warmKey: processId } : {}),
                 workingDirectory,
+                signal: turnAbort.signal,
                 timeoutMs,
                 attachments,
                 tools: sendTools,
@@ -959,6 +990,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             }
             throw err;
         } finally {
+            this.releaseTurnAbortController(processId, turnAbort);
             if (imageTempDir) { cleanupTempDir(imageTempDir); }
             if (pasteCleanup) { pasteCleanup(); }
             modeDispose?.();
